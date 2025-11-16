@@ -1,0 +1,7 @@
+node_modules
+test-results
+test-reports
+.DS_Store
+.env
+.playwright-mcp
+TODO

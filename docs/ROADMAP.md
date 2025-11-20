@@ -57,7 +57,7 @@ This roadmap outlines the planned features and improvements for checkmate.
 - [ ] **Guardrails**
   - [x] Experimental repetitive loop detection (live API)
   - [ ] Detect and prevent identical tool calls (max 3 in a row)
-  - [ ] Tool response timeout enforcement
+  - [x] Tool response timeout retry logic
   - [ ] Maximum tokens per step limit
   - [ ] Infinite loop detection (chat API)
   - [ ] Destructive action confirmations

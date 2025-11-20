@@ -27,13 +27,10 @@ export class GeminiSessionManager {
     private readonly geminiClient: GeminiClient
     private readonly responseProcessor: ResponseProcessor
     private stepStatus: StepStatus
-    private stepStatusCallback: StepStatusCallback
+    private stepStatusCallback!: StepStatusCallback
     private stepFinishedCallback: StepFinishedCallback
 
     constructor() {
-        if (!process.env.GOOGLE_API_KEY) {
-            throw new Error("GOOGLE_API_KEY environment variable is not set\nvisit https://aistudio.google.com/app/api-keys to get one")
-        }
         this.playwrightMCP = PlaywrightMCPServer.create()
         this.stepTool = new StepTool()
         this.salesforceTool = new SalesforceTool()
@@ -52,6 +49,10 @@ export class GeminiSessionManager {
             this.tokenTracker,
             this.configurationManager
         )
+        this.stepStatus = { passed: false, actual: "" }
+        this.stepFinishedCallback = new Promise<StepStatus>(finishStep => {
+            this.stepStatusCallback = finishStep
+        })
     }
 
     public async teardown() {
@@ -59,11 +60,9 @@ export class GeminiSessionManager {
     }
 
     public async run(step: Step) {
-        console.log(`\n>>> step starts <<<`)
-        this.stepStatus = { passed: false, actual: "" }
-        this.stepFinishedCallback = new Promise<StepStatus>(finishStep => {
-            this.stepStatusCallback = finishStep
-        })
+        console.log(`\n>>> step started <<<`)
+        console.log(`| action: ${step.action}`)
+        console.log(`| expect: ${step.expect}`)
         try {
             await this.geminiClient.initialize()
             const response = await this.geminiClient.sendMessageWithRetry(
@@ -76,9 +75,9 @@ export class GeminiSessionManager {
             } else {
                 expect(this.stepStatus.actual, this.stepStatus.actual).toMatch(step.expect)
             }
-            console.log(`>>> step ends <<<`)
         } catch (error) {
             throw new Error(`Failed to execute action:\n${step.action}\n\n${error}`)
         }
+        console.log(`>>> step finished <<<`)
     }
 }

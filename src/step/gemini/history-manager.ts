@@ -1,3 +1,4 @@
+import { Content } from "@google/genai"
 import { GeminiClient } from "./gemini-client"
 
 export class HistoryManager {
@@ -14,8 +15,8 @@ export class HistoryManager {
             return {
                 ...content,
                 parts: filteredParts.length > 0 ? filteredParts : content.parts
-            }
-        }).filter(Boolean)
+            } satisfies Content[]
+        }).filter(Boolean) as Content[]
         await geminiClient.replaceHistory(filteredHistory)
     }
 }

@@ -1,15 +1,23 @@
 import { GenerateContentConfig, FunctionCallingConfigMode, Tool } from "@google/genai"
 
 export class ConfigurationManager {
+    getApiKey(): string {
+        if (!process.env.GOOGLE_API_KEY) {
+            throw new Error("GOOGLE_API_KEY environment variable is not set\nvisit https://aistudio.google.com/app/api-keys to get one")
+        } else {
+            return process.env.GOOGLE_API_KEY
+        }
+    }
+
     getModel(): string {
         return process.env.GOOGLE_API_MODEL ?? "gemini-2.5-flash"
     }
 
-    getApiKey(): string {
-        return process.env.GOOGLE_API_KEY ?? ""
+    getMaxRetries(): number {
+        return parseInt(process.env.GOOGLE_API_RETRY_MAX_ATTEMPTS ?? "3")
     }
 
-    async buildConfig(tools: Tool[]): Promise<GenerateContentConfig> {
+    async getGeminiConfig(tools: Tool[]): Promise<GenerateContentConfig> {
         return {
             temperature: this.getTemperature(),
             httpOptions: {

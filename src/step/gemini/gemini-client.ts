@@ -1,4 +1,4 @@
-import { Chat, GenerateContentConfig, GenerateContentResponse, GoogleGenAI, PartUnion } from "@google/genai"
+import { Chat, Content, GenerateContentConfig, GenerateContentResponse, GoogleGenAI, PartUnion } from "@google/genai"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 
@@ -9,7 +9,7 @@ export class GeminiClient {
     constructor(
         private readonly configurationManager: ConfigurationManager,
         private readonly toolRegistry: ToolRegistry
-    ) {}
+    ) { }
 
     async initialize(): Promise<void> {
         await this.reinitialize()
@@ -20,7 +20,7 @@ export class GeminiClient {
     }
 
     async sendMessageWithRetry(message: PartUnion[]): Promise<GenerateContentResponse> {
-        const maxAttempts = parseInt(process.env.GEMINI_RETRY_MAX_ATTEMPTS ?? "3")
+        const maxAttempts = this.configurationManager.getMaxRetries()
         let lastError: Error | null = null
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
@@ -39,7 +39,9 @@ export class GeminiClient {
                 console.log(`\ngemini API error (attempt ${attempt}/${maxAttempts}): ${lastError.message}`)
                 console.log(`retrying in ${Math.round(delay / 1000)} seconds...`)
                 await new Promise(resolve => setTimeout(resolve, delay))
+                const keepHistory = this.chat.getHistory()
                 await this.reinitialize()
+                await this.replaceHistory(keepHistory)
             }
         }
         throw lastError
@@ -53,7 +55,7 @@ export class GeminiClient {
         return result.totalTokens ?? 0
     }
 
-    async replaceHistory(history: any[]): Promise<void> {
+    async replaceHistory(history: Content[]): Promise<void> {
         const config = await this.buildConfig()
         this.chat = this.ai.chats.create({
             model: this.configurationManager.getModel(),
@@ -75,7 +77,7 @@ export class GeminiClient {
 
     private async buildConfig(): Promise<GenerateContentConfig> {
         const tools = await this.toolRegistry.getTools()
-        return this.configurationManager.buildConfig(tools)
+        return this.configurationManager.getGeminiConfig(tools)
     }
 
     private isRetryableError(error: any): boolean {
@@ -88,9 +90,10 @@ export class GeminiClient {
     }
 
     private calculateBackoffDelay(attempt: number): number {
-        const baseDelay = 1000
-        const delay = baseDelay * Math.pow(2, attempt - 1)
-        const jitter = delay * 0.25 * (Math.random() * 2 - 1)
-        return Math.min(delay + jitter, 30000)
+        switch (attempt) {
+            case 1: return 1_000
+            case 2: return 10_000
+            default: return 60_000
+        }
     }
 }

@@ -2,15 +2,15 @@
 
 Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines Gemini's intelligence with Playwright's ecosystem for smarter, more resilient execution.
 
-### How It Works
-You write natural language:
+### How it works?
+Write tests in natural language:
 ```javascript
 await ai.run({
     action: `Type 'playwright test automation' in the search bar and press Enter`,
     expect: `Search results contain the playwright.dev link`
 })
 ```
-Instead of chaining locators, methods and assertions:
+...instead of chaining locators, methods and assertions:
 ```javascript
 await page.locator('#search-input').fill('playwright test automation')
 await page.press('#search-input', 'Enter')
@@ -20,17 +20,18 @@ await expect(page.getByRole('link', { name: '#search-result' })
 ```
 
 ### Features
-- **Write tests in plain English** – no locators needed
-- **Web & Salesforce support** – out of the box
-- **Resilient** – tests adapt automatically to UI changes
-- **Cost saving** – tracks token use, filters chat history, compresses screenshots 
-- **Reporting** – console logs, HTML and JUnit output
+*   **Write tests in plain English**: No locators needed.
+*   **Web UI**: Works on any web page.
+*   **Salesforce UI**: Works with any org with automatic authorization.
+*   **Resilient**: Tests adapt automatically to UI changes.
+*   **Cost saving**: Optimizes token use, chat history, and screenshots.
+*   **Reporting**: Console logs, HTML and JUnit output.
 
-## 🚀 Quick Start
+## Quick Start
 ### Prerequisites
 
-- Node.js 18+
-- Google [Gemini API](https://aistudio.google.com/app/apikey) key
+- Node.js [18+ or LTS](https://nodejs.org/en/download) 
+- Google Gemini [API key](https://aistudio.google.com/app/apikey)
 - (optional) [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli) for Salesforce testing
 
 ### Installation
@@ -50,7 +51,7 @@ cp .env.example .env
 
 ### Configuration
 
-Create a `.env` file based on `.env.example` (comprehensive configuration reference):
+Edit `.env` file based on `.env.example` that has a comprehensive configuration reference:
 
 ```bash
 # Required - Get your key at: https://aistudio.google.com/app/apikey
@@ -137,7 +138,7 @@ await test.step('Fill form and submit', async () => {
     })
 })
 ```
-## 🛠️ Configuration Options
+## Configuration
 
 ### Gemini API Settings
 
@@ -147,12 +148,7 @@ await test.step('Fill form and submit', async () => {
 | `GOOGLE_API_MODEL` | `gemini-2.5-flash` | Model: gemini-2.5-flash, gemini-flash-latest, gemini-2.5-flash-preview-09-2025, gemini-2.5-pro  (recommended: gemini-2.5-flash-preview-09-2025) |
 | `GOOGLE_API_TEMPERATURE` | `0` | Creativity (0=deterministic, 1=creative) |
 | `GOOGLE_API_TIMEOUT_SECONDS` | `10` | API request timeout in seconds |
-
-### Gemini Live API Settings (Experimental)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GEMINI_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
+| `GOOGLE_API_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
 
 ### Playwright MCP Settings
 
@@ -166,7 +162,7 @@ await test.step('Fill form and submit', async () => {
 | `PLAYWRIGHT_MCP_ISOLATED` | `false` | Use isolated browser contexts |
 | `PLAYWRIGHT_MCP_CAPS` | - | Custom browser capabilities (JSON) |
 
-## 💰 Cost Management
+## Cost Management
 
 Checkmate includes built-in token usage monitoring:
 
@@ -252,7 +248,7 @@ Multiple report formats are generated after each run:
 npx playwright show-report test-reports/html
 ```
 
-### Common Issues
+## Common Issues
 
 **Test hangs at step execution**
 - Check if the page loaded correctly (look for navigation errors)
@@ -327,33 +323,23 @@ The framework combines:
 
 ![architecture-diagram.svg](./docs/img/architecture-diagram.svg)
 
-### 🌊 Flow
+### Flow
 ![flow-diagram.svg](./docs/img/flow-diagram.svg)
 
-## 🤝 Contributing
-
-This is an experimental project exploring the future of test automation. Contributions, ideas, and feedback are welcome!
-
-### Development Setup
-
-```bash
-npm install
-npm run test:web
-```
-
+## Contributing
 ### Key Areas for Contribution
 
-- [ ] Additional tool integrations (API testing, mobile apps)
-- [ ] Improved error handling and retry logic
-- [ ] Cost optimization strategies
-- [ ] Better prompt engineering
-- [ ] Performance benchmarks
+  - Additional tool integrations (ex. API testing)
+  - Improved error handling and retry logic
+  - Api cost optimization
+  - Improved prompt and context engineering
+  - Performance
 
-## 📜 License
+### License
 
 MIT License - see LICENSE file for details
 
-## 📚 Learn More
+### Learn More
 
 - [Playwright MCP](https://github.com/microsoft/playwright/tree/main/utils/mcp-server)
 - [Playwright Documentation](https://playwright.dev/)
@@ -367,27 +353,19 @@ MIT License - see LICENSE file for details
 
 Checkmate is an experimental framework exploring AI-driven test automation. While functional, it's not yet recommended for production CI/CD pipelines. Expect:
 - Non-deterministic behavior
-- Higher costs than traditional automation
-- Occasional AI misinterpretation of UI elements
+- Higher runtime costs than traditional automation
+- Occasional timeouts
+- Model overloaded errors (using Gemini v2 beta API endpoint)
 
 Use for exploratory testing, rapid prototyping, and demonstrating AI capabilities in testing.
 
 ---
 
-### Current Status:
+**Future Vision**
 
-- **Version 0.0.1**
-- Enhanced architecture with modular components and retry logic
-- Support for both traditional chat API and experimental live API
-- Comprehensive configuration management and cost optimization
-- Working examples for web testing, Salesforce testing, and live session testing
-- Not yet recommended for production CI/CD pipelines due to non-deterministic behavior
+The roadmap includes plans for caching, RAG-based element retrieval, OpenAI API support, visual testing, and eventually becoming a production-ready testing platform.
 
-### Future Vision:
-
-The roadmap shows ambitious plans for caching, RAG-based element retrieval, open-ai api support, visual testing, and eventually becoming a production-ready enterprise testing platform.
-
-This is a cutting-edge exploration of how AI can revolutionize test automation by making it more human-like and maintainable! 🚀
+This project is primarily an exploration of how AI can democratize test automation by making it less technical and more maintainable! 🚀
 
 ---
-Built with ❤️ by Dawid Dobrowolski @ SoftQA
+Built with ❤️ by Dawid Dobrowolski

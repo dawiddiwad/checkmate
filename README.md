@@ -59,7 +59,7 @@ GOOGLE_API_KEY=your_gemini_api_key_here
 
 # Gemini model configuration
 GOOGLE_API_MODEL=gemini-2.5-flash #if overloaded use gemini-2.5-flash-preview-09-2025 
-GOOGLE_API_TEMPERATURE=0
+GOOGLE_API_TEMPERATURE=0.1
 
 # Playwright settings
 PLAYWRIGHT_MCP_BROWSER=chromium
@@ -146,8 +146,8 @@ await test.step('Fill form and submit', async () => {
 |----------|---------|-------------|
 | `GOOGLE_API_KEY` | - | **Required** - Your Gemini API key |
 | `GOOGLE_API_MODEL` | `gemini-2.5-flash` | Model: gemini-2.5-flash, gemini-flash-latest, gemini-2.5-flash-preview-09-2025, gemini-2.5-pro  (recommended: gemini-2.5-flash-preview-09-2025) |
-| `GOOGLE_API_TEMPERATURE` | `0` | Creativity (0=deterministic, 1=creative) |
-| `GOOGLE_API_TIMEOUT_SECONDS` | `10` | API request timeout in seconds |
+| `GOOGLE_API_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
+| `GOOGLE_API_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
 | `GOOGLE_API_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
 
 ### Playwright MCP Settings

@@ -38,11 +38,11 @@ export class ConfigurationManager {
     }
 
     private getTemperature(): number {
-        return parseFloat(process.env.GOOGLE_API_TEMPERATURE ?? "0")
+        return parseFloat(process.env.GOOGLE_API_TEMPERATURE ?? "0.1")
     }
 
     private getTimeout(): number {
-        return parseInt(process.env.GOOGLE_API_TIMEOUT_SECONDS ?? "10") * 1000
+        return parseInt(process.env.GOOGLE_API_TIMEOUT_SECONDS ?? "60") * 1000
     }
 
     private getAllowedFunctionNames(): string[] {

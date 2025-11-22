@@ -26,9 +26,9 @@ export class GeminiSessionManager {
     private readonly historyManager: HistoryManager
     private readonly geminiClient: GeminiClient
     private readonly responseProcessor: ResponseProcessor
-    private stepStatus: StepStatus
+    private stepStatus!: StepStatus
     private stepStatusCallback!: StepStatusCallback
-    private stepFinishedCallback: StepFinishedCallback
+    private stepFinishedCallback!: StepFinishedCallback
 
     constructor() {
         this.playwrightMCP = PlaywrightMCPServer.create()
@@ -49,10 +49,14 @@ export class GeminiSessionManager {
             this.tokenTracker,
             this.configurationManager
         )
+    }
+
+    private async initialize() {
         this.stepStatus = { passed: false, actual: "" }
         this.stepFinishedCallback = new Promise<StepStatus>(finishStep => {
             this.stepStatusCallback = finishStep
         })
+        await this.geminiClient.initialize()
     }
 
     public async teardown() {
@@ -64,7 +68,7 @@ export class GeminiSessionManager {
         console.log(`| action: ${step.action}`)
         console.log(`| expect: ${step.expect}`)
         try {
-            await this.geminiClient.initialize()
+            await this.initialize()
             const response = await this.geminiClient.sendMessageWithRetry(
                 [{ text: RUN_STEP_PROMPT(step) }]
             )

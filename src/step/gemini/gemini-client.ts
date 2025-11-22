@@ -12,7 +12,14 @@ export class GeminiClient {
     ) { }
 
     async initialize(): Promise<void> {
-        await this.reinitialize()
+        this.ai = new GoogleGenAI({
+            apiKey: this.configurationManager.getApiKey()
+        })
+        const config = await this.buildConfig()
+        this.chat = this.ai.chats.create({
+            model: this.configurationManager.getModel(),
+            config
+        })
     }
 
     getChat(): Chat {
@@ -36,7 +43,7 @@ export class GeminiClient {
                 console.log(`retrying in ${Math.round(delay / 1000)} seconds...`)
                 await new Promise(resolve => setTimeout(resolve, delay))
                 const keepHistory = this.chat.getHistory()
-                await this.reinitialize()
+                await this.initialize()
                 await this.replaceHistory(keepHistory)
             }
         }
@@ -55,17 +62,6 @@ export class GeminiClient {
         this.chat = this.ai.chats.create({
             model: this.configurationManager.getModel(),
             history,
-            config
-        })
-    }
-
-    private async reinitialize(): Promise<void> {
-        this.ai = new GoogleGenAI({
-            apiKey: this.configurationManager.getApiKey()
-        })
-        const config = await this.buildConfig()
-        this.chat = this.ai.chats.create({
-            model: this.configurationManager.getModel(),
             config
         })
     }

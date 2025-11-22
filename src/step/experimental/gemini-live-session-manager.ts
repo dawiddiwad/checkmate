@@ -178,7 +178,7 @@ export class GeminiLiveSessionManager {
             model: this.model,
             callbacks: this.getCallbacks(),
             config: {
-                temperature: parseFloat(process.env.GOOGLE_API_TEMPERATURE ?? '0'),
+                temperature: parseFloat(process.env.GOOGLE_API_TEMPERATURE ?? '0.1'),
                 responseModalities: [Modality.TEXT],
                 contextWindowCompression: {
                     triggerTokens: '50000',

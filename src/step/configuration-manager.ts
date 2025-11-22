@@ -17,6 +17,10 @@ export class ConfigurationManager {
         return parseInt(process.env.GOOGLE_API_RETRY_MAX_ATTEMPTS ?? "3")
     }
 
+    includeScreenshotInSnapshot(): boolean {
+        return process.env.GOOGLE_API_INCLUDE_SCREENSHOT_IN_SNAPSHOT?.toLowerCase() === "true"
+    }
+
     async getGeminiConfig(tools: Tool[]): Promise<GenerateContentConfig> {
         return {
             temperature: this.getTemperature(),
@@ -54,6 +58,7 @@ export class ConfigurationManager {
             "browser_snapshot",
             "browser_type",
             "browser_wait_for",
+            "browser_install",
             "fail_test_step",
             "pass_test_step",
             "get_salesforce_login_url"

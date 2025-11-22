@@ -17,7 +17,7 @@ export class ResponseProcessor {
         private readonly screenshotProcessor: ScreenshotProcessor,
         private readonly tokenTracker: TokenTracker,
         private readonly configurationManager: ConfigurationManager
-    ) {}
+    ) { }
 
     async handleResponse(response: GenerateContentResponse, step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
         if (env.GEMINI_API_RATE_LIMIT_DELAY_SECONDS) {
@@ -72,7 +72,7 @@ export class ResponseProcessor {
     ): Promise<void> {
         await this.historyManager.removeSnapshotEntries(this.geminiClient)
         const message: PartUnion[] = []
-        if (name.includes("snapshot")) {
+        if (name.includes("snapshot") && this.configurationManager.includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.compressSnapshot()
             message.push({
                 inlineData: {

@@ -1,6 +1,6 @@
 import { FunctionDeclaration } from "@google/genai"
-import { GeminiTool } from "./tool/gemini-tool"
-import { GeminiServerMCP, ToolCall } from "./server/gemini-mcp"
+import { GeminiTool } from "./gemini-tool"
+import { GeminiServerMCP, ToolCall } from "../server/gemini-mcp"
 
 export class PlaywrightTool implements GeminiTool {
     functionDeclarations: FunctionDeclaration[]

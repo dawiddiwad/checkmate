@@ -20,23 +20,19 @@ export class GeminiClient {
     }
 
     async sendMessageWithRetry(message: PartUnion[]): Promise<GenerateContentResponse> {
-        const maxAttempts = this.configurationManager.getMaxRetries()
-        let lastError: Error | null = null
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        let attemptsLeft = this.configurationManager.getMaxRetries()
+        while (true) {
             try {
-                const response = await this.chat.sendMessage({
+                return await this.chat.sendMessage({
                     config: await this.buildConfig(),
                     message
                 })
-                return response
             } catch (error) {
-                lastError = error as Error
-                const isRetryable = this.isRetryableError(error)
-                if (!isRetryable || attempt === maxAttempts) {
-                    throw lastError
+                if (!this.isRetryableError(error) || attemptsLeft-- === 0) {
+                    throw error
                 }
-                const delay = this.calculateBackoffDelay(attempt)
-                console.log(`\ngemini API error (attempt ${attempt}/${maxAttempts}): ${lastError.message}`)
+                const delay = this.calculateBackoffDelay(attemptsLeft)
+                console.error(`\ngemini API error (attempts left ${attemptsLeft}): ${error.message}`)
                 console.log(`retrying in ${Math.round(delay / 1000)} seconds...`)
                 await new Promise(resolve => setTimeout(resolve, delay))
                 const keepHistory = this.chat.getHistory()
@@ -44,7 +40,6 @@ export class GeminiClient {
                 await this.replaceHistory(keepHistory)
             }
         }
-        throw lastError
     }
 
     async countHistoryTokens(): Promise<number> {
@@ -85,14 +80,16 @@ export class GeminiClient {
         const code = error?.code || ""
         return message.includes("timed out") ||
             message.includes("deadline_exceeded") ||
+            message.includes("rate") ||
             code === "504" ||
+            code === "429" ||
             (error?.status && error.status >= 500)
     }
 
-    private calculateBackoffDelay(attempt: number): number {
-        switch (attempt) {
-            case 1: return 1_000
-            case 2: return 10_000
+    private calculateBackoffDelay(attemptsLeft: number): number {
+        switch (attemptsLeft) {
+            case 2: return 1_000
+            case 1: return 10_000
             default: return 60_000
         }
     }

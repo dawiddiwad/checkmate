@@ -22,7 +22,11 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 ## Version 0.2 (In Progress)
 
-**Focus**: Stability, Observability, and Cost Control
+**Focus**: OpenAI API, Stability, Observability, and Cost Control
+
+- [ ] **OpenAI API Migration**
+  - [ ] Move from Gemini API to OpenAI API
+  - [ ] Implement abstract costing interface
 
 - [ ] **Comprehensive Documentation**
   - [x] README with setup instructions
@@ -41,17 +45,15 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Cost calculation per test
   - [x] Token usage tracking per component
   - [ ] Budget limits and alerts
-  - [ ] Cost optimization recommendations
-  - [ ] Usage dashboard/visualization
-  - [ ] Export cost reports (CSV/JSON)
+  - [ ] Migrate from YAML to TOON for browser tool responses
 
 - [ ] **Error Handling & Timeouts**
   - [x] Automatic retry logic with exponential backoff
   - [x] API request timeouts (configurable)
-  - [ ] Graceful handling of API failures
+  - [x] Graceful handling of API failures
   - [x] Tool-level timeouts (30s default)
-  - [ ] Better error messages with recovery suggestions
-  - [ ] Fallback strategies when AI fails
+  - [x] Better error messages with recovery suggestions
+  - [x] Fallback strategies when AI fails
   - [ ] Circuit breaker for repeated failures
 
 - [ ] **Guardrails**
@@ -59,9 +61,7 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Detect and prevent identical tool calls (max 3 in a row)
   - [x] Tool response timeout retry logic
   - [ ] Maximum tokens per step limit
-  - [ ] Infinite loop detection (chat API)
-  - [ ] Destructive action confirmations
-  - [ ] Rate limiting for API calls
+  - [x] Rate limiting for API calls
 
 - [ ] **Logging & Post-Processing**
   - [x] Detailed step execution logging
@@ -70,51 +70,49 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Log levels (DEBUG, INFO, WARN, ERROR)
   - [ ] Execution trace with timing
   - [ ] AI reasoning/thought capture
-  - [ ] Step-by-step replay capability
-  - [ ] Performance metrics collection
 
 
 ## Version 0.3
 
-**Focus**: Advanced Features & Performance
+**Focus**: UI, Performance, Visual Testing
 
-- [ ] **Explicit Caching**
-  - [ ] Gemini context caching for repeated patterns
+- [ ] **UI Layer V1**
+  - [ ] Automatic test generation from recorded actions (video and streaming)
+  - [ ] Drag-and-drop test step builder
+  - [ ] Real-time test execution viewer
+  - [ ] Run, Pause, Resume, Re-start ability
+  - [ ] Commit/Read test cases in native playwright format
+
+- [ ] **Explicit Caching?**
   - [ ] Cache common page structures
   - [ ] Cache UI element mappings
   - [ ] Intelligent cache invalidation
-  - [ ] Estimated 75% cost reduction for regression suites
 
-- [ ] **RAG-Based Element Retrieval**
+- [ ] **RAG-Based Element Retrieval?**
   - [ ] Store page snapshots in Gemini File API
   - [ ] Vector search for relevant UI elements
   - [ ] New `page_focused_snapshot` tool
   - [ ] Handles large/complex pages efficiently
   - [ ] Reduces token consumption by 60%
 
-- [ ] **Standalone Playwright Integration**
+- [ ] **Visual Testing**
+  - [ ] AI-powered visual validation
+  - [ ] Layout consistency checks
+
+## Version 0.4
+
+**Focus**: Production Readiness & Scaling
+
+- [ ] **Standalone Playwright Integration?**
   - [ ] Option to use Playwright Page directly (no MCP)
   - [ ] Custom tool implementations
   - [ ] Better performance (no subprocess overhead)
   - [ ] Enhanced debugging capabilities
   - [ ] Compare MCP vs standalone approaches
 
-- [ ] **Multi-Model Support**
-  - [ ] Support for Gemini Pro (higher reasoning)
-  - [ ] Model fallback strategies
-  - [ ] Per-step model selection
-
-- [ ] **Visual Testing**
-  - [ ] AI-powered visual validation
-  - [ ] Layout consistency checks
-
-- [ ] **API Testing Integration**
+- [ ] **API Testing Integration?**
   - [ ] HTTP request/response tools
   - [ ] End-to-end API + UI flows
-
-## Version 0.4
-
-**Focus**: Production Readiness & Scaling
 
 - [ ] **Production Features**
   - [ ] Environment management

@@ -64,7 +64,6 @@ GOOGLE_API_TEMPERATURE=0.1
 # Playwright settings
 PLAYWRIGHT_MCP_BROWSER=chromium
 PLAYWRIGHT_MCP_HEADLESS=false
-PLAYWRIGHT_MCP_OUTPUT_DIR=./test-results
 ```
 
 ### Running Tests
@@ -76,7 +75,7 @@ npm run test:web
 # Run Salesforce tests (requires SF CLI authentication)
 npm run test:salesforce
 
-# Run experimental live API tests (streaming AI)
+# Run experimental live API tests (faster responses)
 npm run test:live
 
 # View HTML report
@@ -149,6 +148,7 @@ await test.step('Fill form and submit', async () => {
 | `GOOGLE_API_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
 | `GOOGLE_API_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
 | `GOOGLE_API_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
+| `GOOGLE_API_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses (reduces token costs when disabled) |
 
 ### Playwright MCP Settings
 
@@ -264,54 +264,6 @@ npx playwright show-report test-reports/html
 - Use more specific selectors in descriptions
 - Consider caching (see Roadmap)
 
-## Project Structure
-
-```
-checkmate-exp/
-├── src/
-│   ├── mcp/                                     # MCP server integrations
-│   │   ├── server/                              # MCP server implementations
-│   │   │   ├── gemini-mcp.ts                    # Base MCP client wrapper
-│   │   │   └── playwright-mcp.ts                # Playwright MCP config
-│   │   └── tool/                                # MCP tool interfaces
-│   │       ├── gemini-tool.ts                   # Tool interface
-│   │       └── playwright-tool.ts               # Playwright tool wrapper
-│   ├── salesforce/                              # Salesforce integrations
-│   │   ├── salesforce-cli-authenticator.ts
-│   │   ├── salesforce-cli-handler.ts
-│   │   └── salesforce-tool.ts
-│   └── step/                                    # Core execution engine
-│       ├── configuration-manager.ts             # Centralized config
-│       ├── experimental/                        # Experimental features
-│       │   └── gemini-live-session-manager.ts
-│       ├── gemini/                              # Gemini AI integrations
-│       │   ├── gemini-client.ts                 # Enhanced Gemini API client
-│       │   ├── gemini-session-manager.ts        # Main orchestrator
-│       │   ├── gemini-token-pricing.ts          # Cost tracking
-│       │   ├── history-manager.ts               # Chat history management
-│       │   ├── prompts.ts                       # Prompt templates
-│       │   ├── response-processor.ts            # Response processing
-│       │   └── token-tracker.ts                 # Token usage tracking
-│       ├── tool/                                # Tool management
-│       │   ├── screenshot-processor.ts          # Screenshot optimization
-│       │   ├── step-tool.ts                     # Pass/fail tools
-│       │   └── tool-registry.ts                 # Tool management
-│       └── types.ts                             # Type definitions
-├── test/
-│   ├── fixtures/
-│   │   ├── checkmate.ts                         # Standard Playwright fixtures
-│   │   └── checkmate-live.ts                    # Live API fixtures
-│   └── specs/
-│       ├── live/                                # Experimental live API tests
-│       ├── web/                                 # Web application tests
-│       └── salesforce/                          # Salesforce tests
-├── test-reports/                                # Generated reports
-├── test-results/                                # Screenshots, videos, traces
-├── playwright.config.ts                         # Test runner configuration
-├── .env.example                                 # Comprehensive configuration
-└── package.json
-```
-
 ### Architecture:
 The framework combines:
 - **Gemini AI** for understanding and decision-making (both chat and live APIs)
@@ -321,10 +273,218 @@ The framework combines:
 - **Modular Components**: Configuration management, response processing, token tracking, history filtering, screenshot compression
 - **Experimental Live API**: Real-time AI interactions with streaming responses
 
-![architecture-diagram.svg](./docs/img/architecture-diagram.svg)
+Playwright test runner calls into the Gemini step engine via fixture, which orchestrates Gemini API calls and tool invocations, then feeds results back into the test runner. Supporting modules hang off that core to manage configuration, history, screenshots, and costs:
 
-### Flow
-![flow-diagram.svg](./docs/img/flow-diagram.svg)
+```
+═════════════════════════ FLOW ════════════════════════════════
+
+Playwright Test Step 
+    │
+Checkmate fixture
+    │
+GeminiTestManager
+    │
+GeminiTestStep
+    │
+    ├─► GeminiClient.initialize()
+    │       │
+    │       ├─► ConfigurationManager.getGeminiConfig()
+    │       └─► ToolRegistry.getTools()
+    │
+    ├─► GeminiClient.sendMessageWithRetry(prompt)
+    │       │
+    │       └─► Google Gemini API
+    │
+    └─► ResponseProcessor.handleResponse(response)
+            │
+            ├─► TokenTracker.log()
+            │
+            ├─► functionCall:
+            │       │
+            │       ├─► browser_* → ToolRegistry.executeBrowserTool()
+            │       │       └─► PlaywrightTool → PlaywrightMCP → Browser
+            │       │
+            │       ├─► test_step_* → ToolRegistry.executeStepTool()
+            │       │       └─► StepTool → StepStatusCallback
+            │       │
+            │       └─► salesforce_* → ToolRegistry.executeSalesforceTool()
+            │               └─► SalesforceTool → Salesforce CLI
+            │
+            └─► snapshot:
+                    └─► ScreenshotProcessor.compressSnapshot()
+                    └─► HistoryManager.removeSnapshotEntries()
+                    └─► GeminiClient.replaceHistory()
+
+═════════════════════════ ARCHITECTURE ════════════════════════════════
+
+Playwright Test Layer
+    │
+    ├─► checkmate.ts (fixture)
+    │       │
+    │       └─► GeminiTestManager
+    │               │
+    │               ├─► playwrightMCP: GeminiServerMCP
+    │               ├─► geminiClient: GeminiClient
+    │               ├─► responseProcessor: ResponseProcessor
+    │               │
+    │               └─► GeminiTestStep (Internal)
+    │                       │
+    │                       ├─► Orchestrates step execution
+    │                       ├─► Manages step status callbacks
+    │                       └─► Handles assertions
+    │
+    └─► checkmate-live.ts (experimental fixture)
+            │
+            └─► GeminiLiveSessionManager
+                    │
+                    ├─► playwrightMCP: GeminiServerMCP
+                    ├─► ai: GoogleGenAI
+                    ├─► session: Live Session
+                    ├─► playwrightTool: PlaywrightTool
+                    ├─► stepTool: StepTool
+                    └─► salesforceTool: SalesforceTool
+
+Core Components Layer
+    │
+    ├─► GeminiClient
+    │       │
+    │       ├─► Dependencies:
+    │       │       ├─► configurationManager: ConfigurationManager
+    │       │       └─► toolRegistry: ToolRegistry
+    │       │
+    │       └─► Responsibilities:
+    │               ├─► Initialize GoogleGenAI
+    │               ├─► Manage chat sessions
+    │               ├─► Send messages with retry
+    │               ├─► Manage conversation history
+    │               └─► Token counting
+    │
+    ├─► ResponseProcessor
+    │       │
+    │       ├─► Dependencies:
+    │       │       ├─► playwrightMCP: GeminiServerMCP
+    │       │       └─► geminiClient: GeminiClient
+    │       │
+    │       └─► Responsibilities:
+    │               ├─► Process Gemini API responses
+    │               ├─► Handle function calls
+    │               ├─► Dispatch tool responses
+    │               ├─► Manage recursive tool calls
+    │               └─► Handle screenshots
+    │
+    └─► ToolRegistry
+            │
+            ├─► Dependencies:
+            │       ├─► playwrightMCP: GeminiServerMCP
+            │       ├─► playwrightTool: PlaywrightTool
+            │       ├─► stepTool: StepTool
+            │       └─► salesforceTool: SalesforceTool
+            │
+            └─► Responsibilities:
+                    ├─► Aggregate function declarations from all tools
+                    ├─► Route tool execution to appropriate handler
+                    ├─► executeBrowserTool()
+                    ├─► executeStepTool()
+                    └─► executeSalesforceTool()
+
+Tools Layer
+    │
+    ├─► PlaywrightTool (implements GeminiTool)
+    │       │
+    │       ├─► Dependencies:
+    │       │       └─► playwrightMCP: GeminiServerMCP
+    │       │
+    │       └─► Functions:
+    │               └─► browser_* (from MCP: click, navigate, snapshot, etc.)
+    │
+    ├─► StepTool (implements GeminiTool)
+    │       │
+    │       ├─► Dependencies:
+    │       │       └─► (none)
+    │       │
+    │       └─► Functions:
+    │               ├─► pass_test_step
+    │               └─► fail_test_step
+    │
+    └─► SalesforceTool (implements GeminiTool)
+            │
+            ├─► Dependencies:
+            │       └─► SalesforceCliAuthenticator
+            │
+            └─► Functions:
+                    └─► get_salesforce_login_url
+
+MCP Server Layer
+    │
+    ├─► GeminiServerMCP
+    │       │
+    │       ├─► Wraps Model Context Protocol SDK
+    │       ├─► Manages MCP client connections
+    │       ├─► Converts MCP tools to Gemini function declarations
+    │       ├─► Handles tool execution via MCP protocol
+    │       └─► Cleans schemas for Gemini compatibility
+    │
+    └─► PlaywrightMCPServer
+            │
+            ├─► Creates GeminiServerMCP instance for Playwright
+            ├─► Configures via environment variables
+            └─► Spawns @playwright/mcp server process
+
+Supporting Components
+    │
+    ├─► ConfigurationManager
+    │       │
+    │       ├─► API key/config management
+    │       ├─► Model selection
+    │       ├─► Retry settings
+    │       ├─► Temperature configuration
+    │       ├─► Timeout configuration
+    │       └─► Function allowlist
+    │
+    ├─► HistoryManager
+    │       │
+    │       ├─► Remove snapshots from history
+    │       └─► Filter history entries
+    │
+    ├─► ScreenshotProcessor
+    │       │
+    │       ├─► Compress screenshots
+    │       ├─► Resize images
+    │       └─► Base64 encoding
+    │
+    ├─► TokenTracker
+    │       │
+    │       ├─► Track token usage
+    │       ├─► Calculate costs
+    │       └─► Log pricing information
+    │
+    └─► SalesforceCliAuthenticator
+            │
+            ├─► Authenticate with Salesforce CLI
+            ├─► Generate front door URLs
+            └─► Uses SalesforceCliHandler
+
+External Services
+    │
+    ├─► Google Gemini API
+    │       │
+    │       ├─► Standard API
+    │       ├─► Live API (experimental)
+    │       └─► Function calling
+    │
+    ├─► Playwright MCP Server
+    │       │
+    │       ├─► Browser automation
+    │       ├─► DOM manipulation
+    │       ├─► Screenshots
+    │       └─► Navigation
+    │
+    └─► Salesforce CLI
+            │
+            ├─► Org management
+            ├─► Authentication
+            └─► URL generation
+```
 
 ## Contributing
 ### Key Areas for Contribution

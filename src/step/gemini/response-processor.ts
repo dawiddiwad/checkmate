@@ -1,23 +1,32 @@
 import { FinishReason, FunctionResponse, GenerateContentResponse, PartUnion } from "@google/genai"
 import { ToolCall } from "../../mcp/server/gemini-mcp"
 import { Step, StepStatusCallback } from "../types"
-import { ToolRegistry } from "../tool/tool-registry"
 import { GeminiClient } from "./gemini-client"
 import { HistoryManager } from "./history-manager"
 import { ScreenshotProcessor } from "../tool/screenshot-processor"
 import { TokenTracker } from "./token-tracker"
-import { ConfigurationManager } from "../configuration-manager"
 import { env } from "process"
+import { GeminiServerMCP } from "../../mcp/server/gemini-mcp"
+
+export type ResponseProcessorDependencies = {
+    playwrightMCP: GeminiServerMCP
+    geminiClient: GeminiClient
+}
 
 export class ResponseProcessor {
-    constructor(
-        private readonly toolRegistry: ToolRegistry,
-        private readonly geminiClient: GeminiClient,
-        private readonly historyManager: HistoryManager,
-        private readonly screenshotProcessor: ScreenshotProcessor,
-        private readonly tokenTracker: TokenTracker,
-        private readonly configurationManager: ConfigurationManager
-    ) { }
+    private readonly historyManager: HistoryManager
+    private readonly screenshotProcessor: ScreenshotProcessor
+    private readonly tokenTracker: TokenTracker
+    private readonly playwrightMCP: GeminiServerMCP
+    private readonly geminiClient: GeminiClient
+
+    constructor({ playwrightMCP, geminiClient }: ResponseProcessorDependencies) {
+        this.playwrightMCP = playwrightMCP
+        this.geminiClient = geminiClient
+        this.historyManager = new HistoryManager()
+        this.screenshotProcessor = new ScreenshotProcessor(this.playwrightMCP)
+        this.tokenTracker = new TokenTracker()
+    }
 
     async handleResponse(response: GenerateContentResponse, step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
         if (env.GEMINI_API_RATE_LIMIT_DELAY_SECONDS) {
@@ -25,7 +34,7 @@ export class ResponseProcessor {
             await new Promise(resolve => setTimeout(resolve, parseInt(env.GEMINI_API_RATE_LIMIT_DELAY_SECONDS ?? "0") * 1000))
         }
         const historyTokenCount = await this.geminiClient.countHistoryTokens()
-        this.tokenTracker.log(response, historyTokenCount, this.configurationManager.getModel())
+        this.tokenTracker.log(response, historyTokenCount, this.geminiClient.getConfigurationManager().getModel())
         if (!response.candidates || response.candidates.length === 0) {
             throw new Error(`No candidates found in response:\n${JSON.stringify(response, null, 2)}`)
         }
@@ -39,13 +48,14 @@ export class ResponseProcessor {
                 }
                 if (part.functionCall) {
                     const name = part.functionCall.name ?? ""
+                    const toolRegistry = this.geminiClient.getToolRegistry()
                     if (name.includes("browser")) {
-                        const toolResponse = await this.toolRegistry.executeBrowserTool(part.functionCall as ToolCall)
+                        const toolResponse = await toolRegistry.executeBrowserTool(part.functionCall as ToolCall)
                         await this.dispatchToolResponse(name, toolResponse, step, stepStatusCallback)
                     } else if (name.includes("test_step")) {
-                        this.toolRegistry.executeStepTool(part.functionCall, stepStatusCallback)
+                        toolRegistry.executeStepTool(part.functionCall, stepStatusCallback)
                     } else if (name.includes("salesforce")) {
-                        const toolResponse = await this.toolRegistry.executeSalesforceTool(part.functionCall)
+                        const toolResponse = await toolRegistry.executeSalesforceTool(part.functionCall)
                         await this.dispatchToolResponse(name, toolResponse, step, stepStatusCallback)
                     } else {
                         throw new Error(`Invalid tool name, received call\n: ${JSON.stringify(part.functionCall, null, 2)}`)
@@ -72,7 +82,7 @@ export class ResponseProcessor {
     ): Promise<void> {
         await this.historyManager.removeSnapshotEntries(this.geminiClient)
         const message: PartUnion[] = []
-        if (name.includes("snapshot") && this.configurationManager.includeScreenshotInSnapshot()) {
+        if (name.includes("snapshot") && this.geminiClient.getConfigurationManager().includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.compressSnapshot()
             message.push({
                 inlineData: {

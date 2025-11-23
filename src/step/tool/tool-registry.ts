@@ -5,13 +5,25 @@ import { SalesforceTool } from "../../salesforce/salesforce-tool"
 import { StepTool } from "./step-tool"
 import { StepStatusCallback } from "../types"
 
+export type ToolRegistryDependencies = {
+    playwrightMCP: GeminiServerMCP
+    playwrightTool: PlaywrightTool
+    stepTool: StepTool
+    salesforceTool: SalesforceTool
+}
+
 export class ToolRegistry {
-    constructor(
-        private readonly playwrightMCP: GeminiServerMCP,
-        private readonly playwrightTool: PlaywrightTool,
-        private readonly stepTool: StepTool,
-        private readonly salesforceTool: SalesforceTool
-    ) {}
+    private readonly playwrightMCP: GeminiServerMCP
+    private readonly playwrightTool: PlaywrightTool
+    private readonly stepTool: StepTool
+    private readonly salesforceTool: SalesforceTool
+
+    constructor({ playwrightMCP, playwrightTool, stepTool, salesforceTool }: ToolRegistryDependencies) {
+        this.playwrightMCP = playwrightMCP
+        this.playwrightTool = playwrightTool
+        this.stepTool = stepTool
+        this.salesforceTool = salesforceTool
+    }
 
     private logToolCall(toolCall: FunctionCall): void {
         console.log(`\nexecuting tool ${toolCall.name}`)

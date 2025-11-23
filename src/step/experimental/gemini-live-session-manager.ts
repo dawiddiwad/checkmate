@@ -225,7 +225,7 @@ export class GeminiLiveSessionManager {
                     + `\n| total: ${this.inputTokensUsed} @ ${GeminiTokenPricing.inputPriceUSD(this.model, this.inputTokensUsed)}$`
                 )
             })
-            if (toolCall.name?.toLowerCase().includes('snapshot')) {
+            if (toolCall.name?.toLowerCase().includes('snapshot') && process.env.GOOGLE_API_INCLUDE_SCREENSHOT_IN_SNAPSHOT?.toLowerCase() === 'true') {
                 const compressedScreenshot = await this.getCompressedScreenshot()
                 this.session.sendToolResponse({
                     functionResponses: {

@@ -2,14 +2,21 @@ import { Chat, Content, GenerateContentConfig, GenerateContentResponse, GoogleGe
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 
+export type GeminiClientDependencies = {
+    configurationManager: ConfigurationManager
+    toolRegistry: ToolRegistry
+}
+
 export class GeminiClient {
     private ai!: GoogleGenAI
     private chat!: Chat
+    private readonly configurationManager: ConfigurationManager
+    private readonly toolRegistry: ToolRegistry
 
-    constructor(
-        private readonly configurationManager: ConfigurationManager,
-        private readonly toolRegistry: ToolRegistry
-    ) { }
+    constructor({ configurationManager, toolRegistry }: GeminiClientDependencies) {
+        this.configurationManager = configurationManager
+        this.toolRegistry = toolRegistry
+    }
 
     async initialize(): Promise<void> {
         this.ai = new GoogleGenAI({
@@ -24,6 +31,14 @@ export class GeminiClient {
 
     getChat(): Chat {
         return this.chat
+    }
+
+    getToolRegistry(): ToolRegistry {
+        return this.toolRegistry
+    }
+
+    getConfigurationManager(): ConfigurationManager {
+        return this.configurationManager
     }
 
     async sendMessageWithRetry(message: PartUnion[]): Promise<GenerateContentResponse> {

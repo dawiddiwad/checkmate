@@ -1,13 +1,13 @@
 import { test as base } from '@playwright/test'
-import { GeminiSessionManager } from '../../src/step/gemini/gemini-session-manager'
+import { GeminiTestManager } from '../../src/step/gemini/gemini-test-manager'
 
 type CheckmateFixtures = {
-    ai: GeminiSessionManager
+    ai: GeminiTestManager
 }
 
 export const test = base.extend<CheckmateFixtures>({
     ai: async ({ }, use) => {
-        const ai = new GeminiSessionManager()
+        const ai = new GeminiTestManager()
         await use(ai)
         await ai.teardown()
     }

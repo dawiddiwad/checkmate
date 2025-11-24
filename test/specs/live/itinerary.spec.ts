@@ -2,15 +2,15 @@ import { test } from "../../fixtures/checkmate-live"
 
 test.describe('itinerary flows', async () => {
     test('quote - compact', async ({ ai }) => {
-        await test.step('Login and Open Kaptio QA App', async () => {
+        await test.step('Login and Open XYZ QA App', async () => {
             await ai.run({
                 action: `
-                Login to Salesforce and open Kaptio QA Application: 
+                Login to Salesforce and open XYZ QA Application: 
                 Open the browser and navigate to the org,
-                Navigate to Salesforce org and use the App Launcher to open 'Kaptio QA'.`,
+                Navigate to Salesforce org and use the App Launcher to open 'XYZ QA'.`,
                 expect: `
                 Salesforce org loads successfully 
-                and Kaptio QA homepage is displayed with the 'Itineraries' tab active.`
+                and XYZ QA homepage is displayed with the 'Itineraries' tab active.`
             })
         })
         await test.step('Create and Setup New Quote Itinerary', async () => {
@@ -19,7 +19,7 @@ test.describe('itinerary flows', async () => {
                 Create a new Quote Itinerary:
                 Click 'New', select 'Quote' record type, click 'Next', and fill out the main itinerary fields 
                 ('Itinerary Name' = 'Agentic Itinerary', 'Account' and 'Primary Contact' = 'Abi Tester', 
-                'Channel' = 'Kaptio Tours Europe', 'Group Size' = '1', 'Itinerary Start Date' = '31/10/2025'), 
+                'Channel' = 'XYZ Tours Europe', 'Group Size' = '1', 'Itinerary Start Date' = '31/10/2025'), 
                 then click 'Save'.`,
                 expect: `
                 The new itinerary is saved 
@@ -81,13 +81,13 @@ test.describe('itinerary flows', async () => {
                 App Launcher menu is opened.`
             })
         })
-        await test.step('Find and Select Kaptio QA Application', async () => {
+        await test.step('Find and Select XYZ QA Application', async () => {
             await ai.run({
                 action: `
-                Type 'Kaptio QA' into the App Launcher search bar 
-                and click on 'Kaptio QA' from the search results.`,
+                Type 'XYZ QA' into the App Launcher search bar 
+                and click on 'XYZ QA' from the search results.`,
                 expect: `
-                The application navigates to the Kaptio QA homepage, 
+                The application navigates to the XYZ QA homepage, 
                 with the 'Itineraries' tab active and a list of itineraries displayed.`
             })
         })
@@ -115,7 +115,7 @@ test.describe('itinerary flows', async () => {
                 action: `
                 Enter 'Agentic Itinerary' into the 'Itinerary Name' field, 
                 type 'Abi Tester' into both the 'Account' and 'Primary Contact' fields, 
-                select 'Kaptio Tours Europe' from the 'Channel' dropdown, 
+                select 'XYZ Tours Europe' from the 'Channel' dropdown, 
                 and enter '1' into the 'Group Size' field, 
                 set the 'Itinerary Start Date' to future date (e.g. 31/10/2025).`,
                 expect: `

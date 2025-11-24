@@ -2,7 +2,49 @@ import { Step } from "../types";
 
 export const RUN_STEP_PROMPT = (step: Step) => `
     Here is the test step I want you to execute.
-    
+
+    #PAGE SNAPSHOT COMPRESSION:
+    The page snapshot uses a compressed accessibility tree format where:
+    - Element types are abbreviated (g=generic, b=button, l=link, etc.)
+    - Text is prefixed with # (e.g., #Submit)
+    - Refs are prefixed with r= (e.g., r=e42 meaning element with reference 'ref' equal to 'e42')
+    - Indentation shows hierarchy
+
+    ### Element Type Mappings
+    generic: g
+    button: b
+    link: l
+    img: i
+    navigation: nav
+    list: ul
+    listitem: li
+    combobox: cb
+    searchbox: sb
+    tooltip: tltp
+    heading: h
+    paragraph: p
+    table: tbl
+    row: tr
+    cell: cl
+    rowheader: rh
+    gridcell: gcl
+    columnheader: ch
+    rowgroup: rgrp
+    article: art
+    separator: hr
+    tree: tree
+    treeitem: ti
+    tab: tab
+    tablist: tlst
+    tabpanel: tpnl
+    group: grp
+    status: stat
+    main: main
+    cursor: cur
+    disabled: dis
+    selected: sel
+    level: lv
+
     #RULES:
     Do not close or re-open the browser if any browser tool was used before, keep it open and use it for the entire test case.
     Saving and navigating actions might take some time to complete without clear indication of completion, be patient and wait for the page to load before proceeding.
@@ -18,7 +60,7 @@ export const RUN_STEP_PROMPT = (step: Step) => `
 
 export const RUN_STEP_PROMPT_LIVE_API = (step: Step) => `
     Here is the test step I want you to execute.
-    
+
     #RULES#
     Avoid using 'browser_run_code' tool.
     Do not execute any code, do not give any code to the user, do not give any code snippets. USE ONLY TOOLS TO PROCEED WITH THE STEP.

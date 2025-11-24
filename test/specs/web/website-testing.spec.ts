@@ -93,7 +93,7 @@ test.describe.parallel('website testing', async () => {
             await ai.run({
                 action: `Type 'eurusd' into the 'Symbol' search input field at the top of the page.`,
                 expect: `A dropdown list of suggestions appears, 
-                with 'Euro / U.S. Dollar (EURUSD)' as one of the options.`
+                with 'Euro / U.S. Dollar' as one of the options.`
             })
         })
         await test.step(`Select EUR/USD from suggestions`, async () => {

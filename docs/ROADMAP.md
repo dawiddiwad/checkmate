@@ -45,7 +45,7 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Cost calculation per test
   - [x] Token usage tracking per component
   - [ ] Budget limits and alerts
-  - [ ] Migrate from YAML to TOON for browser tool responses
+  - [x] Compress YAML page snapshots
 
 - [ ] **Error Handling & Timeouts**
   - [x] Automatic retry logic with exponential backoff

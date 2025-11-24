@@ -177,10 +177,11 @@ Checkmate includes built-in token usage monitoring:
 
 ### Cost Optimization Features
 
-1. **Screenshot Compression** - Images normalized to 768x768 tiles before sending (258 tokens each)
-2. **History Filtering** - Removes snapshot responses from chat history
-3. **Chat Recycling** - New session per step to prevent context bloat
-4. **Token Counting** - Real-time usage tracking per step and test
+1. **History Filtering** - Continuously filters page snapshots from chat history (reduces token usage by ~50%)
+2. **Snapshot Compression** - YAML tree elements abbreviation (further ~30% token usage reduction)
+3. **Screenshot Compression** - Images normalized to 768x768 tiles before sending (258 tokens each)
+4. **Chat Recycling** - New session per step to prevent context bloat
+5. **Token Counting** - Real-time usage tracking per step and test
 
 ### Estimated Costs (Gemini 2.5 Flash)
 
@@ -270,7 +271,7 @@ The framework combines:
 - **Playwright Test** for managing test runs, fixtures and reporting
 - **Playwright MCP** (Model Context Protocol) for browser automation
 - **Salesforce CLI** for Salesforce-specific operations
-- **Modular Components**: Configuration management, response processing, token tracking, history filtering, screenshot compression
+- **Modular Components**: Configuration management, response processing, token tracking, history filtering, snapshot compression, screenshot compression
 - **Experimental Live API**: Real-time AI interactions with streaming responses
 
 Playwright test runner calls into the Gemini step engine via fixture, which orchestrates Gemini API calls and tool invocations, then feeds results back into the test runner. Supporting modules hang off that core to manage configuration, history, screenshots, and costs:
@@ -311,7 +312,8 @@ GeminiTestStep
             │               └─► SalesforceTool → Salesforce CLI
             │
             └─► snapshot:
-                    └─► ScreenshotProcessor.compressSnapshot()
+                    └─► SnapshotProcessor.getCompressed()
+                    └─► ScreenshotProcessor.getCompressedScreenshot()
                     └─► HistoryManager.removeSnapshotEntries()
                     └─► GeminiClient.replaceHistory()
 
@@ -445,6 +447,12 @@ Supporting Components
     │       │
     │       ├─► Remove snapshots from history
     │       └─► Filter history entries
+    │
+    ├─► SnapshotProcessor
+    │       │
+    │       ├─► Compress accessibility tree snapshots
+    │       ├─► Abbreviate elements (ex. link -> l, button -> b)
+    │       └─► Compact notation for refs and attributes
     │
     ├─► ScreenshotProcessor
     │       │

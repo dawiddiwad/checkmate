@@ -2,9 +2,9 @@ import sharp from "sharp"
 import { GeminiServerMCP } from "../../mcp/server/gemini-mcp"
 
 export class ScreenshotProcessor {
-    constructor(private readonly playwrightMCP: GeminiServerMCP) {}
+    constructor(private readonly playwrightMCP: GeminiServerMCP) { }
 
-    async compressSnapshot(): Promise<{ mimeType?: string; data: string }> {
+    async getCompressedScreenshot(): Promise<{ mimeType?: string; data: string }> {
         try {
             const screenshot = await this.playwrightMCP.callTool({ name: "browser_take_screenshot" })
             const compressedBuffer = await sharp(Buffer.from(screenshot.content?.[1].data, "base64"))

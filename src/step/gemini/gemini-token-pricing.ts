@@ -5,6 +5,8 @@ export class GeminiTokenPricing {
 
     private static inputPricePerMillionUSD(model: string): number {
         switch (model) {
+            case 'gemini-3-pro-preview':
+                return this.roundToCents(2.00)
             case 'gemini-2.5-pro':
                 return this.roundToCents(1.25)
             case 'gemini-2.5-flash':

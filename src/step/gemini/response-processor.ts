@@ -4,6 +4,7 @@ import { Step, StepStatusCallback } from "../types"
 import { GeminiClient } from "./gemini-client"
 import { HistoryManager } from "./history-manager"
 import { ScreenshotProcessor } from "../tool/screenshot-processor"
+import { SnapshotProcessor } from "../tool/snapshot-processor"
 import { TokenTracker } from "./token-tracker"
 import { env } from "process"
 import { GeminiServerMCP } from "../../mcp/server/gemini-mcp"
@@ -16,6 +17,7 @@ export type ResponseProcessorDependencies = {
 export class ResponseProcessor {
     private readonly historyManager: HistoryManager
     private readonly screenshotProcessor: ScreenshotProcessor
+    private readonly snapshotProcessor: SnapshotProcessor
     private readonly tokenTracker: TokenTracker
     private readonly playwrightMCP: GeminiServerMCP
     private readonly geminiClient: GeminiClient
@@ -25,6 +27,7 @@ export class ResponseProcessor {
         this.geminiClient = geminiClient
         this.historyManager = new HistoryManager()
         this.screenshotProcessor = new ScreenshotProcessor(this.playwrightMCP)
+        this.snapshotProcessor = new SnapshotProcessor()
         this.tokenTracker = new TokenTracker()
     }
 
@@ -83,7 +86,7 @@ export class ResponseProcessor {
         await this.historyManager.removeSnapshotEntries(this.geminiClient)
         const message: PartUnion[] = []
         if (name.includes("snapshot") && this.geminiClient.getConfigurationManager().includeScreenshotInSnapshot()) {
-            const screenshot = await this.screenshotProcessor.compressSnapshot()
+            const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
             message.push({
                 inlineData: {
                     mimeType: screenshot.mimeType,
@@ -92,7 +95,7 @@ export class ResponseProcessor {
             })
         }
         message.push({
-            functionResponse: toolResponse
+            functionResponse: this.snapshotProcessor.getCompressed(toolResponse)
         })
         const nextResponse = await this.geminiClient.sendMessageWithRetry(message)
         await this.handleResponse(nextResponse, step, stepStatusCallback)

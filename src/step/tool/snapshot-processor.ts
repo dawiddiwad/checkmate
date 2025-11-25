@@ -1,7 +1,7 @@
-import { FunctionResponse } from "@google/genai"
+import { ToolResponse } from "./tool-registry"
 
 export class SnapshotProcessor {
-    getCompressed(toolResponse: FunctionResponse): FunctionResponse {
+    getCompressed(toolResponse: ToolResponse): ToolResponse {
         try {
             const responseText = this.extractResponseText(toolResponse)
             if (!responseText) {
@@ -16,7 +16,7 @@ export class SnapshotProcessor {
         }
     }
 
-    private extractResponseText(toolResponse: FunctionResponse): string | null {
+    private extractResponseText(toolResponse: ToolResponse): string | null {
         const response = toolResponse.response
         if (typeof response === "string") {
             return response
@@ -69,7 +69,7 @@ export class SnapshotProcessor {
             }
         }
 
-        return compressed.map(line => line.trim()).join("\n")
+        return compressed.join("\n")
     }
 
     private compressLine(line: string): string | null {
@@ -165,7 +165,7 @@ export class SnapshotProcessor {
         return attrMap[attr] || attr
     }
 
-    private updateResponse(toolResponse: FunctionResponse, newText: string): FunctionResponse {
+    private updateResponse(toolResponse: ToolResponse, newText: string): ToolResponse {
         const response = toolResponse.response
 
         if (typeof response === "string") {

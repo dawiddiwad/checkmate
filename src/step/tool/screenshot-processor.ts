@@ -1,8 +1,8 @@
 import sharp from "sharp"
-import { GeminiServerMCP } from "../../mcp/server/gemini-mcp"
+import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 
 export class ScreenshotProcessor {
-    constructor(private readonly playwrightMCP: GeminiServerMCP) { }
+    constructor(private readonly playwrightMCP: OpenAIServerMCP) { }
 
     async getCompressedScreenshot(): Promise<{ mimeType?: string; data: string }> {
         try {

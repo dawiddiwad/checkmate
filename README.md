@@ -1,6 +1,6 @@
 # checkma♗e
 
-Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines Gemini's intelligence with Playwright's ecosystem for smarter, more resilient execution.
+Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLM intelligence with Playwright's ecosystem for smarter, more resilient execution. Works with OpenAI, Claude, Gemini, and any OpenAI-compatible API.
 
 ### How it works?
 Write tests in natural language:
@@ -31,7 +31,7 @@ await expect(page.getByRole('link', { name: '#search-result' })
 ### Prerequisites
 
 - Node.js [18+ or LTS](https://nodejs.org/en/download) 
-- Google Gemini [API key](https://aistudio.google.com/app/apikey)
+- OpenAI [API key](https://platform.openai.com/api-keys) (or compatible provider: Claude, Gemini, etc.)
 - (optional) [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli) for Salesforce testing
 
 ### Installation
@@ -54,12 +54,15 @@ cp .env.example .env
 Edit `.env` file based on `.env.example` that has a comprehensive configuration reference:
 
 ```bash
-# Required - Get your key at: https://aistudio.google.com/app/apikey
-GOOGLE_API_KEY=your_gemini_api_key_here
+# Required - Your OpenAI API key (or compatible provider)
+OPENAI_API_KEY=your_api_key_here
 
-# Gemini model configuration
-GOOGLE_API_MODEL=gemini-2.5-flash #if overloaded use gemini-2.5-flash-preview-09-2025 
-GOOGLE_API_TEMPERATURE=0.1
+# Optional - Override base URL for compatible providers (Claude, Gemini, etc.)
+# OPENAI_BASE_URL=https://api.anthropic.com/v1
+
+# Model configuration
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.1
 
 # Playwright settings
 PLAYWRIGHT_MCP_BROWSER=chromium
@@ -139,16 +142,18 @@ await test.step('Fill form and submit', async () => {
 ```
 ## Configuration
 
-### Gemini API Settings
+### OpenAI API Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOOGLE_API_KEY` | - | **Required** - Your Gemini API key |
-| `GOOGLE_API_MODEL` | `gemini-2.5-flash` | Model: gemini-2.5-flash, gemini-flash-latest, gemini-2.5-flash-preview-09-2025, gemini-2.5-pro  (recommended: gemini-2.5-flash-preview-09-2025) |
-| `GOOGLE_API_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
-| `GOOGLE_API_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
-| `GOOGLE_API_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
-| `GOOGLE_API_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses (reduces token costs when disabled) |
+| `OPENAI_API_KEY` | - | **Required** - Your OpenAI API key (or compatible provider) |
+| `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model: gpt-4o, gpt-4o-mini, claude-3-5-sonnet-latest, gemini-2.5-flash, etc. |
+| `OPENAI_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
+| `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
+| `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
+| `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
+| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
 
 ### Playwright MCP Settings
 
@@ -167,12 +172,14 @@ await test.step('Fill form and submit', async () => {
 Checkmate includes built-in token usage monitoring:
 
 ```
-| input tokens usage
-| response: 2543 @ $0.0019$
-| history: 45234
-| cached: 12000
-| step: 5123 @ $0.0038$
-| test: 25678 @ $0.0192$
+| token usage
+| response input: 2543 @ $0.00$
+| response output: 456 @ $0.00$
+| history (estimated): 45234
+| step input: 5123 @ $0.00$
+| step output: 892 @ $0.00$
+| test input: 25678 @ $0.01$
+| test output: 4521 @ $0.01$
 ```
 
 ### Cost Optimization Features
@@ -183,11 +190,11 @@ Checkmate includes built-in token usage monitoring:
 4. **Chat Recycling** - New session per step to prevent context bloat
 5. **Token Counting** - Real-time usage tracking per step and test
 
-### Estimated Costs (Gemini 2.5 Flash)
+### Estimated Costs (GPT-4o-mini)
 
 - Simple web test (5 steps): ~$0.01 - $0.05
-- Complex Salesforce flow (20 steps): ~$0.10 - $0.30
-- Full test suite (50 tests): ~$5.00 - $15.00
+- Complex Salesforce flow (20 steps): ~$0.10 - $0.40
+- Full test suite (50 tests): ~$5.00 - $20.00
 
 *Costs vary based on model, screenshot size and count, and page complexity*
 

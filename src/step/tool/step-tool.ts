@@ -1,48 +1,56 @@
-import { FunctionCall, FunctionDeclaration, Type } from "@google/genai"
-import { GeminiTool } from "../../mcp/tool/gemini-tool"
+import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
+import { OpenAITool, ToolCallArgs } from "../../mcp/tool/openai-tool"
 import { StepStatusCallback } from "../types"
 
-export class StepTool implements GeminiTool {
-    functionDeclarations: FunctionDeclaration[]
+export class StepTool implements OpenAITool {
+    functionDeclarations: ChatCompletionFunctionTool[]
+    
     constructor() {
         this.functionDeclarations = [
             {
-                name: 'fail_test_step',
-                description: 'Fail the test step with the actual result',
-                parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                        actualResult: { type: Type.STRING, description: 'The actual result of the test step' }
-                    },
-                    required: ['actualResult']
+                type: 'function',
+                function: {
+                    name: 'fail_test_step',
+                    description: 'Fail the test step with the actual result',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            actualResult: { type: 'string', description: 'The actual result of the test step' }
+                        },
+                        required: ['actualResult']
+                    }
                 }
             },
             {
-                name: 'pass_test_step',
-                description: 'Pass the test step with the actual result',
-                parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                        actualResult: { type: Type.STRING, description: 'The actual result of the test step' }
-                    },
-                    required: ['actualResult']
+                type: 'function',
+                function: {
+                    name: 'pass_test_step',
+                    description: 'Pass the test step with the actual result',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            actualResult: { type: 'string', description: 'The actual result of the test step' }
+                        },
+                        required: ['actualResult']
+                    }
                 }
             }
         ]
     }
 
-    call(specified: FunctionCall, callback: StepStatusCallback) {
+    call(specified: ToolCallArgs, callback: StepStatusCallback) {
         if (!specified.name) {
             throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
         }
-        if (!this.functionDeclarations.find(declaration => declaration.name === specified.name)) {
+        const declaration = this.functionDeclarations.find(d => d.function.name === specified.name)
+        if (!declaration) {
             throw new Error(`Tool not found: ${specified.name}`)
         }
         if (specified.name === 'pass_test_step') {
-            callback({ passed: true, actual: specified.args?.actualResult as string })
+            callback({ passed: true, actual: specified.arguments?.actualResult as string })
         }
         if (specified.name === 'fail_test_step') {
-            callback({ passed: false, actual: specified.args?.actualResult as string })
+            callback({ passed: false, actual: specified.arguments?.actualResult as string })
         }
     }
 }

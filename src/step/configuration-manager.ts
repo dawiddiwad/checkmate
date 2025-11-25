@@ -1,51 +1,44 @@
-import { GenerateContentConfig, FunctionCallingConfigMode, Tool } from "@google/genai"
-
 export class ConfigurationManager {
     getApiKey(): string {
-        if (!process.env.GOOGLE_API_KEY) {
-            throw new Error("GOOGLE_API_KEY environment variable is not set\nvisit https://aistudio.google.com/app/api-keys to get one")
-        } else {
-            return process.env.GOOGLE_API_KEY
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error("OPENAI_API_KEY environment variable is not set")
         }
+        return process.env.OPENAI_API_KEY
+    }
+
+    getBaseURL(): string | undefined {
+        return process.env.OPENAI_BASE_URL
     }
 
     getModel(): string {
-        return process.env.GOOGLE_API_MODEL ?? "gemini-2.5-flash"
+        return process.env.OPENAI_MODEL ?? "gpt-5"
     }
 
     getMaxRetries(): number {
-        return parseInt(process.env.GOOGLE_API_RETRY_MAX_ATTEMPTS ?? "3")
+        return parseInt(process.env.OPENAI_RETRY_MAX_ATTEMPTS ?? "3")
     }
 
     includeScreenshotInSnapshot(): boolean {
-        return process.env.GOOGLE_API_INCLUDE_SCREENSHOT_IN_SNAPSHOT?.toLowerCase() === "true"
+        return process.env.OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT?.toLowerCase() === "true"
     }
 
-    async getGeminiConfig(tools: Tool[]): Promise<GenerateContentConfig> {
-        return {
-            temperature: this.getTemperature(),
-            httpOptions: {
-                timeout: this.getTimeout()
-            },
-            tools,
-            toolConfig: {
-                functionCallingConfig: {
-                    allowedFunctionNames: this.getAllowedFunctionNames(),
-                    mode: FunctionCallingConfigMode.ANY
-                }
-            }
+    getToolChoice(): "auto" | "required" | "none" {
+        const choice = process.env.OPENAI_TOOL_CHOICE?.toLowerCase()
+        if (choice === "required" || choice === "none" || choice === "auto") {
+            return choice
         }
+        return "required"
     }
 
-    private getTemperature(): number {
-        return parseFloat(process.env.GOOGLE_API_TEMPERATURE ?? "0.1")
+    getTemperature(): number {
+        return parseFloat(process.env.OPENAI_TEMPERATURE ?? "1")
     }
 
-    private getTimeout(): number {
-        return parseInt(process.env.GOOGLE_API_TIMEOUT_SECONDS ?? "60") * 1000
+    getTimeout(): number {
+        return parseInt(process.env.OPENAI_TIMEOUT_SECONDS ?? "60") * 1000
     }
 
-    private getAllowedFunctionNames(): string[] {
+    getAllowedFunctionNames(): string[] {
         return [
             "browser_click",
             "browser_evaluate",

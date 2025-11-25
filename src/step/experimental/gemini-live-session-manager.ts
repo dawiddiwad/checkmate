@@ -1,28 +1,27 @@
 import { GoogleGenAI, Modality, LiveConnectParameters, LiveCallbacks, Session, FunctionDeclaration, Tool, FunctionCall, FunctionResponseScheduling } from '@google/genai'
-import { GeminiServerMCP } from '../../mcp/server/gemini-mcp'
-import { PlaywrightMCPServer } from '../../mcp/server/playwright-mcp'
-import { GeminiTokenPricing } from '../gemini/gemini-token-pricing'
-import { SalesforceTool } from '../../salesforce/salesforce-tool'
-import { PlaywrightTool } from '../../mcp/tool/playwright-tool'
-import { StepTool } from '../tool/step-tool'
+import { GeminiServerMCP, GeminiPlaywrightMCPServer } from './gemini-mcp'
+import { GeminiTokenPricing } from './gemini-token-pricing'
+import { GeminiSalesforceTool } from './gemini-salesforce-tool'
+import { GeminiPlaywrightTool } from './gemini-playwright-tool'
+import { GeminiStepTool } from './gemini-step-tool'
 import sharp from 'sharp'
 import { expect } from '@playwright/test'
 import { Step, StepStatus, StepStatusCallback } from '../types'
-import { RUN_STEP_PROMPT_LIVE_API } from '../gemini/prompts'
+import { RUN_STEP_PROMPT_LIVE_API } from '../openai/prompts'
 
 export class GeminiLiveSessionManager {
     private ai: GoogleGenAI
-    private session: Session
+    private session!: Session
     private model: string
     private inputTokensUsed: number = 0
     private playwrightMCP: GeminiServerMCP
     private stepStatus: StepStatus = { passed: false, actual: '' }
-    private stepStatusCallback: StepStatusCallback
-    private stepFinishedCallback: Promise<StepStatus>
-    private salesforceTool: SalesforceTool
-    private playwrightTool: PlaywrightTool
-    private stepTool: StepTool
-    private step: Step
+    private stepStatusCallback!: StepStatusCallback
+    private stepFinishedCallback!: Promise<StepStatus>
+    private salesforceTool: GeminiSalesforceTool
+    private playwrightTool: GeminiPlaywrightTool
+    private stepTool: GeminiStepTool
+    private step!: Step
     private recentMessages: string[] = []
 
     constructor() {
@@ -31,10 +30,10 @@ export class GeminiLiveSessionManager {
             apiKey: process.env.GOOGLE_API_KEY
         })
         this.model = 'gemini-live-2.5-flash-preview'
-        this.playwrightMCP = PlaywrightMCPServer.create()
-        this.stepTool = new StepTool()
-        this.salesforceTool = new SalesforceTool()
-        this.playwrightTool = new PlaywrightTool(this.playwrightMCP)
+        this.playwrightMCP = GeminiPlaywrightMCPServer.create()
+        this.stepTool = new GeminiStepTool()
+        this.salesforceTool = new GeminiSalesforceTool()
+        this.playwrightTool = new GeminiPlaywrightTool(this.playwrightMCP)
     }
 
     private getCallbacks(): LiveCallbacks {

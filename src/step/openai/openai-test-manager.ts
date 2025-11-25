@@ -7,13 +7,13 @@ import { expect } from "@playwright/test"
 import { RUN_STEP_PROMPT } from "./prompts"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
-import { GeminiClient } from "./gemini-client"
+import { OpenAIClient } from "./openai-client"
 import { ResponseProcessor } from "./response-processor"
-import { GeminiServerMCP } from "../../mcp/server/gemini-mcp"
+import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 
-export class GeminiTestManager {
-    private readonly playwrightMCP: GeminiServerMCP
-    private readonly geminiClient: GeminiClient
+export class OpenAITestManager {
+    private readonly playwrightMCP: OpenAIServerMCP
+    private readonly openaiClient: OpenAIClient
     private readonly responseProcessor: ResponseProcessor
 
     constructor() {
@@ -23,10 +23,10 @@ export class GeminiTestManager {
         const stepTool = new StepTool()
         const salesforceTool = new SalesforceTool()
         const toolRegistry = new ToolRegistry({ playwrightMCP, playwrightTool, stepTool, salesforceTool })
-        const geminiClient = new GeminiClient({ configurationManager, toolRegistry })
-        const responseProcessor = new ResponseProcessor({ playwrightMCP, geminiClient })
+        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry })
+        const responseProcessor = new ResponseProcessor({ playwrightMCP, openaiClient })
         this.playwrightMCP = playwrightMCP
-        this.geminiClient = geminiClient
+        this.openaiClient = openaiClient
         this.responseProcessor = responseProcessor
     }
 
@@ -35,17 +35,18 @@ export class GeminiTestManager {
     }
 
     public async run(step: Step) {
-        const testStep = new GeminiTestStep(this.geminiClient, this.responseProcessor)
+        const testStep = new OpenAITestStep(this.openaiClient, this.responseProcessor)
         await testStep.run(step)
     }
 }
-class GeminiTestStep {
+
+class OpenAITestStep {
     private stepStatus: StepStatus
-    private stepStatusCallback: StepStatusCallback
+    private stepStatusCallback!: StepStatusCallback
     private stepFinishedCallback: StepFinishedCallback
 
     constructor(
-        private readonly geminiClient: GeminiClient,
+        private readonly openaiClient: OpenAIClient,
         private readonly responseProcessor: ResponseProcessor
     ) {
         this.stepStatus = { passed: false, actual: "" }
@@ -57,10 +58,8 @@ class GeminiTestStep {
     async run(step: Step): Promise<void> {
         this.logStepStart(step)
         try {
-            await this.geminiClient.initialize()
-            const response = await this.geminiClient.sendMessageWithRetry(
-                [{ text: RUN_STEP_PROMPT(step) }]
-            )
+            await this.openaiClient.initialize()
+            const response = await this.openaiClient.sendMessageWithRetry(RUN_STEP_PROMPT(step))
             await this.responseProcessor.handleResponse(response, step, this.stepStatusCallback)
             this.stepStatus = await this.stepFinishedCallback
             this.assertStepResult(step)

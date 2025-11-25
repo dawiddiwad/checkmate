@@ -22,6 +22,10 @@ export class ConfigurationManager {
         return process.env.OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT?.toLowerCase() === "true"
     }
 
+    enableSnapshotCompression(): boolean {
+        return process.env.OPENAI_ENABLE_SNAPSHOT_COMPRESSION?.toLowerCase() !== "false"
+    }
+
     getToolChoice(): "auto" | "required" | "none" {
         const choice = process.env.OPENAI_TOOL_CHOICE?.toLowerCase()
         if (choice === "required" || choice === "none" || choice === "auto") {

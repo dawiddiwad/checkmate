@@ -94,20 +94,26 @@ export class ResponseProcessor {
         stepStatusCallback: StepStatusCallback
     ): Promise<void> {
         let responseContent: string
+        const config = this.openaiClient.getConfigurationManager()
+        const shouldCompress = config.enableSnapshotCompression()
         
-        if (name.includes("snapshot") && this.openaiClient.getConfigurationManager().includeScreenshotInSnapshot()) {
+        if (name.includes("snapshot") && config.includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
-            const compressedResponse = this.snapshotProcessor.getCompressed(toolResponse)
+            const processedResponse = shouldCompress 
+                ? this.snapshotProcessor.getCompressed(toolResponse) 
+                : toolResponse
             responseContent = JSON.stringify({
-                ...compressedResponse.response,
+                ...processedResponse.response,
                 screenshot: {
                     mimeType: screenshot.mimeType,
                     data: screenshot.data
                 }
             })
         } else {
-            const compressedResponse = this.snapshotProcessor.getCompressed(toolResponse)
-            responseContent = JSON.stringify(compressedResponse.response)
+            const processedResponse = shouldCompress 
+                ? this.snapshotProcessor.getCompressed(toolResponse) 
+                : toolResponse
+            responseContent = JSON.stringify(processedResponse.response)
         }
         
         await this.openaiClient.addToolResponse(toolCallId, responseContent)

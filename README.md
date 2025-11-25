@@ -154,6 +154,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
 | `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
 | `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
+| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~30% token reduction) |
 
 ### Playwright MCP Settings
 

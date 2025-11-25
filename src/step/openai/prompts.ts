@@ -7,7 +7,6 @@ export const RUN_STEP_PROMPT = (step: Step) => `
     The page snapshot uses a compressed accessibility tree format where:
     - Element types are abbreviated (g=generic, b=button, l=link, etc.)
     - Text is prefixed with # (e.g., #Submit)
-    - Refs are prefixed with r= (e.g., r=e42 meaning element with reference 'ref' equal to 'e42')
     - Indentation shows hierarchy
 
     ### Element Type Mappings

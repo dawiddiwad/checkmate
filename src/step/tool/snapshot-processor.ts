@@ -99,7 +99,7 @@ export class SnapshotProcessor {
         let ref = ""
         const refMatch = content.match(/\[ref=([^\]]+)\]/)
         if (refMatch) {
-            ref = ` r=${refMatch[1]}`
+            ref = ` ref=${refMatch[1]}`
             content = content.replace(refMatch[0], "").trim()
         }
 

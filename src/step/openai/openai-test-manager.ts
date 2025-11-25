@@ -22,7 +22,7 @@ export class OpenAITestManager {
         const playwrightTool = new PlaywrightTool(playwrightMCP)
         const stepTool = new StepTool()
         const salesforceTool = new SalesforceTool()
-        const toolRegistry = new ToolRegistry({ playwrightMCP, playwrightTool, stepTool, salesforceTool })
+        const toolRegistry = new ToolRegistry({ playwrightMCP, playwrightTool, stepTool, salesforceTool, configurationManager })
         const openaiClient = new OpenAIClient({ configurationManager, toolRegistry })
         const responseProcessor = new ResponseProcessor({ playwrightMCP, openaiClient })
         this.playwrightMCP = playwrightMCP

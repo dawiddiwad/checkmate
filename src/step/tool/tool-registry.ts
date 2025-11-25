@@ -4,6 +4,7 @@ import { PlaywrightTool } from "../../mcp/tool/playwright-tool"
 import { SalesforceTool } from "../../salesforce/salesforce-tool"
 import { StepTool } from "./step-tool"
 import { StepStatusCallback } from "../types"
+import { ConfigurationManager } from "../configuration-manager"
 
 export type ToolResponse = {
     name?: string
@@ -15,6 +16,7 @@ export type ToolRegistryDependencies = {
     playwrightTool: PlaywrightTool
     stepTool: StepTool
     salesforceTool: SalesforceTool
+    configurationManager: ConfigurationManager
 }
 
 export class ToolRegistry {
@@ -22,12 +24,14 @@ export class ToolRegistry {
     private readonly playwrightTool: PlaywrightTool
     private readonly stepTool: StepTool
     private readonly salesforceTool: SalesforceTool
+    private readonly configurationManager: ConfigurationManager
 
-    constructor({ playwrightMCP, playwrightTool, stepTool, salesforceTool }: ToolRegistryDependencies) {
+    constructor({ playwrightMCP, playwrightTool, stepTool, salesforceTool, configurationManager }: ToolRegistryDependencies) {
         this.playwrightMCP = playwrightMCP
         this.playwrightTool = playwrightTool
         this.stepTool = stepTool
         this.salesforceTool = salesforceTool
+        this.configurationManager = configurationManager
     }
 
     private logToolCall(toolCall: ToolCall): void {
@@ -36,11 +40,18 @@ export class ToolRegistry {
     }
 
     async getTools(): Promise<ChatCompletionFunctionTool[]> {
-        return [
+        const allowedNames = this.configurationManager.getAllowedFunctionNames()
+        const allTools = [
             ...await this.playwrightMCP.functionDeclarations(),
             ...this.stepTool.functionDeclarations,
             ...this.salesforceTool.functionDeclarations
         ]
+        
+        // Filter tools based on allowed function names (if configured)
+        if (allowedNames.length > 0) {
+            return allTools.filter(tool => allowedNames.includes(tool.function.name))
+        }
+        return allTools
     }
 
     async executeBrowserTool(toolCall: ToolCall): Promise<ToolResponse> {

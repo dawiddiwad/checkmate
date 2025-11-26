@@ -154,7 +154,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
 | `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
 | `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
-| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~30% token reduction) |
+| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~40% token reduction) |
 
 ### Playwright MCP Settings
 
@@ -185,9 +185,9 @@ Checkmate includes built-in token usage monitoring:
 
 ### Cost Optimization Features
 
-1. **History Filtering** - Continuously filters page snapshots from chat history (reduces token usage by ~50%)
-2. **Snapshot Compression** - YAML tree elements abbreviation (further ~30% token usage reduction)
-3. **Screenshot Compression** - Images normalized to 768x768 tiles before sending (258 tokens each)
+1. **History Filtering** - Continuously filters page snapshots and old screenshots from chat history (reduces token usage by ~50%)
+2. **Snapshot Compression** - YAML tree elements abbreviation (further ~40% token usage reduction)
+3. **Vision API Screenshots** - Images sent using OpenAI's vision API with `detail: low` (85 tokens per screenshot)
 4. **Chat Recycling** - New session per step to prevent context bloat
 5. **Token Counting** - Real-time usage tracking per step and test
 

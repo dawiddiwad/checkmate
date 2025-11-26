@@ -23,13 +23,22 @@ export class HistoryManager {
             }
         }
         
-        // If nothing to remove, skip the filtering
-        if (toolCallIdsToRemove.size === 0) {
-            return
+        // Second pass: filter messages
+        // Also track if we should remove screenshot user messages (all but the last one)
+        let lastScreenshotMessageIndex = -1
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (this.isScreenshotMessage(history[i])) {
+                lastScreenshotMessageIndex = i
+                break
+            }
         }
         
-        // Second pass: filter messages
-        const filteredHistory = history.filter((message: ChatCompletionMessageParam) => {
+        const filteredHistory = history.filter((message: ChatCompletionMessageParam, index: number) => {
+            // Remove old screenshot user messages (keep only the most recent one)
+            if (this.isScreenshotMessage(message) && index !== lastScreenshotMessageIndex) {
+                return false
+            }
+            
             // Remove tool responses for snapshot-related tool calls
             if (message.role === 'tool') {
                 const toolMessage = message as { role: 'tool'; content: string; tool_call_id: string }
@@ -65,5 +74,13 @@ export class HistoryManager {
         }) as ChatCompletionMessageParam[]
         
         openaiClient.replaceHistory(filteredHistory)
+    }
+    
+    private isScreenshotMessage(message: ChatCompletionMessageParam): boolean {
+        // Check if this is a user message containing an image_url (screenshot)
+        if (message.role === 'user' && Array.isArray(message.content)) {
+            return message.content.some((part: any) => part.type === 'image_url')
+        }
+        return false
     }
 }

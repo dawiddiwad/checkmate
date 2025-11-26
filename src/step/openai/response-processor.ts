@@ -93,30 +93,24 @@ export class ResponseProcessor {
         step: Step,
         stepStatusCallback: StepStatusCallback
     ): Promise<void> {
-        let responseContent: string
         const config = this.openaiClient.getConfigurationManager()
         const shouldCompress = config.enableSnapshotCompression()
         
+        // Process the response (with or without compression)
+        const processedResponse = shouldCompress 
+            ? this.snapshotProcessor.getCompressed(toolResponse) 
+            : toolResponse
+        const responseContent = JSON.stringify(processedResponse.response)
+        
+        // Add tool response first
+        await this.openaiClient.addToolResponse(toolCallId, responseContent)
+        
+        // If this is a snapshot and screenshots are enabled, add screenshot as a separate user message
+        // This uses OpenAI's vision API format which is much more token-efficient
         if (name.includes("snapshot") && config.includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
-            const processedResponse = shouldCompress 
-                ? this.snapshotProcessor.getCompressed(toolResponse) 
-                : toolResponse
-            responseContent = JSON.stringify({
-                ...processedResponse.response,
-                screenshot: {
-                    mimeType: screenshot.mimeType,
-                    data: screenshot.data
-                }
-            })
-        } else {
-            const processedResponse = shouldCompress 
-                ? this.snapshotProcessor.getCompressed(toolResponse) 
-                : toolResponse
-            responseContent = JSON.stringify(processedResponse.response)
+            await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
         }
-        
-        await this.openaiClient.addToolResponse(toolCallId, responseContent)
         
         // Remove old snapshot entries AFTER adding current tool response to maintain message ordering
         await this.historyManager.removeSnapshotEntries(this.openaiClient, toolCallId)

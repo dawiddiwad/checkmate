@@ -85,6 +85,27 @@ export class OpenAIClient {
         })
     }
 
+    async addScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
+        // Add screenshot as a user message with proper image_url format
+        // Using 'low' detail for minimal token usage (85 tokens per image)
+        this.messages.push({
+            role: 'user',
+            content: [
+                {
+                    type: 'text',
+                    text: 'Here is the current screenshot of the page:'
+                },
+                {
+                    type: 'image_url',
+                    image_url: {
+                        url: `data:${mimeType};base64,${base64Data}`,
+                        detail: 'low'
+                    }
+                }
+            ]
+        })
+    }
+
     async sendToolResponseWithRetry(): Promise<ChatCompletion> {
         let attemptsLeft = this.configurationManager.getMaxRetries()
 

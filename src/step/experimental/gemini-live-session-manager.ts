@@ -8,6 +8,7 @@ import sharp from 'sharp'
 import { expect } from '@playwright/test'
 import { Step, StepStatus, StepStatusCallback } from '../types'
 import { RUN_STEP_PROMPT_LIVE_API } from '../openai/prompts'
+import { PlaywrightToolNames } from '../../mcp/tool/playwright-tool-names'
 
 export class GeminiLiveSessionManager {
     private ai: GoogleGenAI
@@ -192,7 +193,7 @@ export class GeminiLiveSessionManager {
 
     private async getCompressedScreenshot() {
         try {
-            const screenshot = await this.playwrightMCP.callTool({ name: 'browser_take_screenshot' })
+            const screenshot = await this.playwrightMCP.callTool({ name: PlaywrightToolNames.BROWSER_TAKE_SCREENSHOT })
             const bufferImgCompressed = await sharp(Buffer.from(screenshot.content?.[1].data, 'base64'))
                 .resize({ width: 768, height: 768, fit: 'inside' })
                 .toBuffer()

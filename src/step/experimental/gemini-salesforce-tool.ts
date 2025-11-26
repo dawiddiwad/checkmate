@@ -1,6 +1,7 @@
 import { FunctionDeclaration, FunctionCall, Type } from "@google/genai"
 import { SalesforceCliHandler } from "../../salesforce/salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "../../salesforce/salesforce-cli-authenticator"
+import { SalesforceTool } from "../../salesforce/salesforce-tool"
 
 export type Response = {
     url: string
@@ -12,7 +13,7 @@ export class GeminiSalesforceTool {
     constructor() {
         this.functionDeclarations = [
             {
-                name: 'get_salesforce_login_url',
+                name: SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL,
                 description: 'Get the login url of the salesforce org, so user can open it in the browser to login to the org',
                 response: {
                     type: Type.OBJECT,
@@ -25,7 +26,7 @@ export class GeminiSalesforceTool {
     }
 
     async call(specified: FunctionCall): Promise<Response> {
-        if (specified.name === 'get_salesforce_login_url') {
+        if (specified.name === SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL) {
             return { url: await this.getSalesforceLoginUrl() }
         }
         throw new Error(`salesforce tool not found: ${specified.name}`)

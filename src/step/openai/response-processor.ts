@@ -8,6 +8,7 @@ import { SnapshotProcessor } from "../tool/snapshot-processor"
 import { TokenTracker } from "./token-tracker"
 import { env } from "process"
 import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
+import { StepTool } from "../tool/step-tool"
 
 export type ResponseProcessorDependencies = {
     playwrightMCP: OpenAIServerMCP
@@ -77,9 +78,9 @@ export class ResponseProcessor {
                     }
                 }
             } else if (choice.finish_reason === 'stop' && message.content) {
-                console.log(`\n| warning: Model responded with text but no tool call. Prompting to use pass_test_step or fail_test_step tool.`)
+                console.log(`\n| warning: Model responded with text but no tool call. Prompting to use ${StepTool.TOOL_PASS_TEST_STEP} or ${StepTool.TOOL_FAIL_TEST_STEP} tool.`)
                 await this.openaiClient.addUserMessage(
-                    `You provided a text response but did not call a tool. Based on your analysis, please call either 'pass_test_step' or 'fail_test_step' with the actual result. Do not respond with text - only use the tool.`
+                    `You provided a text response but did not call a tool. Based on your analysis, please call either '${StepTool.TOOL_PASS_TEST_STEP}' or '${StepTool.TOOL_FAIL_TEST_STEP}' with the actual result. Do not respond with text - only use the tool.`
                 )
                 const followUpResponse = await this.openaiClient.sendToolResponseWithRetry()
                 await this.handleResponse(followUpResponse, step, stepStatusCallback)

@@ -3,6 +3,9 @@ import { OpenAITool, ToolCallArgs } from "../../mcp/tool/openai-tool"
 import { StepStatusCallback } from "../types"
 
 export class StepTool implements OpenAITool {
+    static readonly TOOL_FAIL_TEST_STEP = 'fail_test_step'
+    static readonly TOOL_PASS_TEST_STEP = 'pass_test_step'
+
     functionDeclarations: ChatCompletionFunctionTool[]
     
     constructor() {
@@ -10,7 +13,7 @@ export class StepTool implements OpenAITool {
             {
                 type: 'function',
                 function: {
-                    name: 'fail_test_step',
+                    name: StepTool.TOOL_FAIL_TEST_STEP,
                     description: 'Fail the test step with the actual result',
                     parameters: {
                         type: 'object',
@@ -24,7 +27,7 @@ export class StepTool implements OpenAITool {
             {
                 type: 'function',
                 function: {
-                    name: 'pass_test_step',
+                    name: StepTool.TOOL_PASS_TEST_STEP,
                     description: 'Pass the test step with the actual result',
                     parameters: {
                         type: 'object',
@@ -46,10 +49,10 @@ export class StepTool implements OpenAITool {
         if (!declaration) {
             throw new Error(`Tool not found: ${specified.name}`)
         }
-        if (specified.name === 'pass_test_step') {
+        if (specified.name === StepTool.TOOL_PASS_TEST_STEP) {
             callback({ passed: true, actual: specified.arguments?.actualResult as string })
         }
-        if (specified.name === 'fail_test_step') {
+        if (specified.name === StepTool.TOOL_FAIL_TEST_STEP) {
             callback({ passed: false, actual: specified.arguments?.actualResult as string })
         }
     }

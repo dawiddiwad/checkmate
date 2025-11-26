@@ -8,6 +8,8 @@ export type Response = {
 }
 
 export class SalesforceTool implements OpenAITool {
+    static readonly TOOL_GET_SALESFORCE_LOGIN_URL = 'get_salesforce_login_url'
+
     functionDeclarations: ChatCompletionFunctionTool[]
     
     constructor() {
@@ -15,7 +17,7 @@ export class SalesforceTool implements OpenAITool {
             {
                 type: 'function',
                 function: {
-                    name: 'get_salesforce_login_url',
+                    name: SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL,
                     description: 'Get the login url of the salesforce org, so user can open it in the browser to login to the org',
                     parameters: {
                         type: 'object',
@@ -29,7 +31,7 @@ export class SalesforceTool implements OpenAITool {
     }
 
     async call(specified: ToolCallArgs): Promise<Response> {
-        if (specified.name === 'get_salesforce_login_url') {
+        if (specified.name === SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL) {
             return { url: await this.getSalesforceLoginUrl() }
         }
         throw new Error(`salesforce tool not found: ${specified.name}`)

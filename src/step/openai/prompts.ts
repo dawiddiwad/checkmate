@@ -1,8 +1,7 @@
+import { ConfigurationManager } from "../configuration-manager";
 import { Step } from "../types";
 
-export const RUN_STEP_PROMPT = (step: Step) => `
-    Here is the test step I want you to execute.
-
+const PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS = `
     #PAGE SNAPSHOT COMPRESSION:
     The page snapshot uses a compressed accessibility tree format where:
     - Element types are abbreviated (g=generic, b=button, l=link, etc.)
@@ -43,7 +42,13 @@ export const RUN_STEP_PROMPT = (step: Step) => `
     disabled: dis
     selected: sel
     level: lv
+`
 
+export const RUN_STEP_PROMPT = (step: Step) => `
+    Here is the test step I want you to execute.
+
+    ${new ConfigurationManager().enableSnapshotCompression() ? PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS : ''}
+    
     #RULES:
     Do not close or re-open the browser if any browser tool was used before, keep it open and use it for the entire test case.
     Saving and navigating actions might take some time to complete without clear indication of completion, be patient and wait for the page to load before proceeding.

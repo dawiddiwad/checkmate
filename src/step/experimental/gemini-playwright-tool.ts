@@ -1,7 +1,6 @@
 import { FunctionDeclaration } from "@google/genai"
 import { GeminiServerMCP, ToolCall } from "./gemini-mcp"
 
-// Gemini-specific PlaywrightTool wrapper for the experimental Live API
 export class GeminiPlaywrightTool {
     functionDeclarations: FunctionDeclaration[]
     ready: Promise<this>

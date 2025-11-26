@@ -57,7 +57,6 @@ export class ResponseProcessor {
             
             if (message.tool_calls && message.tool_calls.length > 0) {
                 for (const toolCall of message.tool_calls) {
-                    // Type guard: only handle function tool calls
                     if (toolCall.type !== 'function') continue
                     
                     const name = toolCall.function.name
@@ -78,7 +77,6 @@ export class ResponseProcessor {
                     }
                 }
             } else if (choice.finish_reason === 'stop' && message.content) {
-                // Model responded with text but no tool calls - prompt it to use the appropriate tool
                 console.log(`\n| warning: Model responded with text but no tool call. Prompting to use pass_test_step or fail_test_step tool.`)
                 await this.openaiClient.addUserMessage(
                     `You provided a text response but did not call a tool. Based on your analysis, please call either 'pass_test_step' or 'fail_test_step' with the actual result. Do not respond with text - only use the tool.`
@@ -109,23 +107,18 @@ export class ResponseProcessor {
         const config = this.openaiClient.getConfigurationManager()
         const shouldCompress = config.enableSnapshotCompression()
         
-        // Process the response (with or without compression)
         const processedResponse = shouldCompress 
             ? this.snapshotProcessor.getCompressed(toolResponse) 
             : toolResponse
         const responseContent = JSON.stringify(processedResponse.response)
         
-        // Add tool response first
         await this.openaiClient.addToolResponse(toolCallId, responseContent)
         
-        // If screenshots are enabled, add screenshot as a separate user message
-        // This uses OpenAI's vision API format which is much more token-efficient
         if (config.includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
             await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
         }
         
-        // Remove old snapshot entries AFTER adding current tool response to maintain message ordering
         await this.historyManager.removeSnapshotEntries(this.openaiClient, toolCallId)
         
         const nextResponse = await this.openaiClient.sendToolResponseWithRetry()

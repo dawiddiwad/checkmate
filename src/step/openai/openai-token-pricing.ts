@@ -4,9 +4,7 @@ export class OpenAITokenPricing {
     }
 
     private static inputPricePerMillionUSD(model: string): number {
-        // Pricing as of late 2024 - update as needed
         switch (model) {
-            // OpenAI models
             case 'gpt-4o':
             case 'gpt-4o-2024-11-20':
                 return this.roundToCents(2.50)
@@ -28,7 +26,6 @@ export class OpenAITokenPricing {
                 return this.roundToCents(3.00)
             case 'o3-mini':
                 return this.roundToCents(1.10)
-            // Claude models (via OpenAI-compatible API)
             case 'claude-3-5-sonnet-20241022':
             case 'claude-3-5-sonnet-latest':
                 return this.roundToCents(3.00)
@@ -38,7 +35,6 @@ export class OpenAITokenPricing {
             case 'claude-3-opus-20240229':
             case 'claude-3-opus-latest':
                 return this.roundToCents(15.00)
-            // Gemini models (via OpenAI-compatible API)
             case 'gemini-2.5-pro':
                 return this.roundToCents(1.25)
             case 'gemini-2.5-flash':
@@ -46,14 +42,12 @@ export class OpenAITokenPricing {
             case 'gemini-2.0-flash':
                 return this.roundToCents(0.10)
             default:
-                // Default to gpt-4o-mini pricing for unknown models
                 return this.roundToCents(0.15)
         }
     }
 
     private static outputPricePerMillionUSD(model: string): number {
         switch (model) {
-            // OpenAI models
             case 'gpt-4o':
             case 'gpt-4o-2024-11-20':
                 return this.roundToCents(10.00)
@@ -75,7 +69,6 @@ export class OpenAITokenPricing {
                 return this.roundToCents(12.00)
             case 'o3-mini':
                 return this.roundToCents(4.40)
-            // Claude models (via OpenAI-compatible API)
             case 'claude-3-5-sonnet-20241022':
             case 'claude-3-5-sonnet-latest':
                 return this.roundToCents(15.00)
@@ -85,7 +78,6 @@ export class OpenAITokenPricing {
             case 'claude-3-opus-20240229':
             case 'claude-3-opus-latest':
                 return this.roundToCents(75.00)
-            // Gemini models (via OpenAI-compatible API)
             case 'gemini-2.5-pro':
                 return this.roundToCents(10.00)
             case 'gemini-2.5-flash':

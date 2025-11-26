@@ -6,7 +6,6 @@ export type Response = {
     url: string
 }
 
-// Gemini-specific SalesforceTool for the experimental Live API
 export class GeminiSalesforceTool {
     functionDeclarations: FunctionDeclaration[]
     

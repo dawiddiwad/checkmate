@@ -26,7 +26,7 @@ export class OpenAIClient {
             apiKey: this.configurationManager.getApiKey(),
             baseURL: this.configurationManager.getBaseURL(),
             timeout: this.configurationManager.getTimeout(),
-            maxRetries: 0 // We handle retries manually for better compatibility with alternative providers
+            maxRetries: 0
         })
         this.messages = []
     }
@@ -169,7 +169,6 @@ export class OpenAIClient {
     }
 
     private calculateBackoff(attempt: number): number {
-        // Progressive backoff: 1s, 10s, 60s
         const delays = [1_000, 10_000, 60_000]
         const baseDelay = delays[Math.min(attempt, delays.length - 1)]
         return baseDelay

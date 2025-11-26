@@ -22,8 +22,6 @@ export type ToolCall = {
     arguments?: Record<string, unknown>
 }
 
-// Gemini-specific MCP server wrapper for the experimental Live API
-// Returns FunctionDeclaration format instead of ChatCompletionTool format
 export class GeminiServerMCP {
     private client: Client
     private config: ConfigMCP
@@ -103,7 +101,6 @@ export class GeminiServerMCP {
     }
 }
 
-// Factory for creating Gemini-specific MCP server for Playwright
 export class GeminiPlaywrightMCPServer {
     static create(): GeminiServerMCP {
         const playwrightArgs: string[] = []

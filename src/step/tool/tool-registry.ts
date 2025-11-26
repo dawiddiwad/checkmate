@@ -47,7 +47,6 @@ export class ToolRegistry {
             ...this.salesforceTool.functionDeclarations
         ]
         
-        // Filter tools based on allowed function names (if configured)
         if (allowedNames.length > 0) {
             return allTools.filter(tool => allowedNames.includes(tool.function.name))
         }

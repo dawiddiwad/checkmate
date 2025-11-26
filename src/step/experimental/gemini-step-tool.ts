@@ -1,7 +1,6 @@
 import { FunctionDeclaration, FunctionCall, Type } from "@google/genai"
 import { StepStatusCallback } from "../types"
 
-// Gemini-specific StepTool for the experimental Live API
 export class GeminiStepTool {
     functionDeclarations: FunctionDeclaration[]
     

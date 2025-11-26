@@ -85,6 +85,13 @@ export class OpenAIClient {
         })
     }
 
+    async addUserMessage(content: string): Promise<void> {
+        this.messages.push({
+            role: 'user',
+            content
+        })
+    }
+
     async addScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
         // Add screenshot as a user message with proper image_url format
         // Using 'low' detail for minimal token usage (85 tokens per image)

@@ -69,7 +69,7 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Structured logging (JSON format)
   - [ ] Log levels (DEBUG, INFO, WARN, ERROR)
   - [ ] Execution trace with timing
-  - [ ] AI reasoning/thought capture
+  - [x] AI reasoning/thought capture
 
 
 ## Version 0.3

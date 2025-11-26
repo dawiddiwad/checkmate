@@ -77,6 +77,15 @@ export class ResponseProcessor {
                         throw new Error(`Invalid tool name, received call\n: ${JSON.stringify(toolCall, null, 2)}`)
                     }
                 }
+            } else if (choice.finish_reason === 'stop' && message.content) {
+                // Model responded with text but no tool calls - prompt it to use the appropriate tool
+                console.log(`\n| warning: Model responded with text but no tool call. Prompting to use pass_test_step or fail_test_step tool.`)
+                await this.openaiClient.addUserMessage(
+                    `You provided a text response but did not call a tool. Based on your analysis, please call either 'pass_test_step' or 'fail_test_step' with the actual result. Do not respond with text - only use the tool.`
+                )
+                const followUpResponse = await this.openaiClient.sendToolResponseWithRetry()
+                await this.handleResponse(followUpResponse, step, stepStatusCallback)
+                return
             }
             
             if (!message.content && (!message.tool_calls || message.tool_calls.length === 0)) {
@@ -114,6 +123,9 @@ export class ResponseProcessor {
         if (name.includes("snapshot") && config.includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
             await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
+        } else {
+            // const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
+            // await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
         }
         
         // Remove old snapshot entries AFTER adding current tool response to maintain message ordering

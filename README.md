@@ -1,6 +1,8 @@
 # checkma♗e
 
-Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLM intelligence with Playwright's ecosystem for smarter, more resilient execution. Works with OpenAI, Claude, Gemini, and any OpenAI-compatible API.
+Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLMs with Playwright's ecosystem for smarter, more resilient execution.
+
+Pair with any OpenAI API-compatible provider, such as Claude, Gemini, Grok, and even local models hosted via LM Studio or Ollama. Enjoy!
 
 ### How it works?
 Write tests in natural language:

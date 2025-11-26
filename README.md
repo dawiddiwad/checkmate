@@ -151,7 +151,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model: gpt-4o, gpt-4o-mini, claude-3-5-sonnet-latest, gemini-2.5-flash, etc. |
 | `OPENAI_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
-| `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
+| `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors |
 | `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
 | `OPENAI_ALLOWED_TOOLS` | - | Comma-separated list of allowed tools (if not set, all tools available) |
 | `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |

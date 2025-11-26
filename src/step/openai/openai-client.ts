@@ -2,6 +2,7 @@ import OpenAI from "openai"
 import { ChatCompletionMessageParam, ChatCompletion } from "openai/resources/chat/completions"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
+import { json } from "stream/consumers"
 
 export type OpenAIClientDependencies = {
     configurationManager: ConfigurationManager
@@ -13,6 +14,7 @@ export class OpenAIClient {
     private messages: ChatCompletionMessageParam[] = []
     private readonly configurationManager: ConfigurationManager
     private readonly toolRegistry: ToolRegistry
+    private readonly RETRYABLE_STATUS_CODES = [408, 409, 429, 500, 502, 503, 504]
 
     constructor({ configurationManager, toolRegistry }: OpenAIClientDependencies) {
         this.configurationManager = configurationManager
@@ -23,7 +25,8 @@ export class OpenAIClient {
         this.client = new OpenAI({
             apiKey: this.configurationManager.getApiKey(),
             baseURL: this.configurationManager.getBaseURL(),
-            timeout: this.configurationManager.getTimeout()
+            timeout: this.configurationManager.getTimeout(),
+            maxRetries: 0 // We handle retries manually for better compatibility with alternative providers
         })
         this.messages = []
     }
@@ -41,41 +44,29 @@ export class OpenAIClient {
     }
 
     async sendMessageWithRetry(userMessage: string | ChatCompletionMessageParam[]): Promise<ChatCompletion> {
-        let attemptsLeft = this.configurationManager.getMaxRetries()
-        
         if (typeof userMessage === 'string') {
             this.messages.push({ role: 'user', content: userMessage })
         } else {
             this.messages.push(...userMessage)
         }
 
-        while (true) {
-            try {
-                const tools = await this.toolRegistry.getTools()
-                const response = await this.client.chat.completions.create({
-                    model: this.configurationManager.getModel(),
-                    messages: this.messages,
-                    tools,
-                    tool_choice: this.configurationManager.getToolChoice(),
-                    parallel_tool_calls: false,
-                    temperature: this.configurationManager.getTemperature()
-                })
+        return this.executeWithRetry(async () => {
+            const tools = await this.toolRegistry.getTools()
+            const response = await this.client.chat.completions.create({
+                model: this.configurationManager.getModel(),
+                messages: this.messages,
+                tools,
+                tool_choice: this.configurationManager.getToolChoice(),
+                parallel_tool_calls: false,
+                temperature: this.configurationManager.getTemperature()
+            })
 
-                if (response.choices[0]?.message) {
-                    this.messages.push(response.choices[0].message)
-                }
-
-                return response
-            } catch (error: any) {
-                if (!this.isRetryableError(error) || attemptsLeft-- === 0) {
-                    throw error
-                }
-                const delay = this.calculateBackoffDelay(attemptsLeft)
-                console.error(`\nOpenAI API error (attempts left ${attemptsLeft}): ${error.message}`)
-                console.log(`retrying in ${Math.round(delay / 1000)} seconds...`)
-                await new Promise(resolve => setTimeout(resolve, delay))
+            if (response.choices[0]?.message) {
+                this.messages.push(response.choices[0].message)
             }
-        }
+
+            return response
+        })
     }
 
     async addToolResponse(toolCallId: string, content: string): Promise<void> {
@@ -94,8 +85,6 @@ export class OpenAIClient {
     }
 
     async addScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
-        // Add screenshot as a user message with proper image_url format
-        // Using 'low' detail for minimal token usage (85 tokens per image)
         this.messages.push({
             role: 'user',
             content: [
@@ -115,39 +104,82 @@ export class OpenAIClient {
     }
 
     async sendToolResponseWithRetry(): Promise<ChatCompletion> {
-        let attemptsLeft = this.configurationManager.getMaxRetries()
+        return this.executeWithRetry(async () => {
+            const tools = await this.toolRegistry.getTools()
+            const response = await this.client.chat.completions.create({
+                model: this.configurationManager.getModel(),
+                messages: this.messages,
+                tools,
+                tool_choice: this.configurationManager.getToolChoice(),
+                temperature: this.configurationManager.getTemperature()
+            })
 
-        while (true) {
+            if (response.choices[0]?.message) {
+                this.messages.push(response.choices[0].message)
+            }
+
+            return response
+        })
+    }
+
+    private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+        const maxRetries = this.configurationManager.getMaxRetries()
+        let lastError: Error | null = null
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                const tools = await this.toolRegistry.getTools()
-                const response = await this.client.chat.completions.create({
-                    model: this.configurationManager.getModel(),
-                    messages: this.messages,
-                    tools,
-                    tool_choice: this.configurationManager.getToolChoice(),
-                    temperature: this.configurationManager.getTemperature()
-                })
-
-                if (response.choices[0]?.message) {
-                    this.messages.push(response.choices[0].message)
-                }
-
-                return response
+                return await operation()
             } catch (error: any) {
-                if (!this.isRetryableError(error) || attemptsLeft-- === 0) {
-                    throw error
+                lastError = error
+                const statusCode = this.getStatusCode(error)
+                
+                if (!this.isRetryable(statusCode) || attempt === maxRetries) {
+                    throw this.enhanceError(error, attempt, maxRetries)
                 }
-                const delay = this.calculateBackoffDelay(attemptsLeft)
-                console.error(`\nOpenAI API error (attempts left ${attemptsLeft}): ${error.message}`)
-                console.log(`retrying in ${Math.round(delay / 1000)} seconds...`)
-                await new Promise(resolve => setTimeout(resolve, delay))
+                
+                const retryAfter = this.getRetryAfterSeconds(error)
+                const delay = retryAfter ? retryAfter * 1000 : this.calculateBackoff(attempt)
+                
+                console.log(`| status: ${statusCode} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
+                await this.sleep(delay)
             }
         }
+
+        throw lastError || new Error('Unexpected error in retry loop')
+    }
+
+    private getStatusCode(error: any): number | null {
+        return error?.status || error?.statusCode || error?.code || null
+    }
+
+    private isRetryable(statusCode: number | null): boolean {
+        if (statusCode === null) return false
+        return this.RETRYABLE_STATUS_CODES.includes(statusCode)
+    }
+
+    private getRetryAfterSeconds(error: any): number | null {
+        const headers = error?.headers
+        if (!headers) return null
+        
+        const retryAfter = headers.get?.('retry-after') || headers['retry-after']
+        if (!retryAfter) return null
+        
+        const seconds = parseInt(retryAfter, 10)
+        return isNaN(seconds) ? null : seconds
+    }
+
+    private calculateBackoff(attempt: number): number {
+        // Progressive backoff: 1s, 10s, 60s
+        const delays = [1_000, 10_000, 60_000]
+        const baseDelay = delays[Math.min(attempt, delays.length - 1)]
+        return baseDelay
+    }
+
+    private sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms))
     }
 
     countHistoryTokens(): number {
-        // OpenAI doesn't have a direct token counting API like Gemini
-        // Estimate based on characters (~4 chars per token on average)
         const totalChars = this.messages.reduce((sum, msg) => {
             if (typeof msg.content === 'string') {
                 return sum + msg.content.length
@@ -161,24 +193,11 @@ export class OpenAIClient {
         this.messages = [...history]
     }
 
-    private isRetryableError(error: any): boolean {
-        const message = error?.message?.toLowerCase() || ""
-        const status = error?.status || error?.code || ""
-        return message.includes("timed out") ||
-            message.includes("timeout") ||
-            message.includes("rate") ||
-            status === 504 ||
-            status === 429 ||
-            status === "504" ||
-            status === "429" ||
-            (error?.status && error.status >= 500)
-    }
-
-    private calculateBackoffDelay(attemptsLeft: number): number {
-        switch (attemptsLeft) {
-            case 2: return 1_000
-            case 1: return 10_000
-            default: return 60_000
-        }
+    private enhanceError(error: any, attempt?: number, maxRetries?: number): Error {
+        const status = error?.status || error?.statusCode || error?.code || 'unknown'
+        const message = error?.message || null
+        
+        let details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
+        return new Error(details)
     }
 }

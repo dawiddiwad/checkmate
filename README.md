@@ -1,6 +1,8 @@
 # checkma♗e
 
-Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines Gemini's intelligence with Playwright's ecosystem for smarter, more resilient execution.
+Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLMs with Playwright's ecosystem for smarter, more resilient execution.
+
+Try with any OpenAI API compatible provider: Claude, Gemini, Grok, or even local models via LM Studio and Ollama.
 
 ### How it works?
 Write tests in natural language:
@@ -31,7 +33,7 @@ await expect(page.getByRole('link', { name: '#search-result' })
 ### Prerequisites
 
 - Node.js [18+ or LTS](https://nodejs.org/en/download) 
-- Google Gemini [API key](https://aistudio.google.com/app/apikey)
+- OpenAI [API key](https://platform.openai.com/api-keys) (or compatible provider: Claude, Gemini, etc.)
 - (optional) [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli) for Salesforce testing
 
 ### Installation
@@ -54,12 +56,15 @@ cp .env.example .env
 Edit `.env` file based on `.env.example` that has a comprehensive configuration reference:
 
 ```bash
-# Required - Get your key at: https://aistudio.google.com/app/apikey
-GOOGLE_API_KEY=your_gemini_api_key_here
+# Required - Your OpenAI API key (or compatible provider)
+OPENAI_API_KEY=your_api_key_here
 
-# Gemini model configuration
-GOOGLE_API_MODEL=gemini-2.5-flash #if overloaded use gemini-2.5-flash-preview-09-2025 
-GOOGLE_API_TEMPERATURE=0.1
+# Optional - Override base URL for compatible providers (Claude, Gemini, etc.)
+# OPENAI_BASE_URL=https://api.anthropic.com/v1
+
+# Model configuration
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.1
 
 # Playwright settings
 PLAYWRIGHT_MCP_BROWSER=chromium
@@ -139,16 +144,20 @@ await test.step('Fill form and submit', async () => {
 ```
 ## Configuration
 
-### Gemini API Settings
+### OpenAI API Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOOGLE_API_KEY` | - | **Required** - Your Gemini API key |
-| `GOOGLE_API_MODEL` | `gemini-2.5-flash` | Model: gemini-2.5-flash, gemini-flash-latest, gemini-2.5-flash-preview-09-2025, gemini-2.5-pro  (recommended: gemini-2.5-flash-preview-09-2025) |
-| `GOOGLE_API_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
-| `GOOGLE_API_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
-| `GOOGLE_API_RETRY_MAX_ATTEMPTS` | `3` | Max retry attempts for failed requests |
-| `GOOGLE_API_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses (reduces token costs when disabled) |
+| `OPENAI_API_KEY` | - | **Required** - Your OpenAI API key (or compatible provider) |
+| `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model: gpt-4o, gpt-4o-mini, claude-3-5-sonnet-latest, gemini-2.5-flash, etc. |
+| `OPENAI_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
+| `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
+| `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors |
+| `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
+| `OPENAI_ALLOWED_TOOLS` | - | Comma-separated list of allowed tools (if not set, all tools available) |
+| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
+| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~40% token reduction) |
 
 ### Playwright MCP Settings
 
@@ -167,27 +176,29 @@ await test.step('Fill form and submit', async () => {
 Checkmate includes built-in token usage monitoring:
 
 ```
-| input tokens usage
-| response: 2543 @ $0.0019$
-| history: 45234
-| cached: 12000
-| step: 5123 @ $0.0038$
-| test: 25678 @ $0.0192$
+| token usage
+| response input: 2543 @ $0.00$
+| response output: 456 @ $0.00$
+| history (estimated): 45234
+| step input: 5123 @ $0.00$
+| step output: 892 @ $0.00$
+| test input: 25678 @ $0.01$
+| test output: 4521 @ $0.01$
 ```
 
 ### Cost Optimization Features
 
-1. **History Filtering** - Continuously filters page snapshots from chat history (reduces token usage by ~50%)
-2. **Snapshot Compression** - YAML tree elements abbreviation (further ~30% token usage reduction)
-3. **Screenshot Compression** - Images normalized to 768x768 tiles before sending (258 tokens each)
+1. **History Filtering** - Continuously filters page snapshots and old screenshots from chat history (reduces token usage by ~50%)
+2. **Snapshot Compression** - YAML tree elements abbreviation (further ~40% token usage reduction)
+3. **Vision API Screenshots** - Images sent using OpenAI's vision API with `detail: low` (85 tokens per screenshot)
 4. **Chat Recycling** - New session per step to prevent context bloat
 5. **Token Counting** - Real-time usage tracking per step and test
 
-### Estimated Costs (Gemini 2.5 Flash)
+### Estimated Costs (GPT-4o-mini)
 
 - Simple web test (5 steps): ~$0.01 - $0.05
-- Complex Salesforce flow (20 steps): ~$0.10 - $0.30
-- Full test suite (50 tests): ~$5.00 - $15.00
+- Complex Salesforce flow (20 steps): ~$0.10 - $0.40
+- Full test suite (50 tests): ~$5.00 - $20.00
 
 *Costs vary based on model, screenshot size and count, and page complexity*
 
@@ -267,14 +278,14 @@ npx playwright show-report test-reports/html
 
 ### Architecture:
 The framework combines:
-- **Gemini AI** for understanding and decision-making (both chat and live APIs)
+- **OpenAI-compatible API** for understanding and decision-making (works with OpenAI, Claude, Gemini, and local LLMs)
 - **Playwright Test** for managing test runs, fixtures and reporting
 - **Playwright MCP** (Model Context Protocol) for browser automation
 - **Salesforce CLI** for Salesforce-specific operations
 - **Modular Components**: Configuration management, response processing, token tracking, history filtering, snapshot compression, screenshot compression
-- **Experimental Live API**: Real-time AI interactions with streaming responses
+- **Experimental Live API**: Real-time AI interactions with streaming responses (Gemini-specific)
 
-Playwright test runner calls into the Gemini step engine via fixture, which orchestrates Gemini API calls and tool invocations, then feeds results back into the test runner. Supporting modules hang off that core to manage configuration, history, screenshots, and costs:
+Playwright test runner calls into the OpenAI step engine via fixture, which orchestrates API calls and tool invocations, then feeds results back into the test runner. Supporting modules hang off that core to manage configuration, history, screenshots, and costs:
 
 ```
 ═════════════════════════ FLOW ════════════════════════════════
@@ -283,24 +294,24 @@ Playwright Test Step
     │
 Checkmate fixture
     │
-GeminiTestManager
+OpenAITestManager
     │
-GeminiTestStep
+OpenAITestStep
     │
-    ├─► GeminiClient.initialize()
+    ├─► OpenAIClient.initialize()
     │       │
-    │       ├─► ConfigurationManager.getGeminiConfig()
+    │       ├─► ConfigurationManager.getOpenAIConfig()
     │       └─► ToolRegistry.getTools()
     │
-    ├─► GeminiClient.sendMessageWithRetry(prompt)
+    ├─► OpenAIClient.sendMessageWithRetry(prompt)
     │       │
-    │       └─► Google Gemini API
+    │       └─► OpenAI-compatible API
     │
     └─► ResponseProcessor.handleResponse(response)
             │
             ├─► TokenTracker.log()
             │
-            ├─► functionCall:
+            ├─► tool_calls:
             │       │
             │       ├─► browser_* → ToolRegistry.executeBrowserTool()
             │       │       └─► PlaywrightTool → PlaywrightMCP → Browser
@@ -315,7 +326,7 @@ GeminiTestStep
                     └─► SnapshotProcessor.getCompressed()
                     └─► ScreenshotProcessor.getCompressedScreenshot()
                     └─► HistoryManager.removeSnapshotEntries()
-                    └─► GeminiClient.replaceHistory()
+                    └─► OpenAIClient.replaceHistory()
 
 ═════════════════════════ ARCHITECTURE ════════════════════════════════
 
@@ -323,40 +334,40 @@ Playwright Test Layer
     │
     ├─► checkmate.ts (fixture)
     │       │
-    │       └─► GeminiTestManager
+    │       └─► OpenAITestManager
     │               │
-    │               ├─► playwrightMCP: GeminiServerMCP
-    │               ├─► geminiClient: GeminiClient
+    │               ├─► playwrightMCP: OpenAIServerMCP
+    │               ├─► openaiClient: OpenAIClient
     │               ├─► responseProcessor: ResponseProcessor
     │               │
-    │               └─► GeminiTestStep (Internal)
+    │               └─► OpenAITestStep (Internal)
     │                       │
     │                       ├─► Orchestrates step execution
     │                       ├─► Manages step status callbacks
     │                       └─► Handles assertions
     │
-    └─► checkmate-live.ts (experimental fixture)
+    └─► checkmate-live.ts (experimental fixture - Gemini Live API)
             │
             └─► GeminiLiveSessionManager
                     │
                     ├─► playwrightMCP: GeminiServerMCP
                     ├─► ai: GoogleGenAI
                     ├─► session: Live Session
-                    ├─► playwrightTool: PlaywrightTool
-                    ├─► stepTool: StepTool
-                    └─► salesforceTool: SalesforceTool
+                    ├─► playwrightTool: GeminiPlaywrightTool
+                    ├─► stepTool: GeminiStepTool
+                    └─► salesforceTool: GeminiSalesforceTool
 
 Core Components Layer
     │
-    ├─► GeminiClient
+    ├─► OpenAIClient
     │       │
     │       ├─► Dependencies:
     │       │       ├─► configurationManager: ConfigurationManager
     │       │       └─► toolRegistry: ToolRegistry
     │       │
     │       └─► Responsibilities:
-    │               ├─► Initialize GoogleGenAI
-    │               ├─► Manage chat sessions
+    │               ├─► Initialize OpenAI client
+    │               ├─► Manage chat completions
     │               ├─► Send messages with retry
     │               ├─► Manage conversation history
     │               └─► Token counting
@@ -364,12 +375,12 @@ Core Components Layer
     ├─► ResponseProcessor
     │       │
     │       ├─► Dependencies:
-    │       │       ├─► playwrightMCP: GeminiServerMCP
-    │       │       └─► geminiClient: GeminiClient
+    │       │       ├─► playwrightMCP: OpenAIServerMCP
+    │       │       └─► openaiClient: OpenAIClient
     │       │
     │       └─► Responsibilities:
-    │               ├─► Process Gemini API responses
-    │               ├─► Handle function calls
+    │               ├─► Process OpenAI API responses
+    │               ├─► Handle tool calls
     │               ├─► Dispatch tool responses
     │               ├─► Manage recursive tool calls
     │               └─► Handle screenshots
@@ -377,7 +388,7 @@ Core Components Layer
     └─► ToolRegistry
             │
             ├─► Dependencies:
-            │       ├─► playwrightMCP: GeminiServerMCP
+            │       ├─► playwrightMCP: OpenAIServerMCP
             │       ├─► playwrightTool: PlaywrightTool
             │       ├─► stepTool: StepTool
             │       └─► salesforceTool: SalesforceTool
@@ -391,15 +402,15 @@ Core Components Layer
 
 Tools Layer
     │
-    ├─► PlaywrightTool (implements GeminiTool)
+    ├─► PlaywrightTool (implements OpenAITool)
     │       │
     │       ├─► Dependencies:
-    │       │       └─► playwrightMCP: GeminiServerMCP
+    │       │       └─► playwrightMCP: OpenAIServerMCP
     │       │
     │       └─► Functions:
     │               └─► browser_* (from MCP: click, navigate, snapshot, etc.)
     │
-    ├─► StepTool (implements GeminiTool)
+    ├─► StepTool (implements OpenAITool)
     │       │
     │       ├─► Dependencies:
     │       │       └─► (none)
@@ -408,7 +419,7 @@ Tools Layer
     │               ├─► pass_test_step
     │               └─► fail_test_step
     │
-    └─► SalesforceTool (implements GeminiTool)
+    └─► SalesforceTool (implements OpenAITool)
             │
             ├─► Dependencies:
             │       └─► SalesforceCliAuthenticator
@@ -418,17 +429,17 @@ Tools Layer
 
 MCP Server Layer
     │
-    ├─► GeminiServerMCP
+    ├─► OpenAIServerMCP
     │       │
     │       ├─► Wraps Model Context Protocol SDK
     │       ├─► Manages MCP client connections
-    │       ├─► Converts MCP tools to Gemini function declarations
+    │       ├─► Converts MCP tools to OpenAI function declarations
     │       ├─► Handles tool execution via MCP protocol
-    │       └─► Cleans schemas for Gemini compatibility
+    │       └─► Cleans schemas for OpenAI compatibility
     │
     └─► PlaywrightMCPServer
             │
-            ├─► Creates GeminiServerMCP instance for Playwright
+            ├─► Creates OpenAIServerMCP instance for Playwright
             ├─► Configures via environment variables
             └─► Spawns @playwright/mcp server process
 
@@ -474,11 +485,11 @@ Supporting Components
 
 External Services
     │
-    ├─► Google Gemini API
+    ├─► OpenAI-compatible API
     │       │
-    │       ├─► Standard API
-    │       ├─► Live API (experimental)
-    │       └─► Function calling
+    │       ├─► Chat Completions API
+    │       ├─► Tool/Function calling
+    │       └─► Supports: OpenAI, Claude, Gemini, local LLMs
     │
     ├─► Playwright MCP Server
     │       │
@@ -511,8 +522,8 @@ MIT License - see LICENSE file for details
 
 - [Playwright MCP](https://github.com/microsoft/playwright/tree/main/utils/mcp-server)
 - [Playwright Documentation](https://playwright.dev/)
-- [Gemini API](https://ai.google.dev/)
-- [Gemini Function Calling](https://ai.google.dev/docs/function_calling)
+- [OpenAI API](https://platform.openai.com/docs/api-reference)
+- [OpenAI Function Calling](https://platform.openai.com/docs/guides/function-calling)
 - [Model Context Protocol](https://modelcontextprotocol.io/introduction)
 
 ---
@@ -523,7 +534,7 @@ Checkmate is an experimental framework exploring AI-driven test automation. Whil
 - Non-deterministic behavior
 - Higher runtime costs than traditional automation
 - Occasional timeouts
-- Model overloaded errors (using Gemini v2 beta API endpoint)
+- Rate limiting errors depending on your API provider
 
 Use for exploratory testing, rapid prototyping, and demonstrating AI capabilities in testing.
 
@@ -531,7 +542,7 @@ Use for exploratory testing, rapid prototyping, and demonstrating AI capabilitie
 
 **Future Vision**
 
-The roadmap includes plans for caching, RAG-based element retrieval, OpenAI API support, visual testing, and eventually becoming a production-ready testing platform.
+The roadmap includes plans for caching, RAG-based element retrieval, visual testing, and eventually becoming a production-ready testing platform.
 
 This project is primarily an exploration of how AI can democratize test automation by making it less technical and more maintainable! 🚀
 

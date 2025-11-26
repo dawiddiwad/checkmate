@@ -1,12 +1,12 @@
-import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
-import { OpenAITool, ToolCallArgs } from "./openai-tool"
-import { OpenAIServerMCP, ToolCall } from "../server/openai-mcp"
+import { FunctionDeclaration } from "@google/genai"
+import { GeminiServerMCP, ToolCall } from "./gemini-mcp"
 
-export class PlaywrightTool implements OpenAITool {
-    functionDeclarations: ChatCompletionFunctionTool[]
+export class GeminiPlaywrightTool {
+    functionDeclarations: FunctionDeclaration[]
     ready: Promise<this>
-    private playwrightMCP: OpenAIServerMCP
-    constructor(mcp: OpenAIServerMCP) {
+    private playwrightMCP: GeminiServerMCP
+    
+    constructor(mcp: GeminiServerMCP) {
         this.playwrightMCP = mcp
         this.ready = new Promise(async (makeReady, reject) => {
             try {
@@ -18,11 +18,11 @@ export class PlaywrightTool implements OpenAITool {
         })
     }
 
-    async call(specified: ToolCallArgs): Promise<any> {
+    async call(specified: ToolCall): Promise<any> {
         if (!specified.name) {
             throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
         }
-        if (!this.functionDeclarations.find(declaration => declaration.function.name === specified.name)) {
+        if (!this.functionDeclarations.find(declaration => declaration.name === specified.name)) {
             throw new Error(`Tool not found: ${specified.name}`)
         }
         await this.ready

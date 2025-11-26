@@ -1,4 +1,4 @@
-import { FunctionDeclaration } from '@google/genai'
+import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 import { Client } from '@modelcontextprotocol/sdk/client'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { config as envConfig } from "dotenv"
@@ -22,11 +22,12 @@ export type ToolCall = {
     arguments?: Record<string, unknown>
 }
 
-export class GeminiServerMCP {
+export class OpenAIServerMCP {
     private client: Client
     private config: ConfigMCP
-    private transport: StdioClientTransport
+    private transport!: StdioClientTransport
     private ready: Promise<this>
+    
     constructor(config: ConfigMCP) {
         this.config = config
         this.client = new Client(config.client)
@@ -41,7 +42,6 @@ export class GeminiServerMCP {
         } catch (error) {
             throw new Error(`Failed to connect to ${this.config.client.name} mcp server:\n${error}`)
         }
-
     }
 
     async disconnect() {
@@ -54,7 +54,7 @@ export class GeminiServerMCP {
         return this.client.listTools()
     }
 
-    private cleanSchemaForGemini(schema: any): any {
+    private cleanSchemaForOpenAI(schema: any): any {
         if (!schema || typeof schema !== 'object') {
             return schema
         }
@@ -66,11 +66,11 @@ export class GeminiServerMCP {
                 if (field === 'properties' && typeof schema.properties === 'object') {
                     cleaned.properties = Object.fromEntries(
                         Object.entries(schema.properties).map(([key, value]) =>
-                            [key, this.cleanSchemaForGemini(value)]
+                            [key, this.cleanSchemaForOpenAI(value)]
                         )
                     )
                 } else if (field === 'items' && schema.items) {
-                    cleaned.items = this.cleanSchemaForGemini(schema.items)
+                    cleaned.items = this.cleanSchemaForOpenAI(schema.items)
                 } else {
                     cleaned[field] = schema[field]
                 }
@@ -79,16 +79,17 @@ export class GeminiServerMCP {
         }, {} as any)
     }
 
-    async functionDeclarations(): Promise<FunctionDeclaration[]> {
+    async functionDeclarations(): Promise<ChatCompletionFunctionTool[]> {
         await this.ready
         return this.tools().then(all => {
-            return all.tools.map(tool => {
-                return {
+            return all.tools.map(tool => ({
+                type: 'function' as const,
+                function: {
                     name: tool.name,
-                    description: tool.description,
-                    parameters: this.cleanSchemaForGemini(tool.inputSchema),
+                    description: tool.description ?? '',
+                    parameters: this.cleanSchemaForOpenAI(tool.inputSchema),
                 }
-            })
+            }))
         })
     }
 

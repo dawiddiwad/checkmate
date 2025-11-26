@@ -1,7 +1,7 @@
-import { GeminiServerMCP } from "./gemini-mcp"
+import { OpenAIServerMCP } from "./openai-mcp"
 
 export class PlaywrightMCPServer {
-    static create(): GeminiServerMCP {
+    static create(): OpenAIServerMCP {
         const playwrightArgs: string[] = []
 
         if (process.env.PLAYWRIGHT_MCP_VERSION) {
@@ -38,7 +38,7 @@ export class PlaywrightMCPServer {
             playwrightArgs.push('--headless')
         }
 
-        return new GeminiServerMCP({
+        return new OpenAIServerMCP({
             client: {
                 name: 'playwright mcp server',
                 version: '1.0.0',

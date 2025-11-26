@@ -1,0 +1,202 @@
+import OpenAI from "openai"
+import { ChatCompletionMessageParam, ChatCompletion } from "openai/resources/chat/completions"
+import { ConfigurationManager } from "../configuration-manager"
+import { ToolRegistry } from "../tool/tool-registry"
+import { json } from "stream/consumers"
+
+export type OpenAIClientDependencies = {
+    configurationManager: ConfigurationManager
+    toolRegistry: ToolRegistry
+}
+
+export class OpenAIClient {
+    private client!: OpenAI
+    private messages: ChatCompletionMessageParam[] = []
+    private readonly configurationManager: ConfigurationManager
+    private readonly toolRegistry: ToolRegistry
+    private readonly RETRYABLE_STATUS_CODES = [408, 409, 429, 500, 502, 503, 504]
+
+    constructor({ configurationManager, toolRegistry }: OpenAIClientDependencies) {
+        this.configurationManager = configurationManager
+        this.toolRegistry = toolRegistry
+    }
+
+    async initialize(): Promise<void> {
+        this.client = new OpenAI({
+            apiKey: this.configurationManager.getApiKey(),
+            baseURL: this.configurationManager.getBaseURL(),
+            timeout: this.configurationManager.getTimeout(),
+            maxRetries: 0
+        })
+        this.messages = []
+    }
+
+    getMessages(): ChatCompletionMessageParam[] {
+        return this.messages
+    }
+
+    getToolRegistry(): ToolRegistry {
+        return this.toolRegistry
+    }
+
+    getConfigurationManager(): ConfigurationManager {
+        return this.configurationManager
+    }
+
+    async sendMessageWithRetry(userMessage: string | ChatCompletionMessageParam[]): Promise<ChatCompletion> {
+        if (typeof userMessage === 'string') {
+            this.messages.push({ role: 'user', content: userMessage })
+        } else {
+            this.messages.push(...userMessage)
+        }
+
+        return this.executeWithRetry(async () => {
+            const tools = await this.toolRegistry.getTools()
+            const response = await this.client.chat.completions.create({
+                model: this.configurationManager.getModel(),
+                messages: this.messages,
+                tools,
+                tool_choice: this.configurationManager.getToolChoice(),
+                parallel_tool_calls: false,
+                temperature: this.configurationManager.getTemperature()
+            })
+
+            if (response.choices[0]?.message) {
+                this.messages.push(response.choices[0].message)
+            }
+
+            return response
+        })
+    }
+
+    async addToolResponse(toolCallId: string, content: string): Promise<void> {
+        this.messages.push({
+            role: 'tool',
+            tool_call_id: toolCallId,
+            content
+        })
+    }
+
+    async addUserMessage(content: string): Promise<void> {
+        this.messages.push({
+            role: 'user',
+            content
+        })
+    }
+
+    async addScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
+        this.messages.push({
+            role: 'user',
+            content: [
+                {
+                    type: 'text',
+                    text: 'Here is the current screenshot of the page:'
+                },
+                {
+                    type: 'image_url',
+                    image_url: {
+                        url: `data:${mimeType};base64,${base64Data}`,
+                        detail: 'low'
+                    }
+                }
+            ]
+        })
+    }
+
+    async sendToolResponseWithRetry(): Promise<ChatCompletion> {
+        return this.executeWithRetry(async () => {
+            const tools = await this.toolRegistry.getTools()
+            const response = await this.client.chat.completions.create({
+                model: this.configurationManager.getModel(),
+                messages: this.messages,
+                tools,
+                tool_choice: this.configurationManager.getToolChoice(),
+                temperature: this.configurationManager.getTemperature()
+            })
+
+            if (response.choices[0]?.message) {
+                this.messages.push(response.choices[0].message)
+            }
+
+            return response
+        })
+    }
+
+    private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+        const maxRetries = this.configurationManager.getMaxRetries()
+        let lastError: Error | null = null
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await operation()
+            } catch (error: any) {
+                lastError = error
+                const statusCode = this.getStatusCode(error)
+                
+                if (!this.isRetryable(statusCode) || attempt === maxRetries) {
+                    throw this.enhanceError(error, attempt, maxRetries)
+                }
+                
+                const retryAfter = this.getRetryAfterSeconds(error)
+                const delay = retryAfter ? retryAfter * 1000 : this.calculateBackoff(attempt)
+                
+                console.log(`| status: ${statusCode} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
+                await this.sleep(delay)
+            }
+        }
+
+        throw lastError || new Error('Unexpected error in retry loop')
+    }
+
+    private getStatusCode(error: any): number | null {
+        return error?.status || error?.statusCode || error?.code || null
+    }
+
+    private isRetryable(statusCode: number | null): boolean {
+        if (statusCode === null) return false
+        return this.RETRYABLE_STATUS_CODES.includes(statusCode)
+    }
+
+    private getRetryAfterSeconds(error: any): number | null {
+        const headers = error?.headers
+        if (!headers) return null
+        
+        const retryAfter = headers.get?.('retry-after') || headers['retry-after']
+        if (!retryAfter) return null
+        
+        const seconds = parseInt(retryAfter, 10)
+        return isNaN(seconds) ? null : seconds
+    }
+
+    private calculateBackoff(attempt: number): number {
+        const delays = [1_000, 10_000, 60_000]
+        const baseDelay = delays[Math.min(attempt, delays.length - 1)]
+        return baseDelay
+    }
+
+    private sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms))
+    }
+
+    countHistoryTokens(): number {
+        const totalChars = this.messages.reduce((sum, msg) => {
+            if (typeof msg.content === 'string') {
+                return sum + msg.content.length
+            }
+            return sum
+        }, 0)
+        return Math.ceil(totalChars / 4)
+    }
+
+    replaceHistory(history: ChatCompletionMessageParam[]): void {
+        this.messages = [...history]
+    }
+
+    private enhanceError(error: any, attempt?: number, maxRetries?: number): Error {
+        const status = error?.status || error?.statusCode || error?.code || 'unknown'
+        const message = error?.message || null
+        
+        let details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
+        return new Error(details)
+    }
+}

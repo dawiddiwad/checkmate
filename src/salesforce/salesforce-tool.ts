@@ -1,31 +1,37 @@
-import { FunctionDeclaration, FunctionCall, Type } from "@google/genai"
+import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceCliHandler } from "./salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "./salesforce-cli-authenticator"
-import { GeminiTool } from "../mcp/tool/gemini-tool"
+import { OpenAITool, ToolCallArgs } from "../mcp/tool/openai-tool"
 
 export type Response = {
     url: string
 }
 
-export class SalesforceTool implements GeminiTool {
-    functionDeclarations: FunctionDeclaration[]
+export class SalesforceTool implements OpenAITool {
+    static readonly TOOL_GET_SALESFORCE_LOGIN_URL = 'get_salesforce_login_url'
+
+    functionDeclarations: ChatCompletionFunctionTool[]
+    
     constructor() {
         this.functionDeclarations = [
             {
-                name: 'get_salesforce_login_url',
-                description: 'Get the login url of the salesforce org, so user can open it in the browser to login to the org',
-                response: {
-                    type: Type.OBJECT,
-                    properties: {
-                        url: { type: Type.STRING, description: 'The login url of the salesforce org' }
+                type: 'function',
+                function: {
+                    name: SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL,
+                    description: 'Get the login url of the salesforce org, so user can open it in the browser to login to the org',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            url: { type: 'string', description: 'The login url of the salesforce org' }
+                        }
                     }
                 }
             }
         ]
     }
 
-    async call(specified: FunctionCall): Promise<Response> {
-        if (specified.name === 'get_salesforce_login_url') {
+    async call(specified: ToolCallArgs): Promise<Response> {
+        if (specified.name === SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL) {
             return { url: await this.getSalesforceLoginUrl() }
         }
         throw new Error(`salesforce tool not found: ${specified.name}`)

@@ -51,6 +51,25 @@ export class OpenAITokenPricing {
             case 'claude-3-opus-20240229':
             case 'claude-3-opus-latest':
                 return this.roundToCents(15.00)
+            case 'claude-opus-4.5':
+            case 'claude-opus-4-5':
+                return this.roundToCents(5.00)
+            case 'claude-opus-4.1':
+            case 'claude-opus-4-1':
+            case 'claude-opus-4':
+                return this.roundToCents(15.00)
+            case 'claude-sonnet-4.5':
+            case 'claude-sonnet-4-5':
+            case 'claude-sonnet-4':
+            case 'claude-sonnet-3.7':
+                return this.roundToCents(3.00)
+            case 'claude-haiku-4.5':
+            case 'claude-haiku-4-5':
+                return this.roundToCents(1.00)
+            case 'claude-haiku-3.5':
+                return this.roundToCents(0.80)
+            case 'claude-haiku-3':
+                return this.roundToCents(0.25)
             case 'gemini-3-pro-preview':
                 return this.roundToCents(2.00)
             case 'gemini-2.5-pro':
@@ -147,6 +166,25 @@ export class OpenAITokenPricing {
             case 'claude-3-opus-20240229':
             case 'claude-3-opus-latest':
                 return this.roundToCents(75.00)
+            case 'claude-opus-4.5':
+            case 'claude-opus-4-5':
+                return this.roundToCents(25.00)
+            case 'claude-opus-4.1':
+            case 'claude-opus-4-1':
+            case 'claude-opus-4':
+                return this.roundToCents(75.00)
+            case 'claude-sonnet-4.5':
+            case 'claude-sonnet-4-5':
+            case 'claude-sonnet-4':
+            case 'claude-sonnet-3.7':
+                return this.roundToCents(15.00)
+            case 'claude-haiku-4.5':
+            case 'claude-haiku-4-5':
+                return this.roundToCents(5.00)
+            case 'claude-haiku-3.5':
+                return this.roundToCents(4.00)
+            case 'claude-haiku-3':
+                return this.roundToCents(1.25)
             case 'gemini-3-pro-preview':
                 return this.roundToCents(12.00)
             case 'gemini-2.5-pro':

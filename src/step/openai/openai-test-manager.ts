@@ -58,6 +58,7 @@ class OpenAITestStep {
     async run(step: Step): Promise<void> {
         this.logStepStart(step)
         try {
+            this.responseProcessor.resetStepTokens()
             await this.openaiClient.initialize()
             const response = await this.openaiClient.sendMessageWithRetry(RUN_STEP_PROMPT(step))
             await this.responseProcessor.handleResponse(response, step, this.stepStatusCallback)

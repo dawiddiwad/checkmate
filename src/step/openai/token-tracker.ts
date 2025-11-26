@@ -7,6 +7,11 @@ export class TokenTracker {
     private outputTokensUsedForTest = 0
     private outputTokensUsedForStep = 0
 
+    resetStep(): void {
+        this.inputTokensUsedForStep = 0
+        this.outputTokensUsedForStep = 0
+    }
+
     log(response: ChatCompletion, historyTokenCount: number, model: string): void {
         if (response.usage) {
             const inputTokens = response.usage.prompt_tokens ?? 0

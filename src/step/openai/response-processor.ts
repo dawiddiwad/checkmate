@@ -31,6 +31,10 @@ export class ResponseProcessor {
         this.tokenTracker = new TokenTracker()
     }
 
+    resetStepTokens(): void {
+        this.tokenTracker.resetStep()
+    }
+
     async handleResponse(response: ChatCompletion, step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
         if (env.OPENAI_API_RATE_LIMIT_DELAY_SECONDS) {
             console.log(`\nwaiting ${env.OPENAI_API_RATE_LIMIT_DELAY_SECONDS} seconds to avoid rate limit`)

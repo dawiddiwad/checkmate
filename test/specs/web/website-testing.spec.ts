@@ -4,7 +4,7 @@ test.describe.parallel('website testing', async () => {
     test('google search for playwright test automation', async ({ ai }) => {
         await test.step('Open the browser and navigate to the google.com', async () => {
             await ai.run({
-                action: `Open the browser and navigate to the google.com`,
+                action: `Open the browser and navigate to the google.com and accept any consents.`,
                 expect: `google.com is loaded successfully and the search bar is visible on the page`
             })
         })
@@ -140,6 +140,45 @@ test.describe.parallel('website testing', async () => {
                 action: `Scroll down the page.`,
                 expect: `The user is able to scroll through the entire list of 
                 money market funds in the table.`
+            })
+        })
+    })
+
+    test('E-commerce Checkout Flow with Form Validation', async ({ ai }) => {
+        await test.step('Navigate to the e-commerce website homepage', async () => {
+            await ai.run({
+                action: `Navigate to the https://sweetshop.netlify.app/ website.`,
+                expect: `The Sweet Shop homepage loads successfully.`
+            })
+        })
+        await test.step('Click the Browse Sweets button', async () => {
+            await ai.run({
+                action: `Click the 'Browse Sweets' button.`,
+                expect: `The user is navigated to the 'Browse sweets' page, which displays a grid of available sweets.`
+            })
+        })
+        await test.step('Add Bon Bons to basket 3 times', async () => {
+            await ai.run({
+                action: `Click the 'Add to Basket' button for the 'Bon Bons' product until the basket icon in the header reaches 3.`,
+                expect: `The basket icon in the header updates its count to '3'.`
+            })
+        })
+        await test.step('Click on the Basket link', async () => {
+            await ai.run({
+                action: `Click on the 'Basket' link in the header.`,
+                expect: `The 'Your Basket' page is displayed, showing 'Strawberry Bon Bons' with a quantity of 3 and a total price of £3.00.`
+            })
+        })
+        await test.step('Fill in the Billing address form', async () => {
+            await ai.run({
+                action: `Fill in the 'Billing address' form with the following details: First name: 'Agentio', Last name: 'Testing', Email: 'yolo@123.pl', Address: '126B Main Street', Address 2: '2', Country: 'United Kingdom', City: 'Swansea', Zip: '1001'.`,
+                expect: `The corresponding input fields in the 'Billing address' section are populated with the entered data.`
+            })
+        })
+        await test.step('Attempt to continue to checkout without payment details', async () => {
+            await ai.run({
+                action: `Scroll down to the 'Payment' section and click the 'Continue to checkout' button without filling in any payment details.`,
+                expect: `Validation error messages appear under the 'Name on card', 'Credit card number', 'Expiration', and 'CVV' fields. The borders of these input fields turn red to indicate an error.`
             })
         })
     })

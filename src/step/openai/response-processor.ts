@@ -118,14 +118,11 @@ export class ResponseProcessor {
         // Add tool response first
         await this.openaiClient.addToolResponse(toolCallId, responseContent)
         
-        // If this is a snapshot and screenshots are enabled, add screenshot as a separate user message
+        // If screenshots are enabled, add screenshot as a separate user message
         // This uses OpenAI's vision API format which is much more token-efficient
-        if (name.includes("snapshot") && config.includeScreenshotInSnapshot()) {
+        if (config.includeScreenshotInSnapshot()) {
             const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
             await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
-        } else {
-            // const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
-            // await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
         }
         
         // Remove old snapshot entries AFTER adding current tool response to maintain message ordering

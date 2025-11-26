@@ -43,22 +43,10 @@ export class ConfigurationManager {
     }
 
     getAllowedFunctionNames(): string[] {
-        return [
-            "browser_click",
-            "browser_evaluate",
-            "browser_fill_form",
-            "browser_handle_dialog",
-            "browser_hover",
-            "browser_navigate",
-            "browser_press_key",
-            "browser_select_option",
-            "browser_snapshot",
-            "browser_type",
-            "browser_wait_for",
-            "browser_install",
-            "fail_test_step",
-            "pass_test_step",
-            "get_salesforce_login_url"
-        ]
+        const envValue = process.env.OPENAI_ALLOWED_TOOLS?.trim()
+        if (!envValue) {
+            return []
+        }
+        return envValue.split(",").map(name => name.trim()).filter(name => name.length > 0)
     }
 }

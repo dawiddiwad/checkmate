@@ -11,7 +11,7 @@ export class ConfigurationManager {
     }
 
     getModel(): string {
-        return process.env.OPENAI_MODEL ?? "gpt-5"
+        return process.env.OPENAI_MODEL ?? "gpt-5-mini"
     }
 
     getMaxRetries(): number {

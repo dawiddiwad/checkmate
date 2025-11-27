@@ -30,7 +30,7 @@ export class PlaywrightMCPServer {
             playwrightArgs.push(`--save-video=${process.env.PLAYWRIGHT_MCP_SAVE_VIDEO_SIZE}`)
         }
 
-        if (process.env.PLAYWRIGHT_MCP_ISOLATED === 'true') {
+        if (process.env.PLAYWRIGHT_MCP_ISOLATED !== 'false') {
             playwrightArgs.push('--isolated')
         }
 

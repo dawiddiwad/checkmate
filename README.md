@@ -2,7 +2,7 @@
 
 Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLMs with Playwright's ecosystem for smarter, more resilient execution.
 
-Try with any OpenAI API compatible provider: Claude, Gemini, Grok, or even local models via LM Studio and Ollama.
+Enjoy Claude, Gemini, xAI, or any OpenAI API compatible provider - even your private local models via LM Studio and Ollama!
 
 ### How it works?
 Write tests in natural language:
@@ -33,7 +33,7 @@ await expect(page.getByRole('link', { name: '#search-result' })
 ### Prerequisites
 
 - Node.js [18+ or LTS](https://nodejs.org/en/download) 
-- OpenAI [API key](https://platform.openai.com/api-keys) (or compatible provider: Claude, Gemini, etc.)
+- OpenAI [API key](https://platform.openai.com/api-keys) (or compatible provider: Claude, Gemini, xAI etc.)
 - (optional) [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli) for Salesforce testing
 
 ### Installation
@@ -60,11 +60,10 @@ Edit `.env` file based on `.env.example` that has a comprehensive configuration 
 OPENAI_API_KEY=your_api_key_here
 
 # Optional - Override base URL for compatible providers (Claude, Gemini, etc.)
-# OPENAI_BASE_URL=https://api.anthropic.com/v1
+# OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 
 # Model configuration
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_TEMPERATURE=0.1
+OPENAI_MODEL=gpt-5-mini
 
 # Playwright settings
 PLAYWRIGHT_MCP_BROWSER=chromium
@@ -168,7 +167,7 @@ await test.step('Fill form and submit', async () => {
 | `PLAYWRIGHT_MCP_HEADLESS` | `false` | Run browser in headless mode |
 | `PLAYWRIGHT_MCP_OUTPUT_DIR` | `./test-results` | Screenshots and traces location |
 | `PLAYWRIGHT_MCP_SAVE_VIDEO_SIZE` | - | Record video: WxH format (eg: 1280x720) |
-| `PLAYWRIGHT_MCP_ISOLATED` | `false` | Use isolated browser contexts |
+| `PLAYWRIGHT_MCP_ISOLATED` | `true` | Use isolated browser contexts |
 | `PLAYWRIGHT_MCP_CAPS` | - | Custom browser capabilities (JSON) |
 
 ## Cost Management

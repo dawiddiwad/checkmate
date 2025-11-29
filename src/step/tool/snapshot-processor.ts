@@ -7,7 +7,6 @@ export class SnapshotProcessor {
             if (!responseText) {
                 return toolResponse
             }
-
             const compressedText = this.compressYaml(responseText)
             return this.updateResponse(toolResponse, compressedText)
         } catch (error) {
@@ -97,10 +96,16 @@ export class SnapshotProcessor {
         }
 
         let ref = ""
-        const refMatch = content.match(/\[ref=([^\]]+)\]/)
-        if (refMatch) {
-            ref = ` ref=${refMatch[1]}`
-            content = content.replace(refMatch[0], "").trim()
+        const bracketRefMatch = content.match(/\[ref=([^\]]+)\]/)
+        if (bracketRefMatch) {
+            ref = ` [ref=${bracketRefMatch[1]}]`
+            content = content.replace(bracketRefMatch[0], "").trim()
+        } else {
+            const unbracketRefMatch = content.match(/\bref=([^\s\]]+)/)
+            if (unbracketRefMatch) {
+            ref = ` [ref=${unbracketRefMatch[1]}]`
+            content = content.replace(unbracketRefMatch[0], "").trim()
+            }
         }
 
         const attrs: string[] = []
@@ -160,7 +165,8 @@ export class SnapshotProcessor {
             cursor: "cur",
             disabled: "dis",
             selected: "sel",
-            level: "lv"
+            level: "lv",
+            unchanged: "unc",
         }
         return attrMap[attr] || attr
     }
@@ -200,7 +206,6 @@ export class SnapshotProcessor {
                 } as Record<string, unknown>
             }
         }
-
         return toolResponse
     }
 }

@@ -23,7 +23,7 @@ test.describe.parallel('website testing', async () => {
         await test.step('Search for documentation item in the search results', async () => {
             await ai.run({
                 action: `Type in 'Agent' into the search bar`,
-                expect: `The search results contain 'Planner' item`
+                expect: `The search results contains 'Planner' item`
             })
         })
         await test.step(`Click on the 'Planner' item in the search results`, async () => {
@@ -179,6 +179,48 @@ test.describe.parallel('website testing', async () => {
             await ai.run({
                 action: `Scroll down to the 'Payment' section and click the 'Continue to checkout' button without filling in any payment details.`,
                 expect: `Validation error messages appear under the 'Name on card', 'Credit card number', 'Expiration', and 'CVV' fields. The borders of these input fields turn red to indicate an error.`
+            })
+        })
+    })
+
+    test('browse ollama models', async ({ ai }) => {
+        await test.step('Navigate to ollama.com and search for model details', async () => {
+            await ai.run({
+            action: `
+                Navigate to https://ollama.com/
+                type 'qwen3' into the 'Search models' search bar
+                click on 'qwen3-vl' link from the results,
+                click on 'qwen3-vl:235b' linik from the models list,
+            `,
+            expect: `qwen3-vl:235b model page is displayed with model details,
+                describing its features and capabilities.`
+            })
+        })
+    })
+
+    test('browse hugginface docs', async ({ ai }) => {
+        await test.step('Navigate to huggingface docs and open Gemini documentation', async () => {
+            await ai.run({
+            action: `
+                Navigate to https://huggingface.co, click the 'Docs' link in the top navigation bar,
+                type 'gemini' into the 'Search across all docs' search bar,
+                and click the 'Using Google Gemini Models' link from the results.
+            `,
+            expect: `The Hugging Face docs page loads, the search results include 'Using Google Gemini Models',
+            and the documentation page for using Google Gemini models is displayed with initialization and usage details.`
+            })
+        })
+    })
+
+        test('browse hugginface models', async ({ ai }) => {
+        await test.step('Navigate to huggingface.co', async () => {
+            await ai.run({
+                action: `
+                    Navigate to the https://huggingface.co website.
+                    Type 'Qwen3-VL-4B' in the search bar.
+                    Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.
+                    `,
+                expect: `Qwen3-VL-4B-Instruct model page is displayed with model details`
             })
         })
     })

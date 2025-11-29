@@ -58,7 +58,7 @@ export class OpenAIClient {
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
                 parallel_tool_calls: false,
-                temperature: this.configurationManager.getTemperature()
+                temperature: this.configurationManager.getTemperature(),
             })
 
             if (response.choices[0]?.message) {

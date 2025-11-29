@@ -43,6 +43,7 @@ const PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS = `
     disabled: dis
     selected: sel
     level: lv
+    unchanged: unc
 `
 
 export const RUN_STEP_PROMPT = (step: Step) => `

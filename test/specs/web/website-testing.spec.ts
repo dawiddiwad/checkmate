@@ -54,7 +54,7 @@ test.describe.parallel('website testing', async () => {
         await test.step(`Scroll trough the article content to disqus section`, async () => {
             await ai.run({
                 action: `Scroll trough the article content until the disqus section,
-                this means to scroll to the page bottom and then 1000 pixels up,
+                this means to scroll to the page down enough so that the disqus section is in view.,
                 skip any consents if prompted.`,
                 expect: `The user is able to scroll through the article content,
                 and the disqus section is in the view.`

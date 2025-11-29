@@ -60,7 +60,7 @@ Edit `.env` file based on `.env.example` that has a comprehensive configuration 
 OPENAI_API_KEY=your_api_key_here
 
 # Optional - Override base URL for compatible providers (Claude, Gemini, etc.)
-# OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+# OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/ #Gemini base url example
 
 # Model configuration
 OPENAI_MODEL=gpt-5-mini

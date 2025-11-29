@@ -37,8 +37,11 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Best practices guide
 
 - [ ] **Enhanced Playwright Fixtures**
-  - [ ] Screenshots in reports
-  - [ ] Videos in reports
+  - [ ] Run Plawyright MCP programatically, that will enable:
+    - [ ] Capture Browser Context from Playwright MCP
+    - [ ] Snapshot screenshots being passed as blobs without saving
+    - [ ] Screenshots in reports
+    - [ ] Videos in reports
 
 - [ ] **Usage Monitoring & Limits**
   - [x] Basic token counting per step
@@ -68,13 +71,13 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Token usage logging per step
   - [ ] Structured logging (JSON format)
   - [ ] Log levels (DEBUG, INFO, WARN, ERROR)
-  - [ ] Execution trace with timing
   - [x] AI reasoning/thought capture
+  - [ ] AI-generated test failure analysis
 
 
 ## Version 0.3
 
-**Focus**: UI, Performance, Visual Testing
+**Focus**: UI, E2E modes, Visual Testing
 
 - [ ] **UI Layer V1**
   - [ ] Automatic test generation from recorded actions (video and streaming)
@@ -82,6 +85,23 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Real-time test execution viewer
   - [ ] Run, Pause, Resume, Re-start ability
   - [ ] Commit/Read test cases in native playwright format
+
+- [ ] **E2E modes**
+  - [ ] step-by-step (hard) assertions mode
+  - [ ] step-by-step (soft) assertions mode
+  - [ ] flow mode using a set of E2E goals as assertions rather than discrete steps:
+    - [ ] execution is driven by a plan, which can be:
+      - [ ] text (natural language description of the desired workflow)
+      - [ ] video (recording of an example execution)
+      - [ ] step-by-step test case written in natural language (Playwright test spec)
+    - [ ] tests are spawned in series (e.g., 10) using controlled temperature jitter to promote slight variance for each run. At the end, the average pass rate is used to calculate an E2E flow health-check score
+
+- [ ] **Visual Testing**
+  - [ ] Proper screenshot scaling for Playwright MCP vision tools
+
+## Version 0.4
+
+**Focus**: Performance, Production Readiness & Scaling
 
 - [ ] **Explicit Caching?**
   - [ ] Cache common page structures
@@ -94,14 +114,6 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] New `page_focused_snapshot` tool
   - [ ] Handles large/complex pages efficiently
   - [ ] Reduces token consumption by 60%
-
-- [ ] **Visual Testing**
-  - [ ] AI-powered visual validation
-  - [ ] Layout consistency checks
-
-## Version 0.4
-
-**Focus**: Production Readiness & Scaling
 
 - [ ] **Standalone Playwright Integration?**
   - [ ] Option to use Playwright Page directly (no MCP)
@@ -121,7 +133,6 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 - [ ] **Advanced Reporting**
   - [ ] Real-time test execution dashboard
-  - [ ] AI-generated test failure analysis
 
 ## Version 1.0
 

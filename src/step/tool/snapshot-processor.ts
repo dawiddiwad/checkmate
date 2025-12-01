@@ -1,5 +1,37 @@
 import { ToolResponse } from "./tool-registry"
 
+export const typeMap: Record<string, string> = {
+    generic: "g",
+    button: "b",
+    link: "l",
+    img: "i",
+    navigation: "nav",
+    list: "ul",
+    listitem: "li",
+    combobox: "cb",
+    searchbox: "sb",
+    tooltip: "tltp",
+    heading: "h",
+    paragraph: "p",
+    table: "tbl",
+    row: "tr",
+    cell: "cl",
+    rowheader: "rh",
+    gridcell: "gcl",
+    columnheader: "ch",
+    rowgroup: "rgrp",
+    article: "art",
+    separator: "hr",
+    tree: "tree",
+    treeitem: "ti",
+    tab: "tab",
+    tablist: "tlst",
+    tabpanel: "tpnl",
+    group: "grp",
+    status: "stat",
+    main: "main"
+}
+
 export class SnapshotProcessor {
     getCompressed(toolResponse: ToolResponse): ToolResponse {
         try {
@@ -103,8 +135,8 @@ export class SnapshotProcessor {
         } else {
             const unbracketRefMatch = content.match(/\bref=([^\s\]]+)/)
             if (unbracketRefMatch) {
-            ref = ` [ref=${unbracketRefMatch[1]}]`
-            content = content.replace(unbracketRefMatch[0], "").trim()
+                ref = ` [ref=${unbracketRefMatch[1]}]`
+                content = content.replace(unbracketRefMatch[0], "").trim()
             }
         }
 
@@ -126,37 +158,6 @@ export class SnapshotProcessor {
     }
 
     private compressElementType(type: string): string {
-        const typeMap: Record<string, string> = {
-            generic: "g",
-            button: "b",
-            link: "l",
-            img: "i",
-            navigation: "nav",
-            list: "ul",
-            listitem: "li",
-            combobox: "cb",
-            searchbox: "sb",
-            tooltip: "tltp",
-            heading: "h",
-            paragraph: "p",
-            table: "tbl",
-            row: "tr",
-            cell: "cl",
-            rowheader: "rh",
-            gridcell: "gcl",
-            columnheader: "ch",
-            rowgroup: "rgrp",
-            article: "art",
-            separator: "hr",
-            tree: "tree",
-            treeitem: "ti",
-            tab: "tab",
-            tablist: "tlst",
-            tabpanel: "tpnl",
-            group: "grp",
-            status: "stat",
-            main: "main"
-        }
         return typeMap[type] || type
     }
 

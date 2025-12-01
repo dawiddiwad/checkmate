@@ -9,6 +9,7 @@ import { TokenTracker } from "./token-tracker"
 import { env } from "process"
 import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 import { StepTool } from "../tool/step-tool"
+import { ToolResponse } from "../tool/tool-registry"
 
 export type ResponseProcessorDependencies = {
     playwrightMCP: OpenAIServerMCP
@@ -67,12 +68,12 @@ export class ResponseProcessor {
                     
                     if (name.includes("browser")) {
                         const toolResponse = await toolRegistry.executeBrowserTool(toolCallObj)
-                        await this.dispatchToolResponse(toolCall.id, name, toolResponse, step, stepStatusCallback)
+                        await this.dispatchToolResponse(toolCall.id, toolResponse, step, stepStatusCallback)
                     } else if (name.includes("test_step")) {
                         toolRegistry.executeStepTool(toolCallObj, stepStatusCallback)
                     } else if (name.includes("salesforce")) {
                         const toolResponse = await toolRegistry.executeSalesforceTool(toolCallObj)
-                        await this.dispatchToolResponse(toolCall.id, name, toolResponse, step, stepStatusCallback)
+                        await this.dispatchToolResponse(toolCall.id, toolResponse, step, stepStatusCallback)
                     } else {
                         throw new Error(`Invalid tool name, received call\n: ${JSON.stringify(toolCall, null, 2)}`)
                     }
@@ -100,15 +101,13 @@ export class ResponseProcessor {
 
     private async dispatchToolResponse(
         toolCallId: string,
-        name: string,
-        toolResponse: { name?: string; response: any },
+        toolResponse: ToolResponse,
         step: Step,
         stepStatusCallback: StepStatusCallback
     ): Promise<void> {
         const config = this.openaiClient.getConfigurationManager()
-        const shouldCompress = config.enableSnapshotCompression()
         
-        const processedResponse = shouldCompress 
+        const processedResponse = config.enableSnapshotCompression() 
             ? this.snapshotProcessor.getCompressed(toolResponse) 
             : toolResponse
         const responseContent = JSON.stringify(processedResponse.response)

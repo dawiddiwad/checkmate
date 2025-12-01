@@ -1,52 +1,118 @@
 import { test } from "../../fixtures/checkmate"
 
-test.describe.parallel('website testing', async () => {
-    test('google search for playwright test automation', async ({ ai }) => {
-        await test.step('Open the browser and navigate to the google.com', async () => {
+test.describe('single-step flows', async () => {
+    test('browse ollama models', async ({ ai }) => {
+        await test.step('Navigate to ollama.com and search for model details', async () => {
             await ai.run({
-                action: `Open the browser and navigate to the google.com and accept any consents.`,
-                expect: `google.com is loaded successfully and the search bar is visible on the page`
+                action: `
+                Navigate to https://ollama.com/
+                type 'qwen3' into the 'Search models' search bar
+                click on 'qwen3-vl' link from the results,
+                click on 'qwen3-vl:235b' linik from the models list,
+            `,
+                expect: `qwen3-vl:235b model page is displayed with model details,
+                describing its features and capabilities.`
             })
         })
-        await test.step('Search for playwright test automation', async () => {
+    })
+
+    test('browse huggingface docs', async ({ ai }) => {
+        await test.step('Navigate to huggingface docs and open Gemini documentation', async () => {
             await ai.run({
-                action: `Search for 'playwright test automation' in the search bar`,
-                expect: `The search results contains the 'https://playwright.dev/' link`
+                action: `
+                Navigate to https://huggingface.co, click the 'Docs' link in the top navigation bar,
+                type 'gemini' into the 'Search across all docs' search bar,
+                and click the 'Using Google Gemini Models' link from the results.
+            `,
+                expect: `The Hugging Face docs page loads, the search results include 'Using Google Gemini Models',
+            and the documentation page for using Google Gemini models is displayed with initialization and usage details.`
             })
         })
-        await test.step('Click on the playwright website result', async () => {
+    })
+
+    test('browse huggingface models', async ({ ai }) => {
+        await test.step('Navigate to huggingface.co', async () => {
             await ai.run({
-                action: `Click on the result with 'https://playwright.dev/' link`,
-                expect: `The page title contains 'Playwright'`
+                action: `
+                    Navigate to the https://huggingface.co website.
+                    Type 'Qwen3-VL-4B' in the search bar.
+                    Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.
+                    `,
+                expect: `Qwen3-VL-4B-Instruct model page is displayed with model details`
             })
         })
-        await test.step('Search for documentation item in the search results', async () => {
+    })
+})
+
+test.describe.parallel('multi-step flows', async () => {
+    test('google search', async ({ ai }) => {
+        await test.step('Open the browser and navigate to google.com', async () => {
             await ai.run({
-                action: `Type in 'Agent' into the search bar`,
-                expect: `The search results contain 'Planner' item`
+                action: `Navigate to the google.com`,
+                expect: `google.com is loaded successfully and a consent prompt is visible`
             })
         })
-        await test.step(`Click on the 'Planner' item in the search results`, async () => {
+
+        await test.step('Accept Google consents', async () => {
             await ai.run({
-                action: `Click on the Planner item in the search results`,
-                expect: `Planner Agent documetnation is displayed 
-                explaing how to use this agent`
+                action: `Accept cookie consent`,
+                expect: `Consent is closed and the search bar is visible on the page`
+            })
+        })
+
+        await test.step('Submit playwright search', async () => {
+            await ai.run({
+                action: `Type 'playwright test automation' into the search field
+                and press the 'Enter' key`,
+                expect: `The search results are displayed`
+            })
+        })
+
+        await test.step('Click on the playwright website link', async () => {
+            await ai.run({
+                action: `Click on the result that contains 'playwright.dev' link`,
+                expect: `Playwright home page is displayed.`
+            })
+        })
+
+        await test.step('Search for Agent documentation', async () => {
+            await ai.run({
+                action: `Click on the Search icon or button on the playwright website 
+                and type 'Agent' into the 'Search docs' input field`,
+                expect: `The search results are displayed`
+            })
+        })
+
+        await test.step(`View 'Planner' agent details`, async () => {
+            await ai.run({
+                action: `Click on the 'Planner' in the search results`,
+                expect: `Planner Agent documentation is displayed explaing how to use this agent`
             })
         })
     })
 
     test('search for an article and attempt to comment without logging in', async ({ ai }) => {
-        await test.step(`Navigate to Threshold homepage and open the first article`, async () => {
+        await test.step('Navigate to Threshold homepage', async () => {
             await ai.run({
-                action: `Navigate to 'https://www.thresholdx.net' 
-                and click on the first article displayed on the homepage. Accept any consents.`,
-                expect: `The browser navigates to the first article page, displaying its content. 
-                The comments section is visible, and the comment input area is ready for interaction.`
+            action: `Navigate to 'https://www.thresholdx.net'`,
+            expect: `Navigated to Threshold homepage successfully.`
+            })
+        })
+        await test.step('Accept privacy consents', async () => {
+            await ai.run({
+            action: `Accept privacy consents if they appear`,
+            expect: `Privacy consents are accepted.`
+            })
+        })
+        await test.step('Open the first article', async () => {
+            await ai.run({
+            action: `Click on the first article item displayed on the Headlines section to open it`,
+            expect: `The browser navigates to the first article page, displaying the article content.`
             })
         })
         await test.step(`Wait for newsletter subscribe popup`, async () => {
             await ai.run({
-                action: `Wait for newsletter subscribe popup to appear and skip it. 
+                action: `Wait for ewsletter subscribe popup to appear and skip it. 
                 It should take about 30s for the popup to appear.`,
                 expect: `The newsletter subscribe popup is skipped.`
             })
@@ -54,7 +120,7 @@ test.describe.parallel('website testing', async () => {
         await test.step(`Scroll trough the article content to disqus section`, async () => {
             await ai.run({
                 action: `Scroll trough the article content until the disqus section,
-                this means to scroll to the page bottom and then 1000 pixels up,
+                this means to scroll to the page down enough so that the disqus section is in view.,
                 skip any consents if prompted.`,
                 expect: `The user is able to scroll through the article content,
                 and the disqus section is in the view.`

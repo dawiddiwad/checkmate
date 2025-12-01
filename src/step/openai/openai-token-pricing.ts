@@ -240,4 +240,11 @@ export class OpenAITokenPricing {
     static outputPriceUSD(model: string, tokens: number): number {
         return this.roundToCents(this.outputPricePerMillionUSD(model) * tokens / 1_000_000)
     }
+
+    static totalPriceUSD(model: string, inputTokens: number, outputTokens: number): number {
+        return this.roundToCents(
+            this.inputPriceUSD(model, inputTokens) +
+            this.outputPriceUSD(model, outputTokens)
+        )
+    }
 }

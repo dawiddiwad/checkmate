@@ -1,11 +1,56 @@
 import { ChatCompletion } from "openai/resources/chat/completions"
 import { OpenAITokenPricing } from "./openai-token-pricing"
+import { ConfigurationManager } from "../configuration-manager"
 
 export class TokenTracker {
-    private inputTokensUsedForTest = 0
-    private inputTokensUsedForStep = 0
-    private outputTokensUsedForTest = 0
-    private outputTokensUsedForStep = 0
+    private _inputTokensUsedForTest = 0
+    private _inputTokensUsedForStep = 0
+    private _outputTokensUsedForTest = 0
+    private _outputTokensUsedForStep = 0
+
+    constructor(private config = new ConfigurationManager()) {}
+
+    private get inputTokensUsedForTest(): number { return this._inputTokensUsedForTest }
+    private set inputTokensUsedForTest(value: number) {
+        this._inputTokensUsedForTest = value
+        this.checkBudget()
+    }
+
+    private get inputTokensUsedForStep(): number { return this._inputTokensUsedForStep }
+    private set inputTokensUsedForStep(value: number) {
+        this._inputTokensUsedForStep = value
+        this.checkBudget()
+    }
+
+    private get outputTokensUsedForTest(): number { return this._outputTokensUsedForTest }
+    private set outputTokensUsedForTest(value: number) {
+        this._outputTokensUsedForTest = value
+        this.checkBudget()
+    }
+
+    private get outputTokensUsedForStep(): number { return this._outputTokensUsedForStep }
+    private set outputTokensUsedForStep(value: number) {
+        this._outputTokensUsedForStep = value
+        this.checkBudget()
+    }
+
+    private checkBudget() {
+        const budgetUSD = this.config.getTokenBudgetUSD()
+        const budgetTokens = this.config.getTokenBudgetCount()
+        if (budgetUSD) {
+            const totalCostUSD = OpenAITokenPricing.totalPriceUSD(this.config.getModel(), this.inputTokensUsedForTest, this.outputTokensUsedForTest)
+            if (totalCostUSD > budgetUSD) {
+                throw new Error(`OpenAI API budget of ${budgetUSD}$ per test exceeded. Total cost was: ${totalCostUSD}$`)
+            }
+        }
+        if (budgetTokens) {
+            const budgetCount = budgetTokens
+            const totalTokens = this.inputTokensUsedForTest + this.outputTokensUsedForTest
+            if (totalTokens > budgetCount) {
+                throw new Error(`OpenAI API budget of ${budgetCount} tokens per test exceeded. Total tokens used: ${totalTokens}`)
+            }
+        }
+    }
 
     resetStep(): void {
         this.inputTokensUsedForStep = 0

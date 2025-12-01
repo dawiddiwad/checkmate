@@ -13,7 +13,7 @@ export class GeminiSalesforceTool {
     constructor() {
         this.functionDeclarations = [
             {
-                name: SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL,
+                name: SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
                 description: 'Get the login url of the salesforce org, so user can open it in the browser to login to the org',
                 response: {
                     type: Type.OBJECT,
@@ -26,7 +26,7 @@ export class GeminiSalesforceTool {
     }
 
     async call(specified: FunctionCall): Promise<Response> {
-        if (specified.name === SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL) {
+        if (specified.name === SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG) {
             return { url: await this.getSalesforceLoginUrl() }
         }
         throw new Error(`salesforce tool not found: ${specified.name}`)

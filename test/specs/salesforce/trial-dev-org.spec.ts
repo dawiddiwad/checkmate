@@ -3,7 +3,7 @@
  *
  * @summary
  * This test suite contains a single focused test that:
- * 1. Obtains a Salesforce login URL via SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL and authenticates the session.
+ * 1. Login to a Salesforce org that is set as default via sf cli.
  * 2. Launches the Sales app via the App Launcher.
  * 3. Switches to the Accounts tab.
  * 4. Starts creating a new Account with a unique name (Agentic Test Account + random alphanumeric suffix).
@@ -22,14 +22,12 @@
  *
  * Important details:
  * - The test marks the case as focused/test.only, so it will run exclusively when executed.
- * - The Salesforce login URL is retrieved via the SalesforceTool constant TOOL_GET_SALESFORCE_LOGIN_URL.
  * - The Account name is created with a fixed prefix ("Agentic Test Account") plus a random alphanumeric suffix to avoid collisions.
  * - The test assumes Lightning UI elements (App Launcher, Sales app, Accounts tab, New/Save buttons) are available and interactable.
  *
  * @see {@link https://developer.salesforce.com/tools/salesforcecli} - Salesforce CLI installation and documentation.
  * @see {@link https://www.salesforce.com/form/developer-signup/} - Sign up for a Salesforce Developer org.
  */
-import { SalesforceTool } from "../../../src/salesforce/salesforce-tool"
 import { test } from "../../fixtures/checkmate"
 
 test.describe('trial dev org', async () => {
@@ -37,9 +35,7 @@ test.describe('trial dev org', async () => {
         await test.step('Login to Salesforce Org', async () => {
             await ai.run({
             action: `
-            Login to Salesforce org: 
-            call ${SalesforceTool.TOOL_GET_SALESFORCE_LOGIN_URL} tool to get the URL, 
-            open the browser and navigate to this URL`,
+            Login to Salesforce org`,
             expect: `
             Salesforce org loads successfully and user is authenticated/not on the login page.`
             })
@@ -78,7 +74,7 @@ test.describe('trial dev org', async () => {
         await test.step('Save new Account record', async () => {
             await ai.run({
             action: `
-            Clicking the 'Save' button on the 'New Account' form.`,
+            Click the 'Save' button on the 'New Account' form.`,
             expect: `
             Account record is saved successfully and details view is displayed.`
             })

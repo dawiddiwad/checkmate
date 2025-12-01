@@ -56,22 +56,21 @@ cp .env.example .env
 Edit `.env` file based on `.env.example` that has a comprehensive configuration reference:
 
 ```bash
-# Required - Your OpenAI API key (or compatible provider)
+# Example configuration for Google Gemini (recommended)
+
+# Get a free Gemini API key from https://aistudio.google.com/app/api-keys
 OPENAI_API_KEY=your_api_key_here
 
-# Optional - Override base URL for compatible providers (Claude, Gemini, etc.)
-# OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/ #Gemini base url example
+# Google Gemini Base URL for OpenAI-compatible API
+OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 
 # Model configuration
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gemini-2.5-flash
+OPENAI_TEMPERATURE=0
 
-## Token Usage Guardrails for Each Test
+# Token usage guardrails per test
 OPENAI_API_TOKEN_BUDGET_USD=0.5
 OPENAI_API_TOKEN_BUDGET_COUNT=1000000
-
-# Playwright settings
-PLAYWRIGHT_MCP_BROWSER=chromium
-PLAYWRIGHT_MCP_HEADLESS=false
 ```
 
 ### Running Tests
@@ -238,7 +237,7 @@ sf org login web --alias my-checkmate-org --set-default
 test('create and configure itinerary', async ({ ai }) => {
     await test.step('Login to Salesforce', async () => {
         await ai.run({
-            action: `Login to Salesforce and open Test QA Application`,
+            action: `Login to Salesforce org and open Test QA Application`,
             expect: `Test QA homepage is displayed`
         })
     })
@@ -258,7 +257,11 @@ test('create and configure itinerary', async ({ ai }) => {
 })
 ```
 
-The `get_salesforce_login_url` tool automatically generates a front-door URL for authentication.
+The `login_to_salesforce_org` tool handles the complete Salesforce authentication flow:
+1. Retrieves a front-door URL from the authenticated SF CLI session
+2. Automatically navigates the browser to login
+
+No manual URL handling needed - just call "Login to Salesforce" in your test action.
 
 ## Test Reports
 
@@ -435,10 +438,11 @@ Tools Layer
     └─► SalesforceTool (implements OpenAITool)
             │
             ├─► Dependencies:
+            │       ├─► PlaywrightTool (for browser navigation)
             │       └─► SalesforceCliAuthenticator
             │
             └─► Functions:
-                    └─► get_salesforce_login_url
+                    └─► login_to_salesforce_org (gets frontdoor URL + navigates browser)
 
 MCP Server Layer
     │

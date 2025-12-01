@@ -49,4 +49,20 @@ export class ConfigurationManager {
         }
         return envValue.split(",").map(name => name.trim()).filter(name => name.length > 0)
     }
+
+    getTokenBudgetUSD(): number | undefined {
+        const env = process.env.OPENAI_API_TOKEN_BUDGET_USD
+        if (!env) return undefined
+        const parsed = parseFloat(env)
+        if (Number.isNaN(parsed)) return undefined
+        return parsed
+    }
+
+    getTokenBudgetCount(): number | undefined {
+        const env = process.env.OPENAI_API_TOKEN_BUDGET_COUNT
+        if (!env) return undefined
+        const parsed = parseInt(env, 10)
+        if (Number.isNaN(parsed)) return undefined
+        return parsed
+    }
 }

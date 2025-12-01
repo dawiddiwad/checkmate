@@ -26,7 +26,6 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 - [ ] **OpenAI API Migration**
   - [x] Move from Gemini API to OpenAI API
-  - [ ] Implement abstract costing interface
 
 - [ ] **Comprehensive Documentation**
   - [x] README with setup instructions
@@ -47,7 +46,7 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Basic token counting per step
   - [x] Cost calculation per test
   - [x] Token usage tracking per component
-  - [ ] Budget limits and alerts
+  - [x] Budget limits
   - [x] Compress YAML page snapshots
 
 - [ ] **Error Handling & Timeouts**
@@ -63,7 +62,7 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Experimental repetitive loop detection (live API)
   - [ ] Detect and prevent identical tool calls (max 3 in a row)
   - [x] Tool response timeout retry logic
-  - [ ] Maximum tokens per step limit
+  - [x] Maximum tokens per step limit
   - [x] Rate limiting for API calls
 
 - [ ] **Logging & Post-Processing**

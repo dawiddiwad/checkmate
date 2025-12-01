@@ -65,6 +65,10 @@ OPENAI_API_KEY=your_api_key_here
 # Model configuration
 OPENAI_MODEL=gpt-5-mini
 
+## Token Usage Guardrails for Each Test
+OPENAI_API_TOKEN_BUDGET_USD=0.5
+OPENAI_API_TOKEN_BUDGET_COUNT=1000000
+
 # Playwright settings
 PLAYWRIGHT_MCP_BROWSER=chromium
 PLAYWRIGHT_MCP_HEADLESS=false
@@ -157,6 +161,8 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_ALLOWED_TOOLS` | - | Comma-separated list of allowed tools (if not set, all tools available) |
 | `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
 | `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~40% token reduction) |
+| `OPENAI_API_TOKEN_BUDGET_USD` | - | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.
+| `OPENAI_API_TOKEN_BUDGET_COUNT` | - | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.
 
 ### Playwright MCP Settings
 
@@ -191,9 +197,20 @@ Checkmate includes built-in token usage monitoring:
 2. **Snapshot Compression** - YAML tree elements abbreviation (further ~40% token usage reduction)
 3. **Vision API Screenshots** - Images sent using OpenAI's vision API with `detail: low` (85 tokens per screenshot)
 4. **Chat Recycling** - New session per step to prevent context bloat
-5. **Token Counting** - Real-time usage tracking per step and test
+5. **Token Counting** - Real-time usage tracking per step and test with budgets
 
-### Estimated Costs (GPT-4o-mini)
+### Budgeting & Cost Limits
+
+You can set one or both token budget environment variables to enforce limits during a single test run.
+
+- `OPENAI_API_TOKEN_BUDGET_USD` — Sets a USD budget (e.g. 10.50). The framework checks the current estimated cost (input+output tokens) and throws an error if the budget is exceeded.
+- `OPENAI_API_TOKEN_BUDGET_COUNT` — Sets a token limit (e.g. 100000). The framework tracks input and output tokens across the test and throws an error when the total exceeds this limit.
+
+Notes:
+- Only positive numbers are enforced; `0` or non-positive values are effectively treated as disabled.
+- If the env var is unset or invalid (non-number), it is ignored.
+
+### Estimated Costs (Gemini 2.5 Flash / GPT 5 mini)
 
 - Simple web test (5 steps): ~$0.01 - $0.05
 - Complex Salesforce flow (20 steps): ~$0.10 - $0.40
@@ -211,11 +228,8 @@ Checkmate includes native Salesforce support using the SF CLI:
 # Install Salesforce CLI
 npm install -g @salesforce/cli
 
-# Authenticate to your org
-sf org login web --alias my-org
-
-# Set as default
-sf config set target-org my-org
+# Authenticate to your org and set is as default
+sf org login web --alias my-checkmate-org --set-default
 ```
 
 ### Example Salesforce Test

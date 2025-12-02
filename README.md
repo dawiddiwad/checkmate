@@ -1,4 +1,4 @@
-# checkma♗e
+# **checkmate**
 
 Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLMs with Playwright's ecosystem for smarter, more resilient execution.
 
@@ -67,10 +67,6 @@ OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 # Model configuration
 OPENAI_MODEL=gemini-2.5-flash
 OPENAI_TEMPERATURE=0
-
-# Token usage guardrails per test
-OPENAI_API_TOKEN_BUDGET_USD=0.5
-OPENAI_API_TOKEN_BUDGET_COUNT=1000000
 ```
 
 ### Running Tests
@@ -198,6 +194,7 @@ Checkmate includes built-in token usage monitoring:
 3. **Vision API Screenshots** - Images sent using OpenAI's vision API with `detail: low` (85 tokens per screenshot)
 4. **Chat Recycling** - New session per step to prevent context bloat
 5. **Token Counting** - Real-time usage tracking per step and test with budgets
+6. **Loop Detection** - Detects repetitive tool call patterns and adjusts temperature to break out of loops, preventing runaway token consumption
 
 ### Budgeting & Cost Limits
 
@@ -315,35 +312,46 @@ OpenAITestManager
     │
 OpenAITestStep
     │
-    ├─► OpenAIClient.initialize()
+    ├─► OpenAIClient.initialize(step, stepStatusCallback)
     │       │
     │       ├─► ConfigurationManager.getOpenAIConfig()
-    │       └─► ToolRegistry.getTools()
+    │       ├─► ToolRegistry.getTools()
+    │       └─► ResponseProcessor.resetStepTokens()
     │
-    ├─► OpenAIClient.sendMessageWithRetry(prompt)
+    ├─► OpenAIClient.sendMessage(prompt)
     │       │
-    │       └─► OpenAI-compatible API
+    │       ├─► OpenAI-compatible API
+    │       │
+    │       └─► ResponseProcessor.handleResponse(response)
+    │               │
+    │               ├─► RateLimitHandler.waitForRateLimit()
+    │               ├─► TokenTracker.log()
+    │               │
+    │               ├─► tool_calls:
+    │               │       │
+    │               │       ├─► ToolDispatcher.dispatch(toolCall)
+    │               │       │       │
+    │               │       │       ├─► LoopDetector.recordToolCall()
+    │               │       │       │
+    │               │       │       ├─► browser_* → ToolRegistry.executeBrowserTool()
+    │               │       │       │       └─► PlaywrightTool → PlaywrightMCP → Browser
+    │               │       │       │
+    │               │       │       ├─► test_step_* → ToolRegistry.executeStepTool()
+    │               │       │       │       └─► StepTool → StepStatusCallback
+    │               │       │       │
+    │               │       │       └─► salesforce_* → ToolRegistry.executeSalesforceTool()
+    │               │       │               └─► SalesforceTool → Salesforce CLI
+    │               │       │
+    │               │       └─► ToolResponseHandler.handle()
+    │               │               ├─► SnapshotProcessor.getCompressed()
+    │               │               ├─► ScreenshotProcessor.getCompressedScreenshot()
+    │               │               ├─► HistoryManager.removeSnapshotEntries()
+    │               │               └─► OpenAIClient.sendToolResponseWithRetry()
+    │               │
+    │               └─► text_response:
+    │                       └─► MessageContentHandler.handle()
     │
-    └─► ResponseProcessor.handleResponse(response)
-            │
-            ├─► TokenTracker.log()
-            │
-            ├─► tool_calls:
-            │       │
-            │       ├─► browser_* → ToolRegistry.executeBrowserTool()
-            │       │       └─► PlaywrightTool → PlaywrightMCP → Browser
-            │       │
-            │       ├─► test_step_* → ToolRegistry.executeStepTool()
-            │       │       └─► StepTool → StepStatusCallback
-            │       │
-            │       └─► salesforce_* → ToolRegistry.executeSalesforceTool()
-            │               └─► SalesforceTool → Salesforce CLI
-            │
-            └─► snapshot:
-                    └─► SnapshotProcessor.getCompressed()
-                    └─► ScreenshotProcessor.getCompressedScreenshot()
-                    └─► HistoryManager.removeSnapshotEntries()
-                    └─► OpenAIClient.replaceHistory()
+    └─► stepFinishedCallback → assertStepResult()
 
 ═════════════════════════ ARCHITECTURE ════════════════════════════════
 
@@ -355,7 +363,6 @@ Playwright Test Layer
     │               │
     │               ├─► playwrightMCP: OpenAIServerMCP
     │               ├─► openaiClient: OpenAIClient
-    │               ├─► responseProcessor: ResponseProcessor
     │               │
     │               └─► OpenAITestStep (Internal)
     │                       │
@@ -380,27 +387,59 @@ Core Components Layer
     │       │
     │       ├─► Dependencies:
     │       │       ├─► configurationManager: ConfigurationManager
-    │       │       └─► toolRegistry: ToolRegistry
+    │       │       ├─► toolRegistry: ToolRegistry
+    │       │       ├─► playwrightMCP: OpenAIServerMCP
+    │       │       └─► responseProcessor: ResponseProcessor
     │       │
     │       └─► Responsibilities:
-    │               ├─► Initialize OpenAI client
+    │               ├─► Initialize OpenAI client with step context
     │               ├─► Manage chat completions
-    │               ├─► Send messages with retry
+    │               ├─► Send messages with retry and loop detection
     │               ├─► Manage conversation history
-    │               └─► Token counting
+    │               ├─► Token counting
+    │               └─► Dynamic temperature adjustment for loop recovery
     │
     ├─► ResponseProcessor
     │       │
     │       ├─► Dependencies:
-    │       │       ├─► playwrightMCP: OpenAIServerMCP
-    │       │       └─► openaiClient: OpenAIClient
+    │       │       ├─► openaiClient: OpenAIClient
+    │       │       ├─► toolDispatcher: ToolDispatcher
+    │       │       ├─► toolResponseHandler: ToolResponseHandler
+    │       │       ├─► rateLimitHandler: RateLimitHandler
+    │       │       ├─► messageContentHandler: MessageContentHandler
+    │       │       └─► tokenTracker: TokenTracker
     │       │
     │       └─► Responsibilities:
     │               ├─► Process OpenAI API responses
-    │               ├─► Handle tool calls
-    │               ├─► Dispatch tool responses
-    │               ├─► Manage recursive tool calls
-    │               └─► Handle screenshots
+    │               ├─► Coordinate tool dispatch and response handling
+    │               ├─► Handle text-only responses
+    │               └─► Track token usage
+    │
+    ├─► ToolDispatcher
+    │       │
+    │       ├─► Dependencies:
+    │       │       ├─► toolRegistry: ToolRegistry
+    │       │       └─► loopDetector: LoopDetector
+    │       │
+    │       └─► Responsibilities:
+    │               ├─► Route tool calls to appropriate handler
+    │               ├─► Record tool calls for loop detection
+    │               └─► Throw LoopDetectedError on repetitive patterns
+    │
+    ├─► ToolResponseHandler
+    │       │
+    │       ├─► Dependencies:
+    │       │       ├─► openaiClient: OpenAIClient
+    │       │       ├─► historyManager: HistoryManager
+    │       │       ├─► screenshotProcessor: ScreenshotProcessor
+    │       │       ├─► snapshotProcessor: SnapshotProcessor
+    │       │       └─► responseProcessor: ResponseProcessor
+    │       │
+    │       └─► Responsibilities:
+    │               ├─► Process and compress tool responses
+    │               ├─► Handle screenshots
+    │               ├─► Manage history cleanup
+    │               └─► Continue recursive response handling
     │
     └─► ToolRegistry
             │
@@ -470,7 +509,23 @@ Supporting Components
     │       ├─► Retry settings
     │       ├─► Temperature configuration
     │       ├─► Timeout configuration
-    │       └─► Function allowlist
+    │       ├─► Function allowlist
+    │       └─► Loop detection settings
+    │
+    ├─► LoopDetector
+    │       │
+    │       ├─► Record tool call signatures
+    │       ├─► Detect repetitive patterns
+    │       └─► Throw LoopDetectedError
+    │
+    ├─► RateLimitHandler
+    │       │
+    │       └─► Wait for rate limit delay
+    │
+    ├─► MessageContentHandler
+    │       │
+    │       ├─► Handle text-only responses
+    │       └─► Prompt for tool usage when needed
     │
     ├─► HistoryManager
     │       │

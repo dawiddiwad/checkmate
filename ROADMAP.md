@@ -49,18 +49,18 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [x] Budget limits
   - [x] Compress YAML page snapshots
 
-- [ ] **Error Handling & Timeouts**
+- [x] **Error Handling & Timeouts**
   - [x] Automatic retry logic with exponential backoff
   - [x] API request timeouts (configurable)
   - [x] Graceful handling of API failures
   - [x] Tool-level timeouts (30s default)
   - [x] Better error messages with recovery suggestions
   - [x] Fallback strategies when AI fails
-  - [ ] Circuit breaker for repeated failures
+  - [x] Circuit breaker for repeated failures
 
-- [ ] **Guardrails**
+- [x] **Guardrails**
   - [x] Experimental repetitive loop detection (live API)
-  - [ ] Detect and prevent identical tool calls (max 3 in a row)
+  - [x] Detect and prevent identical tool calls (max 3 in a row)
   - [x] Tool response timeout retry logic
   - [x] Maximum tokens per step limit
   - [x] Rate limiting for API calls

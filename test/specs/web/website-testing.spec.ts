@@ -150,14 +150,15 @@ test.describe.parallel('multi-step flows', async () => {
         })
         await test.step(`Accept cookie consent`, async () => {
             await ai.run({
-                action: `Click the agreebutton on the cookie consent modal.`,
+                action: `Click the agree button on the cookie consent modal.`,
                 expect: `The cookie consent modal closes, 
-                and the main homepage of stooq.pl is fully visible.`
+                and the stooq.pl landing page is visible with sections:
+                'Rynek', 'Wszystkie', 'Sponsorowane', 'Statystyka Sesji', 'Kalendarium'`
             })
         })
         await test.step(`Search for EURUSD symbol`, async () => {
             await ai.run({
-                action: `Type 'eurusd' into the 'Symbol' search input field at the top of the page.`,
+                action: `Type 'eurusd' into the 'Symbol' search input field next to 'Kwotuj' button.`,
                 expect: `A dropdown list of suggestions appears, 
                 with 'Euro / U.S. Dollar' as one of the options.`
             })
@@ -172,7 +173,7 @@ test.describe.parallel('multi-step flows', async () => {
         await test.step(`Change chart to '1m' (1 month)`, async () => {
             await ai.run({
                 action: `Scroll down and click on the '1m' (1 month) link in the chart options.`,
-                expect: `The page reloads, and the chart updates to display the data for the last month.`
+                expect: `The page reloads, and the chart updates to display 1 month data '1 miesiąc'`
             })
         })
         await test.step(`Change chart size to 'Duży' (Large)`, async () => {
@@ -225,8 +226,8 @@ test.describe.parallel('multi-step flows', async () => {
         })
         await test.step('Add Bon Bons to basket 3 times', async () => {
             await ai.run({
-                action: `Click the 'Add to Basket' button for the 'Bon Bons' product until the basket icon in the header reaches 3.`,
-                expect: `The basket icon in the header updates its count to '3'.`
+                action: `Click the 'Add to Basket' button for the 'Bon Bons' product until the basket icon in the header reaches 4.`,
+                expect: `The basket icon in the header updates its count to '4'.`
             })
         })
         await test.step('Click on the Basket link', async () => {

@@ -69,12 +69,10 @@ export class ToolRegistry {
 
     async executeSalesforceTool(toolCall: ToolCall): Promise<ToolResponse> {
         this.logToolCall(toolCall)
-        const frontDoorUrl = await this.salesforceTool.call(toolCall)
+        const result = await this.salesforceTool.call(toolCall)
         return {
             name: toolCall.name,
-            response: {
-                output: frontDoorUrl
-            }
+            response: result
         }
     }
 }

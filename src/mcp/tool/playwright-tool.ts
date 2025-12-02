@@ -1,6 +1,6 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { OpenAITool, ToolCallArgs } from "./openai-tool"
-import { OpenAIServerMCP, ToolCall } from "../server/openai-mcp"
+import { OpenAIServerMCP } from "../server/openai-mcp"
 
 export class PlaywrightTool implements OpenAITool {
     functionDeclarations: ChatCompletionFunctionTool[]

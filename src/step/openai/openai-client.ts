@@ -2,11 +2,15 @@ import OpenAI from "openai"
 import { ChatCompletionMessageParam, ChatCompletion } from "openai/resources/chat/completions"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
-import { json } from "stream/consumers"
+import { LoopDetectedError } from "../tool/loop-detector"
+import { ResponseProcessor } from "./response-processor"
+import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
+import { Step, StepStatusCallback } from "../types"
 
 export type OpenAIClientDependencies = {
     configurationManager: ConfigurationManager
     toolRegistry: ToolRegistry
+    playwrightMCP: OpenAIServerMCP
 }
 
 export class OpenAIClient {
@@ -14,14 +18,20 @@ export class OpenAIClient {
     private messages: ChatCompletionMessageParam[] = []
     private readonly configurationManager: ConfigurationManager
     private readonly toolRegistry: ToolRegistry
-    private readonly RETRYABLE_STATUS_CODES = [408, 409, 429, 500, 502, 503, 504]
+    private readonly RETRYABLE_STATUS = [408, 409, 429, 500, 502, 503, 504, LoopDetectedError.STATUS]
+    private readonly responseProcessor: ResponseProcessor
+    step: Step
+    stepStatusCallback: StepStatusCallback
+    temperature: number
 
-    constructor({ configurationManager, toolRegistry }: OpenAIClientDependencies) {
+    constructor({ configurationManager, toolRegistry, playwrightMCP }: OpenAIClientDependencies) {
         this.configurationManager = configurationManager
         this.toolRegistry = toolRegistry
+        this.responseProcessor = new ResponseProcessor({ playwrightMCP: playwrightMCP, openaiClient: this })
+        this.temperature = this.configurationManager.getTemperature()
     }
 
-    async initialize(): Promise<void> {
+    async initialize(step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
         this.client = new OpenAI({
             apiKey: this.configurationManager.getApiKey(),
             baseURL: this.configurationManager.getBaseURL(),
@@ -29,6 +39,10 @@ export class OpenAIClient {
             maxRetries: 0
         })
         this.messages = []
+        this.step = step
+        this.stepStatusCallback = stepStatusCallback
+        this.responseProcessor.resetStepTokens()
+        this.temperature = this.configurationManager.getTemperature()
     }
 
     getMessages(): ChatCompletionMessageParam[] {
@@ -43,7 +57,7 @@ export class OpenAIClient {
         return this.configurationManager
     }
 
-    async sendMessageWithRetry(userMessage: string | ChatCompletionMessageParam[]): Promise<ChatCompletion> {
+    async sendMessage(userMessage: string | ChatCompletionMessageParam[]) {
         if (typeof userMessage === 'string') {
             this.messages.push({ role: 'user', content: userMessage })
         } else {
@@ -58,14 +72,14 @@ export class OpenAIClient {
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
                 parallel_tool_calls: false,
-                temperature: this.configurationManager.getTemperature(),
+                temperature: this.temperature
             })
 
             if (response.choices[0]?.message) {
                 this.messages.push(response.choices[0].message)
             }
 
-            return response
+            await this.responseProcessor.handleResponse(response, this.step, this.stepStatusCallback)
         })
     }
 
@@ -111,7 +125,7 @@ export class OpenAIClient {
                 messages: this.messages,
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
-                temperature: this.configurationManager.getTemperature()
+                temperature: this.temperature
             })
 
             if (response.choices[0]?.message) {
@@ -125,45 +139,50 @@ export class OpenAIClient {
     private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {
         const maxRetries = this.configurationManager.getMaxRetries()
         let lastError: Error | null = null
-
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                return await operation()
+                const result = await operation()
+                return result
             } catch (error: any) {
                 lastError = error
-                const statusCode = this.getStatusCode(error)
-                
-                if (!this.isRetryable(statusCode) || attempt === maxRetries) {
+
+                if (!this.isRetryable(error) || attempt === maxRetries) {
                     throw this.enhanceError(error, attempt, maxRetries)
                 }
-                
+
+                if (error instanceof LoopDetectedError) {
+                    const antiLoopTempChange = Math.round(Math.random() * 10) / 10
+                    console.warn(`\n| warning: repeated tool calls detected: adjusting temperature from ${this.temperature} to ${antiLoopTempChange} to mitigate looping`)
+                    this.temperature = antiLoopTempChange
+                }
+
                 const retryAfter = this.getRetryAfterSeconds(error)
                 const delay = retryAfter ? retryAfter * 1000 : this.calculateBackoff(attempt)
-                
-                console.log(`| status: ${statusCode} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
+
+                console.log(`| status: ${this.getStatus(error)} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
                 await this.sleep(delay)
             }
         }
-
         throw lastError || new Error('Unexpected error in retry loop')
     }
 
-    private getStatusCode(error: any): number | null {
+    private getStatus(error: any): number | null {
         return error?.status || error?.statusCode || error?.code || null
     }
 
-    private isRetryable(statusCode: number | null): boolean {
-        if (statusCode === null) return false
-        return this.RETRYABLE_STATUS_CODES.includes(statusCode)
+    private isRetryable(error: any): boolean {
+        const statusCode = this.getStatus(error)
+        if (this.getStatus(error) === null) return false
+        return this.RETRYABLE_STATUS.includes(statusCode)
     }
 
     private getRetryAfterSeconds(error: any): number | null {
         const headers = error?.headers
         if (!headers) return null
-        
+
         const retryAfter = headers.get?.('retry-after') || headers['retry-after']
         if (!retryAfter) return null
-        
+
         const seconds = parseInt(retryAfter, 10)
         return isNaN(seconds) ? null : seconds
     }
@@ -195,7 +214,7 @@ export class OpenAIClient {
     private enhanceError(error: any, attempt?: number, maxRetries?: number): Error {
         const status = error?.status || error?.statusCode || error?.code || 'unknown'
         const message = error?.message || null
-        
+
         let details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
         return new Error(details)
     }

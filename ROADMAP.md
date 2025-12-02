@@ -24,7 +24,7 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 **Focus**: OpenAI API, Stability, Observability, and Cost Control
 
-- [ ] **OpenAI API Migration**
+- [x] **OpenAI API Migration**
   - [x] Move from Gemini API to OpenAI API
 
 - [ ] **Comprehensive Documentation**
@@ -42,7 +42,7 @@ This roadmap outlines the planned features and improvements for checkmate.
     - [ ] Screenshots in reports
     - [ ] Videos in reports
 
-- [ ] **Usage Monitoring & Limits**
+- [x] **Usage Monitoring & Limits**
   - [x] Basic token counting per step
   - [x] Cost calculation per test
   - [x] Token usage tracking per component

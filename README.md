@@ -162,6 +162,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~40% token reduction) |
 | `OPENAI_API_TOKEN_BUDGET_USD` | - | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.
 | `OPENAI_API_TOKEN_BUDGET_COUNT` | - | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.
+| `OPENAI_LOOP_MAX_REPETITIONS` | `5` | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
 
 ### Playwright MCP Settings
 

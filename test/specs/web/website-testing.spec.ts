@@ -226,8 +226,8 @@ test.describe.parallel('multi-step flows', async () => {
         })
         await test.step('Add Bon Bons to basket 3 times', async () => {
             await ai.run({
-                action: `Click the 'Add to Basket' button for the 'Bon Bons' product until the basket icon in the header reaches 3.`,
-                expect: `The basket icon in the header updates its count to '3'.`
+                action: `Click the 'Add to Basket' button for the 'Bon Bons' product until the basket icon in the header reaches 4.`,
+                expect: `The basket icon in the header updates its count to '4'.`
             })
         })
         await test.step('Click on the Basket link', async () => {

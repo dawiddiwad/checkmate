@@ -1,15 +1,20 @@
 import { ToolCall } from "../../mcp/server/openai-mcp"
 import { ToolRegistry } from "./tool-registry"
 import { StepStatusCallback } from "../types"
+import { LoopDetector } from "./loop-detector"
+import { ConfigurationManager } from "../configuration-manager"
 
 export class ToolDispatcher {
     private readonly toolRegistry: ToolRegistry
+    private readonly loopDetector: LoopDetector
 
     constructor(toolRegistry: ToolRegistry) {
         this.toolRegistry = toolRegistry
+        this.loopDetector = new LoopDetector(new ConfigurationManager().getLoopMaxRepetitions())
     }
 
     public async dispatch(toolCall: ToolCall, stepStatusCallback: StepStatusCallback): Promise<any> {
+        this.loopDetector.recordToolCall(toolCall)
         const { name } = toolCall
 
         if (name.includes("browser")) {

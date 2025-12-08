@@ -303,7 +303,7 @@ export class GeminiLiveSessionManager {
                 expect(this.stepStatus.actual, this.stepStatus.actual).toMatch(step.expect)
             }
         } catch (error) {
-            throw new Error(`Failed to execute action:\n${step.action}\n\n${error}`)
+            throw new Error(`\nFailed to execute action:\n${step.action}\n\n${error}`)
         }
     }
 }

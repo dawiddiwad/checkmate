@@ -8,13 +8,11 @@ import { RUN_STEP_PROMPT } from "./prompts"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 import { OpenAIClient } from "./openai-client"
-import { ResponseProcessor } from "./response-processor"
 import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 
 export class OpenAITestManager {
     private readonly playwrightMCP: OpenAIServerMCP
     private readonly openaiClient: OpenAIClient
-    private readonly responseProcessor: ResponseProcessor
 
     constructor() {
         const configurationManager = new ConfigurationManager()
@@ -23,11 +21,9 @@ export class OpenAITestManager {
         const stepTool = new StepTool()
         const salesforceTool = new SalesforceTool(playwrightTool)
         const toolRegistry = new ToolRegistry({ playwrightMCP, playwrightTool, stepTool, salesforceTool, configurationManager })
-        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry })
-        const responseProcessor = new ResponseProcessor({ playwrightMCP, openaiClient })
+        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry, playwrightMCP })
         this.playwrightMCP = playwrightMCP
         this.openaiClient = openaiClient
-        this.responseProcessor = responseProcessor
     }
 
     public async teardown() {
@@ -35,7 +31,7 @@ export class OpenAITestManager {
     }
 
     public async run(step: Step) {
-        const testStep = new OpenAITestStep(this.openaiClient, this.responseProcessor)
+        const testStep = new OpenAITestStep(this.openaiClient)
         await testStep.run(step)
     }
 }
@@ -47,7 +43,6 @@ class OpenAITestStep {
 
     constructor(
         private readonly openaiClient: OpenAIClient,
-        private readonly responseProcessor: ResponseProcessor
     ) {
         this.stepStatus = { passed: false, actual: "" }
         this.stepFinishedCallback = new Promise<StepStatus>(finishStep => {
@@ -58,14 +53,12 @@ class OpenAITestStep {
     async run(step: Step): Promise<void> {
         this.logStepStart(step)
         try {
-            this.responseProcessor.resetStepTokens()
-            await this.openaiClient.initialize()
-            const response = await this.openaiClient.sendMessageWithRetry(RUN_STEP_PROMPT(step))
-            await this.responseProcessor.handleResponse(response, step, this.stepStatusCallback)
+            await this.openaiClient.initialize(step, this.stepStatusCallback)
+            await this.openaiClient.sendMessage(RUN_STEP_PROMPT(step))
             this.stepStatus = await this.stepFinishedCallback
             this.assertStepResult(step)
         } catch (error) {
-            throw new Error(`Failed to execute action:\n${step.action}\n\n${error}`)
+            throw new Error(`\nFailed to execute action:\n${step.action}\n\n${error}`)
         }
         this.logStepFinish()
     }
@@ -81,10 +74,14 @@ class OpenAITestStep {
     }
 
     private assertStepResult(step: Step): void {
+        expect(this.stepStatus.passed, this.assertionMessage(step)).toBeTruthy()
+    }
+
+    private assertionMessage(step: Step): string {
         if (this.stepStatus.passed) {
-            expect(this.stepStatus.actual, step.expect).toMatch(this.stepStatus.actual)
+            return step.expect
         } else {
-            expect(this.stepStatus.actual, this.stepStatus.actual).toMatch(step.expect)
+            return `\nExpected: ${step.expect}\nActual: ${this.stepStatus.actual}`
         }
     }
 }

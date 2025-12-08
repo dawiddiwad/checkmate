@@ -65,4 +65,12 @@ export class ConfigurationManager {
         if (Number.isNaN(parsed)) return undefined
         return parsed
     }
+
+    getLoopMaxRepetitions(): number {
+        const env = process.env.OPENAI_LOOP_MAX_REPETITIONS
+        if (!env) return 5
+        const parsed = parseInt(env, 10)
+        if (Number.isNaN(parsed)) return 5
+        return parsed
+    }
 }

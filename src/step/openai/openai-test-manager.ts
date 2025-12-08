@@ -21,7 +21,7 @@ export class OpenAITestManager {
         const stepTool = new StepTool()
         const salesforceTool = new SalesforceTool(playwrightTool)
         const toolRegistry = new ToolRegistry({ playwrightMCP, playwrightTool, stepTool, salesforceTool, configurationManager })
-        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry, playwrightMCP})
+        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry, playwrightMCP })
         this.playwrightMCP = playwrightMCP
         this.openaiClient = openaiClient
     }
@@ -58,7 +58,7 @@ class OpenAITestStep {
             this.stepStatus = await this.stepFinishedCallback
             this.assertStepResult(step)
         } catch (error) {
-            throw new Error(`Failed to execute action:\n${step.action}\n\n${error}`)
+            throw new Error(`\nFailed to execute action:\n${step.action}\n\n${error}`)
         }
         this.logStepFinish()
     }
@@ -74,10 +74,14 @@ class OpenAITestStep {
     }
 
     private assertStepResult(step: Step): void {
+        expect(this.stepStatus.passed, this.assertionMessage(step)).toBeTruthy()
+    }
+
+    private assertionMessage(step: Step): string {
         if (this.stepStatus.passed) {
-            expect(this.stepStatus.actual, step.expect).toMatch(this.stepStatus.actual)
+            return step.expect
         } else {
-            expect(this.stepStatus.actual, this.stepStatus.actual).toMatch(step.expect)
+            return `\nExpected: ${step.expect}\nActual: ${this.stepStatus.actual}`
         }
     }
 }

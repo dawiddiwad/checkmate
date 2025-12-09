@@ -2,17 +2,16 @@ import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceCliHandler } from "./salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "./salesforce-cli-authenticator"
 import { OpenAITool, ToolCallArgs } from "../mcp/tool/openai-tool"
-import { PlaywrightTool } from "../mcp/tool/playwright-tool"
-import { PlaywrightToolNames } from "../mcp/tool/playwright-tool-names"
+import { BrowserTool } from "../step/tool/browser-tool"
 
 
 export class SalesforceTool implements OpenAITool {
     static readonly TOOL_LOGIN_TO_SALESFORCE_ORG = 'login_to_salesforce_org'
-    private readonly browserTool: PlaywrightTool
+    private readonly browserTool: BrowserTool
 
     functionDeclarations: ChatCompletionFunctionTool[]
 
-    constructor(browserTool: PlaywrightTool) {
+    constructor(browserTool: BrowserTool) {
         this.browserTool = browserTool
         this.functionDeclarations = [
             {
@@ -30,7 +29,7 @@ export class SalesforceTool implements OpenAITool {
             try {
                 const frontDoorUrl = await this.getSalesforceLoginUrl()
                 return this.browserTool.call({
-                    name: PlaywrightToolNames.BROWSER_NAVIGATE,
+                    name: BrowserTool.TOOL_NAVIGATE,
                     arguments: { url: frontDoorUrl }
                 })
             } catch (error) {

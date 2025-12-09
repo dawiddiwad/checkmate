@@ -45,15 +45,15 @@ test.describe('single-step flows', async () => {
 })
 
 test.describe.parallel('multi-step flows', async () => {
-    test('google search', async ({ ai }) => {
-        await test.step('Open the browser and navigate to google.com', async () => {
+    test('ecosia search', async ({ ai }) => {
+        await test.step('Open the browser and navigate to ecosia.org', async () => {
             await ai.run({
-                action: `Navigate to the google.com`,
-                expect: `google.com is loaded successfully and a consent prompt is visible`
+                action: `Navigate to the ecosia.org`,
+                expect: `ecosia.org is loaded successfully and a consent prompt is visible`
             })
         })
 
-        await test.step('Accept Google consents', async () => {
+        await test.step('Accept Ecosia consents', async () => {
             await ai.run({
                 action: `Accept cookie consent`,
                 expect: `Consent is closed and the search bar is visible on the page`

@@ -6,14 +6,14 @@ import { HistoryManager } from "./history-manager"
 import { ScreenshotProcessor } from "../tool/screenshot-processor"
 import { SnapshotProcessor } from "../tool/snapshot-processor"
 import { TokenTracker } from "./token-tracker"
-import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 import { ToolDispatcher } from "../tool/tool-dispatcher"
 import { ToolResponseHandler } from "../tool/tool-response-handler"
 import { RateLimitHandler } from "./rate-limit-handler"
 import { MessageContentHandler } from "./message-content-handler"
+import { Page } from "@playwright/test"
 
 export type ResponseProcessorDependencies = {
-    playwrightMCP: OpenAIServerMCP
+    page: Page
     openaiClient: OpenAIClient
 }
 
@@ -25,12 +25,12 @@ export class ResponseProcessor {
     private readonly rateLimitHandler: RateLimitHandler
     private readonly messageContentHandler: MessageContentHandler
 
-    constructor({ playwrightMCP, openaiClient }: ResponseProcessorDependencies) {
+    constructor({ page, openaiClient }: ResponseProcessorDependencies) {
         this.openaiClient = openaiClient
         this.tokenTracker = new TokenTracker()
         this.toolDispatcher = new ToolDispatcher(openaiClient.getToolRegistry())
         const historyManager = new HistoryManager()
-        const screenshotProcessor = new ScreenshotProcessor(playwrightMCP)
+        const screenshotProcessor = new ScreenshotProcessor(page)
         const snapshotProcessor = new SnapshotProcessor()
         this.toolResponseHandler = new ToolResponseHandler(
             openaiClient,

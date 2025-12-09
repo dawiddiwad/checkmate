@@ -16,6 +16,10 @@ export default defineConfig({
     {
       name: 'live',
       testDir: './test/specs/live'
+    },
+    {
+      name: 'aria',
+      testDir: './test/specs/aria-playground'
     }
   ],
   outputDir: process.env.CI ? undefined : './test-reports/results',
@@ -29,9 +33,13 @@ export default defineConfig({
   retries: 1,
   workers: 1,
   expect: {
-    timeout: 1 * 60000
+    timeout: 1 * 10000
   },
   use: {
-    actionTimeout: 1 * 60000
+    browserName: 'chromium',
+    actionTimeout: 1 * 5000,
+    navigationTimeout: 1 * 30000,
+    screenshot: 'only-on-failure',
+    video: 'on'
   }
 })

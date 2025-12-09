@@ -1,10 +1,10 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
-import { OpenAIServerMCP, ToolCall } from "../../mcp/server/openai-mcp"
-import { PlaywrightTool } from "../../mcp/tool/playwright-tool"
+import { ToolCall } from "../../mcp/server/openai-mcp"
 import { SalesforceTool } from "../../salesforce/salesforce-tool"
 import { StepTool } from "./step-tool"
 import { StepStatusCallback } from "../types"
 import { ConfigurationManager } from "../configuration-manager"
+import { BrowserTool } from "./browser-tool"
 
 export type ToolResponse = {
     name?: string
@@ -12,23 +12,20 @@ export type ToolResponse = {
 }
 
 export type ToolRegistryDependencies = {
-    playwrightMCP: OpenAIServerMCP
-    playwrightTool: PlaywrightTool
+    browserTool: BrowserTool
     stepTool: StepTool
     salesforceTool: SalesforceTool
     configurationManager: ConfigurationManager
 }
 
 export class ToolRegistry {
-    private readonly playwrightMCP: OpenAIServerMCP
-    private readonly playwrightTool: PlaywrightTool
+    private readonly browserTool: BrowserTool
     private readonly stepTool: StepTool
     private readonly salesforceTool: SalesforceTool
     private readonly configurationManager: ConfigurationManager
 
-    constructor({ playwrightMCP, playwrightTool, stepTool, salesforceTool, configurationManager }: ToolRegistryDependencies) {
-        this.playwrightMCP = playwrightMCP
-        this.playwrightTool = playwrightTool
+    constructor({ browserTool, stepTool, salesforceTool, configurationManager }: ToolRegistryDependencies) {
+        this.browserTool = browserTool
         this.stepTool = stepTool
         this.salesforceTool = salesforceTool
         this.configurationManager = configurationManager
@@ -42,11 +39,11 @@ export class ToolRegistry {
     async getTools(): Promise<ChatCompletionFunctionTool[]> {
         const allowedNames = this.configurationManager.getAllowedFunctionNames()
         const allTools = [
-            ...await this.playwrightMCP.functionDeclarations(),
+            ...this.browserTool.functionDeclarations,
             ...this.stepTool.functionDeclarations,
             ...this.salesforceTool.functionDeclarations
         ]
-        
+
         if (allowedNames.length > 0) {
             return allTools.filter(tool => allowedNames.includes(tool.function.name))
         }
@@ -55,7 +52,7 @@ export class ToolRegistry {
 
     async executeBrowserTool(toolCall: ToolCall): Promise<ToolResponse> {
         this.logToolCall(toolCall)
-        const result = await this.playwrightTool.call({ name: toolCall.name ?? '', arguments: toolCall.arguments ?? {} })
+        const result = await this.browserTool.call({ name: toolCall.name ?? '', arguments: toolCall.arguments ?? {} })
         return {
             name: toolCall.name,
             response: result

@@ -1,33 +1,28 @@
-import { PlaywrightMCPServer } from "../../mcp/server/playwright-mcp"
 import { StepTool } from "../tool/step-tool"
 import { SalesforceTool } from "../../salesforce/salesforce-tool"
-import { PlaywrightTool } from "../../mcp/tool/playwright-tool"
 import { Step, StepFinishedCallback, StepStatus, StepStatusCallback } from "../types"
-import { expect } from "@playwright/test"
+import { expect, Page } from "@playwright/test"
 import { RUN_STEP_PROMPT } from "./prompts"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 import { OpenAIClient } from "./openai-client"
-import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
+import { BrowserTool } from "../tool/browser-tool"
 
 export class OpenAITestManager {
-    private readonly playwrightMCP: OpenAIServerMCP
     private readonly openaiClient: OpenAIClient
 
-    constructor() {
+    constructor(page: Page) {
         const configurationManager = new ConfigurationManager()
-        const playwrightMCP = PlaywrightMCPServer.create()
-        const playwrightTool = new PlaywrightTool(playwrightMCP)
         const stepTool = new StepTool()
-        const salesforceTool = new SalesforceTool(playwrightTool)
-        const toolRegistry = new ToolRegistry({ playwrightMCP, playwrightTool, stepTool, salesforceTool, configurationManager })
-        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry, playwrightMCP })
-        this.playwrightMCP = playwrightMCP
+        const browserTool = new BrowserTool(page)
+        const salesforceTool = new SalesforceTool(browserTool)
+        const toolRegistry = new ToolRegistry({ browserTool, stepTool, salesforceTool, configurationManager })
+        const openaiClient = new OpenAIClient({ configurationManager, toolRegistry, page })
         this.openaiClient = openaiClient
     }
 
     public async teardown() {
-        await this.playwrightMCP.disconnect()
+
     }
 
     public async run(step: Step) {

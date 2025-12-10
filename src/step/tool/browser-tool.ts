@@ -107,10 +107,14 @@ export class BrowserTool implements OpenAITool {
 
     private async captureSnapshot() {
         try {
+            await this.page.waitForTimeout(1000)
             const snapshot = await this.page.locator('body').ariaSnapshot()
             const mapping = await this.mapper.map(snapshot, this.page)
             this.store.set(mapping)
-            return mapping.snapshot
+            console.log('\nCaptured page snapshot:')
+            console.log(this.store.getSnapshot())
+            console.log('--- End of snapshot ---\n')
+            return this.store.getSnapshot()
         } catch (error) {
             throw new Error(`Failed to capture page snapshot:\n${error}`)
         }

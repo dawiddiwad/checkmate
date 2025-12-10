@@ -238,7 +238,8 @@ export class AriaSnapshotStore {
     }
 
     getSnapshot(): string | null {
-        return this.mapping?.snapshot ?? null
+        const snapshot = this.mapping?.snapshot ?? null
+        return snapshot ? 'page snapshot:\n```yaml\n' + snapshot + '\n```' : null
     }
 
     clear(): void {

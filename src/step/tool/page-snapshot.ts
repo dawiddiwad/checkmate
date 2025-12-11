@@ -225,6 +225,7 @@ class AriaSnapshotMapper {
 }
 
 export class PageSnapshotStore {
+    static lastSnapshot: AriaPageSnapshot = null
     private mapping: AriaSnapshotMapping | null = null
 
     set(mapping: AriaSnapshotMapping): void {
@@ -244,7 +245,8 @@ export class PageSnapshotStore {
 
     getSnapshot(): string | null {
         const snapshot = this.mapping?.snapshot ?? null
-        return snapshot ? 'page snapshot:\n```yaml\n' + snapshot + '\n```' : null
+        PageSnapshotStore.lastSnapshot = snapshot ? 'page snapshot:\n```yaml\n' + snapshot + '\n```' : null
+        return PageSnapshotStore.lastSnapshot
     }
 
     clear(): void {

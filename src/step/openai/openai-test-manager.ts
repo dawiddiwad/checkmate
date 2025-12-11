@@ -7,6 +7,8 @@ import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 import { OpenAIClient } from "./openai-client"
 import { BrowserTool } from "../tool/browser-tool"
+import { PageSnapshotStore } from "../tool/page-snapshot"
+import { HistoryManager } from "./history-manager"
 
 export class OpenAITestManager {
     private readonly openaiClient: OpenAIClient
@@ -49,6 +51,9 @@ class OpenAITestStep {
         this.logStepStart(step)
         try {
             await this.openaiClient.initialize(step, this.stepStatusCallback)
+            if (PageSnapshotStore.lastSnapshot) {
+                new HistoryManager().addInitialSnapshot(this.openaiClient, PageSnapshotStore.lastSnapshot)
+            }
             await this.openaiClient.sendMessage(RUN_STEP_PROMPT(step))
             this.stepStatus = await this.stepFinishedCallback
             this.assertStepResult(step)

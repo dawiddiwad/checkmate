@@ -1,13 +1,19 @@
 import { ConfigurationManager } from "../configuration-manager";
 import { Step } from "../types";
 import { StepTool } from "../tool/step-tool";
-import { PlaywrightToolNames } from "../../mcp/tool/playwright-tool-names";
 import { typeMap } from "../tool/snapshot-processor";
+import { PageSnapshotStore } from "../tool/page-snapshot";
+import { BrowserTool } from "../tool/browser-tool";
+import { HistoryManager } from "./history-manager";
+
+const INITIAL_PAGE_SNAPSHOT_INSTRUCTIONS = `
+If there is no snapshot available to you marked with '${HistoryManager.SNAPSHOT_IDENTIFIER}' and unless instructed otherwise in step, start by taking a fresh page snapshot using the '${BrowserTool.TOOL_SNAPSHOT}' tool to understand the current state of the page.
+`
 
 const PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS = `
 #PAGE SNAPSHOT COMPRESSION:
 The page snapshot uses a compressed accessibility tree format where:
-- Element types are abbreviated (example: g=generic, b=button, l=link, etc.)
+- Element types are abbreviated (example: gen=generic, btn=button, lnk=link, etc.)
 - Text is prefixed with # (example: #Description)
 - Indentation shows hierarchy
 
@@ -21,7 +27,7 @@ Here is the test step I want you to execute.
 ${new ConfigurationManager().enableSnapshotCompression() ? PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS : ''}
 
 #RULES:
-Unless instructed otherwise in step, start by taking a fresh page snapshot using the '${PlaywrightToolNames.BROWSER_SNAPSHOT}' tool to understand the current state of the page.
+${INITIAL_PAGE_SNAPSHOT_INSTRUCTIONS}
 Do not close or re-open the browser, keep it open and use it for the entire test case.
 Saving and navigating actions might take some time to complete without clear indication of completion, be patient and wait for the page to load before proceeding.
 Some components might take some time to complete loading without clear indication of completion, be patient and wait for the component to load before proceeding.

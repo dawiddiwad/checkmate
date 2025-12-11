@@ -14,9 +14,9 @@ export class ToolResponseHandler {
     private readonly responseProcessor: ResponseProcessor
 
     constructor(
-        openaiClient: OpenAIClient, 
-        historyManager: HistoryManager, 
-        screenshotProcessor: ScreenshotProcessor, 
+        openaiClient: OpenAIClient,
+        historyManager: HistoryManager,
+        screenshotProcessor: ScreenshotProcessor,
         snapshotProcessor: SnapshotProcessor,
         responseProcessor: ResponseProcessor
     ) {
@@ -47,7 +47,7 @@ export class ToolResponseHandler {
             await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
         }
 
-        await this.historyManager.removeSnapshotEntries(this.openaiClient, toolCallId)
+        await this.historyManager.removeSnapshotEntries(this.openaiClient)
 
         const nextResponse = await this.openaiClient.sendToolResponseWithRetry()
         await this.responseProcessor.handleResponse(nextResponse, step, stepStatusCallback)

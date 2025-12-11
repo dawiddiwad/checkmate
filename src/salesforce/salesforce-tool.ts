@@ -18,7 +18,14 @@ export class SalesforceTool implements OpenAITool {
                 type: 'function',
                 function: {
                     name: SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
-                    description: 'Login to a Salesforce org in a browser'
+                    description: 'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' }
+                        },
+                        required: ['goal']
+                    }
                 }
             }
         ]

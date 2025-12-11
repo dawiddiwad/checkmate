@@ -1,7 +1,7 @@
 import { ChatCompletionFunctionTool } from "openai/resources"
 import { OpenAITool, ToolCallArgs } from "../../mcp/tool/openai-tool"
-import { Page } from "@playwright/test"
-import PageSnapshot, { PageSnapshotStore } from "./page-snapshot"
+import { expect, Page } from "@playwright/test"
+import { PageSnapshot, PageSnapshotStore } from "./page-snapshot"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -27,9 +27,10 @@ export class BrowserTool implements OpenAITool {
                     parameters: {
                         type: 'object',
                         properties: {
-                            url: { type: 'string', description: 'The URL to navigate to' }
+                            url: { type: 'string', description: 'The URL to navigate to' },
+                            goal: { type: 'string', description: 'The goal or purpose of navigating to this URL' }
                         },
-                        required: ['url']
+                        required: ['url', 'goal']
                     }
                 }
             },
@@ -41,9 +42,11 @@ export class BrowserTool implements OpenAITool {
                     parameters: {
                         type: 'object',
                         properties: {
-                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: 4Fgt' }
+                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: 4Fgt' },
+                            name: { type: 'string', description: 'name of the element to click, example: Submit Button' },
+                            goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                         },
-                        required: ['ref']
+                        required: ['ref', 'name', 'goal']
                     }
                 }
             },
@@ -56,9 +59,11 @@ export class BrowserTool implements OpenAITool {
                         type: 'object',
                         properties: {
                             ref: { type: 'string', description: 'ref value of the element from the snapshot, example: 4Fgt' },
-                            text: { type: 'string', description: 'The text to type into the element, example: Hello World' }
+                            text: { type: 'string', description: 'The text to type into the element, example: Hello World' },
+                            name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
+                            goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
                         },
-                        required: ['ref', 'text']
+                        required: ['ref', 'text', 'name', 'goal']
                     }
                 }
             },
@@ -70,9 +75,10 @@ export class BrowserTool implements OpenAITool {
                     parameters: {
                         type: 'object',
                         properties: {
-                            key: { type: 'string', description: 'The key to press, example: Enter, Escape, ArrowDown' }
+                            key: { type: 'string', description: 'The key to press, example: Enter, Escape, ArrowDown' },
+                            goal: { type: 'string', description: 'The goal or purpose of pressing this key' }
                         },
-                        required: ['key']
+                        required: ['key', 'goal']
                     }
                 }
             },
@@ -80,7 +86,14 @@ export class BrowserTool implements OpenAITool {
                 type: 'function',
                 function: {
                     name: BrowserTool.TOOL_SNAPSHOT,
-                    description: 'Capture the ARIA snapshot of the current page'
+                    description: 'Capture the ARIA snapshot of the current page',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            goal: { type: 'string', description: 'The goal or purpose of capturing the snapshot' }
+                        },
+                        required: ['goal']
+                    }
                 }
             }
         ]
@@ -107,7 +120,17 @@ export class BrowserTool implements OpenAITool {
 
     private async captureSnapshot() {
         try {
-            await this.page.waitForTimeout(1000)
+            await expect.poll(async () => {
+                const getRawSnapshot = async () => await this.page.getByRole('document').innerHTML()
+                const reference_1 = await getRawSnapshot()
+                await this.page.waitForTimeout(1000)
+                const reference_2 = await getRawSnapshot()
+                const difference = reference_1 !== reference_2
+                return difference ? 'not stable' : 'stable'
+            }, {
+                timeout: 30_000,
+                message: 'page snapshots should be stable'
+            }).toEqual('stable')
             return this.pageSnapshot.get(this.page)
         } catch (error) {
             throw new Error(`Failed to capture page snapshot:\n${error}`)
@@ -131,7 +154,8 @@ export class BrowserTool implements OpenAITool {
             await this.pageSnapshotStore.getLocator(ref).click()
             return this.captureSnapshot()
         } catch (error) {
-            throw new Error(`Failed to click element with ref '${ref}':\n${error}`)
+            console.error(`\n| Error clicking element with ref '${ref}' and will retry with new snapshot due to: ${error}`)
+            return `failed to click element with ref '${ref}':\n${error}, try again with the latest snapshot:\n${await this.captureSnapshot()}`
         }
     }
 
@@ -143,7 +167,8 @@ export class BrowserTool implements OpenAITool {
             await this.pageSnapshotStore.getLocator(ref).fill(text)
             return this.captureSnapshot()
         } catch (error) {
-            throw new Error(`Failed to type text '${text}' in element with ref '${ref}':\n${error}`)
+            console.error(`\n| Error typing text '${text}' in element with ref '${ref}' and will retry with new snapshot due to: ${error}`)
+            return `failed to type text '${text}' in element with ref '${ref}':\n${error}, try again with the latest snapshot:\n${await this.captureSnapshot()}`
         }
     }
 

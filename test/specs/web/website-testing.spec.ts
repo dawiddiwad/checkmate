@@ -94,20 +94,20 @@ test.describe.parallel('multi-step flows', async () => {
     test('search for an article and attempt to comment without logging in', async ({ ai }) => {
         await test.step('Navigate to Threshold homepage', async () => {
             await ai.run({
-            action: `Navigate to 'https://www.thresholdx.net'`,
-            expect: `Navigated to Threshold homepage successfully.`
+                action: `Navigate to 'https://www.thresholdx.net'`,
+                expect: `Navigated to Threshold homepage successfully.`
             })
         })
-        await test.step('Accept privacy consents', async () => {
+        await test.step('Accept personal data use consent', async () => {
             await ai.run({
-            action: `Accept privacy consents if they appear`,
-            expect: `Privacy consents are accepted.`
+                action: `Accept personal data use consent if it appears`,
+                expect: `Personal data use consent is accepted.`
             })
         })
         await test.step('Open the first article', async () => {
             await ai.run({
-            action: `Click on the first article item displayed on the Headlines section to open it`,
-            expect: `The browser navigates to the first article page, displaying the article content.`
+                action: `Click on the first article item displayed on the Headlines section to open it`,
+                expect: `The browser navigates to the first article page, displaying the article content.`
             })
         })
         await test.step(`Wait for newsletter subscribe popup`, async () => {

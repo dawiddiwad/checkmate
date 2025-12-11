@@ -1,6 +1,7 @@
 import { Page, Locator } from "@playwright/test"
 import { parse, stringify } from "yaml"
 
+export type AriaPageSnapshot = string | null
 type AriaRole = Extract<Parameters<Page['getByRole']>[0], string>
 type PathChunk = string | number
 
@@ -41,7 +42,7 @@ class PathEncoder {
 }
 
 class ReferenceGenerator {
-    constructor(private length = 4) {}
+    constructor(private length = 4) { }
 
     generate(): string {
         let ref = ""
@@ -83,7 +84,7 @@ class SiblingIndexTracker {
 }
 
 class AriaSnapshotCollector {
-    constructor(private roleParser: RoleParser, private locatorFactory: LocatorFactory) {}
+    constructor(private roleParser: RoleParser, private locatorFactory: LocatorFactory) { }
 
     collect(snapshot: unknown, page: Page): LocatorCandidate[] {
         const candidates: LocatorCandidate[] = []
@@ -261,7 +262,7 @@ export class PageSnapshot {
         this.mapper = new AriaSnapshotMapper()
     }
 
-    async get(page: Page): Promise<string | null> {
+    async get(page: Page): Promise<AriaPageSnapshot> {
         this.page = page
         const rawSnapshot = await this.page.locator('body').ariaSnapshot()
         const mapping = await this.mapper.map(rawSnapshot, this.page)
@@ -269,5 +270,3 @@ export class PageSnapshot {
         return this.store.getSnapshot()
     }
 }
-
-export default PageSnapshot

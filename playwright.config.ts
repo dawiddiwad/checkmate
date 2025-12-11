@@ -32,6 +32,7 @@ export default defineConfig({
     timeout: 1 * 10000
   },
   use: {
+    viewport: { width: 1360, height: 768 },
     browserName: 'chromium',
     actionTimeout: 1 * 5000,
     navigationTimeout: 1 * 30000,

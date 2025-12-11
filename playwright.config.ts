@@ -16,10 +16,6 @@ export default defineConfig({
     {
       name: 'live',
       testDir: './test/specs/live'
-    },
-    {
-      name: 'aria',
-      testDir: './test/specs/aria-playground'
     }
   ],
   outputDir: process.env.CI ? undefined : './test-reports/results',

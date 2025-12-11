@@ -1,7 +1,7 @@
 import { ChatCompletionFunctionTool } from "openai/resources"
 import { OpenAITool, ToolCallArgs } from "../../mcp/tool/openai-tool"
 import { Page } from "@playwright/test"
-import AriaSnapshotMapper, { AriaSnapshotStore } from "./page-snapshot"
+import PageSnapshot, { PageSnapshotStore } from "./page-snapshot"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -10,14 +10,14 @@ export class BrowserTool implements OpenAITool {
     static readonly TOOL_PRESS_KEY = 'browser_press_key'
     static readonly TOOL_SNAPSHOT = 'browser_snapshot'
     private readonly page: Page
-    private readonly store: AriaSnapshotStore
-    private readonly mapper: AriaSnapshotMapper
+    private readonly pageSnapshotStore: PageSnapshotStore
+    private readonly pageSnapshot: PageSnapshot
 
     functionDeclarations: ChatCompletionFunctionTool[]
     constructor(page: Page) {
         this.page = page
-        this.store = new AriaSnapshotStore()
-        this.mapper = new AriaSnapshotMapper()
+        this.pageSnapshotStore = new PageSnapshotStore()
+        this.pageSnapshot = new PageSnapshot(this.pageSnapshotStore)
         this.functionDeclarations = [
             {
                 type: 'function',
@@ -108,13 +108,7 @@ export class BrowserTool implements OpenAITool {
     private async captureSnapshot() {
         try {
             await this.page.waitForTimeout(1000)
-            const snapshot = await this.page.locator('body').ariaSnapshot()
-            const mapping = await this.mapper.map(snapshot, this.page)
-            this.store.set(mapping)
-            console.log('\nCaptured page snapshot:')
-            console.log(this.store.getSnapshot())
-            console.log('--- End of snapshot ---\n')
-            return this.store.getSnapshot()
+            return this.pageSnapshot.get(this.page)
         } catch (error) {
             throw new Error(`Failed to capture page snapshot:\n${error}`)
         }
@@ -134,7 +128,7 @@ export class BrowserTool implements OpenAITool {
 
     private async clickElement(ref: string) {
         try {
-            await this.store.getLocator(ref).click()
+            await this.pageSnapshotStore.getLocator(ref).click()
             return this.captureSnapshot()
         } catch (error) {
             throw new Error(`Failed to click element with ref '${ref}':\n${error}`)
@@ -146,7 +140,7 @@ export class BrowserTool implements OpenAITool {
             if (!ref || !text) {
                 throw new Error(`Both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
             }
-            await this.store.getLocator(ref).fill(text)
+            await this.pageSnapshotStore.getLocator(ref).fill(text)
             return this.captureSnapshot()
         } catch (error) {
             throw new Error(`Failed to type text '${text}' in element with ref '${ref}':\n${error}`)

@@ -197,7 +197,7 @@ class SnapshotRenderer {
     }
 }
 
-export class AriaSnapshotMapper {
+class AriaSnapshotMapper {
     private roleParser = new RoleParser()
     private locatorFactory = new LocatorFactory()
     private collector = new AriaSnapshotCollector(this.roleParser, this.locatorFactory)
@@ -223,7 +223,7 @@ export class AriaSnapshotMapper {
     }
 }
 
-export class AriaSnapshotStore {
+export class PageSnapshotStore {
     private mapping: AriaSnapshotMapping | null = null
 
     set(mapping: AriaSnapshotMapping): void {
@@ -237,6 +237,10 @@ export class AriaSnapshotStore {
         } else return locator
     }
 
+    getEntries(): AriaSnapshotMapping['entries'] {
+        return this.mapping?.entries ?? []
+    }
+
     getSnapshot(): string | null {
         const snapshot = this.mapping?.snapshot ?? null
         return snapshot ? 'page snapshot:\n```yaml\n' + snapshot + '\n```' : null
@@ -247,9 +251,23 @@ export class AriaSnapshotStore {
     }
 }
 
-export async function mapAriaSnapshot(snapshotYaml: string, page: Page): Promise<AriaSnapshotMapping> {
-    const mapper = new AriaSnapshotMapper()
-    return mapper.map(snapshotYaml, page)
+export class PageSnapshot {
+    private readonly store: PageSnapshotStore
+    private readonly mapper: AriaSnapshotMapper
+    private page: Page | null = null
+
+    constructor(store?: PageSnapshotStore) {
+        this.store = store ?? new PageSnapshotStore()
+        this.mapper = new AriaSnapshotMapper()
+    }
+
+    async get(page: Page): Promise<string | null> {
+        this.page = page
+        const rawSnapshot = await this.page.locator('body').ariaSnapshot()
+        const mapping = await this.mapper.map(rawSnapshot, this.page)
+        this.store.set(mapping)
+        return this.store.getSnapshot()
+    }
 }
 
-export default AriaSnapshotMapper
+export default PageSnapshot

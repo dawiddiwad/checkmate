@@ -27,16 +27,18 @@ export class HistoryManager {
     }
 
     async removeSnapshotEntries(openaiClient: OpenAIClient): Promise<void> {
-        const toolCalls = openaiClient.getMessages().filter(message => message.role === 'tool')
-        const filteredHistory = openaiClient.getMessages().filter((message) => {
-            if (message.role === 'tool' || ((message.content?.[0] as any)?.text as string)?.includes(HistoryManager.SNAPSHOT_IDENTIFIER)) {
-                return false
-            } else {
-                return true
+        const lastToolCall = openaiClient.getMessages().filter(message => message.role === 'tool').pop()
+        const filteredHistory = openaiClient.getMessages().map(message => {
+            if (message.role === 'tool' && message.tool_call_id !== lastToolCall?.tool_call_id) {
+                message.content = '[Snapshot removed from history to save tokens]'
+            } else if (((message.content?.[0] as any)?.text as string)?.includes(HistoryManager.SNAPSHOT_IDENTIFIER)) {
+                message.content = [{
+                    type: 'text',
+                    text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\n'[Snapshot removed from history to save tokens]' `
+                }]
             }
+            return message
         })
-        const lastToolResponse = toolCalls.pop()
-        if (lastToolResponse) filteredHistory.push(lastToolResponse)
         openaiClient.replaceHistory(filteredHistory)
     }
 }

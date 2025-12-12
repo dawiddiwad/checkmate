@@ -451,9 +451,10 @@ class SnapshotRenderer {
             if (node && typeof node === "object") {
                 const entries = Object.entries(node).map(([key, value]) => {
                     const nextPath = [...path, key]
-                    // For 'text' keys, don't add ref to the key - it will be on the value instead
-                    const isTextNode = key.toLowerCase() === 'text' || key.toLowerCase().startsWith('text:')
-                    const newKey = isTextNode ? key : this.appendRefIfNeeded(key, nextPath, pathToRef)
+                    // When value is a string, add ref to the value only (not the key)
+                    // This handles cases like "paragraph: Some text" and "text: Some text"
+                    const valueIsString = typeof value === 'string'
+                    const newKey = valueIsString ? key : this.appendRefIfNeeded(key, nextPath, pathToRef)
                     const newValue = transform(value, nextPath)
                     return [newKey, newValue]
                 })

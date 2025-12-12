@@ -1,5 +1,5 @@
 import { ChatCompletionFunctionTool } from "openai/resources"
-import { OpenAITool, ToolCallArgs } from "../../mcp/tool/openai-tool"
+import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
 import { expect, Page } from "@playwright/test"
 import { PageSnapshot, PageSnapshotStore } from "./page-snapshot"
 
@@ -99,7 +99,7 @@ export class BrowserTool implements OpenAITool {
         ]
     }
 
-    async call(specified: ToolCallArgs, ...args: any[]) {
+    async call(specified: ToolCall, ...args: any[]) {
         if (!specified.name) {
             throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
         }

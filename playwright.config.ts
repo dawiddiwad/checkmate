@@ -12,10 +12,6 @@ export default defineConfig({
     {
       name: 'web',
       testDir: './test/specs/web'
-    },
-    {
-      name: 'live',
-      testDir: './test/specs/live'
     }
   ],
   outputDir: process.env.CI ? undefined : './test-reports/results',

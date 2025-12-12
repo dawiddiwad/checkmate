@@ -1,10 +1,10 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
-import { ToolCall } from "../../mcp/server/openai-mcp"
 import { SalesforceTool } from "../../salesforce/salesforce-tool"
 import { StepTool } from "./step-tool"
 import { StepStatusCallback } from "../types"
 import { ConfigurationManager } from "../configuration-manager"
 import { BrowserTool } from "./browser-tool"
+import { ToolCall } from "../../mcp/tool/openai-tool"
 
 export type ToolResponse = {
     name?: string

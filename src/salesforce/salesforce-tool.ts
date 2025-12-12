@@ -1,7 +1,7 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceCliHandler } from "./salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "./salesforce-cli-authenticator"
-import { OpenAITool, ToolCallArgs } from "../mcp/tool/openai-tool"
+import { OpenAITool, ToolCall } from "../mcp/tool/openai-tool"
 import { BrowserTool } from "../step/tool/browser-tool"
 
 
@@ -31,7 +31,7 @@ export class SalesforceTool implements OpenAITool {
         ]
     }
 
-    async call(specified: ToolCallArgs): Promise<any> {
+    async call(specified: ToolCall): Promise<any> {
         if (specified.name === SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG) {
             try {
                 const frontDoorUrl = await this.getSalesforceLoginUrl()

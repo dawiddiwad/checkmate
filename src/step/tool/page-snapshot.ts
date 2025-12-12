@@ -455,16 +455,23 @@ class SnapshotRenderer {
         }
 
         const transformed = transform(snapshot, [])
-        const filtered = this.filterUselessElements(transformed)
-        return stringify(filtered)
+        return stringify(transformed)
     }
 
-    private filterUselessElements(node: unknown): unknown {
+    private appendRefIfNeeded(label: string, path: PathChunk[], pathToRef: Map<string, string>): string {
+        const ref = pathToRef.get(PathEncoder.encode(path))
+        if (!ref) return label
+        return `${label} [ref=${ref}]`
+    }
+}
+
+class SnapshotFilter {
+    filter(node: unknown): unknown {
         if (Array.isArray(node)) {
             const filtered = node
-                .map(item => this.filterUselessElements(item))
+                .map(item => this.filter(item))
                 .filter(item => item !== null && item !== undefined)
-            return filtered
+            return filtered.length > 0 ? filtered : null
         }
 
         if (typeof node === 'string') {
@@ -472,17 +479,40 @@ class SnapshotRenderer {
         }
 
         if (node && typeof node === 'object') {
-            const entries = Object.entries(node)
-                .map(([key, value]) => {
-                    const filteredValue = this.filterUselessElements(value)
-                    return [key, filteredValue] as [string, unknown]
-                })
-                .filter(([key, value]) => this.shouldKeepEntry(key, value))
+            const results: Array<{ type: 'entry', key: string, value: unknown } | { type: 'string', value: string }> = []
+            
+            for (const [key, value] of Object.entries(node)) {
+                const filteredValue = this.filter(value)
+                
+                // If value became null/empty but key has a name, convert to string
+                if ((filteredValue === null || filteredValue === undefined) && this.hasName(key)) {
+                    results.push({ type: 'string', value: key })
+                } else if (this.shouldKeepEntry(key, filteredValue)) {
+                    results.push({ type: 'entry', key, value: filteredValue })
+                }
+            }
+            
+            if (results.length === 0) return null
+            
+            // If single result that's a string, return it directly
+            if (results.length === 1 && results[0].type === 'string') {
+                return results[0].value
+            }
+            
+            // Build object from entries, converting string types to array items
+            // This handles mixed case - but in practice objects should have consistent structure
+            const entries = results
+                .filter((r): r is { type: 'entry', key: string, value: unknown } => r.type === 'entry')
+                .map(r => [r.key, r.value])
             
             return entries.length > 0 ? Object.fromEntries(entries) : null
         }
 
         return node
+    }
+
+    private hasName(key: string): boolean {
+        return /"[^"]+"/.test(key)
     }
 
     private shouldKeepStringNode(str: string): boolean {
@@ -495,7 +525,7 @@ class SnapshotRenderer {
         // Keep if it has text content after colon (like "text: Something" or "paragraph: Content")
         const colonMatch = str.match(/^[^:]+:\s*(.+)/)
         if (colonMatch) {
-            const afterColon = colonMatch[1].replace(/\s*\[ref=[^\]]+\]$/, '').trim()
+            const afterColon = colonMatch[1].trim()
             if (afterColon.length > 0) return true
         }
 
@@ -513,7 +543,7 @@ class SnapshotRenderer {
         // Keep if key has text content after colon
         const colonMatch = key.match(/^[^:]+:\s*(.+)/)
         if (colonMatch) {
-            const afterColon = colonMatch[1].replace(/\s*\[ref=[^\]]+\]$/, '').trim()
+            const afterColon = colonMatch[1].trim()
             if (afterColon.length > 0) return true
         }
 
@@ -524,12 +554,6 @@ class SnapshotRenderer {
         // Remove unnamed role without children
         return false
     }
-
-    private appendRefIfNeeded(label: string, path: PathChunk[], pathToRef: Map<string, string>): string {
-        const ref = pathToRef.get(PathEncoder.encode(path))
-        if (!ref) return label
-        return `${label} [ref=${ref}]`
-    }
 }
 
 class AriaSnapshotMapper {
@@ -537,11 +561,19 @@ class AriaSnapshotMapper {
     private locatorFactory = new LocatorFactory()
     private collector = new AriaSnapshotCollector(this.roleParser, this.locatorFactory)
     private visibilityFilter = new LocatorVisibilityFilter()
+    private snapshotFilter = new SnapshotFilter()
     private renderer = new SnapshotRenderer()
 
     async map(snapshotYaml: string, page: Page): Promise<AriaSnapshotMapping> {
         const parsed = parse(snapshotYaml)
-        const candidates = this.collector.collect(parsed, page)
+        
+        // Step 1: Filter out useless elements FIRST (before collecting/locators)
+        const filtered = this.snapshotFilter.filter(parsed)
+        
+        // Step 2: Collect elements and create locators from filtered tree
+        const candidates = this.collector.collect(filtered, page)
+        
+        // Step 3: Check visibility and assign refs
         const visibleCandidates = await this.visibilityFilter.filter(candidates)
 
         const pathToRef = new Map<string, string>()
@@ -552,7 +584,8 @@ class AriaSnapshotMapper {
             referenceMap.set(candidate.ref, candidate.locator)
         })
 
-        const snapshot = this.renderer.render(parsed, pathToRef)
+        // Step 4: Render with refs (no filtering needed - already done)
+        const snapshot = this.renderer.render(filtered, pathToRef)
 
         return { snapshot, references: referenceMap, entries: visibleCandidates }
     }

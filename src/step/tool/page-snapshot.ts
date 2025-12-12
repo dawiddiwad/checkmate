@@ -20,13 +20,14 @@ const ARIA_ROLES = new Set([
 
 const REF_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-type ParsedRole = { role: string; name?: string }
+type ParsedRole = { role: string; name?: string; isText?: boolean }
 type LocatorCandidate = {
     pathKey: string
     locator: Locator
     role: string
     name?: string
     text?: string
+    isText?: boolean
 }
 
 export type AriaSnapshotMapping = {
@@ -60,6 +61,12 @@ class RoleParser {
         const match = source.match(/^([^\s]+)(?:\s+"([^"]+)")?/)
         if (!match) return null
         const role = match[1]
+        
+        // Handle 'text' as a special case - not a role but text content
+        if (role.toLowerCase() === 'text') {
+            return { role: 'text', isText: true }
+        }
+        
         if (!ARIA_ROLES.has(role.toLowerCase())) return null
         return { role, name: match[2] }
     }
@@ -69,6 +76,16 @@ class LocatorFactory {
     createDirect(page: Page, role: string, name: string, nthIndex?: number): Locator {
         const base = page.getByRole(role as any, { name, exact: true })
         return typeof nthIndex === 'number' ? base.nth(nthIndex) : base
+    }
+
+    createDirectText(page: Page, text: string, nthIndex?: number): Locator {
+        const base = page.getByText(text, { exact: true })
+        return typeof nthIndex === 'number' ? base.nth(nthIndex) : base
+    }
+
+    createTextFromAncestor(ancestor: Locator, text: string, nthIndex?: number): Locator {
+        const base = ancestor.getByText(text, { exact: true })
+        return typeof nthIndex === 'number' ? base.nth(nthIndex) : base.first()
     }
 
     createFromAncestor(ancestor: Locator, role: string, options?: { text?: string; nthIndex?: number }): Locator {
@@ -88,13 +105,14 @@ class LocatorFactory {
     }
 }
 
-type AncestorInfo = { role: string; name?: string }
+type AncestorInfo = { role: string; name?: string; isText?: boolean }
 type CollectedElement = {
     role: string
     name?: string
     text?: string
     path: PathChunk[]
     ancestors: AncestorInfo[]
+    isText?: boolean
 }
 
 class AriaSnapshotCollector {
@@ -129,7 +147,8 @@ class AriaSnapshotCollector {
                     role: parsed.role,
                     name: parsed.name,
                     path,
-                    ancestors: [...ancestors]
+                    ancestors: [...ancestors],
+                    isText: parsed.isText
                 })
             }
             return
@@ -145,17 +164,21 @@ class AriaSnapshotCollector {
                     continue
                 }
 
-                const text = typeof value === 'string' && !parsed.name ? value : undefined
+                // For text nodes, the value is the actual text content
+                const textContent = parsed.isText && typeof value === 'string' ? value : undefined
+                const text = !parsed.isText && typeof value === 'string' && !parsed.name ? value : undefined
+                
                 elements.push({
                     role: parsed.role,
                     name: parsed.name,
-                    text,
+                    text: textContent ?? text,
                     path: nextPath,
-                    ancestors: [...ancestors]
+                    ancestors: [...ancestors],
+                    isText: parsed.isText
                 })
 
                 if (typeof value !== 'string') {
-                    const newAncestors = [...ancestors, { role: parsed.role, name: parsed.name }]
+                    const newAncestors = [...ancestors, { role: parsed.role, name: parsed.name, isText: parsed.isText }]
                     this.collectElements(value, nextPath, newAncestors, elements)
                 }
             }
@@ -168,8 +191,15 @@ class AriaSnapshotCollector {
 
         // Index named elements by role+name for duplicate detection
         const namedElementsByKey = new Map<string, CollectedElement[]>()
+        // Index text elements by their text content
+        const textElementsByContent = new Map<string, CollectedElement[]>()
+        
         for (const el of elements) {
-            if (el.name) {
+            if (el.isText && el.text) {
+                const key = `text::${el.text}`
+                if (!textElementsByContent.has(key)) textElementsByContent.set(key, [])
+                textElementsByContent.get(key)!.push(el)
+            } else if (el.name) {
                 const key = `${el.role}::${el.name}`
                 if (!namedElementsByKey.has(key)) namedElementsByKey.set(key, [])
                 namedElementsByKey.get(key)!.push(el)
@@ -177,7 +207,7 @@ class AriaSnapshotCollector {
         }
 
         for (const element of elements) {
-            const locator = this.createOptimalLocator(element, namedElementsByKey, elements, page)
+            const locator = this.createOptimalLocator(element, namedElementsByKey, textElementsByContent, elements, page)
             if (!locator) continue
 
             const signature = locator.toString()
@@ -189,7 +219,8 @@ class AriaSnapshotCollector {
                 locator,
                 role: element.role,
                 name: element.name,
-                text: element.text
+                text: element.text,
+                isText: element.isText
             })
         }
 
@@ -199,9 +230,35 @@ class AriaSnapshotCollector {
     private createOptimalLocator(
         element: CollectedElement,
         namedElementsByKey: Map<string, CollectedElement[]>,
+        textElementsByContent: Map<string, CollectedElement[]>,
         allElements: CollectedElement[],
         page: Page
     ): Locator | null {
+        // Handle text elements specially
+        if (element.isText && element.text) {
+            const key = `text::${element.text}`
+            const duplicates = textElementsByContent.get(key) ?? []
+            const nthIndex = duplicates.length > 1 ? duplicates.indexOf(element) : undefined
+            
+            // Check if there's a named ancestor we can scope under
+            const namedAncestorIndex = this.findNearestNamedAncestorIndex(element.ancestors)
+            
+            if (namedAncestorIndex >= 0) {
+                const ancestor = element.ancestors[namedAncestorIndex]
+                const ancestorKey = `${ancestor.role}::${ancestor.name}`
+                const ancestorDuplicates = namedElementsByKey.get(ancestorKey) ?? []
+                const ancestorNthIndex = this.findAncestorInstanceIndex(element, ancestor, ancestorDuplicates, allElements)
+                const ancestorLocator = this.locatorFactory.createDirect(page, ancestor.role, ancestor.name!, ancestorNthIndex)
+                
+                // Count text siblings with same content under this ancestor
+                const siblingIndex = this.countTextSiblingsUnderAncestor(element, namedAncestorIndex, allElements)
+                return this.locatorFactory.createTextFromAncestor(ancestorLocator, element.text, siblingIndex)
+            }
+            
+            // Direct page-level text lookup
+            return this.locatorFactory.createDirectText(page, element.text, nthIndex)
+        }
+        
         if (element.name) {
             // Element has a name - use direct page lookup
             const key = `${element.role}::${element.name}`
@@ -239,6 +296,35 @@ class AriaSnapshotCollector {
             text: element.text,
             nthIndex: siblingIndex
         })
+    }
+
+    private countTextSiblingsUnderAncestor(
+        element: CollectedElement,
+        namedAncestorIndex: number,
+        allElements: CollectedElement[]
+    ): number {
+        const ancestor = element.ancestors[namedAncestorIndex]
+        
+        let count = 0
+        for (const other of allElements) {
+            if (!other.isText) continue
+            if (other.text !== element.text) continue
+            
+            // Check if this element shares the same named ancestor
+            const otherNamedAncestorIndex = this.findNearestNamedAncestorIndex(other.ancestors)
+            if (otherNamedAncestorIndex < 0) continue
+            
+            const otherAncestor = other.ancestors[otherNamedAncestorIndex]
+            if (otherAncestor.role !== ancestor.role || otherAncestor.name !== ancestor.name) continue
+            
+            // Check if they share the same ancestor instance
+            if (!this.sharesSameAncestorInstance(element, other, namedAncestorIndex)) continue
+
+            if (other === element) return count
+            count++
+        }
+
+        return count
     }
 
     private findNearestNamedAncestorIndex(ancestors: AncestorInfo[]): number {
@@ -365,7 +451,9 @@ class SnapshotRenderer {
             if (node && typeof node === "object") {
                 const entries = Object.entries(node).map(([key, value]) => {
                     const nextPath = [...path, key]
-                    const newKey = this.appendRefIfNeeded(key, nextPath, pathToRef)
+                    // For 'text' keys, don't add ref to the key - it will be on the value instead
+                    const isTextNode = key.toLowerCase() === 'text' || key.toLowerCase().startsWith('text:')
+                    const newKey = isTextNode ? key : this.appendRefIfNeeded(key, nextPath, pathToRef)
                     const newValue = transform(value, nextPath)
                     return [newKey, newValue]
                 })
@@ -454,10 +542,8 @@ export class PageSnapshot {
     async get(page: Page): Promise<AriaPageSnapshot> {
         this.page = page
         const rawSnapshot = await this.page.locator('body').ariaSnapshot()
-        console.log(`----- Raw ARIA Snapshot -----\n${rawSnapshot}\n-------------------------\n`)
         const mapping = await this.mapper.map(rawSnapshot, this.page)
         this.store.set(mapping)
-        console.log(`----- Mapped ARIA Snapshot -----\n${this.store.getSnapshot()}\n-------------------------\n`)
         return this.store.getSnapshot()
     }
 }

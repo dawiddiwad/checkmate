@@ -66,78 +66,265 @@ class RoleParser {
 }
 
 class LocatorFactory {
-    create(parent: Page | Locator, role: string, options?: { name?: string; text?: string; siblingIndex?: number }): Locator {
-        const base = options?.name ? parent.getByRole(role as any, { name: options.name, exact: true }) : parent.getByRole(role as any)
-        const indexed = typeof options?.siblingIndex === "number" ? base.nth(options.siblingIndex) : base
-        return options?.text ? indexed.filter({ hasText: options.text }) : indexed
+    createDirect(page: Page, role: string, name: string, nthIndex?: number): Locator {
+        const base = page.getByRole(role as any, { name, exact: true })
+        return typeof nthIndex === 'number' ? base.nth(nthIndex) : base
+    }
+
+    createFromAncestor(ancestor: Locator, role: string, options?: { text?: string; nthIndex?: number }): Locator {
+        let locator = ancestor.getByRole(role as any)
+        if (options?.text) {
+            locator = locator.filter({ hasText: options.text })
+        }
+        return typeof options?.nthIndex === 'number' ? locator.nth(options.nthIndex) : locator.first()
+    }
+
+    createFromPage(page: Page, role: string, options?: { text?: string; nthIndex?: number }): Locator {
+        let locator = page.getByRole(role as any)
+        if (options?.text) {
+            locator = locator.filter({ hasText: options.text })
+        }
+        return typeof options?.nthIndex === 'number' ? locator.nth(options.nthIndex) : locator.first()
     }
 }
 
-class SiblingIndexTracker {
-    private tracker = new Map<string, number>()
-
-    next(role: string): number {
-        const current = this.tracker.get(role) || 0
-        this.tracker.set(role, current + 1)
-        return current
-    }
+type AncestorInfo = { role: string; name?: string }
+type CollectedElement = {
+    role: string
+    name?: string
+    text?: string
+    path: PathChunk[]
+    ancestors: AncestorInfo[]
 }
 
 class AriaSnapshotCollector {
     constructor(private roleParser: RoleParser, private locatorFactory: LocatorFactory) { }
 
     collect(snapshot: unknown, page: Page): LocatorCandidate[] {
-        const candidates: LocatorCandidate[] = []
-        const locatorSignatures = new Set<string>()
+        // Phase 1: Collect all elements with their ancestry info
+        const elements: CollectedElement[] = []
+        this.collectElements(snapshot, [], [], elements)
 
-        const traverse = (node: unknown, parent: Page | Locator, siblingTracker: SiblingIndexTracker | null, path: PathChunk[]): void => {
-            if (Array.isArray(node)) {
-                const arrayTracker = new SiblingIndexTracker()
-                node.forEach((child, index) => traverse(child, parent, arrayTracker, [...path, index]))
-                return
+        // Phase 2: Create optimal locators
+        return this.createLocators(elements, page)
+    }
+
+    private collectElements(
+        node: unknown,
+        path: PathChunk[],
+        ancestors: AncestorInfo[],
+        elements: CollectedElement[]
+    ): void {
+        if (Array.isArray(node)) {
+            node.forEach((child, index) => {
+                this.collectElements(child, [...path, index], ancestors, elements)
+            })
+            return
+        }
+
+        if (typeof node === 'string') {
+            const parsed = this.roleParser.parse(node)
+            if (parsed) {
+                elements.push({
+                    role: parsed.role,
+                    name: parsed.name,
+                    path,
+                    ancestors: [...ancestors]
+                })
             }
+            return
+        }
 
-            if (typeof node === "string") {
-                const parsed = this.roleParser.parse(node)
-                if (!parsed) return
-                const siblingIndex = parsed.name ? undefined : siblingTracker?.next(parsed.role) ?? 0
-                const locator = this.locatorFactory.create(parent, parsed.role, { name: parsed.name, siblingIndex })
-                this.addCandidate(locator, parsed, path, candidates, locatorSignatures)
-                return
-            }
+        if (node && typeof node === 'object') {
+            for (const [key, value] of Object.entries(node)) {
+                const parsed = this.roleParser.parse(key)
+                const nextPath = [...path, key]
 
-            if (node && typeof node === "object") {
-                const objectTracker = new SiblingIndexTracker()
-                for (const [key, value] of Object.entries(node)) {
-                    const parsed = this.roleParser.parse(key)
-                    const nextPath = [...path, key]
-                    if (!parsed) {
-                        traverse(value, parent, siblingTracker, nextPath)
-                        continue
-                    }
+                if (!parsed) {
+                    this.collectElements(value, nextPath, ancestors, elements)
+                    continue
+                }
 
-                    const activeTracker = siblingTracker ?? objectTracker
-                    const siblingIndex = parsed.name ? undefined : activeTracker.next(parsed.role)
-                    const text = typeof value === "string" && !parsed.name ? value : undefined
-                    const locator = this.locatorFactory.create(parent, parsed.role, { name: parsed.name, text, siblingIndex })
-                    this.addCandidate(locator, parsed, nextPath, candidates, locatorSignatures, text)
+                const text = typeof value === 'string' && !parsed.name ? value : undefined
+                elements.push({
+                    role: parsed.role,
+                    name: parsed.name,
+                    text,
+                    path: nextPath,
+                    ancestors: [...ancestors]
+                })
 
-                    if (typeof value !== "string") {
-                        traverse(value, locator, siblingTracker ?? objectTracker, nextPath)
-                    }
+                if (typeof value !== 'string') {
+                    const newAncestors = [...ancestors, { role: parsed.role, name: parsed.name }]
+                    this.collectElements(value, nextPath, newAncestors, elements)
                 }
             }
         }
+    }
 
-        traverse(snapshot, page, null, [])
+    private createLocators(elements: CollectedElement[], page: Page): LocatorCandidate[] {
+        const candidates: LocatorCandidate[] = []
+        const signatures = new Set<string>()
+
+        // Index named elements by role+name for duplicate detection
+        const namedElementsByKey = new Map<string, CollectedElement[]>()
+        for (const el of elements) {
+            if (el.name) {
+                const key = `${el.role}::${el.name}`
+                if (!namedElementsByKey.has(key)) namedElementsByKey.set(key, [])
+                namedElementsByKey.get(key)!.push(el)
+            }
+        }
+
+        for (const element of elements) {
+            const locator = this.createOptimalLocator(element, namedElementsByKey, elements, page)
+            if (!locator) continue
+
+            const signature = locator.toString()
+            if (signatures.has(signature)) continue
+            signatures.add(signature)
+
+            candidates.push({
+                pathKey: PathEncoder.encode(element.path),
+                locator,
+                role: element.role,
+                name: element.name,
+                text: element.text
+            })
+        }
+
         return candidates
     }
 
-    private addCandidate(locator: Locator, parsed: ParsedRole, path: PathChunk[], candidates: LocatorCandidate[], signatures: Set<string>, text?: string): void {
-        const signature = locator.toString()
-        if (signatures.has(signature)) return
-        signatures.add(signature)
-        candidates.push({ pathKey: PathEncoder.encode(path), locator, role: parsed.role, name: parsed.name, text })
+    private createOptimalLocator(
+        element: CollectedElement,
+        namedElementsByKey: Map<string, CollectedElement[]>,
+        allElements: CollectedElement[],
+        page: Page
+    ): Locator | null {
+        if (element.name) {
+            // Element has a name - use direct page lookup
+            const key = `${element.role}::${element.name}`
+            const duplicates = namedElementsByKey.get(key) ?? []
+            const nthIndex = duplicates.length > 1 ? duplicates.indexOf(element) : undefined
+            return this.locatorFactory.createDirect(page, element.role, element.name, nthIndex)
+        }
+
+        // Element has no name - find nearest named ancestor
+        const namedAncestorIndex = this.findNearestNamedAncestorIndex(element.ancestors)
+
+        if (namedAncestorIndex >= 0) {
+            const ancestor = element.ancestors[namedAncestorIndex]
+
+            // Create locator for the named ancestor
+            const ancestorKey = `${ancestor.role}::${ancestor.name}`
+            const ancestorDuplicates = namedElementsByKey.get(ancestorKey) ?? []
+            
+            // Find which instance of this ancestor we're under
+            const ancestorNthIndex = this.findAncestorInstanceIndex(element, ancestor, ancestorDuplicates, allElements)
+            const ancestorLocator = this.locatorFactory.createDirect(page, ancestor.role, ancestor.name!, ancestorNthIndex)
+
+            // Count siblings of same role under this ancestor
+            const siblingIndex = this.countSiblingsUnderAncestor(element, namedAncestorIndex, allElements)
+
+            return this.locatorFactory.createFromAncestor(ancestorLocator, element.role, {
+                text: element.text,
+                nthIndex: siblingIndex
+            })
+        }
+
+        // No named ancestor - use page-level lookup
+        const siblingIndex = this.countSiblingsAtPageLevel(element, allElements)
+        return this.locatorFactory.createFromPage(page, element.role, {
+            text: element.text,
+            nthIndex: siblingIndex
+        })
+    }
+
+    private findNearestNamedAncestorIndex(ancestors: AncestorInfo[]): number {
+        for (let i = ancestors.length - 1; i >= 0; i--) {
+            if (ancestors[i].name) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    private findAncestorInstanceIndex(
+        element: CollectedElement,
+        ancestor: AncestorInfo,
+        ancestorDuplicates: CollectedElement[],
+        allElements: CollectedElement[]
+    ): number | undefined {
+        if (ancestorDuplicates.length <= 1) return undefined
+
+        // Find which ancestor instance this element belongs to by checking path prefixes
+        const elementPathStr = PathEncoder.encode(element.path)
+        
+        for (let i = 0; i < ancestorDuplicates.length; i++) {
+            const ancestorPathStr = PathEncoder.encode(ancestorDuplicates[i].path)
+            if (elementPathStr.startsWith(ancestorPathStr)) {
+                return i
+            }
+        }
+
+        return 0
+    }
+
+    private countSiblingsUnderAncestor(
+        element: CollectedElement,
+        namedAncestorIndex: number,
+        allElements: CollectedElement[]
+    ): number {
+        const ancestor = element.ancestors[namedAncestorIndex]
+        
+        // Find all elements of same role that share the same named ancestor path
+        let count = 0
+        for (const other of allElements) {
+            if (other.role !== element.role) continue
+            if (other.name) continue // Named elements use direct lookup
+            
+            // Check if this element shares the same named ancestor
+            const otherNamedAncestorIndex = this.findNearestNamedAncestorIndex(other.ancestors)
+            if (otherNamedAncestorIndex < 0) continue
+            
+            const otherAncestor = other.ancestors[otherNamedAncestorIndex]
+            if (otherAncestor.role !== ancestor.role || otherAncestor.name !== ancestor.name) continue
+            
+            // Check if they share the same ancestor instance (same path prefix up to ancestor)
+            if (!this.sharesSameAncestorInstance(element, other, namedAncestorIndex)) continue
+
+            if (other === element) return count
+            count++
+        }
+
+        return count
+    }
+
+    private sharesSameAncestorInstance(el1: CollectedElement, el2: CollectedElement, ancestorDepth: number): boolean {
+        // Compare ancestor chains up to the named ancestor depth
+        if (el1.ancestors.length <= ancestorDepth || el2.ancestors.length <= ancestorDepth) return false
+        
+        for (let i = 0; i <= ancestorDepth; i++) {
+            const a1 = el1.ancestors[i]
+            const a2 = el2.ancestors[i]
+            if (a1.role !== a2.role || a1.name !== a2.name) return false
+        }
+        
+        return true
+    }
+
+    private countSiblingsAtPageLevel(element: CollectedElement, allElements: CollectedElement[]): number {
+        let count = 0
+        for (const other of allElements) {
+            if (other.role !== element.role) continue
+            if (other.name) continue
+            if (this.findNearestNamedAncestorIndex(other.ancestors) >= 0) continue // Has named ancestor
+            
+            if (other === element) return count
+            count++
+        }
+        return count
     }
 }
 
@@ -267,8 +454,10 @@ export class PageSnapshot {
     async get(page: Page): Promise<AriaPageSnapshot> {
         this.page = page
         const rawSnapshot = await this.page.locator('body').ariaSnapshot()
+        console.log(`----- Raw ARIA Snapshot -----\n${rawSnapshot}\n-------------------------\n`)
         const mapping = await this.mapper.map(rawSnapshot, this.page)
         this.store.set(mapping)
+        console.log(`----- Mapped ARIA Snapshot -----\n${this.store.getSnapshot()}\n-------------------------\n`)
         return this.store.getSnapshot()
     }
 }

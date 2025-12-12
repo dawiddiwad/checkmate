@@ -464,7 +464,74 @@ class SnapshotRenderer {
         }
 
         const transformed = transform(snapshot, [])
-        return stringify(transformed)
+        const filtered = this.filterUselessElements(transformed)
+        return stringify(filtered)
+    }
+
+    private filterUselessElements(node: unknown): unknown {
+        if (Array.isArray(node)) {
+            const filtered = node
+                .map(item => this.filterUselessElements(item))
+                .filter(item => item !== null && item !== undefined)
+            return filtered
+        }
+
+        if (typeof node === 'string') {
+            return this.shouldKeepStringNode(node) ? node : null
+        }
+
+        if (node && typeof node === 'object') {
+            const entries = Object.entries(node)
+                .map(([key, value]) => {
+                    const filteredValue = this.filterUselessElements(value)
+                    return [key, filteredValue] as [string, unknown]
+                })
+                .filter(([key, value]) => this.shouldKeepEntry(key, value))
+            
+            return entries.length > 0 ? Object.fromEntries(entries) : null
+        }
+
+        return node
+    }
+
+    private shouldKeepStringNode(str: string): boolean {
+        // Keep non-role entries (like /url: something)
+        if (str.startsWith('/')) return true
+
+        // Keep if it has a name (quoted text like 'button "Search"')
+        if (/"[^"]+"/.test(str)) return true
+
+        // Keep if it has text content after colon (like "text: Something" or "paragraph: Content")
+        const colonMatch = str.match(/^[^:]+:\s*(.+)/)
+        if (colonMatch) {
+            const afterColon = colonMatch[1].replace(/\s*\[ref=[^\]]+\]$/, '').trim()
+            if (afterColon.length > 0) return true
+        }
+
+        // Remove unnamed roles without text content (like "img", "heading [level=3]")
+        return false
+    }
+
+    private shouldKeepEntry(key: string, value: unknown): boolean {
+        // Always keep non-role entries (like /url)
+        if (key.startsWith('/')) return true
+
+        // Keep if key has a name (quoted text)
+        if (/"[^"]+"/.test(key)) return true
+
+        // Keep if key has text content after colon
+        const colonMatch = key.match(/^[^:]+:\s*(.+)/)
+        if (colonMatch) {
+            const afterColon = colonMatch[1].replace(/\s*\[ref=[^\]]+\]$/, '').trim()
+            if (afterColon.length > 0) return true
+        }
+
+        // Keep if has non-empty children
+        if (Array.isArray(value) && value.length > 0) return true
+        if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0) return true
+
+        // Remove unnamed role without children
+        return false
     }
 
     private appendRefIfNeeded(label: string, path: PathChunk[], pathToRef: Map<string, string>): string {

@@ -42,7 +42,7 @@ export class BrowserTool implements OpenAITool {
                     parameters: {
                         type: 'object',
                         properties: {
-                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: 4Fgt' },
+                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
                             name: { type: 'string', description: 'name of the element to click, example: Submit Button' },
                             goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                         },
@@ -58,7 +58,7 @@ export class BrowserTool implements OpenAITool {
                     parameters: {
                         type: 'object',
                         properties: {
-                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: 4Fgt' },
+                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
                             text: { type: 'string', description: 'The text to type into the element, example: Hello World' },
                             name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
                             goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
@@ -121,7 +121,7 @@ export class BrowserTool implements OpenAITool {
     private async captureSnapshot() {
         try {
             await expect.poll(async () => {
-                const getRawSnapshot = async () => await this.page.getByRole('document').innerHTML()
+                const getRawSnapshot = async () => await this.page.locator('html').innerHTML()
                 const reference_1 = await getRawSnapshot()
                 await this.page.waitForTimeout(1000)
                 const reference_2 = await getRawSnapshot()

@@ -18,8 +18,6 @@ const ARIA_ROLES = new Set([
     "time", "timer", "toolbar", "tooltip", "tree", "treegrid", "treeitem"
 ]) satisfies Set<AriaRole> as Set<string>
 
-const REF_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-
 type ParsedRole = { role: string; name?: string; isText?: boolean }
 type LocatorCandidate = {
     pathKey: string
@@ -43,15 +41,11 @@ class PathEncoder {
 }
 
 class ReferenceGenerator {
-    constructor(private length = 4) { }
+    private counter = 0
 
     generate(): string {
-        let ref = ""
-        for (let i = 0; i < this.length; i += 1) {
-            const index = Math.floor(Math.random() * REF_ALPHABET.length)
-            ref += REF_ALPHABET[index]
-        }
-        return ref
+        this.counter++
+        return `e${this.counter}`
     }
 }
 
@@ -429,13 +423,10 @@ class LocatorVisibilityFilter {
 
         const generator = new ReferenceGenerator()
         const withRefs: Array<LocatorCandidate & { ref: string }> = []
-        const used = new Set<string>()
 
         candidates.forEach((candidate, index) => {
             if (!results[index]) return
-            let ref = generator.generate()
-            while (used.has(ref)) ref = generator.generate()
-            used.add(ref)
+            const ref = generator.generate()
             withRefs.push({ ...candidate, ref })
         })
 
@@ -609,7 +600,7 @@ export class PageSnapshot {
 
     async get(page: Page): Promise<AriaPageSnapshot> {
         this.page = page
-        const rawSnapshot = await this.page.locator('body').ariaSnapshot()
+        const rawSnapshot = await this.page.locator('html').ariaSnapshot()
         const mapping = await this.mapper.map(rawSnapshot, this.page)
         this.store.set(mapping)
         return this.store.getSnapshot()

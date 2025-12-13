@@ -22,7 +22,7 @@ export class PageSnapshot {
     async get(): Promise<AriaPageSnapshot> {
         try {
             const snapshotYAML = await (this.page as any)._snapshotForAI().then((snapshot) => snapshot.full)
-            const snapshotJSON = parse(snapshotYAML)[0]
+            const snapshotJSON = parse(snapshotYAML)?.[0] ?? { state: 'page content is empty' }
             const snapshotSTRING = JSON.stringify(snapshotJSON)
             PageSnapshot.lastSnapshot = this.minify(snapshotSTRING)
             return PageSnapshot.lastSnapshot

@@ -152,21 +152,21 @@ export class BrowserTool implements OpenAITool {
             await this.page.click(`aria-ref=${ref}`)
             return this.captureSnapshot()
         } catch (error) {
-            console.error(`\n| Error clicking element with ref '${ref}' and will retry with new snapshot due to: ${error}`)
-            return `failed to click element with ref '${ref}':\n${error}, try again with different element`
+            console.error(`\n| Error clicking element with ref '${ref}' due to: ${error}`)
+            return `failed to click element with ref '${ref}':\n${error}`
         }
     }
 
     private async typeInElement(ref: string, text: string) {
         try {
             if (!ref || !text) {
-                throw new Error(`Both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
+                throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
             }
             await this.page.fill(`aria-ref=${ref}`, text)
             return this.captureSnapshot()
         } catch (error) {
-            console.error(`\n| Error typing text '${text}' in element with ref '${ref}' and will retry with new snapshot due to: ${error}`)
-            return `failed to type text '${text}' in element with ref '${ref}':\n${error}, try again with different element with role: textbox, searchbox, combobox, spinbutton, checkbox, radio, switch, slider, button`
+            console.error(`\n| Error typing text '${text}' in element with ref '${ref}' due to: ${error}`)
+            return `failed to type text '${text}' in element with ref '${ref}':\n${error}\ntyping allowed for: textbox, searchbox, combobox, spinbutton, checkbox, radio, switch, slider, button`
         }
     }
 

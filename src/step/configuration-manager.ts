@@ -23,7 +23,7 @@ export class ConfigurationManager {
     }
 
     enableSnapshotCompression(): boolean {
-        return process.env.OPENAI_ENABLE_SNAPSHOT_COMPRESSION?.toLowerCase() !== "false"
+        return process.env.OPENAI_ENABLE_SNAPSHOT_COMPRESSION?.toLowerCase() === "true"
     }
 
     getToolChoice(): "auto" | "required" | "none" {

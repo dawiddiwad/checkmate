@@ -2,7 +2,6 @@ import { ConfigurationManager } from "../configuration-manager";
 import { Step } from "../types";
 import { StepTool } from "../tool/step-tool";
 import { typeMap } from "../tool/snapshot-processor";
-import { PageSnapshotStore } from "../tool/page-snapshot";
 import { BrowserTool } from "../tool/browser-tool";
 import { HistoryManager } from "./history-manager";
 

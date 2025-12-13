@@ -38,7 +38,7 @@ export class ToolResponseHandler {
         const processedResponse = config.enableSnapshotCompression()
             ? this.snapshotProcessor.getCompressed(toolResponse)
             : toolResponse
-        const responseContent = JSON.stringify(processedResponse.response)
+        const responseContent = processedResponse.response
 
         await this.openaiClient.addToolResponse(toolCallId, responseContent)
 

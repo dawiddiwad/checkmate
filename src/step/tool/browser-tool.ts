@@ -1,7 +1,7 @@
 import { ChatCompletionFunctionTool } from "openai/resources"
 import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
 import { expect, Page } from "@playwright/test"
-import { PageSnapshot, PageSnapshotStore } from "./page-snapshot"
+import { PageSnapshot } from "./page-snapshot"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -10,14 +10,12 @@ export class BrowserTool implements OpenAITool {
     static readonly TOOL_PRESS_KEY = 'browser_press_key'
     static readonly TOOL_SNAPSHOT = 'browser_snapshot'
     private readonly page: Page
-    private readonly pageSnapshotStore: PageSnapshotStore
     private readonly pageSnapshot: PageSnapshot
 
     functionDeclarations: ChatCompletionFunctionTool[]
     constructor(page: Page) {
         this.page = page
-        this.pageSnapshotStore = new PageSnapshotStore()
-        this.pageSnapshot = new PageSnapshot(this.pageSnapshotStore)
+        this.pageSnapshot = new PageSnapshot(page)
         this.functionDeclarations = [
             {
                 type: 'function',
@@ -131,7 +129,7 @@ export class BrowserTool implements OpenAITool {
                 timeout: 30_000,
                 message: 'page snapshots should be stable'
             }).toEqual('stable')
-            return this.pageSnapshot.get(this.page)
+            return this.pageSnapshot.get()
         } catch (error) {
             throw new Error(`Failed to capture page snapshot:\n${error}`)
         }
@@ -151,11 +149,11 @@ export class BrowserTool implements OpenAITool {
 
     private async clickElement(ref: string) {
         try {
-            await this.pageSnapshotStore.getLocator(ref).click()
+            await this.page.click(`aria-ref=${ref}`)
             return this.captureSnapshot()
         } catch (error) {
             console.error(`\n| Error clicking element with ref '${ref}' and will retry with new snapshot due to: ${error}`)
-            return `failed to click element with ref '${ref}':\n${error}, try again with the latest snapshot:\n${await this.captureSnapshot()}`
+            return `failed to click element with ref '${ref}':\n${error}, try again with different element`
         }
     }
 
@@ -164,11 +162,11 @@ export class BrowserTool implements OpenAITool {
             if (!ref || !text) {
                 throw new Error(`Both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
             }
-            await this.pageSnapshotStore.getLocator(ref).fill(text)
+            await this.page.fill(`aria-ref=${ref}`, text)
             return this.captureSnapshot()
         } catch (error) {
             console.error(`\n| Error typing text '${text}' in element with ref '${ref}' and will retry with new snapshot due to: ${error}`)
-            return `failed to type text '${text}' in element with ref '${ref}':\n${error}, try again with the latest snapshot:\n${await this.captureSnapshot()}`
+            return `failed to type text '${text}' in element with ref '${ref}':\n${error}, try again with different element with role: textbox, searchbox, combobox, spinbutton, checkbox, radio, switch, slider, button`
         }
     }
 

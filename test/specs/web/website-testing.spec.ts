@@ -140,7 +140,6 @@ test.describe.parallel('multi-step flows', async () => {
         })
     })
 
-
     test('verify stock chart customization and navigation', async ({ ai }) => {
         await test.step(`Navigate to stooq.pl website`, async () => {
             await ai.run({

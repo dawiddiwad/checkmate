@@ -10,8 +10,8 @@ export class HistoryManager {
     addInitialSnapshot(openaiClient: OpenAIClient, snapshotContent: AriaPageSnapshot) {
         const getProcessedSnapshot = () => {
             if (new ConfigurationManager().enableSnapshotCompression()) {
-                const compressedSnapshot = new SnapshotProcessor().getCompressed({ response: snapshotContent }).response
-                return JSON.stringify(compressedSnapshot)
+                return new SnapshotProcessor()
+                    .getCompressed({ response: snapshotContent }).response
             } else {
                 return snapshotContent
             }

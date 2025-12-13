@@ -1,11 +1,11 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 
-export type ToolCallArgs = {
+export type ToolCall = {
     name: string
     arguments?: Record<string, unknown>
 }
 
 export abstract class OpenAITool {
     abstract functionDeclarations: ChatCompletionFunctionTool[]
-    abstract call(specified: ToolCallArgs, ...args: any[]): Promise<any> | any
+    abstract call(specified: ToolCall, ...args: any[]): Promise<any> | any
 }

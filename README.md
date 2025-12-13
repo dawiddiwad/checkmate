@@ -2,7 +2,7 @@
 
 Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLMs with Playwright's ecosystem for smarter, more resilient execution.
 
-Enjoy Claude, Gemini, xAI, or any OpenAI API compatible provider - even your private local models via LM Studio and Ollama!
+Enjoy Claude, Gemini, xAI, or any OpenAI API compatible provider - even your private local models via LM Studio or llama.cpp!
 
 ### How it works?
 Write tests in natural language:
@@ -78,9 +78,6 @@ npm run test:web
 # Run Salesforce tests (requires SF CLI authentication)
 npm run test:salesforce
 
-# Run experimental live API tests (faster responses)
-npm run test:live
-
 # View HTML report
 npx playwright show-report test-reports/html
 
@@ -148,29 +145,21 @@ await test.step('Fill form and submit', async () => {
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | - | **Required** - Your OpenAI API key (or compatible provider) |
 | `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model: gpt-4o, gpt-4o-mini, claude-3-5-sonnet-latest, gemini-2.5-flash, etc. |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc. |
 | `OPENAI_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
 | `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors |
 | `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
 | `OPENAI_ALLOWED_TOOLS` | - | Comma-separated list of allowed tools (if not set, all tools available) |
 | `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
-| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `true` | Enable abbreviated element notation for snapshots (~40% token reduction) |
+| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `false` | Enable abbreviated element notation for snapshots (~30% token reduction) |
 | `OPENAI_API_TOKEN_BUDGET_USD` | - | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.
 | `OPENAI_API_TOKEN_BUDGET_COUNT` | - | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.
 | `OPENAI_LOOP_MAX_REPETITIONS` | `5` | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
 
-### Playwright MCP Settings
+### Playwright Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PLAYWRIGHT_MCP_VERSION` | `latest` | MCP package version (eg: 0.4.5) |
-| `PLAYWRIGHT_MCP_BROWSER` | `chromium` | Browser: chromium, firefox, webkit |
-| `PLAYWRIGHT_MCP_HEADLESS` | `false` | Run browser in headless mode |
-| `PLAYWRIGHT_MCP_OUTPUT_DIR` | `./test-results` | Screenshots and traces location |
-| `PLAYWRIGHT_MCP_SAVE_VIDEO_SIZE` | - | Record video: WxH format (eg: 1280x720) |
-| `PLAYWRIGHT_MCP_ISOLATED` | `true` | Use isolated browser contexts |
-| `PLAYWRIGHT_MCP_CAPS` | - | Custom browser capabilities (JSON) |
+Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
 ## Cost Management
 
@@ -189,9 +178,9 @@ Checkmate includes built-in token usage monitoring:
 
 ### Cost Optimization Features
 
-1. **History Filtering** - Continuously filters page snapshots and old screenshots from chat history (reduces token usage by ~50%)
-2. **Snapshot Compression** - YAML tree elements abbreviation (further ~40% token usage reduction)
-3. **Vision API Screenshots** - Images sent using OpenAI's vision API with `detail: low` (85 tokens per screenshot)
+1. **History Filtering** - Continuously filters old page snapshots (reduces token usage by ~50%)
+2. **Snapshot Compression** - YAML tree elements abbreviation (up to ~30% further token usage reduction)
+3. **Screenshots** - Normalized and comrpessed locally and sent using OpenAI's API with `detail: low`
 4. **Chat Recycling** - New session per step to prevent context bloat
 5. **Token Counting** - Real-time usage tracking per step and test with budgets
 6. **Loop Detection** - Detects repetitive tool call patterns and adjusts temperature to break out of loops, preventing runaway token consumption
@@ -200,7 +189,7 @@ Checkmate includes built-in token usage monitoring:
 
 You can set one or both token budget environment variables to enforce limits during a single test run.
 
-- `OPENAI_API_TOKEN_BUDGET_USD` — Sets a USD budget (e.g. 10.50). The framework checks the current estimated cost (input+output tokens) and throws an error if the budget is exceeded.
+- `OPENAI_API_TOKEN_BUDGET_USD` — Sets a USD budget (e.g. 0.50) per test execution. The framework checks the current estimated cost (input+output tokens) and throws an error if the budget is exceeded.
 - `OPENAI_API_TOKEN_BUDGET_COUNT` — Sets a token limit (e.g. 100000). The framework tracks input and output tokens across the test and throws an error when the total exceeds this limit.
 
 Notes:
@@ -290,293 +279,73 @@ npx playwright show-report test-reports/html
 - Use more specific selectors in descriptions
 - Consider caching (see Roadmap)
 
-### Architecture:
-The framework combines:
-- **OpenAI-compatible API** for understanding and decision-making (works with OpenAI, Claude, Gemini, and local LLMs)
-- **Playwright Test** for managing test runs, fixtures and reporting
-- **Playwright MCP** (Model Context Protocol) for browser automation
-- **Salesforce CLI** for Salesforce-specific operations
-- **Modular Components**: Configuration management, response processing, token tracking, history filtering, snapshot compression, screenshot compression
-- **Experimental Live API**: Real-time AI interactions with streaming responses (Gemini-specific)
+## Architecture
 
-Playwright test runner calls into the OpenAI step engine via fixture, which orchestrates API calls and tool invocations, then feeds results back into the test runner. Supporting modules hang off that core to manage configuration, history, screenshots, and costs:
+Checkmate combines multiple components to enable AI-driven test automation:
 
 ```
-═════════════════════════ FLOW ════════════════════════════════
-
-Playwright Test Step 
-    │
-Checkmate fixture
-    │
-OpenAITestManager
-    │
-OpenAITestStep
-    │
-    ├─► OpenAIClient.initialize(step, stepStatusCallback)
-    │       │
-    │       ├─► ConfigurationManager.getOpenAIConfig()
-    │       ├─► ToolRegistry.getTools()
-    │       └─► ResponseProcessor.resetStepTokens()
-    │
-    ├─► OpenAIClient.sendMessage(prompt)
-    │       │
-    │       ├─► OpenAI-compatible API
-    │       │
-    │       └─► ResponseProcessor.handleResponse(response)
-    │               │
-    │               ├─► RateLimitHandler.waitForRateLimit()
-    │               ├─► TokenTracker.log()
-    │               │
-    │               ├─► tool_calls:
-    │               │       │
-    │               │       ├─► ToolDispatcher.dispatch(toolCall)
-    │               │       │       │
-    │               │       │       ├─► LoopDetector.recordToolCall()
-    │               │       │       │
-    │               │       │       ├─► browser_* → ToolRegistry.executeBrowserTool()
-    │               │       │       │       └─► PlaywrightTool → PlaywrightMCP → Browser
-    │               │       │       │
-    │               │       │       ├─► test_step_* → ToolRegistry.executeStepTool()
-    │               │       │       │       └─► StepTool → StepStatusCallback
-    │               │       │       │
-    │               │       │       └─► salesforce_* → ToolRegistry.executeSalesforceTool()
-    │               │       │               └─► SalesforceTool → Salesforce CLI
-    │               │       │
-    │               │       └─► ToolResponseHandler.handle()
-    │               │               ├─► SnapshotProcessor.getCompressed()
-    │               │               ├─► ScreenshotProcessor.getCompressedScreenshot()
-    │               │               ├─► HistoryManager.removeSnapshotEntries()
-    │               │               └─► OpenAIClient.sendToolResponseWithRetry()
-    │               │
-    │               └─► text_response:
-    │                       └─► MessageContentHandler.handle()
-    │
-    └─► stepFinishedCallback → assertStepResult()
-
-═════════════════════════ ARCHITECTURE ════════════════════════════════
-
-Playwright Test Layer
-    │
-    ├─► checkmate.ts (fixture)
-    │       │
-    │       └─► OpenAITestManager
-    │               │
-    │               ├─► playwrightMCP: OpenAIServerMCP
-    │               ├─► openaiClient: OpenAIClient
-    │               │
-    │               └─► OpenAITestStep (Internal)
-    │                       │
-    │                       ├─► Orchestrates step execution
-    │                       ├─► Manages step status callbacks
-    │                       └─► Handles assertions
-    │
-    └─► checkmate-live.ts (experimental fixture - Gemini Live API)
-            │
-            └─► GeminiLiveSessionManager
-                    │
-                    ├─► playwrightMCP: GeminiServerMCP
-                    ├─► ai: GoogleGenAI
-                    ├─► session: Live Session
-                    ├─► playwrightTool: GeminiPlaywrightTool
-                    ├─► stepTool: GeminiStepTool
-                    └─► salesforceTool: GeminiSalesforceTool
-
-Core Components Layer
-    │
-    ├─► OpenAIClient
-    │       │
-    │       ├─► Dependencies:
-    │       │       ├─► configurationManager: ConfigurationManager
-    │       │       ├─► toolRegistry: ToolRegistry
-    │       │       ├─► playwrightMCP: OpenAIServerMCP
-    │       │       └─► responseProcessor: ResponseProcessor
-    │       │
-    │       └─► Responsibilities:
-    │               ├─► Initialize OpenAI client with step context
-    │               ├─► Manage chat completions
-    │               ├─► Send messages with retry and loop detection
-    │               ├─► Manage conversation history
-    │               ├─► Token counting
-    │               └─► Dynamic temperature adjustment for loop recovery
-    │
-    ├─► ResponseProcessor
-    │       │
-    │       ├─► Dependencies:
-    │       │       ├─► openaiClient: OpenAIClient
-    │       │       ├─► toolDispatcher: ToolDispatcher
-    │       │       ├─► toolResponseHandler: ToolResponseHandler
-    │       │       ├─► rateLimitHandler: RateLimitHandler
-    │       │       ├─► messageContentHandler: MessageContentHandler
-    │       │       └─► tokenTracker: TokenTracker
-    │       │
-    │       └─► Responsibilities:
-    │               ├─► Process OpenAI API responses
-    │               ├─► Coordinate tool dispatch and response handling
-    │               ├─► Handle text-only responses
-    │               └─► Track token usage
-    │
-    ├─► ToolDispatcher
-    │       │
-    │       ├─► Dependencies:
-    │       │       ├─► toolRegistry: ToolRegistry
-    │       │       └─► loopDetector: LoopDetector
-    │       │
-    │       └─► Responsibilities:
-    │               ├─► Route tool calls to appropriate handler
-    │               ├─► Record tool calls for loop detection
-    │               └─► Throw LoopDetectedError on repetitive patterns
-    │
-    ├─► ToolResponseHandler
-    │       │
-    │       ├─► Dependencies:
-    │       │       ├─► openaiClient: OpenAIClient
-    │       │       ├─► historyManager: HistoryManager
-    │       │       ├─► screenshotProcessor: ScreenshotProcessor
-    │       │       ├─► snapshotProcessor: SnapshotProcessor
-    │       │       └─► responseProcessor: ResponseProcessor
-    │       │
-    │       └─► Responsibilities:
-    │               ├─► Process and compress tool responses
-    │               ├─► Handle screenshots
-    │               ├─► Manage history cleanup
-    │               └─► Continue recursive response handling
-    │
-    └─► ToolRegistry
-            │
-            ├─► Dependencies:
-            │       ├─► playwrightMCP: OpenAIServerMCP
-            │       ├─► playwrightTool: PlaywrightTool
-            │       ├─► stepTool: StepTool
-            │       └─► salesforceTool: SalesforceTool
-            │
-            └─► Responsibilities:
-                    ├─► Aggregate function declarations from all tools
-                    ├─► Route tool execution to appropriate handler
-                    ├─► executeBrowserTool()
-                    ├─► executeStepTool()
-                    └─► executeSalesforceTool()
-
-Tools Layer
-    │
-    ├─► PlaywrightTool (implements OpenAITool)
-    │       │
-    │       ├─► Dependencies:
-    │       │       └─► playwrightMCP: OpenAIServerMCP
-    │       │
-    │       └─► Functions:
-    │               └─► browser_* (from MCP: click, navigate, snapshot, etc.)
-    │
-    ├─► StepTool (implements OpenAITool)
-    │       │
-    │       ├─► Dependencies:
-    │       │       └─► (none)
-    │       │
-    │       └─► Functions:
-    │               ├─► pass_test_step
-    │               └─► fail_test_step
-    │
-    └─► SalesforceTool (implements OpenAITool)
-            │
-            ├─► Dependencies:
-            │       ├─► PlaywrightTool (for browser navigation)
-            │       └─► SalesforceCliAuthenticator
-            │
-            └─► Functions:
-                    └─► login_to_salesforce_org (gets frontdoor URL + navigates browser)
-
-MCP Server Layer
-    │
-    ├─► OpenAIServerMCP
-    │       │
-    │       ├─► Wraps Model Context Protocol SDK
-    │       ├─► Manages MCP client connections
-    │       ├─► Converts MCP tools to OpenAI function declarations
-    │       ├─► Handles tool execution via MCP protocol
-    │       └─► Cleans schemas for OpenAI compatibility
-    │
-    └─► PlaywrightMCPServer
-            │
-            ├─► Creates OpenAIServerMCP instance for Playwright
-            ├─► Configures via environment variables
-            └─► Spawns @playwright/mcp server process
-
-Supporting Components
-    │
-    ├─► ConfigurationManager
-    │       │
-    │       ├─► API key/config management
-    │       ├─► Model selection
-    │       ├─► Retry settings
-    │       ├─► Temperature configuration
-    │       ├─► Timeout configuration
-    │       ├─► Function allowlist
-    │       └─► Loop detection settings
-    │
-    ├─► LoopDetector
-    │       │
-    │       ├─► Record tool call signatures
-    │       ├─► Detect repetitive patterns
-    │       └─► Throw LoopDetectedError
-    │
-    ├─► RateLimitHandler
-    │       │
-    │       └─► Wait for rate limit delay
-    │
-    ├─► MessageContentHandler
-    │       │
-    │       ├─► Handle text-only responses
-    │       └─► Prompt for tool usage when needed
-    │
-    ├─► HistoryManager
-    │       │
-    │       ├─► Remove snapshots from history
-    │       └─► Filter history entries
-    │
-    ├─► SnapshotProcessor
-    │       │
-    │       ├─► Compress accessibility tree snapshots
-    │       ├─► Abbreviate elements (ex. link -> l, button -> b)
-    │       └─► Compact notation for refs and attributes
-    │
-    ├─► ScreenshotProcessor
-    │       │
-    │       ├─► Compress screenshots
-    │       ├─► Resize images
-    │       └─► Base64 encoding
-    │
-    ├─► TokenTracker
-    │       │
-    │       ├─► Track token usage
-    │       ├─► Calculate costs
-    │       └─► Log pricing information
-    │
-    └─► SalesforceCliAuthenticator
-            │
-            ├─► Authenticate with Salesforce CLI
-            ├─► Generate front door URLs
-            └─► Uses SalesforceCliHandler
-
-External Services
-    │
-    ├─► OpenAI-compatible API
-    │       │
-    │       ├─► Chat Completions API
-    │       ├─► Tool/Function calling
-    │       └─► Supports: OpenAI, Claude, Gemini, local LLMs
-    │
-    ├─► Playwright MCP Server
-    │       │
-    │       ├─► Browser automation
-    │       ├─► DOM manipulation
-    │       ├─► Screenshots
-    │       └─► Navigation
-    │
-    └─► Salesforce CLI
-            │
-            ├─► Org management
-            ├─► Authentication
-            └─► URL generation
+┌─────────────────────────────────────────────────────────────────┐
+│                        Playwright Test                          │
+│                    (Test Runner & Reporting)                    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  ai.run(step)   │ ← Test Fixture (checkmate)
+                    └────────┬────────┘
+                             │
+┌────────────────────────────▼───────────────────────────────────┐
+│                      OpenAI Test Manager                       │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  OpenAI Client                                           │  │
+│  │  • Chat completions with tool calling                    │  │
+│  │  • Token tracking & cost management                      │  │
+│  │  • Loop detection & recovery                             │  │
+│  └────────────┬─────────────────┬───────────────────────────┘  │
+│               │                 │                              │
+│    ┌──────────▼─────┐  ┌────────▼────────┐                     │
+│    │ Tool Registry  │  │  Response       │                     │
+│    │ • Browser      │  │  Processor      │                     │
+│    │ • Step Control │  │  • Compression  │                     │
+│    │ • Salesforce   │  │  • History Mgmt │                     │
+│    └────────────────┘  └─────────────────┘                     │
+└────────────────────────────────────────────────────────────────┘
+           │                    │                   │
+    ┌──────▼──────┐      ┌──────▼──────┐     ┌──────▼──────┐
+    │  Playwright │      │   OpenAI    │     │  Salesforce │
+    │     Core    │      │     API     │     │     CLI     │
+    │             │      │             │     │             │
+    │ • Browsers  │      │  • GPT-5    │     │ • SF Auth   │
+    │ • Snapshots │      │  • Claude   │     │ • Login URL │
+    │ • Actions   │      │  • Gemini   │     │             │
+    └─────────────┘      └─────────────┘     └─────────────┘
 ```
+
+### Key Components
+
+**Test Layer**
+- Playwright Test framework manages test execution, reporting, and fixtures
+- Tests written in natural language via `ai.run()` fixture
+
+**Core Engine**
+- **OpenAI Test Manager**: Orchestrates AI-driven test steps
+- **OpenAI Client**: Manages LLM interactions with tool calling
+- **Response Processor**: Handles tool responses, compression, and history filtering
+- **Tool Registry**: Routes tool calls to appropriate handlers
+
+**Tools**
+- **Browser Tools**: Playwright Test for web automation (click, type, navigate, etc.)
+- **Step Tools**: Test control (pass/fail step assertions)
+- **Salesforce Tools**: SF CLI integration for Salesforce testing
+
+**Cost Optimization**
+- Token tracking with budget enforcement
+- History filtering (removes old snapshots)
+- Snapshot and screenshot compression
+- Loop detection and mitigation
+
+**Configuration**
+- Test, Reporting and Browser settings: [playwright.config.ts](playwright.config.ts)
+- API & AI settings: `.env` file
 
 ## Contributing
 ### Key Areas for Contribution
@@ -593,11 +362,8 @@ MIT License - see LICENSE file for details
 
 ### Learn More
 
-- [Playwright MCP](https://github.com/microsoft/playwright/tree/main/utils/mcp-server)
 - [Playwright Documentation](https://playwright.dev/)
 - [OpenAI API](https://platform.openai.com/docs/api-reference)
-- [OpenAI Function Calling](https://platform.openai.com/docs/guides/function-calling)
-- [Model Context Protocol](https://modelcontextprotocol.io/introduction)
 
 ---
 

@@ -35,12 +35,13 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Video tutorials
   - [x] Best practices guide
 
-- [ ] **Enhanced Playwright Fixtures**
-  - [ ] Run Plawyright MCP programatically, that will enable:
-    - [ ] Capture Browser Context from Playwright MCP
-    - [ ] Snapshot screenshots being passed as blobs without saving
-    - [ ] Screenshots in reports
-    - [ ] Videos in reports
+- [x] **Enhanced Playwright Fixtures**
+  - [x] Migrate to native playwright page context, that will enable:
+    - [x] Capture Browser Context
+    - [x] Snapshot screenshots being passed as blobs without saving
+    - [x] Screenshots in reports
+    - [x] Videos in reports
+    - [x] Better control over snapshots
 
 - [x] **Usage Monitoring & Limits**
   - [x] Basic token counting per step

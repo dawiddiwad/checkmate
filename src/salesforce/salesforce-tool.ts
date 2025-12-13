@@ -1,36 +1,42 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceCliHandler } from "./salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "./salesforce-cli-authenticator"
-import { OpenAITool, ToolCallArgs } from "../mcp/tool/openai-tool"
-import { PlaywrightTool } from "../mcp/tool/playwright-tool"
-import { PlaywrightToolNames } from "../mcp/tool/playwright-tool-names"
+import { OpenAITool, ToolCall } from "../mcp/tool/openai-tool"
+import { BrowserTool } from "../step/tool/browser-tool"
 
 
 export class SalesforceTool implements OpenAITool {
     static readonly TOOL_LOGIN_TO_SALESFORCE_ORG = 'login_to_salesforce_org'
-    private readonly browserTool: PlaywrightTool
+    private readonly browserTool: BrowserTool
 
     functionDeclarations: ChatCompletionFunctionTool[]
 
-    constructor(browserTool: PlaywrightTool) {
+    constructor(browserTool: BrowserTool) {
         this.browserTool = browserTool
         this.functionDeclarations = [
             {
                 type: 'function',
                 function: {
                     name: SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
-                    description: 'Login to a Salesforce org in a browser'
+                    description: 'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' }
+                        },
+                        required: ['goal']
+                    }
                 }
             }
         ]
     }
 
-    async call(specified: ToolCallArgs): Promise<any> {
+    async call(specified: ToolCall): Promise<any> {
         if (specified.name === SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG) {
             try {
                 const frontDoorUrl = await this.getSalesforceLoginUrl()
                 return this.browserTool.call({
-                    name: PlaywrightToolNames.BROWSER_NAVIGATE,
+                    name: BrowserTool.TOOL_NAVIGATE,
                     arguments: { url: frontDoorUrl }
                 })
             } catch (error) {

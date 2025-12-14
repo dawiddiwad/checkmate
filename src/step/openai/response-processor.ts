@@ -3,7 +3,6 @@ import { Step, StepStatusCallback } from "../types"
 import { OpenAIClient } from "./openai-client"
 import { HistoryManager } from "./history-manager"
 import { ScreenshotProcessor } from "../tool/screenshot-processor"
-import { SnapshotProcessor } from "../tool/snapshot-processor"
 import { TokenTracker } from "./token-tracker"
 import { ToolDispatcher } from "../tool/tool-dispatcher"
 import { ToolResponseHandler } from "../tool/tool-response-handler"
@@ -31,12 +30,10 @@ export class ResponseProcessor {
         this.toolDispatcher = new ToolDispatcher(openaiClient.getToolRegistry())
         const historyManager = new HistoryManager()
         const screenshotProcessor = new ScreenshotProcessor(page)
-        const snapshotProcessor = new SnapshotProcessor()
         this.toolResponseHandler = new ToolResponseHandler(
             openaiClient,
             historyManager,
             screenshotProcessor,
-            snapshotProcessor,
             this
         )
         this.rateLimitHandler = new RateLimitHandler()

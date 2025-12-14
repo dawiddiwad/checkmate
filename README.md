@@ -152,7 +152,6 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
 | `OPENAI_ALLOWED_TOOLS` | - | Comma-separated list of allowed tools (if not set, all tools available) |
 | `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
-| `OPENAI_ENABLE_SNAPSHOT_COMPRESSION` | `false` | Enable abbreviated element notation for snapshots (~30% token reduction) |
 | `OPENAI_API_TOKEN_BUDGET_USD` | - | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.
 | `OPENAI_API_TOKEN_BUDGET_COUNT` | - | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.
 | `OPENAI_LOOP_MAX_REPETITIONS` | `5` | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
@@ -179,8 +178,8 @@ Checkmate includes built-in token usage monitoring:
 ### Cost Optimization Features
 
 1. **History Filtering** - Continuously filters old page snapshots (reduces token usage by ~50%)
-2. **Snapshot Compression** - YAML tree elements abbreviation (up to ~30% further token usage reduction)
-3. **Screenshots** - Normalized and comrpessed locally and sent using OpenAI's API with `detail: low`
+2. **Snapshot Minification** - Removes unnecessary whitespace and quotes from accessibility tree snapshots
+3. **Screenshots** - Normalized and compressed locally and sent using OpenAI's API with `detail: low`
 4. **Chat Recycling** - New session per step to prevent context bloat
 5. **Token Counting** - Real-time usage tracking per step and test with budgets
 6. **Loop Detection** - Detects repetitive tool call patterns and adjusts temperature to break out of loops, preventing runaway token consumption
@@ -305,7 +304,7 @@ Checkmate combines multiple components to enable AI-driven test automation:
 │    ┌──────────▼─────┐  ┌────────▼────────┐                     │
 │    │ Tool Registry  │  │  Response       │                     │
 │    │ • Browser      │  │  Processor      │                     │
-│    │ • Step Control │  │  • Compression  │                     │
+│    │ • Step Control │  │  • Minification │                     │
 │    │ • Salesforce   │  │  • History Mgmt │                     │
 │    └────────────────┘  └─────────────────┘                     │
 └────────────────────────────────────────────────────────────────┘
@@ -329,7 +328,7 @@ Checkmate combines multiple components to enable AI-driven test automation:
 **Core Engine**
 - **OpenAI Test Manager**: Orchestrates AI-driven test steps
 - **OpenAI Client**: Manages LLM interactions with tool calling
-- **Response Processor**: Handles tool responses, compression, and history filtering
+- **Response Processor**: Handles tool responses, snapshot minification, and history filtering
 - **Tool Registry**: Routes tool calls to appropriate handlers
 
 **Tools**
@@ -340,7 +339,7 @@ Checkmate combines multiple components to enable AI-driven test automation:
 **Cost Optimization**
 - Token tracking with budget enforcement
 - History filtering (removes old snapshots)
-- Snapshot and screenshot compression
+- Snapshot minification and screenshot compression
 - Loop detection and mitigation
 
 **Configuration**

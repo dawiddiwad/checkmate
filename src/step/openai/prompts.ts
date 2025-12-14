@@ -1,23 +1,8 @@
-import { ConfigurationManager } from "../configuration-manager"
 import { Step } from "../types"
 import { StepTool } from "../tool/step-tool"
-import { typeMap } from "../tool/snapshot-processor"
-
-const PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS = `
-#PAGE SNAPSHOT COMPRESSION:
-The page snapshot uses a compressed accessibility tree format where:
-- Element types are abbreviated (example: gen=generic, btn=button, lnk=link, etc.)
-- Text is prefixed with # (example: #Description)
-- Indentation shows hierarchy
-
-### Element type abbreviations:
-${typeMap ? Object.entries(typeMap).map(([key, value]) => `${key}=${value}`).join('\n') : ''}
-`
 
 export const RUN_STEP_PROMPT = (step: Step) => `
 Here is the test step I want you to execute. 
-
-${new ConfigurationManager().enableSnapshotCompression() ? PAGE_SNAPSHOT_COMPRESSION_INSTRUCTIONS : ''}
 
 #RULES:
 Be objective when asserting if expected results are met and focus on executing all the actions.

@@ -1,27 +1,17 @@
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions"
 import { OpenAIClient } from "./openai-client"
 import { AriaPageSnapshot } from "../tool/page-snapshot"
-import { SnapshotProcessor } from "../tool/snapshot-processor"
-import { ConfigurationManager } from "../configuration-manager"
 
 export class HistoryManager {
     static readonly SNAPSHOT_IDENTIFIER = 'this is a current page snapshot'
     static readonly REMOVED_SNAPSHOT_PLACEHOLDER = '[Snapshot removed from history to save tokens]'
 
     addInitialSnapshot(openaiClient: OpenAIClient, snapshotContent: AriaPageSnapshot) {
-        const getProcessedSnapshot = () => {
-            if (new ConfigurationManager().enableSnapshotCompression()) {
-                return new SnapshotProcessor()
-                    .getCompressed({ response: snapshotContent }).response
-            } else {
-                return snapshotContent
-            }
-        }
         const historyWithInitialSnapshot: ChatCompletionMessageParam[] = [{
             role: 'user',
             content: [{
                 type: 'text',
-                text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\n${getProcessedSnapshot()}`
+                text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}`
             }]
         }]
         openaiClient.replaceHistory(historyWithInitialSnapshot)

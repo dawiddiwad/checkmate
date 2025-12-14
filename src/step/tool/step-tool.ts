@@ -1,5 +1,5 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
-import { OpenAITool, ToolCallArgs } from "../../mcp/tool/openai-tool"
+import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
 import { StepStatusCallback } from "../types"
 
 export class StepTool implements OpenAITool {
@@ -41,7 +41,7 @@ export class StepTool implements OpenAITool {
         ]
     }
 
-    call(specified: ToolCallArgs, callback: StepStatusCallback) {
+    call(specified: ToolCall, callback: StepStatusCallback) {
         if (!specified.name) {
             throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
         }

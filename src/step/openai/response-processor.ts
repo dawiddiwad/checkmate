@@ -1,19 +1,18 @@
 import { ChatCompletion } from "openai/resources/chat/completions"
-import { ToolCall } from "../../mcp/server/openai-mcp"
 import { Step, StepStatusCallback } from "../types"
 import { OpenAIClient } from "./openai-client"
 import { HistoryManager } from "./history-manager"
 import { ScreenshotProcessor } from "../tool/screenshot-processor"
-import { SnapshotProcessor } from "../tool/snapshot-processor"
 import { TokenTracker } from "./token-tracker"
-import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 import { ToolDispatcher } from "../tool/tool-dispatcher"
 import { ToolResponseHandler } from "../tool/tool-response-handler"
 import { RateLimitHandler } from "./rate-limit-handler"
 import { MessageContentHandler } from "./message-content-handler"
+import { Page } from "@playwright/test"
+import { ToolCall } from "../../mcp/tool/openai-tool"
 
 export type ResponseProcessorDependencies = {
-    playwrightMCP: OpenAIServerMCP
+    page: Page
     openaiClient: OpenAIClient
 }
 
@@ -25,18 +24,16 @@ export class ResponseProcessor {
     private readonly rateLimitHandler: RateLimitHandler
     private readonly messageContentHandler: MessageContentHandler
 
-    constructor({ playwrightMCP, openaiClient }: ResponseProcessorDependencies) {
+    constructor({ page, openaiClient }: ResponseProcessorDependencies) {
         this.openaiClient = openaiClient
         this.tokenTracker = new TokenTracker()
         this.toolDispatcher = new ToolDispatcher(openaiClient.getToolRegistry())
         const historyManager = new HistoryManager()
-        const screenshotProcessor = new ScreenshotProcessor(playwrightMCP)
-        const snapshotProcessor = new SnapshotProcessor()
+        const screenshotProcessor = new ScreenshotProcessor(page)
         this.toolResponseHandler = new ToolResponseHandler(
             openaiClient,
             historyManager,
             screenshotProcessor,
-            snapshotProcessor,
             this
         )
         this.rateLimitHandler = new RateLimitHandler()

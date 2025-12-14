@@ -4,13 +4,13 @@ import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 import { LoopDetectedError } from "../tool/loop-detector"
 import { ResponseProcessor } from "./response-processor"
-import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
 import { Step, StepStatusCallback } from "../types"
+import { Page } from "@playwright/test"
 
 export type OpenAIClientDependencies = {
     configurationManager: ConfigurationManager
     toolRegistry: ToolRegistry
-    playwrightMCP: OpenAIServerMCP
+    page: Page
 }
 
 export class OpenAIClient {
@@ -24,10 +24,10 @@ export class OpenAIClient {
     stepStatusCallback: StepStatusCallback
     temperature: number
 
-    constructor({ configurationManager, toolRegistry, playwrightMCP }: OpenAIClientDependencies) {
+    constructor({ configurationManager, toolRegistry, page }: OpenAIClientDependencies) {
         this.configurationManager = configurationManager
         this.toolRegistry = toolRegistry
-        this.responseProcessor = new ResponseProcessor({ playwrightMCP: playwrightMCP, openaiClient: this })
+        this.responseProcessor = new ResponseProcessor({ page, openaiClient: this })
         this.temperature = this.configurationManager.getTemperature()
     }
 
@@ -72,7 +72,9 @@ export class OpenAIClient {
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
                 parallel_tool_calls: false,
-                temperature: this.temperature
+                temperature: this.temperature,
+                n: 1,
+                reasoning_effort: 'high'
             })
 
             if (response.choices[0]?.message) {

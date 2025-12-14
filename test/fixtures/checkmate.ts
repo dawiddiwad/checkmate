@@ -6,8 +6,8 @@ type CheckmateFixtures = {
 }
 
 export const test = base.extend<CheckmateFixtures>({
-    ai: async ({ }, use) => {
-        const ai = new OpenAITestManager()
+    ai: async ({ page }, use) => {
+        const ai = new OpenAITestManager(page)
         await use(ai)
         await ai.teardown()
     }

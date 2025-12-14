@@ -12,10 +12,6 @@ export default defineConfig({
     {
       name: 'web',
       testDir: './test/specs/web'
-    },
-    {
-      name: 'live',
-      testDir: './test/specs/live'
     }
   ],
   outputDir: process.env.CI ? undefined : './test-reports/results',
@@ -24,14 +20,20 @@ export default defineConfig({
     ['html', { outputFolder: './test-reports/html' }],
     ['list']
   ],
-  timeout: 5 * 60000,
+  timeout: 10 * 60000,
   repeatEach: 1,
   retries: 1,
   workers: 1,
   expect: {
-    timeout: 1 * 60000
+    timeout: 1 * 10000
   },
   use: {
-    actionTimeout: 1 * 60000
+    viewport: { width: 1360, height: 768 },
+    browserName: 'chromium',
+    actionTimeout: 1 * 5000,
+    navigationTimeout: 1 * 30000,
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
+    video: 'on'
   }
 })

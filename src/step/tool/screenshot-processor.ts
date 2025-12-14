@@ -1,21 +1,20 @@
 import sharp from "sharp"
-import { OpenAIServerMCP } from "../../mcp/server/openai-mcp"
-import { PlaywrightToolNames } from "../../mcp/tool/playwright-tool-names"
+import { Page } from "@playwright/test";
 
 export class ScreenshotProcessor {
-    constructor(private readonly playwrightMCP: OpenAIServerMCP) { }
+    constructor(private readonly page: Page) { }
 
     async getCompressedScreenshot(): Promise<{ mimeType?: string; data: string }> {
         try {
-            const screenshot = await this.playwrightMCP.callTool({ name: PlaywrightToolNames.BROWSER_TAKE_SCREENSHOT })
-            const compressedBuffer = await sharp(Buffer.from(screenshot.content?.[1].data, "base64"))
+            const screenshot = await this.page.screenshot()
+            const compressedBuffer = await sharp(screenshot)
                 .resize({ width: 768, height: 768, fit: "inside" })
                 .toBuffer()
             if (!compressedBuffer) {
                 throw new Error("Failed to compress screenshot")
             }
             return {
-                mimeType: screenshot.content?.[1].mimeType,
+                mimeType: "image/png",
                 data: compressedBuffer.toString("base64")
             }
         } catch (error) {

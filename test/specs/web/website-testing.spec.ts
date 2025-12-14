@@ -37,12 +37,12 @@ test.describe('single-step flows', async () => {
                 Browse Sweets and add 3 items to the basket.
                 In the Basket detail view:
                  - switch Delivery options.
-                 - fill all fields in the Billing Address form.
+                 - check Billing Address, Payment and Promo Code fields.
             `,
                 expect: `The basket icon in the header updates its count to '3'.
                 Basket detail view displays added items with price for each and total price.
-                Delivery options are switched successfully.
-                All Billing Address form fields are editable and populated with the entered data.`
+                Delivery options are switched successfully recalculating Total price.
+                All Billing Address, Payment and Promo Code form fields are interactable.`
             })
         })
     })

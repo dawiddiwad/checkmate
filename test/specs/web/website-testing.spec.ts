@@ -28,8 +28,27 @@ test.describe('single-step flows', async () => {
             })
         })
     })
+
+    test('adding items to cart on demo e-commerce site', async ({ ai }) => {
+        await test.step('Navigate to the e-commerce demo site and add items to cart', async () => {
+            await ai.run({
+                action: `
+                Navigate to the https://sweetshop.netlify.app/ website.
+                Browse Sweets and add 3 items to the basket.
+                In the Basket detail view:
+                 - switch Delivery options.
+                 - fill all fields in the Billing Address form.
+            `,
+                expect: `The basket icon in the header updates its count to '3'.
+                Basket detail view displays added items with price for each and total price.
+                Delivery options are switched successfully.
+                All Billing Address form fields are editable and populated with the entered data.`
+            })
+        })
+    })
 })
 
+test.use({ headless: false })
 test.describe('multi-step flows', async () => {
     test('mojeek search', async ({ ai }) => {
         await test.step('Open the browser and navigate to mojeek.com', async () => {
@@ -96,7 +115,7 @@ test.describe('multi-step flows', async () => {
 })
 
 test.describe('tests that should fail', async () => {
-        test.fail('E-commerce Checkout Flow with Form Validation', async ({ ai }) => {
+    test.fail('E-commerce Checkout Flow with Form Validation', async ({ ai }) => {
         await test.step('Navigate to the e-commerce website homepage', async () => {
             await ai.run({
                 action: `Navigate to the https://sweetshop.netlify.app/ website.`,

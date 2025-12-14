@@ -65,7 +65,8 @@ test.describe('trial dev org', async () => {
             await ai.run({
             action: `
             Click the 'New' button on the Accounts tab to create a new Account record.
-            Fill 'Account Name' field with 'Agentic Test Account' followed by space and some random alphanumeric string`,
+            Fill 'Account Name' field with 'Agentic Test Account' followed by space and some random alphanumeric string
+            Don't save the record or fill any other fields.`,
             expect: `
             'New Account' form is displayed and filled with random data`
             })

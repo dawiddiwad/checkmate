@@ -153,7 +153,7 @@ export class BrowserTool implements OpenAITool {
             return this.captureSnapshot()
         } catch (error) {
             console.error(`\n| Error clicking element with ref '${ref}' due to: ${error}`)
-            return `failed to click element with ref '${ref}':\n${error}`
+            return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
         }
     }
 
@@ -166,7 +166,7 @@ export class BrowserTool implements OpenAITool {
             return this.captureSnapshot()
         } catch (error) {
             console.error(`\n| Error typing text '${text}' in element with ref '${ref}' due to: ${error}`)
-            return `failed to type text '${text}' in element with ref '${ref}':\n${error}\ntyping allowed for: textbox, searchbox, combobox, spinbutton, checkbox, radio, switch, slider, button`
+            return `failed to type text '${text}' in element with ref '${ref}':\n${error}\n try with different element type or ref`
         }
     }
 

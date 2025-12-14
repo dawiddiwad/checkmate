@@ -11,6 +11,14 @@ export class PageSnapshot {
         this.page = page
     }
 
+    private async getHeader() {
+        const lines: string[] = []
+        lines.push('page snapshot:')
+        lines.push(`url: '${this.page.url()}'`)
+        lines.push(`title: '${await this.page.title()}'`)
+        return lines.join('\n')
+    }
+
     private minify(snapshot: AriaPageSnapshot): AriaPageSnapshot {
         return snapshot
             .replaceAll('"', '')
@@ -21,10 +29,11 @@ export class PageSnapshot {
 
     async get(): Promise<AriaPageSnapshot> {
         try {
-            const snapshotYAML = await (this.page as any)._snapshotForAI().then((snapshot) => snapshot.full)
-            const snapshotJSON = parse(snapshotYAML)?.[0] ?? { state: 'page content is empty' }
-            const snapshotSTRING = JSON.stringify(snapshotJSON)
-            PageSnapshot.lastSnapshot = this.minify(snapshotSTRING)
+            const snapshotYAML = await (this.page as any)._snapshotForAI()
+                .then((snapshot: {full: string}) => snapshot.full)
+            const asJson = parse(snapshotYAML)?.[0] ?? { state: 'page content is empty' }
+            const asMinified = `page snapshot:\n${this.minify(JSON.stringify(asJson))}`
+            PageSnapshot.lastSnapshot = `${await this.getHeader()}\n${asMinified}`
             return PageSnapshot.lastSnapshot
         } catch (error) {
             throw new Error(`Failed to create aria page snapshot:\n${error}`)

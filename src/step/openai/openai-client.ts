@@ -72,7 +72,9 @@ export class OpenAIClient {
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
                 parallel_tool_calls: false,
-                temperature: this.temperature
+                temperature: this.temperature,
+                n: 1,
+                reasoning_effort: 'high'
             })
 
             if (response.choices[0]?.message) {

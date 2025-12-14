@@ -20,7 +20,7 @@ export default defineConfig({
     ['html', { outputFolder: './test-reports/html' }],
     ['list']
   ],
-  timeout: 5 * 60000,
+  timeout: 10 * 60000,
   repeatEach: 1,
   retries: 1,
   workers: 1,

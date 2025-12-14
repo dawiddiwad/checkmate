@@ -98,8 +98,8 @@ test.describe('multi-step flows', async () => {
         })
         await test.step('Search for Python jobs in Warsaw', async () => {
             await ai.run({
-                action: `Click to activate the 'Search: Job' field and type 'Python' into it.
-                Click to activate the 'Location' field and type 'Warsaw' into it.
+                action: `Click to activate the 'Location' field and type 'Warsaw' into it.
+                In the 'Search: Job' field type 'Python' into it.
                 Click on the 'Search' button to apply filters`,
                 expect: `The job listings are filtered to show Python jobs in Warsaw.`
             })

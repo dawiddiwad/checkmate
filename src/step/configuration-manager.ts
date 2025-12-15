@@ -69,4 +69,12 @@ export class ConfigurationManager {
         if (Number.isNaN(parsed)) return 5
         return parsed
     }
+
+    getReasoningEffort(): "none" | "low" | "medium" | "high" | undefined {
+        const effort = process.env.OPENAI_REASONING_EFFORT?.toLowerCase()
+        if (effort === "low" || effort === "medium" || effort === "high") {
+            return effort
+        }
+        return undefined
+    }
 }

@@ -74,7 +74,7 @@ export class OpenAIClient {
                 parallel_tool_calls: false,
                 temperature: this.temperature,
                 n: 1,
-                reasoning_effort: 'high'
+                reasoning_effort: this.configurationManager.getReasoningEffort()
             })
 
             if (response.choices[0]?.message) {
@@ -112,7 +112,7 @@ export class OpenAIClient {
                     type: 'image_url',
                     image_url: {
                         url: `data:${mimeType};base64,${base64Data}`,
-                        detail: 'low'
+                        detail: 'high'
                     }
                 }
             ]

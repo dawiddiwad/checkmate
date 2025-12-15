@@ -147,6 +147,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
 | `OPENAI_MODEL` | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc. |
 | `OPENAI_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
+| `OPENAI_REASONING_EFFORT` | - | Optional - Reasoning effort for models: low, medium, high |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
 | `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors |
 | `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
@@ -264,59 +265,53 @@ npx playwright show-report test-reports/html
 
 ## Common Issues
 
-**Test hangs at step execution**
-- Check if the page loaded correctly (look for navigation errors)
-- Verify API key is valid and has quota
-- Increase timeout in `playwright.config.ts`
+**AI makes incorrect decisions**
+- Provide more detailed descriptions in `action` and more focused assertions in `expect`
+- Reference specific element identifiers and roles (for example: text, label, button, list)
+- Break complex workflows into single-action steps; use a step-by-step approach
 
-**AI makes wrong decisions**
-- Add more context in the `action` description
-- Mention specific element identifiers (text, labels)
-- Use step-by-step approach instead of complex multi-action steps
+**Tests loop during step execution**
+- Increase `OPENAI_TEMPERATURE` to encourage exploration
+- Use a reasoning/thinking model (if available) to improve planning and avoid repetitive loops
 
 **High token costs**
-- Use more specific selectors in descriptions
-- Consider caching (see Roadmap)
+- Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
+- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
+- Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
 
 ## Architecture
 
 Checkmate combines multiple components to enable AI-driven test automation:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Playwright Test                          │
-│                    (Test Runner & Reporting)                    │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │  ai.run(step)   │ ← Test Fixture (checkmate)
-                    └────────┬────────┘
-                             │
-┌────────────────────────────▼───────────────────────────────────┐
-│                      OpenAI Test Manager                       │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  OpenAI Client                                           │  │
-│  │  • Chat completions with tool calling                    │  │
-│  │  • Token tracking & cost management                      │  │
-│  │  • Loop detection & recovery                             │  │
-│  └────────────┬─────────────────┬───────────────────────────┘  │
-│               │                 │                              │
-│    ┌──────────▼─────┐  ┌────────▼────────┐                     │
-│    │ Tool Registry  │  │  Response       │                     │
-│    │ • Browser      │  │  Processor      │                     │
-│    │ • Step Control │  │  • Minification │                     │
-│    │ • Salesforce   │  │  • History Mgmt │                     │
-│    └────────────────┘  └─────────────────┘                     │
-└────────────────────────────────────────────────────────────────┘
-           │                    │                   │
-    ┌──────▼──────┐      ┌──────▼──────┐     ┌──────▼──────┐
-    │  Playwright │      │   OpenAI    │     │  Salesforce │
-    │     Core    │      │     API     │     │     CLI     │
-    │             │      │             │     │             │
-    │ • Browsers  │      │  • GPT-5    │     │ • SF Auth   │
-    │ • Snapshots │      │  • Claude   │     │ • Login URL │
-    │ • Actions   │      │  • Gemini   │     │             │
-    └─────────────┘      └─────────────┘     └─────────────┘
+Playwright Test (Runner & Reporting)
+│
+└── ai.run(step) ← Checkmate Fixture
+    │
+    └── Step Manager
+        │
+        ├── OpenAI Client
+        │   ├── Chat completions with tool calling
+        │   ├── Token tracking & cost management
+        │   └── Loop detection & recovery
+        │
+        ├── Tool Registry
+        │   ├── Browser (click, type, navigate)
+        │   ├── Step (pass/fail)
+        │   └── Salesforce (login, auth)
+        │
+        ├── Response Processor
+        │   ├── Snapshot minification
+        │   └── History management
+        │
+┌───────┴─────┬──────────────┬────────────────┐
+│             │              │                │
+Playwright    OpenAI API     Salesforce CLI   Configuration
+│             │              │                │
+├─ Browsers   ├─ GPT         ├─ SF Auth       ├─ .env
+├─ Snapshots  ├─ Gemini      └─ OTP URL       └─ playwright.config.ts
+├─ Actions    ├─ Local
+└─ Reports    └─ etc...
 ```
 
 ### Key Components
@@ -372,7 +367,7 @@ Checkmate is an experimental framework exploring AI-driven test automation. Whil
 - Non-deterministic behavior
 - Higher runtime costs than traditional automation
 - Occasional timeouts
-- Rate limiting errors depending on your API provider
+- Rate limiting depending on your API provider and service tier
 
 Use for exploratory testing, rapid prototyping, and demonstrating AI capabilities in testing.
 

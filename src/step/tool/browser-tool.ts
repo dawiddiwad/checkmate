@@ -162,7 +162,7 @@ export class BrowserTool implements OpenAITool {
             if (!ref || !text) {
                 throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
             }
-            await this.page.fill(`aria-ref=${ref}`, text)
+            await this.page.locator(`aria-ref=${ref}`).pressSequentially(text, { delay: 50 })
             return this.captureSnapshot()
         } catch (error) {
             console.error(`\n| Error typing text '${text}' in element with ref '${ref}' due to: ${error}`)

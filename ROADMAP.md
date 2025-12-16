@@ -67,8 +67,8 @@ This roadmap outlines the planned features and improvements for checkmate.
 - [ ] **Logging & Post-Processing**
   - [x] Detailed step execution logging
   - [x] Token usage logging per step
-  - [ ] Structured logging (JSON format)
-  - [ ] Log levels (DEBUG, INFO, WARN, ERROR)
+  - [x] Structured logging (JSON format)
+  - [x] Log levels (DEBUG, INFO, WARN, ERROR)
   - [x] AI reasoning/thought capture
   - [ ] AI-generated test failure analysis
 

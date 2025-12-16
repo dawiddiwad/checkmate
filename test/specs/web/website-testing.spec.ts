@@ -74,7 +74,7 @@ test.describe('single-step flows', async () => {
                 If not, check if an e-book version is available. 
                 If neither, tell the user they're out of luck.`,
                 expect: `
-                The AI successfully navigates the NYPL website, searches for 'The Catcher in the Rye,'   `
+                Successfully navigated the NYPL website and searched for 'The Catcher in the Rye'.`
             })
         })
     })

@@ -48,18 +48,13 @@
  * @note
  * Token counts are integer counts of tokens. Model pricing and mappings may change;
  * keep the price table updated with provider pricing announcements.
+ * use coding agent with browser/fetch tool to update ;)
  */
 export class OpenAITokenPricing {
     private static roundToCents(price: number): number {
         return Math.round(price * 100) / 100
     }
 
-    // Pricing sources:
-    // Gemini: https://ai.google.dev/gemini-api/docs/pricing
-    // OpenAi: https://openai.com/api/pricing/
-    // Claude: https://claude.com/pricing#api
-    // Grok: https://docs.x.ai/docs/models#model-pricing
-    // groq: https://console.groq.com/docs/models
     private static inputPricePerMillionUSD(model: string): number {
         switch (model) {
             // OpenAI Models

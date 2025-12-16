@@ -29,7 +29,8 @@ export class BrowserTool implements OpenAITool {
                             goal: { type: 'string', description: 'The goal or purpose of navigating to this URL' }
                         },
                         required: ['url', 'goal']
-                    }
+                    },
+                    strict: true
                 }
             },
             {
@@ -45,7 +46,8 @@ export class BrowserTool implements OpenAITool {
                             goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                         },
                         required: ['ref', 'name', 'goal']
-                    }
+                    },
+                    strict: true
                 }
             },
             {
@@ -62,7 +64,8 @@ export class BrowserTool implements OpenAITool {
                             goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
                         },
                         required: ['ref', 'text', 'name', 'goal']
-                    }
+                    },
+                    strict: true
                 }
             },
             {
@@ -77,7 +80,8 @@ export class BrowserTool implements OpenAITool {
                             goal: { type: 'string', description: 'The goal or purpose of pressing this key' }
                         },
                         required: ['key', 'goal']
-                    }
+                    },
+                    strict: true
                 }
             },
             {
@@ -91,7 +95,8 @@ export class BrowserTool implements OpenAITool {
                             goal: { type: 'string', description: 'The goal or purpose of capturing the snapshot' }
                         },
                         required: ['goal']
-                    }
+                    },
+                    strict: true
                 }
             }
         ]

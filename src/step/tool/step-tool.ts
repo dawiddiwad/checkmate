@@ -21,7 +21,8 @@ export class StepTool implements OpenAITool {
                             actualResult: { type: 'string', description: 'The actual result of the test step' }
                         },
                         required: ['actualResult']
-                    }
+                    },
+                    strict: true
                 }
             },
             {
@@ -35,7 +36,8 @@ export class StepTool implements OpenAITool {
                             actualResult: { type: 'string', description: 'The actual result of the test step' }
                         },
                         required: ['actualResult']
-                    }
+                    },
+                    strict: true
                 }
             }
         ]

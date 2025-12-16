@@ -25,7 +25,8 @@ export class SalesforceTool implements OpenAITool {
                             goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' }
                         },
                         required: ['goal']
-                    }
+                    },
+                    strict: true
                 }
             }
         ]

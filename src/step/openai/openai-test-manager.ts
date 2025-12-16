@@ -9,6 +9,9 @@ import { OpenAIClient } from "./openai-client"
 import { BrowserTool } from "../tool/browser-tool"
 import { HistoryManager } from "./history-manager"
 import { PageSnapshot } from "../tool/page-snapshot"
+import { CheckmateLogger } from "../logger"
+
+export const logger = CheckmateLogger.create('openai_test_manager', new ConfigurationManager().getLogLevel())
 
 export class OpenAITestManager {
     private readonly openaiClient: OpenAIClient
@@ -64,13 +67,12 @@ class OpenAITestStep {
     }
 
     private logStepStart(step: Step): void {
-        console.log(`\n>>> step started <<<`)
-        console.log(`| action: ${step.action}`)
-        console.log(`| expect: ${step.expect}`)
+        logger.info(`step started:\n${JSON.stringify(step, null, 2)
+            .replaceAll('  ', '').trim()}`)
     }
 
     private logStepFinish(): void {
-        console.log(`>>> step finished <<<`)
+        logger.info(`step finished`)
     }
 
     private assertStepResult(step: Step): void {

@@ -1,6 +1,7 @@
 import { ChatCompletion } from "openai/resources/chat/completions"
 import { OpenAITokenPricing } from "./openai-token-pricing"
 import { ConfigurationManager } from "../configuration-manager"
+import { logger } from "./openai-test-manager"
 
 export class TokenTracker {
     private _inputTokensUsedForTest = 0
@@ -65,22 +66,22 @@ export class TokenTracker {
             this.inputTokensUsedForStep += inputTokens
             this.outputTokensUsedForTest += outputTokens
             this.outputTokensUsedForStep += outputTokens
-            console.log(
-                `\n| token usage` +
-                `\n| response input: ${inputTokens} @ ${OpenAITokenPricing.inputPriceUSD(model, inputTokens)}$` +
-                `\n| response output: ${outputTokens} @ ${OpenAITokenPricing.outputPriceUSD(model, outputTokens)}$` +
-                `\n| history (estimated): ${historyTokenCount}` +
-                `\n| step input: ${this.inputTokensUsedForStep} @ ${OpenAITokenPricing.inputPriceUSD(model, this.inputTokensUsedForStep)}$` +
-                `\n| step output: ${this.outputTokensUsedForStep} @ ${OpenAITokenPricing.outputPriceUSD(model, this.outputTokensUsedForStep)}$` +
-                `\n| test input: ${this.inputTokensUsedForTest} @ ${OpenAITokenPricing.inputPriceUSD(model, this.inputTokensUsedForTest)}$` +
-                `\n| test output: ${this.outputTokensUsedForTest} @ ${OpenAITokenPricing.outputPriceUSD(model, this.outputTokensUsedForTest)}$`
-            )
+            const currentUsage = {
+                "response input": `${inputTokens} @ ${OpenAITokenPricing.inputPriceUSD(model, inputTokens)}$`,
+                "response output": `${outputTokens} @ ${OpenAITokenPricing.outputPriceUSD(model, outputTokens)}$`,
+                "history (estimated)": historyTokenCount,
+                "step input": `${this.inputTokensUsedForStep} @ ${OpenAITokenPricing.inputPriceUSD(model, this.inputTokensUsedForStep)}$`,
+                "step output": `${this.outputTokensUsedForStep} @ ${OpenAITokenPricing.outputPriceUSD(model, this.outputTokensUsedForStep)}$`,
+                "test input": `${this.inputTokensUsedForTest} @ ${OpenAITokenPricing.inputPriceUSD(model, this.inputTokensUsedForTest)}$`,
+                "test output": `${this.outputTokensUsedForTest} @ ${OpenAITokenPricing.outputPriceUSD(model, this.outputTokensUsedForTest)}$`
+            }
+            logger.info(`token usage:\n${JSON.stringify(currentUsage, null, 2)}`)
         } else {
-            console.log(
-                `\n| token usage` +
-                `\n| (usage data not available)` +
-                `\n| history (estimated): ${historyTokenCount}`
-            )
+            const currentUsage = {
+                "usage data": "not available",
+                "history (estimated)": historyTokenCount
+            }
+            logger.info(`token usage:\n${JSON.stringify(currentUsage, null, 2)}`)
         }
     }
 }

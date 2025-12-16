@@ -41,8 +41,40 @@ test.describe('single-step flows', async () => {
             `,
                 expect: `The basket icon in the header updates its count to '3'.
                 Basket detail view displays added items with price for each and total price.
-                Delivery options are switched successfully recalculating Total price.
+                Delivery options are switched successfully recalculating Total price correctly.
                 All Billing Address, Payment and Promo Code form fields are interactable.`
+            })
+        })
+    })
+
+    test('mojeek search', async ({ ai }) => {
+        await test.step('Search for Playwright docs using mojeek.com', async () => {
+            await ai.run({
+                action: `
+                Test: Mojeek Search
+                Navigate to the Mojeek search engine at https://www.mojeek.com/.
+                In the search field, type playwright test automation and press Enter.
+                From the search results, click on the link that goes to playwright.dev.
+                Once on the Playwright website, click the site's search icon and type Agent into the Search docs field.
+                Click on the Planner result displayed in the documentation search.
+                `,
+                expect: `
+                The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`
+            })
+        })
+    })
+
+    test('new york public library search', async ({ ai }) => {
+        await test.step('the catcher in the rye availability', async () => {
+            await ai.run({
+                action: `
+                Navigate to https://www.nypl.org. Search for 'The Catcher in the Rye.' 
+                Check if it's available at any physical branch's bookshelf. 
+                If yes, provide the location. 
+                If not, check if an e-book version is available. 
+                If neither, tell the user they're out of luck.`,
+                expect: `
+                Successfully navigated the NYPL website and searched for 'The Catcher in the Rye'.`
             })
         })
     })
@@ -98,8 +130,8 @@ test.describe('multi-step flows', async () => {
         })
         await test.step('Search for Python jobs in Warsaw', async () => {
             await ai.run({
-                action: `Click to activate the 'Location' field and type 'Warsaw' into it.
-                In the 'Search: Job' field type 'Python' into it.
+                action: `Click in 'Location' field and type 'Warszawa' and press 'Enter'.
+                Type 'Python' into the 'Search: Job' field.
                 Click on the 'Search' button to apply filters`,
                 expect: `The job listings are filtered to show Python jobs in Warsaw.`
             })

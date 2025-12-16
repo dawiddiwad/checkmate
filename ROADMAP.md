@@ -35,13 +35,11 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Video tutorials
   - [x] Best practices guide
 
-- [x] **Enhanced Playwright Fixtures**
-  - [x] Migrate to native playwright page context, that will enable:
-    - [x] Capture Browser Context
-    - [x] Snapshot screenshots being passed as blobs without saving
-    - [x] Screenshots in reports
-    - [x] Videos in reports
-    - [x] Better control over snapshots
+- [x] **Playwright Test Migration from MCP server**
+  - [x] Native browser, context and page handling
+  - [x] Screenshots/videos/all browser events in reports
+  - [x] Snapshot screenshots as blobs
+  - [x] Normalized configuration and context
 
 - [x] **Usage Monitoring & Limits**
   - [x] Basic token counting per step
@@ -69,8 +67,8 @@ This roadmap outlines the planned features and improvements for checkmate.
 - [ ] **Logging & Post-Processing**
   - [x] Detailed step execution logging
   - [x] Token usage logging per step
-  - [ ] Structured logging (JSON format)
-  - [ ] Log levels (DEBUG, INFO, WARN, ERROR)
+  - [x] Structured logging (JSON format)
+  - [x] Log levels (DEBUG, INFO, WARN, ERROR)
   - [x] AI reasoning/thought capture
   - [ ] AI-generated test failure analysis
 
@@ -115,12 +113,11 @@ This roadmap outlines the planned features and improvements for checkmate.
   - [ ] Handles large/complex pages efficiently
   - [ ] Reduces token consumption by 60%
 
-- [ ] **Standalone Playwright Integration?**
-  - [ ] Option to use Playwright Page directly (no MCP)
-  - [ ] Custom tool implementations
-  - [ ] Better performance (no subprocess overhead)
-  - [ ] Enhanced debugging capabilities
-  - [ ] Compare MCP vs standalone approaches
+- [x] **Standalone Playwright Integration?**
+  - [x] Option to use Playwright Page directly (no MCP)
+  - [x] Custom tool implementations
+  - [x] Better performance (no subprocess overhead)
+  - [x] Enhanced debugging capabilities
 
 - [ ] **API Testing Integration?**
   - [ ] HTTP request/response tools
@@ -168,8 +165,8 @@ Ongoing explorations without specific version targets:
 - [ ] **Cost Optimization Strategies**
   - [ ] Smart screenshot decision-making
   - [ ] Differential page analysis
-  - [ ] Compressed representation formats
-  - [ ] Local vision models for pre-filtering
+  - [x] Compressed representation formats
+  - [x] Local vision models for pre-filtering
 
 - [ ] **Determinism Improvements**
   - [ ] Hybrid AI + traditional selectors
@@ -178,8 +175,8 @@ Ongoing explorations without specific version targets:
   - [ ] Test result stability metrics
 
 - [ ] **Alternative AI Providers**
-  - [ ] GPT
-  - [ ] GROK
+  - [x] GPT
+  - [x] GROK
   - [ ] Claude
-  - [ ] Local LLMs (Llama, Mistral, Qwen)
-  - [ ] Cost/performance comparisons
+  - [x] Local LLMs (Llama, Mistral, Qwen)
+  - [x] Cost/performance comparisons

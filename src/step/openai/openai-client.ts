@@ -6,6 +6,8 @@ import { LoopDetectedError } from "../tool/loop-detector"
 import { ResponseProcessor } from "./response-processor"
 import { Step, StepStatusCallback } from "../types"
 import { Page } from "@playwright/test"
+import { CheckmateLogger } from "../logger"
+import { logger } from "./openai-test-manager"
 
 export type OpenAIClientDependencies = {
     configurationManager: ConfigurationManager
@@ -36,7 +38,9 @@ export class OpenAIClient {
             apiKey: this.configurationManager.getApiKey(),
             baseURL: this.configurationManager.getBaseURL(),
             timeout: this.configurationManager.getTimeout(),
-            maxRetries: 0
+            maxRetries: 0,
+            logLevel: this.configurationManager.getLogLevel(),
+            logger: CheckmateLogger.create('openai_client', this.configurationManager.getLogLevel())
         })
         this.messages = []
         this.step = step
@@ -74,7 +78,7 @@ export class OpenAIClient {
                 parallel_tool_calls: false,
                 temperature: this.temperature,
                 n: 1,
-                reasoning_effort: 'high'
+                reasoning_effort: this.configurationManager.getReasoningEffort()
             })
 
             if (response.choices[0]?.message) {
@@ -112,7 +116,7 @@ export class OpenAIClient {
                     type: 'image_url',
                     image_url: {
                         url: `data:${mimeType};base64,${base64Data}`,
-                        detail: 'low'
+                        detail: 'high'
                     }
                 }
             ]
@@ -161,7 +165,7 @@ export class OpenAIClient {
                 const retryAfter = this.getRetryAfterSeconds(error)
                 const delay = retryAfter ? retryAfter * 1000 : this.calculateBackoff(attempt)
 
-                console.log(`| status: ${this.getStatus(error)} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
+                logger.warn(`status: ${this.getStatus(error)} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
                 await this.sleep(delay)
             }
         }

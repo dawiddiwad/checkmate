@@ -1,3 +1,5 @@
+import { LogLevel } from "./logger"
+
 export class ConfigurationManager {
     getApiKey(): string {
         if (!process.env.OPENAI_API_KEY) {
@@ -68,5 +70,21 @@ export class ConfigurationManager {
         const parsed = parseInt(env, 10)
         if (Number.isNaN(parsed)) return 5
         return parsed
+    }
+
+    getReasoningEffort(): "none" | "low" | "medium" | "high" | undefined {
+        const effort = process.env.OPENAI_REASONING_EFFORT?.toLowerCase()
+        if (effort === "low" || effort === "medium" || effort === "high") {
+            return effort
+        }
+        return undefined
+    }
+
+    getLogLevel(): LogLevel {
+        const level = process.env.CHECKMATE_LOG_LEVEL?.toLowerCase()
+        if (level === 'debug' || level === 'info' || level === 'warn' || level === 'error' || level === 'off') {
+            return level
+        }
+        return 'off'
     }
 }

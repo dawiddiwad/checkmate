@@ -1,14 +1,76 @@
+/**
+ * OpenAITokenPricing
+ *
+ * Utility for estimating USD costs for token usage across a wide set of LLM models.
+ * It maps model identifiers to input/output prices per 1,000,000 tokens (USD) and
+ * exposes helpers to compute the USD cost of a given number of tokens. All returned
+ * prices are rounded to the nearest cent.
+ *
+ * Pricing sources:
+ * - https://ai.google.dev/gemini-api/docs/pricing
+ * - https://openai.com/api/pricing/
+ * - https://claude.com/pricing#api
+ * - https://docs.x.ai/docs/models#model-pricing
+ * - https://console.groq.com/docs/models
+ *
+ * Private helpers:
+ * @private
+ * - roundToCents(price: number): number
+ *   Rounds a numeric USD value to two decimal places (cents).
+ *
+ * @private
+ * - inputPricePerMillionUSD(model: string): number
+ *   Returns the input-token price (USD) per 1,000,000 tokens for the given model.
+ *   If the model is not recognized, a sensible default is returned.
+ *
+ * @private
+ * - outputPricePerMillionUSD(model: string): number
+ *   Returns the output-token price (USD) per 1,000,000 tokens for the given model.
+ *   If the model is not recognized, a sensible default is returned.
+ *
+ * Public API:
+ * - inputPriceUSD(model: string, tokens: number): number
+ *   Computes the USD cost for the provided number of input tokens (rounded to cents).
+ *
+ * - outputPriceUSD(model: string, tokens: number): number
+ *   Computes the USD cost for the provided number of output tokens (rounded to cents).
+ *
+ * - totalPriceUSD(model: string, inputTokens: number, outputTokens: number): number
+ *   Computes the total USD cost (input + output) for the given model and token counts,
+ *   rounded to cents.
+ *
+ * @example
+ * // Estimate cost of 1k input tokens and 2k output tokens for 'gpt-4o'
+ * const inCost = OpenAITokenPricing.inputPriceUSD('gpt-4o', 1000);
+ * const outCost = OpenAITokenPricing.outputPriceUSD('gpt-4o', 2000);
+ * const total = OpenAITokenPricing.totalPriceUSD('gpt-4o', 1000, 2000);
+ *
+ * @note
+ * Token counts are integer counts of tokens. Model pricing and mappings may change;
+ * keep the price table updated with provider pricing announcements.
+ */
 export class OpenAITokenPricing {
     private static roundToCents(price: number): number {
         return Math.round(price * 100) / 100
     }
 
+    // Pricing sources:
+    // Gemini: https://ai.google.dev/gemini-api/docs/pricing
+    // OpenAi: https://openai.com/api/pricing/
+    // Claude: https://claude.com/pricing#api
+    // Grok: https://docs.x.ai/docs/models#model-pricing
+    // groq: https://console.groq.com/docs/models
     private static inputPricePerMillionUSD(model: string): number {
         switch (model) {
-            case 'gpt-5.1':
-                return this.roundToCents(1.25)
+            // OpenAI Models
+            case 'gpt-5.2':
+                return this.roundToCents(1.75)
+            case 'gpt-5.2-pro':
+                return this.roundToCents(21.00)
             case 'gpt-5-mini':
                 return this.roundToCents(0.25)
+            case 'gpt-5.1':
+                return this.roundToCents(1.25)
             case 'gpt-5-nano':
                 return this.roundToCents(0.05)
             case 'gpt-5-pro':
@@ -113,6 +175,27 @@ export class OpenAITokenPricing {
             case 'grok-3-mini-fast-latest':
             case 'grok-3-mini-fast-beta':
                 return this.roundToCents(0.30)
+            // groq Models
+            case 'openai/gpt-oss-20b':
+                return this.roundToCents(0.075)
+            case 'openai/gpt-oss-safeguard-20b':
+                return this.roundToCents(0.075)
+            case 'openai/gpt-oss-120b':
+                return this.roundToCents(0.15)
+            case 'moonshotai/kimi-k2-instruct-0905':
+                return this.roundToCents(1.00)
+            case 'meta-llama/llama-4-scout-17b-16e-instruct':
+                return this.roundToCents(0.11)
+            case 'meta-llama/llama-4-maverick-17b-128e-instruct':
+                return this.roundToCents(0.20)
+            case 'meta-llama/llama-guard-4-12b':
+                return this.roundToCents(0.20)
+            case 'qwen/qwen3-32b':
+                return this.roundToCents(0.29)
+            case 'llama-3.3-70b-versatile':
+                return this.roundToCents(0.59)
+            case 'llama-3.1-8b-instant':
+                return this.roundToCents(0.05)
             default:
                 return this.roundToCents(0.15)
         }
@@ -120,10 +203,15 @@ export class OpenAITokenPricing {
 
     private static outputPricePerMillionUSD(model: string): number {
         switch (model) {
-            case 'gpt-5.1':
-                return this.roundToCents(10.00)
+            // OpenAI Models
+            case 'gpt-5.2':
+                return this.roundToCents(14.00)
+            case 'gpt-5.2-pro':
+                return this.roundToCents(168.00)
             case 'gpt-5-mini':
                 return this.roundToCents(2.00)
+            case 'gpt-5.1':
+                return this.roundToCents(10.00)
             case 'gpt-5-nano':
                 return this.roundToCents(0.40)
             case 'gpt-5-pro':
@@ -228,6 +316,27 @@ export class OpenAITokenPricing {
             case 'grok-3-mini-fast-latest':
             case 'grok-3-mini-fast-beta':
                 return this.roundToCents(0.50)
+            // groq Models
+            case 'openai/gpt-oss-20b':
+                return this.roundToCents(0.30)
+            case 'openai/gpt-oss-safeguard-20b':
+                return this.roundToCents(0.30)
+            case 'openai/gpt-oss-120b':
+                return this.roundToCents(0.60)
+            case 'moonshotai/kimi-k2-instruct-0905':
+                return this.roundToCents(3.00)
+            case 'meta-llama/llama-4-scout-17b-16e-instruct':
+                return this.roundToCents(0.34)
+            case 'meta-llama/llama-4-maverick-17b-128e-instruct':
+                return this.roundToCents(0.60)
+            case 'meta-llama/llama-guard-4-12b':
+                return this.roundToCents(0.20)
+            case 'qwen/qwen3-32b':
+                return this.roundToCents(0.59)
+            case 'llama-3.3-70b-versatile':
+                return this.roundToCents(0.79)
+            case 'llama-3.1-8b-instant':
+                return this.roundToCents(0.08)
             default:
                 return this.roundToCents(0.60)
         }

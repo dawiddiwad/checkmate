@@ -1,13 +1,12 @@
 {
   "name": "checkmate-exp",
-  "version": "0.0.2.9",
+  "version": "0.0.2.91",
   "description": "",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
     "test:web": "npx playwright test --project=web",
-    "test:salesforce": "npx playwright test --project=salesforce",
-    "test:live": "npx playwright test --project=live"
+    "test:salesforce": "npx playwright test --project=salesforce"
   },
   "author": "Dawid Dobrowolski SoftQA",
   "license": "MIT",
@@ -19,6 +18,7 @@
     "dotenv": "^17.2.3",
     "openai": "^6.10.0",
     "sharp": "^0.34.5",
+    "winston": "^3.19.0",
     "yaml": "^2.8.2"
   },
   "devDependencies": {

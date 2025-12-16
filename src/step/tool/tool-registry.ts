@@ -5,6 +5,7 @@ import { StepStatusCallback } from "../types"
 import { ConfigurationManager } from "../configuration-manager"
 import { BrowserTool } from "./browser-tool"
 import { ToolCall } from "../../mcp/tool/openai-tool"
+import { logger } from "../openai/openai-test-manager"
 
 export type ToolResponse = {
     name?: string
@@ -32,8 +33,7 @@ export class ToolRegistry {
     }
 
     private logToolCall(toolCall: ToolCall): void {
-        console.log(`\nexecuting tool ${toolCall.name}`)
-        console.log(JSON.stringify(toolCall.arguments ?? {}, null, 2))
+        logger.info(`executing tool: ${toolCall.name}:\n${JSON.stringify(toolCall.arguments ?? {}, null, 2)}`)
     }
 
     async getTools(): Promise<ChatCompletionFunctionTool[]> {

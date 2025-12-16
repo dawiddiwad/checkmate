@@ -3,6 +3,7 @@ import { StepTool } from "../tool/step-tool"
 import { OpenAIClient } from "./openai-client"
 import { Step, StepStatusCallback } from "../types"
 import { ResponseProcessor } from "./response-processor"
+import { logger } from "./openai-test-manager"
 
 export class MessageContentHandler {
     private readonly openaiClient: OpenAIClient
@@ -16,8 +17,8 @@ export class MessageContentHandler {
     public async handle(choice: ChatCompletion.Choice, step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
         const { message } = choice
         if (choice.finish_reason === 'stop' || message.content) {
-            console.log(`\n| text: ${message.content}`)
-            console.log(`\n| warning: Model responded with text but no tool call. Prompting to use ${StepTool.TOOL_PASS_TEST_STEP} or ${StepTool.TOOL_FAIL_TEST_STEP} tool.`)
+            logger.warn(`text: ${message.content}`)
+            logger.warn(`warning: Model responded with text but no tool call. Prompting to use ${StepTool.TOOL_PASS_TEST_STEP} or ${StepTool.TOOL_FAIL_TEST_STEP} tool.`)
             await this.openaiClient.addUserMessage(
                 `You provided a text response but did not call a tool. Based on your analysis, please call either '${StepTool.TOOL_PASS_TEST_STEP}' or '${StepTool.TOOL_FAIL_TEST_STEP}' with the actual result. Do not respond with text - only use the tool.`
             )

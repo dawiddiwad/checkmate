@@ -2,6 +2,7 @@ import { ChatCompletionFunctionTool } from "openai/resources"
 import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
 import { expect, Page } from "@playwright/test"
 import { PageSnapshot } from "./page-snapshot"
+import { logger } from "../openai/openai-test-manager"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -157,7 +158,7 @@ export class BrowserTool implements OpenAITool {
             await this.page.click(`aria-ref=${ref}`)
             return this.captureSnapshot()
         } catch (error) {
-            console.error(`\n| Error clicking element with ref '${ref}' due to: ${error}`)
+            logger.error(`error clicking element with ref '${ref}' due to:\n${error}`)
             return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
         }
     }
@@ -170,7 +171,7 @@ export class BrowserTool implements OpenAITool {
             await this.page.locator(`aria-ref=${ref}`).pressSequentially(text, { delay: 50 })
             return this.captureSnapshot()
         } catch (error) {
-            console.error(`\n| Error typing text '${text}' in element with ref '${ref}' due to: ${error}`)
+            logger.error(`error typing text '${text}' in element with ref '${ref}' due to:\n${error}`)
             return `failed to type text '${text}' in element with ref '${ref}':\n${error}\n try with different element type or ref`
         }
     }

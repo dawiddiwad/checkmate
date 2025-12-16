@@ -41,7 +41,7 @@ test.describe('single-step flows', async () => {
             `,
                 expect: `The basket icon in the header updates its count to '3'.
                 Basket detail view displays added items with price for each and total price.
-                Delivery options are switched successfully recalculating Total price.
+                Delivery options are switched successfully recalculating Total price correctly.
                 All Billing Address, Payment and Promo Code form fields are interactable.`
             })
         })
@@ -130,7 +130,7 @@ test.describe('multi-step flows', async () => {
         })
         await test.step('Search for Python jobs in Warsaw', async () => {
             await ai.run({
-                action: `Click in 'Location' field and type 'Warszawa'.
+                action: `Click in 'Location' field and type 'Warszawa' and press 'Enter'.
                 Type 'Python' into the 'Search: Job' field.
                 Click on the 'Search' button to apply filters`,
                 expect: `The job listings are filtered to show Python jobs in Warsaw.`

@@ -27,7 +27,7 @@ await expect(page.getByRole('link', { name: '#search-result' })
 *   **Salesforce UI**: Works with any org with automatic authorization.
 *   **Resilient**: Tests adapt automatically to UI changes.
 *   **Cost saving**: Optimizes token use, chat history, and screenshots.
-*   **Reporting**: Console logs, HTML and JUnit output.
+*   **Reporting**: Playwright reports with attachments, tracing and debug logs.
 
 ## Quick Start
 ### Prerequisites
@@ -156,6 +156,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_API_TOKEN_BUDGET_USD` | - | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.
 | `OPENAI_API_TOKEN_BUDGET_COUNT` | - | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.
 | `OPENAI_LOOP_MAX_REPETITIONS` | `5` | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
+| `CHECKMATE_LOG_LEVEL` | `off` | Logging verbosity: debug, info, warn, error, off |
 
 ### Playwright Configuration
 
@@ -165,15 +166,16 @@ Browser settings (viewport, headless mode, video recording, timeouts, etc.) are 
 
 Checkmate includes built-in token usage monitoring:
 
-```
-| token usage
-| response input: 2543 @ $0.00$
-| response output: 456 @ $0.00$
-| history (estimated): 45234
-| step input: 5123 @ $0.00$
-| step output: 892 @ $0.00$
-| test input: 25678 @ $0.01$
-| test output: 4521 @ $0.01$
+```json
+{
+  "response input": "2543 @ $0.00$",
+  "response output": "456 @ $0.00$",
+  "history (estimated)": 45234,
+  "step input": "5123 @ $0.00$",
+  "step output": "892 @ $0.00$",
+  "test input": "25678 @ $0.01$",
+  "test output": "4521 @ $0.01$"
+}
 ```
 
 ### Cost Optimization Features

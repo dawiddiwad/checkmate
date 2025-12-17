@@ -1,6 +1,7 @@
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions"
 import { OpenAIClient } from "./openai-client"
 import { AriaPageSnapshot } from "../tool/page-snapshot"
+import { logger } from "./openai-test-manager"
 
 export class HistoryManager {
     static readonly SNAPSHOT_IDENTIFIER = 'this is a current page snapshot'
@@ -33,5 +34,6 @@ export class HistoryManager {
             return message
         })
         openaiClient.replaceHistory(filteredHistory)
+        logger.debug(`Removed snapshot entries from history to save tokens, current history:\n${JSON.stringify(filteredHistory, null, 2)}`)
     }
 }

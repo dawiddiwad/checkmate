@@ -1,5 +1,5 @@
 import { ChatCompletionFunctionTool } from "openai/resources"
-import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
+import { OpenAITool, ToolCall } from "./openai-tool"
 import { expect, Page } from "@playwright/test"
 import { PageSnapshot } from "./page-snapshot"
 import { logger } from "../openai/openai-test-manager"

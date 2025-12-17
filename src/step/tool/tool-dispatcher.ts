@@ -2,7 +2,7 @@ import { ToolRegistry } from "./tool-registry"
 import { StepStatusCallback } from "../types"
 import { LoopDetector } from "./loop-detector"
 import { ConfigurationManager } from "../configuration-manager"
-import { ToolCall } from "../../mcp/tool/openai-tool"
+import { ToolCall } from "./openai-tool"
 
 export class ToolDispatcher {
     private readonly toolRegistry: ToolRegistry

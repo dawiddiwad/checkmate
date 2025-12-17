@@ -9,7 +9,7 @@ import { ToolResponseHandler } from "../tool/tool-response-handler"
 import { RateLimitHandler } from "./rate-limit-handler"
 import { MessageContentHandler } from "./message-content-handler"
 import { Page } from "@playwright/test"
-import { ToolCall } from "../../mcp/tool/openai-tool"
+import { ToolCall } from "../tool/openai-tool"
 
 export type ResponseProcessorDependencies = {
     page: Page

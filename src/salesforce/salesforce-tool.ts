@@ -1,7 +1,7 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceCliHandler } from "./salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "./salesforce-cli-authenticator"
-import { OpenAITool, ToolCall } from "../mcp/tool/openai-tool"
+import { OpenAITool, ToolCall } from "../step/tool/openai-tool"
 import { BrowserTool } from "../step/tool/browser-tool"
 
 

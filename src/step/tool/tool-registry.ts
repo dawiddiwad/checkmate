@@ -4,7 +4,7 @@ import { StepTool } from "./step-tool"
 import { StepStatusCallback } from "../types"
 import { ConfigurationManager } from "../configuration-manager"
 import { BrowserTool } from "./browser-tool"
-import { ToolCall } from "../../mcp/tool/openai-tool"
+import { ToolCall } from "./openai-tool"
 import { logger } from "../openai/openai-test-manager"
 
 export type ToolResponse = {

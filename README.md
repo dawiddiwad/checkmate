@@ -146,7 +146,7 @@ await test.step('Fill form and submit', async () => {
 | `OPENAI_API_KEY` | - | **Required** - Your OpenAI API key (or compatible provider) |
 | `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
 | `OPENAI_MODEL` | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc. |
-| `OPENAI_TEMPERATURE` | `0.1` | Creativity (0=deterministic, 1=creative) |
+| `OPENAI_TEMPERATURE` | `1.0` | Creativity (below 0.5 = deterministic, above 0.5 = creative) |
 | `OPENAI_REASONING_EFFORT` | - | Optional - Reasoning effort for models: low, medium, high |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
 | `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors |

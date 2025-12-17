@@ -1,4 +1,4 @@
-import { ToolCall } from "../../mcp/tool/openai-tool"
+import { ToolCall } from "./openai-tool"
 
 export type LoopDetectionResult = {
     loopDetected: boolean

@@ -1,5 +1,5 @@
 import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
-import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
+import { OpenAITool, ToolCall } from "./openai-tool"
 import { StepStatusCallback } from "../types"
 
 export class StepTool implements OpenAITool {

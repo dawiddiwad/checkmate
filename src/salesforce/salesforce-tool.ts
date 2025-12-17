@@ -24,6 +24,7 @@ export class SalesforceTool implements OpenAITool {
                         properties: {
                             goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' }
                         },
+                        additionalProperties: false,
                         required: ['goal']
                     },
                     strict: true

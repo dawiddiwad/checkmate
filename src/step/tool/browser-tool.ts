@@ -3,6 +3,7 @@ import { OpenAITool, ToolCall } from "../../mcp/tool/openai-tool"
 import { expect, Page } from "@playwright/test"
 import { PageSnapshot } from "./page-snapshot"
 import { logger } from "../openai/openai-test-manager"
+import { add } from "winston"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -29,6 +30,7 @@ export class BrowserTool implements OpenAITool {
                             url: { type: 'string', description: 'The URL to navigate to' },
                             goal: { type: 'string', description: 'The goal or purpose of navigating to this URL' }
                         },
+                        additionalProperties: false,
                         required: ['url', 'goal']
                     },
                     strict: true
@@ -46,6 +48,7 @@ export class BrowserTool implements OpenAITool {
                             name: { type: 'string', description: 'name of the element to click, example: Submit Button' },
                             goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                         },
+                        additionalProperties: false,
                         required: ['ref', 'name', 'goal']
                     },
                     strict: true
@@ -64,6 +67,7 @@ export class BrowserTool implements OpenAITool {
                             name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
                             goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
                         },
+                        additionalProperties: false,
                         required: ['ref', 'text', 'name', 'goal']
                     },
                     strict: true
@@ -80,6 +84,7 @@ export class BrowserTool implements OpenAITool {
                             key: { type: 'string', description: 'The key to press, example: Enter, Escape, ArrowDown' },
                             goal: { type: 'string', description: 'The goal or purpose of pressing this key' }
                         },
+                        additionalProperties: false,
                         required: ['key', 'goal']
                     },
                     strict: true
@@ -95,6 +100,7 @@ export class BrowserTool implements OpenAITool {
                         properties: {
                             goal: { type: 'string', description: 'The goal or purpose of capturing the snapshot' }
                         },
+                        additionalProperties: false,
                         required: ['goal']
                     },
                     strict: true

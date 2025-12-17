@@ -20,6 +20,7 @@ export class StepTool implements OpenAITool {
                         properties: {
                             actualResult: { type: 'string', description: 'The actual result of the test step' }
                         },
+                        additionalProperties: false,
                         required: ['actualResult']
                     },
                     strict: true
@@ -35,6 +36,7 @@ export class StepTool implements OpenAITool {
                         properties: {
                             actualResult: { type: 'string', description: 'The actual result of the test step' }
                         },
+                        additionalProperties: false,
                         required: ['actualResult']
                     },
                     strict: true

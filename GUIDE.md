@@ -127,11 +127,18 @@ Notes:
 - Only positive numbers are enforced; `0` or non-positive values are effectively treated as disabled.
 - If the env var is unset or invalid (non-number), it is ignored.
 
-### Estimated Costs (Gemini 2.5 Flash / GPT 5 mini)
+### Estimated Costs 
 
-- Simple web test (5 steps): ~$0.01 - $0.05
-- Complex Salesforce flow (20 steps): ~$0.10 - $0.40
-- Full test suite (50 tests): ~$5.00 - $20.00
+
+**Gemini 2.5 Flash / GPT 5 mini**:
+- Simple test (~5 steps): ~$0.01 - $0.05
+- Complex test (~20 steps): ~$0.10 - $0.40
+- Full E2E suite (~50 complex tests): ~$5.00 - $20.00
+
+**GPT-OSS-20B via groq**:
+- Simple test (~5 steps): ~$0.001 - $0.01
+- Complex test (~20 steps): ~$0.01 - $0.05
+- Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
 *Costs vary based on model, screenshot size and count, and page complexity*
 
@@ -203,7 +210,7 @@ npx playwright show-report test-reports/html
 **Symptoms**: The AI clicks wrong elements, misinterprets the page, or fails to complete actions correctly.
 
 **Solutions**:
-- Provide more detailed descriptions in `action` and more focused assertions in `expect`
+- Provide more precise descriptions in `action` and more focused assertions in `expect`
 - Reference specific element identifiers and roles (for example: text, label, button, list)
 - Break complex workflows into single-action steps; use a step-by-step approach
 
@@ -336,5 +343,4 @@ Checkmate generates JUnit XML reports compatible with most CI/CD systems:
 ```
 
 ---
-
-For more information, see the main [README.md](README.md) or [Contributing Guide](README.md#contributing).
+See [readme](README.md) for more information and getting started guide.

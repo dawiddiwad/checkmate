@@ -1,28 +1,39 @@
 # *****checkmate*****
 
-AI-powered e2e testing that actually works. Write tests in plain English, no locators, no maintenance headaches.
+AI test automation that actually works. Write tests in plain English, without locators, and with less code.
+
+![playwright](https://img.shields.io/badge/Playwright-1.57.0-blue.svg)
+![typescript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)
+![nodejs](https://img.shields.io/badge/Node.js-LTS-green.svg)
+![openai](https://img.shields.io/badge/OpenAI-API-yellow.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Why?
+Spending countless hours building and maintaining E2E tests that look like this?
 
-Stop fighting brittle selectors. Stop rewriting tests every sprint. Write what you want to test, and let AI handle the rest.
-
-traditional playwright:
-```javascript
-await page.locator('#search-input').fill('playwright test automation')
-await page.press('#search-input', 'Enter')
-await expect(page.getByRole('link', { name: 'search-result', { exact: true } })
+```
+await page.goto('https://www.google.com')
+const searchBox = page.getByRole('combobox', { name: 'Search', exact: true })
+await searchBox.fill('playwright test automation')
+await searchBox.press('Enter')
+await expect(page.getByRole('link', { name: 'playwright' })
     .filter({ hasText: 'playwright.dev' })
     .first(), 'playwright.dev link should be visible')
     .toBeVisible( { timeout: 30 * 1000 } )
 ```
-
-*****checkmate***:**
-```javascript
+Try *****checkmate*****!
+```typescript
 await ai.run({
-    action: `Type 'playwright test automation' in the search bar and press Enter`,
-    expect: `Search results contain the playwright.dev link`
+    action: `
+        Navigate to google.com
+        Type 'playwright test automation' in the search bar
+        Press Enter key`,
+    expect: `
+        Search results contain the playwright.dev link`
 })
 ```
+
+
 
 ## What You Get
 
@@ -34,6 +45,10 @@ await ai.run({
 ✅ **Full Playwright** - Reports, traces, debugging - all included
 
 ## Get Started in 5 Minutes
+
+### Prerequisites
+- Node.js [LTS](https://nodejs.org/en/download) 
+- OpenAI [API key](https://platform.openai.com/api-keys) or compatible provider [Groq](https://console.groq.com/keys) [Gemini](https://aistudio.google.com/app/api-keys) [xAI](https://x.ai/api) etc.
 
 ### 1. Install
 
@@ -50,88 +65,65 @@ npm run install
 OPENAI_API_KEY=#your_api_key_here
 ```
 
-*...or for other providers, set the base URL and model too:*
+*for other providers, set the base url and model:*
 ```bash
-OPENAI_API_KEY=#your_api_key_here
 OPENAI_BASE_URL=https://api.groq.com/openai/v1
 OPENAI_MODEL=openai/gpt-oss-20b
 ```
 
-*For provider I highly recommended [Groq.com](https://groq.com)*.  
-*They host blazing fast, secure, open source models at [low cost](https://groq.com/pricing)*.  
-*You can start with a free key here: [https://console.groq.com/keys](https://console.groq.com/keys)*
-
-
 ### 3. Run Tests
 
-```bash
-npm run test:web:example         # Run a short test
-npm run show:report              # View results
 ```
+npm run test:web:example
+```
+### 4. View Report
+```
+npm run show:report
+```
+
 
 ## Writing Tests
 
-Tests are written using natural language specifications with `action` and `expect` fields:
+Import the `test` from `./test/fixtures/checkmate` and use the `ai` fixture to run AI-driven tests along standard Playwright features.  
+*checkmate* tests are written using natural language by specifying `action` and `expect`:
 
 ```typescript
 import { test } from "../../fixtures/checkmate"
 
-test('search for playwright documentation', async ({ ai }) => {
-    await test.step('Navigate to Google', async () => {
-        await ai.run({
-            action: `Open the browser and navigate to google.com`,
-            expect: `google.com is loaded and the search bar is visible`
-        })
-    })
-    
-    await test.step('Search for Playwright', async () => {
-        await ai.run({
-            action: `Type 'playwright test automation' in the search bar and press Enter`,
-            expect: `Search results contain the playwright.dev link`
-        })
+test('google search', async ({ ai }) => {
+    await ai.run({
+        action: `
+            Open the browser and navigate to google.com.
+            Type 'playwright test automation' in the search bar.
+            Press Enter key.`,
+        expect: `
+            Search results contain the 'playwright.dev' link`
     })
 })
 ```
 
-That's it. No page objects, no selectors, no flake.
-
-### Tips for Success
-
-- **Be specific** about what you want and what success looks like
-- **One action per step** - break complex flows into simple steps
-- **Mention timing** - if something takes a while, say so
-- **Handle popups** - call out modals and dialogs explicitly
-
-See [GUIDE.md](GUIDE.md) for detailed examples and best practices. Playwright Configuration
+That's it. No page objects, no selectors. No locators. Peace on Earth.
 
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
-## Cost Management
+See [guide](GUIDE.md#best-practices) for detailed examples and best practices.
 
-Checkmate includes built-in token usage monitoring:
+## Costs
 
-```json
-{
-  "response input": "2543 @ $0.00$",
-  "response output": "456 @ $0.00$",
-  "history (estimated)": 45234,
-  "step input": "5123 @ $0.00$",
-  "step output": "892 @ $0.00$",
-  "test input": "25678 @ $0.01$",
-  "test output": "4521 @ $0.01$"
-}
-```
-Runtime cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) (highly recommended):
-- **Simple test (~5 steps): ~$0.001 - $0.01**
+Costs vary based on model and provider, test complexity and number of steps.
+*checkmate* includes built-in token usage [monitoring.](GUIDE.md#cost-management) 
+
+Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) for optimal balance:
+- Simple test (~5 steps): ~$0.001 - $0.01
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-See [GUIDE.md](GUIDE.md#cost-management) for detailed cost control options
+See [guide](GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
 ## Common Issues
 
 **AI makes incorrect decisions**
-- Provide more detailed descriptions in `action` and more focused assertions in `expect`
+- Provide precise descriptions in `action` and more focused assertions in `expect`
 - Reference specific element identifiers and roles (for example: text, label, button, list)
 - Break complex workflows into single-action steps; use a step-by-step approach
 
@@ -144,44 +136,65 @@ See [GUIDE.md](GUIDE.md#cost-management) for detailed cost control options
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
 
+See [guide](GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
+
 ## FAQ
 
-**Is this production-ready?**  
-Kind of... yes? Great if you feel that [pesticide paradox](https://medium.com/@suwekasansiluni/the-pesticide-paradox-what-farming-teaches-us-about-software-testing-ab5d625d4de1) is an issue in automated E2E testing ;) You should expect and accept somewhat non-deterministic behavior and occasional flakiness - and take advantage of it in your tests. For majority of cases, the maintenance savings, rapid development and non-linear execution outweigh occasional hickups. If you need 100% deterministic tests 100% of time, traditional playwright is still the way to go.
+**Which models work best?**
+*checkmate* is designed to work with any OpenAI‑compatible model. Here are the best picks based on extensive testing:
 
-**What models work best?**  
-Checkmate is designed to work with any OpenAI-compatible model, but here are best picks based on extensive testing:
-* Highly recommend [`gpt-oss` `20b` or `120b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) as best cost / speed / quality option. Groq's infrastructure is optimized for low-latency and high-throughput LLM workloads making it ideal for E2E test automation. Models are blazing fast and cost-effective.
-* Google's `gemini-2.5-flash` offers the best balance of cost and performance if major cloud providers are preferred.
-* OpenAI's `gpt-5-mini`, `gpt-5-nano` and xAI's `grok-4-1-fast-reasoning` also work very well keeping costs reasonably low.
+- Highly recommended: [`gpt-oss` `20b` or `120b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
+- Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
+- OpenAI's `gpt-5-mini` and `gpt-5-nano`, and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
 
 **Can I use local models?**  
-Yes! Works with any OpenAI-compatible API, including local models via LM Studio, Ollama or llama.cpp.  
-I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) 4 bit quant variant. It is fast (100 tokens/sec on RTX 3060Ti) and (40 tokens/sec on Apple M3) performing surprisingly well for e2e testing tasks.
+Yes - *checkmate* works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) (4‑bit quant variant). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.
 
 **Does it work with CI/CD?**  
-Absolutely! Use it as part of your existing [Playwright Test suites in any CI/CD pipeline](https://playwright.dev/docs/best-practices#run-tests-on-ci). You can blend AI-driven tests, steps and actions with traditional ones as needed.
+Absolutely. Use *checkmate* as part of your existing [Playwright Test suites in any CI/CD pipeline](https://playwright.dev/docs/best-practices#run-tests-on-ci). You can mix AI‑driven steps and traditional tests as needed.
+
+**Is this production-ready?**  
+It depends. If you can accept some non‑deterministic behavior and leverage LLMs' randomness to help address the [pesticide paradox](https://medium.com/@suwekasansiluni/the-pesticide-paradox-what-farming-teaches-us-about-software-testing-ab5d625d4de1), *checkmate* can be production-ready. In many cases, the maintenance savings, faster development, and benefits of non‑linear execution outweigh occasional hiccups.
+
+If you require 100% deterministic tests at all times, traditional Playwright remains the better choice.
+
+**Best part**: you can mix both approaches within the same test suite, combining AI‑driven and traditional tests as needed.
+```typescript
+// traditional playwright actions:
+await page.goto('https://www.google.com')
+const searchBox = page.getByRole('combobox', { name: 'Search', exact: true })
+await searchBox.fill('playwright test automation')
+await searchBox.press('Enter')
+// ai-driven actions and assertions:
+await ai.run({
+    action: 'Click on the link that leads to playwright.dev',
+    expect: 'The playwright.dev homepage is displayed'
+})
+```
 
 ## Documentation
 
-- [GUIDE.md](GUIDE.md) - Complete technical documentation
-- [ROADMAP.md](ROADMAP.md) - Future plans and development
-- [Playwright Docs](https://playwright.dev/)
+- [*checkmate*](GUIDE.md)
+- [Playwright](https://playwright.dev/)
 
 ## Contributing
 
-We'd love your help! Key areas:
+I'd love your help! Key areas:
 - Additional tool integrations (API testing, Salesforce, etc.)
 - Further cost optimization techniques
 - Context and prompt engineering improvements
 - Error handling and recovery
 
+See [roadmap](ROADMAP.md) for future plans and development
+
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
+MIT License - see [license](LICENSE) file for details
 
 ## Why I build this?
 
-Test automation shouldn't require a PhD in XPath. This project explores how AI can make testing accessible - less technical debt, more actual testing.
+Test automation shouldn't require a PhD in XPath. This project explores how AI can make it accessible to anyone. 
+
+Less coding, more testing.
 
 Built with ❤️ by [Dawid Dobrowolski](https://github.com/dawiddiwad)

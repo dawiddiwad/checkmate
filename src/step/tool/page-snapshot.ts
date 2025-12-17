@@ -1,5 +1,6 @@
 import { Page } from "@playwright/test"
 import { parse } from "yaml"
+import { logger } from "../openai/openai-test-manager"
 
 export type AriaPageSnapshot = string | null
 
@@ -34,6 +35,7 @@ export class PageSnapshot {
             const asJson = parse(snapshotYAML)?.[0] ?? { state: 'page content is empty' }
             const asMinified = `page snapshot:\n${this.minify(JSON.stringify(asJson))}`
             PageSnapshot.lastSnapshot = `${await this.getHeader()}\n${asMinified}`
+            logger.debug(`created aria page snapshot:\n${PageSnapshot.lastSnapshot}`)
             return PageSnapshot.lastSnapshot
         } catch (error) {
             throw new Error(`Failed to create aria page snapshot:\n${error}`)

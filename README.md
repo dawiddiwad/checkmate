@@ -1,88 +1,72 @@
-# **checkmate**
+# *****checkmate*****
 
-Supercharge your test automation with AI. Write steps in plain English. No locators or tedious maintenance required. Checkmate combines LLMs with Playwright's ecosystem for smarter, more resilient execution.
+AI-powered e2e testing that actually works. Write tests in plain English, no locators, no maintenance headaches.
 
-Enjoy Claude, Gemini, xAI, or any OpenAI API compatible provider - even your private local models via LM Studio or llama.cpp!
+## Why?
 
-### How it works?
-Write tests in natural language:
+Stop fighting brittle selectors. Stop rewriting tests every sprint. Write what you want to test, and let AI handle the rest.
+
+traditional playwright:
+```javascript
+await page.locator('#search-input').fill('playwright test automation')
+await page.press('#search-input', 'Enter')
+await expect(page.getByRole('link', { name: 'search-result', { exact: true } })
+    .filter({ hasText: 'playwright.dev' })
+    .first(), 'playwright.dev link should be visible')
+    .toBeVisible( { timeout: 30 * 1000 } )
+```
+
+*****checkmate***:**
 ```javascript
 await ai.run({
     action: `Type 'playwright test automation' in the search bar and press Enter`,
     expect: `Search results contain the playwright.dev link`
 })
 ```
-...instead of chaining locators, methods and assertions:
-```javascript
-await page.locator('#search-input').fill('playwright test automation')
-await page.press('#search-input', 'Enter')
-await expect(page.getByRole('link', { name: '#search-result' })
-    .filter({ hasText: 'playwright.dev' }).first())
-    .toBeVisible()
-```
 
-### Features
-*   **Write tests in plain English**: No locators needed.
-*   **Web UI**: Works on any web page.
-*   **Salesforce UI**: Works with any org with automatic authorization.
-*   **Resilient**: Tests adapt automatically to UI changes.
-*   **Cost saving**: Optimizes token use, chat history, and screenshots.
-*   **Reporting**: Playwright reports with attachments, tracing and debug logs.
+## What You Get
 
-## Quick Start
-### Prerequisites
+✅ **Zero Locators** - Write tests in plain English  
+✅ **Self-Healing** - Tests adapt to UI changes automatically  
+✅ **Any Provider** - Claude, Gemini, GPT, xAI, or local models  
+✅ **Web & Salesforce** - Native support for both platforms  
+✅ **Cost Optimized** - Built-in token management and budgeting  
+✅ **Full Playwright** - Reports, traces, debugging - all included
 
-- Node.js [18+ or LTS](https://nodejs.org/en/download) 
-- OpenAI [API key](https://platform.openai.com/api-keys) (or compatible provider: Claude, Gemini, xAI etc.)
-- (optional) [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli) for Salesforce testing
+## Get Started in 5 Minutes
 
-### Installation
+### 1. Install
 
 ```bash
-# Clone the repository
 git clone https://github.com/dawiddiwad/checkmate.git
 cd checkmate
-
-# Install dependencies
-npm install
-
-# Copy environment template and configure
-cp .env.example .env
-# Edit .env with your API key
+npm run install
 ```
 
-### Configuration
+### 2. Configure `.env`
 
-Edit `.env` file based on `.env.example` that has a comprehensive configuration reference:
-
+*using [OpenAI API](https://platform.openai.com/settings/organization/api-keys) key and default settings:*
 ```bash
-# Example configuration for Google Gemini (recommended)
-
-# Get a free Gemini API key from https://aistudio.google.com/app/api-keys
-OPENAI_API_KEY=your_api_key_here
-
-# Google Gemini Base URL for OpenAI-compatible API
-OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
-
-# Model configuration
-OPENAI_MODEL=gemini-2.5-flash
-OPENAI_TEMPERATURE=0
+OPENAI_API_KEY=#your_api_key_here
 ```
 
-### Running Tests
+*...or for other providers, set the base URL and model too:*
+```bash
+OPENAI_API_KEY=#your_api_key_here
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+OPENAI_MODEL=openai/gpt-oss-20b
+```
+
+*For provider I highly recommended [Groq.com](https://groq.com)*.  
+*They host blazing fast, secure, open source models at [low cost](https://groq.com/pricing)*.  
+*You can start with a free key here: [https://console.groq.com/keys](https://console.groq.com/keys)*
+
+
+### 3. Run Tests
 
 ```bash
-# Run web application tests
-npm run test:web
-
-# Run Salesforce tests (requires SF CLI authentication)
-npm run test:salesforce
-
-# View HTML report
-npx playwright show-report test-reports/html
-
-# View Playwright traces
-npx playwright show-trace test-results/traces/trace.zip
+npm run test:web:example         # Run a short test
+npm run show:report              # View results
 ```
 
 ## Writing Tests
@@ -109,56 +93,16 @@ test('search for playwright documentation', async ({ ai }) => {
 })
 ```
 
-### Best Practices
+That's it. No page objects, no selectors, no flake.
 
-1. **Be Specific** - Clear expectations help the AI validate success
-2. **One Action Per Step** - Break complex flows into discrete steps
-3. **Include Context** - Mention relevant UI elements and expected behavior
-4. **Add Timing Hints** - For slow operations, mention expected wait times
-5. **Handle Popups** - Explicitly mention consent dialogs or modals
+### Tips for Success
 
-### Example: Complex Interaction
+- **Be specific** about what you want and what success looks like
+- **One action per step** - break complex flows into simple steps
+- **Mention timing** - if something takes a while, say so
+- **Handle popups** - call out modals and dialogs explicitly
 
-```typescript
-await test.step('Fill form and submit', async () => {
-    await ai.run({
-        action: `
-            Wait for the newsletter popup (takes ~30 seconds), 
-            then close it by clicking the X button.
-            Scroll to the comment section and click to activate it.
-            Type 'Great article!' into the comment textarea.
-            Click the Submit button.
-        `,
-        expect: `
-            The comment is submitted, 
-            and either a success message appears 
-            or a login form is displayed if not authenticated.
-        `
-    })
-})
-```
-## Configuration
-
-### OpenAI API Settings
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | - | **Required** - Your OpenAI API key (or compatible provider) |
-| `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc. |
-| `OPENAI_TEMPERATURE` | `1.0` | Creativity (below 0.5 = deterministic, above 0.5 = creative) |
-| `OPENAI_REASONING_EFFORT` | - | Optional - Reasoning effort for models: low, medium, high |
-| `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
-| `OPENAI_RETRY_MAX_ATTEMPTS` | `3` | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors |
-| `OPENAI_TOOL_CHOICE` | `required` | Tool choice: auto, required, none |
-| `OPENAI_ALLOWED_TOOLS` | - | Comma-separated list of allowed tools (if not set, all tools available) |
-| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false` | Include compressed screenshots in snapshot responses |
-| `OPENAI_API_TOKEN_BUDGET_USD` | - | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.
-| `OPENAI_API_TOKEN_BUDGET_COUNT` | - | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.
-| `OPENAI_LOOP_MAX_REPETITIONS` | `5` | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
-| `CHECKMATE_LOG_LEVEL` | `off` | Logging verbosity: debug, info, warn, error, off |
-
-### Playwright Configuration
+See [GUIDE.md](GUIDE.md) for detailed examples and best practices. Playwright Configuration
 
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
@@ -177,93 +121,12 @@ Checkmate includes built-in token usage monitoring:
   "test output": "4521 @ $0.01$"
 }
 ```
+Runtime cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) (highly recommended):
+- **Simple test (~5 steps): ~$0.001 - $0.01**
+- Complex test (~20 steps): ~$0.01 - $0.05
+- Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-### Cost Optimization Features
-
-1. **History Filtering** - Continuously filters old page snapshots (reduces token usage by ~50%)
-2. **Snapshot Minification** - Removes unnecessary whitespace and quotes from accessibility tree snapshots
-3. **Screenshots** - Normalized and compressed locally and sent using OpenAI's API with `detail: low`
-4. **Chat Recycling** - New session per step to prevent context bloat
-5. **Token Counting** - Real-time usage tracking per step and test with budgets
-6. **Loop Detection** - Detects repetitive tool call patterns and adjusts temperature to break out of loops, preventing runaway token consumption
-
-### Budgeting & Cost Limits
-
-You can set one or both token budget environment variables to enforce limits during a single test run.
-
-- `OPENAI_API_TOKEN_BUDGET_USD` — Sets a USD budget (e.g. 0.50) per test execution. The framework checks the current estimated cost (input+output tokens) and throws an error if the budget is exceeded.
-- `OPENAI_API_TOKEN_BUDGET_COUNT` — Sets a token limit (e.g. 100000). The framework tracks input and output tokens across the test and throws an error when the total exceeds this limit.
-
-Notes:
-- Only positive numbers are enforced; `0` or non-positive values are effectively treated as disabled.
-- If the env var is unset or invalid (non-number), it is ignored.
-
-### Estimated Costs (Gemini 2.5 Flash / GPT 5 mini)
-
-- Simple web test (5 steps): ~$0.01 - $0.05
-- Complex Salesforce flow (20 steps): ~$0.10 - $0.40
-- Full test suite (50 tests): ~$5.00 - $20.00
-
-*Costs vary based on model, screenshot size and count, and page complexity*
-
-## Salesforce Testing
-
-Checkmate includes native Salesforce support using the SF CLI:
-
-### Prerequisites
-
-```bash
-# Install Salesforce CLI
-npm install -g @salesforce/cli
-
-# Authenticate to your org and set is as default
-sf org login web --alias my-checkmate-org --set-default
-```
-
-### Example Salesforce Test
-
-```typescript
-test('create and configure itinerary', async ({ ai }) => {
-    await test.step('Login to Salesforce', async () => {
-        await ai.run({
-            action: `Login to Salesforce org and open Test QA Application`,
-            expect: `Test QA homepage is displayed`
-        })
-    })
-    
-    await test.step('Create new itinerary', async () => {
-        await ai.run({
-            action: `
-                Click 'New', select 'Quote' record type, 
-                fill 'Itinerary Name' = 'AI Test', 
-                'Account' = 'Test Account', 
-                'Group Size' = '5', 
-                then Save
-            `,
-            expect: `New itinerary is saved and details page is displayed`
-        })
-    })
-})
-```
-
-The `login_to_salesforce_org` tool handles the complete Salesforce authentication flow:
-1. Retrieves a front-door URL from the authenticated SF CLI session
-2. Automatically navigates the browser to login
-
-No manual URL handling needed - just call "Login to Salesforce" in your test action.
-
-## Test Reports
-
-Multiple report formats are generated after each run:
-
-- **HTML Report**: `test-reports/html/index.html` (interactive - no screenshots/video yet though)
-- **JUnit XML**: `test-reports/junit/results.xml` (CI/CD integration)
-- **Console Output**: Real-time step results and token usage
-
-```bash
-# Open HTML report in browser
-npx playwright show-report test-reports/html
-```
+See [GUIDE.md](GUIDE.md#cost-management) for detailed cost control options
 
 ## Common Issues
 
@@ -281,105 +144,44 @@ npx playwright show-report test-reports/html
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
 
-## Architecture
+## FAQ
 
-Checkmate combines multiple components to enable AI-driven test automation:
+**Is this production-ready?**  
+Kind of... yes? Great if you feel that [pesticide paradox](https://medium.com/@suwekasansiluni/the-pesticide-paradox-what-farming-teaches-us-about-software-testing-ab5d625d4de1) is an issue in automated E2E testing ;) You should expect and accept somewhat non-deterministic behavior and occasional flakiness - and take advantage of it in your tests. For majority of cases, the maintenance savings, rapid development and non-linear execution outweigh occasional hickups. If you need 100% deterministic tests 100% of time, traditional playwright is still the way to go.
 
-```
-Playwright Test (Runner & Reporting)
-│
-└── ai.run(step) ← Checkmate Fixture
-    │
-    └── Step Manager
-        │
-        ├── OpenAI Client
-        │   ├── Chat completions with tool calling
-        │   ├── Token tracking & cost management
-        │   └── Loop detection & recovery
-        │
-        ├── Tool Registry
-        │   ├── Browser (click, type, navigate)
-        │   ├── Step (pass/fail)
-        │   └── Salesforce (login, auth)
-        │
-        ├── Response Processor
-        │   ├── Snapshot minification
-        │   └── History management
-        │
-┌───────┴─────┬──────────────┬────────────────┐
-│             │              │                │
-Playwright    OpenAI API     Salesforce CLI   Configuration
-│             │              │                │
-├─ Browsers   ├─ GPT         ├─ SF Auth       ├─ .env
-├─ Snapshots  ├─ Gemini      └─ OTP URL       └─ playwright.config.ts
-├─ Actions    ├─ Local
-└─ Reports    └─ etc...
-```
+**What models work best?**  
+Checkmate is designed to work with any OpenAI-compatible model, but here are best picks based on extensive testing:
+* Highly recommend [`gpt-oss` `20b` or `120b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) as best cost / speed / quality option. Groq's infrastructure is optimized for low-latency and high-throughput LLM workloads making it ideal for E2E test automation. Models are blazing fast and cost-effective.
+* Google's `gemini-2.5-flash` offers the best balance of cost and performance if major cloud providers are preferred.
+* OpenAI's `gpt-5-mini`, `gpt-5-nano` and xAI's `grok-4-1-fast-reasoning` also work very well keeping costs reasonably low.
 
-### Key Components
+**Can I use local models?**  
+Yes! Works with any OpenAI-compatible API, including local models via LM Studio, Ollama or llama.cpp.  
+I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) 4 bit quant variant. It is fast (100 tokens/sec on RTX 3060Ti) and (40 tokens/sec on Apple M3) performing surprisingly well for e2e testing tasks.
 
-**Test Layer**
-- Playwright Test framework manages test execution, reporting, and fixtures
-- Tests written in natural language via `ai.run()` fixture
+**Does it work with CI/CD?**  
+Absolutely! Use it as part of your existing [Playwright Test suites in any CI/CD pipeline](https://playwright.dev/docs/best-practices#run-tests-on-ci). You can blend AI-driven tests, steps and actions with traditional ones as needed.
 
-**Core Engine**
-- **OpenAI Test Manager**: Orchestrates AI-driven test steps
-- **OpenAI Client**: Manages LLM interactions with tool calling
-- **Response Processor**: Handles tool responses, snapshot minification, and history filtering
-- **Tool Registry**: Routes tool calls to appropriate handlers
+## Documentation
 
-**Tools**
-- **Browser Tools**: Playwright Test for web automation (click, type, navigate, etc.)
-- **Step Tools**: Test control (pass/fail step assertions)
-- **Salesforce Tools**: SF CLI integration for Salesforce testing
-
-**Cost Optimization**
-- Token tracking with budget enforcement
-- History filtering (removes old snapshots)
-- Snapshot minification and screenshot compression
-- Loop detection and mitigation
-
-**Configuration**
-- Test, Reporting and Browser settings: [playwright.config.ts](playwright.config.ts)
-- API & AI settings: `.env` file
+- [GUIDE.md](GUIDE.md) - Complete technical documentation
+- [ROADMAP.md](ROADMAP.md) - Future plans and development
+- [Playwright Docs](https://playwright.dev/)
 
 ## Contributing
-### Key Areas for Contribution
 
-  - Additional tool integrations (ex. API testing)
-  - Improved error handling and retry logic
-  - Api cost optimization
-  - Improved prompt and context engineering
-  - Performance
+We'd love your help! Key areas:
+- Additional tool integrations (API testing, Salesforce, etc.)
+- Further cost optimization techniques
+- Context and prompt engineering improvements
+- Error handling and recovery
 
-### License
+## License
 
-MIT License - see LICENSE file for details
+MIT License - see [LICENSE](LICENSE) file for details
 
-### Learn More
+## Why I build this?
 
-- [Playwright Documentation](https://playwright.dev/)
-- [OpenAI API](https://platform.openai.com/docs/api-reference)
+Test automation shouldn't require a PhD in XPath. This project explores how AI can make testing accessible - less technical debt, more actual testing.
 
----
-
-**Experimental Project Notice**
-
-Checkmate is an experimental framework exploring AI-driven test automation. While functional, it's not yet recommended for production CI/CD pipelines. Expect:
-- Non-deterministic behavior
-- Higher runtime costs than traditional automation
-- Occasional timeouts
-- Rate limiting depending on your API provider and service tier
-
-Use for exploratory testing, rapid prototyping, and demonstrating AI capabilities in testing.
-
----
-
-**Future Vision**
-
-The roadmap includes plans for caching, RAG-based element retrieval, visual testing, and eventually becoming a production-ready testing platform.
-
-This project is primarily an exploration of how AI can democratize test automation by making it less technical and more maintainable! 🚀
-
----
-Built with ❤️ by Dawid Dobrowolski
+Built with ❤️ by [Dawid Dobrowolski](https://github.com/dawiddiwad)

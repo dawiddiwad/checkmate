@@ -1,3 +1,17 @@
+/**
+ * @fileoverview End‑to‑end Playwright tests that demonstrate AI‑driven web navigation.
+ *
+ * @summary This file contains several single‑step and multi‑step flow examples:
+ *   - Browsing AI model repositories (Ollama, HuggingFace)
+ *   - Interacting with e‑commerce demo sites
+ *   - Performing searches on various public search engines (Mojeek, NYPL)
+ *   - Job search on justjoin.it
+ *
+ * @description Each test uses the `ai` fixture to execute natural‑language actions via
+ * `ai.run({ action, expect })`. Steps are kept atomic to improve reliability and make
+ * debugging easier. The tests are written for demonstration purposes and can be
+ * extended or adapted to other sites.
+ */
 import { test } from "../../fixtures/checkmate"
 
 test.describe('single-step flows', async () => {

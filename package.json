@@ -1,13 +1,16 @@
 {
   "name": "checkmate-exp",
-  "version": "0.0.3.0",
+  "version": "0.2.0.0",
   "description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
   "main": "src/index.ts",
   "type": "module",
   "keywords": ["test automation", "ai", "llm", "playwright", "openai", "e2e testing"],
   "scripts": {
+    "checkmate:install": "npm install && npx playwright install",
     "test:web": "npx playwright test --project=web",
-    "test:salesforce": "npx playwright test --project=salesforce"
+    "test:salesforce": "npx playwright test --project=salesforce",
+    "test:web:example": "npx playwright test --project=web --grep=ollama",
+    "show:report": "npx playwright show-report test-reports/html"
   },
   "author": "Dawid Dobrowolski SoftQA",
   "license": "MIT",

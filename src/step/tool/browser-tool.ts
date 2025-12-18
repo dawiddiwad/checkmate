@@ -1,9 +1,8 @@
-import { ChatCompletionFunctionTool } from "openai/resources"
 import { OpenAITool, ToolCall } from "./openai-tool"
 import { expect, Page } from "@playwright/test"
 import { PageSnapshot } from "./page-snapshot"
 import { logger } from "../openai/openai-test-manager"
-import { add } from "winston"
+import { Tool } from "openai/resources/responses/responses.mjs"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -14,97 +13,87 @@ export class BrowserTool implements OpenAITool {
     private readonly page: Page
     private readonly pageSnapshot: PageSnapshot
 
-    functionDeclarations: ChatCompletionFunctionTool[]
+    functionDeclarations: Tool[]
     constructor(page: Page) {
         this.page = page
         this.pageSnapshot = new PageSnapshot(page)
         this.functionDeclarations = [
             {
                 type: 'function',
-                function: {
-                    name: BrowserTool.TOOL_NAVIGATE,
-                    description: 'Navigate to a specified URL in the browser, example: https://www.example.com',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            url: { type: 'string', description: 'The URL to navigate to' },
-                            goal: { type: 'string', description: 'The goal or purpose of navigating to this URL' }
-                        },
-                        additionalProperties: false,
-                        required: ['url', 'goal']
+                name: BrowserTool.TOOL_NAVIGATE,
+                description: 'Navigate to a specified URL in the browser, example: https://www.example.com',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        url: { type: 'string', description: 'The URL to navigate to' },
+                        goal: { type: 'string', description: 'The goal or purpose of navigating to this URL' }
                     },
-                    strict: true
-                }
+                    additionalProperties: false,
+                    required: ['url', 'goal']
+                },
+                strict: true
             },
             {
                 type: 'function',
-                function: {
-                    name: BrowserTool.TOOL_CLICK,
-                    description: 'Click a specified element reference in the browser',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
-                            name: { type: 'string', description: 'name of the element to click, example: Submit Button' },
-                            goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
-                        },
-                        additionalProperties: false,
-                        required: ['ref', 'name', 'goal']
+                name: BrowserTool.TOOL_CLICK,
+                description: 'Click a specified element reference in the browser',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
+                        name: { type: 'string', description: 'name of the element to click, example: Submit Button' },
+                        goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                     },
-                    strict: true
-                }
+                    additionalProperties: false,
+                    required: ['ref', 'name', 'goal']
+                },
+                strict: true
             },
             {
                 type: 'function',
-                function: {
-                    name: BrowserTool.TOOL_TYPE,
-                    description: 'Type text into a specified element reference in the browser',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
-                            text: { type: 'string', description: 'The text to type into the element, example: Hello World' },
-                            name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
-                            goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
-                        },
-                        additionalProperties: false,
-                        required: ['ref', 'text', 'name', 'goal']
+                name: BrowserTool.TOOL_TYPE,
+                description: 'Type text into a specified element reference in the browser',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
+                        text: { type: 'string', description: 'The text to type into the element, example: Hello World' },
+                        name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
+                        goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
                     },
-                    strict: true
-                }
+                    additionalProperties: false,
+                    required: ['ref', 'text', 'name', 'goal']
+                },
+                strict: true
             },
             {
                 type: 'function',
-                function: {
-                    name: BrowserTool.TOOL_PRESS_KEY,
-                    description: 'Press a specified key in the browser',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            key: { type: 'string', description: 'The key to press, example: Enter, Escape, ArrowDown' },
-                            goal: { type: 'string', description: 'The goal or purpose of pressing this key' }
-                        },
-                        additionalProperties: false,
-                        required: ['key', 'goal']
+                name: BrowserTool.TOOL_PRESS_KEY,
+                description: 'Press a specified key in the browser',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        key: { type: 'string', description: 'The key to press, example: Enter, Escape, ArrowDown' },
+                        goal: { type: 'string', description: 'The goal or purpose of pressing this key' }
                     },
-                    strict: true
-                }
+                    additionalProperties: false,
+                    required: ['key', 'goal']
+                },
+                strict: true
             },
             {
                 type: 'function',
-                function: {
-                    name: BrowserTool.TOOL_SNAPSHOT,
-                    description: 'Capture the ARIA snapshot of the current page',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            goal: { type: 'string', description: 'The goal or purpose of capturing the snapshot' }
-                        },
-                        additionalProperties: false,
-                        required: ['goal']
+                name: BrowserTool.TOOL_SNAPSHOT,
+                description: 'Capture the ARIA snapshot of the current page',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        goal: { type: 'string', description: 'The goal or purpose of capturing the snapshot' }
                     },
-                    strict: true
-                }
+                    additionalProperties: false,
+                    required: ['goal']
+                },
+                strict: true
             }
         ]
     }

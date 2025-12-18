@@ -1,34 +1,32 @@
-import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceCliHandler } from "./salesforce-cli-handler"
 import { SalesforceCliAuthenticator } from "./salesforce-cli-authenticator"
 import { OpenAITool, ToolCall } from "../step/tool/openai-tool"
 import { BrowserTool } from "../step/tool/browser-tool"
+import { Tool } from "openai/resources/responses/responses.mjs"
 
 
 export class SalesforceTool implements OpenAITool {
     static readonly TOOL_LOGIN_TO_SALESFORCE_ORG = 'login_to_salesforce_org'
     private readonly browserTool: BrowserTool
 
-    functionDeclarations: ChatCompletionFunctionTool[]
+    functionDeclarations: Tool[]
 
     constructor(browserTool: BrowserTool) {
         this.browserTool = browserTool
         this.functionDeclarations = [
             {
                 type: 'function',
-                function: {
-                    name: SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
-                    description: 'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' }
-                        },
-                        additionalProperties: false,
-                        required: ['goal']
+                name: SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
+                description: 'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' }
                     },
-                    strict: true
-                }
+                    additionalProperties: false,
+                    required: ['goal']
+                },
+                strict: true
             }
         ]
     }

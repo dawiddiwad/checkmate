@@ -1,7 +1,7 @@
-import { ChatCompletion } from "openai/resources/chat/completions"
 import { OpenAITokenPricing } from "./openai-token-pricing"
 import { ConfigurationManager } from "../configuration-manager"
 import { logger } from "./openai-test-manager"
+import { Response } from "openai/resources/responses/responses.mjs"
 
 export class TokenTracker {
     private _inputTokensUsedForTest = 0
@@ -9,7 +9,7 @@ export class TokenTracker {
     private _outputTokensUsedForTest = 0
     private _outputTokensUsedForStep = 0
 
-    constructor(private config = new ConfigurationManager()) {}
+    constructor(private config = new ConfigurationManager()) { }
 
     private get inputTokensUsedForTest(): number { return this._inputTokensUsedForTest }
     private set inputTokensUsedForTest(value: number) {
@@ -58,10 +58,10 @@ export class TokenTracker {
         this.outputTokensUsedForStep = 0
     }
 
-    log(response: ChatCompletion, historyTokenCount: number, model: string): void {
+    log(response: Response, historyTokenCount: number, model: string): void {
         if (response.usage) {
-            const inputTokens = response.usage.prompt_tokens ?? 0
-            const outputTokens = response.usage.completion_tokens ?? 0
+            const inputTokens = response.usage.input_tokens ?? 0
+            const outputTokens = response.usage.output_tokens ?? 0
             this.inputTokensUsedForTest += inputTokens
             this.inputTokensUsedForStep += inputTokens
             this.outputTokensUsedForTest += outputTokens

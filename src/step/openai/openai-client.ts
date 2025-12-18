@@ -1,5 +1,4 @@
 import OpenAI from "openai"
-import { ChatCompletionMessageParam, ChatCompletion } from "openai/resources/chat/completions"
 import { ConfigurationManager } from "../configuration-manager"
 import { ToolRegistry } from "../tool/tool-registry"
 import { LoopDetectedError } from "../tool/loop-detector"
@@ -8,6 +7,7 @@ import { Step, StepStatusCallback } from "../types"
 import { Page } from "@playwright/test"
 import { CheckmateLogger } from "../logger"
 import { logger } from "./openai-test-manager"
+import { Response, ResponseInputItem } from "openai/resources/responses/responses.mjs"
 
 export type OpenAIClientDependencies = {
     configurationManager: ConfigurationManager
@@ -17,7 +17,7 @@ export type OpenAIClientDependencies = {
 
 export class OpenAIClient {
     private client!: OpenAI
-    private messages: ChatCompletionMessageParam[] = []
+    private messages: ResponseInputItem[] = []
     private readonly configurationManager: ConfigurationManager
     private readonly toolRegistry: ToolRegistry
     private readonly RETRYABLE_STATUS = [408, 409, 429, 500, 502, 503, 504, LoopDetectedError.STATUS]
@@ -49,7 +49,7 @@ export class OpenAIClient {
         this.temperature = this.configurationManager.getTemperature()
     }
 
-    getMessages(): ChatCompletionMessageParam[] {
+    getMessages(): ResponseInputItem[] {
         return this.messages
     }
 
@@ -61,7 +61,7 @@ export class OpenAIClient {
         return this.configurationManager
     }
 
-    async sendMessage(userMessage: string | ChatCompletionMessageParam[]) {
+    async sendMessage(userMessage: string | ResponseInputItem[]) {
         if (typeof userMessage === 'string') {
             this.messages.push({ role: 'user', content: userMessage })
         } else {
@@ -70,19 +70,18 @@ export class OpenAIClient {
 
         return this.executeWithRetry(async () => {
             const tools = await this.toolRegistry.getTools()
-            const response = await this.client.chat.completions.create({
+            const response = await this.client.responses.create({
                 model: this.configurationManager.getModel(),
-                messages: this.messages,
+                input: this.messages,
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
                 parallel_tool_calls: false,
                 temperature: this.temperature,
-                n: 1,
-                reasoning_effort: this.configurationManager.getReasoningEffort()
+                reasoning: { effort: this.configurationManager.getReasoningEffort() }
             })
 
-            if (response.choices[0]?.message) {
-                this.messages.push(response.choices[0].message)
+            if (response.output && response.output.length > 0) {
+                this.messages.push(...response.output)
             }
 
             await this.responseProcessor.handleResponse(response, this.step, this.stepStatusCallback)
@@ -91,9 +90,10 @@ export class OpenAIClient {
 
     async addToolResponse(toolCallId: string, content: string): Promise<void> {
         this.messages.push({
-            role: 'tool',
-            tool_call_id: toolCallId,
-            content
+            type: 'function_call_output',
+            call_id: toolCallId,
+            status: 'completed',
+            output: content
         })
     }
 
@@ -106,36 +106,36 @@ export class OpenAIClient {
 
     async addScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
         this.messages.push({
+            type: 'message',
             role: 'user',
             content: [
                 {
-                    type: 'text',
+                    type: 'input_text',
                     text: 'Here is the current screenshot of the page:'
                 },
                 {
-                    type: 'image_url',
-                    image_url: {
-                        url: `data:${mimeType};base64,${base64Data}`,
-                        detail: 'high'
-                    }
+                    type: 'input_image',
+                    detail: 'high',
+
+                    image_url: `data:${mimeType};base64,${base64Data}`
                 }
             ]
         })
     }
 
-    async sendToolResponseWithRetry(): Promise<ChatCompletion> {
+    async sendToolResponseWithRetry(): Promise<Response> {
         return this.executeWithRetry(async () => {
             const tools = await this.toolRegistry.getTools()
-            const response = await this.client.chat.completions.create({
+            const response = await this.client.responses.create({
                 model: this.configurationManager.getModel(),
-                messages: this.messages,
+                input: this.messages,
                 tools,
                 tool_choice: this.configurationManager.getToolChoice(),
                 temperature: this.temperature
             })
 
-            if (response.choices[0]?.message) {
-                this.messages.push(response.choices[0].message)
+            if (response.output && response.output.length > 0) {
+                this.messages.push(...response.output)
             }
 
             return response
@@ -205,15 +205,15 @@ export class OpenAIClient {
 
     countHistoryTokens(): number {
         const totalChars = this.messages.reduce((sum, msg) => {
-            if (typeof msg.content === 'string') {
-                return sum + msg.content.length
+            if (typeof msg.type === 'string' && msg.type === 'message' && msg.content) {
+                return sum + JSON.stringify(msg.content).length
             }
             return sum
         }, 0)
         return Math.ceil(totalChars / 4)
     }
 
-    replaceHistory(history: ChatCompletionMessageParam[]): void {
+    replaceHistory(history: ResponseInputItem[]): void {
         this.messages = [...history]
     }
 

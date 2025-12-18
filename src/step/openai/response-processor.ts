@@ -1,4 +1,3 @@
-import { ChatCompletion } from "openai/resources/chat/completions"
 import { Step, StepStatusCallback } from "../types"
 import { OpenAIClient } from "./openai-client"
 import { HistoryManager } from "./history-manager"
@@ -10,6 +9,7 @@ import { RateLimitHandler } from "./rate-limit-handler"
 import { MessageContentHandler } from "./message-content-handler"
 import { Page } from "@playwright/test"
 import { ToolCall } from "../tool/openai-tool"
+import { Response } from "openai/resources/responses/responses.mjs"
 
 export type ResponseProcessorDependencies = {
     page: Page
@@ -44,31 +44,28 @@ export class ResponseProcessor {
         this.tokenTracker.resetStep()
     }
 
-    async handleResponse(response: ChatCompletion, step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
+    async handleResponse(response: Response, step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
         await this.rateLimitHandler.waitForRateLimit()
 
         const historyTokenCount = this.openaiClient.countHistoryTokens()
         this.tokenTracker.log(response, historyTokenCount, this.openaiClient.getConfigurationManager().getModel())
 
-        if (!response.choices || response.choices.length === 0) {
-            throw new Error(`No choices found in response:\n${JSON.stringify(response, null, 2)}`)
+        if (!response.output || response.output.length === 0) {
+            throw new Error(`No outputs found in response:\n${JSON.stringify(response, null, 2)}`)
         }
 
-        for (const choice of response.choices) {
-            if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-                for (const toolCall of choice.message.tool_calls) {
-                    if (toolCall.type !== 'function') continue
-                    const toolCallObj: ToolCall = {
-                        name: toolCall.function.name,
-                        arguments: JSON.parse(toolCall.function.arguments || '{}')
-                    }
-                    const toolResponse = await this.toolDispatcher.dispatch(toolCallObj, stepStatusCallback)
-                    if (toolResponse) {
-                        return await this.toolResponseHandler.handle(toolCall.id, toolResponse, step, stepStatusCallback)
-                    }
+        for (const output of response.output) {
+            if (output.type === 'function_call' && output.name) {
+                const toolCallObj: ToolCall = {
+                    name: output.name,
+                    arguments: JSON.parse(output.arguments || '{}')
+                }
+                const toolResponse = await this.toolDispatcher.dispatch(toolCallObj, stepStatusCallback)
+                if (toolResponse) {
+                    return await this.toolResponseHandler.handle(output.call_id, toolResponse, step, stepStatusCallback)
                 }
             } else {
-                await this.messageContentHandler.handle(choice, step, stepStatusCallback)
+                await this.messageContentHandler.handle(output, step, stepStatusCallback)
             }
         }
     }

@@ -1,4 +1,4 @@
-import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
+import { Tool } from "openai/resources/responses/responses.mjs"
 
 export type ToolCall = {
     name: string
@@ -6,6 +6,6 @@ export type ToolCall = {
 }
 
 export abstract class OpenAITool {
-    abstract functionDeclarations: ChatCompletionFunctionTool[]
+    abstract functionDeclarations: Tool[]
     abstract call(specified: ToolCall, ...args: any[]): Promise<any> | any
 }

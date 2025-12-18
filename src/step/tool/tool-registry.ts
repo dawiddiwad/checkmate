@@ -1,4 +1,3 @@
-import { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
 import { SalesforceTool } from "../../salesforce/salesforce-tool"
 import { StepTool } from "./step-tool"
 import { StepStatusCallback } from "../types"
@@ -6,6 +5,7 @@ import { ConfigurationManager } from "../configuration-manager"
 import { BrowserTool } from "./browser-tool"
 import { ToolCall } from "./openai-tool"
 import { logger } from "../openai/openai-test-manager"
+import { Tool } from "openai/resources/responses/responses.mjs"
 
 export type ToolResponse = {
     name?: string
@@ -36,7 +36,7 @@ export class ToolRegistry {
         logger.info(`executing tool: ${toolCall.name}:\n${JSON.stringify(toolCall.arguments ?? {}, null, 2)}`)
     }
 
-    async getTools(): Promise<ChatCompletionFunctionTool[]> {
+    async getTools(): Promise<Tool[]> {
         const allowedNames = this.configurationManager.getAllowedFunctionNames()
         const allTools = [
             ...this.browserTool.functionDeclarations,
@@ -45,7 +45,7 @@ export class ToolRegistry {
         ]
 
         if (allowedNames.length > 0) {
-            return allTools.filter(tool => allowedNames.includes(tool.function.name))
+            return allTools.filter(tool => tool.type === 'function' && allowedNames.includes(tool.name))
         }
         return allTools
     }

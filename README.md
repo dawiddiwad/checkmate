@@ -55,7 +55,7 @@ await ai.run({
 ```bash
 git clone https://github.com/dawiddiwad/checkmate.git
 cd checkmate
-npm run install
+npm run checkmate:install
 ```
 
 ### 2. Configure `.env`

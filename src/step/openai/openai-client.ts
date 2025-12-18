@@ -81,9 +81,11 @@ export class OpenAIClient {
                 reasoning_effort: this.configurationManager.getReasoningEffort()
             })
 
-            if (response.choices[0]?.message) {
-                this.messages.push(response.choices[0].message)
-            }
+            response.choices.forEach(choice => {
+                if (choice.message) {
+                    this.messages.push(choice.message)
+                }
+            })
 
             await this.responseProcessor.handleResponse(response, this.step, this.stepStatusCallback)
         })
@@ -134,9 +136,11 @@ export class OpenAIClient {
                 temperature: this.temperature
             })
 
-            if (response.choices[0]?.message) {
-                this.messages.push(response.choices[0].message)
-            }
+            response.choices.forEach(choice => {
+                if (choice.message) {
+                    this.messages.push(choice.message)
+                }
+            })
 
             return response
         })
@@ -158,7 +162,7 @@ export class OpenAIClient {
 
                 if (error instanceof LoopDetectedError) {
                     const antiLoopTempChange = Math.round(Math.random() * 10) / 10
-                    console.warn(`\n| warning: repeated tool calls detected: adjusting temperature from ${this.temperature} to ${antiLoopTempChange} to mitigate looping`)
+                    logger.warn(`repeated tool calls detected: adjusting temperature from ${this.temperature} to ${antiLoopTempChange} to mitigate looping`)
                     this.temperature = antiLoopTempChange
                 }
 

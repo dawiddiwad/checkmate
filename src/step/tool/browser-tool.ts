@@ -58,7 +58,7 @@ export class BrowserTool implements OpenAITool {
                 type: 'function',
                 function: {
                     name: BrowserTool.TOOL_TYPE,
-                    description: 'Type text into a specified element reference in the browser',
+                    description: 'Type text into a specified element reference in the browser. You can also use it to select options in dropdowns - just type the option text. To clear existing text, use empty string.',
                     parameters: {
                         type: 'object',
                         properties: {

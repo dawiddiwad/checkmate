@@ -96,6 +96,107 @@ test.describe('single-step flows', async () => {
 
 test.use({ headless: false })
 test.describe('multi-step flows', async () => {
+test('automationexercise view product details', async ({ ai }) => {
+    await test.step('Launch browser and navigate to automationexercise.com', async () => {
+        await ai.run({
+            action: `Navigate to http://automationexercise.com/ and accept data consent.`,
+            expect: `Home page is visible successfully`
+        })
+    })
+
+    await test.step("Open 'Products' page", async () => {
+        await ai.run({
+            action: `Click on the 'Products' button or link in the header.`,
+            expect: `ALL PRODUCTS page is visible`
+        })
+    })
+
+    await test.step('Verify products list is visible', async () => {
+        await ai.run({
+            action: `Ensure the products grid or list is visible on the 'ALL PRODUCTS' page and contains multiple products.`,
+            expect: `The products list is visible and each product has a 'View Product' button`
+        })
+    })
+
+    await test.step("Open first product's detail page", async () => {
+        await ai.run({
+            action: `Click the 'View Product' button for the first product in the list.`,
+            expect: `The Product Detail page for the selected product is displayed`
+        })
+    })
+
+    await test.step('Verify product details are visible', async () => {
+        await ai.run({
+            action: `On the product detail page verify that the following are visible: product name, category, price, availability, condition, and brand.`,
+            expect: `Product detail page shows name, category, price, availability, condition and brand`
+        })
+    })
+})
+    test('automationexercise signup and delete account', async ({ ai }) => {
+        await test.step('Launch browser and navigate to automationexercise.com', async () => {
+            await ai.run({
+                action: `Navigate to http://automationexercise.com/ and accept data consent.`,
+                expect: `Home page is visible successfully`
+            })
+        })
+
+        await test.step("Open 'Signup / Login' page", async () => {
+            await ai.run({
+                action: `Click on the 'Signup / Login' button or link in the header.`,
+                expect: `'New User Signup!' section is visible`
+            })
+        })
+
+        await test.step('Enter name and unique email and submit signup form', async () => {
+            await ai.run({
+                action: `In the 'New User Signup!' form type 'Test User' into the 'Name' field and a unique email (for example 'testuser_<timestamp>@example.com') into the 'Email' field. Click the 'Signup' button.`,
+                expect: `The 'ENTER ACCOUNT INFORMATION' section is visible`
+            })
+        })
+
+        await test.step('Fill account details: title, password and date of birth', async () => {
+            await ai.run({
+                action: `Select title 'Mr' (or 'Mrs' if appropriate). Type a secure password into the 'Password' field. Select a date of birth (Day, Month, Year) using the provided dropdowns.`,
+                expect: `Title is selected, password is set, and date of birth fields are populated`
+            })
+        })
+
+        await test.step("Select newsletter and offers checkboxes", async () => {
+            await ai.run({
+                action: `Check the 'Sign up for our newsletter!' checkbox and the 'Receive special offers from our partners!' checkbox.`,
+                expect: `Both checkboxes are selected`
+            })
+        })
+
+        await test.step('Fill address and contact details', async () => {
+            await ai.run({
+                action: `In the address section fill: First name 'Test', Last name 'User', Company 'TestCo', Address '123 Test St', Address 2 'Suite 1', Country 'Canada' (or select any), State 'Test State', City 'TestCity', Zipcode '12345', Mobile Number '5551234567'.`,
+                expect: `All address and contact fields are populated`
+            })
+        })
+
+        await test.step("Create the account", async () => {
+            await ai.run({
+                action: `Click the 'Create Account' button.`,
+                expect: `'ACCOUNT CREATED!' message is visible`
+            })
+        })
+
+        await test.step("Continue after account creation and verify login", async () => {
+            await ai.run({
+                action: `Click the 'Continue' button. Wait for the landing page and verify that 'Logged in as Test User' (or the signed up username) is visible in the header.`,
+                expect: `User is logged in and 'Logged in as username' is visible`
+            })
+        })
+
+        await test.step('Delete the created account and confirm deletion', async () => {
+            await ai.run({
+                action: `Click the 'Delete Account' button or link. Confirm deletion if prompted.`,
+                expect: `'ACCOUNT DELETED!' message is visible and clicking 'Continue' proceeds to the site`
+            })
+        })
+    })
+
     test('mojeek search', async ({ ai }) => {
         await test.step('Open the browser and navigate to mojeek.com', async () => {
             await ai.run({

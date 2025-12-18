@@ -162,7 +162,7 @@ export class OpenAIClient {
 
                 if (error instanceof LoopDetectedError) {
                     const antiLoopTempChange = Math.round(Math.random() * 10) / 10
-                    console.warn(`\n| warning: repeated tool calls detected: adjusting temperature from ${this.temperature} to ${antiLoopTempChange} to mitigate looping`)
+                    logger.warn(`repeated tool calls detected: adjusting temperature from ${this.temperature} to ${antiLoopTempChange} to mitigate looping`)
                     this.temperature = antiLoopTempChange
                 }
 

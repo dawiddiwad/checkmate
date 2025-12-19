@@ -145,7 +145,7 @@ See [guide](GUIDE.md#openai-api-settings) for detailed configuration options and
 
 - Highly recommended: [`gpt-oss` `20b` or `120b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
 - Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
-- OpenAI's `gpt-5-mini` and `gpt-5-nano`, and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
+- OpenAI's `gpt-4.1-mini`, `gpt-5-mini` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
 
 **Can I use local models?**  
 Yes - *checkmate* works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) (4‑bit quant variant). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.

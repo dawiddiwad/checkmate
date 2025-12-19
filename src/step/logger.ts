@@ -6,7 +6,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'off'
 export class CheckmateLogger {
     static create(labelName: string, level: LogLevel) {
         const plainFormat = printf(({ level, message, label, timestamp }) => {
-            return `${timestamp} [${label}] ${level}: ${message}`;
+            return `${timestamp} [${label}] ${level}: ${message}`
         })
         return createLogger({
             level: level,

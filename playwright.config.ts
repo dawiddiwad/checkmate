@@ -7,11 +7,11 @@ export default defineConfig({
   projects: [
     {
       name: 'salesforce',
-      testDir: './test/specs/salesforce'
+      testDir: './test/examples/salesforce'
     },
     {
       name: 'web',
-      testDir: './test/specs/web'
+      testDir: './test/examples/web'
     }
   ],
   outputDir: process.env.CI ? undefined : './test-reports/results',

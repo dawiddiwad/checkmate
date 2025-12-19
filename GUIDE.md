@@ -20,7 +20,7 @@ Complete technical documentation for Checkmate - AI-driven test automation with 
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | - | **Required** - Your OpenAI API key (or compatible provider) |
 | `OPENAI_BASE_URL` | - | Optional - Override for compatible providers (Claude, Gemini, local LLMs) |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc. |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc. |
 | `OPENAI_TEMPERATURE` | `1.0` | Creativity (below 0.5 = deterministic, above 0.5 = creative) |
 | `OPENAI_REASONING_EFFORT` | - | Optional - Reasoning effort for models: low, medium, high |
 | `OPENAI_TIMEOUT_SECONDS` | `60` | API request timeout in seconds |
@@ -130,7 +130,7 @@ Notes:
 ### Estimated Costs 
 
 
-**Gemini 2.5 Flash / GPT 5 mini**:
+**Gemini-2.5-flash / GPT-4.1-mini**:
 - Simple test (~5 steps): ~$0.01 - $0.05
 - Complex test (~20 steps): ~$0.10 - $0.40
 - Full E2E suite (~50 complex tests): ~$5.00 - $20.00

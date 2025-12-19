@@ -1,418 +1,418 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { OpenAIClient } from '../step/openai/openai-client';
-import { ConfigurationManager } from '../step/configuration-manager';
-import { ToolRegistry } from '../step/tool/tool-registry';
-import { LoopDetectedError } from '../step/tool/loop-detector';
-import { Page } from '@playwright/test';
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { OpenAIClient } from '../step/openai/openai-client'
+import { ConfigurationManager } from '../step/configuration-manager'
+import { ToolRegistry } from '../step/tool/tool-registry'
+import { LoopDetectedError } from '../step/tool/loop-detector'
+import { Page } from '@playwright/test'
 
 // Mock the logger
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+    logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+    },
+}))
 
 // Mock ResponseProcessor
 vi.mock('../../src/step/openai/response-processor', () => {
-  return {
-    ResponseProcessor: class {
-      handleResponse = vi.fn();
-      resetStepTokens = vi.fn();
-    },
-  };
-});
+    return {
+        ResponseProcessor: class {
+            handleResponse = vi.fn()
+            resetStepTokens = vi.fn()
+        },
+    }
+})
 
 describe('OpenAIClient - Retry Logic', () => {
-  let openAIClient: OpenAIClient;
-  let mockConfig: ConfigurationManager;
-  let mockToolRegistry: ToolRegistry;
-  let mockPage: Page;
-  let mockOperation: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    mockConfig = {
-      getApiKey: vi.fn().mockReturnValue('test-api-key'),
-      getBaseURL: vi.fn().mockReturnValue(undefined),
-      getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-      getTimeout: vi.fn().mockReturnValue(60000),
-      getMaxRetries: vi.fn().mockReturnValue(3),
-      getLogLevel: vi.fn().mockReturnValue('off'),
-      getTemperature: vi.fn().mockReturnValue(1),
-    } as any;
-
-    mockToolRegistry = {
-      getTools: vi.fn().mockResolvedValue([]),
-    } as any;
-
-    mockPage = {} as any;
-
-    openAIClient = new OpenAIClient({
-      configurationManager: mockConfig,
-      toolRegistry: mockToolRegistry,
-      page: mockPage,
-    });
-
-    // Mock the sleep function to avoid actual delays in tests
-    vi.spyOn(openAIClient as any, 'sleep').mockResolvedValue(undefined);
-
-    mockOperation = vi.fn();
-  });
-
-  describe('isRetryable status codes', () => {
-    const retryableStatuses = [408, 409, 429, 500, 502, 503, 504];
+    let openAIClient: OpenAIClient
+    let mockConfig: ConfigurationManager
+    let mockToolRegistry: ToolRegistry
+    let mockPage: Page
+    let mockOperation: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+        mockConfig = {
+            getApiKey: vi.fn().mockReturnValue('test-api-key'),
+            getBaseURL: vi.fn().mockReturnValue(undefined),
+            getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
+            getTimeout: vi.fn().mockReturnValue(60000),
+            getMaxRetries: vi.fn().mockReturnValue(3),
+            getLogLevel: vi.fn().mockReturnValue('off'),
+            getTemperature: vi.fn().mockReturnValue(1),
+        } as any
+
+        mockToolRegistry = {
+            getTools: vi.fn().mockResolvedValue([]),
+        } as any
+
+        mockPage = {} as any
+
+        openAIClient = new OpenAIClient({
+            configurationManager: mockConfig,
+            toolRegistry: mockToolRegistry,
+            page: mockPage,
+        })
 
-    retryableStatuses.forEach(status => {
-      it(`should retry on status code ${status}`, async () => {
-        const error = new Error('Test error');
-        (error as any).status = status;
-
-        mockOperation
-          .mockRejectedValueOnce(error)
-          .mockResolvedValueOnce('success');
+        // Mock the sleep function to avoid actual delays in tests
+        vi.spyOn(openAIClient as any, 'sleep').mockResolvedValue(undefined)
 
-        const result = await (openAIClient as any).executeWithRetry(mockOperation);
+        mockOperation = vi.fn()
+    })
 
-        expect(result).toBe('success');
-        expect(mockOperation).toHaveBeenCalledTimes(2);
-      });
-    });
-
-    it('should retry on LoopDetectedError status', async () => {
-      const loopError = new LoopDetectedError({
-        loopDetected: true,
-        patternLength: 1,
-        repetitions: 5,
-        pattern: ['test()'],
-      });
+    describe('isRetryable status codes', () => {
+        const retryableStatuses = [408, 409, 429, 500, 502, 503, 504]
 
-      mockOperation
-        .mockRejectedValueOnce(loopError)
-        .mockResolvedValueOnce('success');
-
-      const result = await (openAIClient as any).executeWithRetry(mockOperation);
+        retryableStatuses.forEach(status => {
+            it(`should retry on status code ${status}`, async () => {
+                const error = new Error('Test error');
+                (error as any).status = status
 
-      expect(result).toBe('success');
-      expect(mockOperation).toHaveBeenCalledTimes(2);
-    });
-  });
+                mockOperation
+                    .mockRejectedValueOnce(error)
+                    .mockResolvedValueOnce('success')
 
-  describe('non-retryable status codes', () => {
-    it('should not retry on status code 400', async () => {
-      const error = new Error('Bad request');
-      (error as any).status = 400;
-
-      mockOperation.mockRejectedValueOnce(error);
-
-      await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow();
-      expect(mockOperation).toHaveBeenCalledTimes(1);
-    });
-
-    it('should not retry on status code 401', async () => {
-      const error = new Error('Unauthorized');
-      (error as any).status = 401;
-
-      mockOperation.mockRejectedValueOnce(error);
-
-      await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow();
-      expect(mockOperation).toHaveBeenCalledTimes(1);
-    });
-
-    it('should not retry on status code 404', async () => {
-      const error = new Error('Not found');
-      (error as any).status = 404;
-
-      mockOperation.mockRejectedValueOnce(error);
-
-      await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow();
-      expect(mockOperation).toHaveBeenCalledTimes(1);
-    });
-
-    it('should not retry when error has no status', async () => {
-      const error = new Error('Generic error without status');
-
-      mockOperation.mockRejectedValueOnce(error);
-
-      await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow();
-      expect(mockOperation).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('max retries enforcement', () => {
-    it('should respect max retries limit', async () => {
-      vi.mocked(mockConfig.getMaxRetries).mockReturnValue(3);
-
-      const error = new Error('Persistent error');
-      (error as any).status = 500;
+                const result = await (openAIClient as any).executeWithRetry(mockOperation)
 
-      mockOperation.mockRejectedValue(error);
-
-      await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow();
-      
-      // Initial attempt + 3 retries = 4 total calls
-      expect(mockOperation).toHaveBeenCalledTimes(4);
-    });
-
-    it('should work with zero max retries', async () => {
-      vi.mocked(mockConfig.getMaxRetries).mockReturnValue(0);
-
-      const error = new Error('Error');
-      (error as any).status = 500;
-
-      mockOperation.mockRejectedValue(error);
+                expect(result).toBe('success')
+                expect(mockOperation).toHaveBeenCalledTimes(2)
+            })
+        })
 
-      await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow();
-      
-      // Only initial attempt, no retries
-      expect(mockOperation).toHaveBeenCalledTimes(1);
-    });
-
-    it('should succeed before max retries if operation succeeds', async () => {
-      vi.mocked(mockConfig.getMaxRetries).mockReturnValue(5);
-
-      const error = new Error('Temporary error');
-      (error as any).status = 503;
+        it('should retry on LoopDetectedError status', async () => {
+            const loopError = new LoopDetectedError({
+                loopDetected: true,
+                patternLength: 1,
+                repetitions: 5,
+                pattern: ['test()'],
+            })
 
-      mockOperation
-        .mockRejectedValueOnce(error)
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce('success');
+            mockOperation
+                .mockRejectedValueOnce(loopError)
+                .mockResolvedValueOnce('success')
 
-      const result = await (openAIClient as any).executeWithRetry(mockOperation);
+            const result = await (openAIClient as any).executeWithRetry(mockOperation)
 
-      expect(result).toBe('success');
-      expect(mockOperation).toHaveBeenCalledTimes(3);
-    });
-  });
+            expect(result).toBe('success')
+            expect(mockOperation).toHaveBeenCalledTimes(2)
+        })
+    })
 
-  describe('backoff calculation', () => {
-    it('should use 1 second delay for first retry', () => {
-      const delay = (openAIClient as any).calculateBackoff(0);
-      expect(delay).toBe(1000);
-    });
-
-    it('should use 10 second delay for second retry', () => {
-      const delay = (openAIClient as any).calculateBackoff(1);
-      expect(delay).toBe(10000);
-    });
+    describe('non-retryable status codes', () => {
+        it('should not retry on status code 400', async () => {
+            const error = new Error('Bad request');
+            (error as any).status = 400
 
-    it('should use 60 second delay for third retry and beyond', () => {
-      expect((openAIClient as any).calculateBackoff(2)).toBe(60000);
-      expect((openAIClient as any).calculateBackoff(3)).toBe(60000);
-      expect((openAIClient as any).calculateBackoff(10)).toBe(60000);
-    });
-  });
+            mockOperation.mockRejectedValueOnce(error)
 
-  describe('Retry-After header handling', () => {
-    it('should respect Retry-After header when present', async () => {
-      const error = new Error('Rate limited');
-      (error as any).status = 429;
-      (error as any).headers = {
-        get: vi.fn().mockReturnValue('5'),
-      };
-
-      mockOperation
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce('success');
-
-      // Get the sleep spy that was created in beforeEach
-      const sleepSpy = vi.mocked((openAIClient as any).sleep);
-      sleepSpy.mockClear(); // Clear any previous calls
-
-      await (openAIClient as any).executeWithRetry(mockOperation);
-
-      // Should use Retry-After value (5 seconds = 5000ms) instead of default backoff
-      expect(sleepSpy).toHaveBeenCalledWith(5000);
-    });
-
-    it('should handle Retry-After as object property', async () => {
-      const error = new Error('Rate limited');
-      (error as any).status = 429;
-      (error as any).headers = {
-        'retry-after': '10',
-      };
-
-      mockOperation
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce('success');
-
-      const sleepSpy = vi.mocked((openAIClient as any).sleep);
-      sleepSpy.mockClear();
-
-      await (openAIClient as any).executeWithRetry(mockOperation);
-
-      expect(sleepSpy).toHaveBeenCalledWith(10000);
-    });
-
-    it('should fall back to backoff when Retry-After is invalid', async () => {
-      const error = new Error('Server error');
-      (error as any).status = 503;
-      (error as any).headers = {
-        get: vi.fn().mockReturnValue('invalid'),
-      };
-
-      mockOperation
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce('success');
-
-      const sleepSpy = vi.mocked((openAIClient as any).sleep);
-      sleepSpy.mockClear();
-
-      await (openAIClient as any).executeWithRetry(mockOperation);
-
-      // Should use default backoff (1000ms for first retry)
-      expect(sleepSpy).toHaveBeenCalledWith(1000);
-    });
-
-    it('should fall back to backoff when headers are missing', async () => {
-      const error = new Error('Server error');
-      (error as any).status = 500;
-
-      mockOperation
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce('success');
-
-      const sleepSpy = vi.mocked((openAIClient as any).sleep);
-      sleepSpy.mockClear();
-
-      await (openAIClient as any).executeWithRetry(mockOperation);
-
-      expect(sleepSpy).toHaveBeenCalledWith(1000);
-    });
-  });
-
-  describe('LoopDetectedError handling', () => {
-    it('should adjust temperature on LoopDetectedError', async () => {
-      const loopError = new LoopDetectedError({
-        loopDetected: true,
-        patternLength: 2,
-        repetitions: 5,
-        pattern: ['tool1()', 'tool2()'],
-      });
-
-      const initialTemp = openAIClient.temperature;
-
-      // Mock Math.random to return a predictable value
-      const mockRandom = vi.spyOn(Math, 'random').mockReturnValue(0.5);
-
-      mockOperation
-        .mockRejectedValueOnce(loopError)
-        .mockResolvedValueOnce('success');
-
-      await (openAIClient as any).executeWithRetry(mockOperation);
-
-      // Temperature should be changed to 0.5 (our mocked value)
-      expect(openAIClient.temperature).toBe(0.5);
-      expect(openAIClient.temperature).not.toBe(initialTemp);
-      
-      mockRandom.mockRestore();
-    });
-
-    it('should retry after adjusting temperature for loop', async () => {
-      const loopError = new LoopDetectedError({
-        loopDetected: true,
-        patternLength: 1,
-        repetitions: 5,
-        pattern: ['repeating_tool()'],
-      });
-
-      mockOperation
-        .mockRejectedValueOnce(loopError)
-        .mockResolvedValueOnce('success');
-
-      const result = await (openAIClient as any).executeWithRetry(mockOperation);
-
-      expect(result).toBe('success');
-      expect(mockOperation).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('error enhancement', () => {
-    it('should enhance error with status and message', async () => {
-      const error = new Error('Original error message');
-      (error as any).status = 500;
-
-      mockOperation.mockRejectedValue(error);
-
-      try {
-        await (openAIClient as any).executeWithRetry(mockOperation);
-        expect.fail('Should have thrown error');
-      } catch (e: any) {
-        expect(e.message).toContain('OpenAI API error [500]');
-        expect(e.message).toContain('Original error message');
-      }
-    });
-
-    it('should handle errors without status', async () => {
-      const error = new Error('Generic error');
-
-      mockOperation.mockRejectedValue(error);
-
-      try {
-        await (openAIClient as any).executeWithRetry(mockOperation);
-        expect.fail('Should have thrown error');
-      } catch (e: any) {
-        expect(e.message).toContain('OpenAI API error [unknown]');
-        expect(e.message).toContain('Generic error');
-      }
-    });
-
-    it('should handle errors with statusCode property', async () => {
-      const error = new Error('Error with statusCode');
-      (error as any).statusCode = 503;
-
-      mockOperation.mockRejectedValue(error);
-
-      try {
-        await (openAIClient as any).executeWithRetry(mockOperation);
-        expect.fail('Should have thrown error');
-      } catch (e: any) {
-        expect(e.message).toContain('OpenAI API error [503]');
-      }
-    });
-  });
-
-  describe('getStatus helper', () => {
-    it('should extract status from error.status', () => {
-      const error = { status: 429 };
-      expect((openAIClient as any).getStatus(error)).toBe(429);
-    });
-
-    it('should extract status from error.statusCode', () => {
-      const error = { statusCode: 500 };
-      expect((openAIClient as any).getStatus(error)).toBe(500);
-    });
-
-    it('should extract status from error.code', () => {
-      const error = { code: 408 };
-      expect((openAIClient as any).getStatus(error)).toBe(408);
-    });
-
-    it('should return null when no status is present', () => {
-      const error = { message: 'Error without status' };
-      expect((openAIClient as any).getStatus(error)).toBeNull();
-    });
-
-    it('should prioritize status over statusCode and code', () => {
-      const error = { status: 429, statusCode: 500, code: 503 };
-      expect((openAIClient as any).getStatus(error)).toBe(429);
-    });
-  });
-
-  describe('sleep helper', () => {
-    it('should sleep for specified milliseconds', async () => {
-      // Restore the real sleep function for this test
-      vi.mocked((openAIClient as any).sleep).mockRestore();
-      
-      const start = Date.now();
-      await (openAIClient as any).sleep(100);
-      const elapsed = Date.now() - start;
-      
-      // Allow some tolerance for timing
-      expect(elapsed).toBeGreaterThanOrEqual(90);
-      expect(elapsed).toBeLessThan(150);
-    });
-  });
-});
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
+            expect(mockOperation).toHaveBeenCalledTimes(1)
+        })
+
+        it('should not retry on status code 401', async () => {
+            const error = new Error('Unauthorized');
+            (error as any).status = 401
+
+            mockOperation.mockRejectedValueOnce(error)
+
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
+            expect(mockOperation).toHaveBeenCalledTimes(1)
+        })
+
+        it('should not retry on status code 404', async () => {
+            const error = new Error('Not found');
+            (error as any).status = 404
+
+            mockOperation.mockRejectedValueOnce(error)
+
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
+            expect(mockOperation).toHaveBeenCalledTimes(1)
+        })
+
+        it('should not retry when error has no status', async () => {
+            const error = new Error('Generic error without status')
+
+            mockOperation.mockRejectedValueOnce(error)
+
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
+            expect(mockOperation).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('max retries enforcement', () => {
+        it('should respect max retries limit', async () => {
+            vi.mocked(mockConfig.getMaxRetries).mockReturnValue(3)
+
+            const error = new Error('Persistent error');
+            (error as any).status = 500
+
+            mockOperation.mockRejectedValue(error)
+
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
+
+            // Initial attempt + 3 retries = 4 total calls
+            expect(mockOperation).toHaveBeenCalledTimes(4)
+        })
+
+        it('should work with zero max retries', async () => {
+            vi.mocked(mockConfig.getMaxRetries).mockReturnValue(0)
+
+            const error = new Error('Error');
+            (error as any).status = 500
+
+            mockOperation.mockRejectedValue(error)
+
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
+
+            // Only initial attempt, no retries
+            expect(mockOperation).toHaveBeenCalledTimes(1)
+        })
+
+        it('should succeed before max retries if operation succeeds', async () => {
+            vi.mocked(mockConfig.getMaxRetries).mockReturnValue(5)
+
+            const error = new Error('Temporary error');
+            (error as any).status = 503
+
+            mockOperation
+                .mockRejectedValueOnce(error)
+                .mockRejectedValueOnce(error)
+                .mockResolvedValueOnce('success')
+
+            const result = await (openAIClient as any).executeWithRetry(mockOperation)
+
+            expect(result).toBe('success')
+            expect(mockOperation).toHaveBeenCalledTimes(3)
+        })
+    })
+
+    describe('backoff calculation', () => {
+        it('should use 1 second delay for first retry', () => {
+            const delay = (openAIClient as any).calculateBackoff(0)
+            expect(delay).toBe(1000)
+        })
+
+        it('should use 10 second delay for second retry', () => {
+            const delay = (openAIClient as any).calculateBackoff(1)
+            expect(delay).toBe(10000)
+        })
+
+        it('should use 60 second delay for third retry and beyond', () => {
+            expect((openAIClient as any).calculateBackoff(2)).toBe(60000)
+            expect((openAIClient as any).calculateBackoff(3)).toBe(60000)
+            expect((openAIClient as any).calculateBackoff(10)).toBe(60000)
+        })
+    })
+
+    describe('Retry-After header handling', () => {
+        it('should respect Retry-After header when present', async () => {
+            const error = new Error('Rate limited');
+            (error as any).status = 429;
+            (error as any).headers = {
+                get: vi.fn().mockReturnValue('5'),
+            }
+
+            mockOperation
+                .mockRejectedValueOnce(error)
+                .mockResolvedValueOnce('success')
+
+            // Get the sleep spy that was created in beforeEach
+            const sleepSpy = vi.mocked((openAIClient as any).sleep)
+            sleepSpy.mockClear(); // Clear any previous calls
+
+            await (openAIClient as any).executeWithRetry(mockOperation)
+
+            // Should use Retry-After value (5 seconds = 5000ms) instead of default backoff
+            expect(sleepSpy).toHaveBeenCalledWith(5000)
+        })
+
+        it('should handle Retry-After as object property', async () => {
+            const error = new Error('Rate limited');
+            (error as any).status = 429;
+            (error as any).headers = {
+                'retry-after': '10',
+            }
+
+            mockOperation
+                .mockRejectedValueOnce(error)
+                .mockResolvedValueOnce('success')
+
+            const sleepSpy = vi.mocked((openAIClient as any).sleep)
+            sleepSpy.mockClear()
+
+            await (openAIClient as any).executeWithRetry(mockOperation)
+
+            expect(sleepSpy).toHaveBeenCalledWith(10000)
+        })
+
+        it('should fall back to backoff when Retry-After is invalid', async () => {
+            const error = new Error('Server error');
+            (error as any).status = 503;
+            (error as any).headers = {
+                get: vi.fn().mockReturnValue('invalid'),
+            }
+
+            mockOperation
+                .mockRejectedValueOnce(error)
+                .mockResolvedValueOnce('success')
+
+            const sleepSpy = vi.mocked((openAIClient as any).sleep)
+            sleepSpy.mockClear()
+
+            await (openAIClient as any).executeWithRetry(mockOperation)
+
+            // Should use default backoff (1000ms for first retry)
+            expect(sleepSpy).toHaveBeenCalledWith(1000)
+        })
+
+        it('should fall back to backoff when headers are missing', async () => {
+            const error = new Error('Server error');
+            (error as any).status = 500
+
+            mockOperation
+                .mockRejectedValueOnce(error)
+                .mockResolvedValueOnce('success')
+
+            const sleepSpy = vi.mocked((openAIClient as any).sleep)
+            sleepSpy.mockClear()
+
+            await (openAIClient as any).executeWithRetry(mockOperation)
+
+            expect(sleepSpy).toHaveBeenCalledWith(1000)
+        })
+    })
+
+    describe('LoopDetectedError handling', () => {
+        it('should adjust temperature on LoopDetectedError', async () => {
+            const loopError = new LoopDetectedError({
+                loopDetected: true,
+                patternLength: 2,
+                repetitions: 5,
+                pattern: ['tool1()', 'tool2()'],
+            })
+
+            const initialTemp = openAIClient.temperature
+
+            // Mock Math.random to return a predictable value
+            const mockRandom = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+            mockOperation
+                .mockRejectedValueOnce(loopError)
+                .mockResolvedValueOnce('success')
+
+            await (openAIClient as any).executeWithRetry(mockOperation)
+
+            // Temperature should be changed to 0.5 (our mocked value)
+            expect(openAIClient.temperature).toBe(0.5)
+            expect(openAIClient.temperature).not.toBe(initialTemp)
+
+            mockRandom.mockRestore()
+        })
+
+        it('should retry after adjusting temperature for loop', async () => {
+            const loopError = new LoopDetectedError({
+                loopDetected: true,
+                patternLength: 1,
+                repetitions: 5,
+                pattern: ['repeating_tool()'],
+            })
+
+            mockOperation
+                .mockRejectedValueOnce(loopError)
+                .mockResolvedValueOnce('success')
+
+            const result = await (openAIClient as any).executeWithRetry(mockOperation)
+
+            expect(result).toBe('success')
+            expect(mockOperation).toHaveBeenCalledTimes(2)
+        })
+    })
+
+    describe('error enhancement', () => {
+        it('should enhance error with status and message', async () => {
+            const error = new Error('Original error message');
+            (error as any).status = 500
+
+            mockOperation.mockRejectedValue(error)
+
+            try {
+                await (openAIClient as any).executeWithRetry(mockOperation)
+                expect.fail('Should have thrown error')
+            } catch (e: any) {
+                expect(e.message).toContain('OpenAI API error [500]')
+                expect(e.message).toContain('Original error message')
+            }
+        })
+
+        it('should handle errors without status', async () => {
+            const error = new Error('Generic error')
+
+            mockOperation.mockRejectedValue(error)
+
+            try {
+                await (openAIClient as any).executeWithRetry(mockOperation)
+                expect.fail('Should have thrown error')
+            } catch (e: any) {
+                expect(e.message).toContain('OpenAI API error [unknown]')
+                expect(e.message).toContain('Generic error')
+            }
+        })
+
+        it('should handle errors with statusCode property', async () => {
+            const error = new Error('Error with statusCode');
+            (error as any).statusCode = 503
+
+            mockOperation.mockRejectedValue(error)
+
+            try {
+                await (openAIClient as any).executeWithRetry(mockOperation)
+                expect.fail('Should have thrown error')
+            } catch (e: any) {
+                expect(e.message).toContain('OpenAI API error [503]')
+            }
+        })
+    })
+
+    describe('getStatus helper', () => {
+        it('should extract status from error.status', () => {
+            const error = { status: 429 }
+            expect((openAIClient as any).getStatus(error)).toBe(429)
+        })
+
+        it('should extract status from error.statusCode', () => {
+            const error = { statusCode: 500 }
+            expect((openAIClient as any).getStatus(error)).toBe(500)
+        })
+
+        it('should extract status from error.code', () => {
+            const error = { code: 408 }
+            expect((openAIClient as any).getStatus(error)).toBe(408)
+        })
+
+        it('should return null when no status is present', () => {
+            const error = { message: 'Error without status' }
+            expect((openAIClient as any).getStatus(error)).toBeNull()
+        })
+
+        it('should prioritize status over statusCode and code', () => {
+            const error = { status: 429, statusCode: 500, code: 503 }
+            expect((openAIClient as any).getStatus(error)).toBe(429)
+        })
+    })
+
+    describe('sleep helper', () => {
+        it('should sleep for specified milliseconds', async () => {
+            // Restore the real sleep function for this test
+            vi.mocked((openAIClient as any).sleep).mockRestore()
+
+            const start = Date.now()
+            await (openAIClient as any).sleep(100)
+            const elapsed = Date.now() - start
+
+            // Allow some tolerance for timing
+            expect(elapsed).toBeGreaterThanOrEqual(90)
+            expect(elapsed).toBeLessThan(150)
+        })
+    })
+})

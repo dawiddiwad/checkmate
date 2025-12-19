@@ -41,14 +41,14 @@
  *
  * @example
  * // Estimate cost of 1k input tokens and 2k output tokens for 'gpt-4o'
- * const inCost = OpenAITokenPricing.inputPriceUSD('gpt-4o', 1000);
- * const outCost = OpenAITokenPricing.outputPriceUSD('gpt-4o', 2000);
- * const total = OpenAITokenPricing.totalPriceUSD('gpt-4o', 1000, 2000);
+ * const inCost = OpenAITokenPricing.inputPriceUSD('gpt-4o', 1000)
+ * const outCost = OpenAITokenPricing.outputPriceUSD('gpt-4o', 2000)
+ * const total = OpenAITokenPricing.totalPriceUSD('gpt-4o', 1000, 2000)
  *
  * @note
- * Token counts are integer counts of tokens. Model pricing and mappings may change;
+ * Token counts are integer counts of tokens. Model pricing and mappings may change
  * keep the price table updated with provider pricing announcements.
- * use coding agent with browser/fetch tool to update ;)
+ * use coding agent with browser/fetch tool to update )
  */
 export class OpenAITokenPricing {
     private static roundToCents(price: number): number {

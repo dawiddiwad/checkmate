@@ -1,5 +1,5 @@
 import sharp from "sharp"
-import { Page } from "@playwright/test";
+import { Page } from "@playwright/test"
 
 export class ScreenshotProcessor {
     constructor(private readonly page: Page) { }

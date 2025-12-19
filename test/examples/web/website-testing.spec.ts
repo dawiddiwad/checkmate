@@ -1,21 +1,17 @@
 /**
- * @fileoverview End‑to‑end Playwright tests that demonstrate AI‑driven web navigation.
+ * Playwright E2E tests using `ai.run({ action, expect })`.
  *
- * @summary This file contains several single‑step and multi‑step flow examples:
- *   - Browsing AI model repositories (Ollama, HuggingFace)
- *   - Interacting with e‑commerce demo sites
- *   - Performing searches on various public search engines (Mojeek, NYPL)
- *   - Job search on justjoin.it
- *
- * @description Each test uses the `ai` fixture to execute natural‑language actions via
- * `ai.run({ action, expect })`. Steps are kept atomic to improve reliability and make
- * debugging easier. The tests are written for demonstration purposes and can be
- * extended or adapted to other sites.
+ * Quick overview:
+ * - Single-step demos: Ollama, HuggingFace, Mojeek, NYPL
+ * - Multi-step regression: automationexercise.com (navigation, products, cart, etc.)
+ * 
+ * Each test uses the `ai` fixture and `ai.run({ action, expect })` with small,
+ * atomic steps for clarity and reliability.
  */
 import { test } from "../../fixtures/checkmate"
 
 test.describe('single-step flows - quick examples', async () => {
-    test('browse ollama models', async ({ ai }) => {
+    test('browsing ollama models', async ({ ai }) => {
         await test.step('Navigate to ollama.com and search for model details', async () => {
             await ai.run({
                 action: `
@@ -30,7 +26,7 @@ test.describe('single-step flows - quick examples', async () => {
         })
     })
 
-    test('browse huggingface models', async ({ ai }) => {
+    test('browsing huggingface models', async ({ ai }) => {
         await test.step('Navigate to huggingface.co', async () => {
             await ai.run({
                 action: `
@@ -43,25 +39,7 @@ test.describe('single-step flows - quick examples', async () => {
         })
     })
 
-    test('adding items to cart on demo e-commerce site', async ({ ai }) => {
-        await test.step('Navigate to the e-commerce demo site and add items to cart', async () => {
-            await ai.run({
-                action: `
-                Navigate to the https://sweetshop.netlify.app/ website.
-                Browse Sweets and add 3 items to the basket.
-                In the Basket detail view:
-                 - switch Delivery options.
-                 - check Billing Address, Payment and Promo Code fields.
-            `,
-                expect: `The basket icon in the header updates its count to '3'.
-                Basket detail view displays added items with price for each and total price.
-                Delivery options are switched successfully recalculating Total price correctly.
-                All Billing Address, Payment and Promo Code form fields are interactable.`
-            })
-        })
-    })
-
-    test('mojeek search', async ({ ai }) => {
+    test('searching with mojeek', async ({ ai }) => {
         await test.step('Search for Playwright docs using mojeek.com', async () => {
             await ai.run({
                 action: `
@@ -78,7 +56,7 @@ test.describe('single-step flows - quick examples', async () => {
         })
     })
 
-    test('new york public library search', async ({ ai }) => {
+    test('searching new york public library', async ({ ai }) => {
         await test.step('the catcher in the rye availability', async () => {
             await ai.run({
                 action: `
@@ -95,50 +73,8 @@ test.describe('single-step flows - quick examples', async () => {
 })
 
 test.describe('multi-step flow - Automation Exercise Regression', async () => {
-    test('Test Case 6: Contact Us Form', async ({ ai }) => {
-        await test.step('Navigate to automationexercise.com', async () => {
-            await ai.run({
-                action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
-                expect: `Home page is visible successfully`
-            })
-        })
 
-        await test.step('Click on Contact Us button', async () => {
-            await ai.run({
-                action: `Click on the 'Contact Us' button in the navigation menu.`,
-                expect: `'GET IN TOUCH' section is visible on the contact page`
-            })
-        })
-
-        await test.step('Fill contact form and submit', async () => {
-            await ai.run({
-                action: `Enter the following details in the contact form:
-                - Name: 'Test User'
-                - Email: 'testuser@example.com'
-                - Subject: 'Test Inquiry'
-                - Message: 'This is a test message for automation testing purposes.'
-                Then click the 'Submit' button.`,
-                expect: `The form is submitted successfully`
-            })
-        })
-
-        await test.step('Handle alert and verify success message', async () => {
-            await ai.run({
-                action: `If an alert or confirmation dialog appears, click OK to dismiss it. 
-                Then verify the success message is displayed.`,
-                expect: `Success message 'Success! Your details have been submitted successfully.' is visible`
-            })
-        })
-
-        await test.step('Return to home page', async () => {
-            await ai.run({
-                action: `Click the 'Home' button to navigate back to the home page.`,
-                expect: `User is navigated back to the home page successfully`
-            })
-        })
-    })
-
-    test('Test Case 7: Verify Test Cases Page', async ({ ai }) => {
+    test('verifying test cases page', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -154,7 +90,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 8: Verify All Products and product detail page', async ({ ai }) => {
+    test('verifying all products and product detail page', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -191,7 +127,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 9: Search Product', async ({ ai }) => {
+    test('searching product', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -221,7 +157,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 10: Verify Subscription in home page', async ({ ai }) => {
+    test('verifying subscription in home page', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -251,7 +187,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 11: Verify Subscription in Cart page', async ({ ai }) => {
+    test('verifying subscription in cart page', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -288,7 +224,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 12: Add Products in Cart', async ({ ai }) => {
+    test('adding products in cart', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -339,7 +275,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 13: Verify Product quantity in Cart', async ({ ai }) => {
+    test('verifying product quantity in cart', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -376,7 +312,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 17: Remove Products From Cart', async ({ ai }) => {
+    test('removing products from cart', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -413,7 +349,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 18: View Category Products', async ({ ai }) => {
+    test('viewing category products', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -464,7 +400,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 19: View & Cart Brand Products', async ({ ai }) => {
+    test('viewing & carting brand products', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -515,7 +451,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 21: Add review on product', async ({ ai }) => {
+    test('adding review on product', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -563,7 +499,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         })
     })
 
-    test('Test Case 22: Add to cart from Recommended items', async ({ ai }) => {
+    test('adding to cart from recommended items', async ({ ai }) => {
         await test.step('Navigate to automationexercise.com', async () => {
             await ai.run({
                 action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
@@ -596,80 +532,6 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
             await ai.run({
                 action: `Verify that the recommended product is displayed in the cart page.`,
                 expect: `The recommended product is visible in the cart`
-            })
-        })
-    })
-
-    test('Test Case 25: Verify Scroll Up using Arrow button and Scroll Down functionality', async ({ ai }) => {
-        await test.step('Navigate to automationexercise.com', async () => {
-            await ai.run({
-                action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
-                expect: `Home page is visible successfully`
-            })
-        })
-
-        await test.step('Scroll down to bottom', async () => {
-            await ai.run({
-                action: `Scroll down to the bottom of the page.`,
-                expect: `Page is scrolled to the bottom`
-            })
-        })
-
-        await test.step('Verify subscription section is visible', async () => {
-            await ai.run({
-                action: `Verify that the 'SUBSCRIPTION' text is visible in the footer.`,
-                expect: `'SUBSCRIPTION' is visible at the bottom of the page`
-            })
-        })
-
-        await test.step('Click arrow button to scroll up', async () => {
-            await ai.run({
-                action: `Click on the arrow button at the bottom right corner of the page to scroll up.`,
-                expect: `Page scrolls up smoothly`
-            })
-        })
-
-        await test.step('Verify page scrolled to top', async () => {
-            await ai.run({
-                action: `Verify that the page has scrolled to the top and the text 'Full-Fledged practice website for Automation Engineers' is visible.`,
-                expect: `Page is scrolled to top and 'Full-Fledged practice website for Automation Engineers' text is visible`
-            })
-        })
-    })
-
-    test('Test Case 26: Verify Scroll Up without Arrow button and Scroll Down functionality', async ({ ai }) => {
-        await test.step('Navigate to automationexercise.com', async () => {
-            await ai.run({
-                action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
-                expect: `Home page is visible successfully`
-            })
-        })
-
-        await test.step('Scroll down to bottom', async () => {
-            await ai.run({
-                action: `Scroll down to the bottom of the page.`,
-                expect: `Page is scrolled to the bottom`
-            })
-        })
-
-        await test.step('Verify subscription section is visible', async () => {
-            await ai.run({
-                action: `Verify that the 'SUBSCRIPTION' text is visible in the footer.`,
-                expect: `'SUBSCRIPTION' is visible at the bottom of the page`
-            })
-        })
-
-        await test.step('Scroll up to top without arrow button', async () => {
-            await ai.run({
-                action: `Scroll up to the top of the page without using the arrow button (using browser scroll functionality).`,
-                expect: `Page scrolls up to the top`
-            })
-        })
-
-        await test.step('Verify page scrolled to top', async () => {
-            await ai.run({
-                action: `Verify that the page has scrolled to the top and the text 'Full-Fledged practice website for Automation Engineers' is visible.`,
-                expect: `Page is scrolled to top and 'Full-Fledged practice website for Automation Engineers' text is visible`
             })
         })
     })

@@ -15,13 +15,31 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
     },
 }))
 
-// Mock ResponseProcessor
+let responseProcessorInstance: any
+
 vi.mock('../../src/step/openai/response-processor', () => {
+    class MockResponseProcessor {
+        handleResponse = vi.fn()
+        resetStepTokens = vi.fn()
+        constructor() {
+            responseProcessorInstance = this
+        }
+    }
     return {
-        ResponseProcessor: class {
-            handleResponse = vi.fn()
-            resetStepTokens = vi.fn()
+        ResponseProcessor: MockResponseProcessor,
+        getResponseProcessorMock: () => responseProcessorInstance,
+    }
+})
+
+// Mock OpenAI client creation
+vi.mock('openai', () => {
+    const createMock = vi.fn()
+    return {
+        default: class MockOpenAI {
+            chat = { completions: { create: createMock } }
+            constructor() { }
         },
+        getCreateMock: () => createMock,
     }
 })
 
@@ -184,6 +202,17 @@ describe('OpenAIClient - Retry Logic', () => {
 
             expect(result).toBe('success')
             expect(mockOperation).toHaveBeenCalledTimes(3)
+        })
+
+        it('should throw unexpected error when max retries is negative', async () => {
+            vi.mocked(mockConfig.getMaxRetries).mockReturnValue(-1 as any)
+
+            const error = new Error('Error');
+            (error as any).status = 500
+
+            mockOperation.mockRejectedValue(error)
+
+            await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow('Unexpected error in retry loop')
         })
     })
 
@@ -414,5 +443,149 @@ describe('OpenAIClient - Retry Logic', () => {
             expect(elapsed).toBeGreaterThanOrEqual(90)
             expect(elapsed).toBeLessThan(150)
         })
+    })
+})
+
+describe('OpenAIClient - message flow', () => {
+    let openAIClient: OpenAIClient
+    let mockConfig: ConfigurationManager
+    let mockToolRegistry: ToolRegistry
+    let mockPage: Page
+    let createMock: any
+    let responseProcessorMock: any
+
+    beforeEach(async () => {
+        vi.clearAllMocks()
+
+        const openaiModule: any = await import('openai')
+        createMock = openaiModule.getCreateMock()
+
+        const rpModule: any = await import('../../src/step/openai/response-processor')
+        responseProcessorMock = rpModule.getResponseProcessorMock()
+
+        mockConfig = {
+            getApiKey: vi.fn().mockReturnValue('test-api-key'),
+            getBaseURL: vi.fn().mockReturnValue(undefined),
+            getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
+            getTimeout: vi.fn().mockReturnValue(60000),
+            getMaxRetries: vi.fn().mockReturnValue(0),
+            getLogLevel: vi.fn().mockReturnValue('off'),
+            getToolChoice: vi.fn().mockReturnValue('auto'),
+            getTemperature: vi.fn().mockReturnValue(0.2),
+            getReasoningEffort: vi.fn().mockReturnValue(undefined),
+        } as any
+
+        mockToolRegistry = {
+            getTools: vi.fn().mockResolvedValue([]),
+        } as any
+
+        mockPage = {} as any
+
+        openAIClient = new OpenAIClient({
+            configurationManager: mockConfig,
+            toolRegistry: mockToolRegistry,
+            page: mockPage,
+        })
+    })
+
+    it('sends a user string, appends assistant message, and calls response processor', async () => {
+        const assistantMessage = { role: 'assistant', content: 'ack' }
+        createMock.mockResolvedValueOnce({ choices: [{ message: assistantMessage }], usage: { prompt_tokens: 1, completion_tokens: 1 } })
+
+        const step = { action: 'do', expect: 'done' } as any
+        const statusCb = vi.fn()
+
+        await openAIClient.initialize(step, statusCb)
+        const rpModule: any = await import('../../src/step/openai/response-processor')
+        const rpInstance = rpModule.getResponseProcessorMock()
+        rpInstance.handleResponse.mockClear()
+        await openAIClient.sendMessage('hello')
+
+        expect(createMock).toHaveBeenCalledTimes(1)
+        const messages = openAIClient.getMessages()
+        expect(messages[0]).toEqual({ role: 'user', content: 'hello' })
+        expect(messages[messages.length - 1]).toEqual(assistantMessage)
+        expect(rpInstance.handleResponse).toHaveBeenCalledTimes(1)
+    })
+
+    it('accepts message arrays and skips pushing when choice message is absent', async () => {
+        createMock.mockResolvedValueOnce({ choices: [{ message: null as any }], usage: { prompt_tokens: 1, completion_tokens: 1 } })
+
+        const step = { action: 'array', expect: 'done' } as any
+        const statusCb = vi.fn()
+
+        await openAIClient.initialize(step, statusCb)
+        const rpModule: any = await import('../../src/step/openai/response-processor')
+        const rpInstance = rpModule.getResponseProcessorMock()
+        rpInstance.handleResponse.mockClear()
+
+        await openAIClient.sendMessage([
+            { role: 'user', content: 'first' },
+            { role: 'assistant', content: 'prior' },
+        ])
+
+        const messages = openAIClient.getMessages()
+        expect(messages[0]).toEqual({ role: 'user', content: 'first' })
+        expect(messages[1]).toEqual({ role: 'assistant', content: 'prior' })
+        expect(messages[messages.length - 1]).toEqual({ role: 'assistant', content: 'prior' })
+
+        expect(createMock).toHaveBeenCalledTimes(1)
+        expect(rpInstance.handleResponse).toHaveBeenCalledTimes(1)
+    })
+
+    it('sends a tool response with retry wrapper and stores assistant reply', async () => {
+        const assistantReply = { role: 'assistant', content: 'next' }
+        createMock.mockResolvedValueOnce({ choices: [{ message: assistantReply }], usage: { prompt_tokens: 1, completion_tokens: 1 } })
+
+        const step = { action: 'do', expect: 'done' } as any
+        const statusCb = vi.fn()
+
+        await openAIClient.initialize(step, statusCb)
+        await openAIClient.addToolResponse('t1', 'result')
+        const response = await openAIClient.sendToolResponseWithRetry()
+
+        expect(response).toBeDefined()
+        expect(createMock).toHaveBeenCalledTimes(1)
+        const messages = openAIClient.getMessages()
+        expect(messages[messages.length - 1]).toEqual(assistantReply)
+    })
+
+    it('skips appending when tool response choice has no message', async () => {
+        createMock.mockResolvedValueOnce({ choices: [{ message: null as any }], usage: { prompt_tokens: 1, completion_tokens: 1 } })
+
+        const step = { action: 'do', expect: 'done' } as any
+        const statusCb = vi.fn()
+
+        await openAIClient.initialize(step, statusCb)
+        await openAIClient.addToolResponse('t1', 'result')
+        const before = openAIClient.getMessages().length
+        await openAIClient.sendToolResponseWithRetry()
+
+        const afterMessages = openAIClient.getMessages()
+        expect(afterMessages.length).toBe(before) // no assistant message appended
+        expect(createMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('adds screenshot message with expected content shape', async () => {
+        const step = { action: 'shot', expect: 'done' } as any
+        const statusCb = vi.fn()
+        await openAIClient.initialize(step, statusCb)
+
+        await openAIClient.addScreenshotMessage('YmFzZTY0', 'image/png')
+
+        const last = openAIClient.getMessages().at(-1) as any
+        expect(last.role).toBe('user')
+        expect(Array.isArray(last.content)).toBe(true)
+        expect(last.content[1].image_url.url).toContain('data:image/png;base64,YmFzZTY0')
+    })
+
+    it('counts only string history when estimating tokens', () => {
+        (openAIClient as any).messages = [
+            { role: 'user', content: 'abcd' }, // 4 chars -> 1 token after ceil(4/4)
+            { role: 'assistant', content: [{ type: 'text', text: 'ignored' }] },
+        ]
+
+        const tokens = openAIClient.countHistoryTokens()
+        expect(tokens).toBe(1)
     })
 })

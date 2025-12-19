@@ -58,11 +58,21 @@ vi.mock('../../src/step/openai/openai-client', () => ({
     },
 }))
 
-vi.mock('../../src/step/openai/history-manager', () => ({
-    HistoryManager: class {
+let addInitialSnapshotInstance: any
+
+vi.mock('../../src/step/openai/history-manager', () => {
+    class MockHistoryManager {
         addInitialSnapshot = vi.fn()
-    },
-}))
+        constructor() {
+            addInitialSnapshotInstance = this
+        }
+    }
+
+    return {
+        HistoryManager: MockHistoryManager,
+        getAddInitialSnapshotMock: () => addInitialSnapshotInstance?.addInitialSnapshot,
+    }
+})
 
 vi.mock('../../src/step/tool/page-snapshot', () => ({
     PageSnapshot: {
@@ -171,6 +181,25 @@ describe('OpenAITestManager', () => {
             } catch (error: any) {
                 expect(error.message).toContain('Failed to execute action')
             }
+        })
+
+        it('should add initial snapshot when present before sending first message', async () => {
+            const mockClient = (testManager as any).openaiClient
+            mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+                setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
+                return Promise.resolve()
+            })
+
+            const { PageSnapshot } = await import('../../src/step/tool/page-snapshot')
+            const historyModule: any = await import('../../src/step/openai/history-manager')
+
+            PageSnapshot.lastSnapshot = { html: '<div>snap</div>' } as any
+
+            await expect(testManager.run(mockStep)).resolves.toBeUndefined()
+
+            expect(historyModule.getAddInitialSnapshotMock()).toHaveBeenCalled()
+
+            PageSnapshot.lastSnapshot = null
         })
     })
 })

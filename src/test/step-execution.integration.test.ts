@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { OpenAITestManager } from '../step/openai/openai-test-manager'
-import { Step } from '../step/types'
 import { Page } from '@playwright/test'
+import { OpenAIClient } from '../step/openai/openai-client'
+import { OpenAITestManager } from '../step/openai/openai-test-manager'
+import { ConfigurationManager } from '../step/configuration-manager'
+import { Step } from '../step/types'
+import { ToolRegistry } from '../step/tool/tool-registry'
+import { StepTool } from '../step/tool/step-tool'
+import { BrowserTool } from '../step/tool/browser-tool'
+import { SalesforceTool } from '../salesforce/salesforce-tool'
 
 // Shared mocks reused across test runs
 const createMock = vi.fn()
@@ -43,7 +49,7 @@ vi.mock('../step/logger', () => ({
     },
 }))
 
-vi.mock('../../salesforce/salesforce-tool', () => ({
+vi.mock('../salesforce/salesforce-tool', () => ({
     SalesforceTool: class {
         functionDeclarations = []
         call = vi.fn()
@@ -393,5 +399,73 @@ describe('Simple step execution integration', () => {
             name: 'browser_type',
             arguments: expect.objectContaining({ ref: 'email', text: 'user@example.com', goal: 'enter email' }),
         })
+    })
+
+    it('recovers when the model replies with text by prompting for a pass/fail tool call', async () => {
+        const textResponse = {
+            choices: [
+                {
+                    finish_reason: 'stop',
+                    message: {
+                        role: 'assistant',
+                        content: 'Here is your summary',
+                    },
+                },
+            ],
+            usage: { prompt_tokens: 8, completion_tokens: 3 },
+        }
+
+        const passResponse = {
+            choices: [
+                {
+                    message: {
+                        role: 'assistant',
+                        tool_calls: [
+                            {
+                                id: 'pass-1',
+                                type: 'function',
+                                function: {
+                                    name: 'pass_test_step',
+                                    arguments: JSON.stringify({ actualResult: 'status ok' }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+            usage: { prompt_tokens: 6, completion_tokens: 2 },
+        }
+
+        createMock.mockResolvedValueOnce(textResponse).mockResolvedValueOnce(passResponse)
+
+        const configurationManager = new ConfigurationManager()
+        const browserTool = new BrowserTool(page)
+        const stepTool = new StepTool()
+        const salesforceTool = new SalesforceTool(browserTool)
+        const toolRegistry = new ToolRegistry({ browserTool, stepTool, salesforceTool, configurationManager })
+        const client = new OpenAIClient({ configurationManager, toolRegistry, page })
+
+        const step: Step = {
+            action: 'Report current status',
+            expect: 'Status is reported',
+        }
+
+        let reportedStatus: any
+        const statusCallback = (status: any) => {
+            reportedStatus = status
+        }
+
+        await client.initialize(step, statusCallback)
+        await client.sendMessage([{ role: 'user', content: 'Please report the current status' }])
+
+        expect(createMock).toHaveBeenCalledTimes(2)
+        expect(reportedStatus).toEqual({ passed: true, actual: 'status ok' })
+
+        const secondCallMessages = (createMock.mock.calls[1][0] as any).messages as any[]
+        const reminder = secondCallMessages
+            .map(m => m.content)
+            .find(content => typeof content === 'string' && content.includes('You provided a text response but did not call a tool'))
+
+        expect(reminder).toBeDefined()
     })
 })

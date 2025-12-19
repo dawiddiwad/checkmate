@@ -14,9 +14,7 @@ export default defineConfig({
                 'test/**',
                 'node_modules/**',
             ],
-            // Per-file thresholds for critical components
             thresholds: {
-                // Global thresholds (aspirational)
                 lines: 40,
                 functions: 50,
                 branches: 35,

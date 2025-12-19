@@ -31,6 +31,7 @@ vi.mock('../../src/step/tool/tool-dispatcher', () => ({
 vi.mock('../../src/step/tool/tool-response-handler', () => ({
     ToolResponseHandler: class {
         handle = vi.fn()
+        handleMultiple = vi.fn()
     },
 }))
 
@@ -148,9 +149,13 @@ describe('ResponseProcessor', () => {
                 },
                 mockCallback
             )
-            expect(toolResponseHandler.handle).toHaveBeenCalledWith(
-                'call_1',
-                'tool response',
+            expect(toolResponseHandler.handleMultiple).toHaveBeenCalledWith(
+                [
+                    {
+                        toolCallId: 'call_1',
+                        toolResponse: 'tool response',
+                    },
+                ],
                 mockStep,
                 mockCallback
             )
@@ -199,7 +204,7 @@ describe('ResponseProcessor', () => {
 
             await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
-            expect(toolDispatcher.dispatch).toHaveBeenCalledTimes(1); // Returns after first tool response
+            expect(toolDispatcher.dispatch).toHaveBeenCalledTimes(2)
         })
 
         it('should skip non-function tool calls', async () => {

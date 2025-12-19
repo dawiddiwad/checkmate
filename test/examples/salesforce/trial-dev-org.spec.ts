@@ -31,7 +31,7 @@
 import { test } from "../../fixtures/checkmate"
 
 test.describe('trial dev org', async () => {
-    test('create new account in salesforce', async ({ ai }) => {
+    test('creating new account in sales app', async ({ ai }) => {
         await test.step('Login to Salesforce Org', async () => {
             await ai.run({
             action: `

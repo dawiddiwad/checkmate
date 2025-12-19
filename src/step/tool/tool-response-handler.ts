@@ -29,15 +29,29 @@ export class ToolResponseHandler {
         step: Step,
         stepStatusCallback: StepStatusCallback
     ): Promise<void> {
+        await this.handleMultiple([{ toolCallId, toolResponse }], step, stepStatusCallback)
+    }
+
+    public async handleMultiple(
+        toolResponses: Array<{ toolCallId: string, toolResponse: ToolResponse }>,
+        step: Step,
+        stepStatusCallback: StepStatusCallback
+    ): Promise<void> {
+        if (toolResponses.length === 0) return
+
         const config = this.openaiClient.getConfigurationManager()
 
-        const responseContent = toolResponse.response
+        await this.historyManager.removeSnapshotEntries(this.openaiClient)
 
-        await this.openaiClient.addToolResponse(toolCallId, responseContent)
+        for (const [index, { toolCallId, toolResponse }] of toolResponses.entries()) {
+            const responseContent = toolResponse.response
+            await this.openaiClient.addToolResponse(toolCallId, responseContent)
 
-        if (config.includeScreenshotInSnapshot()) {
-            const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
-            await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
+            const isLast = index === toolResponses.length - 1
+            if (isLast && config.includeScreenshotInSnapshot()) {
+                const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
+                await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
+            }
         }
 
         await this.historyManager.removeSnapshotEntries(this.openaiClient)

@@ -49,9 +49,9 @@ describe('ConfigurationManager', () => {
             expect(configManager.getModel()).toBe('gpt-4o')
         })
 
-        it('should return default model "gpt-5-mini" when OPENAI_MODEL is not set', () => {
+        it('should return default model "gpt-4.1-mini" when OPENAI_MODEL is not set', () => {
             delete process.env.OPENAI_MODEL
-            expect(configManager.getModel()).toBe('gpt-5-mini')
+            expect(configManager.getModel()).toBe('gpt-4.1-mini')
         })
 
         it('should return empty string if explicitly set to empty', () => {

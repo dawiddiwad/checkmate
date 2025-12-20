@@ -1,5 +1,25 @@
+/**
+ * Tracks transient state changes (from action-triggered to settled snapshot) in a web page during test execution.
+ * It helps LLM-based test agents understand what changed on the page as a result of their actions.
+ * It mitigates blind spot in timeline between action triggered and final after-action return snapshot.
+ * 
+ * Monitors DOM mutations, dialog appearances, console errors, and page navigations,
+ * creating a timestamped timeline of events. Uses a MutationObserver to capture
+ * element additions, removals, and attribute changes, and listens to Playwright
+ * page events to track dialogs and navigation.
+ * 
+ * @example
+ * ```typescript
+ * const tracker = new TransientStateTracker(page);
+ * await tracker.start();
+ * // ... perform actions ...
+ * const events = await tracker.stop();
+ * console.log(tracker.formatTimeline());
+ * ```
+ */
 import { Page, Dialog, ConsoleMessage, Frame } from "@playwright/test"
 
+// Tracks transient state changes in a web page by observing DOM mutations, dialog appearances, console errors, and navigations.
 export class TransientStateTracker {
     private timeline: string[] = []
     private startTime: number = 0
@@ -12,23 +32,15 @@ export class TransientStateTracker {
         this.timeline = []
         this.startTime = Date.now()
         this.isTracking = true
-
-        // 1. Listen for Dialogs
         this.page.on('dialog', this.handleDialog)
-
-        // 2. Listen for Console messages (including our mutation logs)
         this.page.on('console', this.handleConsole)
-
-        // 3. Listen for Navigation
         this.page.on('framenavigated', this.handleNavigation)
-
-        // 4. Setup MutationObserver for transient elements
         await this.setupMutationObserver()
     }
 
     private handleDialog = (dialog: Dialog) => {
         const elapsed = Date.now() - this.startTime
-        this.timeline.push(`[${elapsed}ms] Dialog appeared: "${dialog.message()}" (Type: ${dialog.type()}).`)
+        this.timeline.push(`[${elapsed}ms] Dialog appeared: "${dialog.message()}" (Type: ${dialog.type()}) and automatically dismissed.`)
         dialog.dismiss().catch(() => { })
     }
 

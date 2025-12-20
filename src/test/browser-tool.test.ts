@@ -3,6 +3,12 @@ import { BrowserTool } from '../step/tool/browser-tool'
 import { Page } from '@playwright/test'
 import { ToolCall } from '../step/tool/openai-tool'
 
+const trackerMocks = vi.hoisted(() => ({
+    startMock: vi.fn().mockResolvedValue(undefined),
+    stopMock: vi.fn().mockResolvedValue([]),
+    formatTimelineMock: vi.fn().mockReturnValue(''),
+}))
+
 // Mock logger
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
     logger: {
@@ -23,9 +29,9 @@ vi.mock('../../src/step/tool/page-snapshot', () => ({
 // Mock TransientStateTracker
 vi.mock('../step/tool/transient-state-tracker', () => ({
     TransientStateTracker: class {
-        start = vi.fn().mockResolvedValue(undefined)
-        stop = vi.fn().mockResolvedValue([])
-        formatTimeline = vi.fn().mockReturnValue('')
+        start = trackerMocks.startMock
+        stop = trackerMocks.stopMock
+        formatTimeline = trackerMocks.formatTimelineMock
     }
 }))
 
@@ -34,9 +40,11 @@ describe('BrowserTool', () => {
     let mockPage: Page
 
     beforeEach(() => {
+        vi.clearAllMocks()
         mockPage = {
             goto: vi.fn().mockResolvedValue(undefined),
             click: vi.fn().mockResolvedValue(undefined),
+            hover: vi.fn().mockResolvedValue(undefined),
             locator: vi.fn().mockReturnValue({
                 clear: vi.fn().mockResolvedValue(undefined),
                 pressSequentially: vi.fn().mockResolvedValue(undefined),
@@ -73,6 +81,7 @@ describe('BrowserTool', () => {
             expect(clickTool).toBeDefined()
             expect(clickTool?.function?.parameters?.required).toContain('ref')
             expect(clickTool?.function?.parameters?.required).toContain('name')
+            expect(clickTool?.function?.parameters?.required).toContain('hover')
             expect(clickTool?.function?.parameters?.required).toContain('goal')
         })
 
@@ -83,6 +92,8 @@ describe('BrowserTool', () => {
             expect(typeTool).toBeDefined()
             expect(typeTool?.function?.parameters?.required).toContain('ref')
             expect(typeTool?.function?.parameters?.required).toContain('text')
+            expect(typeTool?.function?.parameters?.required).toContain('name')
+            expect(typeTool?.function?.parameters?.required).toContain('goal')
         })
 
         it('should include press key tool declaration', () => {
@@ -91,6 +102,7 @@ describe('BrowserTool', () => {
             )
             expect(pressKeyTool).toBeDefined()
             expect(pressKeyTool?.function?.parameters?.required).toContain('key')
+            expect(pressKeyTool?.function?.parameters?.required).toContain('goal')
         })
 
         it('should include snapshot tool declaration', () => {
@@ -169,7 +181,7 @@ describe('BrowserTool', () => {
         it('should click element and capture snapshot', async () => {
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_CLICK,
-                arguments: { ref: 'e123', name: 'Submit Button', goal: 'submit form' },
+                arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
             }
 
             const result = await browserTool.call(toolCall)
@@ -178,12 +190,32 @@ describe('BrowserTool', () => {
             expect(result).toBe('mocked snapshot content')
         })
 
+        it('should hover element when hover is true', async () => {
+            const result = await (browserTool as any).clickElement('e321', true)
+
+            expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
+            expect(result).toBe('mocked snapshot content')
+        })
+
+        it('should include transient state timeline when available', async () => {
+            trackerMocks.formatTimelineMock.mockReturnValueOnce('timeline: click flow')
+
+            const toolCall: ToolCall = {
+                name: BrowserTool.TOOL_CLICK,
+                arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
+            }
+
+            const result = await browserTool.call(toolCall)
+
+            expect(result).toBe('timeline: click flow\nmocked snapshot content')
+        })
+
         it('should return error message on click failure', async () => {
             vi.mocked(mockPage.click).mockRejectedValue(new Error('Element not found'))
 
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_CLICK,
-                arguments: { ref: 'e999', name: 'Button', goal: 'click' },
+                arguments: { ref: 'e999', name: 'Button', hover: false, goal: 'click' },
             }
 
             const result = await browserTool.call(toolCall)

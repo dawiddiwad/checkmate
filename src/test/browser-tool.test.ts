@@ -38,6 +38,7 @@ describe('BrowserTool', () => {
             goto: vi.fn().mockResolvedValue(undefined),
             click: vi.fn().mockResolvedValue(undefined),
             locator: vi.fn().mockReturnValue({
+                clear: vi.fn().mockResolvedValue(undefined),
                 pressSequentially: vi.fn().mockResolvedValue(undefined),
                 innerHTML: vi.fn().mockResolvedValue('<html>content</html>'),
             }),
@@ -202,6 +203,7 @@ describe('BrowserTool', () => {
             const result = await browserTool.call(toolCall)
 
             expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
+            expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
             expect(mockPage.locator('aria-ref=e456').pressSequentially).toHaveBeenCalledWith('Hello World', { delay: 50 })
             expect(result).toBe('mocked snapshot content')
         })

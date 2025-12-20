@@ -40,6 +40,6 @@ test.describe('TransientStateTracker - Visibility via Class Change', () => {
 
         // 4. Assertions
         expect(timelineStr, 'Timeline should contain the success message text').toContain('You have been successfully subscribed!')
-        expect(timelineStr, 'Timeline should indicate a state change').toContain('Element state changed')
+        expect(timelineStr, 'Timeline should indicate a state change').toContain('Attribute \"class\" changed (-hide): \"You have been successfully subscribed!\" ')
     })
 })

@@ -20,6 +20,15 @@ vi.mock('../../src/step/tool/page-snapshot', () => ({
     },
 }))
 
+// Mock TransientStateTracker
+vi.mock('../step/tool/transient-state-tracker', () => ({
+    TransientStateTracker: class {
+        start = vi.fn().mockResolvedValue(undefined)
+        stop = vi.fn().mockResolvedValue([])
+        formatTimeline = vi.fn().mockReturnValue('')
+    }
+}))
+
 describe('BrowserTool', () => {
     let browserTool: BrowserTool
     let mockPage: Page

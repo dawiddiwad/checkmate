@@ -3,7 +3,7 @@ import { OpenAITool, ToolCall } from "./openai-tool"
 import { expect, Page } from "@playwright/test"
 import { PageSnapshot } from "./page-snapshot"
 import { logger } from "../openai/openai-test-manager"
-import { add } from "winston"
+import { TransientStateTracker } from "./transient-state-tracker"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -40,16 +40,17 @@ export class BrowserTool implements OpenAITool {
                 type: 'function',
                 function: {
                     name: BrowserTool.TOOL_CLICK,
-                    description: 'Click a specified element reference in the browser',
+                    description: 'Click or hover a specified element reference in the browser',
                     parameters: {
                         type: 'object',
                         properties: {
                             ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
-                            name: { type: 'string', description: 'name of the element to click, example: Submit Button' },
+                            name: { type: 'string', description: 'name of the element to click or hover, example: Submit Button' },
+                            hover: { type: 'boolean', description: 'If true, hover the element instead of clicking it' },
                             goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                         },
                         additionalProperties: false,
-                        required: ['ref', 'name', 'goal']
+                        required: ['ref', 'name', 'hover', 'goal']
                     },
                     strict: true
                 }
@@ -133,7 +134,7 @@ export class BrowserTool implements OpenAITool {
             await expect.poll(async () => {
                 const getRawSnapshot = async () => await this.page.locator('html').innerHTML()
                 const reference_1 = await getRawSnapshot()
-                await this.page.waitForTimeout(1000)
+                await this.page.waitForTimeout(500)
                 const reference_2 = await getRawSnapshot()
                 const difference = reference_1 !== reference_2
                 return difference ? 'not stable' : 'stable'
@@ -147,50 +148,78 @@ export class BrowserTool implements OpenAITool {
         }
     }
 
-    private async navigateToUrl(url: string) {
+    private async wrapWithTracker(action: () => Promise<any>): Promise<string> {
+        const tracker = new TransientStateTracker(this.page)
+        await tracker.start()
         try {
-            if (!url) {
-                throw new Error(`valid URL is required for ${BrowserTool.TOOL_NAVIGATE} but received: '${url}'`)
+            const actionResult = await action()
+            if (typeof actionResult === 'string' && actionResult.startsWith('failed to')) {
+                await tracker.stop()
+                return actionResult
             }
-            await this.page.goto(url)
-            return this.captureSnapshot()
+            const snapshot = await this.captureSnapshot()
+            await tracker.stop()
+            const formattedTimeline = tracker.formatTimeline()
+            return formattedTimeline ? `${formattedTimeline}\n${snapshot}` : snapshot
         } catch (error) {
-            throw new Error(`Failed to navigate to URL ${url}:\n${error}`)
+            await tracker.stop()
+            throw error
         }
     }
 
-    private async clickElement(ref: string) {
-        try {
-            await this.page.click(`aria-ref=${ref}`)
-            return this.captureSnapshot()
-        } catch (error) {
-            logger.error(`error clicking element with ref '${ref}' due to:\n${error}`)
-            return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
-        }
+    private async navigateToUrl(url: string) {
+        return this.wrapWithTracker(async () => {
+            try {
+                if (!url) {
+                    throw new Error(`valid URL is required for ${BrowserTool.TOOL_NAVIGATE} but received: '${url}'`)
+                }
+                await this.page.goto(url)
+            } catch (error) {
+                throw new Error(`Failed to navigate to URL ${url}:\n${error}`)
+            }
+        })
+    }
+
+    private async clickElement(ref: string, hover: boolean = false) {
+        return this.wrapWithTracker(async () => {
+            try {
+                if (hover) {
+                    await this.page.hover(`aria-ref=${ref}`)
+                } else {
+                    await this.page.click(`aria-ref=${ref}`)
+                }
+            } catch (error) {
+                logger.error(`error clicking element with ref '${ref}' due to:\n${error}`)
+                return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
+            }
+        })
     }
 
     private async typeInElement(ref: string, text: string) {
-        try {
-            if (!ref || !text) {
-                throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
+        return this.wrapWithTracker(async () => {
+            try {
+                if (!ref || !text) {
+                    throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
+                }
+                await this.page.locator(`aria-ref=${ref}`).clear()
+                await this.page.locator(`aria-ref=${ref}`).pressSequentially(text, { delay: 50 })
+            } catch (error) {
+                logger.error(`error typing text '${text}' in element with ref '${ref}' due to:\n${error}`)
+                return `failed to type text '${text}' in element with ref '${ref}':\n${error}\n try with different element type or ref`
             }
-            await this.page.locator(`aria-ref=${ref}`).pressSequentially(text, { delay: 50 })
-            return this.captureSnapshot()
-        } catch (error) {
-            logger.error(`error typing text '${text}' in element with ref '${ref}' due to:\n${error}`)
-            return `failed to type text '${text}' in element with ref '${ref}':\n${error}\n try with different element type or ref`
-        }
+        })
     }
 
     private async pressKey(key: string) {
-        try {
-            if (!key) {
-                throw new Error(`'key' is required for ${BrowserTool.TOOL_PRESS_KEY} but received: '${key}'`)
+        return this.wrapWithTracker(async () => {
+            try {
+                if (!key) {
+                    throw new Error(`'key' is required for ${BrowserTool.TOOL_PRESS_KEY} but received: '${key}'`)
+                }
+                await this.page.keyboard.press(key)
+            } catch (error) {
+                throw new Error(`Failed to press key '${key}':\n${error}`)
             }
-            await this.page.keyboard.press(key)
-            return this.captureSnapshot()
-        } catch (error) {
-            throw new Error(`Failed to press key '${key}':\n${error}`)
-        }
+        })
     }
 }

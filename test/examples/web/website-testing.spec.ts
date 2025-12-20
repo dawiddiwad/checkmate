@@ -60,13 +60,10 @@ test.describe('single-step flows - quick examples', async () => {
         await test.step('the catcher in the rye availability', async () => {
             await ai.run({
                 action: `
-                Navigate to https://www.nypl.org. Search for 'The Catcher in the Rye.' 
-                Check if it's available at any physical branch's bookshelf. 
-                If yes, provide the location. 
-                If not, check if an e-book version is available. 
-                If neither, tell the user they're out of luck.`,
+                Navigate to https://www.nypl.org. 
+                Search for 'The Catcher in the Rye.`,
                 expect: `
-                Successfully navigated the NYPL website and searched for 'The Catcher in the Rye'.`
+                'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`
             })
         })
     })
@@ -175,14 +172,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         await test.step('Subscribe with email', async () => {
             await ai.run({
                 action: `Enter email address 'testsubscriber@example.com' in the subscription input field and click the arrow button to submit.`,
-                expect: `Subscription form is submitted`
-            })
-        })
-
-        await test.step('Verify subscription success message', async () => {
-            await ai.run({
-                action: `Verify that the success message 'You have been successfully subscribed!' is displayed.`,
-                expect: `Success message 'You have been successfully subscribed!' is visible`
+                expect: `Subscription form is submitted and message 'You have been successfully subscribed!' was displayed for at least 1 second`
             })
         })
     })
@@ -212,14 +202,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         await test.step('Subscribe with email', async () => {
             await ai.run({
                 action: `Enter email address 'cartsubscriber@example.com' in the subscription input field and click the arrow button to submit.`,
-                expect: `Subscription form is submitted`
-            })
-        })
-
-        await test.step('Verify subscription success message', async () => {
-            await ai.run({
-                action: `Verify that the success message 'You have been successfully subscribed!' is displayed.`,
-                expect: `Success message 'You have been successfully subscribed!' is visible`
+                expect: `Subscription form is submitted and message 'You have been successfully subscribed!' was displayed for at least 1 second`
             })
         })
     })
@@ -300,7 +283,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
         await test.step('Add product to cart', async () => {
             await ai.run({
                 action: `Click the 'Add to cart' button.`,
-                expect: `Product is added to cart with the specified quantity`
+                expect: `'Your Product has been added to the cart' message is displayed`
             })
         })
 
@@ -322,29 +305,20 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
 
         await test.step('Add products to cart', async () => {
             await ai.run({
-                action: `Click on the 'Products' button, then hover over a product and click 'Add to cart'. Click 'Continue Shopping' and add another product to cart.`,
-                expect: `Multiple products are added to cart`
-            })
-        })
-
-        await test.step('Navigate to cart', async () => {
-            await ai.run({
-                action: `Click on the 'Cart' button in the navigation menu.`,
-                expect: `Cart page is displayed with added products`
+                action: `Click on the 'Products' button and select to view first product details.
+                Click 'Add to cart' button and then click 'Continue Shopping' button.
+                Click on the 'Products' button and proceed to another product details.
+                Click 'Add to cart' button and then click 'Continue Shopping' button.
+                Proceed to the Cart view.
+                .`,
+                expect: `Cart page is displayed with 2 products`
             })
         })
 
         await test.step('Remove product from cart', async () => {
             await ai.run({
                 action: `Click the 'X' button (remove icon) corresponding to the first product in the cart.`,
-                expect: `Product is removed from the cart`
-            })
-        })
-
-        await test.step('Verify product removal', async () => {
-            await ai.run({
-                action: `Verify that the removed product is no longer displayed in the cart.`,
-                expect: `The removed product is not visible in the cart anymore`
+                expect: `Product is removed and only one remains in the cart`
             })
         })
     })
@@ -487,14 +461,7 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
                 - Email: 'johndoe@example.com'
                 - Review: 'This is a great product! Highly recommend it for quality and value.'
                 Then click the 'Submit' button.`,
-                expect: `Review form is submitted`
-            })
-        })
-
-        await test.step('Verify review success message', async () => {
-            await ai.run({
-                action: `Verify that the success message 'Thank you for your review.' is displayed.`,
-                expect: `Success message 'Thank you for your review.' is visible`
+                expect: `Review form is submitted and success message 'Thank you for your review.' was displayed for at least 2 seconds`
             })
         })
     })
@@ -509,28 +476,14 @@ test.describe('multi-step flow - Automation Exercise Regression', async () => {
 
         await test.step('Scroll to recommended items section', async () => {
             await ai.run({
-                action: `Scroll down to the bottom of the home page to find the 'RECOMMENDED ITEMS' section.`,
+                action: `Click on 'RECOMMENDED ITEMS' section.`,
                 expect: `'RECOMMENDED ITEMS' section is visible`
             })
         })
 
         await test.step('Add recommended product to cart', async () => {
             await ai.run({
-                action: `Click on the 'Add To Cart' button for one of the recommended products.`,
-                expect: `Product is added to cart and a modal appears`
-            })
-        })
-
-        await test.step('View cart', async () => {
-            await ai.run({
-                action: `Click the 'View Cart' button.`,
-                expect: `User is navigated to the cart page`
-            })
-        })
-
-        await test.step('Verify recommended product in cart', async () => {
-            await ai.run({
-                action: `Verify that the recommended product is displayed in the cart page.`,
+                action: `Hover over for one of the recommended products click the 'Add to cart' button on the overlay. Then click on the 'View Cart' button.`,
                 expect: `The recommended product is visible in the cart`
             })
         })

@@ -76,7 +76,7 @@ describe('BrowserTool', () => {
 
         it('should include click tool declaration', () => {
             const clickTool = browserTool.functionDeclarations.find(
-                (tool) => tool.function.name === BrowserTool.TOOL_CLICK
+                (tool) => tool.function.name === BrowserTool.TOOL_CLICK_OR_HOVER
             )
             expect(clickTool).toBeDefined()
             expect(clickTool?.function?.parameters?.required).toContain('ref')
@@ -180,7 +180,7 @@ describe('BrowserTool', () => {
     describe('click', () => {
         it('should click element and capture snapshot', async () => {
             const toolCall: ToolCall = {
-                name: BrowserTool.TOOL_CLICK,
+                name: BrowserTool.TOOL_CLICK_OR_HOVER,
                 arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
             }
 
@@ -201,7 +201,7 @@ describe('BrowserTool', () => {
             trackerMocks.formatTimelineMock.mockReturnValueOnce('timeline: click flow')
 
             const toolCall: ToolCall = {
-                name: BrowserTool.TOOL_CLICK,
+                name: BrowserTool.TOOL_CLICK_OR_HOVER,
                 arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
             }
 
@@ -214,7 +214,7 @@ describe('BrowserTool', () => {
             vi.mocked(mockPage.click).mockRejectedValue(new Error('Element not found'))
 
             const toolCall: ToolCall = {
-                name: BrowserTool.TOOL_CLICK,
+                name: BrowserTool.TOOL_CLICK_OR_HOVER,
                 arguments: { ref: 'e999', name: 'Button', hover: false, goal: 'click' },
             }
 
@@ -329,7 +329,7 @@ describe('BrowserTool', () => {
     describe('tool name constants', () => {
         it('should have correct tool name constants', () => {
             expect(BrowserTool.TOOL_NAVIGATE).toBe('browser_navigate')
-            expect(BrowserTool.TOOL_CLICK).toBe('browser_click')
+            expect(BrowserTool.TOOL_CLICK_OR_HOVER).toBe('browser_click')
             expect(BrowserTool.TOOL_TYPE).toBe('browser_type')
             expect(BrowserTool.TOOL_PRESS_KEY).toBe('browser_press_key')
             expect(BrowserTool.TOOL_SNAPSHOT).toBe('browser_snapshot')

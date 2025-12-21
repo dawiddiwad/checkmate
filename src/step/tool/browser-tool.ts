@@ -7,7 +7,7 @@ import { TransientStateTracker } from "./transient-state-tracker"
 
 export class BrowserTool implements OpenAITool {
     static readonly TOOL_NAVIGATE = 'browser_navigate'
-    static readonly TOOL_CLICK = 'browser_click'
+    static readonly TOOL_CLICK_OR_HOVER = 'browser_click_or_hover'
     static readonly TOOL_TYPE = 'browser_type'
     static readonly TOOL_PRESS_KEY = 'browser_press_key'
     static readonly TOOL_SNAPSHOT = 'browser_snapshot'
@@ -39,14 +39,14 @@ export class BrowserTool implements OpenAITool {
             {
                 type: 'function',
                 function: {
-                    name: BrowserTool.TOOL_CLICK,
+                    name: BrowserTool.TOOL_CLICK_OR_HOVER,
                     description: 'Click or hover a specified element reference in the browser',
                     parameters: {
                         type: 'object',
                         properties: {
                             ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
                             name: { type: 'string', description: 'name of the element to click or hover, example: Submit Button' },
-                            hover: { type: 'boolean', description: 'If true, hover the element instead of clicking it' },
+                            hover: { type: 'boolean', description: 'If true: hover the element, if false: click element' },
                             goal: { type: 'string', description: 'The goal or purpose of clicking this element' }
                         },
                         additionalProperties: false,
@@ -63,13 +63,24 @@ export class BrowserTool implements OpenAITool {
                     parameters: {
                         type: 'object',
                         properties: {
-                            ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
-                            text: { type: 'string', description: 'The text to type into the element, example: Hello World' },
-                            name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
+                            elements: {
+                                type: 'array',
+                                items: {
+                                    type: 'object', properties: {
+                                        ref: { type: 'string', description: 'ref value of the element from the snapshot, example: e123' },
+                                        name: { type: 'string', description: 'name of the element to type into, example: Username Input' },
+                                        text: { type: 'string', description: 'The text to type into the element, example: Hello World' },
+                                        clear: { type: 'boolean', description: 'If true, clears existing text before typing. Use false with dropdowns and selects' }
+                                    },
+                                    additionalProperties: false,
+                                    required: ['ref', 'text', 'name', 'clear']
+                                },
+                                description: 'array of elements to type into'
+                            },
                             goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
                         },
                         additionalProperties: false,
-                        required: ['ref', 'text', 'name', 'goal']
+                        required: ['elements', 'goal']
                     },
                     strict: true
                 }
@@ -118,10 +129,10 @@ export class BrowserTool implements OpenAITool {
             return this.navigateToUrl(specified.arguments?.url as string)
         } else if (specified.name === BrowserTool.TOOL_SNAPSHOT) {
             return this.captureSnapshot()
-        } else if (specified.name === BrowserTool.TOOL_CLICK) {
+        } else if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
             return this.clickElement(specified.arguments?.ref as string)
         } else if (specified.name === BrowserTool.TOOL_TYPE) {
-            return this.typeInElement(specified.arguments?.ref as string, specified.arguments?.text as string)
+            return this.typeInElement(specified.arguments?.elements as { ref: string, text: string, name: string, clear: boolean }[])
         } else if (specified.name === BrowserTool.TOOL_PRESS_KEY) {
             return this.pressKey(specified.arguments?.key as string)
         } else {
@@ -195,17 +206,21 @@ export class BrowserTool implements OpenAITool {
         })
     }
 
-    private async typeInElement(ref: string, text: string) {
+    private async typeInElement(elements: { ref: string, text: string, name: string, clear: boolean }[]) {
         return this.wrapWithTracker(async () => {
-            try {
-                if (!ref || !text) {
-                    throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${ref}' and text='${text}'`)
+            for (const element of elements) {
+                try {
+                    if (!element.ref || !element.text) {
+                        throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${element.ref}' and text='${element.text}'`)
+                    }
+                    if (element.clear) {
+                        await this.page.locator(`aria-ref=${element.ref}`).clear()
+                    }
+                    await this.page.locator(`aria-ref=${element.ref}`).pressSequentially(element.text, { delay: 50 })
+                } catch (error) {
+                    logger.error(`error typing text '${element.text}' in element with ref '${element.ref}' due to:\n${error}`)
+                    return `failed to type text '${element.text}' in element with ref '${element.ref}':\n${error}\n try with different element type or ref`
                 }
-                await this.page.locator(`aria-ref=${ref}`).clear()
-                await this.page.locator(`aria-ref=${ref}`).pressSequentially(text, { delay: 50 })
-            } catch (error) {
-                logger.error(`error typing text '${text}' in element with ref '${ref}' due to:\n${error}`)
-                return `failed to type text '${text}' in element with ref '${ref}':\n${error}\n try with different element type or ref`
             }
         })
     }

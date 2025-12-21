@@ -22,6 +22,7 @@ export class OpenAIClient {
     private readonly toolRegistry: ToolRegistry
     private readonly RETRYABLE_STATUS = [408, 409, 429, 500, 502, 503, 504, LoopDetectedError.STATUS]
     private readonly responseProcessor: ResponseProcessor
+    readonly page: Page
     step: Step
     stepStatusCallback: StepStatusCallback
     temperature: number
@@ -31,6 +32,7 @@ export class OpenAIClient {
         this.toolRegistry = toolRegistry
         this.responseProcessor = new ResponseProcessor({ page, openaiClient: this })
         this.temperature = this.configurationManager.getTemperature()
+        this.page = page
     }
 
     async initialize(step: Step, stepStatusCallback: StepStatusCallback): Promise<void> {
@@ -156,7 +158,7 @@ export class OpenAIClient {
             } catch (error: any) {
                 lastError = error
 
-                if (!this.isRetryable(error) || attempt === maxRetries) {
+                if ((!this.isRetryable(error) && !this.isToolError(error)) || attempt === maxRetries) {
                     throw this.enhanceError(error, attempt, maxRetries)
                 }
 
@@ -170,6 +172,7 @@ export class OpenAIClient {
                 const delay = retryAfter ? retryAfter * 1000 : this.calculateBackoff(attempt)
 
                 logger.warn(`status: ${this.getStatus(error)} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`)
+                logger.debug(`retryable error details:\n${JSON.stringify(error, null, 2)}`)
                 await this.sleep(delay)
             }
         }
@@ -227,5 +230,14 @@ export class OpenAIClient {
 
         let details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
         return new Error(details)
+    }
+
+    private isToolError(error: any): boolean {
+        const errorAsString = JSON.stringify(error, null, 2).toLowerCase()
+        if (this.getStatus(error) === 400 && errorAsString.includes('tool')) {
+            logger.warn('tool call error detected [400]')
+            this.addUserMessage(`you did not call a tool or called it incorrectly, try again and always only call a tool with correct parameters to proceed with the step.`)
+            return true
+        } else return false
     }
 }

@@ -20,7 +20,6 @@
 import { Page, Dialog, ConsoleMessage, Frame } from "@playwright/test"
 import { logger } from "../openai/openai-test-manager"
 
-// Tracks transient state changes in a web page by observing DOM mutations, dialog appearances, console errors, and navigations.
 export class TransientStateTracker {
     private timeline: string[] = []
     private startTime: number = 0
@@ -48,7 +47,6 @@ export class TransientStateTracker {
     private handleConsole = (msg: ConsoleMessage) => {
         const text = msg.text()
         
-        // Check if this is a mutation report from our observer
         if (text.startsWith(TransientStateTracker.LOG_PREFIX)) {
             if (!this.isTracking) return
             const elapsed = Date.now() - this.startTime
@@ -59,7 +57,6 @@ export class TransientStateTracker {
             return
         }
         
-        // Also capture console errors
         if (msg.type() === 'error') {
             const elapsed = Date.now() - this.startTime
             this.timeline.push(`[${elapsed}ms] Console Error: ${text.substring(0, 200)}`)
@@ -80,7 +77,6 @@ export class TransientStateTracker {
     private async setupMutationObserver() {
         const logPrefix = TransientStateTracker.LOG_PREFIX
         
-        // Use page.evaluate() instead of addScriptTag to bypass CSP restrictions
         await this.page.evaluate((LOG_PREFIX: string) => {
             const win = window as any
             
@@ -88,7 +84,7 @@ export class TransientStateTracker {
                 win.__checkmate_mutation_observer.disconnect()
             }
             
-            function getSemanticText(node: Node): string {
+            function getTextContent(node: Node): string {
                 if (node.nodeType === 3) return (node.textContent || "").trim()
                 if (node.nodeType === 1) {
                     return (node.textContent || "").trim().replace(/\s+/g, ' ')
@@ -96,61 +92,87 @@ export class TransientStateTracker {
                 return ""
             }
             
+            function isSkippableElement(el: HTMLElement | null): boolean {
+                if (!el) return false
+                return el.tagName === 'INS' || el.tagName === 'IFRAME' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE'
+            }
+            
             const observer = new MutationObserver((mutations) => {
+                const appearedTexts: string[] = []
+                const disappearedTexts: string[] = []
+                const attributeChanges: string[] = []
+                
                 mutations.forEach((mutation) => {
                     try {
                         if (mutation.type === 'attributes') {
                             const el = mutation.target as HTMLElement
-                            const text = getSemanticText(el)
-                            const roleOrTag = el.getAttribute('role') || el.tagName.toLowerCase()
-                            const id = el.id ? '#' + el.id : ''
+                            if (isSkippableElement(el)) return
+                            
+                            const text = getTextContent(el)
+                            if (!text || text.length <= 2) return
+                            
                             const attrName = mutation.attributeName!
                             const oldValue = mutation.oldValue || ''
                             const newValue = el.getAttribute(attrName) || ''
                             
-                            // Skip noisy ad-related changes
-                            if (attrName === 'style' && !id) return
-                            if (el.tagName === 'INS' || el.tagName === 'IFRAME') return
+                            let changes = ''
+                            if (attrName === 'class') {
+                                const oldClasses = oldValue.split(' ').filter(c => c)
+                                const newClasses = newValue.split(' ').filter(c => c)
+                                const added = newClasses.filter(c => !oldClasses.includes(c))
+                                const removed = oldClasses.filter(c => !newClasses.includes(c))
+                                if (added.length) changes += '+' + added.join(',')
+                                if (removed.length) changes += (changes ? ' ' : '') + '-' + removed.join(',')
+                            } else {
+                                if (!oldValue && newValue) changes = `+${attrName}=${newValue.substring(0, 50)}`
+                                else if (oldValue && !newValue) changes = `-${attrName}`
+                                else changes = `~${attrName}=${newValue.substring(0, 50)}`
+                            }
                             
-                            if (text && text.length > 2) {
-                                let changeDesc = ''
-                                if (attrName === 'class') {
-                                    const oldClasses = oldValue.split(' ').filter(c => c)
-                                    const newClasses = newValue.split(' ').filter(c => c)
-                                    const added = newClasses.filter(c => !oldClasses.includes(c))
-                                    const removed = oldClasses.filter(c => !newClasses.includes(c))
-                                    if (added.length) changeDesc += '+' + added.join(',')
-                                    if (removed.length) changeDesc += (changeDesc ? ' ' : '') + '-' + removed.join(',')
-                                } else {
-                                    changeDesc = `"${oldValue.substring(0, 30)}" → "${newValue.substring(0, 30)}"`
-                                }
-                                console.log(`${LOG_PREFIX}Attribute "${attrName}" changed (${changeDesc}): "${text.substring(0, 100)}" (Role: ${roleOrTag}${id})`)
+                            if (changes) {
+                                attributeChanges.push(`${text.substring(0, 100)} [${changes}]`)
                             }
                         } else if (mutation.type === 'childList') {
                             mutation.addedNodes.forEach((node) => {
-                                const text = getSemanticText(node)
+                                const el = node.nodeType === 1 ? node as HTMLElement : node.parentElement
+                                if (isSkippableElement(el)) return
+                                
+                                if (el && typeof el.checkVisibility === 'function' && !el.checkVisibility()) return
+                                
+                                const text = getTextContent(node)
                                 if (text && text.length > 2) {
-                                    const el = node.nodeType === 1 ? node as HTMLElement : (node.parentElement as HTMLElement)
-                                    const role = el ? (el.getAttribute('role') || el.tagName.toLowerCase()) : 'text'
-                                    const id = (el && el.id) ? '#' + el.id : ''
-                                    // Skip ad-related elements
-                                    if (el && (el.tagName === 'INS' || el.tagName === 'IFRAME')) return
-                                    console.log(`${LOG_PREFIX}Element appeared: "${text.substring(0, 150)}" (Role: ${role}${id})`)
+                                    appearedTexts.push(text.substring(0, 100))
                                 }
                             })
                             mutation.removedNodes.forEach((node) => {
-                                const text = getSemanticText(node)
+                                const el = node.nodeType === 1 ? node as HTMLElement : node.parentElement
+                                if (isSkippableElement(el)) return
+                                
+                                const text = getTextContent(node)
                                 if (text && text.length > 2) {
-                                    const el = node.nodeType === 1 ? node as HTMLElement : (node.parentElement as HTMLElement)
-                                    const role = el ? (el.getAttribute('role') || el.tagName.toLowerCase()) : 'text'
-                                    const id = (el && el.id) ? '#' + el.id : ''
-                                    if (el && (el.tagName === 'INS' || el.tagName === 'IFRAME')) return
-                                    console.log(`${LOG_PREFIX}Element disappeared: "${text.substring(0, 150)}" (Role: ${role}${id})`)
+                                    disappearedTexts.push(text.substring(0, 100))
                                 }
                             })
                         }
                     } catch(e) { }
                 })
+                
+                const uniqueAppeared = [...new Set(appearedTexts)]
+                const uniqueDisappeared = [...new Set(disappearedTexts)]
+                const uniqueAttrChanges = [...new Set(attributeChanges)]
+                
+                if (uniqueAppeared.length > 0) {
+                    const combined = uniqueAppeared.join(' | ').substring(0, 300)
+                    console.log(`${LOG_PREFIX}Appeared: ${combined}`)
+                }
+                if (uniqueDisappeared.length > 0) {
+                    const combined = uniqueDisappeared.join(' | ').substring(0, 300)
+                    console.log(`${LOG_PREFIX}Disappeared: ${combined}`)
+                }
+                if (uniqueAttrChanges.length > 0) {
+                    const combined = uniqueAttrChanges.join(' | ').substring(0, 400)
+                    console.log(`${LOG_PREFIX}Changed: ${combined}`)
+                }
             })
             
             observer.observe(document, {

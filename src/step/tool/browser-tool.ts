@@ -75,7 +75,8 @@ export class BrowserTool implements OpenAITool {
                                     additionalProperties: false,
                                     required: ['ref', 'text', 'name', 'clear']
                                 },
-                                description: 'array of elements to type into'
+                                description: 'array of elements to type into',
+                                minItems: 1
                             },
                             goal: { type: 'string', description: 'The goal or purpose of typing this text into the element' }
                         },
@@ -208,6 +209,9 @@ export class BrowserTool implements OpenAITool {
 
     private async typeInElement(elements: { ref: string, text: string, name: string, clear: boolean }[]) {
         return this.wrapWithTracker(async () => {
+            if (Array.isArray(elements) === false || elements.length === 0) {
+                return `failed to type text. Invalid parameters received, please adhere strictly to tool parameters. Received: ${elements}`
+            }
             for (const element of elements) {
                 try {
                     if (!element.ref || !element.text) {

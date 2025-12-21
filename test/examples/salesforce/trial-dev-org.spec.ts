@@ -44,9 +44,9 @@ test.describe('trial dev org', async () => {
         await test.step('Open Sales App from App Launcher', async () => {
             await ai.run({
             action: `
-            Click the App Launcher icon (nine dots) in the top left corner,
-            type 'Sales' into the App Launcher search bar,
-            click on app that is named exactly the 'Sales' app from the results`,
+            Click the App Launcher icon (nine dots) in the top left corner.
+            Type 'Sales' into the App Launcher 'Search apps and items' search bar.
+            Click on the app that is named exactly the 'Sales' app from the results.`,
             expect: `
             Sales app opens successfully in Lightning context.`
             })

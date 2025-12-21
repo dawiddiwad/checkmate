@@ -100,7 +100,10 @@ vi.mock('../step/tool/browser-tool', () => ({
 }))
 
 vi.mock('../step/tool/page-snapshot', () => ({
-    PageSnapshot: { lastSnapshot: null },
+    PageSnapshot: class {
+        static lastSnapshot = null
+        get = vi.fn().mockResolvedValue('mocked snapshot')
+    },
 }))
 
 describe('Simple step execution integration', () => {

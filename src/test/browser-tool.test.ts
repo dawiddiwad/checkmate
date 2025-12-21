@@ -90,9 +90,7 @@ describe('BrowserTool', () => {
                 (tool) => tool.function.name === BrowserTool.TOOL_TYPE
             )
             expect(typeTool).toBeDefined()
-            expect(typeTool?.function?.parameters?.required).toContain('ref')
-            expect(typeTool?.function?.parameters?.required).toContain('text')
-            expect(typeTool?.function?.parameters?.required).toContain('name')
+            expect(typeTool?.function?.parameters?.required).toContain('elements')
             expect(typeTool?.function?.parameters?.required).toContain('goal')
         })
 
@@ -229,7 +227,10 @@ describe('BrowserTool', () => {
         it('should type text into element and capture snapshot', async () => {
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_TYPE,
-                arguments: { ref: 'e456', text: 'Hello World', name: 'Input', goal: 'enter text' },
+                arguments: { 
+                    elements: [{ ref: 'e456', text: 'Hello World', name: 'Input', clear: true }], 
+                    goal: 'enter text' 
+                },
             }
 
             const result = await browserTool.call(toolCall)
@@ -243,7 +244,10 @@ describe('BrowserTool', () => {
         it('should return error message when ref is missing', async () => {
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_TYPE,
-                arguments: { ref: '', text: 'Hello', name: 'Input', goal: 'enter text' },
+                arguments: { 
+                    elements: [{ ref: '', text: 'Hello', name: 'Input', clear: true }], 
+                    goal: 'enter text' 
+                },
             }
 
             const result = await browserTool.call(toolCall)
@@ -254,7 +258,10 @@ describe('BrowserTool', () => {
         it('should return error message when text is missing', async () => {
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_TYPE,
-                arguments: { ref: 'e456', text: '', name: 'Input', goal: 'enter text' },
+                arguments: { 
+                    elements: [{ ref: 'e456', text: '', name: 'Input', clear: true }], 
+                    goal: 'enter text' 
+                },
             }
 
             const result = await browserTool.call(toolCall)
@@ -264,12 +271,16 @@ describe('BrowserTool', () => {
 
         it('should return error message on type failure', async () => {
             vi.mocked(mockPage.locator).mockReturnValue({
+                clear: vi.fn().mockResolvedValue(undefined),
                 pressSequentially: vi.fn().mockRejectedValue(new Error('Element not found')),
             } as any)
 
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_TYPE,
-                arguments: { ref: 'e999', text: 'test', name: 'Input', goal: 'enter text' },
+                arguments: { 
+                    elements: [{ ref: 'e999', text: 'test', name: 'Input', clear: true }], 
+                    goal: 'enter text' 
+                },
             }
 
             const result = await browserTool.call(toolCall)
@@ -329,7 +340,7 @@ describe('BrowserTool', () => {
     describe('tool name constants', () => {
         it('should have correct tool name constants', () => {
             expect(BrowserTool.TOOL_NAVIGATE).toBe('browser_navigate')
-            expect(BrowserTool.TOOL_CLICK_OR_HOVER).toBe('browser_click')
+            expect(BrowserTool.TOOL_CLICK_OR_HOVER).toBe('browser_click_or_hover')
             expect(BrowserTool.TOOL_TYPE).toBe('browser_type')
             expect(BrowserTool.TOOL_PRESS_KEY).toBe('browser_press_key')
             expect(BrowserTool.TOOL_SNAPSHOT).toBe('browser_snapshot')

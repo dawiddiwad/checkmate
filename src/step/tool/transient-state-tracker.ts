@@ -18,6 +18,7 @@
  * ```
  */
 import { Page, Dialog, ConsoleMessage, Frame } from "@playwright/test"
+import { logger } from "../openai/openai-test-manager"
 
 // Tracks transient state changes in a web page by observing DOM mutations, dialog appearances, console errors, and navigations.
 export class TransientStateTracker {
@@ -68,11 +69,10 @@ export class TransientStateTracker {
     private handleNavigation = (frame: Frame) => {
         if (frame === this.page.mainFrame()) {
             const elapsed = Date.now() - this.startTime
+            this.timeline = []
             this.timeline.push(`[${elapsed}ms] Navigated to: ${frame.url()}`)
             if (this.isTracking) {
-                setTimeout(() => {
-                    this.setupMutationObserver().catch(() => { })
-                }, 150)
+                this.stop().catch(() => { })
             }
         }
     }
@@ -80,92 +80,88 @@ export class TransientStateTracker {
     private async setupMutationObserver() {
         const logPrefix = TransientStateTracker.LOG_PREFIX
         
-        // Use addScriptTag with inline content - uses console.log to communicate back
-        const scriptContent = `
-            (function() {
-                if (window.__checkmate_mutation_observer) {
-                    window.__checkmate_mutation_observer.disconnect();
+        // Use page.evaluate() instead of addScriptTag to bypass CSP restrictions
+        await this.page.evaluate((LOG_PREFIX: string) => {
+            const win = window as any
+            
+            if (win.__checkmate_mutation_observer) {
+                win.__checkmate_mutation_observer.disconnect()
+            }
+            
+            function getSemanticText(node: Node): string {
+                if (node.nodeType === 3) return (node.textContent || "").trim()
+                if (node.nodeType === 1) {
+                    return (node.textContent || "").trim().replace(/\s+/g, ' ')
                 }
-                
-                var LOG_PREFIX = "${logPrefix}";
-                
-                function getSemanticText(node) {
-                    if (node.nodeType === 3) return (node.textContent || "").trim();
-                    if (node.nodeType === 1) {
-                        return (node.textContent || "").trim().replace(/\\s+/g, ' ');
-                    }
-                    return "";
-                }
-                
-                var observer = new MutationObserver(function(mutations) {
-                    mutations.forEach(function(mutation) {
-                        try {
-                            if (mutation.type === 'attributes') {
-                                var el = mutation.target;
-                                var text = getSemanticText(el);
-                                var roleOrTag = el.getAttribute('role') || el.tagName.toLowerCase();
-                                var id = el.id ? '#' + el.id : '';
-                                var attrName = mutation.attributeName;
-                                var oldValue = mutation.oldValue || '';
-                                var newValue = el.getAttribute(attrName) || '';
-                                
-                                // Skip noisy ad-related changes
-                                if (attrName === 'style' && !id) return;
-                                if (el.tagName === 'INS' || el.tagName === 'IFRAME') return;
-                                
-                                if (text && text.length > 2) {
-                                    var changeDesc = '';
-                                    if (attrName === 'class') {
-                                        var oldClasses = oldValue.split(' ').filter(function(c) { return c; });
-                                        var newClasses = newValue.split(' ').filter(function(c) { return c; });
-                                        var added = newClasses.filter(function(c) { return oldClasses.indexOf(c) === -1; });
-                                        var removed = oldClasses.filter(function(c) { return newClasses.indexOf(c) === -1; });
-                                        if (added.length) changeDesc += '+' + added.join(',');
-                                        if (removed.length) changeDesc += (changeDesc ? ' ' : '') + '-' + removed.join(',');
-                                    } else {
-                                        changeDesc = '"' + oldValue.substring(0, 30) + '" → "' + newValue.substring(0, 30) + '"';
-                                    }
-                                    console.log(LOG_PREFIX + 'Attribute "' + attrName + '" changed (' + changeDesc + '): "' + text.substring(0, 100) + '" (Role: ' + roleOrTag + id + ')');
+                return ""
+            }
+            
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    try {
+                        if (mutation.type === 'attributes') {
+                            const el = mutation.target as HTMLElement
+                            const text = getSemanticText(el)
+                            const roleOrTag = el.getAttribute('role') || el.tagName.toLowerCase()
+                            const id = el.id ? '#' + el.id : ''
+                            const attrName = mutation.attributeName!
+                            const oldValue = mutation.oldValue || ''
+                            const newValue = el.getAttribute(attrName) || ''
+                            
+                            // Skip noisy ad-related changes
+                            if (attrName === 'style' && !id) return
+                            if (el.tagName === 'INS' || el.tagName === 'IFRAME') return
+                            
+                            if (text && text.length > 2) {
+                                let changeDesc = ''
+                                if (attrName === 'class') {
+                                    const oldClasses = oldValue.split(' ').filter(c => c)
+                                    const newClasses = newValue.split(' ').filter(c => c)
+                                    const added = newClasses.filter(c => !oldClasses.includes(c))
+                                    const removed = oldClasses.filter(c => !newClasses.includes(c))
+                                    if (added.length) changeDesc += '+' + added.join(',')
+                                    if (removed.length) changeDesc += (changeDesc ? ' ' : '') + '-' + removed.join(',')
+                                } else {
+                                    changeDesc = `"${oldValue.substring(0, 30)}" → "${newValue.substring(0, 30)}"`
                                 }
-                            } else if (mutation.type === 'childList') {
-                                mutation.addedNodes.forEach(function(node) {
-                                    var text = getSemanticText(node);
-                                    if (text && text.length > 2) {
-                                        var el = node.nodeType === 1 ? node : node.parentElement;
-                                        var role = el ? (el.getAttribute('role') || el.tagName.toLowerCase()) : 'text';
-                                        var id = (el && el.id) ? '#' + el.id : '';
-                                        // Skip ad-related elements
-                                        if (el && (el.tagName === 'INS' || el.tagName === 'IFRAME')) return;
-                                        console.log(LOG_PREFIX + 'Element appeared: "' + text.substring(0, 150) + '" (Role: ' + role + id + ')');
-                                    }
-                                });
-                                mutation.removedNodes.forEach(function(node) {
-                                    var text = getSemanticText(node);
-                                    if (text && text.length > 2) {
-                                        var el = node.nodeType === 1 ? node : node.parentElement;
-                                        var role = el ? (el.getAttribute('role') || el.tagName.toLowerCase()) : 'text';
-                                        var id = (el && el.id) ? '#' + el.id : '';
-                                        if (el && (el.tagName === 'INS' || el.tagName === 'IFRAME')) return;
-                                        console.log(LOG_PREFIX + 'Element disappeared: "' + text.substring(0, 150) + '" (Role: ' + role + id + ')');
-                                    }
-                                });
+                                console.log(`${LOG_PREFIX}Attribute "${attrName}" changed (${changeDesc}): "${text.substring(0, 100)}" (Role: ${roleOrTag}${id})`)
                             }
-                        } catch(e) { }
-                    });
-                });
-                
-                observer.observe(document, {
-                    childList: true,
-                    subtree: true,
-                    attributes: true,
-                    attributeOldValue: true
-                });
-                
-                window.__checkmate_mutation_observer = observer;
-            })();
-        `
-
-        await this.page.addScriptTag({ content: scriptContent }).catch(() => { })
+                        } else if (mutation.type === 'childList') {
+                            mutation.addedNodes.forEach((node) => {
+                                const text = getSemanticText(node)
+                                if (text && text.length > 2) {
+                                    const el = node.nodeType === 1 ? node as HTMLElement : (node.parentElement as HTMLElement)
+                                    const role = el ? (el.getAttribute('role') || el.tagName.toLowerCase()) : 'text'
+                                    const id = (el && el.id) ? '#' + el.id : ''
+                                    // Skip ad-related elements
+                                    if (el && (el.tagName === 'INS' || el.tagName === 'IFRAME')) return
+                                    console.log(`${LOG_PREFIX}Element appeared: "${text.substring(0, 150)}" (Role: ${role}${id})`)
+                                }
+                            })
+                            mutation.removedNodes.forEach((node) => {
+                                const text = getSemanticText(node)
+                                if (text && text.length > 2) {
+                                    const el = node.nodeType === 1 ? node as HTMLElement : (node.parentElement as HTMLElement)
+                                    const role = el ? (el.getAttribute('role') || el.tagName.toLowerCase()) : 'text'
+                                    const id = (el && el.id) ? '#' + el.id : ''
+                                    if (el && (el.tagName === 'INS' || el.tagName === 'IFRAME')) return
+                                    console.log(`${LOG_PREFIX}Element disappeared: "${text.substring(0, 150)}" (Role: ${role}${id})`)
+                                }
+                            })
+                        }
+                    } catch(e) { }
+                })
+            })
+            
+            observer.observe(document, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeOldValue: true
+            })
+            
+            win.__checkmate_mutation_observer = observer
+        }, logPrefix).catch(() => { })
     }
 
     async stop(): Promise<string[]> {
@@ -180,8 +176,8 @@ export class TransientStateTracker {
                 win.__checkmate_mutation_observer.disconnect()
                 delete win.__checkmate_mutation_observer
             }
-        }).catch(() => {
-            // Ignore errors if page navigated away or closed
+        }).catch((error) => {
+            logger.debug('failed to remove MutationObserver from page due to error:\n', JSON.stringify(error, null, 2))
         })
 
         return this.timeline

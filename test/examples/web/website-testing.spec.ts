@@ -7,8 +7,8 @@
  *  - Full AI mode: all steps via AI
  *  - Hybrid AI mode: some steps via AI, some via direct Playwright commands
  * 
- * Each test uses the `ai` fixture and `ai.run({ action, expect })` with small,
- * atomic steps for clarity and reliability.
+ * Each test uses the `ai` fixture and `ai.run({ action, expect })` 
+ * method to perform actions and verify expectations on the website.
  */
 import { test } from "../../fixtures/checkmate"
 

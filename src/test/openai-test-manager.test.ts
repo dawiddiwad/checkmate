@@ -75,8 +75,9 @@ vi.mock('../../src/step/openai/history-manager', () => {
 })
 
 vi.mock('../../src/step/tool/page-snapshot', () => ({
-    PageSnapshot: {
-        lastSnapshot: null,
+    PageSnapshot: class {
+        static lastSnapshot = null
+        get = vi.fn().mockResolvedValue('mocked snapshot')
     },
 }))
 

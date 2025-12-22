@@ -137,6 +137,14 @@ export class OpenAITokenPricing {
             case 'gemini-2.5-flash-lite':
             case 'gemini-2.5-flash-lite-preview-09-2025':
                 return this.roundToCents(0.10)
+            // Gemini 3 Flash Preview (fast, intelligent) — $0.50 input / $3.00 output
+            case 'gemini-3-flash-preview':
+            case 'gemini-3-flash':
+                return this.roundToCents(0.50)
+            // Gemini 3 Pro Image Preview uses the same text/image input pricing as Gemini 3 Pro
+            case 'gemini-3-pro-image-preview':
+            case 'gemini-3-pro-image':
+                return this.roundToCents(2.00)
             case 'gemini-2.0-flash':
                 return this.roundToCents(0.10)
             case 'gemini-2.0-flash-lite':
@@ -278,6 +286,14 @@ export class OpenAITokenPricing {
             case 'gemini-2.5-flash-lite':
             case 'gemini-2.5-flash-lite-preview-09-2025':
                 return this.roundToCents(0.40)
+            // Gemini 3 Flash Preview (fast, intelligent) — $0.50 input / $3.00 output
+            case 'gemini-3-flash-preview':
+            case 'gemini-3-flash':
+                return this.roundToCents(3.00)
+            // Gemini 3 Pro Image Preview: text output $12.00; image output pricing is $120 / 1M tokens (handled as token-based equivalent)
+            case 'gemini-3-pro-image-preview':
+            case 'gemini-3-pro-image':
+                return this.roundToCents(12.00)
             case 'gemini-2.0-flash':
                 return this.roundToCents(0.40)
             case 'gemini-2.0-flash-lite':

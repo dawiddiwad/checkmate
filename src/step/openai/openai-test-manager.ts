@@ -27,7 +27,7 @@ export class OpenAITestManager {
     }
 
     public async teardown() {
-
+        PageSnapshot.lastSnapshot = null
     }
 
     public async run(step: Step) {
@@ -54,9 +54,7 @@ class OpenAITestStep {
         this.logStepStart(step)
         try {
             await this.openaiClient.initialize(step, this.stepStatusCallback)
-            if (PageSnapshot.lastSnapshot) {
-                new HistoryManager().addInitialSnapshot(this.openaiClient, PageSnapshot.lastSnapshot)
-            }
+            new HistoryManager().addInitialSnapshot(this.openaiClient, PageSnapshot.lastSnapshot ?? await new PageSnapshot(this.openaiClient.page).get())
             await this.openaiClient.sendMessage(RUN_STEP_PROMPT(step))
             this.stepStatus = await this.stepFinishedCallback
             this.assertStepResult(step)

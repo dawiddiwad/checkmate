@@ -42,7 +42,7 @@ export class SalesforceTool implements OpenAITool {
 				const frontDoorUrl = await this.getSalesforceLoginUrl()
 				return this.browserTool.call({
 					name: BrowserTool.TOOL_NAVIGATE,
-					arguments: { url: frontDoorUrl },
+					arguments: { url: frontDoorUrl, goal: 'Login to Salesforce org' },
 				})
 			} catch (error) {
 				throw new Error(`Failed to login to Salesforce org due to\n:${error}`)

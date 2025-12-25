@@ -24,10 +24,7 @@ export class SalesforceCliAuthenticator {
 
     constructor(cliHandler: SalesforceCliHandler) {
         this.cli = cliHandler
-        this.ready = new Promise(async makeReady => {
-            await this.setTargetOrg()
-            makeReady(this)
-        })
+        this.ready = this.setTargetOrg().then(() => this)
     }
 
     private async setTargetOrg() {

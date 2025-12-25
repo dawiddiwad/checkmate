@@ -223,7 +223,7 @@ function setupMutationObserver({ logPrefix, observerKey }: ObserverSetupArgs): v
                         }
                     })
                 }
-            } catch { }
+            } catch { /* empty */ }
         })
 
         const uniqueAppeared = [...new Set(appearedTexts)]

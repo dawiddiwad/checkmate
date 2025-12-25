@@ -15,19 +15,18 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
     },
 }))
 
-let responseProcessorInstance: any
-
 vi.mock('../../src/step/openai/response-processor', () => {
     class MockResponseProcessor {
+        static instance: any;
         handleResponse = vi.fn()
         resetStepTokens = vi.fn()
         constructor() {
-            responseProcessorInstance = this
+            MockResponseProcessor.instance = this;
         }
     }
     return {
         ResponseProcessor: MockResponseProcessor,
-        getResponseProcessorMock: () => responseProcessorInstance,
+        getResponseProcessorMock: () => MockResponseProcessor.instance,
     }
 })
 

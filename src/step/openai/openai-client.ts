@@ -228,7 +228,7 @@ export class OpenAIClient {
         const status = error?.status || error?.statusCode || error?.code || 'unknown'
         const message = error?.message || null
 
-        let details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
+        const details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
         return new Error(details)
     }
 

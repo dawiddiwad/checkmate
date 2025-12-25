@@ -58,19 +58,18 @@ vi.mock('../../src/step/openai/openai-client', () => ({
     },
 }))
 
-let addInitialSnapshotInstance: any
-
 vi.mock('../../src/step/openai/history-manager', () => {
     class MockHistoryManager {
         addInitialSnapshot = vi.fn()
+        static instance: MockHistoryManager | null = null
         constructor() {
-            addInitialSnapshotInstance = this
+            MockHistoryManager.instance = this
         }
     }
 
     return {
         HistoryManager: MockHistoryManager,
-        getAddInitialSnapshotMock: () => addInitialSnapshotInstance?.addInitialSnapshot,
+        getAddInitialSnapshotMock: () => MockHistoryManager.instance?.addInitialSnapshot,
     }
 })
 

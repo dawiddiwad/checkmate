@@ -1,4 +1,5 @@
 import { exec } from 'child_process'
+import stripAnsi from 'strip-ansi'
 
 export type CliCommand = {
     command: string,
@@ -29,11 +30,9 @@ export class SalesforceCliHandler {
 
     private parseOutputAsJSON(output: string): Record<string, unknown> {
         try {
-            const cliColoring = /[\u001b\u009b][[()#?]*(?:[0-9]{1,4}(?:[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g
-            output = output.replace(cliColoring, '')
+            output = stripAnsi(output)
             return JSON.parse(output)
-        }
-        catch (error) {
+        } catch (error) {
             throw new Error(`failed parsing output from:\n${output}\ndue to:\n${error}`)
         }
     }

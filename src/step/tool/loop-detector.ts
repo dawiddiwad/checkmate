@@ -12,8 +12,8 @@ export class LoopDetectedError extends Error {
     readonly status: string
     constructor(public readonly loopResult: LoopDetectionResult) {
         super(`detected tool call loop pattern [${loopResult.pattern.join(' -> ')}] repeated ${loopResult.repetitions} times`)
-        this.name = 'LoopDetectedError',
-            this.status = LoopDetectedError.STATUS
+        this.name = 'LoopDetectedError'
+        this.status = LoopDetectedError.STATUS
     }
 }
 

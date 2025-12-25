@@ -131,7 +131,7 @@ export class BrowserTool implements OpenAITool {
         } else if (specified.name === BrowserTool.TOOL_SNAPSHOT) {
             return this.captureSnapshot()
         } else if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
-            return this.clickElement(specified.arguments?.ref as string)
+            return this.clickElement(specified.arguments?.ref as string, specified.arguments?.hover as boolean)
         } else if (specified.name === BrowserTool.TOOL_TYPE) {
             return this.typeInElement(specified.arguments?.elements as { ref: string, text: string, name: string, clear: boolean }[])
         } else if (specified.name === BrowserTool.TOOL_PRESS_KEY) {
@@ -214,13 +214,17 @@ export class BrowserTool implements OpenAITool {
             }
             for (const element of elements) {
                 try {
-                    if (!element.ref || !element.text) {
+                    if (!element.ref || element.text === undefined || element.text === null) {
                         throw new Error(`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${element.ref}' and text='${element.text}'`)
                     }
                     if (element.clear) {
                         await this.page.locator(`aria-ref=${element.ref}`).clear()
                     }
-                    await this.page.locator(`aria-ref=${element.ref}`).pressSequentially(element.text, { delay: 50 })
+
+                    // Allow empty string to support "clear existing text" flows.
+                    if (element.text.length > 0) {
+                        await this.page.locator(`aria-ref=${element.ref}`).pressSequentially(element.text, { delay: 50 })
+                    }
                 } catch (error) {
                     logger.error(`error typing text '${element.text}' in element with ref '${element.ref}' due to:\n${error}`)
                     return `failed to type text '${element.text}' in element with ref '${element.ref}':\n${error}\n try with different element type or ref`

@@ -2,8 +2,15 @@
   "name": "checkmate-exp",
   "version": "0.2.1.0",
   "description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "keywords": [
     "test automation",
     "ai",
@@ -14,6 +21,12 @@
   ],
   "scripts": {
     "checkmate:install": "npm install && npx playwright install",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "test:unit": "vitest --config src/test/vitest.config.ts",
     "test:unit:ui": "vitest --ui --config src/test/vitest.config.ts",
     "test:unit:coverage": "vitest --coverage --config src/test/vitest.config.ts",
@@ -37,8 +50,13 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.16",
     "@vitest/ui": "^4.0.16",
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.19.1",
     "vitest": "^4.0.16"
   }
 }

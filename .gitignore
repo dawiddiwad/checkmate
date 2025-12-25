@@ -6,3 +6,4 @@ test-reports
 .playwright-mcp
 TODO
 coverage
+dist

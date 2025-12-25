@@ -188,6 +188,19 @@ describe('BrowserTool', () => {
             expect(result).toBe('mocked snapshot content')
         })
 
+        it('should hover element when hover is true (via tool call)', async () => {
+            const toolCall: ToolCall = {
+                name: BrowserTool.TOOL_CLICK_OR_HOVER,
+                arguments: { ref: 'e321', name: 'Menu', hover: true, goal: 'open menu' },
+            }
+
+            const result = await browserTool.call(toolCall)
+
+            expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
+            expect(mockPage.click).not.toHaveBeenCalled()
+            expect(result).toBe('mocked snapshot content')
+        })
+
         it('should hover element when hover is true', async () => {
             const result = await (browserTool as any).clickElement('e321', true)
 
@@ -241,6 +254,23 @@ describe('BrowserTool', () => {
             expect(result).toBe('mocked snapshot content')
         })
 
+        it('should support empty string to clear existing text', async () => {
+            const toolCall: ToolCall = {
+                name: BrowserTool.TOOL_TYPE,
+                arguments: {
+                    elements: [{ ref: 'e456', text: '', name: 'Input', clear: true }],
+                    goal: 'clear text'
+                },
+            }
+
+            const result = await browserTool.call(toolCall)
+
+            expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
+            expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
+            expect(mockPage.locator('aria-ref=e456').pressSequentially).not.toHaveBeenCalled()
+            expect(result).toBe('mocked snapshot content')
+        })
+
         it('should return error message when ref is missing', async () => {
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_TYPE,
@@ -259,13 +289,13 @@ describe('BrowserTool', () => {
             const toolCall: ToolCall = {
                 name: BrowserTool.TOOL_TYPE,
                 arguments: { 
-                    elements: [{ ref: 'e456', text: '', name: 'Input', clear: true }], 
+                    elements: [{ ref: 'e456', text: undefined as any, name: 'Input', clear: true }], 
                     goal: 'enter text' 
                 },
             }
 
             const result = await browserTool.call(toolCall)
-            expect(result).toContain("failed to type text '' in element with ref 'e456'")
+            expect(result).toContain("failed to type text 'undefined' in element with ref 'e456'")
             expect(result).toContain("both 'ref' and 'text' are required")
         })
 

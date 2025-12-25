@@ -1,5 +1,5 @@
-import { Step } from "../types"
-import { StepTool } from "../tool/step-tool"
+import { Step } from '../types'
+import { StepTool } from '../tool/step-tool'
 
 export const RUN_STEP_PROMPT = (step: Step) => `
 Here is the test step I want you to execute. 

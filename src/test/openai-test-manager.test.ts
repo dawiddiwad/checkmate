@@ -5,201 +5,201 @@ import { Page } from '@playwright/test'
 
 // Mock all dependencies
 vi.mock('../../src/step/configuration-manager', () => ({
-    ConfigurationManager: class {
-        getLogLevel = vi.fn().mockReturnValue('off')
-        getApiKey = vi.fn().mockReturnValue('test-key')
-        getBaseURL = vi.fn().mockReturnValue(undefined)
-        getModel = vi.fn().mockReturnValue('gpt-4o-mini')
-        getTimeout = vi.fn().mockReturnValue(60000)
-        getMaxRetries = vi.fn().mockReturnValue(3)
-        getTemperature = vi.fn().mockReturnValue(1)
-    },
+	ConfigurationManager: class {
+		getLogLevel = vi.fn().mockReturnValue('off')
+		getApiKey = vi.fn().mockReturnValue('test-key')
+		getBaseURL = vi.fn().mockReturnValue(undefined)
+		getModel = vi.fn().mockReturnValue('gpt-4o-mini')
+		getTimeout = vi.fn().mockReturnValue(60000)
+		getMaxRetries = vi.fn().mockReturnValue(3)
+		getTemperature = vi.fn().mockReturnValue(1)
+	},
 }))
 
 vi.mock('../../src/step/logger', () => ({
-    CheckmateLogger: {
-        create: vi.fn().mockReturnValue({
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-        }),
-    },
+	CheckmateLogger: {
+		create: vi.fn().mockReturnValue({
+			info: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
+			debug: vi.fn(),
+		}),
+	},
 }))
 
 vi.mock('../../src/step/tool/step-tool', () => ({
-    StepTool: class {
-        functionDeclarations = []
-    },
+	StepTool: class {
+		functionDeclarations = []
+	},
 }))
 
 vi.mock('../../src/step/tool/browser-tool', () => ({
-    BrowserTool: class {
-        functionDeclarations = []
-    },
+	BrowserTool: class {
+		functionDeclarations = []
+	},
 }))
 
 vi.mock('../../src/salesforce/salesforce-tool', () => ({
-    SalesforceTool: class {
-        functionDeclarations = []
-    },
+	SalesforceTool: class {
+		functionDeclarations = []
+	},
 }))
 
 vi.mock('../../src/step/tool/tool-registry', () => ({
-    ToolRegistry: class {
-        getTools = vi.fn().mockResolvedValue([])
-    },
+	ToolRegistry: class {
+		getTools = vi.fn().mockResolvedValue([])
+	},
 }))
 
 vi.mock('../../src/step/openai/openai-client', () => ({
-    OpenAIClient: class {
-        initialize = vi.fn().mockResolvedValue(undefined)
-        sendMessage = vi.fn().mockResolvedValue(undefined)
-    },
+	OpenAIClient: class {
+		initialize = vi.fn().mockResolvedValue(undefined)
+		sendMessage = vi.fn().mockResolvedValue(undefined)
+	},
 }))
 
 vi.mock('../../src/step/openai/history-manager', () => {
-    class MockHistoryManager {
-        addInitialSnapshot = vi.fn()
-        static instance: MockHistoryManager | null = null
-        constructor() {
-            MockHistoryManager.instance = this
-        }
-    }
+	class MockHistoryManager {
+		addInitialSnapshot = vi.fn()
+		static instance: MockHistoryManager | null = null
+		constructor() {
+			MockHistoryManager.instance = this
+		}
+	}
 
-    return {
-        HistoryManager: MockHistoryManager,
-        getAddInitialSnapshotMock: () => MockHistoryManager.instance?.addInitialSnapshot,
-    }
+	return {
+		HistoryManager: MockHistoryManager,
+		getAddInitialSnapshotMock: () => MockHistoryManager.instance?.addInitialSnapshot,
+	}
 })
 
 vi.mock('../../src/step/tool/page-snapshot', () => ({
-    PageSnapshot: class {
-        static lastSnapshot = null
-        get = vi.fn().mockResolvedValue('mocked snapshot')
-    },
+	PageSnapshot: class {
+		static lastSnapshot = null
+		get = vi.fn().mockResolvedValue('mocked snapshot')
+	},
 }))
 
 vi.mock('../../src/step/openai/prompts', () => ({
-    RUN_STEP_PROMPT: vi.fn((step) => `Execute: ${step.action}`),
+	RUN_STEP_PROMPT: vi.fn((step) => `Execute: ${step.action}`),
 }))
 
 describe('OpenAITestManager', () => {
-    let testManager: OpenAITestManager
-    let mockPage: Page
+	let testManager: OpenAITestManager
+	let mockPage: Page
 
-    beforeEach(() => {
-        mockPage = {} as any
-        testManager = new OpenAITestManager(mockPage)
-    })
+	beforeEach(() => {
+		mockPage = {} as any
+		testManager = new OpenAITestManager(mockPage)
+	})
 
-    describe('constructor', () => {
-        it('should create test manager instance', () => {
-            expect(testManager).toBeDefined()
-        })
-    })
+	describe('constructor', () => {
+		it('should create test manager instance', () => {
+			expect(testManager).toBeDefined()
+		})
+	})
 
-    describe('teardown', () => {
-        it('should complete teardown without error', async () => {
-            await expect(testManager.teardown()).resolves.toBeUndefined()
-        })
-    })
+	describe('teardown', () => {
+		it('should complete teardown without error', async () => {
+			await expect(testManager.teardown()).resolves.toBeUndefined()
+		})
+	})
 
-    describe('run', () => {
-        let mockStep: Step
+	describe('run', () => {
+		let mockStep: Step
 
-        beforeEach(() => {
-            mockStep = {
-                action: 'Click the submit button',
-                expect: 'Button should be clicked',
-            }
+		beforeEach(() => {
+			mockStep = {
+				action: 'Click the submit button',
+				expect: 'Button should be clicked',
+			}
 
-            // Create a fresh testManager for each test
-            testManager = new OpenAITestManager(mockPage)
-        })
+			// Create a fresh testManager for each test
+			testManager = new OpenAITestManager(mockPage)
+		})
 
-        it('should successfully run when step passes', async () => {
-            // Mock the OpenAIClient to call the callback with success
-            const mockClient = (testManager as any).openaiClient
-            mockClient.initialize.mockImplementation((step: Step, callback: any) => {
-                setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
-                return Promise.resolve()
-            })
+		it('should successfully run when step passes', async () => {
+			// Mock the OpenAIClient to call the callback with success
+			const mockClient = (testManager as any).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
+				return Promise.resolve()
+			})
 
-            await expect(testManager.run(mockStep)).resolves.toBeUndefined()
-            expect(mockClient.initialize).toHaveBeenCalled()
-            expect(mockClient.sendMessage).toHaveBeenCalled()
-        })
+			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
+			expect(mockClient.initialize).toHaveBeenCalled()
+			expect(mockClient.sendMessage).toHaveBeenCalled()
+		})
 
-        it('should throw error when step fails', async () => {
-            const mockClient = (testManager as any).openaiClient
-            mockClient.initialize.mockImplementation((step: Step, callback: any) => {
-                setTimeout(() => callback({ passed: false, actual: 'Button not found' }), 0)
-                return Promise.resolve()
-            })
+		it('should throw error when step fails', async () => {
+			const mockClient = (testManager as any).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+				setTimeout(() => callback({ passed: false, actual: 'Button not found' }), 0)
+				return Promise.resolve()
+			})
 
-            await expect(testManager.run(mockStep)).rejects.toThrow()
-        })
+			await expect(testManager.run(mockStep)).rejects.toThrow()
+		})
 
-        it('should include step action in error message when failing', async () => {
-            const mockClient = (testManager as any).openaiClient
-            mockClient.initialize.mockImplementation((step: Step, callback: any) => {
-                setTimeout(() => callback({ passed: false, actual: 'Failed' }), 0)
-                return Promise.resolve()
-            })
+		it('should include step action in error message when failing', async () => {
+			const mockClient = (testManager as any).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+				setTimeout(() => callback({ passed: false, actual: 'Failed' }), 0)
+				return Promise.resolve()
+			})
 
-            try {
-                await testManager.run(mockStep)
-                expect.fail('Should have thrown error')
-            } catch (error: any) {
-                expect(error.message).toContain('Click the submit button')
-            }
-        })
+			try {
+				await testManager.run(mockStep)
+				expect.fail('Should have thrown error')
+			} catch (error: any) {
+				expect(error.message).toContain('Click the submit button')
+			}
+		})
 
-        it('should wrap errors from OpenAI client', async () => {
-            const mockClient = (testManager as any).openaiClient
-            mockClient.initialize.mockRejectedValue(new Error('API Error'))
+		it('should wrap errors from OpenAI client', async () => {
+			const mockClient = (testManager as any).openaiClient
+			mockClient.initialize.mockRejectedValue(new Error('API Error'))
 
-            try {
-                await testManager.run(mockStep)
-                expect.fail('Should have thrown error')
-            } catch (error: any) {
-                expect(error.message).toContain('Failed to execute action')
-                expect(error.message).toContain('Click the submit button')
-                expect(error.message).toContain('API Error')
-            }
-        })
+			try {
+				await testManager.run(mockStep)
+				expect.fail('Should have thrown error')
+			} catch (error: any) {
+				expect(error.message).toContain('Failed to execute action')
+				expect(error.message).toContain('Click the submit button')
+				expect(error.message).toContain('API Error')
+			}
+		})
 
-        it('should handle sendMessage errors', async () => {
-            const mockClient = (testManager as any).openaiClient
-            mockClient.initialize.mockResolvedValue(undefined)
-            mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
+		it('should handle sendMessage errors', async () => {
+			const mockClient = (testManager as any).openaiClient
+			mockClient.initialize.mockResolvedValue(undefined)
+			mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
 
-            try {
-                await testManager.run(mockStep)
-                expect.fail('Should have thrown error')
-            } catch (error: any) {
-                expect(error.message).toContain('Failed to execute action')
-            }
-        })
+			try {
+				await testManager.run(mockStep)
+				expect.fail('Should have thrown error')
+			} catch (error: any) {
+				expect(error.message).toContain('Failed to execute action')
+			}
+		})
 
-        it('should add initial snapshot when present before sending first message', async () => {
-            const mockClient = (testManager as any).openaiClient
-            mockClient.initialize.mockImplementation((step: Step, callback: any) => {
-                setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
-                return Promise.resolve()
-            })
+		it('should add initial snapshot when present before sending first message', async () => {
+			const mockClient = (testManager as any).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
+				return Promise.resolve()
+			})
 
-            const { PageSnapshot } = await import('../../src/step/tool/page-snapshot')
-            const historyModule: any = await import('../../src/step/openai/history-manager')
+			const { PageSnapshot } = await import('../../src/step/tool/page-snapshot')
+			const historyModule: any = await import('../../src/step/openai/history-manager')
 
-            PageSnapshot.lastSnapshot = { html: '<div>snap</div>' } as any
+			PageSnapshot.lastSnapshot = { html: '<div>snap</div>' } as any
 
-            await expect(testManager.run(mockStep)).resolves.toBeUndefined()
+			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
 
-            expect(historyModule.getAddInitialSnapshotMock()).toHaveBeenCalled()
+			expect(historyModule.getAddInitialSnapshotMock()).toHaveBeenCalled()
 
-            PageSnapshot.lastSnapshot = null
-        })
-    })
+			PageSnapshot.lastSnapshot = null
+		})
+	})
 })

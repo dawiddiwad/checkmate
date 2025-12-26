@@ -3,7 +3,6 @@ import { TokenTracker } from '../step/openai/token-tracker'
 import { ConfigurationManager } from '../step/configuration-manager'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 
-// Mock logger to avoid console noise during tests
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
 		info: vi.fn(),
@@ -18,7 +17,6 @@ describe('TokenTracker', () => {
 	let mockConfig: ConfigurationManager
 
 	beforeEach(() => {
-		// Create a mock ConfigurationManager
 		mockConfig = {
 			getTokenBudgetUSD: vi.fn().mockReturnValue(undefined),
 			getTokenBudgetCount: vi.fn().mockReturnValue(undefined),
@@ -30,7 +28,6 @@ describe('TokenTracker', () => {
 
 	describe('budget enforcement - USD', () => {
 		it('should throw error when USD budget is exceeded', () => {
-			// Set budget to $0.01
 			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.01)
 
 			const response: ChatCompletion = {
@@ -40,7 +37,7 @@ describe('TokenTracker', () => {
 				model: 'gpt-4o-mini',
 				choices: [],
 				usage: {
-					prompt_tokens: 100000, // Large number to exceed budget
+					prompt_tokens: 100000,
 					completion_tokens: 100000,
 					total_tokens: 200000,
 				},
@@ -61,7 +58,7 @@ describe('TokenTracker', () => {
 				model: 'gpt-4o-mini',
 				choices: [],
 				usage: {
-					prompt_tokens: 1000000, // Very large number
+					prompt_tokens: 1000000,
 					completion_tokens: 1000000,
 					total_tokens: 2000000,
 				},
@@ -73,7 +70,6 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not throw error when within USD budget', () => {
-			// Set budget to $10 (should be enough for test)
 			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(10.0)
 
 			const response: ChatCompletion = {
@@ -95,10 +91,6 @@ describe('TokenTracker', () => {
 		})
 
 		it('should accumulate costs across multiple calls', () => {
-			// Set budget to $0.05
-			// gpt-4o-mini: $0.15 per 1M input tokens, $0.60 per 1M output tokens
-			// 50000 input + 50000 output = $0.0075 + $0.03 = $0.0375 per call
-			// Two calls = $0.075 which exceeds $0.05
 			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.05)
 
 			const response1: ChatCompletion = {
@@ -127,12 +119,10 @@ describe('TokenTracker', () => {
 				},
 			}
 
-			// First call should succeed ($0.0375 < $0.05)
 			expect(() => {
 				tokenTracker.log(response1, 0, 'gpt-4o-mini')
 			}).not.toThrow()
 
-			// Second call should exceed budget ($0.075 > $0.05)
 			expect(() => {
 				tokenTracker.log(response2, 0, 'gpt-4o-mini')
 			}).toThrow(/OpenAI API budget of 0\.05\$ per test exceeded/)
@@ -141,7 +131,6 @@ describe('TokenTracker', () => {
 
 	describe('budget enforcement - token count', () => {
 		it('should throw error when token count budget is exceeded', () => {
-			// Set budget to 100 tokens
 			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(100)
 
 			const response: ChatCompletion = {
@@ -184,7 +173,6 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not throw error when within token count budget', () => {
-			// Set budget to 1000 tokens
 			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(1000)
 
 			const response: ChatCompletion = {
@@ -206,7 +194,6 @@ describe('TokenTracker', () => {
 		})
 
 		it('should accumulate token counts across multiple calls', () => {
-			// Set budget to 200 tokens
 			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(200)
 
 			const response1: ChatCompletion = {
@@ -235,12 +222,10 @@ describe('TokenTracker', () => {
 				},
 			}
 
-			// First call should succeed
 			expect(() => {
 				tokenTracker.log(response1, 0, 'gpt-4o-mini')
 			}).not.toThrow()
 
-			// Second call should exceed budget (120 + 100 = 220 > 200)
 			expect(() => {
 				tokenTracker.log(response2, 0, 'gpt-4o-mini')
 			}).toThrow(/OpenAI API budget of 200 tokens per test exceeded\. Total tokens used: 220/)
@@ -249,10 +234,8 @@ describe('TokenTracker', () => {
 
 	describe('budget enforcement - both USD and token count', () => {
 		it('should throw error when USD budget is exceeded first', () => {
-			// gpt-4o-mini: $0.15 per 1M input, $0.60 per 1M output
-			// 10000 input + 10000 output = $0.0015 + $0.006 = $0.0075
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.001) // Very low USD budget
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(1000000) // High token budget
+			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.001)
+			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(1000000)
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -273,8 +256,8 @@ describe('TokenTracker', () => {
 		})
 
 		it('should throw error when token count budget is exceeded first', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(100) // High USD budget
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(10) // Very low token budget
+			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(100)
+			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(10)
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -310,14 +293,10 @@ describe('TokenTracker', () => {
 				},
 			}
 
-			// Log some tokens for the step
 			tokenTracker.log(response, 0, 'gpt-4o-mini')
 
-			// Reset step
 			tokenTracker.resetStep()
 
-			// After reset, the next log should show fresh step counts
-			// (Test token counts should still accumulate)
 			const response2: ChatCompletion = {
 				id: 'test2',
 				object: 'chat.completion',
@@ -334,7 +313,6 @@ describe('TokenTracker', () => {
 			expect(() => {
 				tokenTracker.log(response2, 0, 'gpt-4o-mini')
 			}).not.toThrow()
-			// Verify it was called (logger was mocked)
 		})
 
 		it('should not affect test token counts', () => {
@@ -366,16 +344,12 @@ describe('TokenTracker', () => {
 				},
 			}
 
-			// Log first response
 			tokenTracker.log(response1, 0, 'gpt-4o-mini')
 
-			// Reset step (should only reset step counts, not test counts)
 			tokenTracker.resetStep()
 
-			// Log second response - should still accumulate to test total
 			tokenTracker.log(response2, 0, 'gpt-4o-mini')
 
-			// Third response should exceed budget (150 + 150 + 150 = 450 > 300)
 			const response3: ChatCompletion = {
 				id: 'test3',
 				object: 'chat.completion',
@@ -403,7 +377,6 @@ describe('TokenTracker', () => {
 				created: Date.now(),
 				model: 'gpt-4o-mini',
 				choices: [],
-				// No usage field
 			}
 
 			expect(() => {

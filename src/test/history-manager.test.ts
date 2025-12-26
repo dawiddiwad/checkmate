@@ -3,7 +3,6 @@ import { HistoryManager } from '../step/openai/history-manager'
 import { OpenAIClient } from '../step/openai/openai-client'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
-// Mock the logger
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
 		info: vi.fn(),
@@ -20,7 +19,6 @@ describe('HistoryManager', () => {
 	beforeEach(() => {
 		historyManager = new HistoryManager()
 
-		// Create mock OpenAIClient
 		mockOpenAIClient = {
 			getMessages: vi.fn(),
 			replaceHistory: vi.fn(),
@@ -102,17 +100,14 @@ describe('HistoryManager', () => {
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// First user message should have snapshot replaced
 			const firstUserMsg = filteredHistory[0] as any
 			expect(firstUserMsg.content[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 			expect(firstUserMsg.content[0].text).not.toContain('Initial snapshot content')
 
-			// First tool call should have snapshot replaced
 			const firstToolMsg = filteredHistory[2] as any
 			expect(firstToolMsg.content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 			expect(firstToolMsg.content).not.toContain('old snapshot data here')
 
-			// Last tool call should keep its snapshot
 			const lastToolMsg = filteredHistory[4] as any
 			expect(lastToolMsg.content).toBe('snapshot: latest snapshot data')
 			expect(lastToolMsg.content).not.toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
@@ -142,7 +137,6 @@ describe('HistoryManager', () => {
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// User message snapshot should still be replaced
 			const userMsg = filteredHistory[0] as any
 			expect(userMsg.content[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 		})
@@ -167,10 +161,8 @@ describe('HistoryManager', () => {
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// First tool call should be replaced
 			expect(filteredHistory[0].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 
-			// Last tool call should be preserved
 			expect(filteredHistory[1].content).toBe('snapshot: second snapshot')
 		})
 
@@ -206,9 +198,8 @@ describe('HistoryManager', () => {
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// Both should be affected (case-insensitive regex), but last one preserved
 			expect(filteredHistory[0].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
-			expect(filteredHistory[1].content).toBe('Snapshot: mixed case snapshot data') // Last one preserved
+			expect(filteredHistory[1].content).toBe('Snapshot: mixed case snapshot data')
 		})
 
 		it('should replace any text containing "snapshot" keyword', async () => {
@@ -216,12 +207,12 @@ describe('HistoryManager', () => {
 				{
 					role: 'tool',
 					tool_call_id: 'call_1',
-					content: 'No snapshot here, just regular content', // Contains word "snapshot"
+					content: 'No snapshot here, just regular content',
 				},
 				{
 					role: 'tool',
 					tool_call_id: 'call_2',
-					content: 'Also no snapshot', // Contains word "snapshot"
+					content: 'Also no snapshot',
 				},
 			]
 
@@ -231,10 +222,8 @@ describe('HistoryManager', () => {
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// First message should be replaced (contains "snapshot")
 			expect(filteredHistory[0].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 
-			// Last tool message should be preserved even though it contains "snapshot"
 			expect(filteredHistory[1].content).toBe('Also no snapshot')
 		})
 
@@ -258,7 +247,6 @@ describe('HistoryManager', () => {
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// Both messages should be unchanged (no "snapshot" keyword)
 			expect(filteredHistory[0].content).toBe('Regular content without the s-word')
 			expect(filteredHistory[1].content).toBe('Just some data here')
 		})
@@ -283,10 +271,8 @@ describe('HistoryManager', () => {
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// Non-string content should be preserved as-is
 			expect(filteredHistory[0].content).toEqual([{ type: 'text', text: 'Complex content structure' }])
 
-			// Last tool call with snapshot should be preserved
 			expect(filteredHistory[1].content).toBe('snapshot: last snapshot')
 		})
 
@@ -318,10 +304,8 @@ describe('HistoryManager', () => {
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			// First message should be unchanged
 			expect((filteredHistory[0].content as any)[0].text).toBe('Regular user message without snapshot')
 
-			// Second message should have snapshot replaced
 			expect((filteredHistory[1].content as any)[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 		})
 	})

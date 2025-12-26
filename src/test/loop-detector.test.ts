@@ -17,7 +17,6 @@ describe('LoopDetector', () => {
 				arguments: { param: 'value' },
 			}
 
-			// Record the same tool call 5 times
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS; i++) {
 					loopDetector.recordToolCall(toolCall)
@@ -31,7 +30,6 @@ describe('LoopDetector', () => {
 				arguments: { param: 'value' },
 			}
 
-			// Record the same tool call 4 times (one less than threshold)
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS - 1; i++) {
 					loopDetector.recordToolCall(toolCall)
@@ -49,7 +47,6 @@ describe('LoopDetector', () => {
 				arguments: { id: 2 },
 			}
 
-			// Record pattern [tool_a, tool_b] 5 times (10 total calls)
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS; i++) {
 					loopDetector.recordToolCall(toolCall1)
@@ -63,7 +60,6 @@ describe('LoopDetector', () => {
 			const toolCall2: ToolCall = { name: 'tool_b', arguments: {} }
 			const toolCall3: ToolCall = { name: 'tool_c', arguments: {} }
 
-			// Record pattern [tool_a, tool_b, tool_c] 5 times (15 total calls)
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS; i++) {
 					loopDetector.recordToolCall(toolCall1)
@@ -85,12 +81,11 @@ describe('LoopDetector', () => {
 				arguments: { param: 'value2' },
 			}
 
-			// Should not detect loop since arguments differ
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS * 2; i++) {
 					loopDetector.recordToolCall(i % 2 === 0 ? toolCall1 : toolCall2)
 				}
-			}).toThrow(LoopDetectedError) // Will detect as alternating pattern
+			}).toThrow(LoopDetectedError)
 		})
 
 		it('should handle tools with no arguments', () => {
@@ -125,10 +120,9 @@ describe('LoopDetector', () => {
 			}
 			const toolCall2: ToolCall = {
 				name: 'test_tool',
-				arguments: { a: 1, c: 3, b: 2 }, // Same args, different order
+				arguments: { a: 1, c: 3, b: 2 },
 			}
 
-			// Should detect loop since arguments are identical (just ordered differently)
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS; i++) {
 					loopDetector.recordToolCall(i % 2 === 0 ? toolCall1 : toolCall2)
@@ -161,14 +155,12 @@ describe('LoopDetector', () => {
 				arguments: { param: 'value' },
 			}
 
-			// Record some tool calls
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
 
 			expect(loopDetector.getHistoryLength()).toBe(3)
 
-			// Reset
 			loopDetector.reset()
 
 			expect(loopDetector.getHistoryLength()).toBe(0)
@@ -181,15 +173,12 @@ describe('LoopDetector', () => {
 				arguments: { param: 'value' },
 			}
 
-			// Record 3 times
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
 
-			// Reset
 			loopDetector.reset()
 
-			// Record 3 more times - should not throw since we reset
 			expect(() => {
 				loopDetector.recordToolCall(toolCall)
 				loopDetector.recordToolCall(toolCall)
@@ -203,7 +192,6 @@ describe('LoopDetector', () => {
 				arguments: { param: 'value' },
 			}
 
-			// Trigger loop detection
 			try {
 				for (let i = 0; i < MAX_REPETITIONS; i++) {
 					loopDetector.recordToolCall(toolCall)
@@ -212,7 +200,6 @@ describe('LoopDetector', () => {
 				expect(e).toBeInstanceOf(LoopDetectedError)
 			}
 
-			// History should be reset after exception
 			expect(loopDetector.getHistoryLength()).toBe(0)
 		})
 	})
@@ -289,7 +276,6 @@ describe('LoopDetector', () => {
 				{ name: 'tool_e', arguments: {} },
 			]
 
-			// Record different tools - no loop should be detected
 			expect(() => {
 				toolCalls.forEach((toolCall) => loopDetector.recordToolCall(toolCall))
 			}).not.toThrow()
@@ -300,11 +286,9 @@ describe('LoopDetector', () => {
 			const toolCall2: ToolCall = { name: 'tool_b', arguments: {} }
 			const loopingToolCall: ToolCall = { name: 'looping_tool', arguments: {} }
 
-			// Record some non-repeating calls first
 			loopDetector.recordToolCall(toolCall1)
 			loopDetector.recordToolCall(toolCall2)
 
-			// Then start a loop
 			expect(() => {
 				for (let i = 0; i < MAX_REPETITIONS; i++) {
 					loopDetector.recordToolCall(loopingToolCall)
@@ -316,14 +300,10 @@ describe('LoopDetector', () => {
 			const fastLoopDetector = new LoopDetector(1)
 			const toolCall: ToolCall = { name: 'test_tool', arguments: {} }
 
-			// With maxRepetitions=1, we need at least 1 repetition to detect
-			// That means the pattern needs to appear at least twice
-			// First call establishes the pattern
 			expect(() => {
 				fastLoopDetector.recordToolCall(toolCall)
 			}).not.toThrow()
 
-			// Second call should trigger detection (pattern repeated once)
 			expect(() => {
 				fastLoopDetector.recordToolCall(toolCall)
 			}).toThrow(LoopDetectedError)
@@ -333,7 +313,6 @@ describe('LoopDetector', () => {
 			const slowLoopDetector = new LoopDetector(100)
 			const toolCall: ToolCall = { name: 'test_tool', arguments: {} }
 
-			// Should not detect until 100 repetitions
 			expect(() => {
 				for (let i = 0; i < 99; i++) {
 					slowLoopDetector.recordToolCall(toolCall)
@@ -353,10 +332,8 @@ describe('LoopDetector', () => {
 			loopDetector.recordToolCall(toolCall)
 			const history = loopDetector.getHistory()
 
-			// Modify the returned array
 			history.push('fake_signature')
 
-			// Original history should be unchanged
 			expect(loopDetector.getHistory()).toHaveLength(1)
 			expect(loopDetector.getHistory()).not.toContain('fake_signature')
 		})

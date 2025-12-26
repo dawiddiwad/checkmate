@@ -12,7 +12,6 @@ export default [
 			sourceType: 'module',
 		},
 		rules: {
-			// Keep baseline non-blocking for this codebase; tighten over time.
 			'no-unused-vars': 'off',
 			'@typescript-eslint/no-unused-vars': 'off',
 			'@typescript-eslint/no-explicit-any': 'off',

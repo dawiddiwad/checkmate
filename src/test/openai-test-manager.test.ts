@@ -3,7 +3,6 @@ import { OpenAITestManager } from '../step/openai/openai-test-manager'
 import { Step } from '../step/types'
 import { Page } from '@playwright/test'
 
-// Mock all dependencies
 vi.mock('../../src/step/configuration-manager', () => ({
 	ConfigurationManager: class {
 		getLogLevel = vi.fn().mockReturnValue('off')
@@ -114,12 +113,10 @@ describe('OpenAITestManager', () => {
 				expect: 'Button should be clicked',
 			}
 
-			// Create a fresh testManager for each test
 			testManager = new OpenAITestManager(mockPage)
 		})
 
 		it('should successfully run when step passes', async () => {
-			// Mock the OpenAIClient to call the callback with success
 			const mockClient = (testManager as any).openaiClient
 			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)

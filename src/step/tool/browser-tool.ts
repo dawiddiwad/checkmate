@@ -257,7 +257,6 @@ export class BrowserTool implements OpenAITool {
 						await this.page.locator(`aria-ref=${element.ref}`).clear()
 					}
 
-					// Allow empty string to support "clear existing text" flows.
 					if (element.text.length > 0) {
 						await this.page
 							.locator(`aria-ref=${element.ref}`)

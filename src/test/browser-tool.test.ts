@@ -9,7 +9,6 @@ const trackerMocks = vi.hoisted(() => ({
 	formatTimelineMock: vi.fn().mockReturnValue(''),
 }))
 
-// Mock logger
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
 		info: vi.fn(),
@@ -19,14 +18,12 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	},
 }))
 
-// Mock PageSnapshot
 vi.mock('../../src/step/tool/page-snapshot', () => ({
 	PageSnapshot: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot content')
 	},
 }))
 
-// Mock TransientStateTracker
 vi.mock('../step/tool/transient-state-tracker', () => ({
 	TransientStateTracker: class {
 		start = trackerMocks.startMock

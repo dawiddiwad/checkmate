@@ -40,7 +40,7 @@
  *   rounded to cents.
  *
  * @example
- * // Estimate cost of 1k input tokens and 2k output tokens for 'gpt-4o'
+ * Estimate cost of 1k input tokens and 2k output tokens for 'gpt-4o'
  * const inCost = OpenAITokenPricing.inputPriceUSD('gpt-4o', 1000)
  * const outCost = OpenAITokenPricing.outputPriceUSD('gpt-4o', 2000)
  * const total = OpenAITokenPricing.totalPriceUSD('gpt-4o', 1000, 2000)
@@ -57,7 +57,6 @@ export class OpenAITokenPricing {
 
 	private static inputPricePerMillionUSD(model: string): number {
 		switch (model) {
-			// OpenAI Models
 			case 'gpt-5.2':
 				return this.roundToCents(1.75)
 			case 'gpt-5.2-pro':
@@ -137,11 +136,11 @@ export class OpenAITokenPricing {
 			case 'gemini-2.5-flash-lite':
 			case 'gemini-2.5-flash-lite-preview-09-2025':
 				return this.roundToCents(0.1)
-			// Gemini 3 Flash Preview (fast, intelligent) — $0.50 input / $3.00 output
+
 			case 'gemini-3-flash-preview':
 			case 'gemini-3-flash':
 				return this.roundToCents(0.5)
-			// Gemini 3 Pro Image Preview uses the same text/image input pricing as Gemini 3 Pro
+
 			case 'gemini-3-pro-image-preview':
 			case 'gemini-3-pro-image':
 				return this.roundToCents(2.0)
@@ -178,7 +177,7 @@ export class OpenAITokenPricing {
 			case 'grok-3-mini-fast-latest':
 			case 'grok-3-mini-fast-beta':
 				return this.roundToCents(0.3)
-			// groq Models
+
 			case 'openai/gpt-oss-20b':
 				return this.roundToCents(0.075)
 			case 'openai/gpt-oss-safeguard-20b':
@@ -206,7 +205,6 @@ export class OpenAITokenPricing {
 
 	private static outputPricePerMillionUSD(model: string): number {
 		switch (model) {
-			// OpenAI Models
 			case 'gpt-5.2':
 				return this.roundToCents(14.0)
 			case 'gpt-5.2-pro':
@@ -286,11 +284,11 @@ export class OpenAITokenPricing {
 			case 'gemini-2.5-flash-lite':
 			case 'gemini-2.5-flash-lite-preview-09-2025':
 				return this.roundToCents(0.4)
-			// Gemini 3 Flash Preview (fast, intelligent) — $0.50 input / $3.00 output
+
 			case 'gemini-3-flash-preview':
 			case 'gemini-3-flash':
 				return this.roundToCents(3.0)
-			// Gemini 3 Pro Image Preview: text output $12.00; image output pricing is $120 / 1M tokens (handled as token-based equivalent)
+
 			case 'gemini-3-pro-image-preview':
 			case 'gemini-3-pro-image':
 				return this.roundToCents(12.0)
@@ -327,7 +325,7 @@ export class OpenAITokenPricing {
 			case 'grok-3-mini-fast-latest':
 			case 'grok-3-mini-fast-beta':
 				return this.roundToCents(0.5)
-			// groq Models
+
 			case 'openai/gpt-oss-20b':
 				return this.roundToCents(0.3)
 			case 'openai/gpt-oss-safeguard-20b':

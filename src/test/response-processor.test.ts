@@ -5,7 +5,6 @@ import { ChatCompletion } from 'openai/resources/chat/completions'
 import { Step } from '../step/types'
 import { Page } from '@playwright/test'
 
-// Mock all dependencies
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
 		info: vi.fn(),

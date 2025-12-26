@@ -24,7 +24,6 @@ describe('Loop Detection Integration Tests', () => {
 	})
 
 	it('should use configuration from environment for max repetitions', () => {
-		// Set custom max repetitions
 		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
 
 		const configManager = new ConfigurationManager()
@@ -35,7 +34,6 @@ describe('Loop Detection Integration Tests', () => {
 			arguments: { ref: 'e1', name: 'Button', goal: 'click' },
 		}
 
-		// With max=2, should throw on 2nd call
 		loopDetector.recordToolCall(toolCall)
 
 		expect(() => {
@@ -54,11 +52,9 @@ describe('Loop Detection Integration Tests', () => {
 			arguments: { url: 'https://example.com', goal: 'nav' },
 		}
 
-		// Call twice successfully
 		loopDetector.recordToolCall(toolCall)
 		loopDetector.recordToolCall(toolCall)
 
-		// Third call should throw
 		expect(() => {
 			loopDetector.recordToolCall(toolCall)
 		}).toThrow(LoopDetectedError)
@@ -80,14 +76,12 @@ describe('Loop Detection Integration Tests', () => {
 			arguments: { goal: 'capture' },
 		}
 
-		// Pattern [click, snapshot] repeated 2 times
 		loopDetector.recordToolCall(toolCall1)
 		loopDetector.recordToolCall(toolCall2)
 		loopDetector.recordToolCall(toolCall1)
 		loopDetector.recordToolCall(toolCall2)
 		loopDetector.recordToolCall(toolCall1)
 
-		// 6th call completes 3rd repetition and should throw
 		expect(() => {
 			loopDetector.recordToolCall(toolCall2)
 		}).toThrow(LoopDetectedError)
@@ -127,18 +121,13 @@ describe('Loop Detection Integration Tests', () => {
 			arguments: { ref: 'e1', name: 'Button', goal: 'click' },
 		}
 
-		// Trigger loop
 		try {
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
-		} catch (error) {
-			// Expected
-		}
+		} catch (error) {}
 
-		// After reset, should be able to call again without immediate error
 		loopDetector.recordToolCall(toolCall)
 
-		// But still detect loop on next repetition
 		expect(() => {
 			loopDetector.recordToolCall(toolCall)
 		}).toThrow(LoopDetectedError)

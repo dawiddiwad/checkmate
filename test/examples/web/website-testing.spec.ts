@@ -1,14 +1,24 @@
 /**
- * Playwright E2E tests using `ai.run({ action, expect })`.
+ * @fileoverview 
+ * Playwright E2E tests for various websites.
  *
- * Quick overview:
- * - Single-step demos: Ollama, HuggingFace, Mojeek, NYPL
- * - Multi-step regression: automationexercise.com (navigation, products, cart, etc.):
- *  - Full AI mode: all steps via AI
- *  - Hybrid AI mode: some steps via AI, some via direct Playwright commands
+ * @summary
+ * Examples of single-step and multi-step AI-driven web interactions using Playwright and _checkmate_.
+ * 
+ * @description
+ * - Single-step:
+ *   - Ollama: search for "qwen3" and open the qwen3-vl model page.
+ *   - HuggingFace: search for "Qwen3-VL-4B" and open the model page.
+ *   - Mojeek: search Playwright docs and open the Planner Agent page.
+ *   - NYPL: check availability for "The Catcher in the Rye".
  *
- * Each test uses the `ai` fixture and `ai.run({ action, expect })`
- * method to perform actions and verify expectations on the website.
+ * - Multi-step (automationexercise.com):
+ *   - Full AI mode: all steps executed via `ai.run`.
+ *   - Hybrid mode: mix of `ai.run` steps and direct Playwright commands.
+ *
+ * @note
+ * All tests use the `ai` fixture and call `ai.run({ action, expect })`
+ * to describe actions and assert visible outcomes.
  */
 import { test } from '../../fixtures/checkmate'
 

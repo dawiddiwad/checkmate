@@ -5,7 +5,6 @@ import { ToolRegistry } from '../step/tool/tool-registry'
 import { LoopDetectedError } from '../step/tool/loop-detector'
 import { Page } from '@playwright/test'
 
-// Mock the logger
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
 		info: vi.fn(),
@@ -30,7 +29,6 @@ vi.mock('../../src/step/openai/response-processor', () => {
 	}
 })
 
-// Mock OpenAI client creation
 vi.mock('openai', () => {
 	const createMock = vi.fn()
 	return {
@@ -72,7 +70,6 @@ describe('OpenAIClient - Retry Logic', () => {
 			page: mockPage,
 		})
 
-		// Mock the sleep function to avoid actual delays in tests
 		vi.spyOn(openAIClient as any, 'sleep').mockResolvedValue(undefined)
 
 		mockOperation = vi.fn()
@@ -164,7 +161,6 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
 
-			// Initial attempt + 3 retries = 4 total calls
 			expect(mockOperation).toHaveBeenCalledTimes(4)
 		})
 
@@ -178,7 +174,6 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			await expect((openAIClient as any).executeWithRetry(mockOperation)).rejects.toThrow()
 
-			// Only initial attempt, no retries
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
 
@@ -238,13 +233,11 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			// Get the sleep spy that was created in beforeEach
 			const sleepSpy = vi.mocked((openAIClient as any).sleep)
-			sleepSpy.mockClear() // Clear any previous calls
+			sleepSpy.mockClear()
 
 			await (openAIClient as any).executeWithRetry(mockOperation)
 
-			// Should use Retry-After value (5 seconds = 5000ms) instead of default backoff
 			expect(sleepSpy).toHaveBeenCalledWith(5000)
 		})
 
@@ -279,7 +272,6 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			await (openAIClient as any).executeWithRetry(mockOperation)
 
-			// Should use default backoff (1000ms for first retry)
 			expect(sleepSpy).toHaveBeenCalledWith(1000)
 		})
 
@@ -309,14 +301,12 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			const initialTemp = openAIClient.temperature
 
-			// Mock Math.random to return a predictable value
 			const mockRandom = vi.spyOn(Math, 'random').mockReturnValue(0.5)
 
 			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
 
 			await (openAIClient as any).executeWithRetry(mockOperation)
 
-			// Temperature should be changed to 0.5 (our mocked value)
 			expect(openAIClient.temperature).toBe(0.5)
 			expect(openAIClient.temperature).not.toBe(initialTemp)
 
@@ -414,14 +404,12 @@ describe('OpenAIClient - Retry Logic', () => {
 
 	describe('sleep helper', () => {
 		it('should sleep for specified milliseconds', async () => {
-			// Restore the real sleep function for this test
 			vi.mocked((openAIClient as any).sleep).mockRestore()
 
 			const start = Date.now()
 			await (openAIClient as any).sleep(100)
 			const elapsed = Date.now() - start
 
-			// Allow some tolerance for timing
 			expect(elapsed).toBeGreaterThanOrEqual(90)
 			expect(elapsed).toBeLessThan(150)
 		})
@@ -556,7 +544,7 @@ describe('OpenAIClient - message flow', () => {
 		await openAIClient.sendToolResponseWithRetry()
 
 		const afterMessages = openAIClient.getMessages()
-		expect(afterMessages.length).toBe(before) // no assistant message appended
+		expect(afterMessages.length).toBe(before)
 		expect(createMock).toHaveBeenCalledTimes(1)
 	})
 
@@ -575,7 +563,7 @@ describe('OpenAIClient - message flow', () => {
 
 	it('counts only string history when estimating tokens', () => {
 		;(openAIClient as any).messages = [
-			{ role: 'user', content: 'abcd' }, // 4 chars -> 1 token after ceil(4/4)
+			{ role: 'user', content: 'abcd' },
 			{ role: 'assistant', content: [{ type: 'text', text: 'ignored' }] },
 		]
 

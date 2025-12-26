@@ -183,9 +183,7 @@ describe('StepTool', () => {
 
 			try {
 				stepTool.call(toolCall, mockCallback)
-			} catch (error) {
-				// Expected to throw
-			}
+			} catch (error) {}
 
 			expect(mockCallback).not.toHaveBeenCalled()
 		})

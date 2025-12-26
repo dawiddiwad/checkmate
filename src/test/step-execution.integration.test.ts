@@ -9,7 +9,6 @@ import { StepTool } from '../step/tool/step-tool'
 import { BrowserTool } from '../step/tool/browser-tool'
 import { SalesforceTool } from '../salesforce/salesforce-tool'
 
-// Shared mocks reused across test runs
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
 

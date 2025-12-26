@@ -1,11 +1,10 @@
 name: CI
 
 on:
-  push:
   pull_request:
 
 jobs:
-  test:
+  run-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,5 +22,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Unit tests
+      - name: Run unit tests
         run: npm run test:unit:run

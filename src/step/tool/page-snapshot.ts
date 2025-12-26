@@ -29,7 +29,7 @@ export class PageSnapshot {
 			const snapshotYAML = await (this.page as any)
 				._snapshotForAI()
 				.then((snapshot: { full: string }) => snapshot.full)
-			const asJson = parse(snapshotYAML)?.[0] ?? { state: 'page content is empty' }
+			const asJson = parse(snapshotYAML)?.[0] ?? { state: 'page is blank - navigate to a relevant page url' }
 			const asMinified = `page snapshot:\n${this.minify(JSON.stringify(asJson))}`
 			PageSnapshot.lastSnapshot = `${await this.getHeader()}\n${asMinified}`
 			logger.debug(`created aria page snapshot:\n${PageSnapshot.lastSnapshot}`)

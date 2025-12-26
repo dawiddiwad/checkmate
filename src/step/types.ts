@@ -1,11 +1,11 @@
 export type Step = {
-    action: string,
-    expect: string
+	action: string
+	expect: string
 }
 
 export type StepStatus = {
-    passed: boolean,
-    actual: string
+	passed: boolean
+	actual: string
 }
 
 export type StepFinishedCallback = Promise<StepStatus>

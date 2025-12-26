@@ -4,7 +4,7 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 ## Version 0.1
 
-**Status**: 
+**Status**:
 
 - ✅ Core Gemini integration with function calling
 - ✅ Playwright MCP server integration
@@ -24,7 +24,7 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 **Focus**: OpenAI API, Stability, Observability, and Cost Control
 
-- ✅  **OpenAI API Migration**
+- ✅ **OpenAI API Migration**
   - ✅ Move from Gemini API to OpenAI API
 
 - ✅ **Comprehensive Documentation**
@@ -69,7 +69,6 @@ This roadmap outlines the planned features and improvements for checkmate.
   - ✅ Structured logging
   - ✅ Log levels: INFO, WARN, ERROR, DEBUG
   - ✅ AI reasoning/thought capture
-
 
 ## Version 0.3 (in progress...)
 

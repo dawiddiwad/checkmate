@@ -1,6 +1,6 @@
 {
 	"name": "checkmate-exp",
-	"version": "0.2.1.0",
+	"version": "0.2.2.0",
 	"description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

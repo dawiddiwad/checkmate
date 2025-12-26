@@ -1,5 +1,5 @@
 /**
- * @fileoverview 
+ * @fileoverview
  * Playwright E2E test for Salesforce Developer org.
  *
  * @summary
@@ -21,7 +21,7 @@
  *
  * @see {@link https://developer.salesforce.com/tools/salesforcecli} - Salesforce CLI installation and documentation.
  * @see {@link https://www.salesforce.com/form/developer-signup/} - Sign up for a Salesforce Developer org.
- * 
+ *
  * @note
  * All tests use the `ai` fixture and call `ai.run({ action, expect })`
  * to describe actions and assert visible outcomes.

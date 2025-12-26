@@ -1,10 +1,10 @@
 /**
- * @fileoverview 
+ * @fileoverview
  * Playwright E2E tests for various websites.
  *
  * @summary
  * Examples of single-step and multi-step AI-driven web interactions using Playwright and _checkmate_.
- * 
+ *
  * @description
  * - Single-step:
  *   - Ollama: search for "qwen3" and open the qwen3-vl model page.

@@ -72,6 +72,31 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 ## Version 0.3 (in progress...)
 
+**Focus**: npm package, checkmate API, CLI, and MCP
+
+- [ ] **npm package**
+  - [ ] Package and publish checkmate to npm
+  - [ ] Use @playwright/test as peer dependency
+  - [ ] Define a Playwright compatibility policy (page snapshot using private PW APIs)
+  - [ ] Add CI/CD workflows for automated publishing and release hygiene
+
+- [ ] **API library**
+  - [ ] Export checkmate fixtures as a first-class API
+  - [ ] Define clear input/output contracts
+  - [ ] Support programmatic test creation and execution
+  - [ ] Publish API docs and usage examples
+
+- [ ] **MCP server**
+  - [ ] Add option to use checkmate as a standalone MCP server
+  - [ ] Expose checkmate API functions as MCP tools
+
+- [ ] **CLI**
+  - [ ] Provide a simple CLI for API access
+  - [ ] Commands for project init, self-check, test generation, execution, and reporting
+  - [ ] Clear exit codes and user-friendly error messages
+
+## Version 0.4
+
 **Focus**: UI, E2E modes, Visual Testing
 
 - [ ] **UI Layer V1**
@@ -94,7 +119,7 @@ This roadmap outlines the planned features and improvements for checkmate.
 - [ ] **Visual Testing**
   - [ ] Proper screenshot scaling for Playwright MCP vision tools
 
-## Version 0.4
+## Version 0.5
 
 **Focus**: Performance, Production Readiness & Scaling
 

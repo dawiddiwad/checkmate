@@ -119,13 +119,14 @@ describe('BrowserTool', () => {
 			await expect(browserTool.call(toolCall)).rejects.toThrow('Tool name is required')
 		})
 
-		it('should throw error for unimplemented tool', async () => {
+		it('should return error message for unimplemented tool', async () => {
 			const toolCall: ToolCall = {
 				name: 'unknown_tool',
 				arguments: {},
 			}
 
-			await expect(browserTool.call(toolCall)).rejects.toThrow('Browser tool not implemented: unknown_tool')
+			const result = await browserTool.call(toolCall)
+			expect(result).toContain('Browser tool not implemented: unknown_tool')
 		})
 	})
 

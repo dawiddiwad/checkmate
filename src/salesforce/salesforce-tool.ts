@@ -3,14 +3,16 @@ import { SalesforceCliHandler } from './salesforce-cli-handler'
 import { SalesforceCliAuthenticator } from './salesforce-cli-authenticator'
 import { OpenAITool, ToolCall } from '../step/tool/openai-tool'
 import { BrowserTool } from '../step/tool/browser-tool'
+import { logger } from '../step/openai/openai-test-manager'
 
-export class SalesforceTool implements OpenAITool {
+export class SalesforceTool extends OpenAITool {
 	static readonly TOOL_LOGIN_TO_SALESFORCE_ORG = 'login_to_salesforce_org'
 	private readonly browserTool: BrowserTool
 
 	functionDeclarations: ChatCompletionFunctionTool[]
 
 	constructor(browserTool: BrowserTool) {
+		super()
 		this.browserTool = browserTool
 		this.functionDeclarations = [
 			{
@@ -47,7 +49,10 @@ export class SalesforceTool implements OpenAITool {
 			} catch (error) {
 				throw new Error(`Failed to login to Salesforce org due to\n:${error}`)
 			}
-		} else throw new Error(`salesforce tool not found: ${specified.name}`)
+		} else {
+			logger.error(`model tried to call not implemented tool: ${specified.name}`)
+			return `Salesforce tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
+		}
 	}
 
 	private async getSalesforceLoginUrl(): Promise<string> {

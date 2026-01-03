@@ -5,7 +5,7 @@ import { PageSnapshot } from './page-snapshot'
 import { logger } from '../openai/openai-test-manager'
 import { TransientStateTracker } from './transient-state-tracker'
 
-export class BrowserTool implements OpenAITool {
+export class BrowserTool extends OpenAITool {
 	static readonly TOOL_NAVIGATE = 'browser_navigate'
 	static readonly TOOL_CLICK_OR_HOVER = 'browser_click_or_hover'
 	static readonly TOOL_TYPE = 'browser_type'
@@ -16,6 +16,7 @@ export class BrowserTool implements OpenAITool {
 
 	functionDeclarations: ChatCompletionFunctionTool[]
 	constructor(page: Page) {
+		super()
 		this.page = page
 		this.pageSnapshot = new PageSnapshot(page)
 		this.functionDeclarations = [
@@ -166,7 +167,8 @@ export class BrowserTool implements OpenAITool {
 		} else if (specified.name === BrowserTool.TOOL_PRESS_KEY) {
 			return this.pressKey(specified.arguments?.key as string)
 		} else {
-			throw new Error(`Browser tool not implemented: ${specified.name}`)
+			logger.error(`model tried to call not implemented tool: ${specified.name}`)
+			return `Browser tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
 		}
 	}
 

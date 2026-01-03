@@ -1,14 +1,16 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 import { OpenAITool, ToolCall } from './openai-tool'
 import { StepStatusCallback } from '../types'
+import { logger } from '../openai/openai-test-manager'
 
-export class StepTool implements OpenAITool {
+export class StepTool extends OpenAITool {
 	static readonly TOOL_FAIL_TEST_STEP = 'fail_test_step'
 	static readonly TOOL_PASS_TEST_STEP = 'pass_test_step'
 
 	functionDeclarations: ChatCompletionFunctionTool[]
 
 	constructor() {
+		super()
 		this.functionDeclarations = [
 			{
 				type: 'function',
@@ -51,7 +53,8 @@ export class StepTool implements OpenAITool {
 		}
 		const declaration = this.functionDeclarations.find((d) => d.function.name === specified.name)
 		if (!declaration) {
-			throw new Error(`Tool not found: ${specified.name}`)
+			logger.error(`model tried to call not implemented tool: ${specified.name}`)
+			return `Step tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
 		}
 		if (specified.name === StepTool.TOOL_PASS_TEST_STEP) {
 			callback({ passed: true, actual: specified.arguments?.actualResult as string })

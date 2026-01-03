@@ -124,7 +124,9 @@ describe('Loop Detection Integration Tests', () => {
 		try {
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
-		} catch (error) {}
+		} catch (error) {
+			/* empty */
+		}
 
 		loopDetector.recordToolCall(toolCall)
 

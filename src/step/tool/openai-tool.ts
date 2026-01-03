@@ -8,4 +8,8 @@ export type ToolCall = {
 export abstract class OpenAITool {
 	abstract functionDeclarations: ChatCompletionFunctionTool[]
 	abstract call(specified: ToolCall, ...args: any[]): Promise<any> | any
+
+	protected getFunctionNames(): string[] {
+		return this.functionDeclarations.map((fn) => fn.function.name)
+	}
 }

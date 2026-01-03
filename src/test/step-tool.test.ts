@@ -157,13 +157,14 @@ describe('StepTool', () => {
 			expect(() => stepTool.call(toolCall, mockCallback)).toThrow('Tool name is required')
 		})
 
-		it('should throw error for non-existent tool', () => {
+		it('should return error message for non-existent tool', () => {
 			const toolCall: ToolCall = {
 				name: 'non_existent_tool',
 				arguments: { actualResult: 'test' },
 			}
 
-			expect(() => stepTool.call(toolCall, mockCallback)).toThrow('Tool not found: non_existent_tool')
+			const result = stepTool.call(toolCall, mockCallback)
+			expect(result).toContain('Step tool not implemented: non_existent_tool')
 		})
 	})
 
@@ -183,7 +184,9 @@ describe('StepTool', () => {
 
 			try {
 				stepTool.call(toolCall, mockCallback)
-			} catch (error) {}
+			} catch (error) {
+				/* empty */
+			}
 
 			expect(mockCallback).not.toHaveBeenCalled()
 		})

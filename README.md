@@ -149,10 +149,10 @@ See [guide](GUIDE.md#openai-api-settings) for detailed configuration options and
 
 ## FAQ
 
-**Which models work best?**
-**_checkmate_** is designed to work with any OpenAI‑compatible model. Here are the best picks based on extensive testing:
+**Which models work best?**  
+You can use any model that was trained for tool use. Here are the best picks based on extensive testing:
 
-- Highly recommended: [`gpt-oss` `20b` or `120b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
+- Highly recommended: [`gpt-oss-20b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
 - Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
 - OpenAI's `gpt-4.1-mini`, `gpt-5-mini` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
 
@@ -167,7 +167,8 @@ It depends. If you can accept some non‑deterministic behavior and leverage LLM
 
 If you require 100% deterministic tests at all times, traditional Playwright remains the better choice.
 
-**Best part**: you can mix both approaches within the same test suite, combining AI‑driven and traditional tests as needed.
+**Best part?**  
+You can mix both approaches within the same test suite, combining AI‑driven and traditional tests as needed:
 
 ```typescript
 // traditional playwright actions:

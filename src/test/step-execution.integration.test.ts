@@ -95,6 +95,7 @@ vi.mock('../step/tool/browser-tool', () => ({
 			},
 		]
 		call = browserCallMock
+		setStep = vi.fn()
 	},
 }))
 

@@ -4,6 +4,7 @@ import { expect, Page } from '@playwright/test'
 import { PageSnapshot } from './page-snapshot'
 import { logger } from '../openai/openai-test-manager'
 import { TransientStateTracker } from './transient-state-tracker'
+import { Step } from '../types'
 
 export class BrowserTool extends OpenAITool {
 	static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -12,13 +13,12 @@ export class BrowserTool extends OpenAITool {
 	static readonly TOOL_PRESS_KEY = 'browser_press_key'
 	static readonly TOOL_SNAPSHOT = 'browser_snapshot'
 	private readonly page: Page
-	private readonly pageSnapshot: PageSnapshot
+	private step: Step | undefined
 
 	functionDeclarations: ChatCompletionFunctionTool[]
 	constructor(page: Page) {
 		super()
 		this.page = page
-		this.pageSnapshot = new PageSnapshot(page)
 		this.functionDeclarations = [
 			{
 				type: 'function',
@@ -172,6 +172,10 @@ export class BrowserTool extends OpenAITool {
 		}
 	}
 
+	setStep(step: Step): void {
+		this.step = step
+	}
+
 	private async captureSnapshot() {
 		try {
 			await expect
@@ -190,7 +194,7 @@ export class BrowserTool extends OpenAITool {
 					}
 				)
 				.toEqual('stable')
-			return this.pageSnapshot.get()
+			return new PageSnapshot(this.page, this.step).get()
 		} catch (error) {
 			throw new Error(`Failed to capture page snapshot:\n${error}`)
 		}

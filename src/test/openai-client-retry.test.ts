@@ -60,6 +60,7 @@ describe('OpenAIClient - Retry Logic', () => {
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
+			setStep: vi.fn(),
 		} as any
 
 		mockPage = {} as any
@@ -447,6 +448,7 @@ describe('OpenAIClient - message flow', () => {
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
+			setStep: vi.fn(),
 		} as any
 
 		mockPage = {} as any

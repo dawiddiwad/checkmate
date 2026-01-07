@@ -49,6 +49,7 @@ export class OpenAIClient {
 		this.stepStatusCallback = stepStatusCallback
 		this.responseProcessor.resetStepTokens()
 		this.temperature = this.configurationManager.getTemperature()
+		this.toolRegistry.setStep(step)
 	}
 
 	getMessages(): ChatCompletionMessageParam[] {

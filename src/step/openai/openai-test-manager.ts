@@ -54,7 +54,7 @@ class OpenAITestStep {
 			await this.openaiClient.initialize(step, this.stepStatusCallback)
 			new HistoryManager().addInitialSnapshot(
 				this.openaiClient,
-				PageSnapshot.lastSnapshot ?? (await new PageSnapshot(this.openaiClient.page).get())
+				PageSnapshot.lastSnapshot ?? (await new PageSnapshot(this.openaiClient.page, step).get())
 			)
 			await this.openaiClient.sendMessage(RUN_STEP_PROMPT(step))
 			this.stepStatus = await this.stepFinishedCallback

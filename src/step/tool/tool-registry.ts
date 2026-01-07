@@ -1,7 +1,7 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 import { SalesforceTool } from '../../salesforce/salesforce-tool'
 import { StepTool } from './step-tool'
-import { StepStatusCallback } from '../types'
+import { Step, StepStatusCallback } from '../types'
 import { ConfigurationManager } from '../configuration-manager'
 import { BrowserTool } from './browser-tool'
 import { ToolCall } from './openai-tool'
@@ -30,6 +30,10 @@ export class ToolRegistry {
 		this.stepTool = stepTool
 		this.salesforceTool = salesforceTool
 		this.configurationManager = configurationManager
+	}
+
+	setStep(step: Step): void {
+		this.browserTool.setStep(step)
 	}
 
 	private logToolCall(toolCall: ToolCall): void {

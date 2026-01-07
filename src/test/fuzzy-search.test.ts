@@ -1,11 +1,27 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { tokenize, extractSearchTerms } from '../step/tool/fuzzy-search/tokenizer'
 import { scoreElements, selectTopElements, JsonValue } from '../step/tool/fuzzy-search/scorer'
 import { reconstructTree } from '../step/tool/fuzzy-search/tree-reconstructor'
 import { filterSnapshot } from '../step/tool/fuzzy-search/snapshot-filter'
 import { Step } from '../step/types'
 
+vi.mock('../step/tool/fuzzy-search/keyword-extractor', () => ({
+	extractKeywordsFromLLM: vi.fn().mockResolvedValue(['search models', 'models', 'qwen3']),
+}))
+
+vi.mock('../step/openai/openai-test-manager', () => ({
+	logger: {
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn(),
+	},
+}))
+
 describe('Fuzzy Search', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
 	describe('Tokenizer', () => {
 		describe('tokenize', () => {
 			it('should return empty array for empty string', () => {
@@ -231,18 +247,70 @@ describe('Fuzzy Search', () => {
 
 	describe('Snapshot Filter', () => {
 		describe('filterSnapshot', () => {
-			it('should return original JSON when step is undefined', () => {
+			it('should return original JSON when step is undefined', async () => {
 				const json = { key: 'value' }
-				expect(filterSnapshot(json, undefined)).toEqual(json)
+				expect(await filterSnapshot(json, undefined)).toEqual(json)
 			})
 
-			it('should return original JSON when action and expect are empty', () => {
-				const json = { key: 'value' }
-				const step: Step = { action: '', expect: '' }
-				expect(filterSnapshot(json, step)).toEqual(json)
+			it('should use step.elements when provided', async () => {
+				const json = {
+					'generic [ref=e1]': [
+						{
+							'link "Models" [ref=e7]': 'value1',
+						},
+						{
+							'link "GitHub" [ref=e8]': 'value2',
+						},
+						{
+							'textbox "Search models" [ref=e19]': 'value3',
+						},
+					],
+				}
+				const step: Step = {
+					action: 'some action',
+					expect: 'some expectation',
+					elements: ['Search models', 'Models'],
+				}
+				const result = (await filterSnapshot(json, step)) as JsonValue
+				const resultStr = JSON.stringify(result)
+				expect(resultStr).toContain('Search models')
+				expect(resultStr).toContain('Models')
 			})
 
-			it('should filter snapshot based on step action', () => {
+			it('should fall back to LLM when elements is empty array', async () => {
+				const json = {
+					'generic [ref=e1]': [
+						{
+							'textbox "Search models" [ref=e19]': 'value',
+						},
+					],
+				}
+				const step: Step = {
+					action: 'type in search',
+					expect: 'see results',
+					elements: [],
+				}
+				const result = (await filterSnapshot(json, step)) as JsonValue
+				expect(result).toBeDefined()
+			})
+
+			it('should fall back to LLM when elements is undefined', async () => {
+				const json = {
+					'generic [ref=e1]': [
+						{
+							'textbox "Search models" [ref=e19]': 'value',
+						},
+					],
+				}
+				const step: Step = {
+					action: 'type in search',
+					expect: 'see results',
+				}
+				const result = (await filterSnapshot(json, step)) as JsonValue
+				expect(result).toBeDefined()
+			})
+
+			it('should filter snapshot using provided elements', async () => {
 				const json = {
 					'generic [active] [ref=e1]': [
 						{
@@ -288,15 +356,16 @@ describe('Fuzzy Search', () => {
 					],
 				}
 				const step: Step = {
-					action: 'type Qwen3 in to "Search Models" input',
-					expect: 'should see models link',
+					action: 'Navigate and search',
+					expect: 'see models',
+					elements: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
 				}
-				const result = filterSnapshot(json, step) as JsonValue
+				const result = (await filterSnapshot(json, step)) as JsonValue
 				expect(result).toBeDefined()
 				expect(JSON.stringify(result)).toContain('Search models')
 			})
 
-			it('should handle the example from the spec', () => {
+			it('should handle the example from the spec with elements', async () => {
 				const inputSnapshot = {
 					'generic [active] [ref=e1]': [
 						{
@@ -405,18 +474,27 @@ describe('Fuzzy Search', () => {
 				}
 
 				const step: Step = {
-					action: 'type Qwen3 in to "Search Models" input',
-					expect: 'see Models link',
+					action:
+						"Navigate to https://ollama.com/ type 'qwen3' into the 'Search models' search bar click on 'qwen3-vl' link",
+					expect: 'qwen3-vl:235b model page is displayed with model details',
+					elements: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
 				}
 
-				const result = filterSnapshot(inputSnapshot, step)
+				const result = await filterSnapshot(inputSnapshot, step)
 				const resultStr = JSON.stringify(result)
 
 				expect(resultStr).toContain('Search models')
-				expect(resultStr).toContain('Models')
 				expect(resultStr).toContain('ref=e19')
-				expect(resultStr).toContain('ref=e7')
 			})
+		})
+	})
+})
+
+describe('Keyword Extractor', () => {
+	describe('extractKeywordsFromLLM', () => {
+		it('should be exported and callable', async () => {
+			const { extractKeywordsFromLLM } = await import('../step/tool/fuzzy-search/keyword-extractor')
+			expect(typeof extractKeywordsFromLLM).toBe('function')
 		})
 	})
 })

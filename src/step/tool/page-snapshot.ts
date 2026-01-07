@@ -56,7 +56,7 @@ export class PageSnapshot {
 
 	private async compress(snapshot: AriaPageSnapshot): Promise<AriaPageSnapshot> {
 		const asJson = parse(snapshot)?.[0] ?? { state: 'page is blank - navigate to a relevant page url' }
-		const filtered = filterSnapshot(asJson, this.step)
+		const filtered = await filterSnapshot(asJson, this.step)
 		const asMinified = `page snapshot:\n${this.minify(JSON.stringify(filtered))}`
 		const withHeader = `${await this.getHeader()}\n${asMinified}`
 		const withoutAds = this.removeAds(withHeader)

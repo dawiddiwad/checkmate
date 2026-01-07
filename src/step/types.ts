@@ -1,6 +1,7 @@
 export type Step = {
 	action: string
 	expect: string
+	elements?: string[]
 }
 
 export type StepStatus = {

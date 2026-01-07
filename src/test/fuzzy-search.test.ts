@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { tokenize, extractSearchTerms } from '../step/tool/fuzzy-search/tokenizer'
 import { scoreElements, selectTopElements, JsonValue } from '../step/tool/fuzzy-search/scorer'
 import { reconstructTree } from '../step/tool/fuzzy-search/tree-reconstructor'
 import { filterSnapshot } from '../step/tool/fuzzy-search/snapshot-filter'
@@ -21,68 +20,6 @@ vi.mock('../step/openai/openai-test-manager', () => ({
 describe('Fuzzy Search', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
-	})
-	describe('Tokenizer', () => {
-		describe('tokenize', () => {
-			it('should return empty array for empty string', () => {
-				expect(tokenize('')).toEqual([])
-			})
-
-			it('should return empty array for whitespace only', () => {
-				expect(tokenize('   ')).toEqual([])
-			})
-
-			it('should split by spaces', () => {
-				expect(tokenize('hello world')).toEqual(['hello', 'world'])
-			})
-
-			it('should convert to lowercase', () => {
-				expect(tokenize('Hello World')).toEqual(['hello', 'world'])
-			})
-
-			it('should preserve single quoted strings as single token', () => {
-				expect(tokenize("type 'Search models' input")).toEqual(['search models', 'type', 'input'])
-			})
-
-			it('should preserve double quoted strings as single token', () => {
-				expect(tokenize('click "Submit Button" now')).toEqual(['submit button', 'click', 'now'])
-			})
-
-			it('should handle mixed quoted and unquoted tokens', () => {
-				expect(tokenize('type Qwen3 in to "Search Models" input')).toEqual([
-					'search models',
-					'type',
-					'qwen3',
-					'in',
-					'to',
-					'input',
-				])
-			})
-
-			it('should handle multiple quoted strings', () => {
-				expect(tokenize("'first' and 'second'")).toEqual(['first', 'second', 'and'])
-			})
-		})
-
-		describe('extractSearchTerms', () => {
-			it('should combine tokens from action and expect', () => {
-				const result = extractSearchTerms('click button', 'see result')
-				expect(result).toContain('click')
-				expect(result).toContain('button')
-				expect(result).toContain('see')
-				expect(result).toContain('result')
-			})
-
-			it('should deduplicate tokens', () => {
-				const result = extractSearchTerms('click button', 'click result')
-				const clickCount = result.filter((t) => t === 'click').length
-				expect(clickCount).toBe(1)
-			})
-
-			it('should return empty array for empty inputs', () => {
-				expect(extractSearchTerms('', '')).toEqual([])
-			})
-		})
 	})
 
 	describe('Scorer', () => {

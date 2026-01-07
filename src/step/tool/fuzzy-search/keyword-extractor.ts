@@ -2,16 +2,15 @@ import OpenAI from 'openai'
 import { ConfigurationManager } from '../../configuration-manager'
 import { logger } from '../../openai/openai-test-manager'
 
-const KEYWORD_EXTRACTION_PROMPT = `You are a keyword extraction assistant for UI test automation. Given a test step's action and expected result, extract the top 5 most relevant keywords or phrases that would help identify UI elements on a webpage.
+const KEYWORD_COUNT = 5
+const KEYWORD_EXTRACTION_PROMPT = `You are a keyword extraction assistant for UI test automation. Given a test step's action and expected result, extract the top ${KEYWORD_COUNT} most relevant keywords or phrases that would help identify UI elements on a webpage.
 
 Focus on:
-- Specific UI element labels (button names, input field labels, link text)
-- Unique identifiers or model names mentioned
+- Specific UI elements (buttons, textboxes, labels, links)
+- Unique identifiers, names or sections
 - Key action targets and expected outcomes
 
-Example: ["Search models", "qwen3-vl", "Submit button", "model details", "capabilities"]`
-
-const DEFAULT_KEYWORD_COUNT = 5
+Example: ["Search models", "qwen3-vl link", "Submit button", "model details", "capabilities"]`
 
 export async function extractKeywordsFromLLM(action: string, expect: string): Promise<string[]> {
 	logger.info(`extractKeywordsFromLLM: Starting extraction for action="${action.substring(0, 50)}..."`)
@@ -50,7 +49,7 @@ export async function extractKeywordsFromLLM(action: string, expect: string): Pr
 									type: 'string',
 								},
 								minItems: 1,
-								maxItems: 5,
+								maxItems: KEYWORD_COUNT,
 							},
 						},
 						required: ['keywords'],
@@ -68,7 +67,7 @@ export async function extractKeywordsFromLLM(action: string, expect: string): Pr
 		const keywords = parseKeywordsResponse(content)
 
 		logger.info(`extractKeywordsFromLLM: Extracted ${keywords.length} keywords: ${JSON.stringify(keywords)}`)
-		return keywords.slice(0, DEFAULT_KEYWORD_COUNT)
+		return keywords.slice(0, KEYWORD_COUNT)
 	} catch (error) {
 		logger.error(`extractKeywordsFromLLM: Failed to extract keywords: ${error}`)
 		return []

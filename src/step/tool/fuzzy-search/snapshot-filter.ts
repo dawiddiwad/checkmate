@@ -4,7 +4,7 @@ import { scoreElements, selectTopElements, JsonValue } from './scorer'
 import { reconstructTree } from './tree-reconstructor'
 import { logger } from '../../openai/openai-test-manager'
 
-const DEFAULT_TOP_ELEMENTS_COUNT = 10
+const TOP_ELEMENTS_COUNT = 10
 
 export async function filterSnapshot(json: JsonValue, step?: Step): Promise<JsonValue> {
 	if (!step) {
@@ -28,7 +28,7 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 		return json
 	}
 
-	const topElements = selectTopElements(scoredElements, DEFAULT_TOP_ELEMENTS_COUNT)
+	const topElements = selectTopElements(scoredElements, TOP_ELEMENTS_COUNT)
 	logger.debug(`filterSnapshot: Selected top ${topElements.length} elements`)
 
 	const filtered = reconstructTree(json, topElements)

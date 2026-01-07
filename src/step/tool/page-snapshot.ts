@@ -2,6 +2,7 @@ import { Page } from '@playwright/test'
 import { parse } from 'yaml'
 import { logger } from '../openai/openai-test-manager'
 import { Step } from '../types'
+import { ConfigurationManager } from '../configuration-manager'
 import { filterSnapshot } from './fuzzy-search'
 
 export type AriaPageSnapshot = string | null
@@ -14,12 +15,14 @@ export class PageSnapshot {
 	private page: Page | null = null
 	private step: Step | undefined
 	private options: PageSnapshotOptions
+	private configManager: ConfigurationManager
 	static lastSnapshot: AriaPageSnapshot = null
 
 	constructor(page: Page, step?: Step, options: PageSnapshotOptions = {}) {
 		this.page = page
 		this.step = step
 		this.options = options
+		this.configManager = new ConfigurationManager()
 	}
 
 	private async getHeader() {
@@ -62,7 +65,8 @@ export class PageSnapshot {
 
 	private async compress(snapshot: AriaPageSnapshot): Promise<AriaPageSnapshot> {
 		const asJson = parse(snapshot)?.[0] ?? { state: 'page is blank - navigate to a relevant page url' }
-		const processed = this.options.skipFilter ? asJson : await filterSnapshot(asJson, this.step)
+		const shouldSkipFilter = this.options.skipFilter || !this.configManager.isSnapshotFilteringEnabled()
+		const processed = shouldSkipFilter ? asJson : await filterSnapshot(asJson, this.step)
 		const asMinified = `page snapshot:\n${this.minify(JSON.stringify(processed))}`
 		const withHeader = `${await this.getHeader()}\n${asMinified}`
 		const withoutAds = this.removeAds(withHeader)

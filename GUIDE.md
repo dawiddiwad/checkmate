@@ -32,6 +32,7 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 | `OPENAI_API_TOKEN_BUDGET_COUNT`         | -              | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
 | `OPENAI_LOOP_MAX_REPETITIONS`           | `5`            | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
 | `CHECKMATE_LOG_LEVEL`                   | `off`          | Logging verbosity: debug, info, warn, error, off                                                          |
+| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`         | Enable fuzzy-search filtering for page snapshots (60-90% token reduction)                                 |
 
 ### Playwright Configuration
 
@@ -109,12 +110,13 @@ await test.step('Fill form and submit', async () => {
 ### Cost Optimization Features
 
 1. **Smart Snapshots** - Instead of full HTML, only the ARIA accessibility tree is sent to the AI
-2. **History Filtering** - Continuously filters old page snapshots (reduces token usage by ~50%)
+2. **History Filtering** - Continuously filters old page snapshots (reduces token usage by up to 50%)
 3. **Snapshot Minification** - Removes unnecessary whitespace and quotes from ARIA snapshots
-4. **Screenshots** - Normalized and compressed locally, helps vision models understand UI better
-5. **Chat Recycling** - New session per step to prevent context bloat and isolation
-6. **Token Counting** - Real-time usage tracking per step and test with budgets
-7. **Loop Detection** - Detects and mitigates repetitive tool call patterns, preventing AI runaway costs
+4. **Fuzzy Search** - Algorithmic + LLM filtering of page snapshots (reduces token usage by up to 90%)
+5. **Screenshots** - Normalized and compressed locally, helps vision models understand UI better
+6. **Chat Recycling** - New session per step to prevent context bloat and isolation
+7. **Token Counting** - Real-time usage tracking per step and test with budgets
+8. **Loop Detection** - Detects and mitigates repetitive tool call patterns, preventing AI runaway costs
 
 ### Budgeting & Cost Limits
 

@@ -90,4 +90,12 @@ export class ConfigurationManager {
 		}
 		return 'off'
 	}
+
+	isSnapshotFilteringEnabled(): boolean {
+		const value = process.env.CHECKMATE_SNAPSHOT_FILTERING?.toLowerCase()
+		if (value === 'false') {
+			return false
+		}
+		return true
+	}
 }

@@ -217,10 +217,7 @@ describe('Fuzzy Search', () => {
 				const json = {
 					'root [ref=e1]': [
 						{
-							'shared [ref=e2]': [
-								{ 'match1 [ref=e3]': 'val1' },
-								{ 'match2 [ref=e4]': 'val2' },
-							],
+							'shared [ref=e2]': [{ 'match1 [ref=e3]': 'val1' }, { 'match2 [ref=e4]': 'val2' }],
 						},
 					],
 				}
@@ -333,10 +330,7 @@ describe('Fuzzy Search', () => {
 											],
 										},
 										{
-											'generic [ref=e15]': [
-												'img [ref=e17]',
-												'textbox "Search models" [ref=e19]',
-											],
+											'generic [ref=e15]': ['img [ref=e17]', 'textbox "Search models" [ref=e19]'],
 										},
 									],
 								},
@@ -402,10 +396,7 @@ describe('Fuzzy Search', () => {
 											],
 										},
 										{
-											'generic [ref=e15]': [
-												'img [ref=e17]',
-												'textbox "Search models" [ref=e19]',
-											],
+											'generic [ref=e15]': ['img [ref=e17]', 'textbox "Search models" [ref=e19]'],
 										},
 										{
 											'generic [ref=e20]': [
@@ -474,8 +465,7 @@ describe('Fuzzy Search', () => {
 				}
 
 				const step: Step = {
-					action:
-						"Navigate to https://ollama.com/ type 'qwen3' into the 'Search models' search bar click on 'qwen3-vl' link",
+					action: "Navigate to https://ollama.com/ type 'qwen3' into the 'Search models' search bar click on 'qwen3-vl' link",
 					expect: 'qwen3-vl:235b model page is displayed with model details',
 					elements: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
 				}

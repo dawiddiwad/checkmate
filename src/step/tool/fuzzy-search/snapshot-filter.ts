@@ -30,12 +30,14 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 
 	const topElements = selectTopElements(scoredElements, DEFAULT_TOP_ELEMENTS_COUNT)
 	logger.debug(`filterSnapshot: Selected top ${topElements.length} elements`)
-	
+
 	const filtered = reconstructTree(json, topElements)
 	const originalSize = JSON.stringify(json).length
 	const filteredSize = JSON.stringify(filtered).length
-	logger.info(`filterSnapshot: Reduced snapshot from ${originalSize} to ${filteredSize} chars (${Math.round((1 - filteredSize/originalSize) * 100)}% reduction)`)
-	
+	logger.info(
+		`filterSnapshot: Reduced snapshot from ${originalSize} to ${filteredSize} chars (${Math.round((1 - filteredSize / originalSize) * 100)}% reduction)`
+	)
+
 	return filtered
 }
 

@@ -157,7 +157,7 @@ export class BrowserTool extends OpenAITool {
 		if (specified.name === BrowserTool.TOOL_NAVIGATE) {
 			return this.navigateToUrl(specified.arguments?.url as string)
 		} else if (specified.name === BrowserTool.TOOL_SNAPSHOT) {
-			return this.captureSnapshot()
+			return this.captureSnapshot({ skipFilter: true })
 		} else if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
 			return this.clickElement(specified.arguments?.ref as string, specified.arguments?.hover as boolean)
 		} else if (specified.name === BrowserTool.TOOL_TYPE) {
@@ -176,7 +176,7 @@ export class BrowserTool extends OpenAITool {
 		this.step = step
 	}
 
-	private async captureSnapshot() {
+	private async captureSnapshot(options: { skipFilter?: boolean } = {}) {
 		try {
 			await expect
 				.poll(
@@ -194,7 +194,7 @@ export class BrowserTool extends OpenAITool {
 					}
 				)
 				.toEqual('stable')
-			return new PageSnapshot(this.page, this.step).get()
+			return new PageSnapshot(this.page, this.step, { skipFilter: options.skipFilter }).get()
 		} catch (error) {
 			throw new Error(`Failed to capture page snapshot:\n${error}`)
 		}

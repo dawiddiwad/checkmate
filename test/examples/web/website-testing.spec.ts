@@ -24,16 +24,31 @@ import { test } from '../../fixtures/checkmate'
 
 test.describe('single-step flows - quick examples', async () => {
 	test('browsing ollama models', async ({ ai }) => {
-		await test.step('Navigate to ollama.com and search for model details', async () => {
+		await test.step('Navigate to ollama.com', async () => {
 			await ai.run({
-				action: `
-                Navigate to https://ollama.com/
-                type 'qwen3' into the 'Search models' search bar
-                click on 'qwen3-vl' link from the results,
-                click on 'qwen3-vl:235b' linik from the models list,
-            `,
-				expect: `qwen3-vl:235b model page is displayed with model details,
-                describing its features and capabilities.`,
+				action: `Navigate to https://ollama.com/`,
+				expect: `Ollama homepage is visible`,
+			})
+		})
+
+		await test.step("Search for 'qwen3' in the models search bar", async () => {
+			await ai.run({
+				action: `Type 'qwen3' into the 'Search models' search bar and submit the search.`,
+				expect: `Search results include qwen3-related models`,
+			})
+		})
+
+		await test.step("Open the 'qwen3-vl' model page", async () => {
+			await ai.run({
+				action: `Click on the 'qwen3-vl' link from the search results.`,
+				expect: `qwen3-vl model page is displayed`,
+			})
+		})
+
+		await test.step("Open the 'qwen3-vl:235b' variant and verify details", async () => {
+			await ai.run({
+				action: `Click on the 'qwen3-vl:235b' link from the models list.`,
+				expect: `qwen3-vl:235b model page is displayed with model details describing its features and capabilities.`,
 			})
 		})
 	})

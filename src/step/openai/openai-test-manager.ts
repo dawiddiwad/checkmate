@@ -52,9 +52,11 @@ class OpenAITestStep {
 		this.logStepStart(step)
 		try {
 			await this.openaiClient.initialize(step, this.stepStatusCallback)
+			// Clear the previous step's cached snapshot to ensure fresh filtering with new step's keywords
+			PageSnapshot.lastSnapshot = null
 			new HistoryManager().addInitialSnapshot(
 				this.openaiClient,
-				PageSnapshot.lastSnapshot ?? (await new PageSnapshot(this.openaiClient.page, step).get())
+				await new PageSnapshot(this.openaiClient.page, step).get()
 			)
 			await this.openaiClient.sendMessage(RUN_STEP_PROMPT(step))
 			this.stepStatus = await this.stepFinishedCallback

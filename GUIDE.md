@@ -95,37 +95,35 @@ await test.step('Fill form and submit', async () => {
 
 For complex pages, you can additonally provide search keywords to filter page snapshots to potentially reduce token usage (usually by 50-90%).
 
-```
-debug: filterSnapshot: Scored 107 elements
-debug: filterSnapshot: Filtered to 2 elements above threshold 0.6
-debug: filterSnapshot: Reduced snapshot from 4283 to 326 chars (92% reduction)
-```
-
-When search keywords are provided, only relevant UI elements matching these keywords are sent to the AI. Be carefull when using this for critical assertion steps, as it may omit important elements if the keywords are not comprehensive enough. However, the AI will automatically request the full snapshot if it cannot find relevant elements using the keywords, ensuring test reliability.
-
-**Note:** Search keywords are **not** extracted by the LLM at runtime (to avoid wasting tokens). Instead, you should provide them explicitly in your test steps. It's recommended to use your IDE's AI model to generate these keywords from your action/expect descriptions, or leverage IDE autocomplete features. You may need to review and adjust the keywords for optimal performance.
+**This feature significantly reduces the payload size, minimizing costs while improving AI determinism, reliability and speed.**
 
 ```typescript
-await test.step('Search for a product', async () => {
-	await ai.run({
-		action: 'Type "wireless headphones" in the search bar and press Enter',
-		expect: 'Search results page is displayed with product listings',
+await ai.run({
+	action: `Click on the link that leads to playwright.dev`,
+	expect: `The playwright.dev homepage is displayed`,
 
-		// Optional: provide search keywords to filter the page snapshot
-		search: ['search', 'input', 'button', 'textbox', 'enter'],
-		// Optional: adjust the matching threshold (default: 0.3)
-		threshold: 0.3,
-	})
-})
-
-await test.step('Filter results', async () => {
-	await ai.run({
-		action: 'Click on the "Price" filter and select "Under $100"',
-		expect: 'Product results are filtered to show only items under $100',
-		search: ['price', 'checkbox', 'under 100', 'item'],
-	})
+	// optional fuzzy search settings
+	search: ['link', 'playwright.dev', 'end-to-end testing'],
+	threshold: 0.5,
 })
 ```
+
+When fuzzy search is enabled and `search` keywords are provided, the framework uses a local [Dice Coefficient](https://en.wikipedia.org/wiki/Dice-S%C3%B8rensen_coefficient) algorithm to filter the page snapshot and only send relevant UI elements above certain `threshold` (default: 0.3) to the AI.
+
+```
+debug: Scored 107 elements
+debug: Filtered to 3 elements above threshold 0.5
+debug: Reduced snapshot from 4283 to 326 chars (92% reduction)
+```
+
+Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` env var (default: `true`) and `search` and `threshold` options in the `ai.run()` method.
+Search keywords are not extracted automatically from step description when `CHECKMATE_SNAPSHOT_FILTERING` is enabled. Instead, you should provide them explicitly in your test steps.
+
+When `search` keywords are provided, only relevant UI elements matching these keywords are sent to the AI. This is a safe reduction because the AI will automatically fetch the full snapshot in case it cannot find relevant elements using the keywords. You can use your IDE's AI model to generate search keywords from your test descriptions. For optimal results, use up to 10 relevant keywords per step and review them for accuracy and adjust the `threshold` setting to find the best balance between filtering and fetching the full snapshot.
+
+**Note:** be careful when using this for critical assertion steps, as AI may potentially not see some important information if the keywords are not comprehensive enough.
+
+You can use your IDE's AI model to generate keywords from your action/expect descriptions, or leverage IDE autocomplete features. However, it is highly recommended to review and adjust them manually for best performance.
 
 **Tips for effective search keywords:**
 

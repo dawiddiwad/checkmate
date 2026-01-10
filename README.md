@@ -109,6 +109,20 @@ test('google search', async ({ ai }) => {
 
 That's it. No page objects, no selectors. No locators. Peace on Earth.
 
+**Pro tip:**  
+For complex pages, provide `search` keywords to filter page snapshots and reduce token costs by up to 90%.
+
+This is a safe reduction because the AI will automatically fetch the full snapshot if it cannot find relevant elements using the keywords. You can use your IDE's AI model to generate search keywords from your test descriptions. For optimal results, use up to 10 relevant keywords per step and review them for accuracy and adjust the `threshold` setting to find the best balance between filtering and fetching the full snapshot.
+
+```typescript
+await ai.run({
+	action: `Click on the link that leads to playwright.dev`,
+	expect: `The playwright.dev homepage is displayed`,
+	search: ['link', 'playwright.dev', 'end-to-end testing'],
+	threshold: 0.5,
+})
+```
+
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
 See [guide](GUIDE.md#best-practices) for detailed examples and best practices.

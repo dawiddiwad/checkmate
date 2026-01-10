@@ -1,8 +1,7 @@
 export { filterSnapshot } from './snapshot-filter'
-export { extractKeywordsFromLLM } from './keyword-extractor'
 export {
 	scoreElements,
-	selectTopElements,
+	filterByThreshold,
 	type ScoredElement,
 	type JsonValue,
 	type JsonObject,

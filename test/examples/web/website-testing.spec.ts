@@ -28,12 +28,14 @@ test.describe('single-step flows - quick examples', async () => {
 			await ai.run({
 				action: `
                 Navigate to https://ollama.com/
-                type 'qwen3' into the 'Search models' search bar
-                click on 'qwen3-vl' link from the results,
-                click on 'qwen3-vl:235b' linik from the models list,
-            `,
-				expect: `qwen3-vl:235b model page is displayed with model details,
+                Type 'qwen3' into the 'Search models' search bar
+                Click on 'qwen3-vl' link from the results,
+                Click on 'qwen3-vl:235b' link from the models list,`,
+				expect: `
+				qwen3-vl:235b model page is displayed with model details,
                 describing its features and capabilities.`,
+				search: ['search models', 'qwen3-vl', 'qwen3-vl:235b', 'features', 'capabilities'],
+				threshold: 0.6,
 			})
 		})
 	})
@@ -42,12 +44,27 @@ test.describe('single-step flows - quick examples', async () => {
 		await test.step('Navigate to huggingface.co', async () => {
 			await ai.run({
 				action: `
-                    Navigate to the https://huggingface.co website.
-                    Type 'Qwen3-VL-4B' in the search bar.
-                    Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.
-                    `,
-				expect: `Qwen3-VL-4B-Instruct model page is displayed with model details`,
+				Navigate to the https://huggingface.co website.
+				Type 'Qwen3-VL-4B' in the search bar.
+				Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.`,
+				expect: `
+				Qwen3-VL-4B-Instruct model page is displayed with model details`,
+				search: ['search models', 'Qwen/Qwen3-VL-4B-Instruct', 'enchancements', 'performance', 'quickstart'],
 			})
+		})
+	})
+
+	test('recorded example', async ({ page, ai }) => {
+		await page.goto('https://www.mojeek.com/')
+		await page.getByRole('textbox', { name: 'No Tracking. Just Search...' }).fill('playwright test automation')
+		await page.getByRole('textbox', { name: 'No Tracking. Just Search...' }).press('Enter')
+		await ai.run({
+			action: `         
+				From the search results, click on the link that goes to playwright.dev.
+                Once on the Playwright website, click the site's search icon and type Agent into the Search docs field.
+                Click on the Planner result displayed in the documentation search.`,
+			expect: `
+				The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`,
 		})
 	})
 
@@ -64,6 +81,16 @@ test.describe('single-step flows - quick examples', async () => {
                 `,
 				expect: `
                 The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`,
+				search: [
+					'No Tracking. Just Search.',
+					'playwright.dev',
+					'searchbox',
+					'Search',
+					'Search docs',
+					'Planner',
+					'Agent',
+				],
+				threshold: 0.3,
 			})
 		})
 	})
@@ -76,6 +103,7 @@ test.describe('single-step flows - quick examples', async () => {
                 Search for 'The Catcher in the Rye.`,
 				expect: `
                 'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+				threshold: 0.3,
 			})
 		})
 	})
@@ -382,6 +410,12 @@ test.describe('multi-step flow - Automation Exercise Regression - full ai mode',
 			await ai.run({
 				action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.`,
 				expect: `Home page is visible successfully`,
+				search: [
+					'Consent',
+					'This site asks for consent to use your data',
+					'Full-Fledged practice website for Automation Engineers',
+					'Home',
+				],
 			})
 		})
 
@@ -394,6 +428,7 @@ test.describe('multi-step flow - Automation Exercise Regression - full ai mode',
                 Proceed to the Cart view.
                 .`,
 				expect: `Cart page is displayed with 2 products`,
+				search: ['Products', 'Blue Top', 'Add to cart', 'Men Tshirt', 'Continue Shopping', 'Cart'],
 			})
 		})
 
@@ -401,6 +436,7 @@ test.describe('multi-step flow - Automation Exercise Regression - full ai mode',
 			await ai.run({
 				action: `Click the 'X' button (remove icon) corresponding to the first product in the cart.`,
 				expect: `Product is removed and only one remains in the cart`,
+				search: ['quantity delete', 'icon', 'cell', 'Cart', 'Quantity', 'Price', 'Description', 'Item'],
 			})
 		})
 	})
@@ -718,7 +754,7 @@ test.describe('multi-step flow - Automation Exercise Regression - hybrid ai mode
 		await test.step('Verify both products in cart', async () => {
 			await page.getByRole('link', { name: 'Cart' }).click()
 			await ai.run({
-				action: `Verify that both products are displayed in the cart with their prices, quantities, and total prices.`,
+				action: ``,
 				expect: `Both products are visible in the cart with correct prices, quantity (1 each), and calculated total prices`,
 			})
 		})
@@ -733,10 +769,7 @@ test.describe('multi-step flow - Automation Exercise Regression - hybrid ai mode
 		})
 
 		await test.step('View cart and verify quantity', async () => {
-			await ai.run({
-				action: `Verify Cart View is displayed with correct product count.`,
-				expect: `Product is displayed in cart with exact quantity of 4`,
-			})
+			await ai.run({ action: ``, expect: `Product is displayed in cart with exact quantity of 4` })
 		})
 	})
 

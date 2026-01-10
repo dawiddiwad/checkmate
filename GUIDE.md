@@ -16,23 +16,23 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 
 ### OpenAI API Settings
 
-| Variable                                | Default        | Description                                                                                               |
-| --------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`                        | -              | **Required** - Your OpenAI API key (or compatible provider)                                               |
-| `OPENAI_BASE_URL`                       | -              | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                 |
-| `OPENAI_MODEL`                          | `gpt-4.1-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                    |
-| `OPENAI_TEMPERATURE`                    | `1.0`          | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                              |
-| `OPENAI_REASONING_EFFORT`               | -              | Optional - Reasoning effort for models: low, medium, high                                                 |
-| `OPENAI_TIMEOUT_SECONDS`                | `60`           | API request timeout in seconds                                                                            |
-| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`            | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                 |
-| `OPENAI_TOOL_CHOICE`                    | `required`     | Tool choice: auto, required, none                                                                         |
-| `OPENAI_ALLOWED_TOOLS`                  | -              | Comma-separated list of allowed tools (if not set, all tools available)                                   |
-| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`        | Include compressed screenshots in snapshot responses                                                      |
-| `OPENAI_API_TOKEN_BUDGET_USD`           | -              | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced. |
-| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -              | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
-| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`            | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
-| `CHECKMATE_LOG_LEVEL`                   | `off`          | Logging verbosity: debug, info, warn, error, off                                                          |
-| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`         | Enable fuzzy-search filtering for page snapshots (60-90% token reduction)                                 |
+| Variable                                | Default        | Description                                                                                                    |
+| --------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`                        | -              | **Required** - Your OpenAI API key (or compatible provider)                                                    |
+| `OPENAI_BASE_URL`                       | -              | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                      |
+| `OPENAI_MODEL`                          | `gpt-4.1-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                         |
+| `OPENAI_TEMPERATURE`                    | `1.0`          | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                                   |
+| `OPENAI_REASONING_EFFORT`               | -              | Optional - Reasoning effort for models: low, medium, high                                                      |
+| `OPENAI_TIMEOUT_SECONDS`                | `60`           | API request timeout in seconds                                                                                 |
+| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`            | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                      |
+| `OPENAI_TOOL_CHOICE`                    | `required`     | Tool choice: auto, required, none                                                                              |
+| `OPENAI_ALLOWED_TOOLS`                  | -              | Comma-separated list of allowed tools (if not set, all tools available)                                        |
+| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`        | Include compressed screenshots in snapshot responses                                                           |
+| `OPENAI_API_TOKEN_BUDGET_USD`           | -              | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.      |
+| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -              | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.               |
+| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`            | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature      |
+| `CHECKMATE_LOG_LEVEL`                   | `off`          | Logging verbosity: debug, info, warn, error, off                                                               |
+| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`         | Enable fuzzy-search filtering for page snapshots when search keywords are provided (up to 90% token reduction) |
 
 ### Playwright Configuration
 
@@ -91,6 +91,51 @@ await test.step('Fill form and submit', async () => {
 })
 ```
 
+### Using Fuzzy Search for Token Optimization
+
+For complex pages, you can additonally provide search keywords to filter page snapshots to potentially reduce token usage (usually by 50-90%).
+
+```
+debug: filterSnapshot: Scored 107 elements
+debug: filterSnapshot: Filtered to 2 elements above threshold 0.6
+debug: filterSnapshot: Reduced snapshot from 4283 to 326 chars (92% reduction)
+```
+
+When search keywords are provided, only relevant UI elements matching these keywords are sent to the AI. Be carefull when using this for critical assertion steps, as it may omit important elements if the keywords are not comprehensive enough. However, the AI will automatically request the full snapshot if it cannot find relevant elements using the keywords, ensuring test reliability.
+
+**Note:** Search keywords are **not** extracted by the LLM at runtime (to avoid wasting tokens). Instead, you should provide them explicitly in your test steps. It's recommended to use your IDE's AI model to generate these keywords from your action/expect descriptions, or leverage IDE autocomplete features. You may need to review and adjust the keywords for optimal performance.
+
+```typescript
+await test.step('Search for a product', async () => {
+	await ai.run({
+		action: 'Type "wireless headphones" in the search bar and press Enter',
+		expect: 'Search results page is displayed with product listings',
+
+		// Optional: provide search keywords to filter the page snapshot
+		search: ['search', 'input', 'button', 'textbox', 'enter'],
+		// Optional: adjust the matching threshold (default: 0.3)
+		threshold: 0.3,
+	})
+})
+
+await test.step('Filter results', async () => {
+	await ai.run({
+		action: 'Click on the "Price" filter and select "Under $100"',
+		expect: 'Product results are filtered to show only items under $100',
+		search: ['price', 'checkbox', 'under 100', 'item'],
+	})
+})
+```
+
+**Tips for effective search keywords:**
+
+- Include relevant UI element types (button, input, link, checkbox, etc.)
+- Include key text that appears on the page
+- Include action-related terms (search, filter, submit, etc.)
+- Keep keywords short and focused (2-3 words max per keyword)
+- Use 5-10 keywords per step for best results
+- Review keywords generated by your IDE's AI model
+
 ## Cost Management
 
 **_checkmate_** includes built-in token usage monitoring:
@@ -112,7 +157,7 @@ await test.step('Fill form and submit', async () => {
 1. **Smart Snapshots** - Instead of full HTML, only the ARIA accessibility tree is sent to the AI
 2. **History Filtering** - Continuously filters old page snapshots (reduces token usage by up to 50%)
 3. **Snapshot Minification** - Removes unnecessary whitespace and quotes from ARIA snapshots
-4. **Fuzzy Search** - Algorithmic + LLM filtering of page snapshots (reduces token usage by up to 90%)
+4. **Fuzzy Search** - Local algorithmic filtering of page snapshots using user-provided keywords (reduces token usage by up to 90%)
 5. **Screenshots** - Normalized and compressed locally, helps vision models understand UI better
 6. **Chat Recycling** - New session per step to prevent context bloat and isolation
 7. **Token Counting** - Real-time usage tracking per step and test with budgets

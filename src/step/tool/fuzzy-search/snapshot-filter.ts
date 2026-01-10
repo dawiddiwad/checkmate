@@ -1,35 +1,36 @@
 import { Step } from '../../types'
-import { extractKeywordsFromLLM } from './keyword-extractor'
-import { scoreElements, selectTopElements, JsonValue } from './scorer'
+import { scoreElements, filterByThreshold, JsonValue } from './scorer'
 import { reconstructTree } from './tree-reconstructor'
 import { logger } from '../../openai/openai-test-manager'
 
-const TOP_ELEMENTS_COUNT = 10
+const DEFAULT_SCORE_THRESHOLD = 0.3
 
 export async function filterSnapshot(json: JsonValue, step?: Step): Promise<JsonValue> {
 	if (!step) {
-		logger.debug('filterSnapshot: No step provided, returning original JSON')
+		logger.debug('filterSnapshot: No step provided, returning original snapshot')
 		return json
 	}
 
-	const searchTerms = await resolveSearchTerms(step)
-	logger.debug(`filterSnapshot: Resolved search terms: ${JSON.stringify(searchTerms)}`)
+	const searchKeywords = await resolveSearchKeywords(step)
+	logger.debug(`filterSnapshot: Resolved search keywords: ${JSON.stringify(searchKeywords)}`)
 
-	if (searchTerms.length === 0) {
-		logger.debug('filterSnapshot: No search terms found, returning original JSON')
+	if (searchKeywords.length === 0) {
+		logger.debug('filterSnapshot: No search keywords found, returning original snapshot')
 		return json
 	}
 
-	const scoredElements = scoreElements(json, searchTerms)
+	const scoredElements = scoreElements(json, searchKeywords)
 	logger.debug(`filterSnapshot: Scored ${scoredElements.length} elements`)
 
 	if (scoredElements.length === 0) {
-		logger.debug('filterSnapshot: No scored elements, returning original JSON')
+		logger.debug('filterSnapshot: No scored elements, returning original snapshot')
 		return json
 	}
 
-	const topElements = selectTopElements(scoredElements, TOP_ELEMENTS_COUNT)
-	logger.debug(`filterSnapshot: Selected top ${topElements.length} elements`)
+	const topElements = filterByThreshold(scoredElements, step.threshold ?? DEFAULT_SCORE_THRESHOLD)
+	logger.debug(
+		`filterSnapshot: Filtered to ${topElements.length} elements above threshold ${step.threshold ?? DEFAULT_SCORE_THRESHOLD}`
+	)
 
 	const filtered = reconstructTree(json, topElements)
 	const originalSize = JSON.stringify(json).length
@@ -41,14 +42,11 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 	return filtered
 }
 
-async function resolveSearchTerms(step: Step): Promise<string[]> {
-	if (step.elements && step.elements.length > 0) {
-		logger.debug(`filterSnapshot: Using provided elements: ${JSON.stringify(step.elements)}`)
-		return step.elements.map((el) => el.toLowerCase())
+async function resolveSearchKeywords(step: Step): Promise<string[]> {
+	if (step.search && step.search.length > 0) {
+		logger.debug(`filterSnapshot: Using provided elements: ${JSON.stringify(step.search)}`)
+		return step.search.map((el) => el.toLowerCase())
+	} else {
+		return []
 	}
-
-	logger.debug('filterSnapshot: No elements provided, extracting via LLM...')
-	const llmKeywords = await extractKeywordsFromLLM(step.action, step.expect)
-	logger.debug(`filterSnapshot: LLM extracted keywords: ${JSON.stringify(llmKeywords)}`)
-	return llmKeywords.map((kw) => kw.toLowerCase())
 }

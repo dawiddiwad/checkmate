@@ -1,7 +1,8 @@
 export type Step = {
 	action: string
 	expect: string
-	elements?: string[]
+	search?: string[]
+	threshold?: number
 }
 
 export type StepStatus = {

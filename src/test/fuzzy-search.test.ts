@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { scoreElements, selectTopElements, JsonValue } from '../step/tool/fuzzy-search/scorer'
+import { scoreElements, filterByThreshold, JsonValue } from '../step/tool/fuzzy-search/scorer'
 import { reconstructTree } from '../step/tool/fuzzy-search/tree-reconstructor'
 import { filterSnapshot } from '../step/tool/fuzzy-search/snapshot-filter'
 import { Step } from '../step/types'
@@ -75,24 +75,32 @@ describe('Fuzzy Search', () => {
 			})
 		})
 
-		describe('selectTopElements', () => {
-			it('should return top N elements by score', () => {
+		describe('filterByThreshold', () => {
+			it('should return elements above threshold', () => {
 				const elements = [
 					{ score: 0.5, path: ['a'], element: 'a', key: 'a' },
 					{ score: 0.9, path: ['b'], element: 'b', key: 'b' },
 					{ score: 0.3, path: ['c'], element: 'c', key: 'c' },
 					{ score: 0.7, path: ['d'], element: 'd', key: 'd' },
 				]
-				const top2 = selectTopElements(elements, 2)
-				expect(top2).toHaveLength(2)
-				expect(top2[0].score).toBe(0.9)
-				expect(top2[1].score).toBe(0.7)
+				const filtered = filterByThreshold(elements, 0.6)
+				expect(filtered).toHaveLength(2)
+				expect(filtered.every((e) => e.score >= 0.6)).toBe(true)
 			})
 
-			it('should return all elements if count exceeds length', () => {
+			it('should return all elements if threshold is 0', () => {
+				const elements = [
+					{ score: 0.5, path: ['a'], element: 'a', key: 'a' },
+					{ score: 0.1, path: ['b'], element: 'b', key: 'b' },
+				]
+				const result = filterByThreshold(elements, 0)
+				expect(result).toHaveLength(2)
+			})
+
+			it('should return empty array if no elements meet threshold', () => {
 				const elements = [{ score: 0.5, path: ['a'], element: 'a', key: 'a' }]
-				const result = selectTopElements(elements, 10)
-				expect(result).toHaveLength(1)
+				const result = filterByThreshold(elements, 0.8)
+				expect(result).toHaveLength(0)
 			})
 		})
 	})
@@ -203,7 +211,7 @@ describe('Fuzzy Search', () => {
 				const step: Step = {
 					action: 'some action',
 					expect: 'some expectation',
-					elements: ['Search models', 'Models'],
+					search: ['Search models', 'Models'],
 				}
 				const result = (await filterSnapshot(json, step)) as JsonValue
 				const resultStr = JSON.stringify(result)
@@ -222,7 +230,7 @@ describe('Fuzzy Search', () => {
 				const step: Step = {
 					action: 'type in search',
 					expect: 'see results',
-					elements: [],
+					search: [],
 				}
 				const result = (await filterSnapshot(json, step)) as JsonValue
 				expect(result).toBeDefined()
@@ -289,7 +297,7 @@ describe('Fuzzy Search', () => {
 				const step: Step = {
 					action: 'Navigate and search',
 					expect: 'see models',
-					elements: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
+					search: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
 				}
 				const result = (await filterSnapshot(json, step)) as JsonValue
 				expect(result).toBeDefined()
@@ -404,7 +412,7 @@ describe('Fuzzy Search', () => {
 				const step: Step = {
 					action: "Navigate to https://ollama.com/ type 'qwen3' into the 'Search models' search bar click on 'qwen3-vl' link",
 					expect: 'qwen3-vl:235b model page is displayed with model details',
-					elements: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
+					search: ['Search models', 'qwen3-vl', 'qwen3-vl:235b', 'model details', 'capabilities'],
 				}
 
 				const result = await filterSnapshot(inputSnapshot, step)
@@ -413,15 +421,6 @@ describe('Fuzzy Search', () => {
 				expect(resultStr).toContain('Search models')
 				expect(resultStr).toContain('ref=e19')
 			})
-		})
-	})
-})
-
-describe('Keyword Extractor', () => {
-	describe('extractKeywordsFromLLM', () => {
-		it('should be exported and callable', async () => {
-			const { extractKeywordsFromLLM } = await import('../step/tool/fuzzy-search/keyword-extractor')
-			expect(typeof extractKeywordsFromLLM).toBe('function')
 		})
 	})
 })

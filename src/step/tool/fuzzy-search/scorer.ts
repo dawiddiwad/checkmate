@@ -68,6 +68,6 @@ function calculateMaxScore(text: string, tokens: string[]): number {
 	return Math.max(...tokens.map((token) => compareTwoStrings(normalizedText, token)))
 }
 
-export function selectTopElements(scoredElements: ScoredElement[], count: number): ScoredElement[] {
-	return [...scoredElements].sort((a, b) => b.score - a.score).slice(0, count)
+export function filterByThreshold(scoredElements: ScoredElement[], threshold: number): ScoredElement[] {
+	return scoredElements.filter((element) => element.score >= threshold)
 }

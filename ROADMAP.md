@@ -76,7 +76,8 @@ This roadmap outlines the planned features and improvements for checkmate.
 
 - ✅ **Fuzzy Search**
   - ✅ Dice Coefficient matching for UI elements
-  - ✅ LLM extracts keywords from step descriptions
+  - ✅ User-provided search keywords for snapshot filtering
+  - ✅ Fully local ultra fast algorithmic filtering (no LLM keyword extraction)
   - ✅ Snapshot tree is filtered using keyword matching
   - ✅ Reduces token consumption by up to 90% on complex pages
 

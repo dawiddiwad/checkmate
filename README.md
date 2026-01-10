@@ -116,7 +116,8 @@ See [guide](GUIDE.md#best-practices) for detailed examples and best practices.
 ## Costs
 
 Costs vary based on model and provider, test complexity and number of steps.
-**_checkmate_** includes built-in token usage [monitoring.](GUIDE.md#cost-management)
+**_checkmate_** includes built-in token usage [monitoring.](GUIDE.md#cost-management).  
+For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](GUIDE.md#using-fuzzy-search-for-token-optimization).
 
 Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) for optimal balance:
 

@@ -7,7 +7,7 @@
  *
  * @description
  * - Single-step:
- *   - Ollama: search for "qwen3" and open the qwen3-vl model page.
+ *   - Ollama: search for "qwen3" and open the qwen3-vl model page (with and without fuzzy search).
  *   - HuggingFace: search for "Qwen3-VL-4B" and open the model page.
  *   - Mojeek: search Playwright docs and open the Planner Agent page.
  *   - NYPL: check availability for "The Catcher in the Rye".
@@ -28,12 +28,31 @@ test.describe('single-step flows - quick examples', async () => {
 			await ai.run({
 				action: `
                 Navigate to https://ollama.com/
-                type 'qwen3' into the 'Search models' search bar
-                click on 'qwen3-vl' link from the results,
-                click on 'qwen3-vl:235b' linik from the models list,
-            `,
-				expect: `qwen3-vl:235b model page is displayed with model details,
+                Type 'qwen3' into the 'Search models' search bar
+                Click on 'qwen3-vl' link from the results,
+                Click on 'qwen3-vl:235b' link from the models list,`,
+				expect: `
+				qwen3-vl:235b model page is displayed with model details,
                 describing its features and capabilities.`,
+			})
+		})
+	})
+
+	test('browsing ollama models - fuzzy search enabled', async ({ ai }) => {
+		await test.step('Navigate to ollama.com and search for model details', async () => {
+			await ai.run({
+				action: `
+                Navigate to https://ollama.com/
+                Type 'qwen3' into the 'Search models' search bar
+                Click on 'qwen3-vl' link from the results,
+                Click on 'qwen3-vl:235b' link from the models list,`,
+				expect: `
+				qwen3-vl:235b model page is displayed with model details,
+                describing its features and capabilities.`,
+
+				// fuzzy search (~50% token savings)
+				search: ['search models', 'qwen3-vl', 'qwen3-vl:235b', 'features', 'capabilities'],
+				threshold: 0.6,
 			})
 		})
 	})
@@ -42,12 +61,26 @@ test.describe('single-step flows - quick examples', async () => {
 		await test.step('Navigate to huggingface.co', async () => {
 			await ai.run({
 				action: `
-                    Navigate to the https://huggingface.co website.
-                    Type 'Qwen3-VL-4B' in the search bar.
-                    Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.
-                    `,
-				expect: `Qwen3-VL-4B-Instruct model page is displayed with model details`,
+				Navigate to the https://huggingface.co website.
+				Type 'Qwen3-VL-4B' in the search bar.
+				Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.`,
+				expect: `
+				Qwen3-VL-4B-Instruct model page is displayed with model details`,
 			})
+		})
+	})
+
+	test('recorded example', async ({ page, ai }) => {
+		await page.goto('https://www.mojeek.com/')
+		await page.getByRole('textbox', { name: 'No Tracking. Just Search...' }).fill('playwright test automation')
+		await page.getByRole('textbox', { name: 'No Tracking. Just Search...' }).press('Enter')
+		await ai.run({
+			action: `         
+			From the search results, click on the link that goes to playwright.dev.
+			Once on the Playwright website, click the site's search icon and type Agent into the Search docs field.
+			Click on the Planner result displayed in the documentation search.`,
+			expect: `
+			The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`,
 		})
 	})
 
@@ -63,7 +96,7 @@ test.describe('single-step flows - quick examples', async () => {
                 Click on the Planner result displayed in the documentation search.
                 `,
 				expect: `
-                The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`,
+				The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`,
 			})
 		})
 	})
@@ -75,7 +108,7 @@ test.describe('single-step flows - quick examples', async () => {
                 Navigate to https://www.nypl.org. 
                 Search for 'The Catcher in the Rye.`,
 				expect: `
-                'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
 			})
 		})
 	})
@@ -85,24 +118,29 @@ test.describe('multi-step flow - Automation Exercise Regression - full ai mode',
 	test('registering new user and deleting account', async ({ ai }) => {
 		await test.step('Navigate to automationexercise.com and open signup', async () => {
 			await ai.run({
-				action: `Navigate to http://automationexercise.com/ and accept data consent if prompted.
+				action: `
+				Navigate to http://automationexercise.com/ and accept data consent if prompted.
                 Click on the 'Signup / Login' button in the navigation menu.`,
-				expect: `The 'New User Signup!' section is visible`,
+				expect: `
+				The 'New User Signup!' section is visible`,
 			})
 		})
 
 		await test.step('Enter name and unique email, click Signup', async () => {
 			await ai.run({
-				action: `In the 'New User Signup!' form enter Name: 'Test User' and a unique Email address (for example: testuser+<timestamp>@example.com).
+				action: `
+				In the 'New User Signup!' form enter Name: 'Test User' and a unique Email address (for example: testuser+<timestamp>@example.com).
                 Click the 'Signup' button.
                 If Email already exists error appears, generate a new unique email and retry by clicking the 'Signup' button again.`,
-				expect: `The 'ENTER ACCOUNT INFORMATION' section is visible`,
+				expect: `
+				The 'ENTER ACCOUNT INFORMATION' section is visible`,
 			})
 		})
 
 		await test.step('Fill account information and create account (single step)', async () => {
 			await ai.run({
-				action: `On the 'ENTER ACCOUNT INFORMATION' form fill all required fields in one step:
+				action: `
+				On the 'ENTER ACCOUNT INFORMATION' form fill all required fields in one step:
                 - Title: 'Mr'
                 - Password: 'P@ssw0rd123'
                 - Date of birth: Day: 1, Month: January, Year: 1990
@@ -119,15 +157,18 @@ test.describe('multi-step flow - Automation Exercise Regression - full ai mode',
                 - Zipcode: '12345'
                 - Mobile Number: '+15551234567'
                 Then click the 'Create Account' button.`,
-				expect: `Account registration completes and 'ACCOUNT CREATED!' message is visible`,
+				expect: `
+				Account registration completes and 'ACCOUNT CREATED!' message is visible`,
 			})
 		})
 
 		await test.step('Continue and verify user is logged in', async () => {
 			await ai.run({
-				action: `Click the 'Continue' button on the 'ACCOUNT CREATED!' page or modal. If any popups appear, accept them.
+				action: `
+				Click the 'Continue' button on the 'ACCOUNT CREATED!' page or modal. If any popups appear, accept them.
                 Verify that 'Logged in as Test User' (or the provided name) is visible in the header.`,
-				expect: `'Logged in as Test User' is visible`,
+				expect: `
+				'Logged in as Test User' is visible`,
 			})
 		})
 
@@ -387,13 +428,14 @@ test.describe('multi-step flow - Automation Exercise Regression - full ai mode',
 
 		await test.step('Add products to cart', async () => {
 			await ai.run({
-				action: `Click on the 'Products' button and select to view first product details.
+				action: `
+				Click on the 'Products' button and select to view first product details.
                 Click 'Add to cart' button and then click 'Continue Shopping' button.
                 Click on the 'Products' button and proceed to another product details.
                 Click 'Add to cart' button and then click 'Continue Shopping' button.
-                Proceed to the Cart view.
-                .`,
-				expect: `Cart page is displayed with 2 products`,
+                Proceed to the Cart view.`,
+				expect: `
+				Cart page is displayed with 2 products`,
 			})
 		})
 
@@ -718,7 +760,7 @@ test.describe('multi-step flow - Automation Exercise Regression - hybrid ai mode
 		await test.step('Verify both products in cart', async () => {
 			await page.getByRole('link', { name: 'Cart' }).click()
 			await ai.run({
-				action: `Verify that both products are displayed in the cart with their prices, quantities, and total prices.`,
+				action: ``,
 				expect: `Both products are visible in the cart with correct prices, quantity (1 each), and calculated total prices`,
 			})
 		})
@@ -733,10 +775,7 @@ test.describe('multi-step flow - Automation Exercise Regression - hybrid ai mode
 		})
 
 		await test.step('View cart and verify quantity', async () => {
-			await ai.run({
-				action: `Verify Cart View is displayed with correct product count.`,
-				expect: `Product is displayed in cart with exact quantity of 4`,
-			})
+			await ai.run({ action: ``, expect: `Product is displayed in cart with exact quantity of 4` })
 		})
 	})
 
@@ -875,12 +914,14 @@ test.describe('multi-step flow - Automation Exercise Regression - hybrid ai mode
 
 		await test.step('Fill review form', async () => {
 			await ai.run({
-				action: `Enter the following review details:
+				action: `
+				Enter the following review details:
                 - Name: 'John Doe'
                 - Email: 'johndoe@example.com'
                 - Review: 'This is a great product! Highly recommend it for quality and value.'
                 Then click the 'Submit' button.`,
-				expect: `Review form is submitted and success message 'Thank you for your review.' was displayed for at least 2 seconds`,
+				expect: `
+				Review form is submitted and success message 'Thank you for your review.' was displayed for at least 2 seconds`,
 			})
 		})
 	})

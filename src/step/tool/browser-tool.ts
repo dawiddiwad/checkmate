@@ -4,6 +4,7 @@ import { expect, Page } from '@playwright/test'
 import { PageSnapshot } from './page-snapshot'
 import { logger } from '../openai/openai-test-manager'
 import { TransientStateTracker } from './transient-state-tracker'
+import { Step } from '../types'
 
 export class BrowserTool extends OpenAITool {
 	static readonly TOOL_NAVIGATE = 'browser_navigate'
@@ -12,13 +13,12 @@ export class BrowserTool extends OpenAITool {
 	static readonly TOOL_PRESS_KEY = 'browser_press_key'
 	static readonly TOOL_SNAPSHOT = 'browser_snapshot'
 	private readonly page: Page
-	private readonly pageSnapshot: PageSnapshot
+	private step: Step | undefined
 
 	functionDeclarations: ChatCompletionFunctionTool[]
 	constructor(page: Page) {
 		super()
 		this.page = page
-		this.pageSnapshot = new PageSnapshot(page)
 		this.functionDeclarations = [
 			{
 				type: 'function',
@@ -157,7 +157,7 @@ export class BrowserTool extends OpenAITool {
 		if (specified.name === BrowserTool.TOOL_NAVIGATE) {
 			return this.navigateToUrl(specified.arguments?.url as string)
 		} else if (specified.name === BrowserTool.TOOL_SNAPSHOT) {
-			return this.captureSnapshot()
+			return this.captureSnapshot({ skipFilter: true })
 		} else if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
 			return this.clickElement(specified.arguments?.ref as string, specified.arguments?.hover as boolean)
 		} else if (specified.name === BrowserTool.TOOL_TYPE) {
@@ -172,7 +172,11 @@ export class BrowserTool extends OpenAITool {
 		}
 	}
 
-	private async captureSnapshot() {
+	setStep(step: Step): void {
+		this.step = step
+	}
+
+	private async captureSnapshot(options: { skipFilter?: boolean } = {}) {
 		try {
 			await expect
 				.poll(
@@ -190,7 +194,7 @@ export class BrowserTool extends OpenAITool {
 					}
 				)
 				.toEqual('stable')
-			return this.pageSnapshot.get()
+			return new PageSnapshot(this.page, this.step, { skipFilter: options.skipFilter }).get()
 		} catch (error) {
 			throw new Error(`Failed to capture page snapshot:\n${error}`)
 		}

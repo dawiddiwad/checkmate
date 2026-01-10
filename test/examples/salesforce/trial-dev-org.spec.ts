@@ -33,49 +33,49 @@ test.describe('trial dev org', async () => {
 		await test.step('Login to Salesforce Org', async () => {
 			await ai.run({
 				action: `
-            Login to Salesforce org`,
+            	Login to Salesforce org`,
 				expect: `
-            Salesforce org loads successfully and user is authenticated/not on the login page.`,
+            	Salesforce org loads successfully and user is authenticated/not on the login page.`,
 			})
 		})
 
 		await test.step('Open Sales App from App Launcher', async () => {
 			await ai.run({
 				action: `
-            Click the App Launcher icon (nine dots) in the top left corner.
-            Type 'Sales' into the App Launcher 'Search apps and items' search bar.
-            Click on the app that is named exactly the 'Sales' app from the results.`,
+				Click the App Launcher icon (nine dots) in the top left corner.
+				Type 'Sales' into the App Launcher 'Search apps and items' search bar.
+				Click on the app that is named exactly the 'Sales' app from the results.`,
 				expect: `
-            Sales app opens successfully in Lightning context.`,
+				Sales app opens successfully in Lightning context.`,
 			})
 		})
 
 		await test.step('Switch to Accounts tab', async () => {
 			await ai.run({
 				action: `
-            Click the 'Accounts' tab within the Sales app.`,
+				Click the 'Accounts' tab within the Sales app.`,
 				expect: `
-            The Accounts tab is active and a list of accounts is displayed.`,
+				The Accounts tab is active and a list of accounts is displayed.`,
 			})
 		})
 
 		await test.step('Start creating a new Account', async () => {
 			await ai.run({
 				action: `
-            Click the 'New' button on the Accounts tab to create a new Account record.
-            Fill 'Account Name' field with 'Agentic Test Account' followed by space and some random alphanumeric string
-            Don't save the record or fill any other fields.`,
+				Click the 'New' button on the Accounts tab to create a new Account record.
+				Fill 'Account Name' field with 'Agentic Test Account' followed by space and some random alphanumeric string
+				Don't save the record or fill any other fields.`,
 				expect: `
-            'New Account' form is displayed and filled with random data`,
+				'New Account' form is displayed and filled with random data`,
 			})
 		})
 
 		await test.step('Save new Account record', async () => {
 			await ai.run({
 				action: `
-            Click the 'Save' button on the 'New Account' form.`,
+				Click the 'Save' button on the 'New Account' form.`,
 				expect: `
-            Account record is saved successfully and details view is displayed.`,
+				Account record is saved successfully and details view is displayed.`,
 			})
 		})
 	})

@@ -93,7 +93,7 @@ await test.step('Fill form and submit', async () => {
 
 ### Using Fuzzy Search for Token Optimization
 
-For complex pages, you can additonally provide search keywords to filter page snapshots to potentially reduce token usage (usually by 50-90%).
+When fuzzy search is enabled and `search` keywords are provided, **_checkmate_** uses a local [Dice Coefficient](https://en.wikipedia.org/wiki/Dice-S%C3%B8rensen_coefficient) algorithm to filter the page snapshot and only send relevant UI elements above certain `threshold` (default: 0.3) to the AI.
 
 **This feature significantly reduces the payload size, minimizing costs while improving AI determinism, reliability and speed.**
 
@@ -107,8 +107,6 @@ await ai.run({
 	threshold: 0.5,
 })
 ```
-
-When fuzzy search is enabled and `search` keywords are provided, the framework uses a local [Dice Coefficient](https://en.wikipedia.org/wiki/Dice-S%C3%B8rensen_coefficient) algorithm to filter the page snapshot and only send relevant UI elements above certain `threshold` (default: 0.3) to the AI.
 
 ```
 debug: Scored 107 elements

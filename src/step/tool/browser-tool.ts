@@ -328,18 +328,23 @@ export class BrowserTool extends OpenAITool {
 				}
 				await this.page.keyboard.press(key)
 			} catch (error) {
-				throw new Error(`Failed to press key '${key}':\n${error}`)
+				logger.error(`error pressing key '${key}' due to:\n${error}`)
+				return `failed to press key '${key}':\n${error}`
 			}
 		})
 	}
 
 	private async wait(seconds: number) {
 		return this.wrapWithTracker(async () => {
-			if (!seconds || seconds <= 0) {
-				return `failed to wait: invalid seconds value received: ${seconds}. It should be a positive number.`
-			}
-			if (seconds) {
+			try {
+				seconds = Number(seconds)
+				if (!Number.isFinite(seconds) || seconds <= 0) {
+					throw new Error(`invalid seconds value received: ${seconds}. It should be a positive number.`)
+				}
 				await this.page.waitForTimeout(seconds * 1000)
+			} catch (error) {
+				logger.error(`error waiting for ${seconds} seconds due to:\n${error}`)
+				return `failed to wait for ${seconds} seconds:\n${error}`
 			}
 		})
 	}

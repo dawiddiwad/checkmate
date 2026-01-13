@@ -463,16 +463,19 @@ describe('BrowserTool', () => {
 			expect(result).toBe('mocked snapshot content')
 		})
 
-		it('should throw error when key is missing', async () => {
+		it('should return error message when key is missing', async () => {
 			const toolCall: ToolCall = {
 				name: BrowserTool.TOOL_PRESS_KEY,
 				arguments: { key: '', goal: 'submit' },
 			}
 
-			await expect(browserTool.call(toolCall)).rejects.toThrow("'key' is required")
+			const result = await browserTool.call(toolCall)
+
+			expect(result).toContain("failed to press key ''")
+			expect(result).toContain("'key' is required")
 		})
 
-		it('should handle press key errors', async () => {
+		it('should return error message on press key errors', async () => {
 			vi.mocked(mockPage.keyboard.press).mockRejectedValue(new Error('Key not recognized'))
 
 			const toolCall: ToolCall = {
@@ -480,7 +483,10 @@ describe('BrowserTool', () => {
 				arguments: { key: 'InvalidKey', goal: 'test' },
 			}
 
-			await expect(browserTool.call(toolCall)).rejects.toThrow("Failed to press key 'InvalidKey'")
+			const result = await browserTool.call(toolCall)
+
+			expect(result).toContain("failed to press key 'InvalidKey'")
+			expect(result).toContain('Key not recognized')
 		})
 	})
 

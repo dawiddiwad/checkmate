@@ -116,14 +116,15 @@ See [guide](GUIDE.md#best-practices) for detailed examples and best practices.
 ## Costs
 
 Costs vary based on model and provider, test complexity and number of steps.
-**_checkmate_** includes built-in token usage [monitoring.](GUIDE.md#cost-management).  
-For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](GUIDE.md#using-fuzzy-search-for-token-optimization).
+**_checkmate_** includes built-in token usage [monitoring](GUIDE.md#cost-management).
 
 Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) for optimal balance:
 
 - Simple test (~5 steps): ~$0.001 - $0.01
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
+
+For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](GUIDE.md#using-fuzzy-search-for-token-optimization).
 
 See [guide](GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
@@ -142,6 +143,7 @@ See [guide](GUIDE.md#cost-management) for detailed cost control and monitoring o
 
 **High token costs**
 
+- Use `search` keywords to limit the scope of the page for the AI. See [fuzzy search](GUIDE.md#using-fuzzy-search-for-token-optimization).
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)

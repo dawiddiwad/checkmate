@@ -9,9 +9,10 @@ import { Step } from '../types'
 export class BrowserTool extends OpenAITool {
 	static readonly TOOL_NAVIGATE = 'browser_navigate'
 	static readonly TOOL_CLICK_OR_HOVER = 'browser_click_or_hover'
-	static readonly TOOL_TYPE = 'browser_type'
+	static readonly TOOL_TYPE_OR_SELECT = 'browser_type_or_select'
 	static readonly TOOL_PRESS_KEY = 'browser_press_key'
 	static readonly TOOL_SNAPSHOT = 'browser_snapshot'
+	static readonly TOOL_WAIT = 'browser_wait'
 	private readonly page: Page
 	private step: Step | undefined
 
@@ -68,9 +69,9 @@ export class BrowserTool extends OpenAITool {
 			{
 				type: 'function',
 				function: {
-					name: BrowserTool.TOOL_TYPE,
+					name: BrowserTool.TOOL_TYPE_OR_SELECT,
 					description:
-						'Type text into a specified element reference in the browser. You can also use it to select options in dropdowns - just type the option text. To clear existing text, use empty string.',
+						'Type text into a specified element reference in the browser or select an option from a dropdown.',
 					parameters: {
 						type: 'object',
 						properties: {
@@ -96,9 +97,14 @@ export class BrowserTool extends OpenAITool {
 											description:
 												'If true, clears existing text before typing. Use false with dropdowns and selects',
 										},
+										select: {
+											type: 'boolean',
+											description:
+												'If true, selects the option matching "text" from a dropdown or select element',
+										},
 									},
 									additionalProperties: false,
-									required: ['ref', 'text', 'name', 'clear'],
+									required: ['ref', 'text', 'name', 'clear', 'select'],
 								},
 								description: 'array of elements to type into',
 								minItems: 1,
@@ -147,6 +153,26 @@ export class BrowserTool extends OpenAITool {
 					strict: true,
 				},
 			},
+			{
+				type: 'function',
+				function: {
+					name: BrowserTool.TOOL_WAIT,
+					description: 'Wait for a timeout in seconds',
+					parameters: {
+						type: 'object',
+						properties: {
+							seconds: {
+								type: 'number',
+								description: 'Number of seconds to wait, example: 5',
+							},
+							goal: { type: 'string', description: 'The goal or purpose of waiting' },
+						},
+						additionalProperties: false,
+						required: ['goal', 'seconds'],
+					},
+					strict: true,
+				},
+			},
 		]
 	}
 
@@ -160,12 +186,20 @@ export class BrowserTool extends OpenAITool {
 			return this.captureSnapshot({ skipFilter: true })
 		} else if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
 			return this.clickElement(specified.arguments?.ref as string, specified.arguments?.hover as boolean)
-		} else if (specified.name === BrowserTool.TOOL_TYPE) {
-			return this.typeInElement(
-				specified.arguments?.elements as { ref: string; text: string; name: string; clear: boolean }[]
+		} else if (specified.name === BrowserTool.TOOL_TYPE_OR_SELECT) {
+			return this.typeOrSelectInElement(
+				specified.arguments?.elements as {
+					ref: string
+					text: string
+					name: string
+					clear: boolean
+					select: boolean
+				}[]
 			)
 		} else if (specified.name === BrowserTool.TOOL_PRESS_KEY) {
 			return this.pressKey(specified.arguments?.key as string)
+		} else if (specified.name === BrowserTool.TOOL_WAIT) {
+			return this.wait(specified.arguments?.seconds as number)
 		} else {
 			logger.error(`model tried to call not implemented tool: ${specified.name}`)
 			return `Browser tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
@@ -205,7 +239,7 @@ export class BrowserTool extends OpenAITool {
 		await tracker.start()
 		try {
 			const actionResult = await action()
-			if (typeof actionResult === 'string' && actionResult.startsWith('failed to')) {
+			if (typeof actionResult === 'string') {
 				await tracker.stop()
 				return actionResult
 			}
@@ -247,32 +281,40 @@ export class BrowserTool extends OpenAITool {
 		})
 	}
 
-	private async typeInElement(elements: { ref: string; text: string; name: string; clear: boolean }[]) {
+	private async typeOrSelectInElement(
+		elements: { ref: string; text: string; name: string; clear: boolean; select: boolean }[]
+	) {
 		return this.wrapWithTracker(async () => {
 			if (Array.isArray(elements) === false || elements.length === 0) {
-				return `failed to type text. Invalid parameters received, please adhere strictly to tool parameters. Received: ${elements}`
+				return `failed to type text or select option. Invalid parameters received, please adhere strictly to tool parameters. Received: ${elements}`
 			}
 			for (const element of elements) {
 				try {
 					if (!element.ref || element.text === undefined || element.text === null) {
 						throw new Error(
-							`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE} but received ref='${element.ref}' and text='${element.text}'`
+							`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE_OR_SELECT} but received ref='${element.ref}' and text='${element.text}'`
 						)
 					}
-					if (element.clear) {
+
+					if (!element.select && element.clear) {
 						await this.page.locator(`aria-ref=${element.ref}`).clear()
 					}
 
-					if (element.text.length > 0) {
+					if (element.select && element.text.length > 0) {
+						await this.page.locator(`aria-ref=${element.ref}`).selectOption(element.text)
+						continue
+					}
+
+					if (!element.select && element.text.length > 0) {
 						await this.page
 							.locator(`aria-ref=${element.ref}`)
 							.pressSequentially(element.text, { delay: 50 })
 					}
 				} catch (error) {
 					logger.error(
-						`error typing text '${element.text}' in element with ref '${element.ref}' due to:\n${error}`
+						`error ${element.select ? 'selecting' : 'typing'} '${element.text}' in element with ref '${element.ref}' due to:\n${error}`
 					)
-					return `failed to type text '${element.text}' in element with ref '${element.ref}':\n${error}\n try with different element type or ref`
+					return `failed to ${element.select ? 'select' : 'type'} '${element.text}' in element with ref '${element.ref}':\n${error}\n try with different element type or ref`
 				}
 			}
 		})
@@ -286,7 +328,23 @@ export class BrowserTool extends OpenAITool {
 				}
 				await this.page.keyboard.press(key)
 			} catch (error) {
-				throw new Error(`Failed to press key '${key}':\n${error}`)
+				logger.error(`error pressing key '${key}' due to:\n${error}`)
+				return `failed to press key '${key}':\n${error}`
+			}
+		})
+	}
+
+	private async wait(seconds: number) {
+		return this.wrapWithTracker(async () => {
+			try {
+				seconds = Number(seconds)
+				if (!Number.isFinite(seconds) || seconds <= 0) {
+					throw new Error(`invalid seconds value received: ${seconds}. It should be a positive number.`)
+				}
+				await this.page.waitForTimeout(seconds * 1000)
+			} catch (error) {
+				logger.error(`error waiting for ${seconds} seconds due to:\n${error}`)
+				return `failed to wait for ${seconds} seconds:\n${error}`
 			}
 		})
 	}

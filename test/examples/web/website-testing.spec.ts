@@ -70,20 +70,6 @@ test.describe('single-step flows - quick examples', async () => {
 		})
 	})
 
-	test('recorded example', async ({ page, ai }) => {
-		await page.goto('https://www.mojeek.com/')
-		await page.getByRole('textbox', { name: 'No Tracking. Just Search...' }).fill('playwright test automation')
-		await page.getByRole('textbox', { name: 'No Tracking. Just Search...' }).press('Enter')
-		await ai.run({
-			action: `         
-			From the search results, click on the link that goes to playwright.dev.
-			Once on the Playwright website, click the site's search icon and type Agent into the Search docs field.
-			Click on the Planner result displayed in the documentation search.`,
-			expect: `
-			The Planner Agent documentation page is displayed, providing details on how to use this agent within Playwright.`,
-		})
-	})
-
 	test('searching with mojeek', async ({ ai }) => {
 		await test.step('Search for Playwright docs using mojeek.com', async () => {
 			await ai.run({

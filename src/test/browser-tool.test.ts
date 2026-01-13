@@ -58,8 +58,8 @@ describe('BrowserTool', () => {
 	})
 
 	describe('constructor and function declarations', () => {
-		it('should create browser tool with 5 function declarations', () => {
-			expect(browserTool.functionDeclarations).toHaveLength(5)
+		it('should create browser tool with 6 function declarations', () => {
+			expect(browserTool.functionDeclarations).toHaveLength(6)
 		})
 
 		it('should include navigate tool declaration', () => {
@@ -107,6 +107,15 @@ describe('BrowserTool', () => {
 			)
 			expect(snapshotTool).toBeDefined()
 			expect(snapshotTool?.function?.parameters?.required).toContain('goal')
+		})
+
+		it('should include wait tool declaration', () => {
+			const waitTool = browserTool.functionDeclarations.find(
+				(tool) => tool.function.name === BrowserTool.TOOL_WAIT
+			)
+			expect(waitTool).toBeDefined()
+			expect(waitTool?.function?.parameters?.required).toContain('seconds')
+			expect(waitTool?.function?.parameters?.required).toContain('goal')
 		})
 	})
 
@@ -488,6 +497,84 @@ describe('BrowserTool', () => {
 		})
 	})
 
+	describe('wait', () => {
+		it('should wait for specified seconds and capture snapshot', async () => {
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_WAIT,
+				arguments: { seconds: 5, goal: 'wait for animation' },
+			}
+
+			const result = await browserTool.call(toolCall)
+
+			expect(mockPage.waitForTimeout).toHaveBeenCalledWith(5000)
+			expect(result).toBe('mocked snapshot content')
+		})
+
+		it('should convert seconds to milliseconds correctly', async () => {
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_WAIT,
+				arguments: { seconds: 2.5, goal: 'wait for content' },
+			}
+
+			const result = await browserTool.call(toolCall)
+
+			expect(mockPage.waitForTimeout).toHaveBeenCalledWith(2500)
+			expect(result).toBe('mocked snapshot content')
+		})
+
+		it('should return error message when seconds is zero', async () => {
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_WAIT,
+				arguments: { seconds: 0, goal: 'wait' },
+			}
+
+			const result = await browserTool.call(toolCall)
+
+			expect(result).toContain('failed to wait')
+			expect(result).toContain('invalid seconds value received: 0')
+			expect(mockPage.waitForTimeout).not.toHaveBeenCalled()
+		})
+
+		it('should return error message when seconds is negative', async () => {
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_WAIT,
+				arguments: { seconds: -5, goal: 'wait' },
+			}
+
+			const result = await browserTool.call(toolCall)
+
+			expect(result).toContain('failed to wait')
+			expect(result).toContain('invalid seconds value received: -5')
+			expect(mockPage.waitForTimeout).not.toHaveBeenCalled()
+		})
+
+		it('should return error message when seconds is undefined', async () => {
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_WAIT,
+				arguments: { goal: 'wait' },
+			}
+
+			const result = await browserTool.call(toolCall)
+
+			expect(result).toContain('failed to wait')
+			expect(result).toContain('invalid seconds value')
+			expect(mockPage.waitForTimeout).not.toHaveBeenCalled()
+		})
+
+		it('should include transient state timeline when available', async () => {
+			trackerMocks.formatTimelineMock.mockReturnValueOnce('timeline: wait period')
+
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_WAIT,
+				arguments: { seconds: 3, goal: 'wait for load' },
+			}
+
+			const result = await browserTool.call(toolCall)
+
+			expect(result).toBe('timeline: wait period\nmocked snapshot content')
+		})
+	})
+
 	describe('tool name constants', () => {
 		it('should have correct tool name constants', () => {
 			expect(BrowserTool.TOOL_NAVIGATE).toBe('browser_navigate')
@@ -495,6 +582,7 @@ describe('BrowserTool', () => {
 			expect(BrowserTool.TOOL_TYPE_OR_SELECT).toBe('browser_type_or_select')
 			expect(BrowserTool.TOOL_PRESS_KEY).toBe('browser_press_key')
 			expect(BrowserTool.TOOL_SNAPSHOT).toBe('browser_snapshot')
+			expect(BrowserTool.TOOL_WAIT).toBe('browser_wait')
 		})
 	})
 })

@@ -12,6 +12,7 @@ export class BrowserTool extends OpenAITool {
 	static readonly TOOL_TYPE_OR_SELECT = 'browser_type_or_select'
 	static readonly TOOL_PRESS_KEY = 'browser_press_key'
 	static readonly TOOL_SNAPSHOT = 'browser_snapshot'
+	static readonly TOOL_WAIT = 'browser_wait'
 	private readonly page: Page
 	private step: Step | undefined
 
@@ -152,6 +153,26 @@ export class BrowserTool extends OpenAITool {
 					strict: true,
 				},
 			},
+			{
+				type: 'function',
+				function: {
+					name: BrowserTool.TOOL_WAIT,
+					description: 'Wait for a timeout in seconds',
+					parameters: {
+						type: 'object',
+						properties: {
+							seconds: {
+								type: 'number',
+								description: 'Number of seconds to wait, example: 5',
+							},
+							goal: { type: 'string', description: 'The goal or purpose of waiting' },
+						},
+						additionalProperties: false,
+						required: ['goal', 'seconds'],
+					},
+					strict: true,
+				},
+			},
 		]
 	}
 
@@ -177,6 +198,8 @@ export class BrowserTool extends OpenAITool {
 			)
 		} else if (specified.name === BrowserTool.TOOL_PRESS_KEY) {
 			return this.pressKey(specified.arguments?.key as string)
+		} else if (specified.name === BrowserTool.TOOL_WAIT) {
+			return this.wait(specified.arguments?.seconds as number)
 		} else {
 			logger.error(`model tried to call not implemented tool: ${specified.name}`)
 			return `Browser tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
@@ -216,7 +239,7 @@ export class BrowserTool extends OpenAITool {
 		await tracker.start()
 		try {
 			const actionResult = await action()
-			if (typeof actionResult === 'string' && actionResult.startsWith('failed to')) {
+			if (typeof actionResult === 'string') {
 				await tracker.stop()
 				return actionResult
 			}
@@ -306,6 +329,17 @@ export class BrowserTool extends OpenAITool {
 				await this.page.keyboard.press(key)
 			} catch (error) {
 				throw new Error(`Failed to press key '${key}':\n${error}`)
+			}
+		})
+	}
+
+	private async wait(seconds: number) {
+		return this.wrapWithTracker(async () => {
+			if (!seconds || seconds <= 0) {
+				return `failed to wait: invalid seconds value received: ${seconds}. It should be a positive number.`
+			}
+			if (seconds) {
+				await this.page.waitForTimeout(seconds * 1000)
 			}
 		})
 	}

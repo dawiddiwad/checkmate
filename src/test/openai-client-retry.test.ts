@@ -423,7 +423,6 @@ describe('OpenAIClient - message flow', () => {
 	let mockToolRegistry: ToolRegistry
 	let mockPage: Page
 	let createMock: any
-	let responseProcessorMock: any
 
 	beforeEach(async () => {
 		vi.clearAllMocks()
@@ -432,7 +431,7 @@ describe('OpenAIClient - message flow', () => {
 		createMock = openaiModule.getCreateMock()
 
 		const rpModule: any = await import('../../src/step/openai/response-processor')
-		responseProcessorMock = rpModule.getResponseProcessorMock()
+		rpModule.getResponseProcessorMock()
 
 		mockConfig = {
 			getApiKey: vi.fn().mockReturnValue('test-api-key'),

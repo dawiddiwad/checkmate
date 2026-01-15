@@ -357,7 +357,7 @@ describe('BrowserTool', () => {
 				},
 			}
 
-			const result = await browserTool.call(toolCall)
+			await browserTool.call(toolCall)
 
 			expect(mockPage.locator('aria-ref=e789').clear).not.toHaveBeenCalled()
 			expect(mockPage.locator('aria-ref=e789').selectOption).toHaveBeenCalledWith('Option 1')

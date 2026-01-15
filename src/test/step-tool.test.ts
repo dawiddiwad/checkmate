@@ -184,8 +184,8 @@ describe('StepTool', () => {
 
 			try {
 				stepTool.call(toolCall, mockCallback)
-			} catch (error) {
-				/* empty */
+			} catch {
+				/* expected unknown tool error */
 			}
 
 			expect(mockCallback).not.toHaveBeenCalled()

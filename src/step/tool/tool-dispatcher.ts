@@ -1,4 +1,4 @@
-import { ToolRegistry } from './tool-registry'
+import { ToolRegistry, ToolResponse } from './tool-registry'
 import { StepStatusCallback } from '../types'
 import { LoopDetector } from './loop-detector'
 import { ConfigurationManager } from '../configuration-manager'
@@ -13,7 +13,7 @@ export class ToolDispatcher {
 		this.loopDetector = new LoopDetector(new ConfigurationManager().getLoopMaxRepetitions())
 	}
 
-	public async dispatch(toolCall: ToolCall, stepStatusCallback: StepStatusCallback): Promise<any> {
+	public async dispatch(toolCall: ToolCall, stepStatusCallback: StepStatusCallback): Promise<ToolResponse | null> {
 		this.loopDetector.recordToolCall(toolCall)
 		const { name } = toolCall
 

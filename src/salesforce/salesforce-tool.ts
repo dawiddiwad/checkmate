@@ -38,7 +38,7 @@ export class SalesforceTool extends OpenAITool {
 		]
 	}
 
-	async call(specified: ToolCall): Promise<any> {
+	async call(specified: ToolCall): Promise<string> {
 		if (specified.name === SalesforceTool.TOOL_LOGIN_TO_SALESFORCE_ORG) {
 			try {
 				const frontDoorUrl = await this.getSalesforceLoginUrl()

@@ -25,7 +25,10 @@ export class PageSnapshot {
 		this.configManager = new ConfigurationManager()
 	}
 
-	private async getHeader() {
+	private async getHeader(): Promise<string> {
+		if (!this.page) {
+			throw new Error('Page is not initialized')
+		}
 		const lines: string[] = []
 		lines.push('page snapshot:')
 		lines.push(`url: '${this.page.url()}'`)
@@ -33,7 +36,7 @@ export class PageSnapshot {
 		return lines.join('\n')
 	}
 
-	private minify(snapshot: AriaPageSnapshot): AriaPageSnapshot {
+	private minify(snapshot: string): string {
 		return snapshot
 			.replaceAll('  ', '')
 			.replaceAll('"', '')
@@ -63,7 +66,7 @@ export class PageSnapshot {
 		})
 	}
 
-	private async compress(snapshot: AriaPageSnapshot): Promise<AriaPageSnapshot> {
+	private async compress(snapshot: string): Promise<string> {
 		const asJson = parse(snapshot)?.[0] ?? { state: 'page is blank - navigate to a relevant page url' }
 		const shouldSkipFilter = this.options.skipFilter || !this.configManager.isSnapshotFilteringEnabled()
 		const processed = shouldSkipFilter ? asJson : await filterSnapshot(asJson, this.step)
@@ -75,9 +78,13 @@ export class PageSnapshot {
 
 	async get(): Promise<AriaPageSnapshot> {
 		try {
-			const snapshotYAML = await (this.page as any)
+			if (!this.page) {
+				throw new Error('Page is not initialized')
+			}
+			type PageWithSnapshot = Page & { _snapshotForAI(): Promise<{ full: string }> }
+			const snapshotYAML = await (this.page as PageWithSnapshot)
 				._snapshotForAI()
-				.then((snapshot: { full: string }) => snapshot.full)
+				.then((snapshot) => snapshot.full)
 			PageSnapshot.lastSnapshot = await this.compress(snapshotYAML)
 			logger.debug(`created aria page snapshot:\n${PageSnapshot.lastSnapshot}`)
 			return PageSnapshot.lastSnapshot

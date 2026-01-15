@@ -20,11 +20,20 @@ export class OpenAIClient {
 	private messages: ChatCompletionMessageParam[] = []
 	private readonly configurationManager: ConfigurationManager
 	private readonly toolRegistry: ToolRegistry
-	private readonly RETRYABLE_STATUS = [408, 409, 429, 500, 502, 503, 504, LoopDetectedError.STATUS]
+	private readonly RETRYABLE_STATUS: (number | string)[] = [
+		408,
+		409,
+		429,
+		500,
+		502,
+		503,
+		504,
+		LoopDetectedError.STATUS,
+	]
 	private readonly responseProcessor: ResponseProcessor
 	readonly page: Page
-	step: Step
-	stepStatusCallback: StepStatusCallback
+	step!: Step
+	stepStatusCallback!: StepStatusCallback
 	temperature: number
 
 	constructor({ configurationManager, toolRegistry, page }: OpenAIClientDependencies) {
@@ -156,11 +165,11 @@ export class OpenAIClient {
 			try {
 				const result = await operation()
 				return result
-			} catch (error: any) {
-				lastError = error
+			} catch (error: unknown) {
+				lastError = error instanceof Error ? error : new Error(String(error))
 
 				if ((!this.isRetryable(error) && !this.isToolError(error)) || attempt === maxRetries) {
-					throw this.enhanceError(error, attempt, maxRetries)
+					throw this.enhanceError(error)
 				}
 
 				if (error instanceof LoopDetectedError) {
@@ -184,21 +193,31 @@ export class OpenAIClient {
 		throw lastError || new Error('Unexpected error in retry loop')
 	}
 
-	private getStatus(error: any): number | null {
-		return error?.status || error?.statusCode || error?.code || null
+	private getStatus(error: unknown): string | number | null {
+		if (typeof error === 'object' && error !== null) {
+			const err = error as Record<string, unknown>
+			const status = err.status ?? err.statusCode ?? err.code
+			if (typeof status === 'number' || typeof status === 'string') {
+				return status
+			}
+		}
+		return null
 	}
 
-	private isRetryable(error: any): boolean {
+	private isRetryable(error: unknown): boolean {
 		const statusCode = this.getStatus(error)
-		if (this.getStatus(error) === null) return false
+		if (statusCode === null) return false
 		return this.RETRYABLE_STATUS.includes(statusCode)
 	}
 
-	private getRetryAfterSeconds(error: any): number | null {
-		const headers = error?.headers
+	private getRetryAfterSeconds(error: unknown): number | null {
+		if (typeof error !== 'object' || error === null) return null
+		const err = error as Record<string, unknown>
+		const headers = err.headers as Record<string, unknown> | undefined
 		if (!headers) return null
 
-		const retryAfter = headers.get?.('retry-after') || headers['retry-after']
+		const headersObj = headers as { get?: (key: string) => string | undefined; 'retry-after'?: string }
+		const retryAfter = headersObj.get?.('retry-after') ?? headersObj['retry-after']
 		if (!retryAfter) return null
 
 		const seconds = parseInt(retryAfter, 10)
@@ -229,15 +248,15 @@ export class OpenAIClient {
 		this.messages = [...history]
 	}
 
-	private enhanceError(error: any, attempt?: number, maxRetries?: number): Error {
-		const status = error?.status || error?.statusCode || error?.code || 'unknown'
-		const message = error?.message || null
+	private enhanceError(error: unknown): Error {
+		const status = this.getStatus(error) ?? 'unknown'
+		const message = error instanceof Error ? error.message : null
 
 		const details = `OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`
 		return new Error(details)
 	}
 
-	private isToolError(error: any): boolean {
+	private isToolError(error: unknown): boolean {
 		const errorAsString = JSON.stringify(error, null, 2).toLowerCase()
 		if (this.getStatus(error) === 400 && errorAsString.includes('tool')) {
 			logger.warn('tool call error detected [400]')

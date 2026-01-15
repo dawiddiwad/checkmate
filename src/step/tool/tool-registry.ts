@@ -9,7 +9,7 @@ import { logger } from '../openai/openai-test-manager'
 
 export type ToolResponse = {
 	name?: string
-	response: any
+	response: string
 }
 
 export type ToolRegistryDependencies = {

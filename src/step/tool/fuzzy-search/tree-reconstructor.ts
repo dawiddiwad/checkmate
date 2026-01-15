@@ -6,7 +6,7 @@ export function reconstructTree(originalJson: JsonValue, selectedElements: Score
 	}
 
 	const allPaths = collectAllRequiredPaths(selectedElements)
-	return buildFilteredTree(originalJson, allPaths, [])
+	return buildFilteredTree(originalJson, allPaths, []) ?? originalJson
 }
 
 function collectAllRequiredPaths(elements: ScoredElement[]): Set<string> {
@@ -30,8 +30,6 @@ function buildFilteredTree(
 	requiredPaths: Set<string>,
 	currentPath: (string | number)[]
 ): JsonValue | undefined {
-	const currentPathKey = JSON.stringify(currentPath)
-
 	if (!isPathOrAncestorRequired(currentPath, requiredPaths)) {
 		return undefined
 	}

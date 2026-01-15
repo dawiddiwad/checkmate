@@ -19,7 +19,7 @@ export type TargetOrg = {
 
 export class SalesforceCliAuthenticator {
 	private readonly cli: SalesforceCliHandler
-	private targetOrg: TargetOrg
+	private targetOrg!: TargetOrg
 	readonly ready: Promise<this>
 
 	constructor(cliHandler: SalesforceCliHandler) {

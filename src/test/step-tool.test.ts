@@ -140,10 +140,10 @@ describe('StepTool', () => {
 
 	describe('call method - error handling', () => {
 		it('should throw error when tool name is missing', () => {
-			const toolCall: ToolCall = {
-				name: undefined as any,
+			const toolCall = {
+				name: undefined,
 				arguments: { actualResult: 'test' },
-			}
+			} as ToolCall
 
 			expect(() => stepTool.call(toolCall, mockCallback)).toThrow('Tool name is required')
 		})

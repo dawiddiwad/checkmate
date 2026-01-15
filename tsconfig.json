@@ -14,7 +14,7 @@
 		"declarationMap": true,
 		"sourceMap": true,
 		"noEmit": true,
-		"noImplicitAny": false
+		"noImplicitAny": true
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "test-results", "test-reports"]

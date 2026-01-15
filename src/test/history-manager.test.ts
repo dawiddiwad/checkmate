@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { HistoryManager } from '../step/openai/history-manager'
 import { OpenAIClient } from '../step/openai/openai-client'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { MockOpenAIClient } from './test-types'
+
+interface TextContentPart {
+	type: 'text'
+	text: string
+}
 
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
@@ -14,7 +20,7 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
 
 describe('HistoryManager', () => {
 	let historyManager: HistoryManager
-	let mockOpenAIClient: OpenAIClient
+	let mockOpenAIClient: MockOpenAIClient
 
 	beforeEach(() => {
 		historyManager = new HistoryManager()
@@ -22,42 +28,42 @@ describe('HistoryManager', () => {
 		mockOpenAIClient = {
 			getMessages: vi.fn(),
 			replaceHistory: vi.fn(),
-		} as any
+		}
 	})
 
 	describe('addInitialSnapshot', () => {
 		it('should add initial snapshot to history', () => {
 			const snapshotContent = 'Page Title: Test Page\nButton: Click Me'
 
-			historyManager.addInitialSnapshot(mockOpenAIClient, snapshotContent)
+			historyManager.addInitialSnapshot(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
 			expect(calledWith).toHaveLength(1)
 			expect(calledWith[0].role).toBe('user')
-			expect((calledWith[0].content as any)[0].type).toBe('text')
-			expect((calledWith[0].content as any)[0].text).toContain(HistoryManager.SNAPSHOT_IDENTIFIER)
-			expect((calledWith[0].content as any)[0].text).toContain(snapshotContent)
+			expect((calledWith[0].content as TextContentPart[])[0].type).toBe('text')
+			expect((calledWith[0].content as TextContentPart[])[0].text).toContain(HistoryManager.SNAPSHOT_IDENTIFIER)
+			expect((calledWith[0].content as TextContentPart[])[0].text).toContain(snapshotContent)
 		})
 
 		it('should include snapshot identifier in the message', () => {
 			const snapshotContent = 'Some ARIA tree content'
 
-			historyManager.addInitialSnapshot(mockOpenAIClient, snapshotContent)
+			historyManager.addInitialSnapshot(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
 
 			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-			const textContent = (calledWith[0].content as any)[0].text
+			const textContent = (calledWith[0].content as TextContentPart[])[0].text
 
 			expect(textContent).toContain('this is a current page snapshot')
 		})
 
 		it('should handle empty snapshot content', () => {
-			historyManager.addInitialSnapshot(mockOpenAIClient, '')
+			historyManager.addInitialSnapshot(mockOpenAIClient as unknown as OpenAIClient, '')
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-			expect((calledWith[0].content as any)[0].text).toContain(HistoryManager.SNAPSHOT_IDENTIFIER)
+			expect((calledWith[0].content as TextContentPart[])[0].text).toContain(HistoryManager.SNAPSHOT_IDENTIFIER)
 		})
 	})
 
@@ -95,20 +101,20 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			const firstUserMsg = filteredHistory[0] as any
+			const firstUserMsg = filteredHistory[0] as { content: TextContentPart[] }
 			expect(firstUserMsg.content[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 			expect(firstUserMsg.content[0].text).not.toContain('Initial snapshot content')
 
-			const firstToolMsg = filteredHistory[2] as any
+			const firstToolMsg = filteredHistory[2] as { content: string }
 			expect(firstToolMsg.content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 			expect(firstToolMsg.content).not.toContain('old snapshot data here')
 
-			const lastToolMsg = filteredHistory[4] as any
+			const lastToolMsg = filteredHistory[4] as { content: string }
 			expect(lastToolMsg.content).toBe('snapshot: latest snapshot data')
 			expect(lastToolMsg.content).not.toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 		})
@@ -132,12 +138,12 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			const userMsg = filteredHistory[0] as any
+			const userMsg = filteredHistory[0] as { content: TextContentPart[] }
 			expect(userMsg.content[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 		})
 
@@ -157,7 +163,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
@@ -171,7 +177,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
@@ -194,7 +200,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
@@ -218,7 +224,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
@@ -243,7 +249,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
@@ -256,7 +262,7 @@ describe('HistoryManager', () => {
 				{
 					role: 'tool',
 					tool_call_id: 'call_1',
-					content: [{ type: 'text', text: 'Complex content structure' }] as any,
+					content: [{ type: 'text', text: 'Complex content structure' }] as unknown as string,
 				},
 				{
 					role: 'tool',
@@ -267,7 +273,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
@@ -300,13 +306,17 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient)
+			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 
-			expect((filteredHistory[0].content as any)[0].text).toBe('Regular user message without snapshot')
+			expect((filteredHistory[0].content as TextContentPart[])[0].text).toBe(
+				'Regular user message without snapshot'
+			)
 
-			expect((filteredHistory[1].content as any)[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
+			expect((filteredHistory[1].content as TextContentPart[])[0].text).toContain(
+				HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER
+			)
 		})
 	})
 

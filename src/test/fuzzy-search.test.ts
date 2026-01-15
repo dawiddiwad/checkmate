@@ -133,7 +133,7 @@ describe('Fuzzy Search', () => {
 						key: 'target [ref=e3]',
 					},
 				]
-				const result = reconstructTree(json, selectedElements) as any
+				const result = reconstructTree(json, selectedElements) as Record<string, Record<string, unknown>[]>
 				expect(result['root [ref=e1]']).toBeDefined()
 				expect(result['root [ref=e1]'][0]['child [ref=e2]']).toBeDefined()
 			})
@@ -153,7 +153,7 @@ describe('Fuzzy Search', () => {
 						key: 'parent [ref=e1]',
 					},
 				]
-				const result = reconstructTree(json, selectedElements) as any
+				const result = reconstructTree(json, selectedElements) as Record<string, Record<string, string>>
 				expect(result['parent [ref=e1]']['child1 [ref=e2]']).toBe('value1')
 				expect(result['parent [ref=e1]']['child2 [ref=e3]']).toBe('value2')
 			})
@@ -180,7 +180,7 @@ describe('Fuzzy Search', () => {
 						key: 'match2 [ref=e4]',
 					},
 				]
-				const result = reconstructTree(json, selectedElements) as any
+				const result = reconstructTree(json, selectedElements) as Record<string, Record<string, unknown>[]>
 				expect(result['root [ref=e1]']).toHaveLength(1)
 				expect(result['root [ref=e1]'][0]['shared [ref=e2]']).toBeDefined()
 			})

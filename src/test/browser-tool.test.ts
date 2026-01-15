@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { BrowserTool } from '../step/tool/browser-tool'
 import { Page } from '@playwright/test'
 import { ToolCall } from '../step/tool/openai-tool'
+import { MockPage, MockLocator } from './test-types'
 
 const trackerMocks = vi.hoisted(() => ({
 	startMock: vi.fn().mockResolvedValue(undefined),
@@ -34,7 +35,7 @@ vi.mock('../step/tool/transient-state-tracker', () => ({
 
 describe('BrowserTool', () => {
 	let browserTool: BrowserTool
-	let mockPage: Page
+	let mockPage: MockPage
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -47,14 +48,14 @@ describe('BrowserTool', () => {
 				pressSequentially: vi.fn().mockResolvedValue(undefined),
 				selectOption: vi.fn().mockResolvedValue(undefined),
 				innerHTML: vi.fn().mockResolvedValue('<html>content</html>'),
-			}),
+			} as MockLocator),
 			keyboard: {
 				press: vi.fn().mockResolvedValue(undefined),
 			},
 			waitForTimeout: vi.fn().mockResolvedValue(undefined),
-		} as any
+		}
 
-		browserTool = new BrowserTool(mockPage)
+		browserTool = new BrowserTool(mockPage as unknown as Page)
 	})
 
 	describe('constructor and function declarations', () => {
@@ -121,10 +122,10 @@ describe('BrowserTool', () => {
 
 	describe('call method - error handling', () => {
 		it('should throw error when tool name is missing', async () => {
-			const toolCall: ToolCall = {
-				name: undefined as any,
+			const toolCall = {
+				name: undefined,
 				arguments: {},
-			}
+			} as unknown as ToolCall
 
 			await expect(browserTool.call(toolCall)).rejects.toThrow('Tool name is required')
 		})
@@ -210,7 +211,9 @@ describe('BrowserTool', () => {
 		})
 
 		it('should hover element when hover is true', async () => {
-			const result = await (browserTool as any).clickElement('e321', true)
+			const result = await (
+				browserTool as unknown as { clickElement: (ref: string, hover: boolean) => Promise<string> }
+			).clickElement('e321', true)
 
 			expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
 			expect(result).toBe('mocked snapshot content')
@@ -299,7 +302,7 @@ describe('BrowserTool', () => {
 			const toolCall: ToolCall = {
 				name: BrowserTool.TOOL_TYPE_OR_SELECT,
 				arguments: {
-					elements: [{ ref: 'e456', text: undefined as any, name: 'Input', clear: true }],
+					elements: [{ ref: 'e456', text: undefined as unknown as string, name: 'Input', clear: true }],
 					goal: 'enter text',
 				},
 			}
@@ -313,7 +316,7 @@ describe('BrowserTool', () => {
 			vi.mocked(mockPage.locator).mockReturnValue({
 				clear: vi.fn().mockResolvedValue(undefined),
 				pressSequentially: vi.fn().mockRejectedValue(new Error('Element not found')),
-			} as any)
+			} as MockLocator)
 
 			const toolCall: ToolCall = {
 				name: BrowserTool.TOOL_TYPE_OR_SELECT,
@@ -403,7 +406,7 @@ describe('BrowserTool', () => {
 		it('should return error message on select failure', async () => {
 			vi.mocked(mockPage.locator).mockReturnValue({
 				selectOption: vi.fn().mockRejectedValue(new Error('Option not found')),
-			} as any)
+			} as MockLocator)
 
 			const toolCall: ToolCall = {
 				name: BrowserTool.TOOL_TYPE_OR_SELECT,
@@ -438,7 +441,7 @@ describe('BrowserTool', () => {
 			const toolCall: ToolCall = {
 				name: BrowserTool.TOOL_TYPE_OR_SELECT,
 				arguments: {
-					elements: 'not an array' as any,
+					elements: 'not an array' as unknown,
 					goal: 'fill form',
 				},
 			}

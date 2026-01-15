@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { TokenTracker } from '../step/openai/token-tracker'
 import { ConfigurationManager } from '../step/configuration-manager'
 import { ChatCompletion } from 'openai/resources/chat/completions'
+import { MockConfigurationManager } from './test-types'
 
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
@@ -14,16 +15,16 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
 
 describe('TokenTracker', () => {
 	let tokenTracker: TokenTracker
-	let mockConfig: ConfigurationManager
+	let mockConfig: MockConfigurationManager
 
 	beforeEach(() => {
 		mockConfig = {
 			getTokenBudgetUSD: vi.fn().mockReturnValue(undefined),
 			getTokenBudgetCount: vi.fn().mockReturnValue(undefined),
 			getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-		} as any
+		} as MockConfigurationManager
 
-		tokenTracker = new TokenTracker(mockConfig)
+		tokenTracker = new TokenTracker(mockConfig as unknown as ConfigurationManager)
 	})
 
 	describe('budget enforcement - USD', () => {

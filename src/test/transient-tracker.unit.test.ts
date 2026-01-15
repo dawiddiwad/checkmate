@@ -7,12 +7,12 @@ class FakePage extends EventEmitter {
 	readonly mainFrameObj: Frame = { url: () => 'about:blank#fake' } as unknown as Frame
 	readonly evaluate = vi.fn(async () => undefined)
 
-	on(event: string | symbol, listener: (...args: any[]) => void): this {
+	on(event: string | symbol, listener: (...args: unknown[]) => void): this {
 		this.addListener(event, listener)
 		return this
 	}
 
-	off(event: string | symbol, listener: (...args: any[]) => void): this {
+	off(event: string | symbol, listener: (...args: unknown[]) => void): this {
 		this.removeListener(event, listener)
 		return this
 	}
@@ -21,7 +21,7 @@ class FakePage extends EventEmitter {
 		return this.mainFrameObj
 	}
 
-	[key: string]: any
+	[key: string]: unknown
 }
 
 const makeConsoleMessage = (text: string, type: string = 'log'): ConsoleMessage =>

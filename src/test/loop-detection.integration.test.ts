@@ -102,11 +102,12 @@ describe('Loop Detection Integration Tests', () => {
 			loopDetector.recordToolCall(toolCall)
 			loopDetector.recordToolCall(toolCall)
 			expect.fail('Should have thrown LoopDetectedError')
-		} catch (error: any) {
-			expect(error).toBeInstanceOf(LoopDetectedError)
-			expect(error.status).toBe(LoopDetectedError.STATUS)
-			expect(error.message).toContain('browser_type')
-			expect(error.loopResult.repetitions).toBe(2)
+		} catch (error) {
+			const loopError = error as LoopDetectedError
+			expect(loopError).toBeInstanceOf(LoopDetectedError)
+			expect(loopError.status).toBe(LoopDetectedError.STATUS)
+			expect(loopError.message).toContain('browser_type')
+			expect(loopError.loopResult.repetitions).toBe(2)
 		}
 	})
 

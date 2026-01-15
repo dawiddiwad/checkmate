@@ -12,10 +12,4 @@ export default [
 			sourceType: 'module',
 		},
 	},
-	{
-		files: ['**/*.test.ts', '**/test/**/*.ts'],
-		rules: {
-			'@typescript-eslint/no-explicit-any': 'off',
-		},
-	},
 ]

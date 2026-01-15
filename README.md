@@ -40,12 +40,12 @@ await ai.run({
 
 ✅ **Zero Locators** - Write tests in plain English  
 ✅ **Self-Healing** - Tests adapt to UI changes automatically  
-✅ **Any Provider** - Claude, Gemini, GPT, xAI, or local models  
-✅ **Web & Salesforce** - Native support for both platforms  
+✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
+✅ **Web & Salesforce** - Basic support out of the box  
 ✅ **Cost Optimized** - Built-in token management and budgeting  
 ✅ **Full Playwright** - Reports, traces, debugging - all included
 
-<img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="drawing" width="100%"/>
+<img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
 
 ## Get Started in 5 Minutes
 

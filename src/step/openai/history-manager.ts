@@ -36,7 +36,13 @@ export class HistoryManager {
 								`snapshot: '${HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER}'`
 							)
 						: message.content
-			} else if (((message.content?.[0] as any)?.text as string)?.includes(HistoryManager.SNAPSHOT_IDENTIFIER)) {
+			} else if (
+				Array.isArray(message.content) &&
+				message.content.length > 0 &&
+				'text' in message.content[0] &&
+				typeof message.content[0].text === 'string' &&
+				message.content[0].text.includes(HistoryManager.SNAPSHOT_IDENTIFIER)
+			) {
 				message.content = [
 					{
 						type: 'text',

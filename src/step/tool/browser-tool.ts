@@ -176,7 +176,7 @@ export class BrowserTool extends OpenAITool {
 		]
 	}
 
-	async call(specified: ToolCall, ...args: any[]) {
+	async call(specified: ToolCall): Promise<string> {
 		if (!specified.name) {
 			throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
 		}
@@ -234,7 +234,7 @@ export class BrowserTool extends OpenAITool {
 		}
 	}
 
-	private async wrapWithTracker(action: () => Promise<any>): Promise<string> {
+	private async wrapWithTracker(action: () => Promise<unknown>): Promise<string> {
 		const tracker = new TransientStateTracker(this.page)
 		await tracker.start()
 		try {
@@ -246,7 +246,7 @@ export class BrowserTool extends OpenAITool {
 			const snapshot = await this.captureSnapshot()
 			await tracker.stop()
 			const formattedTimeline = tracker.formatTimeline()
-			return formattedTimeline ? `${formattedTimeline}\n${snapshot}` : snapshot
+			return formattedTimeline ? `${formattedTimeline}\n${snapshot}` : (snapshot ?? 'empty snapshot')
 		} catch (error) {
 			await tracker.stop()
 			throw error

@@ -152,7 +152,7 @@ type ObserverSetupArgs = {
 }
 
 function setupMutationObserver({ logPrefix, observerKey }: ObserverSetupArgs): void {
-	const win = window as any
+	const win = window as unknown as Window & Record<string, MutationObserver | undefined>
 	const SKIP_TAGS = new Set(['INS', 'IFRAME', 'SCRIPT', 'STYLE'])
 
 	if (win[observerKey]) {
@@ -261,7 +261,7 @@ function setupMutationObserver({ logPrefix, observerKey }: ObserverSetupArgs): v
 }
 
 function teardownMutationObserver(observerKey: string): void {
-	const win = window as any
+	const win = window as unknown as Window & Record<string, MutationObserver | undefined>
 	if (win[observerKey]) {
 		win[observerKey].disconnect()
 		delete win[observerKey]

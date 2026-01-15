@@ -1,4 +1,5 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
+import { StepStatusCallback } from '../types'
 
 export type ToolCall = {
 	name: string
@@ -7,7 +8,7 @@ export type ToolCall = {
 
 export abstract class OpenAITool {
 	abstract functionDeclarations: ChatCompletionFunctionTool[]
-	abstract call(specified: ToolCall, ...args: any[]): Promise<any> | any
+	abstract call(specified: ToolCall, callback?: StepStatusCallback): Promise<string> | string
 
 	protected getFunctionNames(): string[] {
 		return this.functionDeclarations.map((fn) => fn.function.name)

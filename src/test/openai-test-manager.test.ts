@@ -1,7 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { OpenAITestManager } from '../step/openai/openai-test-manager'
-import { Step } from '../step/types'
+import { Step, StepStatusCallback } from '../step/types'
 import { Page } from '@playwright/test'
+import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
+import { AriaPageSnapshot } from '../step/tool/page-snapshot'
+
+interface TestableTestManager {
+	openaiClient: {
+		initialize: Mock
+		sendMessage: Mock
+	}
+}
 
 vi.mock('../../src/step/configuration-manager', () => ({
 	ConfigurationManager: class {
@@ -28,19 +37,19 @@ vi.mock('../../src/step/logger', () => ({
 
 vi.mock('../../src/step/tool/step-tool', () => ({
 	StepTool: class {
-		functionDeclarations = []
+		functionDeclarations: ChatCompletionFunctionTool[] = []
 	},
 }))
 
 vi.mock('../../src/step/tool/browser-tool', () => ({
 	BrowserTool: class {
-		functionDeclarations = []
+		functionDeclarations: ChatCompletionFunctionTool[] = []
 	},
 }))
 
 vi.mock('../../src/salesforce/salesforce-tool', () => ({
 	SalesforceTool: class {
-		functionDeclarations = []
+		functionDeclarations: ChatCompletionFunctionTool[] = []
 	},
 }))
 
@@ -74,7 +83,7 @@ vi.mock('../../src/step/openai/history-manager', () => {
 
 vi.mock('../../src/step/tool/page-snapshot', () => ({
 	PageSnapshot: class {
-		static lastSnapshot = null
+		static lastSnapshot: AriaPageSnapshot = null
 		get = vi.fn().mockResolvedValue('mocked snapshot')
 	},
 }))
@@ -88,7 +97,7 @@ describe('OpenAITestManager', () => {
 	let mockPage: Page
 
 	beforeEach(() => {
-		mockPage = {} as any
+		mockPage = {} as Page
 		testManager = new OpenAITestManager(mockPage)
 	})
 
@@ -117,8 +126,8 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should successfully run when step passes', async () => {
-			const mockClient = (testManager as any).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
 			})
@@ -129,8 +138,8 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should throw error when step fails', async () => {
-			const mockClient = (testManager as any).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
 				setTimeout(() => callback({ passed: false, actual: 'Button not found' }), 0)
 				return Promise.resolve()
 			})
@@ -139,8 +148,8 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should include step action in error message when failing', async () => {
-			const mockClient = (testManager as any).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
 				setTimeout(() => callback({ passed: false, actual: 'Failed' }), 0)
 				return Promise.resolve()
 			})
@@ -148,49 +157,51 @@ describe('OpenAITestManager', () => {
 			try {
 				await testManager.run(mockStep)
 				expect.fail('Should have thrown error')
-			} catch (error: any) {
-				expect(error.message).toContain('Click the submit button')
+			} catch (error) {
+				expect((error as Error).message).toContain('Click the submit button')
 			}
 		})
 
 		it('should wrap errors from OpenAI client', async () => {
-			const mockClient = (testManager as any).openaiClient
+			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
 			mockClient.initialize.mockRejectedValue(new Error('API Error'))
 
 			try {
 				await testManager.run(mockStep)
 				expect.fail('Should have thrown error')
-			} catch (error: any) {
-				expect(error.message).toContain('Failed to execute action')
-				expect(error.message).toContain('Click the submit button')
-				expect(error.message).toContain('API Error')
+			} catch (error) {
+				expect((error as Error).message).toContain('Failed to execute action')
+				expect((error as Error).message).toContain('Click the submit button')
+				expect((error as Error).message).toContain('API Error')
 			}
 		})
 
 		it('should handle sendMessage errors', async () => {
-			const mockClient = (testManager as any).openaiClient
+			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
 			mockClient.initialize.mockResolvedValue(undefined)
 			mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
 
 			try {
 				await testManager.run(mockStep)
 				expect.fail('Should have thrown error')
-			} catch (error: any) {
-				expect(error.message).toContain('Failed to execute action')
+			} catch (error) {
+				expect((error as Error).message).toContain('Failed to execute action')
 			}
 		})
 
 		it('should add initial snapshot when present before sending first message', async () => {
-			const mockClient = (testManager as any).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: any) => {
+			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
 			})
 
 			const { PageSnapshot } = await import('../../src/step/tool/page-snapshot')
-			const historyModule: any = await import('../../src/step/openai/history-manager')
+			const historyModule = (await import('../../src/step/openai/history-manager')) as unknown as {
+				getAddInitialSnapshotMock: () => Mock | undefined
+			}
 
-			PageSnapshot.lastSnapshot = { html: '<div>snap</div>' } as any
+			PageSnapshot.lastSnapshot = { html: '<div>snap</div>' } as unknown as AriaPageSnapshot
 
 			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
 

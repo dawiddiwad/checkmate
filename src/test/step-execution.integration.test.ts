@@ -3,11 +3,13 @@ import { Page } from '@playwright/test'
 import { OpenAIClient } from '../step/openai/openai-client'
 import { OpenAITestManager } from '../step/openai/openai-test-manager'
 import { ConfigurationManager } from '../step/configuration-manager'
-import { Step } from '../step/types'
+import { Step, StepStatus, StepStatusCallback } from '../step/types'
 import { ToolRegistry } from '../step/tool/tool-registry'
 import { StepTool } from '../step/tool/step-tool'
 import { BrowserTool } from '../step/tool/browser-tool'
 import { SalesforceTool } from '../salesforce/salesforce-tool'
+import { ChatCompletionFunctionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { AriaPageSnapshot } from '../step/tool/page-snapshot'
 
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
@@ -50,7 +52,7 @@ vi.mock('../step/logger', () => ({
 
 vi.mock('../salesforce/salesforce-tool', () => ({
 	SalesforceTool: class {
-		functionDeclarations = []
+		functionDeclarations: ChatCompletionFunctionTool[] = []
 		call = vi.fn()
 	},
 }))
@@ -101,7 +103,7 @@ vi.mock('../step/tool/browser-tool', () => ({
 
 vi.mock('../step/tool/page-snapshot', () => ({
 	PageSnapshot: class {
-		static lastSnapshot = null
+		static lastSnapshot: AriaPageSnapshot = null
 		get = vi.fn().mockResolvedValue('mocked snapshot')
 	},
 }))
@@ -460,8 +462,8 @@ describe('Simple step execution integration', () => {
 			expect: 'Status is reported',
 		}
 
-		let reportedStatus: any
-		const statusCallback = (status: any) => {
+		let reportedStatus: StepStatus | undefined
+		const statusCallback: StepStatusCallback = (status: StepStatus) => {
 			reportedStatus = status
 		}
 
@@ -471,7 +473,7 @@ describe('Simple step execution integration', () => {
 		expect(createMock).toHaveBeenCalledTimes(2)
 		expect(reportedStatus).toEqual({ passed: true, actual: 'status ok' })
 
-		const secondCallMessages = (createMock.mock.calls[1][0] as any).messages as any[]
+		const secondCallMessages = (createMock.mock.calls[1][0] as { messages: ChatCompletionMessageParam[] }).messages
 		const reminder = secondCallMessages
 			.map((m) => m.content)
 			.find(

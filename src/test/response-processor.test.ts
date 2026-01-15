@@ -1,9 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { ResponseProcessor } from '../step/openai/response-processor'
 import { OpenAIClient } from '../step/openai/openai-client'
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { Step } from '../step/types'
+import { Step, StepStatusCallback } from '../step/types'
 import { Page } from '@playwright/test'
+import { MockOpenAIClient } from './test-types'
+
+interface TestableResponseProcessor {
+	tokenTracker: {
+		log: Mock
+		resetStep: Mock
+	}
+	toolDispatcher: {
+		dispatch: Mock
+	}
+	toolResponseHandler: {
+		handle: Mock
+		handleMultiple: Mock
+	}
+	messageContentHandler: {
+		handle: Mock
+	}
+	rateLimitHandler: {
+		waitForRateLimit: Mock
+	}
+}
 
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
@@ -58,13 +79,13 @@ vi.mock('../../src/step/tool/screenshot-processor', () => ({
 
 describe('ResponseProcessor', () => {
 	let responseProcessor: ResponseProcessor
-	let mockOpenAIClient: OpenAIClient
+	let mockOpenAIClient: MockOpenAIClient
 	let mockPage: Page
 	let mockStep: Step
-	let mockCallback: any
+	let mockCallback: StepStatusCallback
 
 	beforeEach(() => {
-		mockPage = {} as any
+		mockPage = {} as Page
 
 		mockOpenAIClient = {
 			countHistoryTokens: vi.fn().mockReturnValue(1000),
@@ -72,11 +93,13 @@ describe('ResponseProcessor', () => {
 				getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
 			}),
 			getToolRegistry: vi.fn().mockReturnValue({}),
-		} as any
+			getMessages: vi.fn().mockReturnValue([]),
+			replaceHistory: vi.fn(),
+		}
 
 		responseProcessor = new ResponseProcessor({
 			page: mockPage,
-			openaiClient: mockOpenAIClient,
+			openaiClient: mockOpenAIClient as unknown as OpenAIClient,
 		})
 
 		mockStep = {
@@ -95,7 +118,7 @@ describe('ResponseProcessor', () => {
 
 	describe('resetStepTokens', () => {
 		it('should call resetStep on token tracker', () => {
-			const tokenTrackerInstance = (responseProcessor as any).tokenTracker
+			const tokenTrackerInstance = (responseProcessor as unknown as TestableResponseProcessor).tokenTracker
 
 			responseProcessor.resetStepTokens()
 
@@ -134,8 +157,8 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const toolDispatcher = (responseProcessor as any).toolDispatcher
-			const toolResponseHandler = (responseProcessor as any).toolResponseHandler
+			const toolDispatcher = (responseProcessor as unknown as TestableResponseProcessor).toolDispatcher
+			const toolResponseHandler = (responseProcessor as unknown as TestableResponseProcessor).toolResponseHandler
 
 			vi.mocked(toolDispatcher.dispatch).mockResolvedValue('tool response')
 
@@ -198,7 +221,7 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const toolDispatcher = (responseProcessor as any).toolDispatcher
+			const toolDispatcher = (responseProcessor as unknown as TestableResponseProcessor).toolDispatcher
 			vi.mocked(toolDispatcher.dispatch).mockResolvedValue('response')
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
@@ -223,7 +246,7 @@ describe('ResponseProcessor', () => {
 							tool_calls: [
 								{
 									id: 'call_1',
-									type: 'unknown' as any,
+									type: 'unknown' as 'function',
 									function: {
 										name: 'test',
 										arguments: '{}',
@@ -236,7 +259,7 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const toolDispatcher = (responseProcessor as any).toolDispatcher
+			const toolDispatcher = (responseProcessor as unknown as TestableResponseProcessor).toolDispatcher
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
@@ -273,8 +296,8 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const toolDispatcher = (responseProcessor as any).toolDispatcher
-			const toolResponseHandler = (responseProcessor as any).toolResponseHandler
+			const toolDispatcher = (responseProcessor as unknown as TestableResponseProcessor).toolDispatcher
+			const toolResponseHandler = (responseProcessor as unknown as TestableResponseProcessor).toolResponseHandler
 
 			vi.mocked(toolDispatcher.dispatch).mockResolvedValue(null)
 
@@ -305,7 +328,8 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const messageContentHandler = (responseProcessor as any).messageContentHandler
+			const messageContentHandler = (responseProcessor as unknown as TestableResponseProcessor)
+				.messageContentHandler
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
@@ -333,7 +357,8 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const messageContentHandler = (responseProcessor as any).messageContentHandler
+			const messageContentHandler = (responseProcessor as unknown as TestableResponseProcessor)
+				.messageContentHandler
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
@@ -357,13 +382,13 @@ describe('ResponseProcessor', () => {
 		})
 
 		it('should throw error when choices is undefined', async () => {
-			const mockResponse: ChatCompletion = {
+			const mockResponse = {
 				id: 'test',
 				object: 'chat.completion',
 				created: Date.now(),
 				model: 'gpt-4o-mini',
-				choices: undefined as any,
-			}
+				choices: undefined,
+			} as unknown as ChatCompletion
 
 			await expect(responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)).rejects.toThrow(
 				'No choices found in response'
@@ -392,7 +417,7 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const rateLimitHandler = (responseProcessor as any).rateLimitHandler
+			const rateLimitHandler = (responseProcessor as unknown as TestableResponseProcessor).rateLimitHandler
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
@@ -419,7 +444,7 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const tokenTracker = (responseProcessor as any).tokenTracker
+			const tokenTracker = (responseProcessor as unknown as TestableResponseProcessor).tokenTracker
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 

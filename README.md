@@ -40,10 +40,12 @@ await ai.run({
 
 ✅ **Zero Locators** - Write tests in plain English  
 ✅ **Self-Healing** - Tests adapt to UI changes automatically  
-✅ **Any Provider** - Claude, Gemini, GPT, xAI, or local models  
-✅ **Web & Salesforce** - Native support for both platforms  
+✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
+✅ **Web & Salesforce** - Basic support out of the box  
 ✅ **Cost Optimized** - Built-in token management and budgeting  
 ✅ **Full Playwright** - Reports, traces, debugging - all included
+
+<img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
 
 ## Get Started in 5 Minutes
 
@@ -111,12 +113,12 @@ That's it. No page objects, no selectors. No locators. Peace on Earth.
 
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
-See [guide](GUIDE.md#best-practices) for detailed examples and best practices.
+See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
 
 ## Costs
 
 Costs vary based on model and provider, test complexity and number of steps.
-**_checkmate_** includes built-in token usage [monitoring](GUIDE.md#cost-management).
+**_checkmate_** includes built-in token usage [monitoring](docs/GUIDE.md#cost-management).
 
 Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) for optimal balance:
 
@@ -124,9 +126,9 @@ Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/do
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](GUIDE.md#using-fuzzy-search-for-token-optimization).
+For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](docs/GUIDE.md#using-fuzzy-search-for-token-optimization).
 
-See [guide](GUIDE.md#cost-management) for detailed cost control and monitoring options.
+See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
 ## Common Issues
 
@@ -143,12 +145,12 @@ See [guide](GUIDE.md#cost-management) for detailed cost control and monitoring o
 
 **High token costs**
 
-- Use `search` keywords to limit the scope of the page for the AI. See [fuzzy search](GUIDE.md#using-fuzzy-search-for-token-optimization).
+- Use `search` keywords to limit the scope of the page for the AI. See [fuzzy search](docs/GUIDE.md#using-fuzzy-search-for-token-optimization).
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
 
-See [guide](GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
+See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
 
 ## FAQ
 
@@ -188,7 +190,7 @@ await ai.run({
 
 ## Documentation
 
-- [**_checkmate_**](GUIDE.md)
+- [**_checkmate_**](docs/GUIDE.md)
 - [Playwright](https://playwright.dev/)
 
 ## Contributing
@@ -200,7 +202,7 @@ I'd love your help! Key areas:
 - Context and prompt engineering improvements
 - Error handling and recovery
 
-See [roadmap](ROADMAP.md) for future plans and development
+See [roadmap](docs/ROADMAP.md) for future plans and development
 
 ## MIT License
 

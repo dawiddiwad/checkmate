@@ -27,7 +27,7 @@ test.describe('single-step : quick examples', async () => {
 		await test.step('Navigate to ollama.com and search for model details', async () => {
 			await ai.run({
 				action: `
-                Navigate to https://ollama.com/cloud
+                Navigate to https://ollama.com
                 Type 'qwen3' into the 'Search models' search bar
                 Click on 'qwen3-vl' link from the results,
                 Click on 'qwen3-vl:235b' link from the models list,`,

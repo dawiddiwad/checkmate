@@ -2,7 +2,7 @@
 
 AI test automation that actually works. Write tests in plain English, without locators, and with less code.
 
-![playwright](https://img.shields.io/badge/Playwright-1.57.0-blue.svg)
+![playwright](https://img.shields.io/badge/Playwright-1.58.2-blue.svg)
 ![typescript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)
 ![nodejs](https://img.shields.io/badge/Node.js-LTS-green.svg)
 ![openai](https://img.shields.io/badge/OpenAI-API-yellow.svg)

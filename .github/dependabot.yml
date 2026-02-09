@@ -1,12 +1,12 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "saturday"
+      interval: 'weekly'
+      day: 'saturday'
     open-pull-requests-limit: 4
     groups:
       dependencies:
         patterns:
-          - "*"
+          - '*'

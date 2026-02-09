@@ -6,6 +6,14 @@ on:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+      OPENAI_TEMPERATURE: ${{ secrets.OPENAI_TEMPERATURE }}
+      OPENAI_API_TOKEN_BUDGET_USD: ${{ secrets.OPENAI_API_TOKEN_BUDGET_USD }}
+      OPENAI_API_TOKEN_BUDGET_COUNT: ${{ secrets.OPENAI_API_TOKEN_BUDGET_COUNT }}
+      CHECKMATE_LOG_LEVEL: ${{ secrets.CHECKMATE_LOG_LEVEL }}
 
     steps:
       - uses: actions/checkout@v6
@@ -22,5 +30,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run unit tests
+      - name: Run all unit tests
         run: npm run test:unit:run
+
+      - name: Run example e2e tests
+        run: npm run test:web:example

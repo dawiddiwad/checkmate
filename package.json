@@ -42,12 +42,12 @@
 	"license": "MIT",
 	"dependencies": {
 		"@playwright/test": "^1.58.2",
-		"@types/node": "^25.3.0",
+		"@types/node": "^25.3.2",
 		"dotenv": "^17.3.1",
-		"openai": "^6.22.0",
+		"openai": "^6.25.0",
 		"sharp": "^0.34.5",
 		"string-similarity": "^4.0.4",
-		"strip-ansi": "^7.1.2",
+		"strip-ansi": "^7.2.0",
 		"winston": "^3.19.0",
 		"yaml": "^2.8.2"
 	},
@@ -61,7 +61,7 @@
 		"prettier": "^3.7.4",
 		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.56.0",
+		"typescript-eslint": "^8.56.1",
 		"vitest": "^4.0.16"
 	}
 }

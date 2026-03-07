@@ -57,6 +57,11 @@ export class OpenAITokenPricing {
 
 	private static inputPricePerMillionUSD(model: string): number {
 		switch (model) {
+			case 'gpt-5.4':
+				return this.roundToCents(2.5)
+			case 'gpt-5.3-instant':
+			case 'gpt-5.3-codex':
+				return this.roundToCents(1.5)
 			case 'gpt-5.2':
 				return this.roundToCents(1.75)
 			case 'gpt-5.2-pro':
@@ -100,13 +105,20 @@ export class OpenAITokenPricing {
 				return this.roundToCents(3.0)
 			case 'claude-3-5-sonnet-20241022':
 			case 'claude-3-5-sonnet-latest':
+			case 'claude-4-sonnet':
+			case 'claude-4.5-sonnet':
+			case 'claude-4.6-sonnet':
 				return this.roundToCents(3.0)
 			case 'claude-3-5-haiku-20241022':
 			case 'claude-3-5-haiku-latest':
-				return this.roundToCents(0.8)
+				return this.roundToCents(0.25)
+			case 'claude-4.5-haiku':
+				return this.roundToCents(1.0)
 			case 'claude-3-opus-20240229':
 			case 'claude-3-opus-latest':
 				return this.roundToCents(15.0)
+			case 'claude-4.6-opus':
+				return this.roundToCents(5.0)
 			case 'claude-opus-4.5':
 			case 'claude-opus-4-5':
 				return this.roundToCents(5.0)
@@ -126,6 +138,12 @@ export class OpenAITokenPricing {
 				return this.roundToCents(0.8)
 			case 'claude-haiku-3':
 				return this.roundToCents(0.25)
+			case 'gemini-3.1-pro-preview':
+				return this.roundToCents(2.0)
+			case 'gemini-3.1-flash-lite-preview':
+				return this.roundToCents(0.25)
+			case 'gemini-3.1-flash-image-preview':
+				return this.roundToCents(0.5)
 			case 'gemini-3-pro-preview':
 				return this.roundToCents(2.0)
 			case 'gemini-2.5-pro':
@@ -148,6 +166,9 @@ export class OpenAITokenPricing {
 				return this.roundToCents(0.1)
 			case 'gemini-2.0-flash-lite':
 				return this.roundToCents(0.075)
+			case 'grok-4.20':
+			case 'grok-4.20-latest':
+				return this.roundToCents(3.0)
 			case 'grok-4':
 			case 'grok-4-0709':
 			case 'grok-4-latest':
@@ -205,6 +226,11 @@ export class OpenAITokenPricing {
 
 	private static outputPricePerMillionUSD(model: string): number {
 		switch (model) {
+			case 'gpt-5.4':
+				return this.roundToCents(15.0)
+			case 'gpt-5.3-instant':
+			case 'gpt-5.3-codex':
+				return this.roundToCents(6.0)
 			case 'gpt-5.2':
 				return this.roundToCents(14.0)
 			case 'gpt-5.2-pro':
@@ -248,13 +274,20 @@ export class OpenAITokenPricing {
 				return this.roundToCents(12.0)
 			case 'claude-3-5-sonnet-20241022':
 			case 'claude-3-5-sonnet-latest':
+			case 'claude-4-sonnet':
+			case 'claude-4.5-sonnet':
+			case 'claude-4.6-sonnet':
 				return this.roundToCents(15.0)
 			case 'claude-3-5-haiku-20241022':
 			case 'claude-3-5-haiku-latest':
-				return this.roundToCents(4.0)
+				return this.roundToCents(1.25)
+			case 'claude-4.5-haiku':
+				return this.roundToCents(5.0)
 			case 'claude-3-opus-20240229':
 			case 'claude-3-opus-latest':
 				return this.roundToCents(75.0)
+			case 'claude-4.6-opus':
+				return this.roundToCents(25.0)
 			case 'claude-opus-4.5':
 			case 'claude-opus-4-5':
 				return this.roundToCents(25.0)
@@ -274,6 +307,12 @@ export class OpenAITokenPricing {
 				return this.roundToCents(4.0)
 			case 'claude-haiku-3':
 				return this.roundToCents(1.25)
+			case 'gemini-3.1-pro-preview':
+				return this.roundToCents(12.0)
+			case 'gemini-3.1-flash-lite-preview':
+				return this.roundToCents(1.5)
+			case 'gemini-3.1-flash-image-preview':
+				return this.roundToCents(3.0)
 			case 'gemini-3-pro-preview':
 				return this.roundToCents(12.0)
 			case 'gemini-2.5-pro':
@@ -296,6 +335,9 @@ export class OpenAITokenPricing {
 				return this.roundToCents(0.4)
 			case 'gemini-2.0-flash-lite':
 				return this.roundToCents(0.3)
+			case 'grok-4.20':
+			case 'grok-4.20-latest':
+				return this.roundToCents(15.0)
 			case 'grok-4':
 			case 'grok-4-0709':
 			case 'grok-4-latest':

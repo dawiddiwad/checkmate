@@ -310,7 +310,7 @@ export class OpenAITokenPricing {
 			case 'gemini-3.1-pro-preview':
 				return this.roundToCents(12.0)
 			case 'gemini-3.1-flash-lite-preview':
-				return this.roundToCents(1.50)
+				return this.roundToCents(1.5)
 			case 'gemini-3.1-flash-image-preview':
 				return this.roundToCents(3.0)
 			case 'gemini-3-pro-preview':

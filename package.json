@@ -42,9 +42,9 @@
 	"license": "MIT",
 	"dependencies": {
 		"@playwright/test": "^1.58.2",
-		"@types/node": "^25.3.5",
+		"@types/node": "^25.5.0",
 		"dotenv": "^17.3.1",
-		"openai": "^6.27.0",
+		"openai": "^6.29.0",
 		"sharp": "^0.34.5",
 		"string-similarity": "^4.0.4",
 		"strip-ansi": "^7.2.0",
@@ -54,14 +54,14 @@
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",
 		"@types/string-similarity": "^4.0.2",
-		"@vitest/coverage-v8": "^4.0.16",
+		"@vitest/coverage-v8": "^4.1.0",
 		"@vitest/ui": "^4.0.16",
 		"eslint": "^9.39.4",
 		"eslint-config-prettier": "^10.1.8",
 		"prettier": "^3.7.4",
 		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.56.1",
+		"typescript-eslint": "^8.57.0",
 		"vitest": "^4.0.16"
 	}
 }

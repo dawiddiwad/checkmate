@@ -89,7 +89,7 @@ export class PageSnapshot {
 			logger.debug(`created aria page snapshot:\n${PageSnapshot.lastSnapshot}`)
 			return PageSnapshot.lastSnapshot
 		} catch (error) {
-			throw new Error(`Failed to create aria page snapshot:\n${error}`)
+			throw new Error(`Failed to create aria page snapshot:\n${error}`, { cause: error })
 		}
 	}
 }

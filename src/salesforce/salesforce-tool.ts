@@ -47,7 +47,7 @@ export class SalesforceTool extends OpenAITool {
 					arguments: { url: frontDoorUrl, goal: 'Login to Salesforce org' },
 				})
 			} catch (error) {
-				throw new Error(`Failed to login to Salesforce org due to\n:${error}`)
+				throw new Error(`Failed to login to Salesforce org due to\n:${error}`, { cause: error })
 			}
 		} else {
 			logger.error(`model tried to call not implemented tool: ${specified.name}`)

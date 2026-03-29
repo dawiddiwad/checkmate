@@ -18,7 +18,7 @@ export class ScreenshotProcessor {
 				data: compressedBuffer.toString('base64'),
 			}
 		} catch (error) {
-			throw new Error(`Failed to get compressed screenshot:\n${error}`)
+			throw new Error(`Failed to get compressed screenshot:\n${error}`, { cause: error })
 		}
 	}
 }

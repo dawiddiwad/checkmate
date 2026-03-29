@@ -30,7 +30,7 @@ export class SalesforceCliHandler {
 			output = stripAnsi(output)
 			return JSON.parse(output)
 		} catch (error) {
-			throw new Error(`failed parsing output from:\n${output}\ndue to:\n${error}`)
+			throw new Error(`failed parsing output from:\n${output}`, { cause: error })
 		}
 	}
 

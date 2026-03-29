@@ -170,9 +170,10 @@ describe('OpenAITestManager', () => {
 				await testManager.run(mockStep)
 				expect.fail('Should have thrown error')
 			} catch (error) {
-				expect((error as Error).message).toContain('Failed to execute action')
-				expect((error as Error).message).toContain('Click the submit button')
-				expect((error as Error).message).toContain('API Error')
+				const wrappedError = error as Error & { cause?: Error }
+				expect(wrappedError.message).toContain('Failed to execute action')
+				expect(wrappedError.message).toContain('Click the submit button')
+				expect(wrappedError.cause?.message).toContain('API Error')
 			}
 		})
 
@@ -180,7 +181,6 @@ describe('OpenAITestManager', () => {
 			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
 			mockClient.initialize.mockResolvedValue(undefined)
 			mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
-
 			try {
 				await testManager.run(mockStep)
 				expect.fail('Should have thrown error')

@@ -52,7 +52,6 @@ class OpenAITestStep {
 		this.logStepStart(step)
 		try {
 			await this.openaiClient.initialize(step, this.stepStatusCallback)
-			// Clear the previous step's cached snapshot to ensure fresh filtering with new step's keywords
 			PageSnapshot.lastSnapshot = null
 			new HistoryManager().addInitialSnapshot(
 				this.openaiClient,
@@ -62,7 +61,7 @@ class OpenAITestStep {
 			this.stepStatus = await this.stepFinishedCallback
 			this.assertStepResult(step)
 		} catch (error) {
-			throw new Error(`\nFailed to execute action:\n${step.action}\n\n${error}`)
+			throw new Error(`\nFailed to execute action:\n${step.action}`, { cause: error })
 		}
 		this.logStepFinish()
 	}

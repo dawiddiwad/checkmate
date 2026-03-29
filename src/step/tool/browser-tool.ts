@@ -230,7 +230,7 @@ export class BrowserTool extends OpenAITool {
 				.toEqual('stable')
 			return new PageSnapshot(this.page, this.step, { skipFilter: options.skipFilter }).get()
 		} catch (error) {
-			throw new Error(`Failed to capture page snapshot:\n${error}`)
+			throw new Error(`Failed to capture page snapshot:\n${error}`, { cause: error })
 		}
 	}
 
@@ -255,13 +255,13 @@ export class BrowserTool extends OpenAITool {
 
 	private async navigateToUrl(url: string) {
 		return this.wrapWithTracker(async () => {
+			if (!url) {
+				throw new Error(`valid URL is required for ${BrowserTool.TOOL_NAVIGATE} but received: '${url}'`)
+			}
 			try {
-				if (!url) {
-					throw new Error(`valid URL is required for ${BrowserTool.TOOL_NAVIGATE} but received: '${url}'`)
-				}
 				await this.page.goto(url)
 			} catch (error) {
-				throw new Error(`Failed to navigate to URL ${url}:\n${error}`)
+				throw new Error(`Failed to navigate to URL ${url}`, { cause: error })
 			}
 		})
 	}

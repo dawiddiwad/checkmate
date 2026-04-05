@@ -81,11 +81,8 @@ export class PageSnapshot {
 			if (!this.page) {
 				throw new Error('Page is not initialized')
 			}
-			type PageWithSnapshot = Page & { _snapshotForAI(): Promise<{ full: string }> }
-			const snapshotYAML = await (this.page as PageWithSnapshot)
-				._snapshotForAI()
-				.then((snapshot) => snapshot.full)
-			PageSnapshot.lastSnapshot = await this.compress(snapshotYAML)
+			const rawSnapshot = await this.page.ariaSnapshot({ mode: 'ai' })
+			PageSnapshot.lastSnapshot = await this.compress(rawSnapshot)
 			logger.debug(`created aria page snapshot:\n${PageSnapshot.lastSnapshot}`)
 			return PageSnapshot.lastSnapshot
 		} catch (error) {

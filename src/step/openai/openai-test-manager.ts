@@ -2,7 +2,7 @@ import { StepTool } from '../tool/step-tool'
 import { SalesforceTool } from '../../salesforce/salesforce-tool'
 import { Step, StepFinishedCallback, StepStatus, StepStatusCallback } from '../types'
 import { expect, Page } from '@playwright/test'
-import { RUN_STEP_PROMPT } from './prompts'
+import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from './prompts'
 import { ConfigurationManager } from '../configuration-manager'
 import { ToolRegistry } from '../tool/tool-registry'
 import { OpenAIClient } from './openai-client'
@@ -53,11 +53,13 @@ class OpenAITestStep {
 		try {
 			await this.openaiClient.initialize(step, this.stepStatusCallback)
 			PageSnapshot.lastSnapshot = null
-			new HistoryManager().addInitialSnapshot(
-				this.openaiClient,
-				await new PageSnapshot(this.openaiClient.page, step).get()
-			)
-			await this.openaiClient.sendMessage(RUN_STEP_PROMPT(step))
+			const initialMessages = new HistoryManager().buildInitialMessages({
+				openaiClient: this.openaiClient,
+				systemPrompt: STEP_SYSTEM_PROMPT(),
+				userPrompt: STEP_START_USER_PROMPT(step),
+				snapshotContent: await new PageSnapshot(this.openaiClient.page, step).get()
+			})
+			await this.openaiClient.sendMessage(initialMessages)
 			this.stepStatus = await this.stepFinishedCallback
 			this.assertStepResult(step)
 		} catch (error) {

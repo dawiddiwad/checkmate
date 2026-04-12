@@ -3,23 +3,48 @@ import { OpenAIClient } from './openai-client'
 import { AriaPageSnapshot } from '../tool/page-snapshot'
 import { logger } from './openai-test-manager'
 
+type IntialParameters = {
+	openaiClient: OpenAIClient
+	systemPrompt: string
+	userPrompt: string
+	snapshotContent: AriaPageSnapshot
+}
+
 export class HistoryManager {
 	static readonly SNAPSHOT_IDENTIFIER = 'this is a current page snapshot'
 	static readonly REMOVED_SNAPSHOT_PLACEHOLDER = '[Snapshot removed from history to save tokens]'
 
-	addInitialSnapshot(openaiClient: OpenAIClient, snapshotContent: AriaPageSnapshot) {
+	buildInitialMessages(config: IntialParameters): ChatCompletionMessageParam[] {
 		const historyWithInitialSnapshot: ChatCompletionMessageParam[] = [
+			{
+				role: 'system',
+				content: [
+					{
+						type: 'text',
+						text: config.systemPrompt,
+					},
+				]
+			},
 			{
 				role: 'user',
 				content: [
 					{
 						type: 'text',
-						text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}`,
+						text: config.userPrompt,
+					},
+				],
+			},
+			{
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\n${config.snapshotContent}`,
 					},
 				],
 			},
 		]
-		openaiClient.replaceHistory(historyWithInitialSnapshot)
+		return historyWithInitialSnapshot
 	}
 
 	async removeSnapshotEntries(openaiClient: OpenAIClient): Promise<void> {

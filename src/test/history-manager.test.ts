@@ -35,7 +35,7 @@ describe('HistoryManager', () => {
 		it('should add initial snapshot to history', () => {
 			const snapshotContent = 'Page Title: Test Page\nButton: Click Me'
 
-			historyManager.addInitialSnapshot(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
+			historyManager.buildInitialMessages(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
@@ -50,7 +50,7 @@ describe('HistoryManager', () => {
 		it('should include snapshot identifier in the message', () => {
 			const snapshotContent = 'Some ARIA tree content'
 
-			historyManager.addInitialSnapshot(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
+			historyManager.buildInitialMessages(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
 
 			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
 			const textContent = (calledWith[0].content as TextContentPart[])[0].text
@@ -59,7 +59,7 @@ describe('HistoryManager', () => {
 		})
 
 		it('should handle empty snapshot content', () => {
-			historyManager.addInitialSnapshot(mockOpenAIClient as unknown as OpenAIClient, '')
+			historyManager.buildInitialMessages(mockOpenAIClient as unknown as OpenAIClient, '')
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { OpenAITestManager } from '../step/openai/openai-test-manager'
 import { Step, StepStatusCallback } from '../step/types'
 import { Page } from '@playwright/test'
-import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
+import { ChatCompletionFunctionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { AriaPageSnapshot } from '../step/tool/page-snapshot'
 
 interface TestableTestManager {
@@ -63,12 +63,17 @@ vi.mock('../../src/step/openai/openai-client', () => ({
 	OpenAIClient: class {
 		initialize = vi.fn().mockResolvedValue(undefined)
 		sendMessage = vi.fn().mockResolvedValue(undefined)
+		page = {} as Page
 	},
 }))
 
 vi.mock('../../src/step/openai/history-manager', () => {
 	class MockHistoryManager {
-		addInitialSnapshot = vi.fn()
+		buildInitialMessages = vi.fn().mockReturnValue([
+			{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
+			{ role: 'user', content: [{ type: 'text', text: 'step prompt' }] },
+			{ role: 'user', content: [{ type: 'text', text: 'snapshot prompt' }] },
+		] as ChatCompletionMessageParam[])
 		static instance: MockHistoryManager | null = null
 		constructor() {
 			MockHistoryManager.instance = this
@@ -77,7 +82,7 @@ vi.mock('../../src/step/openai/history-manager', () => {
 
 	return {
 		HistoryManager: MockHistoryManager,
-		getAddInitialSnapshotMock: () => MockHistoryManager.instance?.addInitialSnapshot,
+		getBuildInitialMessagesMock: () => MockHistoryManager.instance?.buildInitialMessages,
 	}
 })
 
@@ -89,7 +94,8 @@ vi.mock('../../src/step/tool/page-snapshot', () => ({
 }))
 
 vi.mock('../../src/step/openai/prompts', () => ({
-	RUN_STEP_PROMPT: vi.fn((step) => `Execute: ${step.action}`),
+	STEP_SYSTEM_PROMPT: vi.fn(() => 'system prompt'),
+	STEP_START_USER_PROMPT: vi.fn((step) => `Execute: ${step.action}`),
 }))
 
 describe('OpenAITestManager', () => {
@@ -189,25 +195,29 @@ describe('OpenAITestManager', () => {
 			}
 		})
 
-		it('should add initial snapshot when present before sending first message', async () => {
+		it('should build initial messages and send them before the first model request', async () => {
 			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
 			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
 			})
 
-			const { PageSnapshot } = await import('../../src/step/tool/page-snapshot')
 			const historyModule = (await import('../../src/step/openai/history-manager')) as unknown as {
-				getAddInitialSnapshotMock: () => Mock | undefined
+				getBuildInitialMessagesMock: () => Mock | undefined
 			}
-
-			PageSnapshot.lastSnapshot = { html: '<div>snap</div>' } as unknown as AriaPageSnapshot
 
 			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
 
-			expect(historyModule.getAddInitialSnapshotMock()).toHaveBeenCalled()
-
-			PageSnapshot.lastSnapshot = null
+			expect(historyModule.getBuildInitialMessagesMock()).toHaveBeenCalledWith({
+				systemPrompt: 'system prompt',
+				userPrompt: `Execute: ${mockStep.action}`,
+				snapshotContent: 'mocked snapshot',
+			})
+			expect(mockClient.sendMessage).toHaveBeenCalledWith([
+				{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
+				{ role: 'user', content: [{ type: 'text', text: 'step prompt' }] },
+				{ role: 'user', content: [{ type: 'text', text: 'snapshot prompt' }] },
+			])
 		})
 	})
 })

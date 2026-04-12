@@ -31,44 +31,40 @@ describe('HistoryManager', () => {
 		}
 	})
 
-	describe('addInitialSnapshot', () => {
-		it('should add initial snapshot to history', () => {
-			const snapshotContent = 'Page Title: Test Page\nButton: Click Me'
+	describe('buildInitialMessages', () => {
+		it('should build initial messages with system prompt, step prompt, and snapshot', () => {
+			const initialMessages = historyManager.buildInitialMessages({
+				systemPrompt: 'system prompt',
+				userPrompt: 'step prompt',
+				snapshotContent: 'Page Title: Test Page\nButton: Click Me',
+			})
 
-			historyManager.buildInitialMessages(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
-
-			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
-			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
-			expect(calledWith).toHaveLength(1)
-			expect(calledWith[0].role).toBe('user')
-			expect((calledWith[0].content as TextContentPart[])[0].type).toBe('text')
-			expect((calledWith[0].content as TextContentPart[])[0].text).toContain(HistoryManager.SNAPSHOT_IDENTIFIER)
-			expect((calledWith[0].content as TextContentPart[])[0].text).toContain(snapshotContent)
-		})
-
-		it('should include snapshot identifier in the message', () => {
-			const snapshotContent = 'Some ARIA tree content'
-
-			historyManager.buildInitialMessages(mockOpenAIClient as unknown as OpenAIClient, snapshotContent)
-
-			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-			const textContent = (calledWith[0].content as TextContentPart[])[0].text
-
-			expect(textContent).toContain('this is a current page snapshot')
+			expect(initialMessages).toHaveLength(3)
+			expect(initialMessages[0].role).toBe('system')
+			expect(initialMessages[1].role).toBe('user')
+			expect(initialMessages[2].role).toBe('user')
+			expect((initialMessages[0].content as TextContentPart[])[0].text).toBe('system prompt')
+			expect((initialMessages[1].content as TextContentPart[])[0].text).toBe('step prompt')
+			expect((initialMessages[2].content as TextContentPart[])[0].text).toContain(
+				HistoryManager.SNAPSHOT_IDENTIFIER
+			)
 		})
 
 		it('should handle empty snapshot content', () => {
-			historyManager.buildInitialMessages(mockOpenAIClient as unknown as OpenAIClient, '')
+			const initialMessages = historyManager.buildInitialMessages({
+				systemPrompt: 'system prompt',
+				userPrompt: 'step prompt',
+				snapshotContent: '',
+			})
 
-			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
-			const calledWith = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-			expect((calledWith[0].content as TextContentPart[])[0].text).toContain(HistoryManager.SNAPSHOT_IDENTIFIER)
+			expect((initialMessages[2].content as TextContentPart[])[0].text).toContain(
+				HistoryManager.SNAPSHOT_IDENTIFIER
+			)
 		})
 	})
 
-	describe('removeSnapshotEntries', () => {
-		it('should replace snapshots with placeholder except for last tool call', async () => {
+	describe('compactSnapshotHistory', () => {
+		it('should replace snapshots with placeholder except for latest tool snapshot', () => {
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{
 					role: 'user',
@@ -86,7 +82,8 @@ describe('HistoryManager', () => {
 				{
 					role: 'tool',
 					tool_call_id: 'call_1',
-					content: 'snapshot: old snapshot data here',
+					content:
+						"Timeline of events after last function call:\n[120ms] Clicked button\n\npage snapshot:\nurl: 'https://example.com'\npage snapshot:\n{old:true}",
 				},
 				{
 					role: 'assistant',
@@ -95,13 +92,13 @@ describe('HistoryManager', () => {
 				{
 					role: 'tool',
 					tool_call_id: 'call_2',
-					content: 'snapshot: latest snapshot data',
+					content: "page snapshot:\nurl: 'https://example.com/latest'\npage snapshot:\n{latest:true}",
 				},
 			]
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
@@ -111,15 +108,39 @@ describe('HistoryManager', () => {
 			expect(firstUserMsg.content[0].text).not.toContain('Initial snapshot content')
 
 			const firstToolMsg = filteredHistory[2] as { content: string }
-			expect(firstToolMsg.content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
-			expect(firstToolMsg.content).not.toContain('old snapshot data here')
+			expect(firstToolMsg.content).toContain('Timeline of events after last function call')
+			expect(firstToolMsg.content).toContain(`page snapshot: '${HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER}'`)
+			expect(firstToolMsg.content).not.toContain('{old:true}')
 
 			const lastToolMsg = filteredHistory[4] as { content: string }
-			expect(lastToolMsg.content).toBe('snapshot: latest snapshot data')
+			expect(lastToolMsg.content).toContain("url: 'https://example.com/latest'")
 			expect(lastToolMsg.content).not.toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 		})
 
-		it('should handle history with no tool messages', async () => {
+		it('should keep explicitly selected tool snapshot raw', () => {
+			const mockHistory: ChatCompletionMessageParam[] = [
+				{
+					role: 'tool',
+					tool_call_id: 'call_1',
+					content: "page snapshot:\nurl: 'https://example.com/1'\npage snapshot:\n{first:true}",
+				},
+				{
+					role: 'tool',
+					tool_call_id: 'call_2',
+					content: "page snapshot:\nurl: 'https://example.com/2'\npage snapshot:\n{second:true}",
+				},
+			]
+
+			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
+
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient, 'call_1')
+
+			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
+			expect(filteredHistory[0].content).toContain('{first:true}')
+			expect(filteredHistory[1].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
+		})
+
+		it('should compact initial snapshot when there are no tool messages', () => {
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{
 					role: 'user',
@@ -138,107 +159,42 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
 
-			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
 			const userMsg = filteredHistory[0] as { content: TextContentPart[] }
 			expect(userMsg.content[0].text).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
 		})
 
-		it('should handle history with only tool messages', async () => {
+		it('should compact all but latest tool snapshot when only tool messages are present', () => {
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{
 					role: 'tool',
 					tool_call_id: 'call_1',
-					content: 'snapshot: first snapshot',
+					content: "page snapshot:\nurl: 'https://example.com/1'\npage snapshot:\n{first:true}",
 				},
 				{
 					role: 'tool',
 					tool_call_id: 'call_2',
-					content: 'snapshot: second snapshot',
+					content: "page snapshot:\nurl: 'https://example.com/2'\npage snapshot:\n{second:true}",
 				},
 			]
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
 			expect(filteredHistory[0].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
-
-			expect(filteredHistory[1].content).toBe('snapshot: second snapshot')
+			expect(filteredHistory[1].content).toContain('{second:true}')
 		})
 
-		it('should handle empty history', async () => {
-			const mockHistory: ChatCompletionMessageParam[] = []
-
-			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
-
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
-
-			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledTimes(1)
-			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-			expect(filteredHistory).toEqual([])
-		})
-
-		it('should handle snapshot with case-insensitive matching', async () => {
+		it('should preserve tool messages that do not include a page snapshot section', () => {
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{
 					role: 'tool',
 					tool_call_id: 'call_1',
-					content: 'SNAPSHOT: uppercase snapshot data',
-				},
-				{
-					role: 'tool',
-					tool_call_id: 'call_2',
-					content: 'Snapshot: mixed case snapshot data',
-				},
-			]
-
-			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
-
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
-
-			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
-			expect(filteredHistory[0].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
-			expect(filteredHistory[1].content).toBe('Snapshot: mixed case snapshot data')
-		})
-
-		it('should replace any text containing "snapshot" keyword', async () => {
-			const mockHistory: ChatCompletionMessageParam[] = [
-				{
-					role: 'tool',
-					tool_call_id: 'call_1',
-					content: 'No snapshot here, just regular content',
-				},
-				{
-					role: 'tool',
-					tool_call_id: 'call_2',
-					content: 'Also no snapshot',
-				},
-			]
-
-			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
-
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
-
-			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
-			expect(filteredHistory[0].content).toContain(HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER)
-
-			expect(filteredHistory[1].content).toBe('Also no snapshot')
-		})
-
-		it('should preserve tool messages that do not contain snapshot keyword', async () => {
-			const mockHistory: ChatCompletionMessageParam[] = [
-				{
-					role: 'tool',
-					tool_call_id: 'call_1',
-					content: 'Regular content without the s-word',
+					content: 'Regular content mentioning snapshot expectations without an actual payload',
 				},
 				{
 					role: 'tool',
@@ -249,40 +205,40 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
-			expect(filteredHistory[0].content).toBe('Regular content without the s-word')
+			expect(filteredHistory[0].content).toBe(
+				'Regular content mentioning snapshot expectations without an actual payload'
+			)
 			expect(filteredHistory[1].content).toBe('Just some data here')
 		})
 
-		it('should handle messages with non-string content in tool responses', async () => {
+		it('should handle messages with non-string content in tool responses', () => {
+			const complexContent = [{ type: 'text', text: 'Complex content structure' }]
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{
 					role: 'tool',
 					tool_call_id: 'call_1',
-					content: [{ type: 'text', text: 'Complex content structure' }] as unknown as string,
+					content: complexContent as unknown as string,
 				},
 				{
 					role: 'tool',
 					tool_call_id: 'call_2',
-					content: 'snapshot: last snapshot',
+					content: "page snapshot:\nurl: 'https://example.com'\npage snapshot:\n{latest:true}",
 				},
 			]
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
-			expect(filteredHistory[0].content).toEqual([{ type: 'text', text: 'Complex content structure' }])
-
-			expect(filteredHistory[1].content).toBe('snapshot: last snapshot')
+			expect(filteredHistory[0].content).toEqual(complexContent)
+			expect(filteredHistory[1].content).toContain('{latest:true}')
 		})
 
-		it('should handle user messages without snapshot identifier', async () => {
+		it('should leave user messages without snapshot identifier unchanged', () => {
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{
 					role: 'user',
@@ -306,17 +262,23 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			await historyManager.removeSnapshotEntries(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
 
 			const filteredHistory = vi.mocked(mockOpenAIClient.replaceHistory).mock.calls[0][0]
-
 			expect((filteredHistory[0].content as TextContentPart[])[0].text).toBe(
 				'Regular user message without snapshot'
 			)
-
 			expect((filteredHistory[1].content as TextContentPart[])[0].text).toContain(
 				HistoryManager.REMOVED_SNAPSHOT_PLACEHOLDER
 			)
+		})
+
+		it('should handle empty history', () => {
+			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue([])
+
+			historyManager.compactSnapshotHistory(mockOpenAIClient as unknown as OpenAIClient)
+
+			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledWith([])
 		})
 	})
 

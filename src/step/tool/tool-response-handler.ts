@@ -40,8 +40,7 @@ export class ToolResponseHandler {
 		if (toolResponses.length === 0) return
 
 		const config = this.openaiClient.getConfigurationManager()
-
-		await this.historyManager.removeSnapshotEntries(this.openaiClient)
+		const latestToolCallId = toolResponses.at(-1)?.toolCallId
 
 		for (const [index, { toolCallId, toolResponse }] of toolResponses.entries()) {
 			const responseContent = toolResponse.response
@@ -54,7 +53,7 @@ export class ToolResponseHandler {
 			}
 		}
 
-		await this.historyManager.removeSnapshotEntries(this.openaiClient)
+		this.historyManager.compactSnapshotHistory(this.openaiClient, latestToolCallId)
 
 		const nextResponse = await this.openaiClient.sendToolResponseWithRetry()
 		await this.responseProcessor.handleResponse(nextResponse, step, stepStatusCallback)

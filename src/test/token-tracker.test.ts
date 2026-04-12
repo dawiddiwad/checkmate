@@ -3,6 +3,7 @@ import { TokenTracker } from '../step/openai/token-tracker'
 import { ConfigurationManager } from '../step/configuration-manager'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { MockConfigurationManager } from './test-types'
+import { logger } from '../step/openai/openai-test-manager'
 
 vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	logger: {
@@ -18,6 +19,7 @@ describe('TokenTracker', () => {
 	let mockConfig: MockConfigurationManager
 
 	beforeEach(() => {
+		vi.clearAllMocks()
 		mockConfig = {
 			getTokenBudgetUSD: vi.fn().mockReturnValue(undefined),
 			getTokenBudgetCount: vi.fn().mockReturnValue(undefined),
@@ -28,6 +30,53 @@ describe('TokenTracker', () => {
 	})
 
 	describe('budget enforcement - USD', () => {
+		it('should format small USD costs to the third decimal place', () => {
+			const response: ChatCompletion = {
+				id: 'test',
+				object: 'chat.completion',
+				created: Date.now(),
+				model: 'gpt-4o-mini',
+				choices: [],
+				usage: {
+					prompt_tokens: 4004,
+					completion_tokens: 131,
+					total_tokens: 4135,
+					prompt_tokens_details: {
+						cached_tokens: 0,
+					},
+				},
+			}
+
+			tokenTracker.log(response, 2497, 'gpt-4o-mini')
+
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('4004 @ 0.001$'))
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('131 @ 0.000$'))
+		})
+
+		it('should apply cached input discount when enforcing USD budgets', () => {
+			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.05)
+
+			const response: ChatCompletion = {
+				id: 'test',
+				object: 'chat.completion',
+				created: Date.now(),
+				model: 'gpt-4o-mini',
+				choices: [],
+				usage: {
+					prompt_tokens: 1_000_000,
+					completion_tokens: 0,
+					total_tokens: 1_000_000,
+					prompt_tokens_details: {
+						cached_tokens: 900_000,
+					},
+				},
+			}
+
+			expect(() => {
+				tokenTracker.log(response, 0, 'gpt-4o-mini')
+			}).not.toThrow()
+		})
+
 		it('should throw error when USD budget is exceeded', () => {
 			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.01)
 
@@ -371,6 +420,54 @@ describe('TokenTracker', () => {
 	})
 
 	describe('log with missing usage data', () => {
+		it('should log cache hit metrics when prompt token details are present', () => {
+			const response: ChatCompletion = {
+				id: 'test',
+				object: 'chat.completion',
+				created: Date.now(),
+				model: 'gpt-4o-mini',
+				choices: [],
+				usage: {
+					prompt_tokens: 1000,
+					completion_tokens: 100,
+					total_tokens: 1100,
+					prompt_tokens_details: {
+						cached_tokens: 400,
+					},
+				},
+			}
+
+			tokenTracker.log(response, 100, 'gpt-4o-mini')
+
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('response cache hit rate'))
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('40%'))
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('response cached input'))
+		})
+
+		it('should distinguish unavailable cache metrics from actual zero cache hits', () => {
+			const response: ChatCompletion = {
+				id: 'test',
+				object: 'chat.completion',
+				created: Date.now(),
+				model: 'gpt-4o-mini',
+				choices: [],
+				usage: {
+					prompt_tokens: 1000,
+					completion_tokens: 100,
+					total_tokens: 1100,
+				},
+			}
+
+			tokenTracker.log(response, 100, 'gpt-4o-mini')
+
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+				expect.stringContaining('n/a (provider did not report cached_tokens)')
+			)
+			expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+				expect.stringContaining('"response cache hit rate": "n/a"')
+			)
+		})
+
 		it('should handle response without usage data', () => {
 			const response: ChatCompletion = {
 				id: 'test',

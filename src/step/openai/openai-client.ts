@@ -1,5 +1,9 @@
 import OpenAI from 'openai'
-import { ChatCompletionMessageParam, ChatCompletion } from 'openai/resources/chat/completions'
+import {
+	ChatCompletionMessageParam,
+	ChatCompletion,
+	ChatCompletionAssistantMessageParam,
+} from 'openai/resources/chat/completions'
 import { ConfigurationManager } from '../configuration-manager'
 import { ToolRegistry } from '../tool/tool-registry'
 import { LoopDetectedError } from '../tool/loop-detector'
@@ -82,22 +86,9 @@ export class OpenAIClient {
 
 		return this.executeWithRetry(async () => {
 			const tools = await this.toolRegistry.getTools()
-			const response = await this.client.chat.completions.create({
-				model: this.configurationManager.getModel(),
-				messages: this.messages,
-				tools,
-				tool_choice: this.configurationManager.getToolChoice(),
-				parallel_tool_calls: false,
-				temperature: this.temperature,
-				n: 1,
-				reasoning_effort: this.configurationManager.getReasoningEffort(),
-			})
+			const response = await this.createChatCompletion(tools, true)
 
-			response.choices.forEach((choice) => {
-				if (choice.message) {
-					this.messages.push(choice.message)
-				}
-			})
+			this.appendResponseMessages(response)
 
 			await this.responseProcessor.handleResponse(response, this.step, this.stepStatusCallback)
 		})
@@ -140,22 +131,74 @@ export class OpenAIClient {
 	async sendToolResponseWithRetry(): Promise<ChatCompletion> {
 		return this.executeWithRetry(async () => {
 			const tools = await this.toolRegistry.getTools()
-			const response = await this.client.chat.completions.create({
-				model: this.configurationManager.getModel(),
-				messages: this.messages,
-				tools,
-				tool_choice: this.configurationManager.getToolChoice(),
-				temperature: this.temperature,
-			})
+			const response = await this.createChatCompletion(tools, false)
 
-			response.choices.forEach((choice) => {
-				if (choice.message) {
-					this.messages.push(choice.message)
-				}
-			})
+			this.appendResponseMessages(response)
 
 			return response
 		})
+	}
+
+	private async createChatCompletion(
+		tools: Awaited<ReturnType<ToolRegistry['getTools']>>,
+		includeN: boolean
+	): Promise<ChatCompletion> {
+		return await this.client.chat.completions.create(this.buildChatCompletionRequest(tools, includeN))
+	}
+
+	private buildChatCompletionRequest(tools: Awaited<ReturnType<ToolRegistry['getTools']>>, includeN: boolean) {
+		return {
+			model: this.configurationManager.getModel(),
+			messages: this.messages,
+			tools,
+			tool_choice: this.configurationManager.getToolChoice(),
+			parallel_tool_calls: false,
+			temperature: this.temperature,
+			reasoning_effort: this.configurationManager.getReasoningEffort(),
+			...(includeN ? { n: 1 } : {}),
+		}
+	}
+
+	private appendResponseMessages(response: ChatCompletion): void {
+		response.choices.forEach((choice) => {
+			if (choice.message) {
+				this.messages.push(this.sanitizeAssistantMessage(choice.message))
+			}
+		})
+	}
+
+	private sanitizeAssistantMessage(
+		message: ChatCompletion['choices'][number]['message']
+	): ChatCompletionAssistantMessageParam {
+		const sanitizedMessage: ChatCompletionAssistantMessageParam = {
+			role: 'assistant',
+		}
+
+		if (message.content !== undefined) {
+			sanitizedMessage.content = message.content
+		}
+
+		if ('refusal' in message && message.refusal !== undefined) {
+			sanitizedMessage.refusal = message.refusal
+		}
+
+		if ('tool_calls' in message && message.tool_calls !== undefined) {
+			sanitizedMessage.tool_calls = message.tool_calls
+		}
+
+		if ('function_call' in message && message.function_call !== undefined) {
+			sanitizedMessage.function_call = message.function_call
+		}
+
+		if ('name' in message && typeof message.name === 'string') {
+			sanitizedMessage.name = message.name
+		}
+
+		if ('audio' in message && message.audio !== undefined) {
+			sanitizedMessage.audio = message.audio
+		}
+
+		return sanitizedMessage
 	}
 
 	private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {

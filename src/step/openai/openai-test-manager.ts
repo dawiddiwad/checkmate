@@ -54,10 +54,9 @@ class OpenAITestStep {
 			await this.openaiClient.initialize(step, this.stepStatusCallback)
 			PageSnapshot.lastSnapshot = null
 			const initialMessages = new HistoryManager().buildInitialMessages({
-				openaiClient: this.openaiClient,
 				systemPrompt: STEP_SYSTEM_PROMPT(),
 				userPrompt: STEP_START_USER_PROMPT(step),
-				snapshotContent: await new PageSnapshot(this.openaiClient.page, step).get()
+				snapshotContent: await new PageSnapshot(this.openaiClient.page, step).get(),
 			})
 			await this.openaiClient.sendMessage(initialMessages)
 			this.stepStatus = await this.stepFinishedCallback

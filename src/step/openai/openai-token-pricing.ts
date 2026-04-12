@@ -4,7 +4,7 @@
  * Utility for estimating USD costs for token usage across a wide set of LLM models.
  * It maps model identifiers to input/output prices per 1,000,000 tokens (USD) and
  * exposes helpers to compute the USD cost of a given number of tokens. All returned
- * prices are rounded to the nearest cent.
+ * prices are rounded to the nearest thousandth of a dollar.
  *
  * Pricing sources:
  * - https://ai.google.dev/gemini-api/docs/pricing
@@ -16,7 +16,7 @@
  * Private helpers:
  * @private
  * - roundToCents(price: number): number
- *   Rounds a numeric USD value to two decimal places (cents).
+ *   Rounds a numeric USD value to three decimal places.
  *
  * @private
  * - inputPricePerMillionUSD(model: string): number
@@ -30,14 +30,14 @@
  *
  * Public API:
  * - inputPriceUSD(model: string, tokens: number): number
- *   Computes the USD cost for the provided number of input tokens (rounded to cents).
+ *   Computes the USD cost for the provided number of input tokens (rounded to three decimals).
  *
  * - outputPriceUSD(model: string, tokens: number): number
- *   Computes the USD cost for the provided number of output tokens (rounded to cents).
+ *   Computes the USD cost for the provided number of output tokens (rounded to three decimals).
  *
  * - totalPriceUSD(model: string, inputTokens: number, outputTokens: number): number
  *   Computes the total USD cost (input + output) for the given model and token counts,
- *   rounded to cents.
+ *   rounded to three decimals.
  *
  * @example
  * Estimate cost of 1k input tokens and 2k output tokens for 'gpt-4o'
@@ -52,7 +52,7 @@
  */
 export class OpenAITokenPricing {
 	private static roundToCents(price: number): number {
-		return Math.round(price * 100) / 100
+		return Math.round(price * 1000) / 1000
 	}
 
 	private static inputPricePerMillionUSD(model: string): number {
@@ -397,11 +397,27 @@ export class OpenAITokenPricing {
 		return this.roundToCents((this.inputPricePerMillionUSD(model) * tokens) / 1_000_000)
 	}
 
+	static cachedInputPriceUSD(model: string, tokens: number): number {
+		return this.roundToCents((this.inputPricePerMillionUSD(model) * 0.1 * tokens) / 1_000_000)
+	}
+
 	static outputPriceUSD(model: string, tokens: number): number {
 		return this.roundToCents((this.outputPricePerMillionUSD(model) * tokens) / 1_000_000)
 	}
 
-	static totalPriceUSD(model: string, inputTokens: number, outputTokens: number): number {
-		return this.roundToCents(this.inputPriceUSD(model, inputTokens) + this.outputPriceUSD(model, outputTokens))
+	static totalPriceUSD(
+		model: string,
+		inputTokens: number,
+		outputTokens: number,
+		cachedInputTokens: number = 0
+	): number {
+		const normalizedCachedInputTokens = Math.min(Math.max(cachedInputTokens, 0), Math.max(inputTokens, 0))
+		const uncachedInputTokens = Math.max(inputTokens - normalizedCachedInputTokens, 0)
+
+		return this.roundToCents(
+			(this.inputPricePerMillionUSD(model) * uncachedInputTokens) / 1_000_000 +
+				(this.inputPricePerMillionUSD(model) * 0.1 * normalizedCachedInputTokens) / 1_000_000 +
+				(this.outputPricePerMillionUSD(model) * outputTokens) / 1_000_000
+		)
 	}
 }

@@ -490,6 +490,11 @@ describe('OpenAIClient - message flow', () => {
 		await openAIClient.sendMessage('hello')
 
 		expect(createMock).toHaveBeenCalledTimes(1)
+		expect(createMock.mock.calls[0][0]).toEqual(
+			expect.objectContaining({
+				parallel_tool_calls: false,
+			})
+		)
 		const messages = openAIClient.getMessages()
 		expect(messages[0]).toEqual({ role: 'user', content: 'hello' })
 		expect(messages[messages.length - 1]).toEqual(assistantMessage)
@@ -542,8 +547,52 @@ describe('OpenAIClient - message flow', () => {
 
 		expect(response).toBeDefined()
 		expect(createMock).toHaveBeenCalledTimes(1)
+		expect(createMock.mock.calls[0][0]).toEqual(
+			expect.objectContaining({
+				parallel_tool_calls: false,
+			})
+		)
 		const messages = openAIClient.getMessages()
 		expect(messages[messages.length - 1]).toEqual(assistantReply)
+	})
+
+	it('stores assistant messages without reasoning payloads', async () => {
+		createMock.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						role: 'assistant',
+						content: null,
+						tool_calls: [
+							{
+								id: 'call_1',
+								type: 'function',
+								function: { name: 'browser_navigate', arguments: '{"url":"https://example.com"}' },
+							},
+						],
+						reasoning: 'internal reasoning that should not be replayed',
+						reasoning_details: [{ type: 'reasoning.text', text: 'details', index: 0, format: 'unknown' }],
+					} as Record<string, unknown>,
+				},
+			],
+			usage: { prompt_tokens: 1, completion_tokens: 1 },
+		})
+
+		const step = { action: 'do', expect: 'done' }
+		const statusCb = vi.fn()
+
+		await openAIClient.initialize(step, statusCb)
+		const rpModule = (await import('../../src/step/openai/response-processor')) as unknown as {
+			getResponseProcessorMock: () => MockResponseProcessor
+		}
+		rpModule.getResponseProcessorMock().handleResponse.mockClear()
+
+		await openAIClient.sendMessage('hello')
+
+		const lastMessage = openAIClient.getMessages().at(-1) as unknown as Record<string, unknown>
+		expect(lastMessage).toMatchObject({ role: 'assistant', content: null })
+		expect(lastMessage).not.toHaveProperty('reasoning')
+		expect(lastMessage).not.toHaveProperty('reasoning_details')
 	})
 
 	it('skips appending when tool response choice has no message', async () => {

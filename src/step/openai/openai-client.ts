@@ -12,6 +12,7 @@ import { Step, StepStatusCallback } from '../types'
 import { Page } from '@playwright/test'
 import { CheckmateLogger } from '../logger'
 import { logger } from './openai-test-manager'
+import { HistoryManager } from './history-manager'
 
 export type OpenAIClientDependencies = {
 	configurationManager: ConfigurationManager
@@ -109,13 +110,25 @@ export class OpenAIClient {
 		})
 	}
 
-	async addScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
+	async addCurrentSnapshotMessage(snapshotContent: string): Promise<void> {
 		this.messages.push({
 			role: 'user',
 			content: [
 				{
 					type: 'text',
-					text: 'Here is the current screenshot of the page:',
+					text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}`,
+				},
+			],
+		})
+	}
+
+	async addCurrentScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
+		this.messages.push({
+			role: 'user',
+			content: [
+				{
+					type: 'text',
+					text: HistoryManager.SCREENSHOT_IDENTIFIER,
 				},
 				{
 					type: 'image_url',
@@ -278,12 +291,7 @@ export class OpenAIClient {
 	}
 
 	countHistoryTokens(): number {
-		const totalChars = this.messages.reduce((sum, msg) => {
-			if (typeof msg.content === 'string') {
-				return sum + msg.content.length
-			}
-			return sum
-		}, 0)
+		const totalChars = this.messages.reduce((sum, msg) => sum + this.countContentChars(msg.content), 0)
 		return Math.ceil(totalChars / 4)
 	}
 
@@ -308,5 +316,32 @@ export class OpenAIClient {
 			)
 			return true
 		} else return false
+	}
+
+	private countContentChars(content: ChatCompletionMessageParam['content']): number {
+		if (typeof content === 'string') {
+			return content.length
+		}
+
+		if (!Array.isArray(content)) {
+			return 0
+		}
+
+		let totalChars = 0
+		for (const part of content) {
+			if ('text' in part && typeof part.text === 'string') {
+				totalChars += part.text.length
+				continue
+			}
+
+			if ('image_url' in part) {
+				const imageUrl = part.image_url as { url?: string }
+				if (typeof imageUrl.url === 'string') {
+					totalChars += imageUrl.url.length
+				}
+			}
+		}
+
+		return totalChars
 	}
 }

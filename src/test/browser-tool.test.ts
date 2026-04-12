@@ -212,11 +212,33 @@ describe('BrowserTool', () => {
 
 		it('should hover element when hover is true', async () => {
 			const result = await (
-				browserTool as unknown as { clickElement: (ref: string, hover: boolean) => Promise<string> }
+				browserTool as unknown as {
+					clickElement: (
+						ref: string,
+						hover: boolean
+					) => Promise<{ response: string; snapshot?: string | null } | string>
+				}
 			).clickElement('e321', true)
 
 			expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
-			expect(result).toBe('mocked snapshot content')
+			expect(result).toEqual({
+				response: "Hovered element with ref 'e321'.",
+				snapshot: 'mocked snapshot content',
+			})
+		})
+
+		it('should expose summary and snapshot separately for runtime state handling', async () => {
+			const toolCall: ToolCall = {
+				name: BrowserTool.TOOL_CLICK_OR_HOVER,
+				arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
+			}
+
+			const result = await browserTool.callWithState(toolCall)
+
+			expect(result).toEqual({
+				response: "Clicked element with ref 'e123'.",
+				snapshot: 'mocked snapshot content',
+			})
 		})
 
 		it('should include transient state timeline when available', async () => {

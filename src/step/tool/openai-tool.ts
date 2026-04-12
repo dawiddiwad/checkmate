@@ -6,9 +6,16 @@ export type ToolCall = {
 	arguments?: Record<string, unknown>
 }
 
+export type ToolCallState = {
+	response: string
+	snapshot?: string | null
+}
+
+export type ToolCallResult = ToolCallState | string | void
+
 export abstract class OpenAITool {
 	abstract functionDeclarations: ChatCompletionFunctionTool[]
-	abstract call(specified: ToolCall, callback?: StepStatusCallback): Promise<string> | string
+	abstract call(specified: ToolCall, callback?: StepStatusCallback): Promise<ToolCallResult> | ToolCallResult
 
 	protected getFunctionNames(): string[] {
 		return this.functionDeclarations.map((fn) => fn.function.name)

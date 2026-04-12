@@ -1,5 +1,5 @@
 import { ChatCompletionFunctionTool } from 'openai/resources'
-import { OpenAITool, ToolCall } from './openai-tool'
+import { OpenAITool, ToolCall, ToolCallState } from './openai-tool'
 import { expect, Page } from '@playwright/test'
 import { PageSnapshot } from './page-snapshot'
 import { logger } from '../openai/openai-test-manager'
@@ -177,13 +177,31 @@ export class BrowserTool extends OpenAITool {
 	}
 
 	async call(specified: ToolCall): Promise<string> {
+		const result = await this.callWithState(specified)
+		if (typeof result === 'string') {
+			return result
+		}
+
+		if (result.snapshot) {
+			return result.response.toLowerCase().includes('timeline')
+				? `${result.response}\n${result.snapshot}`
+				: result.snapshot
+		}
+
+		return result.response
+	}
+
+	async callWithState(specified: ToolCall): Promise<ToolCallState | string> {
 		if (!specified.name) {
 			throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
 		}
 		if (specified.name === BrowserTool.TOOL_NAVIGATE) {
 			return this.navigateToUrl(specified.arguments?.url as string)
 		} else if (specified.name === BrowserTool.TOOL_SNAPSHOT) {
-			return this.captureSnapshot({ skipFilter: true })
+			return {
+				response: 'Captured latest page snapshot.',
+				snapshot: await this.captureSnapshot({ skipFilter: true }),
+			}
 		} else if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
 			return this.clickElement(specified.arguments?.ref as string, specified.arguments?.hover as boolean)
 		} else if (specified.name === BrowserTool.TOOL_TYPE_OR_SELECT) {
@@ -234,7 +252,10 @@ export class BrowserTool extends OpenAITool {
 		}
 	}
 
-	private async wrapWithTracker(action: () => Promise<unknown>): Promise<string> {
+	private async wrapWithTracker(
+		action: () => Promise<unknown>,
+		fallbackResponse: string
+	): Promise<ToolCallState | string> {
 		const tracker = new TransientStateTracker(this.page)
 		await tracker.start()
 		try {
@@ -246,7 +267,10 @@ export class BrowserTool extends OpenAITool {
 			const snapshot = await this.captureSnapshot()
 			await tracker.stop()
 			const formattedTimeline = tracker.formatTimeline()
-			return formattedTimeline ? `${formattedTimeline}\n${snapshot}` : (snapshot ?? 'empty snapshot')
+			return {
+				response: formattedTimeline || fallbackResponse,
+				snapshot,
+			}
 		} catch (error) {
 			await tracker.stop()
 			throw error
@@ -263,61 +287,67 @@ export class BrowserTool extends OpenAITool {
 			} catch (error) {
 				throw new Error(`Failed to navigate to URL ${url}`, { cause: error })
 			}
-		})
+		}, `Navigated to: ${url}`)
 	}
 
 	private async clickElement(ref: string, hover: boolean = false) {
-		return this.wrapWithTracker(async () => {
-			try {
-				if (hover) {
-					await this.page.hover(`aria-ref=${ref}`)
-				} else {
-					await this.page.click(`aria-ref=${ref}`)
+		return this.wrapWithTracker(
+			async () => {
+				try {
+					if (hover) {
+						await this.page.hover(`aria-ref=${ref}`)
+					} else {
+						await this.page.click(`aria-ref=${ref}`)
+					}
+				} catch (error) {
+					logger.error(`error clicking element with ref '${ref}' due to:\n${error}`)
+					return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
 				}
-			} catch (error) {
-				logger.error(`error clicking element with ref '${ref}' due to:\n${error}`)
-				return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
-			}
-		})
+			},
+			hover ? `Hovered element with ref '${ref}'.` : `Clicked element with ref '${ref}'.`
+		)
 	}
 
 	private async typeOrSelectInElement(
 		elements: { ref: string; text: string; name: string; clear: boolean; select: boolean }[]
 	) {
-		return this.wrapWithTracker(async () => {
-			if (Array.isArray(elements) === false || elements.length === 0) {
-				return `failed to type text or select option. Invalid parameters received, please adhere strictly to tool parameters. Received: ${elements}`
-			}
-			for (const element of elements) {
-				try {
-					if (!element.ref || element.text === undefined || element.text === null) {
-						throw new Error(
-							`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE_OR_SELECT} but received ref='${element.ref}' and text='${element.text}'`
-						)
-					}
-
-					if (!element.select && element.clear) {
-						await this.page.locator(`aria-ref=${element.ref}`).clear()
-					}
-
-					if (element.select && element.text.length > 0) {
-						await this.page.locator(`aria-ref=${element.ref}`).selectOption(element.text)
-						continue
-					}
-
-					if (!element.select && element.text.length > 0) {
-						await this.page
-							.locator(`aria-ref=${element.ref}`)
-							.pressSequentially(element.text, { delay: 50 })
-					}
-				} catch (error) {
-					logger.error(
-						`error ${element.select ? 'selecting' : 'typing'} '${element.text}' in element with ref '${element.ref}' due to:\n${error}`
-					)
-					return `failed to ${element.select ? 'select' : 'type'} '${element.text}' in element with ref '${element.ref}':\n${error}\n try with different element type or ref`
+		return this.wrapWithTracker(
+			async () => {
+				if (Array.isArray(elements) === false || elements.length === 0) {
+					return `failed to type text or select option. Invalid parameters received, please adhere strictly to tool parameters. Received: ${elements}`
 				}
-			}
-		})
+				for (const element of elements) {
+					try {
+						if (!element.ref || element.text === undefined || element.text === null) {
+							throw new Error(
+								`both 'ref' and 'text' are required for ${BrowserTool.TOOL_TYPE_OR_SELECT} but received ref='${element.ref}' and text='${element.text}'`
+							)
+						}
+
+						if (!element.select && element.clear) {
+							await this.page.locator(`aria-ref=${element.ref}`).clear()
+						}
+
+						if (element.select && element.text.length > 0) {
+							await this.page.locator(`aria-ref=${element.ref}`).selectOption(element.text)
+							continue
+						}
+
+						if (!element.select && element.text.length > 0) {
+							await this.page
+								.locator(`aria-ref=${element.ref}`)
+								.pressSequentially(element.text, { delay: 50 })
+						}
+					} catch (error) {
+						logger.error(
+							`error ${element.select ? 'selecting' : 'typing'} '${element.text}' in element with ref '${element.ref}' due to:\n${error}`
+						)
+						return `failed to ${element.select ? 'select' : 'type'} '${element.text}' in element with ref '${element.ref}':\n${error}\n try with different element type or ref`
+					}
+				}
+			},
+			`Updated ${elements.length} page element${elements.length === 1 ? '' : 's'}.`
+		)
 	}
 
 	private async pressKey(key: string) {
@@ -331,21 +361,24 @@ export class BrowserTool extends OpenAITool {
 				logger.error(`error pressing key '${key}' due to:\n${error}`)
 				return `failed to press key '${key}':\n${error}`
 			}
-		})
+		}, `Pressed key '${key}'.`)
 	}
 
 	private async wait(seconds: number) {
-		return this.wrapWithTracker(async () => {
-			try {
-				seconds = Number(seconds)
-				if (!Number.isFinite(seconds) || seconds <= 0) {
-					throw new Error(`invalid seconds value received: ${seconds}. It should be a positive number.`)
+		return this.wrapWithTracker(
+			async () => {
+				try {
+					seconds = Number(seconds)
+					if (!Number.isFinite(seconds) || seconds <= 0) {
+						throw new Error(`invalid seconds value received: ${seconds}. It should be a positive number.`)
+					}
+					await this.page.waitForTimeout(seconds * 1000)
+				} catch (error) {
+					logger.error(`error waiting for ${seconds} seconds due to:\n${error}`)
+					return `failed to wait for ${seconds} seconds:\n${error}`
 				}
-				await this.page.waitForTimeout(seconds * 1000)
-			} catch (error) {
-				logger.error(`error waiting for ${seconds} seconds due to:\n${error}`)
-				return `failed to wait for ${seconds} seconds:\n${error}`
-			}
-		})
+			},
+			`Waited for ${seconds} second${seconds === 1 ? '' : 's'}.`
+		)
 	}
 }

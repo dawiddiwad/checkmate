@@ -4,12 +4,13 @@ import { StepTool } from './step-tool'
 import { Step, StepStatusCallback } from '../types'
 import { ConfigurationManager } from '../configuration-manager'
 import { BrowserTool } from './browser-tool'
-import { ToolCall } from './openai-tool'
+import { ToolCall, ToolCallResult, ToolCallState } from './openai-tool'
 import { logger } from '../openai/openai-test-manager'
 
 export type ToolResponse = {
 	name?: string
 	response: string
+	snapshot?: string | null
 }
 
 export type ToolRegistryDependencies = {
@@ -56,11 +57,11 @@ export class ToolRegistry {
 
 	async executeBrowserTool(toolCall: ToolCall): Promise<ToolResponse> {
 		this.logToolCall(toolCall)
-		const result = await this.browserTool.call({ name: toolCall.name ?? '', arguments: toolCall.arguments ?? {} })
-		return {
-			name: toolCall.name,
-			response: result,
-		}
+		const result = await this.browserTool.callWithState({
+			name: toolCall.name ?? '',
+			arguments: toolCall.arguments ?? {},
+		})
+		return this.normalizeToolResponse(toolCall.name, result)
 	}
 
 	executeStepTool(toolCall: ToolCall, callback: StepStatusCallback): void {
@@ -71,9 +72,22 @@ export class ToolRegistry {
 	async executeSalesforceTool(toolCall: ToolCall): Promise<ToolResponse> {
 		this.logToolCall(toolCall)
 		const result = await this.salesforceTool.call(toolCall)
+		return this.normalizeToolResponse(toolCall.name, result)
+	}
+
+	private normalizeToolResponse(toolName: string, result: ToolCallResult): ToolResponse {
+		if (typeof result === 'string') {
+			return {
+				name: toolName,
+				response: result,
+			}
+		}
+
+		const normalizedResult = (result ?? { response: '' }) as ToolCallState
 		return {
-			name: toolCall.name,
-			response: result,
+			name: toolName,
+			response: normalizedResult.response,
+			snapshot: normalizedResult.snapshot ?? null,
 		}
 	}
 }

@@ -40,20 +40,28 @@ export class ToolResponseHandler {
 		if (toolResponses.length === 0) return
 
 		const config = this.openaiClient.getConfigurationManager()
-		const latestToolCallId = toolResponses.at(-1)?.toolCallId
+		this.historyManager.removeEphemeralStateMessages(this.openaiClient)
+		let latestSnapshot: string | null = null
+		for (const { toolResponse } of toolResponses) {
+			if (toolResponse.snapshot) {
+				latestSnapshot = toolResponse.snapshot
+			}
+		}
 
 		for (const [index, { toolCallId, toolResponse }] of toolResponses.entries()) {
 			const responseContent = toolResponse.response
 			await this.openaiClient.addToolResponse(toolCallId, responseContent)
 
 			const isLast = index === toolResponses.length - 1
+			if (isLast && latestSnapshot) {
+				await this.openaiClient.addCurrentSnapshotMessage(latestSnapshot)
+			}
+
 			if (isLast && config.includeScreenshotInSnapshot()) {
 				const screenshot = await this.screenshotProcessor.getCompressedScreenshot()
-				await this.openaiClient.addScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
+				await this.openaiClient.addCurrentScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
 			}
 		}
-
-		this.historyManager.compactSnapshotHistory(this.openaiClient, latestToolCallId)
 
 		const nextResponse = await this.openaiClient.sendToolResponseWithRetry()
 		await this.responseProcessor.handleResponse(nextResponse, step, stepStatusCallback)

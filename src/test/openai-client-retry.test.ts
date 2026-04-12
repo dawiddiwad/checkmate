@@ -614,27 +614,43 @@ describe('OpenAIClient - message flow', () => {
 		expect(createMock).toHaveBeenCalledTimes(1)
 	})
 
+	it('adds current snapshot message with expected content shape', async () => {
+		const step = { action: 'shot', expect: 'done' }
+		const statusCb = vi.fn()
+		await openAIClient.initialize(step, statusCb)
+
+		await openAIClient.addCurrentSnapshotMessage('page snapshot:\n{button Submit}')
+
+		const last = openAIClient.getMessages().at(-1) as ScreenshotMessageContent
+		expect(last.role).toBe('user')
+		expect(Array.isArray(last.content)).toBe(true)
+		expect((last.content[0] as { type: 'text'; text: string }).text).toContain('this is a current page snapshot')
+	})
+
 	it('adds screenshot message with expected content shape', async () => {
 		const step = { action: 'shot', expect: 'done' }
 		const statusCb = vi.fn()
 		await openAIClient.initialize(step, statusCb)
 
-		await openAIClient.addScreenshotMessage('YmFzZTY0', 'image/png')
+		await openAIClient.addCurrentScreenshotMessage('YmFzZTY0', 'image/png')
 
 		const last = openAIClient.getMessages().at(-1) as ScreenshotMessageContent
 		expect(last.role).toBe('user')
 		expect(Array.isArray(last.content)).toBe(true)
+		expect((last.content[0] as { type: 'text'; text: string }).text).toBe(
+			'this is a current screenshot of the page'
+		)
 		const imageContent = last.content[1] as { type: 'image_url'; image_url: { url: string } }
 		expect(imageContent.image_url.url).toContain('data:image/png;base64,YmFzZTY0')
 	})
 
-	it('counts only string history when estimating tokens', () => {
+	it('counts string and array history when estimating tokens', () => {
 		;(openAIClient as unknown as OpenAIClientTestable).messages = [
 			{ role: 'user', content: 'abcd' },
 			{ role: 'assistant', content: [{ type: 'text', text: 'ignored' }] },
 		]
 
 		const tokens = openAIClient.countHistoryTokens()
-		expect(tokens).toBe(1)
+		expect(tokens).toBe(3)
 	})
 })

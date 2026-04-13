@@ -30,7 +30,7 @@ export class PageSnapshot {
 			throw new Error('Page is not initialized')
 		}
 		const lines: string[] = []
-		lines.push('page snapshot:')
+		lines.push('page data:')
 		lines.push(`url: '${this.page.url()}'`)
 		lines.push(`title: '${await this.page.title()}'`)
 		return lines.join('\n')

@@ -104,7 +104,9 @@ function normalizeText(text: string): string {
 }
 
 async function getFeatureExtractionPipeline(): Promise<EmbeddingExtractor> {
-	featureExtractionPipelinePromise ??= pipeline('feature-extraction', EMBEDDING_MODEL) as Promise<EmbeddingExtractor>
+	featureExtractionPipelinePromise ??= pipeline('feature-extraction', EMBEDDING_MODEL, {
+		dtype: 'int8',
+	}) as Promise<EmbeddingExtractor>
 	return featureExtractionPipelinePromise
 }
 

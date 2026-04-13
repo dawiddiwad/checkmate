@@ -4,7 +4,7 @@ import { reconstructTree } from './tree-reconstructor'
 import { logger } from '../../openai/openai-test-manager'
 
 const DEFAULT_SCORE_THRESHOLD = 0.3
-const DEFAULT_TOP_PERCENT = 0.5
+const DEFAULT_TOP_PERCENT = 0.3
 
 export async function filterSnapshot(json: JsonValue, step?: Step): Promise<JsonValue> {
 	if (!step) {

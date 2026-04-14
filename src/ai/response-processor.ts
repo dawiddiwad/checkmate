@@ -4,7 +4,7 @@ import { Step, ResolveStepResult } from '../runtime/types'
 import { BrowserScreenshotService } from '../tools/browser/screenshot-service'
 import { ToolDispatcher } from '../tools/dispatcher'
 import { ToolResponse } from '../tools/registry'
-import { ToolCall } from '../tools/tool-contract'
+import { ToolCall } from '../tools/types'
 import { AiClient } from './client'
 import { MessageHandler } from './message-handler'
 import { MessageHistory } from './message-history'
@@ -70,7 +70,7 @@ export class ResponseProcessor {
 					name: toolCall.function.name,
 					arguments: JSON.parse(toolCall.function.arguments || '{}'),
 				}
-				const toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, resolveStepResult)
+				const toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, { step, resolveStepResult })
 				if (toolResponse) {
 					toolResponses.push({ toolCallId: toolCall.id, toolResponse })
 				}

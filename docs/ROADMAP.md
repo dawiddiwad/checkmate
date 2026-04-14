@@ -6,12 +6,12 @@ This roadmap tracks the direction of the framework after the runtime and module 
 
 Completed in the current architecture:
 
- - ✅ Provider-neutral runtime entry point via `CheckmateRunner`
- - ✅ Clear top-level module boundaries: `runtime`, `ai`, `tools`, `integrations`, `config`, `logging`
- - ✅ Explicit tool registration and dispatch
- - ✅ Browser snapshot filtering with semantic scoring
- - ✅ Token tracking, retry handling, loop detection, and screenshot support
- - ✅ Salesforce login integration through the SF CLI
+- ✅ Provider-neutral runtime entry point via `CheckmateRunner`
+- ✅ Clear top-level module boundaries: `runtime`, `ai`, `tools`, `integrations`, `config`, `logging`
+- ✅ Explicit tool registration and dispatch
+- ✅ Browser snapshot filtering with semantic scoring
+- ✅ Token tracking, retry handling, loop detection, and screenshot support
+- ✅ Salesforce login integration through the SF CLI
 
 ## Near Term
 

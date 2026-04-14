@@ -170,7 +170,7 @@ describe('ResponseProcessor', () => {
 					name: 'browser_click',
 					arguments: { ref: 'e123', name: 'Button', goal: 'click' },
 				},
-				mockCallback
+				{ step: mockStep, resolveStepResult: mockCallback }
 			)
 			expect(toolResponseHandler.handleMultiple).toHaveBeenCalledWith(
 				[

@@ -1,8 +1,9 @@
-import { ChatCompletionFunctionTool } from 'openai/resources'
 import { expect, Page } from '@playwright/test'
+import { z } from 'zod/v4'
 import { logger } from '../../logging'
 import { Step } from '../../runtime/types'
-import { ToolCall, ToolCallResult, ToolCallState, ToolContract, ToolExecutionContext } from '../tool-contract'
+import { defineAgentTool } from '../define-agent-tool'
+import { AgentTool, AgentToolResponse } from '../types'
 import { SnapshotService } from './snapshot-service'
 import { TransientStateTracker } from './transient-state-tracker'
 
@@ -14,295 +15,49 @@ type BrowserInputElement = {
 	select: boolean
 }
 
-export class BrowserTool extends ToolContract {
-	static readonly TOOL_NAVIGATE = 'browser_navigate'
-	static readonly TOOL_CLICK_OR_HOVER = 'browser_click_or_hover'
-	static readonly TOOL_TYPE_OR_SELECT = 'browser_type_or_select'
-	static readonly TOOL_PRESS_KEY = 'browser_press_key'
-	static readonly TOOL_SNAPSHOT = 'browser_snapshot'
-	static readonly TOOL_WAIT = 'browser_wait'
+export const BrowserTool = {
+	TOOL_NAVIGATE: 'browser_navigate',
+	TOOL_CLICK_OR_HOVER: 'browser_click_or_hover',
+	TOOL_TYPE_OR_SELECT: 'browser_type_or_select',
+	TOOL_PRESS_KEY: 'browser_press_key',
+	TOOL_SNAPSHOT: 'browser_snapshot',
+	TOOL_WAIT: 'browser_wait',
+} as const
 
-	private step: Step | undefined
-	functionDeclarations: ChatCompletionFunctionTool[]
+const browserInputElementSchema = z
+	.object({
+		ref: z.string().describe('ref value of the element from the snapshot, example: e123'),
+		name: z.string().describe('name of the element to type into, example: Username Input'),
+		text: z.string().describe('The text to type into the element, example: Hello World'),
+		clear: z
+			.boolean()
+			.describe('If true, clears existing text before typing. Use false with dropdowns and selects'),
+		select: z.boolean().describe('If true, selects the option matching "text" from a dropdown or select element'),
+	})
+	.strict()
 
-	constructor(private readonly page: Page) {
-		super()
-		this.functionDeclarations = [
-			{
-				type: 'function',
-				function: {
-					name: BrowserTool.TOOL_NAVIGATE,
-					description: 'Navigate to a specified URL in the browser, example: https://www.example.com',
-					parameters: {
-						type: 'object',
-						properties: {
-							url: { type: 'string', description: 'The URL to navigate to' },
-							goal: { type: 'string', description: 'The goal or purpose of navigating to this URL' },
-						},
-						additionalProperties: false,
-						required: ['url', 'goal'],
-					},
-					strict: true,
-				},
+export class BrowserToolRuntime {
+	constructor(private readonly page: Page) {}
+
+	async navigateToUrl(url: string, step: Step): Promise<AgentToolResponse | string> {
+		return this.wrapWithTracker(
+			async () => {
+				if (!url) {
+					throw new Error(`valid URL is required for ${BrowserTool.TOOL_NAVIGATE} but received: '${url}'`)
+				}
+
+				try {
+					await this.page.goto(url)
+				} catch (error) {
+					throw new Error(`Failed to navigate to URL ${url}`, { cause: error })
+				}
 			},
-			{
-				type: 'function',
-				function: {
-					name: BrowserTool.TOOL_CLICK_OR_HOVER,
-					description: 'Click or hover a specified element reference in the browser',
-					parameters: {
-						type: 'object',
-						properties: {
-							ref: {
-								type: 'string',
-								description: 'ref value of the element from the snapshot, example: e123',
-							},
-							name: {
-								type: 'string',
-								description: 'name of the element to click or hover, example: Submit Button',
-							},
-							hover: {
-								type: 'boolean',
-								description: 'If true: hover the element, if false: click element',
-							},
-							goal: { type: 'string', description: 'The goal or purpose of clicking this element' },
-						},
-						additionalProperties: false,
-						required: ['ref', 'name', 'hover', 'goal'],
-					},
-					strict: true,
-				},
-			},
-			{
-				type: 'function',
-				function: {
-					name: BrowserTool.TOOL_TYPE_OR_SELECT,
-					description:
-						'Type text into a specified element reference in the browser or select an option from a dropdown.',
-					parameters: {
-						type: 'object',
-						properties: {
-							elements: {
-								type: 'array',
-								items: {
-									type: 'object',
-									properties: {
-										ref: {
-											type: 'string',
-											description: 'ref value of the element from the snapshot, example: e123',
-										},
-										name: {
-											type: 'string',
-											description: 'name of the element to type into, example: Username Input',
-										},
-										text: {
-											type: 'string',
-											description: 'The text to type into the element, example: Hello World',
-										},
-										clear: {
-											type: 'boolean',
-											description:
-												'If true, clears existing text before typing. Use false with dropdowns and selects',
-										},
-										select: {
-											type: 'boolean',
-											description:
-												'If true, selects the option matching "text" from a dropdown or select element',
-										},
-									},
-									additionalProperties: false,
-									required: ['ref', 'text', 'name', 'clear', 'select'],
-								},
-								description: 'array of elements to type into',
-								minItems: 1,
-							},
-							goal: {
-								type: 'string',
-								description: 'The goal or purpose of typing this text into the element',
-							},
-						},
-						additionalProperties: false,
-						required: ['elements', 'goal'],
-					},
-					strict: true,
-				},
-			},
-			{
-				type: 'function',
-				function: {
-					name: BrowserTool.TOOL_PRESS_KEY,
-					description: 'Press a specified key in the browser',
-					parameters: {
-						type: 'object',
-						properties: {
-							key: { type: 'string', description: 'The key to press, example: Enter, Escape, ArrowDown' },
-							goal: { type: 'string', description: 'The goal or purpose of pressing this key' },
-						},
-						additionalProperties: false,
-						required: ['key', 'goal'],
-					},
-					strict: true,
-				},
-			},
-			{
-				type: 'function',
-				function: {
-					name: BrowserTool.TOOL_SNAPSHOT,
-					description: 'Capture the ARIA snapshot of the current page - use only if you miss information from previous snapshot.',
-					parameters: {
-						type: 'object',
-						properties: {
-							goal: { type: 'string', description: 'The goal or purpose of capturing the snapshot' },
-						},
-						additionalProperties: false,
-						required: ['goal'],
-					},
-					strict: true,
-				},
-			},
-			{
-				type: 'function',
-				function: {
-					name: BrowserTool.TOOL_WAIT,
-					description: 'Wait for a timeout in seconds',
-					parameters: {
-						type: 'object',
-						properties: {
-							seconds: { type: 'number', description: 'Number of seconds to wait, example: 5' },
-							goal: { type: 'string', description: 'The goal or purpose of waiting' },
-						},
-						additionalProperties: false,
-						required: ['goal', 'seconds'],
-					},
-					strict: true,
-				},
-			},
-		]
+			`Navigated to: ${url}`,
+			step
+		)
 	}
 
-	setStep(step: Step): void {
-		this.step = step
-	}
-
-	async call(specified: ToolCall): Promise<string> {
-		const result = await this.executeWithState(specified)
-		if (typeof result === 'string') {
-			return result
-		}
-
-		if (result.snapshot) {
-			return result.response.toLowerCase().includes('timeline')
-				? `${result.response}\n${result.snapshot}`
-				: result.snapshot
-		}
-
-		return result.response
-	}
-
-	async execute(specified: ToolCall, _context: ToolExecutionContext): Promise<ToolCallResult> {
-		return this.executeWithState(specified)
-	}
-
-	async callWithState(specified: ToolCall): Promise<ToolCallState | string> {
-		return this.executeWithState(specified)
-	}
-
-	async executeWithState(specified: ToolCall): Promise<ToolCallState | string> {
-		if (!specified.name) {
-			throw new Error(`Tool name is required, received call\n: ${JSON.stringify(specified, null, 2)}`)
-		}
-
-		if (specified.name === BrowserTool.TOOL_NAVIGATE) {
-			return this.navigateToUrl(specified.arguments?.url as string)
-		}
-
-		if (specified.name === BrowserTool.TOOL_SNAPSHOT) {
-			return {
-				response: 'Captured latest page snapshot.',
-				snapshot: await this.captureSnapshot({ skipFilter: true }),
-			}
-		}
-
-		if (specified.name === BrowserTool.TOOL_CLICK_OR_HOVER) {
-			return this.clickElement(specified.arguments?.ref as string, specified.arguments?.hover as boolean)
-		}
-
-		if (specified.name === BrowserTool.TOOL_TYPE_OR_SELECT) {
-			return this.typeOrSelectInElement(specified.arguments?.elements as BrowserInputElement[])
-		}
-
-		if (specified.name === BrowserTool.TOOL_PRESS_KEY) {
-			return this.pressKey(specified.arguments?.key as string)
-		}
-
-		if (specified.name === BrowserTool.TOOL_WAIT) {
-			return this.wait(specified.arguments?.seconds as number)
-		}
-
-		logger.error(`model tried to call not implemented tool: ${specified.name}`)
-		return `Browser tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
-	}
-
-	private async captureSnapshot(options: { skipFilter?: boolean } = {}) {
-		try {
-			await expect
-				.poll(
-					async () => {
-						const readHtml = async () => this.page.locator('html').innerHTML()
-						const first = await readHtml()
-						await this.page.waitForTimeout(500)
-						const second = await readHtml()
-						return first !== second ? 'not stable' : 'stable'
-					},
-					{ timeout: 30_000, message: 'page snapshots should be stable' }
-				)
-				.toEqual('stable')
-
-			return new SnapshotService(this.page, this.step, { skipFilter: options.skipFilter }).get()
-		} catch (error) {
-			throw new Error(`Failed to capture page snapshot:\n${error}`, { cause: error })
-		}
-	}
-
-	private async wrapWithTracker(
-		action: () => Promise<unknown>,
-		fallbackResponse: string
-	): Promise<ToolCallState | string> {
-		const tracker = new TransientStateTracker(this.page)
-		await tracker.start()
-
-		try {
-			const actionResult = await action()
-			if (typeof actionResult === 'string') {
-				await tracker.stop()
-				return actionResult
-			}
-
-			const snapshot = await this.captureSnapshot()
-			await tracker.stop()
-			const formattedTimeline = tracker.formatTimeline()
-			return { response: formattedTimeline || fallbackResponse, snapshot }
-		} catch (error) {
-			await tracker.stop()
-			throw error
-		}
-	}
-
-	private async navigateToUrl(url: string) {
-		return this.wrapWithTracker(async () => {
-			if (!url) {
-				throw new Error(`valid URL is required for ${BrowserTool.TOOL_NAVIGATE} but received: '${url}'`)
-			}
-
-			try {
-				await this.page.goto(url)
-			} catch (error) {
-				throw new Error(`Failed to navigate to URL ${url}`, { cause: error })
-			}
-		}, `Navigated to: ${url}`)
-	}
-
-	private async clickElement(ref: string, hover: boolean = false) {
+	async clickElement(ref: string, hover: boolean, step: Step): Promise<AgentToolResponse | string> {
 		return this.wrapWithTracker(
 			async () => {
 				try {
@@ -316,17 +71,14 @@ export class BrowserTool extends ToolContract {
 					return `failed to click element with ref '${ref}':\n${error} try with different element type or ref`
 				}
 			},
-			hover ? `Hovered element with ref '${ref}'.` : `Clicked element with ref '${ref}'.`
+			hover ? `Hovered element with ref '${ref}'.` : `Clicked element with ref '${ref}'.`,
+			step
 		)
 	}
 
-	private async typeOrSelectInElement(elements: BrowserInputElement[]) {
+	async typeOrSelectInElement(elements: BrowserInputElement[], step: Step): Promise<AgentToolResponse | string> {
 		return this.wrapWithTracker(
 			async () => {
-				if (!Array.isArray(elements) || elements.length === 0) {
-					return `failed to type text or select option. Invalid parameters received, please adhere strictly to tool parameters. Received: ${elements}`
-				}
-
 				for (const element of elements) {
 					try {
 						if (!element.ref || element.text === undefined || element.text === null) {
@@ -357,37 +109,169 @@ export class BrowserTool extends ToolContract {
 					}
 				}
 			},
-			`Updated ${elements.length} page element${elements.length === 1 ? '' : 's'}.`
+			`Updated ${elements.length} page element${elements.length === 1 ? '' : 's'}.`,
+			step
 		)
 	}
 
-	private async pressKey(key: string) {
-		return this.wrapWithTracker(async () => {
-			try {
-				if (!key) {
-					throw new Error(`'key' is required for ${BrowserTool.TOOL_PRESS_KEY} but received: '${key}'`)
-				}
+	async pressKey(key: string, step: Step): Promise<AgentToolResponse | string> {
+		return this.wrapWithTracker(
+			async () => {
+				try {
+					if (!key) {
+						throw new Error(`'key' is required for ${BrowserTool.TOOL_PRESS_KEY} but received: '${key}'`)
+					}
 
-				await this.page.keyboard.press(key)
-			} catch (error) {
-				logger.error(`error pressing key '${key}' due to:\n${error}`)
-				return `failed to press key '${key}':\n${error}`
-			}
-		}, `Pressed key '${key}'.`)
+					await this.page.keyboard.press(key)
+				} catch (error) {
+					logger.error(`error pressing key '${key}' due to:\n${error}`)
+					return `failed to press key '${key}':\n${error}`
+				}
+			},
+			`Pressed key '${key}'.`,
+			step
+		)
 	}
 
-	private async wait(seconds: number) {
-		return this.wrapWithTracker(async () => {
-			try {
-				seconds = Number(seconds)
-				if (!Number.isFinite(seconds) || seconds <= 0) {
-					throw new Error(`invalid seconds value received: ${seconds}. It should be a positive number.`)
-				}
-				await this.page.waitForTimeout(seconds * 1000)
-			} catch (error) {
-				logger.error(`error waiting for ${seconds} seconds due to:\n${error}`)
-				return `failed to wait for ${seconds} seconds:\n${error}`
-			}
-		}, `Waited ${seconds} seconds.`)
+	async captureCurrentSnapshot(step: Step, options: { skipFilter?: boolean } = {}): Promise<string> {
+		try {
+			await expect
+				.poll(
+					async () => {
+						const readHtml = async () => this.page.locator('html').innerHTML()
+						const first = await readHtml()
+						await this.page.waitForTimeout(500)
+						const second = await readHtml()
+						return first !== second ? 'not stable' : 'stable'
+					},
+					{ timeout: 30_000, message: 'page snapshots should be stable' }
+				)
+				.toEqual('stable')
+
+			return new SnapshotService(this.page, step, { skipFilter: options.skipFilter }).get()
+		} catch (error) {
+			throw new Error(`Failed to capture page snapshot:\n${error}`, { cause: error })
+		}
 	}
+
+	async wait(seconds: number, step: Step): Promise<AgentToolResponse | string> {
+		return this.wrapWithTracker(
+			async () => {
+				try {
+					if (!Number.isFinite(seconds) || seconds <= 0) {
+						throw new Error(`invalid seconds value received: ${seconds}. It should be a positive number.`)
+					}
+
+					await this.page.waitForTimeout(seconds * 1000)
+				} catch (error) {
+					logger.error(`error waiting for ${seconds} seconds due to:\n${error}`)
+					return `failed to wait for ${seconds} seconds:\n${error}`
+				}
+			},
+			`Waited ${seconds} seconds.`,
+			step
+		)
+	}
+
+	private async wrapWithTracker(
+		action: () => Promise<unknown>,
+		fallbackResponse: string,
+		step: Step
+	): Promise<AgentToolResponse | string> {
+		const tracker = new TransientStateTracker(this.page)
+		await tracker.start()
+
+		try {
+			const actionResult = await action()
+			if (typeof actionResult === 'string') {
+				await tracker.stop()
+				return actionResult
+			}
+
+			const snapshot = await this.captureCurrentSnapshot(step)
+			await tracker.stop()
+			const formattedTimeline = tracker.formatTimeline()
+			return { response: formattedTimeline || fallbackResponse, snapshot }
+		} catch (error) {
+			await tracker.stop()
+			throw error
+		}
+	}
+}
+
+export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
+	return [
+		defineAgentTool({
+			name: BrowserTool.TOOL_NAVIGATE,
+			description: 'Navigate to a specified URL in the browser, example: https://www.example.com',
+			schema: z
+				.object({
+					url: z.string().describe('The URL to navigate to'),
+					goal: z.string().describe('The goal or purpose of navigating to this URL'),
+				})
+				.strict(),
+			handler: ({ url }, context) => runtime.navigateToUrl(url, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_CLICK_OR_HOVER,
+			description: 'Click or hover a specified element reference in the browser',
+			schema: z
+				.object({
+					ref: z.string().describe('ref value of the element from the snapshot, example: e123'),
+					name: z.string().describe('name of the element to click or hover, example: Submit Button'),
+					hover: z.boolean().describe('If true: hover the element, if false: click element'),
+					goal: z.string().describe('The goal or purpose of clicking this element'),
+				})
+				.strict(),
+			handler: ({ ref, hover }, context) => runtime.clickElement(ref, hover, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_TYPE_OR_SELECT,
+			description:
+				'Type text into a specified element reference in the browser or select an option from a dropdown.',
+			schema: z
+				.object({
+					elements: z.array(browserInputElementSchema).min(1).describe('array of elements to type into'),
+					goal: z.string().describe('The goal or purpose of typing this text into the element'),
+				})
+				.strict(),
+			handler: ({ elements }, context) => runtime.typeOrSelectInElement(elements, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_PRESS_KEY,
+			description: 'Press a specified key in the browser',
+			schema: z
+				.object({
+					key: z.string().describe('The key to press, example: Enter, Escape, ArrowDown'),
+					goal: z.string().describe('The goal or purpose of pressing this key'),
+				})
+				.strict(),
+			handler: ({ key }, context) => runtime.pressKey(key, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_SNAPSHOT,
+			description:
+				'Capture the ARIA snapshot of the current page - use only if you miss information from previous snapshot.',
+			schema: z
+				.object({
+					goal: z.string().describe('The goal or purpose of capturing the snapshot'),
+				})
+				.strict(),
+			handler: async (_args, context) => ({
+				response: 'Captured latest page snapshot.',
+				snapshot: await runtime.captureCurrentSnapshot(context.step, { skipFilter: true }),
+			}),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_WAIT,
+			description: 'Wait for a timeout in seconds',
+			schema: z
+				.object({
+					seconds: z.number().describe('Number of seconds to wait, example: 5'),
+					goal: z.string().describe('The goal or purpose of waiting'),
+				})
+				.strict(),
+			handler: ({ seconds }, context) => runtime.wait(seconds, context.step),
+		}),
+	]
 }

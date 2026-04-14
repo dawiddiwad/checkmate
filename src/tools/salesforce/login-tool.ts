@@ -1,61 +1,32 @@
-import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
-import { logger } from '../../logging'
+import { z } from 'zod/v4'
+import { BrowserToolRuntime } from '../browser/tool'
+import { defineAgentTool } from '../define-agent-tool'
+import { AgentTool } from '../types'
 import { SalesforceAuthenticator } from '../../integrations/salesforce/authenticator'
 import { SalesforceCliHandler } from '../../integrations/salesforce/cli-handler'
-import { BrowserTool } from '../browser/tool'
-import { ToolCall, ToolCallResult, ToolContract, ToolExecutionContext } from '../tool-contract'
 
-export class SalesforceLoginTool extends ToolContract {
-	static readonly TOOL_LOGIN_TO_SALESFORCE_ORG = 'login_to_salesforce_org'
+export const SalesforceLoginTool = {
+	TOOL_LOGIN_TO_SALESFORCE_ORG: 'login_to_salesforce_org',
+} as const
 
-	functionDeclarations: ChatCompletionFunctionTool[] = [
-		{
-			type: 'function',
-			function: {
-				name: SalesforceLoginTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
-				description:
-					'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
-				parameters: {
-					type: 'object',
-					properties: {
-						goal: { type: 'string', description: 'The goal or purpose of logging into the Salesforce org' },
-					},
-					additionalProperties: false,
-					required: ['goal'],
-				},
-				strict: true,
+export function createSalesforceTools(browserRuntime: BrowserToolRuntime): AgentTool[] {
+	return [
+		defineAgentTool({
+			name: SalesforceLoginTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
+			description:
+				'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
+			schema: z
+				.object({
+					goal: z.string().describe('The goal or purpose of logging into the Salesforce org'),
+				})
+				.strict(),
+			handler: async (_args, context) => {
+				const frontDoorUrl = await new SalesforceAuthenticator(new SalesforceCliHandler()).ready.then(
+					(authenticator) => authenticator.getFrontDoorUrl()
+				)
+
+				return browserRuntime.navigateToUrl(frontDoorUrl, context.step)
 			},
-		},
+		}),
 	]
-
-	constructor(private readonly browserTool: BrowserTool) {
-		super()
-	}
-
-	async call(specified: ToolCall): Promise<ToolCallResult> {
-		if (specified.name !== SalesforceLoginTool.TOOL_LOGIN_TO_SALESFORCE_ORG) {
-			logger.error(`model tried to call not implemented tool: ${specified.name}`)
-			return `Salesforce login tool not implemented: ${specified.name}, use one of: ${this.getFunctionNames().join(', ')}`
-		}
-
-		try {
-			const frontDoorUrl = await this.getSalesforceLoginUrl()
-			return this.browserTool.executeWithState({
-				name: BrowserTool.TOOL_NAVIGATE,
-				arguments: { url: frontDoorUrl, goal: 'Login to Salesforce org' },
-			})
-		} catch (error) {
-			throw new Error(`Failed to login to Salesforce org due to\n:${error}`, { cause: error })
-		}
-	}
-
-	execute(specified: ToolCall, _context: ToolExecutionContext): Promise<ToolCallResult> {
-		return this.call(specified)
-	}
-
-	private async getSalesforceLoginUrl(): Promise<string> {
-		return new SalesforceAuthenticator(new SalesforceCliHandler()).ready.then((authenticator) =>
-			authenticator.getFrontDoorUrl()
-		)
-	}
 }

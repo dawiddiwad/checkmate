@@ -326,13 +326,13 @@ Playwright Test
             │
             ├── tools/
             │   ├── browser/
-            │   │   ├── BrowserTool
+            │   │   ├── BrowserToolRuntime
             │   │   ├── SnapshotService
             │   │   └── snapshot-filter/
             │   ├── step/
-            │   │   └── StepResultTool
+            │   │   └── createStepResultTools()
             │   └── salesforce/
-            │       └── SalesforceLoginTool
+            │       └── createSalesforceTools()
             │
             ├── integrations/
             │   └── salesforce/
@@ -353,7 +353,7 @@ Playwright Test
 - **CheckmateRunner**: Public runtime entry point for executing steps
 - **AiClient**: Manages model interactions, retries, and tool-calling requests
 - **Response Processor**: Handles tool responses, snapshot minification, and history filtering
-- **Tool Registry**: Owns tool declarations and explicit tool resolution
+- **Tool Registry**: Owns Zod-defined tool declarations and explicit tool resolution
 
 **Tools**
 
@@ -377,7 +377,13 @@ Playwright Test
 
 ### Custom Tool Integration
 
-**_checkmate_**'s tool registry can be extended with custom tools for specific testing needs. See the `src/tools/` directory for examples of how tools are implemented.
+**_checkmate_**'s tool registry can be extended with custom tools for specific testing needs. Tools are now defined as single-function contracts with:
+
+- one OpenAI tool definition
+- one Zod schema
+- one `execute` function
+
+Use `src/tools/define-agent-tool.ts` as the entry point for new tools and see `src/tools/` for examples.
 
 ### Performance Optimization
 

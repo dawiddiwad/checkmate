@@ -1,7 +1,6 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 import { RuntimeConfig } from '../config/runtime-config'
-import { Step } from '../runtime/types'
-import { ToolContract } from './tool-contract'
+import { AgentTool, getToolName } from './types'
 
 export type ToolResponse = {
 	name?: string
@@ -10,27 +9,22 @@ export type ToolResponse = {
 }
 
 export class ToolRegistry {
-	private readonly tools: ToolContract[] = []
-	private readonly toolsByName = new Map<string, ToolContract>()
+	private readonly tools: AgentTool[] = []
+	private readonly toolsByName = new Map<string, AgentTool>()
 
 	constructor(private readonly runtimeConfig: RuntimeConfig) {}
 
-	register(tool: ToolContract): void {
-		this.tools.push(tool)
-		for (const declaration of tool.functionDeclarations) {
-			const toolName = declaration.function.name
+	register(tool: AgentTool | AgentTool[]): void {
+		const tools = Array.isArray(tool) ? tool : [tool]
+
+		for (const registeredTool of tools) {
+			const toolName = getToolName(registeredTool)
 			if (this.toolsByName.has(toolName)) {
 				throw new Error(`Duplicate tool registration for '${toolName}'`)
 			}
-			this.toolsByName.set(toolName, tool)
-		}
-	}
 
-	setStep(step: Step): void {
-		for (const tool of this.tools) {
-			if (typeof tool.setStep === 'function') {
-				tool.setStep(step)
-			}
+			this.tools.push(registeredTool)
+			this.toolsByName.set(toolName, registeredTool)
 		}
 	}
 
@@ -38,18 +32,18 @@ export class ToolRegistry {
 		return this.runtimeConfig
 	}
 
-	resolve(toolName: string): ToolContract | undefined {
+	resolve(toolName: string): AgentTool | undefined {
 		return this.toolsByName.get(toolName)
 	}
 
 	async getTools(): Promise<ChatCompletionFunctionTool[]> {
 		const allowedNames = this.runtimeConfig.getAllowedFunctionNames()
-		const declarations = this.tools.flatMap((tool) => tool.functionDeclarations)
+		const definitions = this.tools.map((tool) => tool.definition)
 
 		if (allowedNames.length === 0) {
-			return declarations
+			return definitions
 		}
 
-		return declarations.filter((tool) => allowedNames.includes(tool.function.name))
+		return definitions.filter((tool) => allowedNames.includes(tool.function.name))
 	}
 }

@@ -1,9 +1,9 @@
 import { Page } from '@playwright/test'
 import { RuntimeConfig } from '../config/runtime-config'
 import { Step } from './types'
-import { BrowserTool } from '../tools/browser/tool'
-import { StepResultTool } from '../tools/step/result-tool'
-import { SalesforceLoginTool } from '../tools/salesforce/login-tool'
+import { BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
+import { createStepResultTools } from '../tools/step/result-tool'
+import { createSalesforceTools } from '../tools/salesforce/login-tool'
 import { ToolRegistry } from '../tools/registry'
 import { AiClient } from '../ai/client'
 import { StepExecution } from './step-execution'
@@ -13,11 +13,11 @@ export class CheckmateRunner {
 
 	constructor(page: Page) {
 		const runtimeConfig = new RuntimeConfig()
-		const browserTool = new BrowserTool(page)
+		const browserRuntime = new BrowserToolRuntime(page)
 		const toolRegistry = new ToolRegistry(runtimeConfig)
-		toolRegistry.register(new StepResultTool())
-		toolRegistry.register(browserTool)
-		toolRegistry.register(new SalesforceLoginTool(browserTool))
+		toolRegistry.register(createStepResultTools())
+		toolRegistry.register(createBrowserTools(browserRuntime))
+		toolRegistry.register(createSalesforceTools(browserRuntime))
 		this.aiClient = new AiClient({ runtimeConfig, toolRegistry, page })
 	}
 

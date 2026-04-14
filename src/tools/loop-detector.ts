@@ -75,7 +75,10 @@ export class LoopDetector {
 	}
 
 	private createToolSignature(toolCall: ToolCall): string {
-		const args = toolCall.arguments || {}
+		const args =
+			typeof toolCall.arguments === 'object' && toolCall.arguments !== null
+				? (toolCall.arguments as Record<string, unknown>)
+				: {}
 		const sortedArgs = Object.keys(args)
 			.sort()
 			.map((key) => `${key}:${JSON.stringify(args[key])}`)

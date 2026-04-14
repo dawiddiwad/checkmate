@@ -1,8 +1,7 @@
 import { logger } from '../logging'
-import { ResolveStepResult } from '../runtime/types'
 import { LoopDetector } from './loop-detector'
 import { ToolRegistry, ToolResponse } from './registry'
-import { ToolCall, ToolCallResult } from './tool-contract'
+import { AgentToolContext, AgentToolResult, ToolCall } from './types'
 
 export class ToolDispatcher {
 	private readonly loopDetector: LoopDetector
@@ -15,7 +14,7 @@ export class ToolDispatcher {
 		return this.toolRegistry
 	}
 
-	async dispatch(toolCall: ToolCall, resolveStepResult: ResolveStepResult): Promise<ToolResponse | null> {
+	async dispatch(toolCall: ToolCall, context: AgentToolContext): Promise<ToolResponse | null> {
 		this.loopDetector.recordToolCall(toolCall)
 		logger.info(`executing tool: ${toolCall.name}:\n${JSON.stringify(toolCall.arguments ?? {}, null, 2)}`)
 
@@ -24,11 +23,11 @@ export class ToolDispatcher {
 			throw new Error(`Invalid tool name, received call\n: ${JSON.stringify(toolCall, null, 2)}`)
 		}
 
-		const result = await tool.execute(toolCall, { resolveStepResult })
+		const result = await tool.execute(toolCall.arguments, context)
 		return this.normalizeToolResponse(toolCall.name, result)
 	}
 
-	private normalizeToolResponse(toolName: string, result: ToolCallResult): ToolResponse | null {
+	private normalizeToolResponse(toolName: string, result: AgentToolResult): ToolResponse | null {
 		if (result === undefined) {
 			return null
 		}

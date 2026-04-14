@@ -65,7 +65,6 @@ export class AiClient {
 		this.resolveStepResult = resolveStepResult
 		this.responseProcessor.resetStepTokens()
 		this.temperature = this.runtimeConfig.getTemperature()
-		this.toolRegistry.setStep(step)
 	}
 
 	getMessages(): ChatCompletionMessageParam[] {

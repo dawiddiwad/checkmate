@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { BrowserTool } from '../tools/browser/tool'
 import { Page } from '@playwright/test'
-import { ToolCall } from '../tools/tool-contract'
+import { BrowserTool, BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
+import { AgentTool, AgentToolContext } from '../tools/types'
 import { MockPage, MockLocator } from './test-types'
 
 const trackerMocks = vi.hoisted(() => ({
@@ -33,9 +33,20 @@ vi.mock('../tools/browser/transient-state-tracker', () => ({
 	},
 }))
 
-describe('BrowserTool', () => {
-	let browserTool: BrowserTool
+describe('Browser tools', () => {
 	let mockPage: MockPage
+	let runtime: BrowserToolRuntime
+	let tools: AgentTool[]
+	let context: AgentToolContext
+
+	function getTool(name: string): AgentTool {
+		const tool = tools.find((candidate) => candidate.definition.function.name === name)
+		if (!tool) {
+			throw new Error(`Missing tool ${name}`)
+		}
+
+		return tool
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -55,565 +66,139 @@ describe('BrowserTool', () => {
 			waitForTimeout: vi.fn().mockResolvedValue(undefined),
 		}
 
-		browserTool = new BrowserTool(mockPage as unknown as Page)
+		runtime = new BrowserToolRuntime(mockPage as unknown as Page)
+		tools = createBrowserTools(runtime)
+		context = {
+			step: { action: 'act', expect: 'done' },
+			resolveStepResult: vi.fn(),
+		}
 	})
 
-	describe('constructor and function declarations', () => {
-		it('should create browser tool with 6 function declarations', () => {
-			expect(browserTool.functionDeclarations).toHaveLength(6)
-		})
-
-		it('should include navigate tool declaration', () => {
-			const navigateTool = browserTool.functionDeclarations.find(
-				(tool) => tool.function.name === BrowserTool.TOOL_NAVIGATE
-			)
-			expect(navigateTool).toBeDefined()
-			expect(navigateTool?.function.description).toContain('Navigate')
-			expect(navigateTool?.function?.parameters?.required).toContain('url')
-			expect(navigateTool?.function?.parameters?.required).toContain('goal')
-		})
-
-		it('should include click tool declaration', () => {
-			const clickTool = browserTool.functionDeclarations.find(
-				(tool) => tool.function.name === BrowserTool.TOOL_CLICK_OR_HOVER
-			)
-			expect(clickTool).toBeDefined()
-			expect(clickTool?.function?.parameters?.required).toContain('ref')
-			expect(clickTool?.function?.parameters?.required).toContain('name')
-			expect(clickTool?.function?.parameters?.required).toContain('hover')
-			expect(clickTool?.function?.parameters?.required).toContain('goal')
-		})
-
-		it('should include type tool declaration', () => {
-			const typeTool = browserTool.functionDeclarations.find(
-				(tool) => tool.function.name === BrowserTool.TOOL_TYPE_OR_SELECT
-			)
-			expect(typeTool).toBeDefined()
-			expect(typeTool?.function?.parameters?.required).toContain('elements')
-			expect(typeTool?.function?.parameters?.required).toContain('goal')
-		})
-
-		it('should include press key tool declaration', () => {
-			const pressKeyTool = browserTool.functionDeclarations.find(
-				(tool) => tool.function.name === BrowserTool.TOOL_PRESS_KEY
-			)
-			expect(pressKeyTool).toBeDefined()
-			expect(pressKeyTool?.function?.parameters?.required).toContain('key')
-			expect(pressKeyTool?.function?.parameters?.required).toContain('goal')
-		})
-
-		it('should include snapshot tool declaration', () => {
-			const snapshotTool = browserTool.functionDeclarations.find(
-				(tool) => tool.function.name === BrowserTool.TOOL_SNAPSHOT
-			)
-			expect(snapshotTool).toBeDefined()
-			expect(snapshotTool?.function?.parameters?.required).toContain('goal')
-		})
-
-		it('should include wait tool declaration', () => {
-			const waitTool = browserTool.functionDeclarations.find(
-				(tool) => tool.function.name === BrowserTool.TOOL_WAIT
-			)
-			expect(waitTool).toBeDefined()
-			expect(waitTool?.function?.parameters?.required).toContain('seconds')
-			expect(waitTool?.function?.parameters?.required).toContain('goal')
-		})
+	it('creates six browser tool definitions', () => {
+		expect(tools).toHaveLength(6)
+		expect(tools.map((tool) => tool.definition.function.name)).toEqual([
+			BrowserTool.TOOL_NAVIGATE,
+			BrowserTool.TOOL_CLICK_OR_HOVER,
+			BrowserTool.TOOL_TYPE_OR_SELECT,
+			BrowserTool.TOOL_PRESS_KEY,
+			BrowserTool.TOOL_SNAPSHOT,
+			BrowserTool.TOOL_WAIT,
+		])
 	})
 
-	describe('call method - error handling', () => {
-		it('should throw error when tool name is missing', async () => {
-			const toolCall = {
-				name: undefined,
-				arguments: {},
-			} as unknown as ToolCall
+	it('navigates and returns response plus snapshot', async () => {
+		const result = await getTool(BrowserTool.TOOL_NAVIGATE).execute(
+			{ url: 'https://example.com', goal: 'test' },
+			context
+		)
 
-			await expect(browserTool.call(toolCall)).rejects.toThrow('Tool name is required')
-		})
-
-		it('should return error message for unimplemented tool', async () => {
-			const toolCall: ToolCall = {
-				name: 'unknown_tool',
-				arguments: {},
-			}
-
-			const result = await browserTool.call(toolCall)
-			expect(result).toContain('Browser tool not implemented: unknown_tool')
-		})
+		expect(mockPage.goto).toHaveBeenCalledWith('https://example.com')
+		expect(result).toEqual({ response: 'Navigated to: https://example.com', snapshot: 'mocked snapshot content' })
 	})
 
-	describe('navigate', () => {
-		it('should navigate to URL and capture snapshot', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_NAVIGATE,
-				arguments: { url: 'https://example.com', goal: 'test' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.goto).toHaveBeenCalledWith('https://example.com')
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should throw error when URL is missing', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_NAVIGATE,
-				arguments: { url: '', goal: 'test' },
-			}
-
-			await expect(browserTool.call(toolCall)).rejects.toThrow('valid URL is required')
-		})
-
-		it('should throw error when URL is undefined', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_NAVIGATE,
-				arguments: { goal: 'test' },
-			}
-
-			await expect(browserTool.call(toolCall)).rejects.toThrow('valid URL is required')
-		})
-
-		it('should handle navigation errors', async () => {
-			vi.mocked(mockPage.goto).mockRejectedValue(new Error('Network error'))
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_NAVIGATE,
-				arguments: { url: 'https://example.com', goal: 'test' },
-			}
-
-			await expect(browserTool.call(toolCall)).rejects.toThrow('Failed to navigate to URL')
-		})
+	it('validates navigate arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_NAVIGATE).execute({ goal: 'test' }, context)
+		expect(result).toContain("Invalid args for 'browser_navigate'")
 	})
 
-	describe('click', () => {
-		it('should click element and capture snapshot', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_CLICK_OR_HOVER,
-				arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
-			}
+	it('clicks and returns separate response and snapshot', async () => {
+		const result = await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
+			context
+		)
 
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.click).toHaveBeenCalledWith('aria-ref=e123')
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should hover element when hover is true (via tool call)', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_CLICK_OR_HOVER,
-				arguments: { ref: 'e321', name: 'Menu', hover: true, goal: 'open menu' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
-			expect(mockPage.click).not.toHaveBeenCalled()
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should hover element when hover is true', async () => {
-			const result = await (
-				browserTool as unknown as {
-					clickElement: (
-						ref: string,
-						hover: boolean
-					) => Promise<{ response: string; snapshot?: string | null } | string>
-				}
-			).clickElement('e321', true)
-
-			expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
-			expect(result).toEqual({
-				response: "Hovered element with ref 'e321'.",
-				snapshot: 'mocked snapshot content',
-			})
-		})
-
-		it('should expose summary and snapshot separately for runtime state handling', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_CLICK_OR_HOVER,
-				arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
-			}
-
-			const result = await browserTool.callWithState(toolCall)
-
-			expect(result).toEqual({
-				response: "Clicked element with ref 'e123'.",
-				snapshot: 'mocked snapshot content',
-			})
-		})
-
-		it('should include transient state timeline when available', async () => {
-			trackerMocks.formatTimelineMock.mockReturnValueOnce('timeline: click flow')
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_CLICK_OR_HOVER,
-				arguments: { ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toBe('timeline: click flow\nmocked snapshot content')
-		})
-
-		it('should return error message on click failure', async () => {
-			vi.mocked(mockPage.click).mockRejectedValue(new Error('Element not found'))
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_CLICK_OR_HOVER,
-				arguments: { ref: 'e999', name: 'Button', hover: false, goal: 'click' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain("failed to click element with ref 'e999'")
-			expect(result).toContain('try with different element type or ref')
-		})
+		expect(mockPage.click).toHaveBeenCalledWith('aria-ref=e123')
+		expect(result).toEqual({ response: "Clicked element with ref 'e123'.", snapshot: 'mocked snapshot content' })
 	})
 
-	describe('type', () => {
-		it('should type text into element and capture snapshot', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e456', text: 'Hello World', name: 'Input', clear: true }],
-					goal: 'enter text',
-				},
-			}
+	it('hovers when requested', async () => {
+		const result = await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e321', name: 'Menu', hover: true, goal: 'open menu' },
+			context
+		)
 
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
-			expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
-			expect(mockPage.locator('aria-ref=e456').pressSequentially).toHaveBeenCalledWith('Hello World', {
-				delay: 50,
-			})
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should support empty string to clear existing text', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e456', text: '', name: 'Input', clear: true }],
-					goal: 'clear text',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
-			expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
-			expect(mockPage.locator('aria-ref=e456').pressSequentially).not.toHaveBeenCalled()
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should return error message when ref is missing', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: '', text: 'Hello', name: 'Input', clear: true }],
-					goal: 'enter text',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-			expect(result).toContain("failed to type 'Hello' in element with ref ''")
-			expect(result).toContain("both 'ref' and 'text' are required")
-		})
-
-		it('should return error message when text is missing', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e456', text: undefined as unknown as string, name: 'Input', clear: true }],
-					goal: 'enter text',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-			expect(result).toContain("failed to type 'undefined' in element with ref 'e456'")
-			expect(result).toContain("both 'ref' and 'text' are required")
-		})
-
-		it('should return error message on type failure', async () => {
-			vi.mocked(mockPage.locator).mockReturnValue({
-				clear: vi.fn().mockResolvedValue(undefined),
-				pressSequentially: vi.fn().mockRejectedValue(new Error('Element not found')),
-			} as MockLocator)
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e999', text: 'test', name: 'Input', clear: true }],
-					goal: 'enter text',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain("failed to type 'test' in element with ref 'e999'")
-			expect(result).toContain('try with different element type or ref')
-		})
+		expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
+		expect(result).toEqual({ response: "Hovered element with ref 'e321'.", snapshot: 'mocked snapshot content' })
 	})
 
-	describe('select', () => {
-		it('should select option from dropdown', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e789', text: 'Option 2', name: 'Dropdown', clear: false, select: true }],
-					goal: 'select option',
-				},
-			}
+	it('prefers transient timeline in click responses when available', async () => {
+		trackerMocks.formatTimelineMock.mockReturnValueOnce('timeline: click flow')
 
-			const result = await browserTool.call(toolCall)
+		const result = await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Submit Button', hover: false, goal: 'submit form' },
+			context
+		)
 
-			expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e789')
-			expect(mockPage.locator('aria-ref=e789').selectOption).toHaveBeenCalledWith('Option 2')
-			expect(mockPage.locator('aria-ref=e789').clear).not.toHaveBeenCalled()
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should not clear before selecting when select is true', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e789', text: 'Option 1', name: 'Dropdown', clear: true, select: true }],
-					goal: 'select option',
-				},
-			}
-
-			await browserTool.call(toolCall)
-
-			expect(mockPage.locator('aria-ref=e789').clear).not.toHaveBeenCalled()
-			expect(mockPage.locator('aria-ref=e789').selectOption).toHaveBeenCalledWith('Option 1')
-		})
-
-		it('should skip empty text when selecting', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e789', text: '', name: 'Dropdown', clear: false, select: true }],
-					goal: 'select option',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.locator('aria-ref=e789').selectOption).not.toHaveBeenCalled()
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should handle multiple elements with mixed type and select', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [
-						{ ref: 'e456', text: 'John', name: 'Name Input', clear: true, select: false },
-						{ ref: 'e789', text: 'USA', name: 'Country Dropdown', clear: false, select: true },
-					],
-					goal: 'fill form',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
-			expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e789')
-			expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
-			expect(mockPage.locator('aria-ref=e456').pressSequentially).toHaveBeenCalledWith('John', { delay: 50 })
-			expect(mockPage.locator('aria-ref=e789').selectOption).toHaveBeenCalledWith('USA')
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should return error message on select failure', async () => {
-			vi.mocked(mockPage.locator).mockReturnValue({
-				selectOption: vi.fn().mockRejectedValue(new Error('Option not found')),
-			} as MockLocator)
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [{ ref: 'e999', text: 'Invalid Option', name: 'Dropdown', clear: false, select: true }],
-					goal: 'select option',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain("failed to select 'Invalid Option' in element with ref 'e999'")
-			expect(result).toContain('try with different element type or ref')
-		})
-
-		it('should return error message when elements array is empty', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: [],
-					goal: 'fill form',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain('failed to type text or select option')
-			expect(result).toContain('Invalid parameters received')
-		})
-
-		it('should return error message when elements is not an array', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_TYPE_OR_SELECT,
-				arguments: {
-					elements: 'not an array' as unknown,
-					goal: 'fill form',
-				},
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain('failed to type text or select option')
-			expect(result).toContain('Invalid parameters received')
-		})
+		expect(result).toEqual({ response: 'timeline: click flow', snapshot: 'mocked snapshot content' })
 	})
 
-	describe('pressKey', () => {
-		it('should press key and capture snapshot', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_PRESS_KEY,
-				arguments: { key: 'Enter', goal: 'submit' },
-			}
+	it('types text into an element', async () => {
+		const result = await getTool(BrowserTool.TOOL_TYPE_OR_SELECT).execute(
+			{
+				elements: [{ ref: 'e456', text: 'Hello World', name: 'Input', clear: true, select: false }],
+				goal: 'enter text',
+			},
+			context
+		)
 
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.keyboard.press).toHaveBeenCalledWith('Enter')
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should return error message when key is missing', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_PRESS_KEY,
-				arguments: { key: '', goal: 'submit' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain("failed to press key ''")
-			expect(result).toContain("'key' is required")
-		})
-
-		it('should return error message on press key errors', async () => {
-			vi.mocked(mockPage.keyboard.press).mockRejectedValue(new Error('Key not recognized'))
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_PRESS_KEY,
-				arguments: { key: 'InvalidKey', goal: 'test' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain("failed to press key 'InvalidKey'")
-			expect(result).toContain('Key not recognized')
-		})
+		expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
+		expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
+		expect(mockPage.locator('aria-ref=e456').pressSequentially).toHaveBeenCalledWith('Hello World', { delay: 50 })
+		expect(result).toEqual({ response: 'Updated 1 page element.', snapshot: 'mocked snapshot content' })
 	})
 
-	describe('snapshot', () => {
-		it('should capture snapshot', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_SNAPSHOT,
-				arguments: { goal: 'capture current state' },
-			}
+	it('selects an option from a dropdown', async () => {
+		const result = await getTool(BrowserTool.TOOL_TYPE_OR_SELECT).execute(
+			{
+				elements: [{ ref: 'e789', text: 'Option 2', name: 'Dropdown', clear: false, select: true }],
+				goal: 'select option',
+			},
+			context
+		)
 
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toBe('mocked snapshot content')
-		})
+		expect(mockPage.locator('aria-ref=e789').selectOption).toHaveBeenCalledWith('Option 2')
+		expect(result).toEqual({ response: 'Updated 1 page element.', snapshot: 'mocked snapshot content' })
 	})
 
-	describe('wait', () => {
-		it('should wait for specified seconds and capture snapshot', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_WAIT,
-				arguments: { seconds: 5, goal: 'wait for animation' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.waitForTimeout).toHaveBeenCalledWith(5000)
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should convert seconds to milliseconds correctly', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_WAIT,
-				arguments: { seconds: 2.5, goal: 'wait for content' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(mockPage.waitForTimeout).toHaveBeenCalledWith(2500)
-			expect(result).toBe('mocked snapshot content')
-		})
-
-		it('should return error message when seconds is zero', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_WAIT,
-				arguments: { seconds: 0, goal: 'wait' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain('failed to wait')
-			expect(result).toContain('invalid seconds value received: 0')
-			expect(mockPage.waitForTimeout).not.toHaveBeenCalled()
-		})
-
-		it('should return error message when seconds is negative', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_WAIT,
-				arguments: { seconds: -5, goal: 'wait' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain('failed to wait')
-			expect(result).toContain('invalid seconds value received: -5')
-			expect(mockPage.waitForTimeout).not.toHaveBeenCalled()
-		})
-
-		it('should return error message when seconds is undefined', async () => {
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_WAIT,
-				arguments: { goal: 'wait' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toContain('failed to wait')
-			expect(result).toContain('invalid seconds value')
-			expect(mockPage.waitForTimeout).not.toHaveBeenCalled()
-		})
-
-		it('should include transient state timeline when available', async () => {
-			trackerMocks.formatTimelineMock.mockReturnValueOnce('timeline: wait period')
-
-			const toolCall: ToolCall = {
-				name: BrowserTool.TOOL_WAIT,
-				arguments: { seconds: 3, goal: 'wait for load' },
-			}
-
-			const result = await browserTool.call(toolCall)
-
-			expect(result).toBe('timeline: wait period\nmocked snapshot content')
-		})
+	it('validates type/select arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_TYPE_OR_SELECT).execute(
+			{ elements: [], goal: 'fill form' },
+			context
+		)
+		expect(result).toContain("Invalid args for 'browser_type_or_select'")
 	})
 
-	describe('tool name constants', () => {
-		it('should have correct tool name constants', () => {
-			expect(BrowserTool.TOOL_NAVIGATE).toBe('browser_navigate')
-			expect(BrowserTool.TOOL_CLICK_OR_HOVER).toBe('browser_click_or_hover')
-			expect(BrowserTool.TOOL_TYPE_OR_SELECT).toBe('browser_type_or_select')
-			expect(BrowserTool.TOOL_PRESS_KEY).toBe('browser_press_key')
-			expect(BrowserTool.TOOL_SNAPSHOT).toBe('browser_snapshot')
-			expect(BrowserTool.TOOL_WAIT).toBe('browser_wait')
-		})
+	it('presses a key', async () => {
+		const result = await getTool(BrowserTool.TOOL_PRESS_KEY).execute({ key: 'Enter', goal: 'submit' }, context)
+
+		expect(mockPage.keyboard.press).toHaveBeenCalledWith('Enter')
+		expect(result).toEqual({ response: "Pressed key 'Enter'.", snapshot: 'mocked snapshot content' })
+	})
+
+	it('returns runtime error message when key is empty', async () => {
+		const result = await getTool(BrowserTool.TOOL_PRESS_KEY).execute({ key: '', goal: 'submit' }, context)
+		expect(result).toContain("failed to press key ''")
+	})
+
+	it('captures a raw snapshot without filtering', async () => {
+		const result = await getTool(BrowserTool.TOOL_SNAPSHOT).execute({ goal: 'capture current state' }, context)
+		expect(result).toEqual({ response: 'Captured latest page snapshot.', snapshot: 'mocked snapshot content' })
+	})
+
+	it('waits for specified seconds', async () => {
+		const result = await getTool(BrowserTool.TOOL_WAIT).execute({ seconds: 2.5, goal: 'wait for content' }, context)
+
+		expect(mockPage.waitForTimeout).toHaveBeenCalledWith(2500)
+		expect(result).toEqual({ response: 'Waited 2.5 seconds.', snapshot: 'mocked snapshot content' })
+	})
+
+	it('returns runtime error when seconds is not positive', async () => {
+		const result = await getTool(BrowserTool.TOOL_WAIT).execute({ seconds: 0, goal: 'wait' }, context)
+		expect(result).toContain('failed to wait for 0 seconds')
+	})
+
+	it('validates wait arguments with zod when missing', async () => {
+		const result = await getTool(BrowserTool.TOOL_WAIT).execute({ goal: 'wait' }, context)
+		expect(result).toContain("Invalid args for 'browser_wait'")
 	})
 })

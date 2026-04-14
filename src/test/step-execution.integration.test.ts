@@ -5,10 +5,10 @@ import { CheckmateRunner } from '../runtime/runner'
 import { RuntimeConfig } from '../config/runtime-config'
 import { Step, StepResult, ResolveStepResult } from '../runtime/types'
 import { ToolRegistry } from '../tools/registry'
-import { StepResultTool } from '../tools/step/result-tool'
-import { BrowserTool } from '../tools/browser/tool'
-import { SalesforceLoginTool } from '../tools/salesforce/login-tool'
-import { ChatCompletionFunctionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { createStepResultTools } from '../tools/step/result-tool'
+import { BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
+import { createSalesforceTools } from '../tools/salesforce/login-tool'
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
@@ -55,16 +55,20 @@ vi.mock('../logging', () => ({
 }))
 
 vi.mock('../tools/salesforce/login-tool', () => ({
-	SalesforceLoginTool: class {
-		functionDeclarations: ChatCompletionFunctionTool[] = []
-		execute = vi.fn()
-	},
+	createSalesforceTools: vi.fn(() => []),
 }))
 
 vi.mock('../tools/browser/tool', () => ({
-	BrowserTool: class {
-		functionDeclarations = [
-			{
+	BrowserTool: {
+		TOOL_NAVIGATE: 'browser_navigate',
+		TOOL_TYPE_OR_SELECT: 'browser_type',
+	},
+	BrowserToolRuntime: class {
+		constructor() {}
+	},
+	createBrowserTools: vi.fn(() => [
+		{
+			definition: {
 				type: 'function',
 				function: {
 					name: 'browser_navigate',
@@ -81,7 +85,10 @@ vi.mock('../tools/browser/tool', () => ({
 					strict: true,
 				},
 			},
-			{
+			execute: vi.fn((args) => browserCallMock({ name: 'browser_navigate', arguments: args })),
+		},
+		{
+			definition: {
 				type: 'function',
 				function: {
 					name: 'browser_type',
@@ -99,12 +106,46 @@ vi.mock('../tools/browser/tool', () => ({
 					strict: true,
 				},
 			},
-		]
-		call = browserCallMock
-		execute = vi.fn((specified) => browserCallMock(specified))
-		executeWithState = browserCallMock
-		setStep = vi.fn()
+			execute: vi.fn((args) => browserCallMock({ name: 'browser_type', arguments: args })),
+		},
+	]),
+}))
+
+vi.mock('../tools/step/result-tool', () => ({
+	StepResultTool: {
+		TOOL_PASS_TEST_STEP: 'pass_test_step',
+		TOOL_FAIL_TEST_STEP: 'fail_test_step',
 	},
+	createStepResultTools: vi.fn(() => [
+		{
+			definition: {
+				type: 'function',
+				function: {
+					name: 'pass_test_step',
+					description: 'pass',
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+					strict: true,
+				},
+			},
+			execute: vi.fn((args, context) => {
+				context.resolveStepResult({ passed: true, actual: (args as { actualResult: string }).actualResult })
+			}),
+		},
+		{
+			definition: {
+				type: 'function',
+				function: {
+					name: 'fail_test_step',
+					description: 'fail',
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+					strict: true,
+				},
+			},
+			execute: vi.fn((args, context) => {
+				context.resolveStepResult({ passed: false, actual: (args as { actualResult: string }).actualResult })
+			}),
+		},
+	]),
 }))
 
 vi.mock('../tools/browser/snapshot-service', () => ({
@@ -456,13 +497,11 @@ describe('Simple step execution integration', () => {
 		createMock.mockResolvedValueOnce(textResponse).mockResolvedValueOnce(passResponse)
 
 		const configurationManager = new RuntimeConfig()
-		const browserTool = new BrowserTool(page)
-		const stepTool = new StepResultTool()
-		const salesforceTool = new SalesforceLoginTool(browserTool)
+		const browserRuntime = new BrowserToolRuntime(page)
 		const toolRegistry = new ToolRegistry(configurationManager)
-		toolRegistry.register(browserTool)
-		toolRegistry.register(stepTool)
-		toolRegistry.register(salesforceTool)
+		toolRegistry.register(createBrowserTools(browserRuntime))
+		toolRegistry.register(createStepResultTools())
+		toolRegistry.register(createSalesforceTools(browserRuntime))
 		const client = new AiClient({ runtimeConfig: configurationManager, toolRegistry, page })
 
 		const step: Step = {

@@ -68,7 +68,6 @@ describe('AiClient - Retry Logic', () => {
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
-			setStep: vi.fn(),
 		} as MockToolRegistry
 
 		mockPage = {} as Page
@@ -459,7 +458,6 @@ describe('AiClient - message flow', () => {
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
-			setStep: vi.fn(),
 		} as MockToolRegistry
 
 		mockPage = {} as Page

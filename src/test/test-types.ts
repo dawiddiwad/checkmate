@@ -40,7 +40,6 @@ export interface MockConfigurationManager {
 
 export interface MockToolRegistry {
 	getTools: Mock
-	setStep: Mock
 }
 
 export interface MockOpenAIClient extends Partial<AiClient> {

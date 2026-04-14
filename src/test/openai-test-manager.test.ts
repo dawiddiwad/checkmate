@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { CheckmateRunner } from '../runtime/runner'
 import { Step, ResolveStepResult } from '../runtime/types'
 import { Page } from '@playwright/test'
-import { ChatCompletionFunctionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
 interface TestableTestManager {
 	aiClient: {
@@ -35,28 +35,24 @@ vi.mock('../../src/logging/logger', () => ({
 }))
 
 vi.mock('../../src/tools/step/result-tool', () => ({
-	StepResultTool: class {
-		functionDeclarations: ChatCompletionFunctionTool[] = []
-	},
+	createStepResultTools: vi.fn(() => []),
 }))
 
 vi.mock('../../src/tools/browser/tool', () => ({
-	BrowserTool: class {
-		functionDeclarations: ChatCompletionFunctionTool[] = []
+	BrowserToolRuntime: class {
+		constructor() {}
 	},
+	createBrowserTools: vi.fn(() => []),
 }))
 
 vi.mock('../../src/tools/salesforce/login-tool', () => ({
-	SalesforceLoginTool: class {
-		functionDeclarations: ChatCompletionFunctionTool[] = []
-	},
+	createSalesforceTools: vi.fn(() => []),
 }))
 
 vi.mock('../../src/tools/registry', () => ({
 	ToolRegistry: class {
 		register = vi.fn()
 		getTools = vi.fn().mockResolvedValue([])
-		setStep = vi.fn()
 	},
 }))
 

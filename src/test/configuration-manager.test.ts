@@ -393,9 +393,9 @@ describe('RuntimeConfig', () => {
 	})
 
 	describe('isSnapshotFilteringEnabled', () => {
-		it('should return true by default when not set', () => {
+		it('should return false by default when not set', () => {
 			delete process.env.CHECKMATE_SNAPSHOT_FILTERING
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 		})
 
 		it('should return true when explicitly set to "true"', () => {
@@ -413,15 +413,15 @@ describe('RuntimeConfig', () => {
 			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 		})
 
-		it('should return true for any value other than "false"', () => {
+		it('should return false for any value other than "true"', () => {
 			process.env.CHECKMATE_SNAPSHOT_FILTERING = 'yes'
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 
 			process.env.CHECKMATE_SNAPSHOT_FILTERING = '1'
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 
 			process.env.CHECKMATE_SNAPSHOT_FILTERING = 'enabled'
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 		})
 	})
 })

@@ -1,6 +1,10 @@
 import { LogLevel } from '../logging/logger'
 
 export class RuntimeConfig {
+	private isExplicitlyTrue(value: string | undefined): boolean {
+		return value?.toLowerCase() === 'true'
+	}
+
 	getApiKey(): string {
 		if (!process.env.OPENAI_API_KEY) {
 			throw new Error('OPENAI_API_KEY environment variable is not set')
@@ -21,7 +25,7 @@ export class RuntimeConfig {
 	}
 
 	includeScreenshotInSnapshot(): boolean {
-		return process.env.OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT?.toLowerCase() === 'true'
+		return this.isExplicitlyTrue(process.env.OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT)
 	}
 
 	getToolChoice(): 'auto' | 'required' | 'none' {
@@ -92,11 +96,7 @@ export class RuntimeConfig {
 	}
 
 	isSnapshotFilteringEnabled(): boolean {
-		const value = process.env.CHECKMATE_SNAPSHOT_FILTERING?.toLowerCase()
-		if (value === 'false') {
-			return false
-		}
-		return true
+		return this.isExplicitlyTrue(process.env.CHECKMATE_SNAPSHOT_FILTERING)
 	}
 
 	getApiRateLimitDelayMs(): number {

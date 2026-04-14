@@ -89,9 +89,8 @@ test.describe('single-step : quick examples', async () => {
 				expect: `
 				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
 
-				// fuzzy search (~50-70% token savings)
 				search: ['search', 'the catcher in the rye', 'shelf'],
-				topPercent: 10, //agressive snapshot filtering to demonstrate fuzzy search benefits
+				topPercent: 10, // aggressive snapshot filtering (top 10% of elements on page)
 			})
 		})
 	})
@@ -112,7 +111,6 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 				Click "Shop Now" on "Men's Outerwear" category
 				Click on the first product: "Men's Tech Shell Full-Zip"`,
 				expect: `Product detail page is displayed with title, price, and selectors`,
-				topPercent: 80, // step with many assertions, needs precise snapshot
 			})
 		})
 
@@ -177,7 +175,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		await test.step('Add item and update quantity', async () => {
 			await ai.run({
 				action: `
-				Add "Men's Tech Shell Full-Zip" to cart and click "View Cart".
+				Go to 'Men's Outerwear' and add an item to cart, then click "View Cart".
 				Select "2" from the "Quantity" dropdown for the item.`,
 				expect: `The quantity is updated and total price reflects the change.`,
 			})
@@ -240,7 +238,6 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 			await ai.run({
 				action: ``,
 				expect: `Product detail page is displayed with title, price, and selectors`,
-				topPercent: 80, // ambiguous step, needs precise snapshot
 			})
 		})
 

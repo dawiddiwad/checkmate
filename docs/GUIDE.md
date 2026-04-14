@@ -33,7 +33,7 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 | `OPENAI_API_TOKEN_BUDGET_COUNT`         | -            | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
 | `OPENAI_LOOP_MAX_REPETITIONS`           | `5`          | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
 | `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off                                                          |
-| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`       | Enable semantic page snapshot filtering before requests are sent to the model                             |
+| `CHECKMATE_SNAPSHOT_FILTERING`          | `false`      | Enable semantic page snapshot filtering before requests are sent to the model                             |
 
 ### Playwright Configuration
 
@@ -161,7 +161,7 @@ debug: Filtered to 21 elements from top 20%
 debug: Reduced snapshot from 4283 to 326 chars (92% reduction)
 ```
 
-Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `true`). `search` is now an explicit keyword query override, and `topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
+Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `false`). Set it explicitly to `true` to enable filtering. `search` is now an explicit keyword query override, and `topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
 
 The model can still request a full snapshot with the browser snapshot tool if the filtered tree is insufficient, so steps should not fail just because the initial snapshot was compact.
 

@@ -88,7 +88,9 @@ test.describe('single-step : quick examples', async () => {
                 Search for 'The Catcher in the Rye'.`,
 				expect: `
 				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
-				search: ['search', 'the catcher in the rye', 'shelf'], // fuzzy search (~50-70% token savings)
+
+				search: ['search', 'the catcher in the rye', 'shelf'],
+				topPercent: 10, // aggressive snapshot filtering (top 10% of elements on page)
 			})
 		})
 	})
@@ -138,13 +140,13 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 				- Expiry year: '2026'
 				- CVV: '123'
 				Click "Place Order"`,
-				expect: `Demo checkout process completed message is displayed along with Finish button`,
+				expect: `Checkout process completed message is displayed along with Finish button`,
 			})
 		})
 
 		await test.step('Finish and return to home', async () => {
 			await ai.run({
-				action: `Click the "Finish" button on the confirmation page.`,
+				action: `Finish and return to home`,
 				expect: `User is returned to the home page`,
 			})
 		})
@@ -173,7 +175,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		await test.step('Add item and update quantity', async () => {
 			await ai.run({
 				action: `
-				Add "Men's Tech Shell Full-Zip" to cart and click "View Cart".
+				Go to 'Men's Outerwear' and add an item to cart, then click "View Cart".
 				Select "2" from the "Quantity" dropdown for the item.`,
 				expect: `The quantity is updated and total price reflects the change.`,
 			})
@@ -271,7 +273,7 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 
 		await test.step('Finish and return to home', async () => {
 			await ai.run({
-				action: `Click the "Finish" button on the confirmation page.`,
+				action: `Finish and return to home`,
 				expect: `User is returned to the home page`,
 			})
 		})

@@ -115,6 +115,20 @@ Browser settings (viewport, headless mode, video recording, timeouts, etc.) are 
 
 See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
 
+### Programmatic API
+
+If you use **_checkmate_** without the fixture wrapper, the public entry point is now `CheckmateRunner`:
+
+```typescript
+import { CheckmateRunner } from 'checkmate-exp'
+
+const runner = new CheckmateRunner(page)
+await runner.run({
+	action: 'Open the pricing page',
+	expect: 'Pricing details are visible',
+})
+```
+
 ## Costs
 
 Costs vary based on model and provider, test complexity and number of steps.
@@ -126,7 +140,7 @@ Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/do
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](docs/GUIDE.md#using-fuzzy-search-for-token-optimization).
+For complex pages, snapshot filtering can be enabled with `CHECKMATE_SNAPSHOT_FILTERING=true`. When enabled, it uses the combined `action + expect` text automatically. Optional `search` terms can override that query, and `topPercent` controls how much of the scored snapshot is kept (10% by default). See [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization).
 
 See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
@@ -145,10 +159,10 @@ See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitor
 
 **High token costs**
 
-- Use `search` keywords to limit the scope of the page for the AI. See [fuzzy search](docs/GUIDE.md#using-fuzzy-search-for-token-optimization).
+- Enable snapshot filtering with `CHECKMATE_SNAPSHOT_FILTERING=true` when you want the page snapshot narrowed automatically from your `action` and `expect`. Use `topPercent` when you want to keep more or less of the scored snapshot for a step.
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
-- Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
+- Use a cheaper model, lower-end models often perform well (e.g., `gpt-5.4-nano` or `gpt-oss-20b`)
 
 See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
 
@@ -159,7 +173,7 @@ You can use any model that was trained for tool use. Here are the best picks bas
 
 - Highly recommended: [`gpt-oss-20b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
 - Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
-- OpenAI's `gpt-4.1-mini`, `gpt-5-mini` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
+- OpenAI's `gpt-5-mini`, `gpt-5.4-nano` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
 
 **Can I use local models?**  
 Yes - **_checkmate_** works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) (4‑bit quant variant). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.

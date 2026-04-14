@@ -14,29 +14,30 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 
 ## Configuration Reference
 
-### OpenAI API Settings
+### AI API Settings
 
-| Variable                                | Default        | Description                                                                                                    |
-| --------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`                        | -              | **Required** - Your OpenAI API key (or compatible provider)                                                    |
-| `OPENAI_BASE_URL`                       | -              | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                      |
-| `OPENAI_MODEL`                          | `gpt-4.1-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                         |
-| `OPENAI_TEMPERATURE`                    | `1.0`          | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                                   |
-| `OPENAI_REASONING_EFFORT`               | -              | Optional - Reasoning effort for models: low, medium, high                                                      |
-| `OPENAI_TIMEOUT_SECONDS`                | `60`           | API request timeout in seconds                                                                                 |
-| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`            | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                      |
-| `OPENAI_TOOL_CHOICE`                    | `required`     | Tool choice: auto, required, none                                                                              |
-| `OPENAI_ALLOWED_TOOLS`                  | -              | Comma-separated list of allowed tools (if not set, all tools available)                                        |
-| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`        | Include compressed screenshots in snapshot responses                                                           |
-| `OPENAI_API_TOKEN_BUDGET_USD`           | -              | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced.      |
-| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -              | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.               |
-| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`            | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature      |
-| `CHECKMATE_LOG_LEVEL`                   | `off`          | Logging verbosity: debug, info, warn, error, off                                                               |
-| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`         | Enable fuzzy-search filtering for page snapshots when search keywords are provided (up to 90% token reduction) |
+| Variable                                | Default      | Description                                                                                               |
+| --------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`                        | -            | **Required** - Your OpenAI API key (or compatible provider)                                               |
+| `OPENAI_BASE_URL`                       | -            | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                 |
+| `OPENAI_MODEL`                          | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                    |
+| `OPENAI_TEMPERATURE`                    | `1.0`        | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                              |
+| `OPENAI_REASONING_EFFORT`               | -            | Optional - Reasoning effort for models: low, medium, high                                                 |
+| `OPENAI_TIMEOUT_SECONDS`                | `60`         | API request timeout in seconds                                                                            |
+| `OPENAI_API_RATE_LIMIT_DELAY_SECONDS`   | `0`          | Optional fixed delay before each API call, useful when your provider is sensitive to burst traffic        |
+| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`          | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                 |
+| `OPENAI_TOOL_CHOICE`                    | `required`   | Tool choice: auto, required, none                                                                         |
+| `OPENAI_ALLOWED_TOOLS`                  | -            | Comma-separated list of allowed tools (if not set, all tools available)                                   |
+| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`      | Include compressed screenshots in snapshot responses                                                      |
+| `OPENAI_API_TOKEN_BUDGET_USD`           | -            | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced. |
+| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -            | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
+| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`          | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
+| `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off                                                          |
+| `CHECKMATE_SNAPSHOT_FILTERING`          | `false`      | Enable semantic page snapshot filtering before requests are sent to the model                             |
 
 ### Playwright Configuration
 
-Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
+Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](../playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
 ## Writing Effective Tests
 
@@ -112,7 +113,7 @@ await test.step('Fill form and submit', async () => {
 1. **Smart Snapshots** - Instead of full HTML, only the ARIA accessibility tree is sent to the AI
 2. **History Filtering** - Continuously filters old page snapshots (reduces token usage by up to 50%)
 3. **Snapshot Minification** - Removes unnecessary whitespace and quotes from ARIA snapshots
-4. **Fuzzy Search** - Local algorithmic filtering of page snapshots using user-provided keywords (reduces token usage by up to 90%)
+4. **Snapshot Filtering** - Local semantic filtering of page snapshots using the current step description (reduces token usage by up to 90%)
 5. **Screenshots** - Normalized and compressed locally, helps vision models understand UI better
 6. **Chat Recycling** - New session per step to prevent context bloat and isolation
 7. **Token Counting** - Real-time usage tracking per step and test with budgets
@@ -130,9 +131,17 @@ Notes:
 - Only positive numbers are enforced; `0` or non-positive values are effectively treated as disabled.
 - If the env var is unset or invalid (non-number), it is ignored.
 
-### Using Fuzzy Search for Token Optimization
+### Using Snapshot Filtering for Token Optimization
 
-When fuzzy search is enabled, **_checkmate_** uses a local [Dice Coefficient](https://en.wikipedia.org/wiki/Dice-S%C3%B8rensen_coefficient) algorithm to filter the page snapshot and only send relevant UI elements above certain keyword match score `threshold` (default: 0.3).
+When snapshot filtering is enabled, **_checkmate_** scores the page snapshot locally with a semantic embedding model and keeps the most relevant branches of the accessibility tree.
+
+Default behavior:
+
+- Build one query from `action + expect`
+- Score snapshot keys and string leaves against that query
+- If `search` is provided on the step, use those keywords instead of semantic `action + expect`
+- Keep the top `10%` of scored elements by default
+- If top-percent selection yields nothing, fall back to hard threshold `0.3`
 
 **This feature significantly reduces the payload size, minimizing costs while improving AI determinism, reliability and speed.**
 
@@ -141,36 +150,34 @@ await ai.run({
 	action: `Click on the link that leads to playwright.dev`,
 	expect: `The playwright.dev homepage is displayed`,
 
-	// optional fuzzy search settings
-	search: ['link', 'playwright.dev', 'end-to-end testing'],
-	threshold: 0.5,
+	// optional snapshot filtering override
+	topPercent: 20,
 })
 ```
 
 ```
 debug: Scored 107 elements
-debug: Filtered to 3 elements above threshold 0.5
+debug: Filtered to 21 elements from top 20%
 debug: Reduced snapshot from 4283 to 326 chars (92% reduction)
 ```
 
-Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `true`) and optional `search` and `threshold` arguments in the `ai.run()` method.
+Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `false`). Set it explicitly to `true` to enable filtering. `search` is now an explicit keyword query override, and `topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
 
-AI will still automatically fetch the full snapshot in case it cannot find relevant elements using the keywords, so tests should not fail easily due to over-filtering.
+The model can still request a full snapshot with the browser snapshot tool if the filtered tree is insufficient, so steps should not fail just because the initial snapshot was compact.
 
-For optimal results, use up to 10 relevant keywords per step and review them for accuracy and adjust the `threshold` setting to find the best balance between filtering and fetching the full snapshot. You can use your IDE's AI model to generate keywords from your action/expect descriptions, or leverage IDE autocomplete features. However, it is highly recommended to review and adjust them manually for best performance.
+For optimal results, write concrete `action` and `expect` text. Use `topPercent` as a real percentage from `1` to `100` when you need to keep more or less of the scored snapshot. Optional `search` terms still help when you want direct keyword control.
 
-**Tips for effective search keywords:**
+**Tips for effective step text:**
 
 - Include relevant UI element types (button, input, link, checkbox, etc.)
 - Include key text that appears on the page
 - Include action-related terms (search, filter, submit, etc.)
-- Keep keywords short and focused (2-3 words max per keyword)
-- Use 5-10 keywords per step for best results
-- Review keywords generated by your IDE's AI model
+- Keep the step focused on one user intent
+- Use `topPercent` only when you need to tune how aggressively snapshot content is pruned
 
 ### Estimated Costs
 
-**Gemini-2.5-flash / GPT-4.1-mini**:
+**Gemini-2.5-flash / GPT-5-mini**:
 
 - Simple test (~5 steps): ~$0.01 - $0.05
 - Complex test (~20 steps): ~$0.10 - $0.40
@@ -303,34 +310,35 @@ npx playwright show-report test-reports/html
 **_checkmate_** combines multiple components to enable AI-driven test automation:
 
 ```
-Playwright Test (Runner & Reporting)
+Playwright Test
 │
-└── ai.run(step) ← checkmate Fixture
+└── ai.run(step)
     │
-    └── Step Manager
-        │
-        ├── OpenAI Client
-        │   ├── Chat completions with tool calling
-        │   ├── Token tracking & cost management
-        │   └── Loop detection & recovery
-        │
-        ├── Tool Registry
-        │   ├── Browser (click, type, navigate)
-        │   ├── Step (pass/fail)
-        │   └── Salesforce (login, auth)
-        │
-        ├── Response Processor
-        │   ├── Snapshot minification
-        │   └── History management
-        │
-┌───────┴─────┬──────────────┬────────────────┐
-│             │              │                │
-Playwright    OpenAI API     Salesforce CLI   Configuration
-│             │              │                │
-├─ Browsers   ├─ GPT         ├─ SF Auth       ├─ .env
-├─ Snapshots  ├─ Gemini      └─ OTP URL       └─ playwright.config.ts
-├─ Actions    ├─ Local
-└─ Reports    └─ etc...
+    └── runtime/
+        ├── CheckmateRunner
+        └── StepExecution
+            │
+            ├── ai/
+            │   ├── AiClient
+            │   ├── ResponseProcessor
+            │   ├── MessageHistory
+            │   └── TokenTracker
+            │
+            ├── tools/
+            │   ├── browser/
+            │   │   ├── BrowserToolRuntime
+            │   │   ├── SnapshotService
+            │   │   └── snapshot-filter/
+            │   ├── step/
+            │   │   └── createStepResultTools()
+            │   └── salesforce/
+            │       └── createSalesforceTools()
+            │
+            ├── integrations/
+            │   └── salesforce/
+            │
+            ├── config/
+            └── logging/
 ```
 
 ### Key Components
@@ -342,15 +350,15 @@ Playwright    OpenAI API     Salesforce CLI   Configuration
 
 **Core Engine**
 
-- **OpenAI Test Manager**: Orchestrates AI-driven test steps
-- **OpenAI Client**: Manages LLM interactions with tool calling
+- **CheckmateRunner**: Public runtime entry point for executing steps
+- **AiClient**: Manages model interactions, retries, and tool-calling requests
 - **Response Processor**: Handles tool responses, snapshot minification, and history filtering
-- **Tool Registry**: Routes tool calls to appropriate handlers
+- **Tool Registry**: Owns Zod-defined tool declarations and explicit tool resolution
 
 **Tools**
 
 - **Browser Tools**: Playwright Test for web automation (click, type, navigate, etc.)
-- **Step Tools**: Test control (pass/fail step assertions)
+- **Step Result Tools**: Test control (pass/fail step assertions)
 - **Salesforce Tools**: SF CLI integration for Salesforce testing
 
 **Cost Optimization**
@@ -362,14 +370,20 @@ Playwright    OpenAI API     Salesforce CLI   Configuration
 
 **Configuration**
 
-- Test, Reporting and Browser settings: [playwright.config.ts](playwright.config.ts)
+- Test, Reporting and Browser settings: [playwright.config.ts](../playwright.config.ts)
 - API & AI settings: `.env` file
 
 ## Advanced Topics
 
 ### Custom Tool Integration
 
-**_checkmate_**'s tool registry can be extended with custom tools for specific testing needs. See the `src/step/tool/` directory for examples of how tools are implemented.
+**_checkmate_**'s tool registry can be extended with custom tools for specific testing needs. Tools are now defined as single-function contracts with:
+
+- one OpenAI tool definition
+- one Zod schema
+- one `execute` function
+
+Use `src/tools/define-agent-tool.ts` as the entry point for new tools and see `src/tools/` for examples.
 
 ### Performance Optimization
 

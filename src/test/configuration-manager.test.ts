@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { ConfigurationManager } from '../step/configuration-manager'
+import { RuntimeConfig } from '../config/runtime-config'
 
-describe('ConfigurationManager', () => {
-	let configManager: ConfigurationManager
+describe('RuntimeConfig', () => {
+	let configManager: RuntimeConfig
 	let originalEnv: NodeJS.ProcessEnv
 
 	beforeEach(() => {
 		originalEnv = { ...process.env }
-		configManager = new ConfigurationManager()
+		configManager = new RuntimeConfig()
 	})
 
 	afterEach(() => {
@@ -45,13 +45,13 @@ describe('ConfigurationManager', () => {
 
 	describe('getModel', () => {
 		it('should return configured model when OPENAI_MODEL is set', () => {
-			process.env.OPENAI_MODEL = 'gpt-4o'
-			expect(configManager.getModel()).toBe('gpt-4o')
+			process.env.OPENAI_MODEL = 'gpt-5-nano'
+			expect(configManager.getModel()).toBe('gpt-5-nano')
 		})
 
-		it('should return default model "gpt-4.1-mini" when OPENAI_MODEL is not set', () => {
+		it('should return default model "gpt-5-mini" when OPENAI_MODEL is not set', () => {
 			delete process.env.OPENAI_MODEL
-			expect(configManager.getModel()).toBe('gpt-4.1-mini')
+			expect(configManager.getModel()).toBe('gpt-5-mini')
 		})
 
 		it('should return empty string if explicitly set to empty', () => {
@@ -393,9 +393,9 @@ describe('ConfigurationManager', () => {
 	})
 
 	describe('isSnapshotFilteringEnabled', () => {
-		it('should return true by default when not set', () => {
+		it('should return false by default when not set', () => {
 			delete process.env.CHECKMATE_SNAPSHOT_FILTERING
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 		})
 
 		it('should return true when explicitly set to "true"', () => {
@@ -413,15 +413,15 @@ describe('ConfigurationManager', () => {
 			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 		})
 
-		it('should return true for any value other than "false"', () => {
+		it('should return false for any value other than "true"', () => {
 			process.env.CHECKMATE_SNAPSHOT_FILTERING = 'yes'
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 
 			process.env.CHECKMATE_SNAPSHOT_FILTERING = '1'
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 
 			process.env.CHECKMATE_SNAPSHOT_FILTERING = 'enabled'
-			expect(configManager.isSnapshotFilteringEnabled()).toBe(true)
+			expect(configManager.isSnapshotFilteringEnabled()).toBe(false)
 		})
 	})
 })

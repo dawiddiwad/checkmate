@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest'
 import { chromium, Browser, Page } from 'playwright'
-import { TransientStateTracker } from '../step/tool/transient-state-tracker'
+import { TransientStateTracker } from '../tools/browser/transient-state-tracker'
 
 describe('TransientStateTracker', () => {
 	let browser: Browser

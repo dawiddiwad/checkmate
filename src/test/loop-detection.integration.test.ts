@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { LoopDetector, LoopDetectedError } from '../step/tool/loop-detector'
-import { ConfigurationManager } from '../step/configuration-manager'
-import { ToolCall } from '../step/tool/openai-tool'
+import { LoopDetector, LoopDetectedError } from '../tools/loop-detector'
+import { RuntimeConfig } from '../config/runtime-config'
+import { ToolCall } from '../tools/tool-contract'
 
 /**
  * Simplified integration tests for LoopDetector with ConfigurationManager
@@ -26,7 +26,7 @@ describe('Loop Detection Integration Tests', () => {
 	it('should use configuration from environment for max repetitions', () => {
 		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
 
-		const configManager = new ConfigurationManager()
+		const configManager = new RuntimeConfig()
 		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
 
 		const toolCall: ToolCall = {
@@ -44,7 +44,7 @@ describe('Loop Detection Integration Tests', () => {
 	it('should detect single-tool loop with configured threshold', () => {
 		process.env.OPENAI_LOOP_MAX_REPETITIONS = '3'
 
-		const configManager = new ConfigurationManager()
+		const configManager = new RuntimeConfig()
 		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
 
 		const toolCall: ToolCall = {
@@ -63,7 +63,7 @@ describe('Loop Detection Integration Tests', () => {
 	it('should detect multi-tool pattern loop', () => {
 		process.env.OPENAI_LOOP_MAX_REPETITIONS = '3'
 
-		const configManager = new ConfigurationManager()
+		const configManager = new RuntimeConfig()
 		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
 
 		const toolCall1: ToolCall = {
@@ -90,7 +90,7 @@ describe('Loop Detection Integration Tests', () => {
 	it('should include pattern details in error message', () => {
 		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
 
-		const configManager = new ConfigurationManager()
+		const configManager = new RuntimeConfig()
 		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
 
 		const toolCall: ToolCall = {
@@ -114,7 +114,7 @@ describe('Loop Detection Integration Tests', () => {
 	it('should reset detector state after throwing', () => {
 		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
 
-		const configManager = new ConfigurationManager()
+		const configManager = new RuntimeConfig()
 		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
 
 		const toolCall: ToolCall = {

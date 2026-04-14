@@ -1,13 +1,13 @@
 import { test as base } from '@playwright/test'
-import { OpenAITestManager } from '../../src/step/openai/openai-test-manager'
+import { CheckmateRunner } from '../../src'
 
 type CheckmateFixtures = {
-	ai: OpenAITestManager
+	ai: CheckmateRunner
 }
 
 export const test = base.extend<CheckmateFixtures>({
 	ai: async ({ page }, use) => {
-		const ai = new OpenAITestManager(page)
+		const ai = new CheckmateRunner(page)
 		await use(ai)
 		await ai.teardown()
 	},

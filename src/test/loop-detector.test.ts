@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { LoopDetector, LoopDetectedError } from '../step/tool/loop-detector'
-import { ToolCall } from '../step/tool/openai-tool'
+import { LoopDetector, LoopDetectedError } from '../tools/loop-detector'
+import { ToolCall } from '../tools/tool-contract'
 
 describe('LoopDetector', () => {
 	let loopDetector: LoopDetector

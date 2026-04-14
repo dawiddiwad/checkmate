@@ -1,14 +1,72 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { scoreElements, filterByThreshold, JsonValue } from '../step/tool/fuzzy-search/scorer'
-import { reconstructTree } from '../step/tool/fuzzy-search/tree-reconstructor'
-import { filterSnapshot } from '../step/tool/fuzzy-search/snapshot-filter'
-import { Step } from '../step/types'
+import {
+	scoreSnapshotElements,
+	filterByThreshold,
+	filterTopPercent,
+	JsonValue,
+} from '../tools/browser/snapshot-filter/semantic-scorer'
+import { reconstructTree } from '../tools/browser/snapshot-filter/tree-reconstructor'
+import { filterSnapshot } from '../tools/browser/snapshot-filter/snapshot-filter'
+import { Step } from '../runtime/types'
 
-vi.mock('../step/tool/fuzzy-search/keyword-extractor', () => ({
-	extractKeywordsFromLLM: vi.fn().mockResolvedValue(['search models', 'models', 'qwen3']),
-}))
+vi.mock('@huggingface/transformers', () => {
+	const EMBEDDING_DIMENSION = 64
 
-vi.mock('../step/openai/openai-test-manager', () => ({
+	function tokenize(input: string): string[] {
+		return input
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.filter(Boolean)
+	}
+
+	function toVector(input: string): number[] {
+		const vector = Array.from({ length: EMBEDDING_DIMENSION }, () => 0)
+
+		for (const token of tokenize(input)) {
+			let hash = 0
+			for (const char of token) {
+				hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+			}
+
+			vector[hash % EMBEDDING_DIMENSION] += 1
+		}
+
+		const norm = Math.hypot(...vector) || 1
+		return vector.map((value) => value / norm)
+	}
+
+	function cosineSimilarity(a: number[], b: number[]): number {
+		if (a.length === 0 || b.length === 0) {
+			return 0
+		}
+
+		let dot = 0
+		let normA = 0
+		let normB = 0
+		const length = Math.max(a.length, b.length)
+
+		for (let index = 0; index < length; index++) {
+			const aValue = a[index] ?? 0
+			const bValue = b[index] ?? 0
+			dot += aValue * bValue
+			normA += aValue * aValue
+			normB += bValue * bValue
+		}
+
+		if (normA === 0 || normB === 0) {
+			return 0
+		}
+
+		return dot / (Math.sqrt(normA) * Math.sqrt(normB))
+	}
+
+	return {
+		pipeline: vi.fn().mockResolvedValue(async (input: string) => ({ data: toVector(input) })),
+		cos_sim: vi.fn(cosineSimilarity),
+	}
+})
+
+vi.mock('../logging', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -23,42 +81,42 @@ describe('Fuzzy Search', () => {
 	})
 
 	describe('Scorer', () => {
-		describe('scoreElements', () => {
-			it('should return empty array for empty tokens', () => {
+		describe('scoreSnapshotElements', () => {
+			it('should return empty array for empty query', async () => {
 				const json = { key: 'value' }
-				expect(scoreElements(json, [])).toEqual([])
+				expect(await scoreSnapshotElements(json, '')).toEqual([])
 			})
 
-			it('should score string values', () => {
+			it('should score string values', async () => {
 				const json = 'hello world'
-				const results = scoreElements(json, ['hello'])
+				const results = await scoreSnapshotElements(json, 'hello')
 				expect(results.length).toBeGreaterThan(0)
 				expect(results[0].score).toBeGreaterThan(0)
 			})
 
-			it('should score object keys', () => {
+			it('should score object keys', async () => {
 				const json = { 'link "Models" [ref=e7]': 'value' }
-				const results = scoreElements(json, ['models'])
+				const results = await scoreSnapshotElements(json, 'models')
 				expect(results.length).toBeGreaterThan(0)
 			})
 
-			it('should traverse nested objects', () => {
+			it('should traverse nested objects', async () => {
 				const json = {
 					outer: {
 						inner: 'target value',
 					},
 				}
-				const results = scoreElements(json, ['target'])
+				const results = await scoreSnapshotElements(json, 'target')
 				expect(results.some((r) => r.path.includes('inner'))).toBe(true)
 			})
 
-			it('should traverse arrays', () => {
+			it('should traverse arrays', async () => {
 				const json = ['first', 'second', 'target']
-				const results = scoreElements(json, ['target'])
+				const results = await scoreSnapshotElements(json, 'target')
 				expect(results.some((r) => r.score > 0)).toBe(true)
 			})
 
-			it('should handle complex nested structures', () => {
+			it('should handle complex nested structures', async () => {
 				const json = {
 					'generic [ref=e1]': [
 						{
@@ -70,7 +128,7 @@ describe('Fuzzy Search', () => {
 						},
 					],
 				}
-				const results = scoreElements(json, ['search models'])
+				const results = await scoreSnapshotElements(json, 'search models')
 				expect(results.length).toBeGreaterThan(0)
 			})
 		})
@@ -101,6 +159,42 @@ describe('Fuzzy Search', () => {
 				const elements = [{ score: 0.5, path: ['a'], element: 'a', key: 'a' }]
 				const result = filterByThreshold(elements, 0.8)
 				expect(result).toHaveLength(0)
+			})
+		})
+
+		describe('filterTopPercent', () => {
+			it('should return the top 50 percent of elements', () => {
+				const elements = [
+					{ score: 0.1, path: ['a'], element: 'a', key: 'a' },
+					{ score: 0.9, path: ['b'], element: 'b', key: 'b' },
+					{ score: 0.3, path: ['c'], element: 'c', key: 'c' },
+					{ score: 0.7, path: ['d'], element: 'd', key: 'd' },
+				]
+
+				const result = filterTopPercent(elements, 0.5)
+
+				expect(result).toHaveLength(2)
+				expect(result.map((element) => element.score)).toEqual([0.9, 0.7])
+			})
+
+			it('should round up when selecting top percent of odd-sized input', () => {
+				const elements = [
+					{ score: 0.1, path: ['a'], element: 'a', key: 'a' },
+					{ score: 0.9, path: ['b'], element: 'b', key: 'b' },
+					{ score: 0.7, path: ['c'], element: 'c', key: 'c' },
+				]
+
+				const result = filterTopPercent(elements, 0.5)
+
+				expect(result).toHaveLength(2)
+				expect(result.map((element) => element.score)).toEqual([0.9, 0.7])
+			})
+
+			it('should return empty array for invalid percent', () => {
+				const elements = [{ score: 0.5, path: ['a'], element: 'a', key: 'a' }]
+
+				expect(filterTopPercent(elements, 0)).toEqual([])
+				expect(filterTopPercent(elements, 1.5)).toEqual([])
 			})
 		})
 	})
@@ -194,7 +288,7 @@ describe('Fuzzy Search', () => {
 				expect(await filterSnapshot(json, undefined)).toEqual(json)
 			})
 
-			it('should use step.elements when provided', async () => {
+			it('should prefer step.search over semantic action and expectation when provided', async () => {
 				const json = {
 					'generic [ref=e1]': [
 						{
@@ -209,47 +303,82 @@ describe('Fuzzy Search', () => {
 					],
 				}
 				const step: Step = {
-					action: 'some action',
-					expect: 'some expectation',
-					search: ['Search models', 'Models'],
+					action: 'open models page',
+					expect: 'models link is available',
+					search: ['GitHub'],
+				}
+				const result = (await filterSnapshot(json, step)) as JsonValue
+				const resultStr = JSON.stringify(result)
+				expect(resultStr).toContain('GitHub')
+				expect(resultStr).not.toContain('Models')
+			})
+
+			it('should fall back to step.search when action and expectation are blank', async () => {
+				const json = {
+					'generic [ref=e1]': [
+						{
+							'textbox "Search models" [ref=e19]': 'value',
+						},
+						{
+							'link "GitHub" [ref=e20]': 'value',
+						},
+					],
+				}
+				const step: Step = {
+					action: '',
+					expect: '',
+					search: ['Search models'],
 				}
 				const result = (await filterSnapshot(json, step)) as JsonValue
 				const resultStr = JSON.stringify(result)
 				expect(resultStr).toContain('Search models')
+				expect(resultStr).not.toContain('GitHub')
+			})
+
+			it('should filter snapshot from the combined action and expectation query', async () => {
+				const json = {
+					'generic [ref=e1]': [
+						{
+							'textbox "Search models" [ref=e19]': 'value',
+						},
+						{
+							'link "Download" [ref=e21]': 'value',
+						},
+					],
+				}
+				const step: Step = {
+					action: 'type in search models',
+					expect: 'search models textbox is visible',
+				}
+				const result = (await filterSnapshot(json, step)) as JsonValue
+				const resultStr = JSON.stringify(result)
+				expect(resultStr).toContain('Search models')
+				expect(resultStr).not.toContain('Download')
+			})
+
+			it('should use explicit topPercent instead of the default top-percent selection when provided', async () => {
+				const json = {
+					'generic [ref=e1]': [
+						{
+							'link "Models" [ref=e7]': 'value1',
+						},
+						{
+							'link "GitHub" [ref=e8]': 'value2',
+						},
+					],
+				}
+
+				const step: Step = {
+					action: 'models',
+					expect: 'models link is visible',
+					topPercent: 100,
+				}
+
+				const result = (await filterSnapshot(json, step)) as JsonValue
+				const resultStr = JSON.stringify(result)
+
 				expect(resultStr).toContain('Models')
-			})
-
-			it('should fall back to LLM when elements is empty array', async () => {
-				const json = {
-					'generic [ref=e1]': [
-						{
-							'textbox "Search models" [ref=e19]': 'value',
-						},
-					],
-				}
-				const step: Step = {
-					action: 'type in search',
-					expect: 'see results',
-					search: [],
-				}
-				const result = (await filterSnapshot(json, step)) as JsonValue
-				expect(result).toBeDefined()
-			})
-
-			it('should fall back to LLM when elements is undefined', async () => {
-				const json = {
-					'generic [ref=e1]': [
-						{
-							'textbox "Search models" [ref=e19]': 'value',
-						},
-					],
-				}
-				const step: Step = {
-					action: 'type in search',
-					expect: 'see results',
-				}
-				const result = (await filterSnapshot(json, step)) as JsonValue
-				expect(result).toBeDefined()
+				expect(resultStr).toContain('GitHub')
 			})
 
 			it('should filter snapshot using provided elements', async () => {

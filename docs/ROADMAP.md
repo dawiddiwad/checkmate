@@ -20,7 +20,7 @@ Focus: Stability, extension points, and better contributor ergonomics.
 - [ ] Custom tool registration API for external integrations
 - [ ] Better public examples for programmatic runner usage
 - [ ] More focused unit tests around runtime/session boundaries
-- [ ] Snapshot filtering tuning hooks beyond top-percent and threshold override
+- [ ] Snapshot filtering tuning hooks beyond top-percent selection
 - [ ] Better reporting around filtered snapshot size and selected branches
 
 ## Mid Term

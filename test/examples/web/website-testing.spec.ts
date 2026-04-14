@@ -88,7 +88,10 @@ test.describe('single-step : quick examples', async () => {
                 Search for 'The Catcher in the Rye'.`,
 				expect: `
 				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
-				search: ['search', 'the catcher in the rye', 'shelf'], // fuzzy search (~50-70% token savings)
+
+				// fuzzy search (~50-70% token savings)
+				search: ['search', 'the catcher in the rye', 'shelf'],
+				topPercent: 10,
 			})
 		})
 	})

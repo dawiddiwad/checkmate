@@ -140,7 +140,7 @@ Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/do
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-For complex pages, snapshot filtering now uses the combined `action + expect` text automatically. Optional `search` terms only act as fallback text when those fields are blank, and `threshold` explicitly switches filtering back to hard-threshold mode. See [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization).
+For complex pages, snapshot filtering now uses the combined `action + expect` text automatically. Optional `search` terms can override that query, and `topPercent` controls how much of the scored snapshot is kept. See [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization).
 
 See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
@@ -159,7 +159,7 @@ See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitor
 
 **High token costs**
 
-- Let the built-in snapshot filtering narrow the page automatically from your `action` and `expect`. Use `threshold` only when you want strict hard-threshold filtering for a step.
+- Let the built-in snapshot filtering narrow the page automatically from your `action` and `expect`. Use `topPercent` when you want to keep more or less of the scored snapshot for a step.
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)

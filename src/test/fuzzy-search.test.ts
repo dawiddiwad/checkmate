@@ -356,7 +356,7 @@ describe('Fuzzy Search', () => {
 				expect(resultStr).not.toContain('Download')
 			})
 
-			it('should use explicit threshold instead of top-percent filtering when provided', async () => {
+			it('should use explicit topPercent instead of the default top-percent selection when provided', async () => {
 				const json = {
 					'generic [ref=e1]': [
 						{
@@ -371,14 +371,14 @@ describe('Fuzzy Search', () => {
 				const step: Step = {
 					action: 'models',
 					expect: 'models link is visible',
-					threshold: 0.8,
+					topPercent: 100,
 				}
 
 				const result = (await filterSnapshot(json, step)) as JsonValue
 				const resultStr = JSON.stringify(result)
 
 				expect(resultStr).toContain('Models')
-				expect(resultStr).not.toContain('GitHub')
+				expect(resultStr).toContain('GitHub')
 			})
 
 			it('should filter snapshot using provided elements', async () => {

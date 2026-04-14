@@ -139,9 +139,9 @@ Default behavior:
 
 - Build one query from `action + expect`
 - Score snapshot keys and string leaves against that query
-- Keep the top `50%` of scored elements by default
+- If `search` is provided on the step, use those keywords instead of semantic `action + expect`
+- Keep the top `10%` of scored elements by default
 - If top-percent selection yields nothing, fall back to hard threshold `0.3`
-- If `threshold` is provided on the step, hard-threshold mode is used for that step explicitly
 
 **This feature significantly reduces the payload size, minimizing costs while improving AI determinism, reliability and speed.**
 
@@ -151,21 +151,21 @@ await ai.run({
 	expect: `The playwright.dev homepage is displayed`,
 
 	// optional snapshot filtering override
-	threshold: 0.5,
+	topPercent: 20,
 })
 ```
 
 ```
 debug: Scored 107 elements
-debug: Filtered to 54 elements from top 50%
+debug: Filtered to 21 elements from top 20%
 debug: Reduced snapshot from 4283 to 326 chars (92% reduction)
 ```
 
-Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `true`). `search` is now fallback query text, not the primary driver of filtering. `threshold` remains available when you want explicit hard-threshold filtering for a specific step.
+Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `true`). `search` is now an explicit keyword query override, and `topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
 
 The model can still request a full snapshot with the browser snapshot tool if the filtered tree is insufficient, so steps should not fail just because the initial snapshot was compact.
 
-For optimal results, write concrete `action` and `expect` text. Use `threshold` only when you need stricter filtering. Optional `search` terms still help if you intentionally leave `action` or `expect` sparse.
+For optimal results, write concrete `action` and `expect` text. Use `topPercent` as a real percentage from `1` to `100` when you need to keep more or less of the scored snapshot. Optional `search` terms still help when you want direct keyword control.
 
 **Tips for effective step text:**
 
@@ -173,7 +173,7 @@ For optimal results, write concrete `action` and `expect` text. Use `threshold` 
 - Include key text that appears on the page
 - Include action-related terms (search, filter, submit, etc.)
 - Keep the step focused on one user intent
-- Use `threshold` only when you need deterministic pruning behavior
+- Use `topPercent` only when you need to tune how aggressively snapshot content is pruned
 
 ### Estimated Costs
 

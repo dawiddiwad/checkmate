@@ -4,7 +4,7 @@ import { filterByThreshold, filterTopPercent, JsonValue, scoreSnapshotElements }
 import { reconstructTree } from './tree-reconstructor'
 
 const DEFAULT_SCORE_THRESHOLD = 0.3
-const DEFAULT_TOP_PERCENT = 0.5
+const DEFAULT_TOP_PERCENT = 0.1
 
 export async function filterSnapshot(json: JsonValue, step?: Step): Promise<JsonValue> {
 	if (!step) {
@@ -65,14 +65,15 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 }
 
 function resolveSearchQuery(step: Step): string {
-	const semanticQuery = `${step.action} ${step.expect}`.trim()
-	if (semanticQuery) {
-		return semanticQuery
+	if (step.search && step.search.length > 0) {
+		logger.info(`filterSnapshot: using search keywords: ${JSON.stringify(step.search)}`)
+		return step.search.join(' ')
 	}
 
-	if (step.search && step.search.length > 0) {
-		logger.debug(`filterSnapshot: Falling back to provided elements: ${JSON.stringify(step.search)}`)
-		return step.search.join(' ')
+	const semanticQuery = `${step.action} ${step.expect}`.trim()
+	if (semanticQuery) {
+		logger.info(`filterSnapshot: using step semantics`)
+		return semanticQuery
 	}
 
 	return ''

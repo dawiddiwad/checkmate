@@ -288,7 +288,7 @@ describe('Fuzzy Search', () => {
 				expect(await filterSnapshot(json, undefined)).toEqual(json)
 			})
 
-			it('should prefer semantic action and expectation over step.search', async () => {
+			it('should prefer step.search over semantic action and expectation when provided', async () => {
 				const json = {
 					'generic [ref=e1]': [
 						{
@@ -309,8 +309,8 @@ describe('Fuzzy Search', () => {
 				}
 				const result = (await filterSnapshot(json, step)) as JsonValue
 				const resultStr = JSON.stringify(result)
-				expect(resultStr).toContain('Models')
-				expect(resultStr).not.toContain('GitHub')
+				expect(resultStr).toContain('GitHub')
+				expect(resultStr).not.toContain('Models')
 			})
 
 			it('should fall back to step.search when action and expectation are blank', async () => {

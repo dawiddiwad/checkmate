@@ -45,13 +45,13 @@ describe('RuntimeConfig', () => {
 
 	describe('getModel', () => {
 		it('should return configured model when OPENAI_MODEL is set', () => {
-			process.env.OPENAI_MODEL = 'gpt-4o'
-			expect(configManager.getModel()).toBe('gpt-4o')
+			process.env.OPENAI_MODEL = 'gpt-5-nano'
+			expect(configManager.getModel()).toBe('gpt-5-nano')
 		})
 
-		it('should return default model "gpt-4.1-mini" when OPENAI_MODEL is not set', () => {
+		it('should return default model "gpt-5-mini" when OPENAI_MODEL is not set', () => {
 			delete process.env.OPENAI_MODEL
-			expect(configManager.getModel()).toBe('gpt-4.1-mini')
+			expect(configManager.getModel()).toBe('gpt-5-mini')
 		})
 
 		it('should return empty string if explicitly set to empty', () => {

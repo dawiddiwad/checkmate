@@ -162,7 +162,7 @@ See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitor
 - Let the built-in snapshot filtering narrow the page automatically from your `action` and `expect`. Use `topPercent` when you want to keep more or less of the scored snapshot for a step.
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
-- Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
+- Use a cheaper model, lower-end models often perform well (e.g., `gpt-5.4-nano` or `gpt-oss-20b`)
 
 See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
 
@@ -173,7 +173,7 @@ You can use any model that was trained for tool use. Here are the best picks bas
 
 - Highly recommended: [`gpt-oss-20b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
 - Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
-- OpenAI's `gpt-4.1-mini`, `gpt-5-mini` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
+- OpenAI's `gpt-5-mini`, `gpt-5.4-nano` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
 
 **Can I use local models?**  
 Yes - **_checkmate_** works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) (4‑bit quant variant). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.

@@ -33,14 +33,33 @@ export class ToolDispatcher {
 		}
 
 		if (typeof result === 'string') {
-			return { name: toolName, response: result }
+			return { name: toolName, response: result, status: inferToolResponseStatus(result) }
 		}
 
-		const normalizedResult = (result ?? { response: '' }) as { response: string; snapshot?: string | null }
+		const normalizedResult = (result ?? { response: '' }) as {
+			response: string
+			snapshot?: string | null
+			status?: 'success' | 'error'
+		}
 		return {
 			name: toolName,
 			response: normalizedResult.response,
 			snapshot: normalizedResult.snapshot ?? null,
+			status: normalizedResult.status ?? 'success',
 		}
 	}
+}
+
+function inferToolResponseStatus(response: string): 'success' | 'error' {
+	const normalizedResponse = response.trim().toLowerCase()
+	if (
+		normalizedResponse.startsWith('failed') ||
+		normalizedResponse.startsWith('error') ||
+		normalizedResponse.startsWith('tool call error') ||
+		normalizedResponse.startsWith('{"error"')
+	) {
+		return 'error'
+	}
+
+	return 'success'
 }

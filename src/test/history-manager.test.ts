@@ -95,6 +95,10 @@ describe('MessageHistory', () => {
 				{ role: 'user', content: 'regular user message' },
 				{
 					role: 'user',
+					content: `${MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER}:\n- successfully executed: browser_click_or_hover {"ref":"e123"}`,
+				},
+				{
+					role: 'user',
 					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\ncurrent snapshot` }],
 				},
 			]
@@ -105,6 +109,10 @@ describe('MessageHistory', () => {
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledWith([
 				{ role: 'user', content: 'regular user message' },
+				{
+					role: 'user',
+					content: `${MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER}:\n- successfully executed: browser_click_or_hover {"ref":"e123"}`,
+				},
 			])
 		})
 
@@ -124,6 +132,10 @@ describe('MessageHistory', () => {
 
 		it('should have correct screenshot identifier constant', () => {
 			expect(MessageHistory.SCREENSHOT_IDENTIFIER).toBe('this is a current screenshot of the page')
+		})
+
+		it('should have correct tool execution summary identifier constant', () => {
+			expect(MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER).toBe('tool execution summary')
 		})
 	})
 })

@@ -75,7 +75,7 @@ test.describe('trial dev org', async () => {
 				action: `
 				Click the 'Save' button on the 'New Account' form.`,
 				expect: `
-				Account record is saved successfully and details view is displayed.`,
+				Account record was saved successfully and details view is displayed.`,
 			})
 		})
 	})

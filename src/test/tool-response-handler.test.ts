@@ -7,6 +7,7 @@ import { RuntimeConfig } from '../config/runtime-config'
 describe('ToolResponseHandler', () => {
 	let openaiClient: {
 		addToolResponse: ReturnType<typeof vi.fn>
+		addToolExecutionSummaryMessage: ReturnType<typeof vi.fn>
 		addCurrentSnapshotMessage: ReturnType<typeof vi.fn>
 		addCurrentScreenshotMessage: ReturnType<typeof vi.fn>
 		sendToolResponseWithRetry: ReturnType<typeof vi.fn>
@@ -21,6 +22,7 @@ describe('ToolResponseHandler', () => {
 	beforeEach(() => {
 		openaiClient = {
 			addToolResponse: vi.fn().mockResolvedValue(undefined),
+			addToolExecutionSummaryMessage: vi.fn().mockResolvedValue(undefined),
 			addCurrentSnapshotMessage: vi.fn().mockResolvedValue(undefined),
 			addCurrentScreenshotMessage: vi.fn().mockResolvedValue(undefined),
 			sendToolResponseWithRetry: vi.fn().mockResolvedValue({ choices: [] }),
@@ -53,12 +55,26 @@ describe('ToolResponseHandler', () => {
 			name: 'browser_click_or_hover',
 			response: 'Timeline of events after last function call:\n[123ms] Clicked submit',
 			snapshot: 'page snapshot:\n{button Submit}',
+			status: 'success',
 		}
 
-		await handler.handleMultiple([{ toolCallId: 'call_1', toolResponse }], step, callback)
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_1',
+					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123', goal: 'submit form' } },
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
 
 		expect(historyManager.removeEphemeralStateMessages).toHaveBeenCalledWith(openaiClient)
 		expect(openaiClient.addToolResponse).toHaveBeenCalledWith('call_1', toolResponse.response)
+		expect(openaiClient.addToolExecutionSummaryMessage).toHaveBeenCalledWith(
+			'- successfully executed: browser_click_or_hover {"ref":"e123","goal":"submit form"}'
+		)
 		expect(openaiClient.addCurrentSnapshotMessage).toHaveBeenCalledWith(toolResponse.snapshot)
 		expect(openaiClient.addCurrentScreenshotMessage).toHaveBeenCalledWith('YmFzZTY0', 'image/png')
 		expect(openaiClient.sendToolResponseWithRetry).toHaveBeenCalledTimes(1)
@@ -71,12 +87,29 @@ describe('ToolResponseHandler', () => {
 			name: 'browser_click_or_hover',
 			response: 'failed to click element',
 			snapshot: null,
+			status: 'error',
 		}
 
-		await handler.handleMultiple([{ toolCallId: 'call_1', toolResponse }], step, callback)
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_1',
+					toolCall: {
+						name: 'browser_click_or_hover',
+						arguments: { ref: 'e999', goal: 'click missing button' },
+					},
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
 
 		expect(historyManager.removeEphemeralStateMessages).toHaveBeenCalledWith(openaiClient)
 		expect(openaiClient.addToolResponse).toHaveBeenCalledWith('call_1', toolResponse.response)
+		expect(openaiClient.addToolExecutionSummaryMessage).toHaveBeenCalledWith(
+			'- tool call error: browser_click_or_hover {"ref":"e999","goal":"click missing button"} -> failed to click element'
+		)
 		expect(openaiClient.addCurrentSnapshotMessage).not.toHaveBeenCalled()
 		expect(openaiClient.addCurrentScreenshotMessage).toHaveBeenCalledTimes(1)
 	})

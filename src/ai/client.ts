@@ -102,6 +102,13 @@ export class AiClient {
 		this.messages.push({ role: 'user', content })
 	}
 
+	async addToolExecutionSummaryMessage(content: string): Promise<void> {
+		this.messages.push({
+			role: 'user',
+			content: `${MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER}:\n${content}`,
+		})
+	}
+
 	async addCurrentSnapshotMessage(snapshotContent: string): Promise<void> {
 		this.messages.push({
 			role: 'user',

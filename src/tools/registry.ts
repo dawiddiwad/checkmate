@@ -6,6 +6,7 @@ export type ToolResponse = {
 	name?: string
 	response: string
 	snapshot?: string | null
+	status: 'success' | 'error'
 }
 
 export class ToolRegistry {

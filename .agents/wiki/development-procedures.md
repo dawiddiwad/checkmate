@@ -60,8 +60,7 @@ Then update:
 
 ## Done Criteria
 
-- compile passes
-- relevant tests pass
+- `npm run validation:check` passes
 - docs match behavior
 - examples still make sense
 - the code is easy for a human to read and maintain

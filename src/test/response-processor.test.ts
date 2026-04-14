@@ -176,6 +176,10 @@ describe('ResponseProcessor', () => {
 				[
 					{
 						toolCallId: 'call_1',
+						toolCall: {
+							name: 'browser_click',
+							arguments: { ref: 'e123', name: 'Button', goal: 'click' },
+						},
 						toolResponse: 'tool response',
 					},
 				],

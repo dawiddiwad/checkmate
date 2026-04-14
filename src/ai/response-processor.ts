@@ -57,7 +57,7 @@ export class ResponseProcessor {
 				continue
 			}
 
-			const toolResponses: Array<{ toolCallId: string; toolResponse: ToolResponse }> = []
+			const toolResponses: Array<{ toolCallId: string; toolCall: ToolCall; toolResponse: ToolResponse }> = []
 			let dispatchedToolCall = false
 
 			for (const toolCall of choice.message.tool_calls) {
@@ -72,7 +72,7 @@ export class ResponseProcessor {
 				}
 				const toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, { step, resolveStepResult })
 				if (toolResponse) {
-					toolResponses.push({ toolCallId: toolCall.id, toolResponse })
+					toolResponses.push({ toolCallId: toolCall.id, toolCall: parsedToolCall, toolResponse })
 				}
 			}
 

@@ -9,6 +9,7 @@ export type ToolCall = {
 export type AgentToolResponse = {
 	response: string
 	snapshot?: string | null
+	status?: 'success' | 'error'
 }
 
 export type AgentToolResult = AgentToolResponse | string | void

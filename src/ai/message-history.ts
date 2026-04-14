@@ -11,6 +11,7 @@ type InitialMessageParameters = {
 export class MessageHistory {
 	static readonly SNAPSHOT_IDENTIFIER = 'this is a current page snapshot'
 	static readonly SCREENSHOT_IDENTIFIER = 'this is a current screenshot of the page'
+	static readonly TOOL_EXECUTION_SUMMARY_IDENTIFIER = 'tool execution summary'
 
 	buildInitialMessages(config: InitialMessageParameters): ChatCompletionMessageParam[] {
 		return [

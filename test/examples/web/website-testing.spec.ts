@@ -91,7 +91,7 @@ test.describe('single-step : quick examples', async () => {
 
 				// fuzzy search (~50-70% token savings)
 				search: ['search', 'the catcher in the rye', 'shelf'],
-				topPercent: 10,
+				topPercent: 10, //agressive snapshot filtering to demonstrate fuzzy search benefits
 			})
 		})
 	})
@@ -112,6 +112,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 				Click "Shop Now" on "Men's Outerwear" category
 				Click on the first product: "Men's Tech Shell Full-Zip"`,
 				expect: `Product detail page is displayed with title, price, and selectors`,
+				topPercent: 80, // step with many assertions, needs precise snapshot
 			})
 		})
 
@@ -141,13 +142,13 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 				- Expiry year: '2026'
 				- CVV: '123'
 				Click "Place Order"`,
-				expect: `Demo checkout process completed message is displayed along with Finish button`,
+				expect: `Checkout process completed message is displayed along with Finish button`,
 			})
 		})
 
 		await test.step('Finish and return to home', async () => {
 			await ai.run({
-				action: `Click the "Finish" button on the confirmation page.`,
+				action: `Finish and return to home`,
 				expect: `User is returned to the home page`,
 			})
 		})
@@ -239,6 +240,7 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 			await ai.run({
 				action: ``,
 				expect: `Product detail page is displayed with title, price, and selectors`,
+				topPercent: 80, // ambiguous step, needs precise snapshot
 			})
 		})
 
@@ -274,7 +276,7 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 
 		await test.step('Finish and return to home', async () => {
 			await ai.run({
-				action: `Click the "Finish" button on the confirmation page.`,
+				action: `Finish and return to home`,
 				expect: `User is returned to the home page`,
 			})
 		})

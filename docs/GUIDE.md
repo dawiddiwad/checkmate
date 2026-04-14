@@ -16,24 +16,24 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 
 ### AI API Settings
 
-| Variable                                | Default        | Description                                                                                               |
-| --------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`                        | -              | **Required** - Your OpenAI API key (or compatible provider)                                               |
-| `OPENAI_BASE_URL`                       | -              | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                 |
-| `OPENAI_MODEL`                          | `gpt-4.1-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                    |
-| `OPENAI_TEMPERATURE`                    | `1.0`          | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                              |
-| `OPENAI_REASONING_EFFORT`               | -              | Optional - Reasoning effort for models: low, medium, high                                                 |
-| `OPENAI_TIMEOUT_SECONDS`                | `60`           | API request timeout in seconds                                                                            |
-| `OPENAI_API_RATE_LIMIT_DELAY_SECONDS`   | `0`            | Optional fixed delay before each API call, useful when your provider is sensitive to burst traffic        |
-| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`            | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                 |
-| `OPENAI_TOOL_CHOICE`                    | `required`     | Tool choice: auto, required, none                                                                         |
-| `OPENAI_ALLOWED_TOOLS`                  | -              | Comma-separated list of allowed tools (if not set, all tools available)                                   |
-| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`        | Include compressed screenshots in snapshot responses                                                      |
-| `OPENAI_API_TOKEN_BUDGET_USD`           | -              | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced. |
-| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -              | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
-| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`            | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
-| `CHECKMATE_LOG_LEVEL`                   | `off`          | Logging verbosity: debug, info, warn, error, off                                                          |
-| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`         | Enable semantic page snapshot filtering before requests are sent to the model                             |
+| Variable                                | Default      | Description                                                                                               |
+| --------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`                        | -            | **Required** - Your OpenAI API key (or compatible provider)                                               |
+| `OPENAI_BASE_URL`                       | -            | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                 |
+| `OPENAI_MODEL`                          | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                    |
+| `OPENAI_TEMPERATURE`                    | `1.0`        | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                              |
+| `OPENAI_REASONING_EFFORT`               | -            | Optional - Reasoning effort for models: low, medium, high                                                 |
+| `OPENAI_TIMEOUT_SECONDS`                | `60`         | API request timeout in seconds                                                                            |
+| `OPENAI_API_RATE_LIMIT_DELAY_SECONDS`   | `0`          | Optional fixed delay before each API call, useful when your provider is sensitive to burst traffic        |
+| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`          | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                 |
+| `OPENAI_TOOL_CHOICE`                    | `required`   | Tool choice: auto, required, none                                                                         |
+| `OPENAI_ALLOWED_TOOLS`                  | -            | Comma-separated list of allowed tools (if not set, all tools available)                                   |
+| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`      | Include compressed screenshots in snapshot responses                                                      |
+| `OPENAI_API_TOKEN_BUDGET_USD`           | -            | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced. |
+| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -            | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
+| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`          | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
+| `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off                                                          |
+| `CHECKMATE_SNAPSHOT_FILTERING`          | `true`       | Enable semantic page snapshot filtering before requests are sent to the model                             |
 
 ### Playwright Configuration
 
@@ -177,7 +177,7 @@ For optimal results, write concrete `action` and `expect` text. Use `topPercent`
 
 ### Estimated Costs
 
-**Gemini-2.5-flash / GPT-4.1-mini**:
+**Gemini-2.5-flash / GPT-5-mini**:
 
 - Simple test (~5 steps): ~$0.01 - $0.05
 - Complex test (~20 steps): ~$0.10 - $0.40

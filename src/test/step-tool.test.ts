@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { StepTool } from '../step/tool/step-tool'
-import { ToolCall } from '../step/tool/openai-tool'
-import { StepStatusCallback } from '../step/types'
+import { StepResultTool } from '../tools/step/result-tool'
+import { ToolCall } from '../tools/tool-contract'
+import { ResolveStepResult } from '../runtime/types'
 
-describe('StepTool', () => {
-	let stepTool: StepTool
-	let mockCallback: StepStatusCallback
+describe('StepResultTool', () => {
+	let stepTool: StepResultTool
+	let mockCallback: ResolveStepResult
 
 	beforeEach(() => {
-		stepTool = new StepTool()
+		stepTool = new StepResultTool()
 		mockCallback = vi.fn()
 	})
 
@@ -19,7 +19,7 @@ describe('StepTool', () => {
 
 		it('should include fail test step declaration', () => {
 			const failTool = stepTool.functionDeclarations.find(
-				(tool) => tool.function.name === StepTool.TOOL_FAIL_TEST_STEP
+				(tool) => tool.function.name === StepResultTool.TOOL_FAIL_TEST_STEP
 			)
 			expect(failTool).toBeDefined()
 			expect(failTool?.function.description).toContain('Fail the test step')
@@ -28,7 +28,7 @@ describe('StepTool', () => {
 
 		it('should include pass test step declaration', () => {
 			const passTool = stepTool.functionDeclarations.find(
-				(tool) => tool.function.name === StepTool.TOOL_PASS_TEST_STEP
+				(tool) => tool.function.name === StepResultTool.TOOL_PASS_TEST_STEP
 			)
 			expect(passTool).toBeDefined()
 			expect(passTool?.function.description).toContain('Pass the test step')
@@ -51,7 +51,7 @@ describe('StepTool', () => {
 	describe('call method - pass test step', () => {
 		it('should call callback with passed status', () => {
 			const toolCall: ToolCall = {
-				name: StepTool.TOOL_PASS_TEST_STEP,
+				name: StepResultTool.TOOL_PASS_TEST_STEP,
 				arguments: { actualResult: 'Test passed successfully' },
 			}
 
@@ -66,7 +66,7 @@ describe('StepTool', () => {
 
 		it('should handle pass with empty actual result', () => {
 			const toolCall: ToolCall = {
-				name: StepTool.TOOL_PASS_TEST_STEP,
+				name: StepResultTool.TOOL_PASS_TEST_STEP,
 				arguments: { actualResult: '' },
 			}
 
@@ -80,7 +80,7 @@ describe('StepTool', () => {
 
 		it('should handle pass with undefined arguments', () => {
 			const toolCall: ToolCall = {
-				name: StepTool.TOOL_PASS_TEST_STEP,
+				name: StepResultTool.TOOL_PASS_TEST_STEP,
 				arguments: undefined,
 			}
 
@@ -96,7 +96,7 @@ describe('StepTool', () => {
 	describe('call method - fail test step', () => {
 		it('should call callback with failed status', () => {
 			const toolCall: ToolCall = {
-				name: StepTool.TOOL_FAIL_TEST_STEP,
+				name: StepResultTool.TOOL_FAIL_TEST_STEP,
 				arguments: { actualResult: 'Expected button, found none' },
 			}
 
@@ -111,7 +111,7 @@ describe('StepTool', () => {
 
 		it('should handle fail with empty actual result', () => {
 			const toolCall: ToolCall = {
-				name: StepTool.TOOL_FAIL_TEST_STEP,
+				name: StepResultTool.TOOL_FAIL_TEST_STEP,
 				arguments: { actualResult: '' },
 			}
 
@@ -125,7 +125,7 @@ describe('StepTool', () => {
 
 		it('should handle fail with undefined arguments', () => {
 			const toolCall: ToolCall = {
-				name: StepTool.TOOL_FAIL_TEST_STEP,
+				name: StepResultTool.TOOL_FAIL_TEST_STEP,
 				arguments: undefined,
 			}
 
@@ -164,14 +164,14 @@ describe('StepTool', () => {
 			}
 
 			const result = stepTool.call(toolCall, mockCallback)
-			expect(result).toContain('Step tool not implemented: non_existent_tool')
+			expect(result).toContain('Step result tool not implemented: non_existent_tool')
 		})
 	})
 
 	describe('tool name constants', () => {
 		it('should have correct tool name constants', () => {
-			expect(StepTool.TOOL_FAIL_TEST_STEP).toBe('fail_test_step')
-			expect(StepTool.TOOL_PASS_TEST_STEP).toBe('pass_test_step')
+			expect(StepResultTool.TOOL_FAIL_TEST_STEP).toBe('fail_test_step')
+			expect(StepResultTool.TOOL_PASS_TEST_STEP).toBe('pass_test_step')
 		})
 	})
 
@@ -193,7 +193,7 @@ describe('StepTool', () => {
 
 		it('should call callback exactly once for valid tools', () => {
 			const passCall: ToolCall = {
-				name: StepTool.TOOL_PASS_TEST_STEP,
+				name: StepResultTool.TOOL_PASS_TEST_STEP,
 				arguments: { actualResult: 'passed' },
 			}
 
@@ -202,7 +202,7 @@ describe('StepTool', () => {
 
 			mockCallback = vi.fn()
 			const failCall: ToolCall = {
-				name: StepTool.TOOL_FAIL_TEST_STEP,
+				name: StepResultTool.TOOL_FAIL_TEST_STEP,
 				arguments: { actualResult: 'failed' },
 			}
 

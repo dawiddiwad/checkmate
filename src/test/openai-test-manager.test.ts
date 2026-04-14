@@ -1,19 +1,18 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { OpenAITestManager } from '../step/openai/openai-test-manager'
-import { Step, StepStatusCallback } from '../step/types'
+import { CheckmateRunner } from '../runtime/runner'
+import { Step, ResolveStepResult } from '../runtime/types'
 import { Page } from '@playwright/test'
 import { ChatCompletionFunctionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { AriaPageSnapshot } from '../step/tool/page-snapshot'
 
 interface TestableTestManager {
-	openaiClient: {
+	aiClient: {
 		initialize: Mock
 		sendMessage: Mock
 	}
 }
 
-vi.mock('../../src/step/configuration-manager', () => ({
-	ConfigurationManager: class {
+vi.mock('../../src/config/runtime-config', () => ({
+	RuntimeConfig: class {
 		getLogLevel = vi.fn().mockReturnValue('off')
 		getApiKey = vi.fn().mockReturnValue('test-key')
 		getBaseURL = vi.fn().mockReturnValue(undefined)
@@ -24,7 +23,7 @@ vi.mock('../../src/step/configuration-manager', () => ({
 	},
 }))
 
-vi.mock('../../src/step/logger', () => ({
+vi.mock('../../src/logging/logger', () => ({
 	CheckmateLogger: {
 		create: vi.fn().mockReturnValue({
 			info: vi.fn(),
@@ -35,39 +34,41 @@ vi.mock('../../src/step/logger', () => ({
 	},
 }))
 
-vi.mock('../../src/step/tool/step-tool', () => ({
-	StepTool: class {
+vi.mock('../../src/tools/step/result-tool', () => ({
+	StepResultTool: class {
 		functionDeclarations: ChatCompletionFunctionTool[] = []
 	},
 }))
 
-vi.mock('../../src/step/tool/browser-tool', () => ({
+vi.mock('../../src/tools/browser/tool', () => ({
 	BrowserTool: class {
 		functionDeclarations: ChatCompletionFunctionTool[] = []
 	},
 }))
 
-vi.mock('../../src/salesforce/salesforce-tool', () => ({
-	SalesforceTool: class {
+vi.mock('../../src/tools/salesforce/login-tool', () => ({
+	SalesforceLoginTool: class {
 		functionDeclarations: ChatCompletionFunctionTool[] = []
 	},
 }))
 
-vi.mock('../../src/step/tool/tool-registry', () => ({
+vi.mock('../../src/tools/registry', () => ({
 	ToolRegistry: class {
+		register = vi.fn()
 		getTools = vi.fn().mockResolvedValue([])
+		setStep = vi.fn()
 	},
 }))
 
-vi.mock('../../src/step/openai/openai-client', () => ({
-	OpenAIClient: class {
+vi.mock('../../src/ai/client', () => ({
+	AiClient: class {
 		initialize = vi.fn().mockResolvedValue(undefined)
 		sendMessage = vi.fn().mockResolvedValue(undefined)
 		page = {} as Page
 	},
 }))
 
-vi.mock('../../src/step/openai/history-manager', () => {
+vi.mock('../../src/ai/message-history', () => {
 	class MockHistoryManager {
 		buildInitialMessages = vi.fn().mockReturnValue([
 			{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
@@ -81,30 +82,29 @@ vi.mock('../../src/step/openai/history-manager', () => {
 	}
 
 	return {
-		HistoryManager: MockHistoryManager,
+		MessageHistory: MockHistoryManager,
 		getBuildInitialMessagesMock: () => MockHistoryManager.instance?.buildInitialMessages,
 	}
 })
 
-vi.mock('../../src/step/tool/page-snapshot', () => ({
-	PageSnapshot: class {
-		static lastSnapshot: AriaPageSnapshot = null
+vi.mock('../../src/tools/browser/snapshot-service', () => ({
+	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot')
 	},
 }))
 
-vi.mock('../../src/step/openai/prompts', () => ({
+vi.mock('../../src/ai/prompts', () => ({
 	STEP_SYSTEM_PROMPT: vi.fn(() => 'system prompt'),
 	STEP_START_USER_PROMPT: vi.fn((step) => `Execute: ${step.action}`),
 }))
 
-describe('OpenAITestManager', () => {
-	let testManager: OpenAITestManager
+describe('CheckmateRunner', () => {
+	let testManager: CheckmateRunner
 	let mockPage: Page
 
 	beforeEach(() => {
 		mockPage = {} as Page
-		testManager = new OpenAITestManager(mockPage)
+		testManager = new CheckmateRunner(mockPage)
 	})
 
 	describe('constructor', () => {
@@ -128,12 +128,12 @@ describe('OpenAITestManager', () => {
 				expect: 'Button should be clicked',
 			}
 
-			testManager = new OpenAITestManager(mockPage)
+			testManager = new CheckmateRunner(mockPage)
 		})
 
 		it('should successfully run when step passes', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
+			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
 			})
@@ -144,8 +144,8 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should throw error when step fails', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
+			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: false, actual: 'Button not found' }), 0)
 				return Promise.resolve()
 			})
@@ -154,8 +154,8 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should include step action in error message when failing', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
+			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: false, actual: 'Failed' }), 0)
 				return Promise.resolve()
 			})
@@ -169,7 +169,7 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should wrap errors from OpenAI client', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
+			const mockClient = (testManager as unknown as TestableTestManager).aiClient
 			mockClient.initialize.mockRejectedValue(new Error('API Error'))
 
 			try {
@@ -184,7 +184,7 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should handle sendMessage errors', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
+			const mockClient = (testManager as unknown as TestableTestManager).aiClient
 			mockClient.initialize.mockResolvedValue(undefined)
 			mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
 			try {
@@ -196,13 +196,13 @@ describe('OpenAITestManager', () => {
 		})
 
 		it('should build initial messages and send them before the first model request', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).openaiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: StepStatusCallback) => {
+			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
 			})
 
-			const historyModule = (await import('../../src/step/openai/history-manager')) as unknown as {
+			const historyModule = (await import('../../src/ai/message-history')) as unknown as {
 				getBuildInitialMessagesMock: () => Mock | undefined
 			}
 

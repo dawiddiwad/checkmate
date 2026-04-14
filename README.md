@@ -115,6 +115,20 @@ Browser settings (viewport, headless mode, video recording, timeouts, etc.) are 
 
 See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
 
+### Programmatic API
+
+If you use **_checkmate_** without the fixture wrapper, the public entry point is now `CheckmateRunner`:
+
+```typescript
+import { CheckmateRunner } from 'checkmate-exp'
+
+const runner = new CheckmateRunner(page)
+await runner.run({
+	action: 'Open the pricing page',
+	expect: 'Pricing details are visible',
+})
+```
+
 ## Costs
 
 Costs vary based on model and provider, test complexity and number of steps.
@@ -126,7 +140,7 @@ Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/do
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-For complex pages, you can provide additional `search` keywords to reduce token costs by up to 90%. See [fuzzy search](docs/GUIDE.md#using-fuzzy-search-for-token-optimization).
+For complex pages, snapshot filtering now uses the combined `action + expect` text automatically. Optional `search` terms only act as fallback text when those fields are blank, and `threshold` explicitly switches filtering back to hard-threshold mode. See [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization).
 
 See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
@@ -145,7 +159,7 @@ See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitor
 
 **High token costs**
 
-- Use `search` keywords to limit the scope of the page for the AI. See [fuzzy search](docs/GUIDE.md#using-fuzzy-search-for-token-optimization).
+- Let the built-in snapshot filtering narrow the page automatically from your `action` and `expect`. Use `threshold` only when you want strict hard-threshold filtering for a step.
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { EventEmitter } from 'events'
-import { TransientStateTracker } from '../step/tool/transient-state-tracker'
+import { TransientStateTracker } from '../tools/browser/transient-state-tracker'
 import type { ConsoleMessage, Dialog, Frame, Page } from '@playwright/test'
 
 class FakePage extends EventEmitter {

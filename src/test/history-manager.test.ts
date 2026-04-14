@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { HistoryManager } from '../step/openai/history-manager'
-import { OpenAIClient } from '../step/openai/openai-client'
+import { MessageHistory } from '../ai/message-history'
+import { AiClient } from '../ai/client'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { MockOpenAIClient } from './test-types'
 
@@ -9,12 +9,12 @@ interface TextContentPart {
 	text: string
 }
 
-describe('HistoryManager', () => {
-	let historyManager: HistoryManager
+describe('MessageHistory', () => {
+	let historyManager: MessageHistory
 	let mockOpenAIClient: MockOpenAIClient
 
 	beforeEach(() => {
-		historyManager = new HistoryManager()
+		historyManager = new MessageHistory()
 		mockOpenAIClient = {
 			getMessages: vi.fn(),
 			replaceHistory: vi.fn(),
@@ -36,7 +36,7 @@ describe('HistoryManager', () => {
 			expect((initialMessages[0].content as TextContentPart[])[0].text).toBe('system prompt')
 			expect((initialMessages[1].content as TextContentPart[])[0].text).toBe('step prompt')
 			expect((initialMessages[2].content as TextContentPart[])[0].text).toContain(
-				HistoryManager.SNAPSHOT_IDENTIFIER
+				MessageHistory.SNAPSHOT_IDENTIFIER
 			)
 		})
 	})
@@ -48,7 +48,7 @@ describe('HistoryManager', () => {
 				{ role: 'user', content: 'step prompt' },
 				{
 					role: 'user',
-					content: [{ type: 'text', text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\ninitial snapshot` }],
+					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\ninitial snapshot` }],
 				},
 				{
 					role: 'assistant',
@@ -64,12 +64,12 @@ describe('HistoryManager', () => {
 				{ role: 'tool', tool_call_id: 'call_1', content: 'Timeline: navigated to example.com' },
 				{
 					role: 'user',
-					content: [{ type: 'text', text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\nupdated snapshot` }],
+					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\nupdated snapshot` }],
 				},
 				{
 					role: 'user',
 					content: [
-						{ type: 'text', text: HistoryManager.SCREENSHOT_IDENTIFIER },
+						{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
 						{
 							type: 'image_url',
 							image_url: { url: 'data:image/png;base64,abc', detail: 'high' },
@@ -80,7 +80,7 @@ describe('HistoryManager', () => {
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			historyManager.removeEphemeralStateMessages(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.removeEphemeralStateMessages(mockOpenAIClient as unknown as AiClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledWith([
 				{ role: 'system', content: 'system prompt' },
@@ -95,13 +95,13 @@ describe('HistoryManager', () => {
 				{ role: 'user', content: 'regular user message' },
 				{
 					role: 'user',
-					content: [{ type: 'text', text: `${HistoryManager.SNAPSHOT_IDENTIFIER}:\ncurrent snapshot` }],
+					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\ncurrent snapshot` }],
 				},
 			]
 
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue(mockHistory)
 
-			historyManager.removeEphemeralStateMessages(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.removeEphemeralStateMessages(mockOpenAIClient as unknown as AiClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledWith([
 				{ role: 'user', content: 'regular user message' },
@@ -111,7 +111,7 @@ describe('HistoryManager', () => {
 		it('should handle empty history', () => {
 			vi.mocked(mockOpenAIClient.getMessages).mockReturnValue([])
 
-			historyManager.removeEphemeralStateMessages(mockOpenAIClient as unknown as OpenAIClient)
+			historyManager.removeEphemeralStateMessages(mockOpenAIClient as unknown as AiClient)
 
 			expect(mockOpenAIClient.replaceHistory).toHaveBeenCalledWith([])
 		})
@@ -119,11 +119,11 @@ describe('HistoryManager', () => {
 
 	describe('constants', () => {
 		it('should have correct snapshot identifier constant', () => {
-			expect(HistoryManager.SNAPSHOT_IDENTIFIER).toBe('this is a current page snapshot')
+			expect(MessageHistory.SNAPSHOT_IDENTIFIER).toBe('this is a current page snapshot')
 		})
 
 		it('should have correct screenshot identifier constant', () => {
-			expect(HistoryManager.SCREENSHOT_IDENTIFIER).toBe('this is a current screenshot of the page')
+			expect(MessageHistory.SCREENSHOT_IDENTIFIER).toBe('this is a current screenshot of the page')
 		})
 	})
 })

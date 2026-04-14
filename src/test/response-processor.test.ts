@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { ResponseProcessor } from '../step/openai/response-processor'
-import { OpenAIClient } from '../step/openai/openai-client'
+import { ResponseProcessor } from '../ai/response-processor'
+import { AiClient } from '../ai/client'
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { Step, StepStatusCallback } from '../step/types'
+import { Step, ResolveStepResult } from '../runtime/types'
 import { Page } from '@playwright/test'
 import { MockOpenAIClient } from './test-types'
 
@@ -18,15 +18,15 @@ interface TestableResponseProcessor {
 		handle: Mock
 		handleMultiple: Mock
 	}
-	messageContentHandler: {
+	messageHandler: {
 		handle: Mock
 	}
-	rateLimitHandler: {
-		waitForRateLimit: Mock
+	rateLimitPolicy: {
+		wait: Mock
 	}
 }
 
-vi.mock('../../src/step/openai/openai-test-manager', () => ({
+vi.mock('../../src/logging', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -35,46 +35,47 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	},
 }))
 
-vi.mock('../../src/step/openai/token-tracker', () => ({
+vi.mock('../../src/ai/token-tracker', () => ({
 	TokenTracker: class {
 		log = vi.fn()
 		resetStep = vi.fn()
 	},
 }))
 
-vi.mock('../../src/step/tool/tool-dispatcher', () => ({
+vi.mock('../../src/tools/dispatcher', () => ({
 	ToolDispatcher: class {
+		getToolRegistry = vi.fn().mockReturnValue({})
 		dispatch = vi.fn()
 	},
 }))
 
-vi.mock('../../src/step/tool/tool-response-handler', () => ({
+vi.mock('../../src/ai/tool-response-handler', () => ({
 	ToolResponseHandler: class {
 		handle = vi.fn()
 		handleMultiple = vi.fn()
 	},
 }))
 
-vi.mock('../../src/step/openai/rate-limit-handler', () => ({
-	RateLimitHandler: class {
-		waitForRateLimit = vi.fn().mockResolvedValue(undefined)
+vi.mock('../../src/ai/rate-limit-policy', () => ({
+	RateLimitPolicy: class {
+		wait = vi.fn().mockResolvedValue(undefined)
 	},
 }))
 
-vi.mock('../../src/step/openai/message-content-handler', () => ({
-	MessageContentHandler: class {
+vi.mock('../../src/ai/message-handler', () => ({
+	MessageHandler: class {
 		handle = vi.fn()
 	},
 }))
 
-vi.mock('../../src/step/openai/history-manager', () => ({
-	HistoryManager: class {
+vi.mock('../../src/ai/message-history', () => ({
+	MessageHistory: class {
 		addInitialSnapshot = vi.fn()
 	},
 }))
 
-vi.mock('../../src/step/tool/screenshot-processor', () => ({
-	ScreenshotProcessor: class {},
+vi.mock('../../src/tools/browser/screenshot-service', () => ({
+	BrowserScreenshotService: class {},
 }))
 
 describe('ResponseProcessor', () => {
@@ -82,14 +83,14 @@ describe('ResponseProcessor', () => {
 	let mockOpenAIClient: MockOpenAIClient
 	let mockPage: Page
 	let mockStep: Step
-	let mockCallback: StepStatusCallback
+	let mockCallback: ResolveStepResult
 
 	beforeEach(() => {
 		mockPage = {} as Page
 
 		mockOpenAIClient = {
 			countHistoryTokens: vi.fn().mockReturnValue(1000),
-			getConfigurationManager: vi.fn().mockReturnValue({
+			getRuntimeConfig: vi.fn().mockReturnValue({
 				getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
 			}),
 			getToolRegistry: vi.fn().mockReturnValue({}),
@@ -99,7 +100,7 @@ describe('ResponseProcessor', () => {
 
 		responseProcessor = new ResponseProcessor({
 			page: mockPage,
-			openaiClient: mockOpenAIClient as unknown as OpenAIClient,
+			aiClient: mockOpenAIClient as unknown as AiClient,
 		})
 
 		mockStep = {
@@ -328,8 +329,7 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const messageContentHandler = (responseProcessor as unknown as TestableResponseProcessor)
-				.messageContentHandler
+			const messageContentHandler = (responseProcessor as unknown as TestableResponseProcessor).messageHandler
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
@@ -357,8 +357,7 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const messageContentHandler = (responseProcessor as unknown as TestableResponseProcessor)
-				.messageContentHandler
+			const messageContentHandler = (responseProcessor as unknown as TestableResponseProcessor).messageHandler
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
@@ -417,11 +416,11 @@ describe('ResponseProcessor', () => {
 				],
 			}
 
-			const rateLimitHandler = (responseProcessor as unknown as TestableResponseProcessor).rateLimitHandler
+			const rateLimitHandler = (responseProcessor as unknown as TestableResponseProcessor).rateLimitPolicy
 
 			await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
 
-			expect(rateLimitHandler.waitForRateLimit).toHaveBeenCalled()
+			expect(rateLimitHandler.wait).toHaveBeenCalled()
 		})
 
 		it('should log token usage', async () => {

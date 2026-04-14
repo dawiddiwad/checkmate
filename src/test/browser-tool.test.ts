@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { BrowserTool } from '../step/tool/browser-tool'
+import { BrowserTool } from '../tools/browser/tool'
 import { Page } from '@playwright/test'
-import { ToolCall } from '../step/tool/openai-tool'
+import { ToolCall } from '../tools/tool-contract'
 import { MockPage, MockLocator } from './test-types'
 
 const trackerMocks = vi.hoisted(() => ({
@@ -10,7 +10,7 @@ const trackerMocks = vi.hoisted(() => ({
 	formatTimelineMock: vi.fn().mockReturnValue(''),
 }))
 
-vi.mock('../../src/step/openai/openai-test-manager', () => ({
+vi.mock('../../src/logging', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -19,13 +19,13 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	},
 }))
 
-vi.mock('../../src/step/tool/page-snapshot', () => ({
-	PageSnapshot: class {
+vi.mock('../../src/tools/browser/snapshot-service', () => ({
+	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot content')
 	},
 }))
 
-vi.mock('../step/tool/transient-state-tracker', () => ({
+vi.mock('../tools/browser/transient-state-tracker', () => ({
 	TransientStateTracker: class {
 		start = trackerMocks.startMock
 		stop = trackerMocks.stopMock

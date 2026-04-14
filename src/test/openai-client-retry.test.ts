@@ -1,19 +1,19 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { OpenAIClient } from '../step/openai/openai-client'
-import { ConfigurationManager } from '../step/configuration-manager'
-import { ToolRegistry } from '../step/tool/tool-registry'
-import { LoopDetectedError } from '../step/tool/loop-detector'
+import { AiClient } from '../ai/client'
+import { RuntimeConfig } from '../config/runtime-config'
+import { ToolRegistry } from '../tools/registry'
+import { LoopDetectedError } from '../tools/loop-detector'
 import { Page } from '@playwright/test'
 import {
 	MockConfigurationManager,
 	MockToolRegistry,
-	OpenAIClientTestable,
+	AiClientTestable,
 	createHttpError,
 	MockResponseProcessor,
 	ScreenshotMessageContent,
 } from './test-types'
 
-vi.mock('../../src/step/openai/openai-test-manager', () => ({
+vi.mock('../../src/logging', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock('../../src/step/openai/openai-test-manager', () => ({
 	},
 }))
 
-vi.mock('../../src/step/openai/response-processor', () => {
+vi.mock('../../src/ai/response-processor', () => {
 	class MockResponseProcessorClass {
 		static instance: MockResponseProcessorClass | null = null
 		handleResponse = vi.fn()
@@ -48,8 +48,8 @@ vi.mock('openai', () => {
 	}
 })
 
-describe('OpenAIClient - Retry Logic', () => {
-	let openAIClient: OpenAIClient
+describe('AiClient - Retry Logic', () => {
+	let openAIClient: AiClient
 	let mockConfig: MockConfigurationManager
 	let mockToolRegistry: MockToolRegistry
 	let mockPage: Page
@@ -73,13 +73,13 @@ describe('OpenAIClient - Retry Logic', () => {
 
 		mockPage = {} as Page
 
-		openAIClient = new OpenAIClient({
-			configurationManager: mockConfig as unknown as ConfigurationManager,
+		openAIClient = new AiClient({
+			runtimeConfig: mockConfig as unknown as RuntimeConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
 			page: mockPage,
 		})
 
-		vi.spyOn(openAIClient as unknown as OpenAIClientTestable, 'sleep').mockResolvedValue(undefined)
+		vi.spyOn(openAIClient as unknown as AiClientTestable, 'sleep').mockResolvedValue(undefined)
 
 		mockOperation = vi.fn<() => Promise<unknown>>()
 	})
@@ -93,7 +93,7 @@ describe('OpenAIClient - Retry Logic', () => {
 
 				mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-				const result = await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 				expect(result).toBe('success')
 				expect(mockOperation).toHaveBeenCalledTimes(2)
@@ -110,7 +110,7 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
 
-			const result = await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(result).toBe('success')
 			expect(mockOperation).toHaveBeenCalledTimes(2)
@@ -124,7 +124,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValueOnce(error)
 
 			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 			).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
@@ -135,7 +135,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValueOnce(error)
 
 			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 			).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
@@ -146,7 +146,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValueOnce(error)
 
 			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 			).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
@@ -157,7 +157,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValueOnce(error)
 
 			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 			).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
@@ -172,7 +172,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValue(error)
 
 			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 			).rejects.toThrow()
 
 			expect(mockOperation).toHaveBeenCalledTimes(4)
@@ -186,7 +186,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValue(error)
 
 			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 			).rejects.toThrow()
 
 			expect(mockOperation).toHaveBeenCalledTimes(1)
@@ -199,7 +199,7 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const result = await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(result).toBe('success')
 			expect(mockOperation).toHaveBeenCalledTimes(3)
@@ -212,27 +212,27 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValue(error)
 
-			await expect(
-				(openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow('Unexpected error in retry loop')
+			await expect((openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)).rejects.toThrow(
+				'Unexpected error in retry loop'
+			)
 		})
 	})
 
 	describe('backoff calculation', () => {
 		it('should use 1 second delay for first retry', () => {
-			const delay = (openAIClient as unknown as OpenAIClientTestable).calculateBackoff(0)
+			const delay = (openAIClient as unknown as AiClientTestable).calculateBackoff(0)
 			expect(delay).toBe(1000)
 		})
 
 		it('should use 10 second delay for second retry', () => {
-			const delay = (openAIClient as unknown as OpenAIClientTestable).calculateBackoff(1)
+			const delay = (openAIClient as unknown as AiClientTestable).calculateBackoff(1)
 			expect(delay).toBe(10000)
 		})
 
 		it('should use 60 second delay for third retry and beyond', () => {
-			expect((openAIClient as unknown as OpenAIClientTestable).calculateBackoff(2)).toBe(60000)
-			expect((openAIClient as unknown as OpenAIClientTestable).calculateBackoff(3)).toBe(60000)
-			expect((openAIClient as unknown as OpenAIClientTestable).calculateBackoff(10)).toBe(60000)
+			expect((openAIClient as unknown as AiClientTestable).calculateBackoff(2)).toBe(60000)
+			expect((openAIClient as unknown as AiClientTestable).calculateBackoff(3)).toBe(60000)
+			expect((openAIClient as unknown as AiClientTestable).calculateBackoff(10)).toBe(60000)
 		})
 	})
 
@@ -245,10 +245,10 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as OpenAIClientTestable).sleep)
+			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(sleepSpy).toHaveBeenCalledWith(5000)
 		})
@@ -261,10 +261,10 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as OpenAIClientTestable).sleep)
+			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(sleepSpy).toHaveBeenCalledWith(10000)
 		})
@@ -277,10 +277,10 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as OpenAIClientTestable).sleep)
+			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(sleepSpy).toHaveBeenCalledWith(1000)
 		})
@@ -290,10 +290,10 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as OpenAIClientTestable).sleep)
+			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(sleepSpy).toHaveBeenCalledWith(1000)
 		})
@@ -314,7 +314,7 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
 
-			await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(openAIClient.temperature).toBe(0.5)
 			expect(openAIClient.temperature).not.toBe(initialTemp)
@@ -332,7 +332,7 @@ describe('OpenAIClient - Retry Logic', () => {
 
 			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
 
-			const result = await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+			const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 
 			expect(result).toBe('success')
 			expect(mockOperation).toHaveBeenCalledTimes(2)
@@ -346,7 +346,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValue(error)
 
 			try {
-				await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 				expect.fail('Should have thrown error')
 			} catch (e) {
 				const caughtError = e as Error
@@ -361,7 +361,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValue(error)
 
 			try {
-				await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 				expect.fail('Should have thrown error')
 			} catch (e) {
 				const caughtError = e as Error
@@ -377,7 +377,7 @@ describe('OpenAIClient - Retry Logic', () => {
 			mockOperation.mockRejectedValue(error)
 
 			try {
-				await (openAIClient as unknown as OpenAIClientTestable).executeWithRetry(mockOperation)
+				await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
 				expect.fail('Should have thrown error')
 			} catch (e) {
 				const caughtError = e as Error
@@ -389,36 +389,36 @@ describe('OpenAIClient - Retry Logic', () => {
 	describe('getStatus helper', () => {
 		it('should extract status from error.status', () => {
 			const error = { status: 429 }
-			expect((openAIClient as unknown as OpenAIClientTestable).getStatus(error)).toBe(429)
+			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(429)
 		})
 
 		it('should extract status from error.statusCode', () => {
 			const error = { statusCode: 500 }
-			expect((openAIClient as unknown as OpenAIClientTestable).getStatus(error)).toBe(500)
+			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(500)
 		})
 
 		it('should extract status from error.code', () => {
 			const error = { code: 408 }
-			expect((openAIClient as unknown as OpenAIClientTestable).getStatus(error)).toBe(408)
+			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(408)
 		})
 
 		it('should return null when no status is present', () => {
 			const error = { message: 'Error without status' }
-			expect((openAIClient as unknown as OpenAIClientTestable).getStatus(error)).toBeNull()
+			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBeNull()
 		})
 
 		it('should prioritize status over statusCode and code', () => {
 			const error = { status: 429, statusCode: 500, code: 503 }
-			expect((openAIClient as unknown as OpenAIClientTestable).getStatus(error)).toBe(429)
+			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(429)
 		})
 	})
 
 	describe('sleep helper', () => {
 		it('should sleep for specified milliseconds', async () => {
-			vi.mocked((openAIClient as unknown as OpenAIClientTestable).sleep).mockRestore()
+			vi.mocked((openAIClient as unknown as AiClientTestable).sleep).mockRestore()
 
 			const start = Date.now()
-			await (openAIClient as unknown as OpenAIClientTestable).sleep(100)
+			await (openAIClient as unknown as AiClientTestable).sleep(100)
 			const elapsed = Date.now() - start
 
 			expect(elapsed).toBeGreaterThanOrEqual(90)
@@ -427,8 +427,8 @@ describe('OpenAIClient - Retry Logic', () => {
 	})
 })
 
-describe('OpenAIClient - message flow', () => {
-	let openAIClient: OpenAIClient
+describe('AiClient - message flow', () => {
+	let openAIClient: AiClient
 	let mockConfig: MockConfigurationManager
 	let mockToolRegistry: MockToolRegistry
 	let mockPage: Page
@@ -440,7 +440,7 @@ describe('OpenAIClient - message flow', () => {
 		const openaiModule = (await import('openai')) as unknown as { getCreateMock: () => Mock }
 		createMock = openaiModule.getCreateMock()
 
-		const rpModule = (await import('../../src/step/openai/response-processor')) as unknown as {
+		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
 			getResponseProcessorMock: () => MockResponseProcessor
 		}
 		rpModule.getResponseProcessorMock()
@@ -464,8 +464,8 @@ describe('OpenAIClient - message flow', () => {
 
 		mockPage = {} as Page
 
-		openAIClient = new OpenAIClient({
-			configurationManager: mockConfig as unknown as ConfigurationManager,
+		openAIClient = new AiClient({
+			runtimeConfig: mockConfig as unknown as RuntimeConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
 			page: mockPage,
 		})
@@ -482,7 +482,7 @@ describe('OpenAIClient - message flow', () => {
 		const statusCb = vi.fn()
 
 		await openAIClient.initialize(step, statusCb)
-		const rpModule = (await import('../../src/step/openai/response-processor')) as unknown as {
+		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
 			getResponseProcessorMock: () => MockResponseProcessor
 		}
 		const rpInstance = rpModule.getResponseProcessorMock()
@@ -511,7 +511,7 @@ describe('OpenAIClient - message flow', () => {
 		const statusCb = vi.fn()
 
 		await openAIClient.initialize(step, statusCb)
-		const rpModule = (await import('../../src/step/openai/response-processor')) as unknown as {
+		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
 			getResponseProcessorMock: () => MockResponseProcessor
 		}
 		const rpInstance = rpModule.getResponseProcessorMock()
@@ -582,7 +582,7 @@ describe('OpenAIClient - message flow', () => {
 		const statusCb = vi.fn()
 
 		await openAIClient.initialize(step, statusCb)
-		const rpModule = (await import('../../src/step/openai/response-processor')) as unknown as {
+		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
 			getResponseProcessorMock: () => MockResponseProcessor
 		}
 		rpModule.getResponseProcessorMock().handleResponse.mockClear()
@@ -645,7 +645,7 @@ describe('OpenAIClient - message flow', () => {
 	})
 
 	it('counts string and array history when estimating tokens', () => {
-		;(openAIClient as unknown as OpenAIClientTestable).messages = [
+		;(openAIClient as unknown as AiClientTestable).messages = [
 			{ role: 'user', content: 'abcd' },
 			{ role: 'assistant', content: [{ type: 'text', text: 'ignored' }] },
 		]

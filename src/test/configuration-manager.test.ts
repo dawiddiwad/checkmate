@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { ConfigurationManager } from '../step/configuration-manager'
+import { RuntimeConfig } from '../config/runtime-config'
 
-describe('ConfigurationManager', () => {
-	let configManager: ConfigurationManager
+describe('RuntimeConfig', () => {
+	let configManager: RuntimeConfig
 	let originalEnv: NodeJS.ProcessEnv
 
 	beforeEach(() => {
 		originalEnv = { ...process.env }
-		configManager = new ConfigurationManager()
+		configManager = new RuntimeConfig()
 	})
 
 	afterEach(() => {

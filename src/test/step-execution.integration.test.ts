@@ -1,15 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Page } from '@playwright/test'
-import { OpenAIClient } from '../step/openai/openai-client'
-import { OpenAITestManager } from '../step/openai/openai-test-manager'
-import { ConfigurationManager } from '../step/configuration-manager'
-import { Step, StepStatus, StepStatusCallback } from '../step/types'
-import { ToolRegistry } from '../step/tool/tool-registry'
-import { StepTool } from '../step/tool/step-tool'
-import { BrowserTool } from '../step/tool/browser-tool'
-import { SalesforceTool } from '../salesforce/salesforce-tool'
+import { AiClient } from '../ai/client'
+import { CheckmateRunner } from '../runtime/runner'
+import { RuntimeConfig } from '../config/runtime-config'
+import { Step, StepResult, ResolveStepResult } from '../runtime/types'
+import { ToolRegistry } from '../tools/registry'
+import { StepResultTool } from '../tools/step/result-tool'
+import { BrowserTool } from '../tools/browser/tool'
+import { SalesforceLoginTool } from '../tools/salesforce/login-tool'
 import { ChatCompletionFunctionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { AriaPageSnapshot } from '../step/tool/page-snapshot'
 
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
@@ -23,9 +22,9 @@ vi.mock('openai', () => {
 	}
 })
 
-vi.mock('../step/configuration-manager', () => {
+vi.mock('../config/runtime-config', () => {
 	return {
-		ConfigurationManager: class {
+		RuntimeConfig: class {
 			getLogLevel = vi.fn().mockReturnValue('off')
 			getApiKey = vi.fn().mockReturnValue('test-key')
 			getBaseURL = vi.fn().mockReturnValue(undefined)
@@ -40,24 +39,29 @@ vi.mock('../step/configuration-manager', () => {
 			getLoopMaxRepetitions = vi.fn().mockReturnValue(3)
 			getTokenBudgetUSD = vi.fn().mockReturnValue(undefined)
 			getTokenBudgetCount = vi.fn().mockReturnValue(undefined)
+			getApiRateLimitDelayMs = vi.fn().mockReturnValue(0)
+			isSnapshotFilteringEnabled = vi.fn().mockReturnValue(true)
 		},
 	}
 })
 
-vi.mock('../step/logger', () => ({
-	CheckmateLogger: {
-		create: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })),
+vi.mock('../logging', () => ({
+	logger: {
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn(),
 	},
 }))
 
-vi.mock('../salesforce/salesforce-tool', () => ({
-	SalesforceTool: class {
+vi.mock('../tools/salesforce/login-tool', () => ({
+	SalesforceLoginTool: class {
 		functionDeclarations: ChatCompletionFunctionTool[] = []
-		call = vi.fn()
+		execute = vi.fn()
 	},
 }))
 
-vi.mock('../step/tool/browser-tool', () => ({
+vi.mock('../tools/browser/tool', () => ({
 	BrowserTool: class {
 		functionDeclarations = [
 			{
@@ -97,27 +101,27 @@ vi.mock('../step/tool/browser-tool', () => ({
 			},
 		]
 		call = browserCallMock
-		callWithState = browserCallMock
+		execute = vi.fn((specified) => browserCallMock(specified))
+		executeWithState = browserCallMock
 		setStep = vi.fn()
 	},
 }))
 
-vi.mock('../step/tool/page-snapshot', () => ({
-	PageSnapshot: class {
-		static lastSnapshot: AriaPageSnapshot = null
+vi.mock('../tools/browser/snapshot-service', () => ({
+	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot')
 	},
 }))
 
 describe('Simple step execution integration', () => {
-	let manager: OpenAITestManager
+	let manager: CheckmateRunner
 	let page: Page
 
 	beforeEach(() => {
 		vi.clearAllMocks()
 		browserCallMock.mockReturnValue('nav-ok')
 		page = {} as Page
-		manager = new OpenAITestManager(page)
+		manager = new CheckmateRunner(page)
 	})
 
 	it('runs a step and routes tool calls from the model', async () => {
@@ -451,20 +455,23 @@ describe('Simple step execution integration', () => {
 
 		createMock.mockResolvedValueOnce(textResponse).mockResolvedValueOnce(passResponse)
 
-		const configurationManager = new ConfigurationManager()
+		const configurationManager = new RuntimeConfig()
 		const browserTool = new BrowserTool(page)
-		const stepTool = new StepTool()
-		const salesforceTool = new SalesforceTool(browserTool)
-		const toolRegistry = new ToolRegistry({ browserTool, stepTool, salesforceTool, configurationManager })
-		const client = new OpenAIClient({ configurationManager, toolRegistry, page })
+		const stepTool = new StepResultTool()
+		const salesforceTool = new SalesforceLoginTool(browserTool)
+		const toolRegistry = new ToolRegistry(configurationManager)
+		toolRegistry.register(browserTool)
+		toolRegistry.register(stepTool)
+		toolRegistry.register(salesforceTool)
+		const client = new AiClient({ runtimeConfig: configurationManager, toolRegistry, page })
 
 		const step: Step = {
 			action: 'Report current status',
 			expect: 'Status is reported',
 		}
 
-		let reportedStatus: StepStatus | undefined
-		const statusCallback: StepStatusCallback = (status: StepStatus) => {
+		let reportedStatus: StepResult | undefined
+		const statusCallback: ResolveStepResult = (status: StepResult) => {
 			reportedStatus = status
 		}
 

@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { scoreElements, filterByThreshold, filterTopPercent, JsonValue } from '../step/tool/fuzzy-search/scorer'
-import { reconstructTree } from '../step/tool/fuzzy-search/tree-reconstructor'
-import { filterSnapshot } from '../step/tool/fuzzy-search/snapshot-filter'
-import { Step } from '../step/types'
+import {
+	scoreSnapshotElements,
+	filterByThreshold,
+	filterTopPercent,
+	JsonValue,
+} from '../tools/browser/snapshot-filter/semantic-scorer'
+import { reconstructTree } from '../tools/browser/snapshot-filter/tree-reconstructor'
+import { filterSnapshot } from '../tools/browser/snapshot-filter/snapshot-filter'
+import { Step } from '../runtime/types'
 
 vi.mock('@huggingface/transformers', () => {
 	const EMBEDDING_DIMENSION = 64
@@ -61,7 +66,7 @@ vi.mock('@huggingface/transformers', () => {
 	}
 })
 
-vi.mock('../step/openai/openai-test-manager', () => ({
+vi.mock('../logging', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -76,22 +81,22 @@ describe('Fuzzy Search', () => {
 	})
 
 	describe('Scorer', () => {
-		describe('scoreElements', () => {
+		describe('scoreSnapshotElements', () => {
 			it('should return empty array for empty query', async () => {
 				const json = { key: 'value' }
-				expect(await scoreElements(json, '')).toEqual([])
+				expect(await scoreSnapshotElements(json, '')).toEqual([])
 			})
 
 			it('should score string values', async () => {
 				const json = 'hello world'
-				const results = await scoreElements(json, 'hello')
+				const results = await scoreSnapshotElements(json, 'hello')
 				expect(results.length).toBeGreaterThan(0)
 				expect(results[0].score).toBeGreaterThan(0)
 			})
 
 			it('should score object keys', async () => {
 				const json = { 'link "Models" [ref=e7]': 'value' }
-				const results = await scoreElements(json, 'models')
+				const results = await scoreSnapshotElements(json, 'models')
 				expect(results.length).toBeGreaterThan(0)
 			})
 
@@ -101,13 +106,13 @@ describe('Fuzzy Search', () => {
 						inner: 'target value',
 					},
 				}
-				const results = await scoreElements(json, 'target')
+				const results = await scoreSnapshotElements(json, 'target')
 				expect(results.some((r) => r.path.includes('inner'))).toBe(true)
 			})
 
 			it('should traverse arrays', async () => {
 				const json = ['first', 'second', 'target']
-				const results = await scoreElements(json, 'target')
+				const results = await scoreSnapshotElements(json, 'target')
 				expect(results.some((r) => r.score > 0)).toBe(true)
 			})
 
@@ -123,7 +128,7 @@ describe('Fuzzy Search', () => {
 						},
 					],
 				}
-				const results = await scoreElements(json, 'search models')
+				const results = await scoreSnapshotElements(json, 'search models')
 				expect(results.length).toBeGreaterThan(0)
 			})
 		})

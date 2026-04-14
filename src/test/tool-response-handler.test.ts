@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ToolResponseHandler } from '../step/tool/tool-response-handler'
-import { ToolResponse } from '../step/tool/tool-registry'
-import { StepStatusCallback } from '../step/types'
+import { ToolResponseHandler } from '../ai/tool-response-handler'
+import { ToolResponse } from '../tools/registry'
+import { ResolveStepResult } from '../runtime/types'
+import { RuntimeConfig } from '../config/runtime-config'
 
 describe('ToolResponseHandler', () => {
 	let openaiClient: {
-		getConfigurationManager: ReturnType<typeof vi.fn>
 		addToolResponse: ReturnType<typeof vi.fn>
 		addCurrentSnapshotMessage: ReturnType<typeof vi.fn>
 		addCurrentScreenshotMessage: ReturnType<typeof vi.fn>
@@ -14,18 +14,19 @@ describe('ToolResponseHandler', () => {
 	let historyManager: { removeEphemeralStateMessages: ReturnType<typeof vi.fn> }
 	let screenshotProcessor: { getCompressedScreenshot: ReturnType<typeof vi.fn> }
 	let responseProcessor: { handleResponse: ReturnType<typeof vi.fn> }
+	let runtimeConfig: { includeScreenshotInSnapshot: ReturnType<typeof vi.fn> }
 	let handler: ToolResponseHandler
-	let callback: StepStatusCallback
+	let callback: ResolveStepResult
 
 	beforeEach(() => {
 		openaiClient = {
-			getConfigurationManager: vi
-				.fn()
-				.mockReturnValue({ includeScreenshotInSnapshot: vi.fn().mockReturnValue(true) }),
 			addToolResponse: vi.fn().mockResolvedValue(undefined),
 			addCurrentSnapshotMessage: vi.fn().mockResolvedValue(undefined),
 			addCurrentScreenshotMessage: vi.fn().mockResolvedValue(undefined),
 			sendToolResponseWithRetry: vi.fn().mockResolvedValue({ choices: [] }),
+		}
+		runtimeConfig = {
+			includeScreenshotInSnapshot: vi.fn().mockReturnValue(true),
 		}
 		historyManager = {
 			removeEphemeralStateMessages: vi.fn(),
@@ -40,7 +41,8 @@ describe('ToolResponseHandler', () => {
 			openaiClient as never,
 			historyManager as never,
 			screenshotProcessor as never,
-			responseProcessor as never
+			responseProcessor as never,
+			runtimeConfig as unknown as RuntimeConfig
 		)
 		callback = vi.fn()
 	})

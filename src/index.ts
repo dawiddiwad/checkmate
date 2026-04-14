@@ -1,2 +1,2 @@
-export { OpenAITestManager } from './step/openai/openai-test-manager'
-export type { Step, StepStatus, StepStatusCallback } from './step/types'
+export { CheckmateRunner } from './runtime/runner'
+export type { Step, StepResult, ResolveStepResult } from './runtime/types'

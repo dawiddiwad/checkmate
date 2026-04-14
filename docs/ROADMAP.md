@@ -1,10 +1,6 @@
-# Checkmate Roadmap
+# Roadmap
 
-This roadmap tracks the direction of the framework after the runtime and module layout cleanup.
-
-## Current State
-
-Completed in the current architecture:
+## Current State:
 
 - ✅ Provider-neutral runtime entry point via `CheckmateRunner`
 - ✅ Clear top-level module boundaries: `runtime`, `ai`, `tools`, `integrations`, `config`, `logging`
@@ -17,8 +13,9 @@ Completed in the current architecture:
 
 Focus: Stability, extension points, and better contributor ergonomics.
 
-- [ ] Custom tool registration API for external integrations
-- [ ] Better public examples for programmatic runner usage
+- ✅ Custom tool registration API for external integrations
+- ✅ Better public examples for programmatic runner usage
+- [ ] Move from mono-repo to NPM package structure
 - [ ] More focused unit tests around runtime/session boundaries
 - [ ] Snapshot filtering tuning hooks beyond top-percent selection
 - [ ] Better reporting around filtered snapshot size and selected branches
@@ -35,9 +32,8 @@ Focus: Product usability and broader workflow support.
 
 ## Long Term
 
-Focus: Production hardening and ecosystem growth.
+Focus: Production hardening and ecosystem.
 
-- [ ] Plugin ecosystem for custom tool packs
 - [ ] Stronger determinism controls for sensitive suites
 - [ ] Test generation from specs and recorded user behavior
 - [ ] Advanced reporting with AI-assisted failure summaries
@@ -45,7 +41,7 @@ Focus: Production hardening and ecosystem growth.
 
 ## Ongoing Research
 
-- [ ] Faster local retrieval/filtering for very large page snapshots
-- [ ] Hybrid semantic plus structural ranking for element selection
-- [ ] Multi-agent execution models for planning and validation
-- [ ] Better confidence signals for tool selection and assertions
+- 🔄 Faster local retrieval/filtering for very large page snapshots
+- 🔄 Hybrid semantic plus structural ranking for element selection
+- 🔄 Multi-agent execution models for planning and validation
+- 🔄 Confidence signals for tool selection and assertions

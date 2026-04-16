@@ -21,7 +21,7 @@
 	],
 	"scripts": {
 		"checkmate:install": "npm install && npx playwright install",
-		"build": "tsc -p tsconfig.build.json",
+		"build": "npm run validation:check && tsc -p tsconfig.build.json",
 		"clean": "rm -rf dist",
 		"validation:check": "npm run compile:check && npm run lint:check && npm run format:fix && npm run test:unit:run",
 		"compile:check": "npx tsc --noEmit",

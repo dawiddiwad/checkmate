@@ -113,21 +113,21 @@ That's it. No page objects, no selectors. No locators. Peace on Earth.
 
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
-See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
-
 ### Programmatic API
 
-If you use **_checkmate_** without the fixture wrapper, the public entry point is now `CheckmateRunner`:
+If you use **_checkmate_** without the fixture wrapper, the public entry point is `CheckmateRunner`:
 
 ```typescript
 import { CheckmateRunner } from 'checkmate-exp'
 
-const runner = new CheckmateRunner(page)
-await runner.run({
+const ai = new CheckmateRunner(page)
+await ai.run({
 	action: 'Open the pricing page',
 	expect: 'Pricing details are visible',
 })
 ```
+
+See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
 
 ## Costs
 
@@ -139,8 +139,6 @@ Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/do
 - Simple test (~5 steps): ~$0.001 - $0.01
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
-
-For complex pages, snapshot filtering can be enabled with `CHECKMATE_SNAPSHOT_FILTERING=true`. When enabled, it uses the combined `action + expect` text automatically. Optional `search` terms can override that query, and `topPercent` controls how much of the scored snapshot is kept (10% by default). See [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization).
 
 See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
 
@@ -159,7 +157,7 @@ See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitor
 
 **High token costs**
 
-- Enable snapshot filtering with `CHECKMATE_SNAPSHOT_FILTERING=true` when you want the page snapshot narrowed automatically from your `action` and `expect`. Use `topPercent` when you want to keep more or less of the scored snapshot for a step.
+- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` to score and narrow the elements automatically from `action` and `expect`. Use `topPercent` to dial how much of the scored snapshot to keep for a step.
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gpt-5.4-nano` or `gpt-oss-20b`)
@@ -176,7 +174,7 @@ You can use any model that was trained for tool use. Here are the best picks bas
 - OpenAI's `gpt-5-mini`, `gpt-5.4-nano` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
 
 **Can I use local models?**  
-Yes - **_checkmate_** works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3-4b-instruct](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) (4‑bit quant variant). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.
+Yes - **_checkmate_** works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3.5-4b](https://huggingface.co/Qwen/Qwen3.5-4B). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.
 
 **Does it work with CI/CD?**  
 Absolutely. Use **_checkmate_** as part of your existing [Playwright Test suites in any CI/CD pipeline](https://playwright.dev/docs/best-practices#run-tests-on-ci). You can mix AI‑driven steps and traditional tests as needed.
@@ -195,6 +193,7 @@ await page.goto('https://www.google.com')
 const searchBox = page.getByRole('combobox', { name: 'Search', exact: true })
 await searchBox.fill('playwright test automation')
 await searchBox.press('Enter')
+
 // ai-driven actions and assertions:
 await ai.run({
 	action: 'Click on the link that leads to playwright.dev',

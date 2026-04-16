@@ -330,9 +330,9 @@ Playwright Test
             │   │   ├── SnapshotService
             │   │   └── snapshot-filter/
             │   ├── step/
-            │   │   └── createStepResultTools()
+            │   │   └── StepResultTools
             │   └── salesforce/
-            │       └── createSalesforceTools()
+            │       └── SalesforceTools
             │
             ├── integrations/
             │   └── salesforce/
@@ -412,4 +412,4 @@ For large test suites:
 
 ---
 
-See [readme](README.md) for more information and getting started guide.
+See [readme](../README.md) for more information and getting started guide.

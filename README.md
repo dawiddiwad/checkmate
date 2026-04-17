@@ -57,9 +57,8 @@ await ai.run({
 ### 1. Install
 
 ```bash
-git clone https://github.com/dawiddiwad/checkmate.git
-cd checkmate
-npm run checkmate:install
+npm install -D @playwright/test @alepoco/checkmate
+npx playwright install
 ```
 
 ### 2. Configure `.env`
@@ -91,13 +90,13 @@ npm run show:report
 
 ## Writing Tests
 
-Import the `test` from `./test/fixtures/checkmate` and use the `ai` fixture to run AI-driven tests along standard Playwright features.  
+Import `test` and `expect` from `@alepoco/checkmate/playwright` and use the `ai` fixture to run AI-driven tests alongside standard Playwright assertions.  
 **_checkmate_** tests are written using natural language by specifying `action` and `expect`:
 
 ```typescript
-import { test } from '../../fixtures/checkmate'
+import { expect, test } from '@alepoco/checkmate/playwright'
 
-test('google search', async ({ ai }) => {
+test('google search', async ({ page, ai }) => {
 	await ai.run({
 		action: `
             Open the browser and navigate to google.com.
@@ -106,6 +105,8 @@ test('google search', async ({ ai }) => {
 		expect: `
             Search results contain the 'playwright.dev' link`,
 	})
+
+	await expect(page.getByRole('link', { name: /playwright/i }).first()).toBeVisible()
 })
 ```
 
@@ -118,7 +119,7 @@ Browser settings (viewport, headless mode, video recording, timeouts, etc.) are 
 If you use **_checkmate_** without the fixture wrapper, the public entry point is `CheckmateRunner`:
 
 ```typescript
-import { CheckmateRunner } from 'checkmate-exp'
+import { CheckmateRunner } from '@alepoco/checkmate'
 
 const ai = new CheckmateRunner(page)
 await ai.run({
@@ -128,6 +129,8 @@ await ai.run({
 ```
 
 See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+
+The repository keeps runnable consumer-style examples under `test/examples/`.
 
 ## Costs
 
@@ -227,4 +230,4 @@ Test automation shouldn't require a PhD in XPath. This project explores how AI c
 
 Less coding, more testing.
 
-Built with ❤️ by [Dawid Dobrowolski](https://github.com/dawiddiwad)
+Built with ❤️ by [Dawid Dobrowolski](https://github.com/alepoco)

@@ -15,7 +15,7 @@ Focus: Stability, extension points, and better contributor ergonomics.
 
 - ✅ Custom tool registration API for external integrations
 - ✅ Better public examples for programmatic runner usage
-- [ ] Move from mono-repo to NPM package structure
+- ✅ Publishable npm package layout with `@alepoco/checkmate` and `@alepoco/checkmate/playwright`
 - [ ] More focused unit tests around runtime/session boundaries
 - [ ] Snapshot filtering tuning hooks beyond top-percent selection
 - [ ] Better reporting around filtered snapshot size and selected branches

@@ -1,7 +1,7 @@
-import { test as base } from '@playwright/test'
-import { CheckmateRunner } from '../../src'
+import { expect, test as base } from '@playwright/test'
+import { CheckmateRunner } from './runtime/runner'
 
-type CheckmateFixtures = {
+export type CheckmateFixtures = {
 	ai: CheckmateRunner
 }
 
@@ -12,3 +12,5 @@ export const test = base.extend<CheckmateFixtures>({
 		await ai.teardown()
 	},
 })
+
+export { expect }

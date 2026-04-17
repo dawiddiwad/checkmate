@@ -8,6 +8,10 @@
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
+		"paths": {
+			"@alepoco/checkmate": ["./src/index.ts"],
+			"@alepoco/checkmate/playwright": ["./src/playwright.ts"]
+		},
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"declaration": true,

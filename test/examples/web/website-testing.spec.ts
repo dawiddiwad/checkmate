@@ -20,7 +20,7 @@
  * All tests use the `ai` fixture and call `ai.run({ action, expect })`
  * to describe actions and assert visible outcomes.
  */
-import { test } from '../../fixtures/checkmate'
+import { test } from '@alepoco/checkmate/playwright'
 
 test.describe('single-step : quick examples', async () => {
 	test('browsing ollama models', async ({ ai }) => {

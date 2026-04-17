@@ -52,9 +52,9 @@ Browser settings (viewport, headless mode, video recording, timeouts, etc.) are 
 ### Basic Example
 
 ```typescript
-import { test } from '../../fixtures/checkmate'
+import { expect, test } from '@alepoco/checkmate/playwright'
 
-test('search for playwright documentation', async ({ ai }) => {
+test('search for playwright documentation', async ({ page, ai }) => {
 	await test.step('Navigate to Google', async () => {
 		await ai.run({
 			action: `Open the browser and navigate to google.com`,
@@ -68,6 +68,8 @@ test('search for playwright documentation', async ({ ai }) => {
 			expect: `Search results contain the playwright.dev link`,
 		})
 	})
+
+	await expect(page.getByRole('link', { name: /playwright/i }).first()).toBeVisible()
 })
 ```
 

@@ -1,15 +1,27 @@
 {
-	"name": "checkmate-exp",
-	"version": "0.2.5.2",
+	"name": "@alepoco/checkmate",
+	"version": "0.3.1",
 	"description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"type": "module",
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./playwright": {
+			"types": "./dist/playwright.d.ts",
+			"default": "./dist/playwright.js"
 		}
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"keywords": [
 		"test automation",
@@ -21,8 +33,10 @@
 	],
 	"scripts": {
 		"checkmate:install": "npm install && npx playwright install",
-		"build": "npm run validation:check && tsc -p tsconfig.build.json",
+		"build": "npm run validation:check && npm run build:dist",
+		"build:dist": "tsc -p tsconfig.build.json",
 		"clean": "rm -rf dist",
+		"prepack": "npm run clean && npm run build",
 		"validation:check": "npm run compile:check && npm run lint:check && npm run format:fix && npm run test:unit:run",
 		"compile:check": "npx tsc --noEmit",
 		"lint:check": "eslint .",
@@ -33,18 +47,15 @@
 		"test:unit:ui": "vitest --ui --config src/test/vitest.config.ts",
 		"test:unit:coverage": "vitest --coverage --config src/test/vitest.config.ts",
 		"test:unit:run": "vitest run --config src/test/vitest.config.ts",
-		"test:web": "npx playwright test --project=web",
-		"test:salesforce": "npx playwright test --project=salesforce",
-		"test:web:example": "npx playwright test --project=web --grep=ollama",
+		"test:web": "npm run build:dist && npx playwright test --project=web",
+		"test:salesforce": "npm run build:dist && npx playwright test --project=salesforce",
+		"test:web:example": "npm run build:dist && npx playwright test --project=web --grep=ollama",
 		"show:report": "npx playwright show-report test-reports/html"
 	},
 	"author": "Dawid Dobrowolski SoftQA",
 	"license": "MIT",
 	"dependencies": {
 		"@huggingface/transformers": "^4.0.1",
-		"@playwright/test": "^1.59.1",
-		"@types/node": "^25.6.0",
-		"dotenv": "^17.4.1",
 		"openai": "^6.34.0",
 		"sharp": "^0.34.5",
 		"string-similarity": "^4.0.4",
@@ -53,11 +64,17 @@
 		"yaml": "^2.8.3",
 		"zod": "^4.3.6"
 	},
+	"peerDependencies": {
+		"@playwright/test": "^1.59.1"
+	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
+		"@playwright/test": "^1.59.1",
+		"@types/node": "^25.6.0",
 		"@types/string-similarity": "^4.0.2",
 		"@vitest/coverage-v8": "^4.1.4",
 		"@vitest/ui": "^4.1.2",
+		"dotenv": "^17.4.1",
 		"eslint": "^10.2.0",
 		"eslint-config-prettier": "^10.1.8",
 		"prettier": "^3.8.2",

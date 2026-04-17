@@ -3,6 +3,7 @@
 ## Top-Level Layout
 
 - `src/runtime/`: public execution flow and step lifecycle
+- `src/playwright.ts`: published Playwright fixture wrapper for `test` and `expect`
 - `src/ai/`: model client, response processing, history, rate limiting, token tracking
 - `src/tools/`: tool contracts, registry, dispatcher, browser tools, step tools, salesforce tools
 - `src/integrations/`: external system adapters
@@ -45,5 +46,6 @@ Current behavior:
 ## Public API
 
 - `CheckmateRunner`
+- `@alepoco/checkmate/playwright` fixture export
 - `Step`
 - `StepResult`

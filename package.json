@@ -2,14 +2,34 @@
 	"name": "@alepoco/checkmate",
 	"version": "0.3.1",
 	"description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"type": "module",
+	"homepage": "https://github.com/dawiddiwad/checkmate",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/dawiddiwad/checkmate.git"
+	},
+	"keywords": [
+		"test-automation",
+		"e2e-testing",
+		"playwright",
+		"openai",
+		"ai-testing",
+		"low-code",
+		"salesforce",
+		"gemini",
+		"claude",
+		"groq"
+	],
 	"files": [
 		"dist",
 		"README.md",
 		"LICENSE"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
@@ -20,17 +40,6 @@
 			"default": "./dist/playwright.js"
 		}
 	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"keywords": [
-		"test automation",
-		"ai",
-		"llm",
-		"playwright",
-		"openai",
-		"e2e testing"
-	],
 	"scripts": {
 		"checkmate:install": "npm install && npx playwright install",
 		"build": "npm run validation:check && npm run build:dist",

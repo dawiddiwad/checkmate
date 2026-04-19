@@ -1,7 +1,5 @@
-import { Page } from '@playwright/test'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { BrowserScreenshotService } from '../tools/browser/screenshot-service'
 import { ToolDispatcher } from '../tools/dispatcher'
 import { ToolResponse } from '../tools/registry'
 import { ToolCall } from '../tools/types'
@@ -13,7 +11,6 @@ import { TokenTracker } from './token-tracker'
 import { ToolResponseHandler } from './tool-response-handler'
 
 export type ResponseProcessorDependencies = {
-	page: Page
 	aiClient: AiClient
 }
 
@@ -25,15 +22,10 @@ export class ResponseProcessor {
 	private readonly messageHandler: MessageHandler
 	private readonly aiClient: AiClient
 
-	constructor({ page, aiClient }: ResponseProcessorDependencies) {
+	constructor({ aiClient }: ResponseProcessorDependencies) {
 		this.aiClient = aiClient
 		this.toolDispatcher = new ToolDispatcher(aiClient.getToolRegistry())
-		this.toolResponseHandler = new ToolResponseHandler(
-			aiClient,
-			new MessageHistory(),
-			new BrowserScreenshotService(page),
-			this
-		)
+		this.toolResponseHandler = new ToolResponseHandler(aiClient, new MessageHistory(), this)
 		this.messageHandler = new MessageHandler(aiClient, this)
 	}
 
@@ -70,7 +62,13 @@ export class ResponseProcessor {
 					name: toolCall.function.name,
 					arguments: JSON.parse(toolCall.function.arguments || '{}'),
 				}
-				const toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, { step, resolveStepResult })
+				const toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, {
+					step,
+					services: this.aiClient.getServices(),
+					pass: (actual) => resolveStepResult({ passed: true, actual }),
+					fail: (actual) => resolveStepResult({ passed: false, actual }),
+					resolveStepResult,
+				})
 				if (toolResponse) {
 					toolResponses.push({ toolCallId: toolCall.id, toolCall: parsedToolCall, toolResponse })
 				}

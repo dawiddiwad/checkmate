@@ -1,15 +1,17 @@
 import { z } from 'zod/v4'
-import { BrowserToolRuntime } from '../browser/tool'
+import { CheckmateServices } from '../../runtime/module'
 import { defineAgentTool } from '../define-agent-tool'
 import { AgentTool } from '../types'
-import { SalesforceAuthenticator } from '../../integrations/salesforce/authenticator'
-import { SalesforceCliHandler } from '../../integrations/salesforce/cli-handler'
+import { CheckmateBrowserService, CheckmateSalesforceService } from '../../runtime/module'
 
 export const SalesforceLoginTool = {
 	TOOL_LOGIN_TO_SALESFORCE_ORG: 'login_to_salesforce_org',
 } as const
 
-export function createSalesforceTools(browserRuntime: BrowserToolRuntime): AgentTool[] {
+export function createSalesforceTools<TServices extends CheckmateServices = CheckmateServices>(
+	browserRuntime: CheckmateBrowserService,
+	salesforce: CheckmateSalesforceService
+): AgentTool<TServices>[] {
 	return [
 		defineAgentTool({
 			name: SalesforceLoginTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
@@ -21,10 +23,7 @@ export function createSalesforceTools(browserRuntime: BrowserToolRuntime): Agent
 				})
 				.strict(),
 			handler: async (_args, context) => {
-				const frontDoorUrl = await new SalesforceAuthenticator(new SalesforceCliHandler()).ready.then(
-					(authenticator) => authenticator.getFrontDoorUrl()
-				)
-
+				const frontDoorUrl = await salesforce.getFrontDoorUrl()
 				return browserRuntime.navigateToUrl(frontDoorUrl, context.step)
 			},
 		}),

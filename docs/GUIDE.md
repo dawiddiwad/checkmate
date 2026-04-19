@@ -4,6 +4,7 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 
 ## Table of Contents
 
+- [Core Concepts](#core-concepts)
 - [Configuration Reference](#configuration-reference)
 - [Writing Effective Tests](#writing-effective-tests)
 - [Cost Management](#cost-management)
@@ -11,6 +12,51 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 - [Test Reports](#test-reports)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
+- [Advanced Topics](#advanced-topics)
+- [Extensibility](#extensibility)
+
+## Core Concepts
+
+### What Checkmate Is
+
+- A natural-language test runner built on top of Playwright.
+- A tool-using runtime where the model observes state, calls tools, and decides when a step passed or failed.
+- A framework for browser-led end-to-end workflows, with room for domain extensions like Salesforce, Jira, or custom business tools.
+
+### What Checkmate Is Not
+
+- Not a replacement for Playwright. Playwright still owns the browser, fixtures, config, traces, and test process.
+- Not a unit test framework, API client, or visual regression tool by itself.
+- Not an autonomous crawler that invents its own goals. It follows the step intent with `action` and `expect`.
+- Not magic around flaky apps. Slow pages, unstable environments, and unclear expectations still produce unreliable tests.
+
+### Main Assumptions
+
+- Humans or external agents define the intent. Each step should clearly say what to do and what success looks like.
+- The model works best when the UI exposes meaningful accessible structure, stable labels, and predictable flows.
+- Most tests should stay business-focused. Use Checkmate for user workflows, not for tiny implementation details.
+- Smaller, clearer steps are easier to execute and easier to debug than vague multi-goal prompts.
+- The runtime should expose only the tools and services needed for the domain you are testing.
+
+### Main Building Blocks
+
+- `CheckmateRunner`: executes one step at a time and owns the model loop.
+- `Step`: the natural-language contract for a single action and expected result.
+- `Tool`: an action the model is allowed to call, such as navigate, click, type, or mark pass/fail.
+- `Profile`: a named runtime setup such as `web` or `salesforce`.
+- `Extension`: reusable behavior that adds tools, prompt guidance, initial context, and optional services.
+- `Service`: a shared runtime surface such as `browser`, `salesforce`, `jira`, `api`, or `db`.
+- `hints`: optional per-step tuning.
+
+### Practical Mental Model
+
+Think of Checkmate like this:
+
+1. You write the intent for a step.
+2. Checkmate sends the current context to the model.
+3. The model calls tools to interact with the app.
+4. The runtime keeps the loop bounded and records state.
+5. The model eventually marks the step as pass or fail.
 
 ## Configuration Reference
 
@@ -68,12 +114,12 @@ test('search for playwright documentation', async ({ page, ai }) => {
 			expect: `Search results contain the playwright.dev link`,
 		})
 	})
-
-	await expect(page.getByRole('link', { name: /playwright/i }).first()).toBeVisible()
 })
 ```
 
-### Complex Interactions
+### Complex Interactions Example
+
+Multiple actions and assertions can be handled in a single step. Here's an example of a more complex interaction that includes waiting for elements, handling popups, and filling out a form:
 
 ```typescript
 await test.step('Fill form and submit', async () => {
@@ -91,6 +137,23 @@ await test.step('Fill form and submit', async () => {
             or a login form is displayed if not authenticated.
         `,
 	})
+})
+```
+
+### Browser Hints
+
+Tests can be fine-tuned with browser-specific hints that help to guide the AI's interactions with the page by reducing page snapshot noise and focusing on relevant elements. These hints are provided under `hints.browser`, example of using search terms and top-percent filtering to optimize the snapshot content sent to the model:
+
+```typescript
+await ai.run({
+	action: `Click on the link that leads to playwright.dev`,
+	expect: `The playwright.dev homepage is displayed`,
+	hints: {
+		browser: {
+			search: ['playwright', 'docs'],
+			topPercent: 20,
+		},
+	},
 })
 ```
 
@@ -153,7 +216,11 @@ await ai.run({
 	expect: `The playwright.dev homepage is displayed`,
 
 	// optional snapshot filtering override
-	topPercent: 20,
+	hints: {
+		browser: {
+			topPercent: 20,
+		},
+	},
 })
 ```
 
@@ -163,11 +230,11 @@ debug: Filtered to 21 elements from top 20%
 debug: Reduced snapshot from 4283 to 326 chars (92% reduction)
 ```
 
-Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `false`). Set it explicitly to `true` to enable filtering. `search` is now an explicit keyword query override, and `topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
+Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `false`). Set it explicitly to `true` to enable filtering. `hints.browser.search` is an explicit keyword query override, and `hints.browser.topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
 
 The model can still request a full snapshot with the browser snapshot tool if the filtered tree is insufficient, so steps should not fail just because the initial snapshot was compact.
 
-For optimal results, write concrete `action` and `expect` text. Use `topPercent` as a real percentage from `1` to `100` when you need to keep more or less of the scored snapshot. Optional `search` terms still help when you want direct keyword control.
+For optimal results, write concrete `action` and `expect` text. Use `hints.browser.topPercent` as a real percentage from `1` to `100` when you need to keep more or less of the scored snapshot. Optional `hints.browser.search` terms still help when you want direct keyword control.
 
 **Tips for effective step text:**
 
@@ -175,7 +242,7 @@ For optimal results, write concrete `action` and `expect` text. Use `topPercent`
 - Include key text that appears on the page
 - Include action-related terms (search, filter, submit, etc.)
 - Keep the step focused on one user intent
-- Use `topPercent` only when you need to tune how aggressively snapshot content is pruned
+- Use `hints.browser.topPercent` only when you need to tune how aggressively snapshot content is pruned
 
 ### Estimated Costs
 
@@ -196,6 +263,12 @@ _Costs vary based on model, screenshot size and count, and page complexity_
 ## Salesforce Testing
 
 **_checkmate_** includes native Salesforce support using the SF CLI.
+
+For Playwright fixtures that default to the Salesforce profile, import from:
+
+```typescript
+import { expect, test } from '@alepoco/checkmate/salesforce'
+```
 
 ### Prerequisites
 
@@ -411,6 +484,280 @@ For large test suites:
     name: test-reports
     path: test-reports/
 ```
+
+## Extensibility
+
+Checkmate keeps the runtime model small. The core is responsible for execution, while extensions add domain-specific behavior and tools. Services are the shared runtime surfaces those extensions use.
+
+### Extensibility Basics
+
+Most users only need `new CheckmateRunner({ page })`.
+
+- `CheckmateRunner`: executes steps and owns the model loop.
+- `profile`: a named, ordered setup such as `profiles.web()` or `profiles.salesforce()`.
+- `extension`: reusable behavior that adds tools, prompt guidance, initial context, and optional services.
+- `service`: a shared named runtime client such as `browser`, `salesforce`, `jira`, `api`, or `db`.
+
+Use them in this order:
+
+1. Start with the default web runner.
+2. Switch to a built-in profile if one matches your domain.
+3. Add extensions when you need custom behavior.
+4. Add services only when tools or extensions need a shared external client or typed runtime surface.
+
+### Mental Model
+
+```text
+CheckmateRunner
+├─ profile
+│  ├─ browser extension
+│  │  └─ browser service (actions via playwright)
+│  ├─ salesforce extension
+│  │  └─ salesforce service (front-door URL via SF CLI)
+│  └─ custom extension
+│     └─ API service
+│     └─ DB service
+│     └─ etc...
+└─ runtime core
+   ├─ builds prompt
+   ├─ gathers context
+   ├─ dispatches tools
+   ├─ tracks retries
+   └─ resolves pass/fail
+```
+
+Read it from top to bottom:
+
+- the **runner** executes steps
+- a **profile** picks the extension set
+- each **extension** adds behavior
+- **services** are the shared runtime surfaces those extensions use
+- the **runtime core** stays responsible for execution
+
+### Common Setups
+
+```typescript
+import { CheckmateRunner, extensions, profiles } from '@alepoco/checkmate'
+
+const web = new CheckmateRunner({ page })
+
+const salesforce = new CheckmateRunner({
+	page,
+	profile: profiles.salesforce(),
+})
+
+const custom = new CheckmateRunner({
+	page,
+	profile: profiles.web(),
+	extensions: [extensions.salesforce()],
+})
+```
+
+If you prefer Playwright-first setup, use the fixture subpaths:
+
+```typescript
+import { expect, test } from '@alepoco/checkmate/playwright'
+```
+
+```typescript
+import { expect, test } from '@alepoco/checkmate/salesforce'
+```
+
+Choose the simplest shape that fits:
+
+- use the default runner for normal web flows
+- use a built-in profile for a named ready-made setup
+- add extensions when you need custom behavior on top
+
+### Creating A Custom Extension
+
+Create an extension when you want to add a tool, prompt guidance, or initial context.
+
+```typescript
+import { defineCheckmateTool } from '@alepoco/checkmate'
+import type { CheckmateExtension } from '@alepoco/checkmate'
+import { z } from 'zod/v4'
+
+const readAccountLogs = defineCheckmateTool({
+	name: 'read_account_logs',
+	description: 'Read detailed debug logs from the database for a given account',
+	schema: z
+		.object({
+			accountId: z.string().describe('account id to query logs for'),
+		})
+		.strict(),
+	handler: ({ accountId }) => ({
+		_mocked_response: `Queried logs for Account ID: ${accountId}`,
+	}),
+})
+
+export const debugKit: CheckmateExtension = {
+	name: 'debug-kit',
+	setup: () => ({
+		tools: [readAccountLogs],
+		prompt: ['Always analyze logs when encountering issues related to accounts.'],
+	}),
+}
+```
+
+Compose it into a runner:
+
+```typescript
+import { CheckmateRunner } from '@alepoco/checkmate'
+import { debugKit } from './debug-kit-extension'
+
+const runner = new CheckmateRunner({
+	profile: profiles.web(),
+	extensions: [debugKit],
+})
+```
+
+### Typed Custom Service
+
+If you want autocomplete on custom services, define one shared service type and reuse it everywhere.
+
+```typescript
+import { CheckmateRunner, defineCheckmateTool } from '@alepoco/checkmate'
+import type { CheckmateExtension, CheckmateServices } from '@alepoco/checkmate'
+import { z } from 'zod/v4'
+
+type JiraService = {
+	getIssue(issueKey: string): Promise<{ summary: string; status: string }>
+}
+
+type AppServices = CheckmateServices & {
+	jira?: JiraService
+	notion?: NotionService
+	// etc - keep all custom services in this single type for easy reuse across extensions and tools
+}
+
+const schema = z
+	.object({
+		issueKey: z.string().describe('Jira issue key'),
+	})
+	.strict()
+
+const jiraLookupTool = defineCheckmateTool<typeof schema, AppServices>({
+	name: 'jira_lookup_issue',
+	description: 'Read a Jira issue by key',
+	schema,
+	handler: async ({ issueKey }, { services }) => {
+		const jira = services.jira
+		if (!jira) {
+			return {
+				response: 'Jira service is not configured',
+				status: 'error',
+			}
+		}
+
+		const issue = await jira.getIssue(issueKey)
+		return {
+			response: `${issueKey}: ${issue.summary} (${issue.status})`,
+		}
+	},
+})
+
+export const jiraExtension: CheckmateExtension<AppServices> = {
+	name: 'jira',
+	requires: ['jira'],
+	setup: () => ({
+		tools: [jiraLookupTool],
+		prompt: [
+			'Use the Jira lookup tool when a step refers to a ticket, bug, or release issue, so the latest information can be retrieved and included in the context.',
+		],
+	}),
+}
+
+const runner = new CheckmateRunner<AppServices>({
+	page,
+	extensions: [jiraExtension],
+	services: {
+		jira: jiraClient,
+	},
+})
+```
+
+### Extending The Built-in Browser Service
+
+If the built-in browser service doesn't meet your needs, you can extend it with additional methods while keeping the existing contract for built-in tools.
+
+```typescript
+import { CheckmateRunner, defineCheckmateTool, extensions, profiles } from '@alepoco/checkmate'
+import type { CheckmateBrowserService, CheckmateExtension, CheckmateServices } from '@alepoco/checkmate'
+import type { Step } from '@alepoco/checkmate'
+import { z } from 'zod/v4'
+
+type ExtendedBrowserService = CheckmateBrowserService & {
+	clickByTestId(testId: string, step: Step): Promise<string>
+}
+
+type AppServices = CheckmateServices & {
+	browser?: ExtendedBrowserService
+}
+
+const schema = z
+	.object({
+		testId: z.string().describe('Stable test id to click'),
+	})
+	.strict()
+
+const clickByTestIdTool = defineCheckmateTool<typeof schema, AppServices>({
+	name: 'browser_click_by_test_id',
+	description: 'Click an element by test id',
+	schema,
+	handler: ({ testId }, { services, step }) => {
+		return services.browser?.clickByTestId(testId, step)
+	},
+})
+
+const browserExtras: CheckmateExtension<AppServices> = {
+	name: 'browser-extras',
+	requires: ['browser'],
+	setup: () => ({
+		tools: [clickByTestIdTool],
+	}),
+}
+
+const runner = new CheckmateRunner<AppServices>({
+	page,
+	profile: profiles.web<AppServices>(),
+	extensions: [browserExtras],
+	services: {
+		browser: myExtendedBrowserService,
+	},
+})
+```
+
+The built-in browser tools still use the base browser service contract. Your extension can add new methods to the browser service, and your tools can use those methods while built-in tools remain unaffected.
+
+### Creating A Custom Profile
+
+Wrap a reusable extension composition in a profile when multiple suites should share the same setup.
+
+```typescript
+import { CheckmateRunner, extensions } from '@alepoco/checkmate'
+import type { CheckmateProfile } from '@alepoco/checkmate'
+import { debugKit } from './debug-kit-extension'
+import { browserExtras } from './browser-extras-extension'
+import { jiraExtension } from './jira-extension'
+
+const webDevProfile: CheckmateProfile = {
+	name: 'web-development',
+	extensions: [extensions.browser(), debugKit, jiraExtension, browserExtras],
+}
+
+const runner = new CheckmateRunner({
+	page,
+	profile: webDevProfile,
+})
+```
+
+### Extension Rules
+
+- Keep domain behavior in extensions, not in the core runner.
+- Prefer services over reaching into internal runtime classes.
+- Treat profiles as stable entry points and extensions as reusable building blocks.
+- Namespace custom tool names to avoid collisions.
 
 ---
 

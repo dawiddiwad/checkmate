@@ -87,10 +87,14 @@ test.describe('single-step : quick examples', async () => {
                 Navigate to https://www.nypl.org. 
                 Search for 'The Catcher in the Rye'.`,
 				expect: `
-				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+					'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
 
-				search: ['search', 'the catcher in the rye', 'shelf'],
-				topPercent: 10, // aggressive snapshot filtering (top 10% of elements on page)
+				hints: {
+					browser: {
+						search: ['search', 'the catcher in the rye', 'shelf'],
+						topPercent: 10, // aggressive snapshot filtering (top 10% of elements on page)
+					},
+				},
 			})
 		})
 	})

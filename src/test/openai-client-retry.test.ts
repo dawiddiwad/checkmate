@@ -3,7 +3,6 @@ import { AiClient } from '../ai/client'
 import { RuntimeConfig } from '../config/runtime-config'
 import { ToolRegistry } from '../tools/registry'
 import { LoopDetectedError } from '../tools/loop-detector'
-import { Page } from '@playwright/test'
 import {
 	MockConfigurationManager,
 	MockToolRegistry,
@@ -52,7 +51,6 @@ describe('AiClient - Retry Logic', () => {
 	let openAIClient: AiClient
 	let mockConfig: MockConfigurationManager
 	let mockToolRegistry: MockToolRegistry
-	let mockPage: Page
 	let mockOperation: Mock<() => Promise<unknown>>
 
 	beforeEach(() => {
@@ -70,12 +68,10 @@ describe('AiClient - Retry Logic', () => {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
-		mockPage = {} as Page
-
 		openAIClient = new AiClient({
 			runtimeConfig: mockConfig as unknown as RuntimeConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
-			page: mockPage,
+			services: {},
 		})
 
 		vi.spyOn(openAIClient as unknown as AiClientTestable, 'sleep').mockResolvedValue(undefined)
@@ -430,7 +426,6 @@ describe('AiClient - message flow', () => {
 	let openAIClient: AiClient
 	let mockConfig: MockConfigurationManager
 	let mockToolRegistry: MockToolRegistry
-	let mockPage: Page
 	let createMock: Mock
 
 	beforeEach(async () => {
@@ -460,12 +455,10 @@ describe('AiClient - message flow', () => {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
-		mockPage = {} as Page
-
 		openAIClient = new AiClient({
 			runtimeConfig: mockConfig as unknown as RuntimeConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
-			page: mockPage,
+			services: {},
 		})
 	})
 
@@ -612,32 +605,47 @@ describe('AiClient - message flow', () => {
 		expect(createMock).toHaveBeenCalledTimes(1)
 	})
 
-	it('adds current snapshot message with expected content shape', async () => {
+	it('appends provided messages to history', async () => {
 		const step = { action: 'shot', expect: 'done' }
 		const statusCb = vi.fn()
 		await openAIClient.initialize(step, statusCb)
 
-		await openAIClient.addCurrentSnapshotMessage('page snapshot:\n{button Submit}')
+		await openAIClient.addMessages([
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'checkmate context: browser.snapshot\npage snapshot:\n{button Submit}' },
+				],
+			},
+		])
 
 		const last = openAIClient.getMessages().at(-1) as ScreenshotMessageContent
 		expect(last.role).toBe('user')
 		expect(Array.isArray(last.content)).toBe(true)
-		expect((last.content[0] as { type: 'text'; text: string }).text).toContain('this is a current page snapshot')
+		expect((last.content[0] as { type: 'text'; text: string }).text).toContain(
+			'checkmate context: browser.snapshot'
+		)
 	})
 
-	it('adds screenshot message with expected content shape', async () => {
+	it('stores image messages with expected content shape', async () => {
 		const step = { action: 'shot', expect: 'done' }
 		const statusCb = vi.fn()
 		await openAIClient.initialize(step, statusCb)
 
-		await openAIClient.addCurrentScreenshotMessage('YmFzZTY0', 'image/png')
+		await openAIClient.addMessages([
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'checkmate context: browser.screenshot' },
+					{ type: 'image_url', image_url: { url: 'data:image/png;base64,YmFzZTY0', detail: 'high' } },
+				],
+			},
+		])
 
 		const last = openAIClient.getMessages().at(-1) as ScreenshotMessageContent
 		expect(last.role).toBe('user')
 		expect(Array.isArray(last.content)).toBe(true)
-		expect((last.content[0] as { type: 'text'; text: string }).text).toBe(
-			'this is a current screenshot of the page'
-		)
+		expect((last.content[0] as { type: 'text'; text: string }).text).toBe('checkmate context: browser.screenshot')
 		const imageContent = last.content[1] as { type: 'image_url'; image_url: { url: string } }
 		expect(imageContent.image_url.url).toContain('data:image/png;base64,YmFzZTY0')
 	})

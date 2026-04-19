@@ -19,6 +19,9 @@ describe('Step result tools', () => {
 		tools = createStepResultTools()
 		context = {
 			step: { action: 'act', expect: 'done' },
+			services: {},
+			pass: vi.fn((actual: string) => context.resolveStepResult({ passed: true, actual })),
+			fail: vi.fn((actual: string) => context.resolveStepResult({ passed: false, actual })),
 			resolveStepResult: vi.fn(),
 		}
 	})

@@ -1,5 +1,5 @@
 import { logger } from '../../../logging'
-import { Step } from '../../../runtime/types'
+import { getBrowserStepHints, Step } from '../../../runtime/types'
 import { filterByThreshold, filterTopPercent, JsonValue, scoreSnapshotElements } from './semantic-scorer'
 import { reconstructTree } from './tree-reconstructor'
 
@@ -54,7 +54,7 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 }
 
 function resolveTopPercent(step: Step): number {
-	const candidate = step.topPercent
+	const candidate = getBrowserStepHints(step).topPercent
 	if (typeof candidate === 'number' && candidate > 0 && candidate <= 100) {
 		return candidate
 	}
@@ -63,9 +63,10 @@ function resolveTopPercent(step: Step): number {
 }
 
 function resolveSearchQuery(step: Step): string {
-	if (step.search && step.search.length > 0) {
-		logger.info(`filterSnapshot: using search keywords: ${JSON.stringify(step.search)}`)
-		return step.search.join(' ')
+	const hints = getBrowserStepHints(step)
+	if (hints.search && hints.search.length > 0) {
+		logger.info(`filterSnapshot: using search keywords: ${JSON.stringify(hints.search)}`)
+		return hints.search.join(' ')
 	}
 
 	const semanticQuery = `${step.action} ${step.expect}`.trim()

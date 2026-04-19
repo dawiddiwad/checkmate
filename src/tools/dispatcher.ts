@@ -38,13 +38,13 @@ export class ToolDispatcher {
 
 		const normalizedResult = (result ?? { response: '' }) as {
 			response: string
-			snapshot?: string | null
+			context?: ToolResponse['context']
 			status?: 'success' | 'error'
 		}
 		return {
 			name: toolName,
 			response: normalizedResult.response,
-			snapshot: normalizedResult.snapshot ?? null,
+			context: normalizedResult.context,
 			status: normalizedResult.status ?? 'success',
 		}
 	}

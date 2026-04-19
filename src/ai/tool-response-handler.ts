@@ -1,6 +1,6 @@
 import { RuntimeConfig } from '../config/runtime-config'
+import { CheckmateBrowserService, CheckmateContextItem, CheckmateServices } from '../runtime/module'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { BrowserScreenshotService } from '../tools/browser/screenshot-service'
 import { ToolResponse } from '../tools/registry'
 import { ToolCall } from '../tools/types'
 import { AiClient } from './client'
@@ -11,7 +11,6 @@ export class ToolResponseHandler {
 	constructor(
 		private readonly aiClient: AiClient,
 		private readonly messageHistory: MessageHistory,
-		private readonly screenshotService: BrowserScreenshotService,
 		private readonly responseProcessor: ResponseProcessor,
 		private readonly config: RuntimeConfig = new RuntimeConfig()
 	) {}
@@ -37,10 +36,10 @@ export class ToolResponseHandler {
 
 		this.messageHistory.removeEphemeralStateMessages(this.aiClient)
 
-		let latestSnapshot: string | null = null
+		const latestContext: CheckmateContextItem[] = []
 		for (const { toolResponse } of toolResponses) {
-			if (toolResponse.snapshot) {
-				latestSnapshot = toolResponse.snapshot
+			if (toolResponse.context) {
+				latestContext.splice(0, latestContext.length, ...toolResponse.context)
 			}
 		}
 
@@ -53,21 +52,24 @@ export class ToolResponseHandler {
 			await this.aiClient.addToolExecutionSummaryMessage(executionSummary)
 		}
 
-		for (const [index] of toolResponses.entries()) {
-			const isLast = index === toolResponses.length - 1
-			if (isLast && latestSnapshot) {
-				await this.aiClient.addCurrentSnapshotMessage(latestSnapshot)
+		if (this.config.includeScreenshotInSnapshot()) {
+			const browser = getBrowserService(this.aiClient.getServices())
+			if (browser) {
+				latestContext.push(await browser.getScreenshotContextItem())
 			}
+		}
 
-			if (isLast && this.config.includeScreenshotInSnapshot()) {
-				const screenshot = await this.screenshotService.getCompressedScreenshot()
-				await this.aiClient.addCurrentScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
-			}
+		if (latestContext.length > 0) {
+			await this.aiClient.addMessages(this.messageHistory.buildContextMessages(latestContext))
 		}
 
 		const nextResponse = await this.aiClient.sendToolResponseWithRetry()
 		await this.responseProcessor.handleResponse(nextResponse, step, resolveStepResult)
 	}
+}
+
+function getBrowserService(services: CheckmateServices): CheckmateBrowserService | undefined {
+	return services.browser as CheckmateBrowserService | undefined
 }
 
 function buildToolExecutionSummary(

@@ -3,7 +3,6 @@ import { ResponseProcessor } from '../ai/response-processor'
 import { AiClient } from '../ai/client'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { Page } from '@playwright/test'
 import { MockOpenAIClient } from './test-types'
 
 interface TestableResponseProcessor {
@@ -81,25 +80,22 @@ vi.mock('../../src/tools/browser/screenshot-service', () => ({
 describe('ResponseProcessor', () => {
 	let responseProcessor: ResponseProcessor
 	let mockOpenAIClient: MockOpenAIClient
-	let mockPage: Page
 	let mockStep: Step
 	let mockCallback: ResolveStepResult
 
 	beforeEach(() => {
-		mockPage = {} as Page
-
 		mockOpenAIClient = {
 			countHistoryTokens: vi.fn().mockReturnValue(1000),
 			getRuntimeConfig: vi.fn().mockReturnValue({
 				getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
 			}),
 			getToolRegistry: vi.fn().mockReturnValue({}),
+			getServices: vi.fn().mockReturnValue({}),
 			getMessages: vi.fn().mockReturnValue([]),
 			replaceHistory: vi.fn(),
 		}
 
 		responseProcessor = new ResponseProcessor({
-			page: mockPage,
 			aiClient: mockOpenAIClient as unknown as AiClient,
 		})
 
@@ -170,7 +166,7 @@ describe('ResponseProcessor', () => {
 					name: 'browser_click',
 					arguments: { ref: 'e123', name: 'Button', goal: 'click' },
 				},
-				{ step: mockStep, resolveStepResult: mockCallback }
+				expect.objectContaining({ step: mockStep, resolveStepResult: mockCallback })
 			)
 			expect(toolResponseHandler.handleMultiple).toHaveBeenCalledWith(
 				[

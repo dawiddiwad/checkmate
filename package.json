@@ -39,6 +39,10 @@
 		"./playwright": {
 			"types": "./dist/playwright.d.ts",
 			"default": "./dist/playwright.js"
+		},
+		"./salesforce": {
+			"types": "./dist/salesforce.d.ts",
+			"default": "./dist/salesforce.js"
 		}
 	},
 	"scripts": {

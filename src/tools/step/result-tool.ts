@@ -20,7 +20,7 @@ export function createStepResultTools(): AgentTool[] {
 			description: 'Fail the test step with the actual result',
 			schema: stepResultSchema,
 			handler: ({ actualResult }, context) => {
-				context.resolveStepResult({ passed: false, actual: actualResult })
+				context.fail(actualResult)
 			},
 		}),
 		defineAgentTool({
@@ -28,7 +28,7 @@ export function createStepResultTools(): AgentTool[] {
 			description: 'Pass the test step with the actual result',
 			schema: stepResultSchema,
 			handler: ({ actualResult }, context) => {
-				context.resolveStepResult({ passed: true, actual: actualResult })
+				context.pass(actualResult)
 			},
 		}),
 	]

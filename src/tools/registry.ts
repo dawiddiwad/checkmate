@@ -1,21 +1,22 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 import { RuntimeConfig } from '../config/runtime-config'
-import { AgentTool, getToolName } from './types'
+import { CheckmateContextItem } from '../runtime/module'
+import { AnyCheckmateTool, getToolName } from './types'
 
 export type ToolResponse = {
 	name?: string
 	response: string
-	snapshot?: string | null
+	context?: CheckmateContextItem[]
 	status: 'success' | 'error'
 }
 
 export class ToolRegistry {
-	private readonly tools: AgentTool[] = []
-	private readonly toolsByName = new Map<string, AgentTool>()
+	private readonly tools: AnyCheckmateTool[] = []
+	private readonly toolsByName = new Map<string, AnyCheckmateTool>()
 
 	constructor(private readonly runtimeConfig: RuntimeConfig) {}
 
-	register(tool: AgentTool | AgentTool[]): void {
+	register(tool: AnyCheckmateTool | AnyCheckmateTool[]): void {
 		const tools = Array.isArray(tool) ? tool : [tool]
 
 		for (const registeredTool of tools) {
@@ -33,7 +34,7 @@ export class ToolRegistry {
 		return this.runtimeConfig
 	}
 
-	resolve(toolName: string): AgentTool | undefined {
+	resolve(toolName: string): AnyCheckmateTool | undefined {
 		return this.toolsByName.get(toolName)
 	}
 

@@ -16,6 +16,7 @@ Focus: Stability, extension points, and better contributor ergonomics.
 - ✅ Custom tool registration API for external integrations
 - ✅ Better public examples for programmatic runner usage
 - ✅ Publishable npm package layout with `@alepoco/checkmate` and `@alepoco/checkmate/playwright`
+- ✅ Service-based runner composition with web and Salesforce profiles
 - [ ] More focused unit tests around runtime/session boundaries
 - [ ] Snapshot filtering tuning hooks beyond top-percent selection
 - [ ] Better reporting around filtered snapshot size and selected branches

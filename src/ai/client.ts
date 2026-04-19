@@ -2,22 +2,22 @@ import OpenAI from 'openai'
 import {
 	ChatCompletion,
 	ChatCompletionAssistantMessageParam,
+	ChatCompletionContentPartText,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
-import { Page } from '@playwright/test'
 import { RuntimeConfig } from '../config/runtime-config'
 import { logger } from '../logging'
 import { CheckmateLogger } from '../logging/logger'
+import { CheckmateServices } from '../runtime/module'
 import { LoopDetectedError } from '../tools/loop-detector'
 import { ToolRegistry } from '../tools/registry'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { MessageHistory } from './message-history'
 import { ResponseProcessor } from './response-processor'
 
 export type AiClientDependencies = {
 	runtimeConfig: RuntimeConfig
 	toolRegistry: ToolRegistry
-	page: Page
+	services: CheckmateServices
 }
 
 export class AiClient {
@@ -38,17 +38,17 @@ export class AiClient {
 	private resolveStepResult!: ResolveStepResult
 	temperature: number
 
-	constructor({ runtimeConfig, toolRegistry, page }: AiClientDependencies) {
+	constructor({ runtimeConfig, toolRegistry, services }: AiClientDependencies) {
 		this.runtimeConfig = runtimeConfig
 		this.toolRegistry = toolRegistry
-		this.page = page
-		this.responseProcessor = new ResponseProcessor({ page, aiClient: this })
+		this.services = services
+		this.responseProcessor = new ResponseProcessor({ aiClient: this })
 		this.temperature = this.runtimeConfig.getTemperature()
 	}
 
 	private readonly runtimeConfig: RuntimeConfig
 	private readonly toolRegistry: ToolRegistry
-	readonly page: Page
+	private readonly services: CheckmateServices
 
 	async initialize(step: Step, resolveStepResult: ResolveStepResult): Promise<void> {
 		this.client = new OpenAI({
@@ -79,6 +79,10 @@ export class AiClient {
 		return this.runtimeConfig
 	}
 
+	getServices(): CheckmateServices {
+		return this.services
+	}
+
 	async sendMessage(userMessage: string | ChatCompletionMessageParam[]) {
 		if (typeof userMessage === 'string') {
 			this.messages.push({ role: 'user', content: userMessage })
@@ -105,25 +109,12 @@ export class AiClient {
 	async addToolExecutionSummaryMessage(content: string): Promise<void> {
 		this.messages.push({
 			role: 'user',
-			content: `${MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER}:\n${content}`,
+			content: `tool execution summary:\n${content}`,
 		})
 	}
 
-	async addCurrentSnapshotMessage(snapshotContent: string): Promise<void> {
-		this.messages.push({
-			role: 'user',
-			content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}` }],
-		})
-	}
-
-	async addCurrentScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
-		this.messages.push({
-			role: 'user',
-			content: [
-				{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
-				{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' } },
-			],
-		})
+	async addMessages(messages: ChatCompletionMessageParam[]): Promise<void> {
+		this.messages.push(...messages)
 	}
 
 	async sendToolResponseWithRetry(): Promise<ChatCompletion> {
@@ -162,7 +153,12 @@ export class AiClient {
 		const sanitizedMessage: ChatCompletionAssistantMessageParam = { role: 'assistant' }
 
 		if (message.content !== undefined) {
-			sanitizedMessage.content = message.content
+			if (typeof message.content === 'string') {
+				sanitizedMessage.content = message.content
+			} else {
+				const sanitizedContent = this.sanitizeContentParts(message.content)
+				sanitizedMessage.content = sanitizedContent.length > 0 ? sanitizedContent : null
+			}
 		}
 
 		if ('refusal' in message && message.refusal !== undefined) {
@@ -186,6 +182,22 @@ export class AiClient {
 		}
 
 		return sanitizedMessage
+	}
+
+	private sanitizeContentParts(
+		content: ChatCompletion['choices'][number]['message']['content']
+	): ChatCompletionContentPartText[] {
+		if (!Array.isArray(content)) {
+			return []
+		}
+
+		return content.flatMap((part) => {
+			if (part.type !== 'text') {
+				return []
+			}
+
+			return [{ type: 'text', text: part.text }]
+		})
 	}
 
 	private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {

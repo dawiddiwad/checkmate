@@ -1,19 +1,14 @@
 import { expect, Page } from '@playwright/test'
 import { z } from 'zod/v4'
 import { logger } from '../../logging'
+import { CheckmateServices } from '../../runtime/module'
 import { Step } from '../../runtime/types'
+import { CheckmateBrowserInputElement, CheckmateBrowserService, CheckmateContextItem } from '../../runtime/module'
 import { defineAgentTool } from '../define-agent-tool'
 import { AgentTool, AgentToolResponse } from '../types'
 import { SnapshotService } from './snapshot-service'
+import { BrowserScreenshotService } from './screenshot-service'
 import { TransientStateTracker } from './transient-state-tracker'
-
-type BrowserInputElement = {
-	ref: string
-	text: string
-	name: string
-	clear: boolean
-	select: boolean
-}
 
 export const BrowserTool = {
 	TOOL_NAVIGATE: 'browser_navigate',
@@ -36,8 +31,8 @@ const browserInputElementSchema = z
 	})
 	.strict()
 
-export class BrowserToolRuntime {
-	constructor(private readonly page: Page) {}
+export class BrowserToolRuntime implements CheckmateBrowserService {
+	constructor(readonly page: Page) {}
 
 	async navigateToUrl(url: string, step: Step): Promise<AgentToolResponse | string> {
 		return this.wrapWithTracker(
@@ -76,7 +71,10 @@ export class BrowserToolRuntime {
 		)
 	}
 
-	async typeOrSelectInElement(elements: BrowserInputElement[], step: Step): Promise<AgentToolResponse | string> {
+	async typeOrSelectInElement(
+		elements: CheckmateBrowserInputElement[],
+		step: Step
+	): Promise<AgentToolResponse | string> {
 		return this.wrapWithTracker(
 			async () => {
 				for (const element of elements) {
@@ -173,6 +171,26 @@ export class BrowserToolRuntime {
 		)
 	}
 
+	async getInitialContext(step: Step): Promise<CheckmateContextItem[]> {
+		return [
+			{
+				kind: 'text',
+				name: 'browser.snapshot',
+				content: await this.captureCurrentSnapshot(step),
+			},
+		]
+	}
+
+	async getScreenshotContextItem(): Promise<CheckmateContextItem> {
+		const screenshot = await new BrowserScreenshotService(this.page).getCompressedScreenshot()
+		return {
+			kind: 'image',
+			name: 'browser.screenshot',
+			mimeType: screenshot.mimeType ?? 'image/png',
+			data: screenshot.data,
+		}
+	}
+
 	private async wrapWithTracker(
 		action: () => Promise<unknown>,
 		fallbackResponse: string,
@@ -191,7 +209,10 @@ export class BrowserToolRuntime {
 			const snapshot = await this.captureCurrentSnapshot(step)
 			await tracker.stop()
 			const formattedTimeline = tracker.formatTimeline()
-			return { response: formattedTimeline || fallbackResponse, snapshot }
+			return {
+				response: formattedTimeline || fallbackResponse,
+				context: [{ kind: 'text', name: 'browser.snapshot', content: snapshot }],
+			}
 		} catch (error) {
 			await tracker.stop()
 			throw error
@@ -199,7 +220,9 @@ export class BrowserToolRuntime {
 	}
 }
 
-export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
+export function createBrowserTools<TServices extends CheckmateServices = CheckmateServices>(
+	runtime: CheckmateBrowserService
+): AgentTool<TServices>[] {
 	return [
 		defineAgentTool({
 			name: BrowserTool.TOOL_NAVIGATE,
@@ -259,7 +282,13 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				.strict(),
 			handler: async (_args, context) => ({
 				response: 'Captured latest page snapshot.',
-				snapshot: await runtime.captureCurrentSnapshot(context.step, { skipFilter: true }),
+				context: [
+					{
+						kind: 'text',
+						name: 'browser.snapshot',
+						content: await runtime.captureCurrentSnapshot(context.step, { skipFilter: true }),
+					},
+				],
 			}),
 		}),
 		defineAgentTool({

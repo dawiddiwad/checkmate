@@ -22,11 +22,13 @@ describe('MessageHistory', () => {
 	})
 
 	describe('buildInitialMessages', () => {
-		it('should build initial messages with system prompt, step prompt, and snapshot', () => {
+		it('should build initial messages with system prompt, step prompt, and context', () => {
 			const initialMessages = historyManager.buildInitialMessages({
 				systemPrompt: 'system prompt',
 				userPrompt: 'step prompt',
-				snapshotContent: 'Page Title: Test Page\nButton: Click Me',
+				contextItems: [
+					{ kind: 'text', name: 'browser.snapshot', content: 'Page Title: Test Page\nButton: Click Me' },
+				],
 			})
 
 			expect(initialMessages).toHaveLength(3)
@@ -36,19 +38,24 @@ describe('MessageHistory', () => {
 			expect((initialMessages[0].content as TextContentPart[])[0].text).toBe('system prompt')
 			expect((initialMessages[1].content as TextContentPart[])[0].text).toBe('step prompt')
 			expect((initialMessages[2].content as TextContentPart[])[0].text).toContain(
-				MessageHistory.SNAPSHOT_IDENTIFIER
+				MessageHistory.CONTEXT_IDENTIFIER
 			)
 		})
 	})
 
 	describe('removeEphemeralStateMessages', () => {
-		it('should remove floating snapshot and screenshot messages while keeping append-only history', () => {
+		it('should remove floating context messages while keeping append-only history', () => {
 			const mockHistory: ChatCompletionMessageParam[] = [
 				{ role: 'system', content: 'system prompt' },
 				{ role: 'user', content: 'step prompt' },
 				{
 					role: 'user',
-					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\ninitial snapshot` }],
+					content: [
+						{
+							type: 'text',
+							text: `${MessageHistory.CONTEXT_IDENTIFIER}: browser.snapshot\ninitial snapshot`,
+						},
+					],
 				},
 				{
 					role: 'assistant',
@@ -64,12 +71,17 @@ describe('MessageHistory', () => {
 				{ role: 'tool', tool_call_id: 'call_1', content: 'Timeline: navigated to example.com' },
 				{
 					role: 'user',
-					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\nupdated snapshot` }],
+					content: [
+						{
+							type: 'text',
+							text: `${MessageHistory.CONTEXT_IDENTIFIER}: browser.snapshot\nupdated snapshot`,
+						},
+					],
 				},
 				{
 					role: 'user',
 					content: [
-						{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
+						{ type: 'text', text: `${MessageHistory.CONTEXT_IDENTIFIER}: browser.screenshot` },
 						{
 							type: 'image_url',
 							image_url: { url: 'data:image/png;base64,abc', detail: 'high' },
@@ -99,7 +111,12 @@ describe('MessageHistory', () => {
 				},
 				{
 					role: 'user',
-					content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\ncurrent snapshot` }],
+					content: [
+						{
+							type: 'text',
+							text: `${MessageHistory.CONTEXT_IDENTIFIER}: browser.snapshot\ncurrent snapshot`,
+						},
+					],
 				},
 			]
 
@@ -126,12 +143,8 @@ describe('MessageHistory', () => {
 	})
 
 	describe('constants', () => {
-		it('should have correct snapshot identifier constant', () => {
-			expect(MessageHistory.SNAPSHOT_IDENTIFIER).toBe('this is a current page snapshot')
-		})
-
-		it('should have correct screenshot identifier constant', () => {
-			expect(MessageHistory.SCREENSHOT_IDENTIFIER).toBe('this is a current screenshot of the page')
+		it('should have correct context identifier constant', () => {
+			expect(MessageHistory.CONTEXT_IDENTIFIER).toBe('checkmate context')
 		})
 
 		it('should have correct tool execution summary identifier constant', () => {

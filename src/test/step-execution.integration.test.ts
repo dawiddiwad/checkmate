@@ -65,6 +65,13 @@ vi.mock('../tools/browser/tool', () => ({
 	},
 	BrowserToolRuntime: class {
 		constructor() {}
+		getInitialContext = vi.fn().mockResolvedValue([])
+		getScreenshotContextItem = vi.fn().mockResolvedValue({
+			kind: 'image',
+			name: 'browser.screenshot',
+			mimeType: 'image/png',
+			data: 'mocked-base64',
+		})
 	},
 	createBrowserTools: vi.fn(() => [
 		{
@@ -160,6 +167,8 @@ describe('Simple step execution integration', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		createMock.mockReset()
+		browserCallMock.mockReset()
 		browserCallMock.mockReturnValue('nav-ok')
 		page = {} as Page
 		manager = new CheckmateRunner(page)
@@ -501,8 +510,12 @@ describe('Simple step execution integration', () => {
 		const toolRegistry = new ToolRegistry(configurationManager)
 		toolRegistry.register(createBrowserTools(browserRuntime))
 		toolRegistry.register(createStepResultTools())
-		toolRegistry.register(createSalesforceTools(browserRuntime))
-		const client = new AiClient({ runtimeConfig: configurationManager, toolRegistry, page })
+		toolRegistry.register(createSalesforceTools(browserRuntime, { getFrontDoorUrl: vi.fn() }))
+		const client = new AiClient({
+			runtimeConfig: configurationManager,
+			toolRegistry,
+			services: { browser: browserRuntime },
+		})
 
 		const step: Step = {
 			action: 'Report current status',

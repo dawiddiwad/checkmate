@@ -105,8 +105,6 @@ test('google search', async ({ page, ai }) => {
 		expect: `
             Search results contain the 'playwright.dev' link`,
 	})
-
-	await expect(page.getByRole('link', { name: /playwright/i }).first()).toBeVisible()
 })
 ```
 
@@ -128,7 +126,7 @@ await ai.run({
 })
 ```
 
-See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+Runners, extensions, and profiles can be composed to fit custom needs. See the [guide](docs/GUIDE.md#extensibility) for the extensibility model, composition examples, and custom extension authoring.
 
 The repository keeps runnable consumer-style examples under `test/examples/`.
 
@@ -160,7 +158,7 @@ See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitor
 
 **High token costs**
 
-- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` to score and narrow the elements automatically from `action` and `expect`. Use `topPercent` to dial how much of the scored snapshot to keep for a step.
+- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` to score and narrow the elements automatically from `action` and `expect`. Use `hints.browser.topPercent` to dial how much of the scored snapshot to keep for a step.
 - Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
 - Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
 - Use a cheaper model, lower-end models often perform well (e.g., `gpt-5.4-nano` or `gpt-oss-20b`)

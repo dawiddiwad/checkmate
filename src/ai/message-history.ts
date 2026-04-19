@@ -1,16 +1,15 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { BrowserSnapshot } from '../tools/browser/snapshot-service'
+import { CheckmateContextItem } from '../runtime/module'
 import { AiClient } from './client'
 
 type InitialMessageParameters = {
 	systemPrompt: string
 	userPrompt: string
-	snapshotContent: BrowserSnapshot
+	contextItems: CheckmateContextItem[]
 }
 
 export class MessageHistory {
-	static readonly SNAPSHOT_IDENTIFIER = 'this is a current page snapshot'
-	static readonly SCREENSHOT_IDENTIFIER = 'this is a current screenshot of the page'
+	static readonly CONTEXT_IDENTIFIER = 'checkmate context'
 	static readonly TOOL_EXECUTION_SUMMARY_IDENTIFIER = 'tool execution summary'
 
 	buildInitialMessages(config: InitialMessageParameters): ChatCompletionMessageParam[] {
@@ -23,11 +22,35 @@ export class MessageHistory {
 				role: 'user',
 				content: [{ type: 'text', text: config.userPrompt }],
 			},
-			{
-				role: 'user',
-				content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${config.snapshotContent}` }],
-			},
+			...this.buildContextMessages(config.contextItems),
 		]
+	}
+
+	buildContextMessages(contextItems: CheckmateContextItem[]): ChatCompletionMessageParam[] {
+		return contextItems.map((contextItem) => {
+			if (contextItem.kind === 'text') {
+				return {
+					role: 'user',
+					content: [
+						{
+							type: 'text',
+							text: `${MessageHistory.CONTEXT_IDENTIFIER}: ${contextItem.name}\n${contextItem.content}`,
+						},
+					],
+				} satisfies ChatCompletionMessageParam
+			}
+
+			return {
+				role: 'user',
+				content: [
+					{ type: 'text', text: `${MessageHistory.CONTEXT_IDENTIFIER}: ${contextItem.name}` },
+					{
+						type: 'image_url',
+						image_url: { url: `data:${contextItem.mimeType};base64,${contextItem.data}`, detail: 'high' },
+					},
+				],
+			} satisfies ChatCompletionMessageParam
+		})
 	}
 
 	removeEphemeralStateMessages(aiClient: AiClient): void {
@@ -44,9 +67,6 @@ export class MessageHistory {
 			return false
 		}
 
-		return (
-			firstPart.text.startsWith(`${MessageHistory.SNAPSHOT_IDENTIFIER}:`) ||
-			firstPart.text === MessageHistory.SCREENSHOT_IDENTIFIER
-		)
+		return firstPart.text.startsWith(`${MessageHistory.CONTEXT_IDENTIFIER}:`)
 	}
 }

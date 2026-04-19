@@ -70,6 +70,9 @@ describe('Browser tools', () => {
 		tools = createBrowserTools(runtime)
 		context = {
 			step: { action: 'act', expect: 'done' },
+			services: {},
+			pass: vi.fn(),
+			fail: vi.fn(),
 			resolveStepResult: vi.fn(),
 		}
 	})
@@ -93,7 +96,10 @@ describe('Browser tools', () => {
 		)
 
 		expect(mockPage.goto).toHaveBeenCalledWith('https://example.com')
-		expect(result).toEqual({ response: 'Navigated to: https://example.com', snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: 'Navigated to: https://example.com',
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('validates navigate arguments with zod', async () => {
@@ -108,7 +114,10 @@ describe('Browser tools', () => {
 		)
 
 		expect(mockPage.click).toHaveBeenCalledWith('aria-ref=e123')
-		expect(result).toEqual({ response: "Clicked element with ref 'e123'.", snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: "Clicked element with ref 'e123'.",
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('hovers when requested', async () => {
@@ -118,7 +127,10 @@ describe('Browser tools', () => {
 		)
 
 		expect(mockPage.hover).toHaveBeenCalledWith('aria-ref=e321')
-		expect(result).toEqual({ response: "Hovered element with ref 'e321'.", snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: "Hovered element with ref 'e321'.",
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('prefers transient timeline in click responses when available', async () => {
@@ -129,7 +141,10 @@ describe('Browser tools', () => {
 			context
 		)
 
-		expect(result).toEqual({ response: 'timeline: click flow', snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: 'timeline: click flow',
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('types text into an element', async () => {
@@ -144,7 +159,10 @@ describe('Browser tools', () => {
 		expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
 		expect(mockPage.locator('aria-ref=e456').clear).toHaveBeenCalledOnce()
 		expect(mockPage.locator('aria-ref=e456').pressSequentially).toHaveBeenCalledWith('Hello World', { delay: 50 })
-		expect(result).toEqual({ response: 'Updated 1 page element.', snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: 'Updated 1 page element.',
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('selects an option from a dropdown', async () => {
@@ -157,7 +175,10 @@ describe('Browser tools', () => {
 		)
 
 		expect(mockPage.locator('aria-ref=e789').selectOption).toHaveBeenCalledWith('Option 2')
-		expect(result).toEqual({ response: 'Updated 1 page element.', snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: 'Updated 1 page element.',
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('validates type/select arguments with zod', async () => {
@@ -172,7 +193,10 @@ describe('Browser tools', () => {
 		const result = await getTool(BrowserTool.TOOL_PRESS_KEY).execute({ key: 'Enter', goal: 'submit' }, context)
 
 		expect(mockPage.keyboard.press).toHaveBeenCalledWith('Enter')
-		expect(result).toEqual({ response: "Pressed key 'Enter'.", snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: "Pressed key 'Enter'.",
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('returns runtime error message when key is empty', async () => {
@@ -182,14 +206,20 @@ describe('Browser tools', () => {
 
 	it('captures a raw snapshot without filtering', async () => {
 		const result = await getTool(BrowserTool.TOOL_SNAPSHOT).execute({ goal: 'capture current state' }, context)
-		expect(result).toEqual({ response: 'Captured latest page snapshot.', snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: 'Captured latest page snapshot.',
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('waits for specified seconds', async () => {
 		const result = await getTool(BrowserTool.TOOL_WAIT).execute({ seconds: 2.5, goal: 'wait for content' }, context)
 
 		expect(mockPage.waitForTimeout).toHaveBeenCalledWith(2500)
-		expect(result).toEqual({ response: 'Waited 2.5 seconds.', snapshot: 'mocked snapshot content' })
+		expect(result).toEqual({
+			response: 'Waited 2.5 seconds.',
+			context: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot content' }],
+		})
 	})
 
 	it('returns runtime error when seconds is not positive', async () => {

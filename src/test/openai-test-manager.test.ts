@@ -5,10 +5,12 @@ import { Page } from '@playwright/test'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
 interface TestableTestManager {
-	aiClient: {
-		initialize: Mock
-		sendMessage: Mock
-	}
+	runtimePromise: Promise<{
+		aiClient: {
+			initialize: Mock
+			sendMessage: Mock
+		}
+	}>
 }
 
 vi.mock('../../src/config/runtime-config', () => ({
@@ -39,8 +41,20 @@ vi.mock('../../src/tools/step/result-tool', () => ({
 }))
 
 vi.mock('../../src/tools/browser/tool', () => ({
+	BrowserTool: {
+		TOOL_SNAPSHOT: 'browser_snapshot',
+	},
 	BrowserToolRuntime: class {
 		constructor() {}
+		getInitialContext = vi
+			.fn()
+			.mockResolvedValue([{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot' }])
+		getScreenshotContextItem = vi.fn().mockResolvedValue({
+			kind: 'image',
+			name: 'browser.screenshot',
+			mimeType: 'image/png',
+			data: 'mocked-base64',
+		})
 	},
 	createBrowserTools: vi.fn(() => []),
 }))
@@ -128,7 +142,7 @@ describe('CheckmateRunner', () => {
 		})
 
 		it('should successfully run when step passes', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			const mockClient = (await (testManager as unknown as TestableTestManager).runtimePromise).aiClient
 			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
@@ -140,7 +154,7 @@ describe('CheckmateRunner', () => {
 		})
 
 		it('should throw error when step fails', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			const mockClient = (await (testManager as unknown as TestableTestManager).runtimePromise).aiClient
 			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: false, actual: 'Button not found' }), 0)
 				return Promise.resolve()
@@ -150,7 +164,7 @@ describe('CheckmateRunner', () => {
 		})
 
 		it('should include step action in error message when failing', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			const mockClient = (await (testManager as unknown as TestableTestManager).runtimePromise).aiClient
 			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: false, actual: 'Failed' }), 0)
 				return Promise.resolve()
@@ -165,7 +179,7 @@ describe('CheckmateRunner', () => {
 		})
 
 		it('should wrap errors from OpenAI client', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			const mockClient = (await (testManager as unknown as TestableTestManager).runtimePromise).aiClient
 			mockClient.initialize.mockRejectedValue(new Error('API Error'))
 
 			try {
@@ -180,7 +194,7 @@ describe('CheckmateRunner', () => {
 		})
 
 		it('should handle sendMessage errors', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			const mockClient = (await (testManager as unknown as TestableTestManager).runtimePromise).aiClient
 			mockClient.initialize.mockResolvedValue(undefined)
 			mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
 			try {
@@ -192,7 +206,7 @@ describe('CheckmateRunner', () => {
 		})
 
 		it('should build initial messages and send them before the first model request', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
+			const mockClient = (await (testManager as unknown as TestableTestManager).runtimePromise).aiClient
 			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
 				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
 				return Promise.resolve()
@@ -207,7 +221,7 @@ describe('CheckmateRunner', () => {
 			expect(historyModule.getBuildInitialMessagesMock()).toHaveBeenCalledWith({
 				systemPrompt: 'system prompt',
 				userPrompt: `Execute: ${mockStep.action}`,
-				snapshotContent: 'mocked snapshot',
+				contextItems: [{ kind: 'text', name: 'browser.snapshot', content: 'mocked snapshot' }],
 			})
 			expect(mockClient.sendMessage).toHaveBeenCalledWith([
 				{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },

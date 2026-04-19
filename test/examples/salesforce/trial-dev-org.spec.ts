@@ -26,7 +26,7 @@
  * All tests use the `ai` fixture and call `ai.run({ action, expect })`
  * to describe actions and assert visible outcomes.
  */
-import { test } from '@alepoco/checkmate/playwright'
+import { test } from '@alepoco/checkmate/salesforce'
 
 test.describe('trial dev org', async () => {
 	test('creating new account in sales app', async ({ ai }) => {

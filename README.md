@@ -43,7 +43,8 @@ await ai.run({
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box  
 ✅ **Cost Optimized** - Built-in token management and budgeting  
-✅ **Full Playwright** - Reports, traces, debugging - all included
+✅ **Playwright Test** - Native reports, traces and debugging  
+✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
 
 <img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
 
@@ -96,7 +97,7 @@ Import `test` and `expect` from `@xoxoai/checkmate/playwright` and use the `ai` 
 ```typescript
 import { expect, test } from '@xoxoai/checkmate/playwright'
 
-test('google search', async ({ page, ai }) => {
+test('google search', async ({ ai }) => {
 	await ai.run({
 		action: `
             Open the browser and navigate to google.com.
@@ -105,8 +106,6 @@ test('google search', async ({ page, ai }) => {
 		expect: `
             Search results contain the 'playwright.dev' link`,
 	})
-
-	await expect(page.getByRole('link', { name: /playwright/i }).first()).toBeVisible()
 })
 ```
 
@@ -134,12 +133,13 @@ await ai.run({
 })
 ```
 
-See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions guide](docs/EXTENSIONS.md) for building custom tools, extensions, and runners.
+See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions](docs/EXTENSIONS.md) for building custom tools, extensions, and runners.
 
-Convenience entry points are also available:
+Published entry points:
 
-- `@xoxoai/checkmate/playwright` exports `test`, `expect`, `web()`, and `createPlaywrightRunner(page)`
-- `@xoxoai/checkmate/salesforce` exports `test`, `expect`, `salesforce()`, and `createSalesforceRunner(page)`
+`@xoxoai/checkmate/core`: Build your own runner with extensions.  
+`@xoxoai/checkmate/playwright`: Use the built-in web extension with Playwright `test` and `expect`.  
+`@xoxoai/checkmate/salesforce`: Use the built-in web + Salesforce extensions with the same `ai` fixture shape.
 
 The repository keeps runnable consumer-style examples under `test/examples/`.
 

@@ -21,7 +21,9 @@
 	],
 	"files": [
 		"dist",
-		"docs",
+		"docs/EXTENSIONS.md",
+		"docs/GUIDE.md",
+		"docs/ROADMAP.md",
 		"README.md",
 		"LICENSE"
 	],

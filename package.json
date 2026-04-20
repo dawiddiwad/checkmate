@@ -1,11 +1,11 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
 	"homepage": "https://github.com/dawiddiwad/checkmate",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/dawiddiwad/checkmate.git"
+		"url": "git+https://github.com/dawiddiwad/checkmate.git"
 	},
 	"keywords": [
 		"test-automation",
@@ -20,13 +20,19 @@
 		"groq"
 	],
 	"files": [
+		"bin",
 		"dist",
 		"docs/EXTENSIONS.md",
 		"docs/GUIDE.md",
 		"docs/ROADMAP.md",
+		"playwright.config.ts",
 		"README.md",
+		"test/examples",
 		"LICENSE"
 	],
+	"bin": {
+		"checkmate": "bin/checkmate.js"
+	},
 	"publishConfig": {
 		"access": "public"
 	},
@@ -102,5 +108,12 @@
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.58.2",
 		"vitest": "^4.1.2"
+	},
+	"directories": {
+		"doc": "docs",
+		"test": "test"
+	},
+	"bugs": {
+		"url": "https://github.com/dawiddiwad/checkmate/issues"
 	}
 }

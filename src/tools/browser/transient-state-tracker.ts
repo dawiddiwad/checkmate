@@ -1,5 +1,5 @@
 import { ConsoleMessage, Dialog, Frame, Page } from '@playwright/test'
-import { logger } from '../../logging'
+import { logger } from '../../logging/index.js'
 
 type Clock = () => number
 

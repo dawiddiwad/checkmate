@@ -1,5 +1,5 @@
-import { Step } from '../runtime/types'
-import { StepResultTool } from '../tools/step/result-tool'
+import { Step } from '../runtime/types.js'
+import { StepResultTool } from '../tools/step/result-tool.js'
 
 export const STEP_SYSTEM_PROMPT = (instructions: string[] = []) => {
 	const extensionInstructions =

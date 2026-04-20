@@ -1,4 +1,4 @@
-export { filterSnapshot } from './snapshot-filter'
+export { filterSnapshot } from './snapshot-filter.js'
 export {
 	scoreSnapshotElements,
 	filterByThreshold,
@@ -7,5 +7,5 @@ export {
 	type JsonValue,
 	type JsonObject,
 	type JsonArray,
-} from './semantic-scorer'
-export { reconstructTree } from './tree-reconstructor'
+} from './semantic-scorer.js'
+export { reconstructTree } from './tree-reconstructor.js'

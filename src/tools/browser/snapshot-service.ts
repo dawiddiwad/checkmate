@@ -1,9 +1,9 @@
 import { Page } from '@playwright/test'
 import { parse } from 'yaml'
-import { RuntimeConfig } from '../../config/runtime-config'
-import { logger } from '../../logging'
-import { Step } from '../../runtime/types'
-import { filterSnapshot } from './snapshot-filter'
+import { RuntimeConfig } from '../../config/runtime-config.js'
+import { logger } from '../../logging/index.js'
+import { Step } from '../../runtime/types.js'
+import { filterSnapshot } from './snapshot-filter/index.js'
 
 export type BrowserSnapshot = string | null
 

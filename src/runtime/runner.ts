@@ -1,10 +1,10 @@
-import { RuntimeConfig } from '../config/runtime-config'
-import { Step } from './types'
-import { createStepResultTools } from '../tools/step/result-tool'
-import { ToolRegistry } from '../tools/registry'
-import { AiClient } from '../ai/client'
-import { StepExecution } from './step-execution'
-import { CheckmateExtension, ExtensionHost } from './extension'
+import { RuntimeConfig } from '../config/runtime-config.js'
+import { Step } from './types.js'
+import { createStepResultTools } from '../tools/step/result-tool.js'
+import { ToolRegistry } from '../tools/registry.js'
+import { AiClient } from '../ai/client.js'
+import { StepExecution } from './step-execution.js'
+import { CheckmateExtension, ExtensionHost } from './extension.js'
 
 /**
  * Options for creating a Checkmate runner.

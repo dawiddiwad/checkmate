@@ -1,5 +1,5 @@
 import { z } from 'zod/v4'
-import { AgentTool, AgentToolContext, AgentToolDefinition, AgentToolResult } from './types'
+import { AgentTool, AgentToolContext, AgentToolDefinition, AgentToolResult } from './types.js'
 
 type ToolConfig<TSchema extends z.ZodType> = {
 	name: string

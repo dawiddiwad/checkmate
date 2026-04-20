@@ -1,10 +1,10 @@
 import { expect, Page, test as base } from '@playwright/test'
-import { MessageHistory } from './ai/message-history'
-import { createRunner, CheckmateRunner } from './runtime/runner'
-import { CheckmateExtension, defineExtension } from './runtime/extension'
-import { BrowserScreenshotService } from './tools/browser/screenshot-service'
-import { BrowserTool, BrowserToolRuntime, createBrowserTools } from './tools/browser/tool'
-import { SnapshotService } from './tools/browser/snapshot-service'
+import { MessageHistory } from './ai/message-history.js'
+import { createRunner, CheckmateRunner } from './runtime/runner.js'
+import { CheckmateExtension, defineExtension } from './runtime/extension.js'
+import { BrowserScreenshotService } from './tools/browser/screenshot-service.js'
+import { BrowserTool, BrowserToolRuntime, createBrowserTools } from './tools/browser/tool.js'
+import { SnapshotService } from './tools/browser/snapshot-service.js'
 
 /**
  * Capability names published by the Playwright web extension.

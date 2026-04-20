@@ -1,4 +1,4 @@
-import { ToolCall } from './tool-contract'
+import { ToolCall } from './tool-contract.js'
 
 export type LoopDetectionResult = {
 	loopDetected: boolean

@@ -1,6 +1,6 @@
 import { z } from 'zod/v4'
-import { defineAgentTool } from '../define-agent-tool'
-import { AgentTool } from '../types'
+import { defineAgentTool } from '../define-agent-tool.js'
+import { AgentTool } from '../types.js'
 
 export const StepResultTool = {
 	TOOL_FAIL_TEST_STEP: 'fail_test_step',

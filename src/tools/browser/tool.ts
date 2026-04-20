@@ -1,11 +1,11 @@
 import { expect, Page } from '@playwright/test'
 import { z } from 'zod/v4'
-import { logger } from '../../logging'
-import { Step } from '../../runtime/types'
-import { defineAgentTool } from '../define-agent-tool'
-import { AgentTool, AgentToolResponse } from '../types'
-import { SnapshotService } from './snapshot-service'
-import { TransientStateTracker } from './transient-state-tracker'
+import { logger } from '../../logging/index.js'
+import { Step } from '../../runtime/types.js'
+import { defineAgentTool } from '../define-agent-tool.js'
+import { AgentTool, AgentToolResponse } from '../types.js'
+import { SnapshotService } from './snapshot-service.js'
+import { TransientStateTracker } from './transient-state-tracker.js'
 
 type BrowserInputElement = {
 	ref: string

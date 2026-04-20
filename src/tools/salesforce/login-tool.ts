@@ -1,9 +1,9 @@
 import { z } from 'zod/v4'
-import { BrowserToolRuntime } from '../browser/tool'
-import { defineAgentTool } from '../define-agent-tool'
-import { AgentTool } from '../types'
-import { SalesforceAuthenticator } from '../../integrations/salesforce/authenticator'
-import { SalesforceCliHandler } from '../../integrations/salesforce/cli-handler'
+import { BrowserToolRuntime } from '../browser/tool.js'
+import { defineAgentTool } from '../define-agent-tool.js'
+import { AgentTool } from '../types.js'
+import { SalesforceAuthenticator } from '../../integrations/salesforce/authenticator.js'
+import { SalesforceCliHandler } from '../../integrations/salesforce/cli-handler.js'
 
 export const SalesforceLoginTool = {
 	TOOL_LOGIN_TO_SALESFORCE_ORG: 'login_to_salesforce_org',

@@ -3,6 +3,7 @@
 ## Top-Level Layout
 
 - `src/core.ts`: published core entry point for `createRunner`, extensions, and tool contracts
+- `src/cli.ts`: published CLI entry point for scaffolding example projects
 - `src/playwright.ts`: published Playwright entry point for `test`, `expect`, `web()`, and `createPlaywrightRunner`
 - `src/salesforce.ts`: published Salesforce entry point for `test`, `expect`, `salesforce()`, and `createSalesforceRunner`
 - `src/runtime/`: public execution flow and step lifecycle

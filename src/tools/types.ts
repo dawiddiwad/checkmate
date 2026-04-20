@@ -1,4 +1,4 @@
-import { ResolveStepResult, Step } from '../runtime/types'
+import { ResolveStepResult, Step } from '../runtime/types.js'
 
 /**
  * Normalized tool call emitted by the model.

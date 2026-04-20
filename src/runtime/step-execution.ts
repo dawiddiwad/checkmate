@@ -1,10 +1,10 @@
 import { expect } from '@playwright/test'
-import { logger } from '../logging'
-import { Step, StepResult, StepResultPromise, ResolveStepResult } from './types'
-import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts'
-import { MessageHistory } from '../ai/message-history'
-import { AiClient } from '../ai/client'
-import { ExtensionHost } from './extension'
+import { logger } from '../logging/index.js'
+import { Step, StepResult, StepResultPromise, ResolveStepResult } from './types.js'
+import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts.js'
+import { MessageHistory } from '../ai/message-history.js'
+import { AiClient } from '../ai/client.js'
+import { ExtensionHost } from './extension.js'
 
 export class StepExecution {
 	private stepResult: StepResult = { passed: false, actual: '' }

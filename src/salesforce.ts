@@ -1,9 +1,9 @@
 import { expect, Page, test as base } from '@playwright/test'
-import { createRunner, CheckmateRunner } from './runtime/runner'
-import { CheckmateExtension, defineExtension } from './runtime/extension'
-import { PlaywrightCapability, web } from './playwright'
-import { BrowserToolRuntime } from './tools/browser/tool'
-import { createSalesforceTools, SalesforceLoginTool } from './tools/salesforce/login-tool'
+import { createRunner, CheckmateRunner } from './runtime/runner.js'
+import { CheckmateExtension, defineExtension } from './runtime/extension.js'
+import { PlaywrightCapability, web } from './playwright.js'
+import { BrowserToolRuntime } from './tools/browser/tool.js'
+import { createSalesforceTools, SalesforceLoginTool } from './tools/salesforce/login-tool.js'
 
 /**
  * Fixture type exported by `@xoxoai/checkmate/salesforce`.

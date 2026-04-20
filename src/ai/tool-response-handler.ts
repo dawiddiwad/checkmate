@@ -1,10 +1,10 @@
-import { Step, ResolveStepResult } from '../runtime/types'
-import { ToolResponse } from '../tools/registry'
-import { ToolCall } from '../tools/types'
-import { AiClient } from './client'
-import { MessageHistory } from './message-history'
-import { ResponseProcessor } from './response-processor'
-import { ExtensionHost } from '../runtime/extension'
+import { Step, ResolveStepResult } from '../runtime/types.js'
+import { ToolResponse } from '../tools/registry.js'
+import { ToolCall } from '../tools/types.js'
+import { AiClient } from './client.js'
+import { MessageHistory } from './message-history.js'
+import { ResponseProcessor } from './response-processor.js'
+import { ExtensionHost } from '../runtime/extension.js'
 
 export class ToolResponseHandler {
 	constructor(

@@ -1,5 +1,5 @@
-import { RuntimeConfig } from '../config/runtime-config'
-import { logger } from '../logging'
+import { RuntimeConfig } from '../config/runtime-config.js'
+import { logger } from '../logging/index.js'
 
 export class RateLimitPolicy {
 	constructor(private readonly config = new RuntimeConfig()) {}

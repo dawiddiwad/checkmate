@@ -1,7 +1,7 @@
-import { logger } from '../logging'
-import { LoopDetector } from './loop-detector'
-import { ToolRegistry, ToolResponse } from './registry'
-import { AgentToolContext, AgentToolResult, ToolCall } from './types'
+import { logger } from '../logging/index.js'
+import { LoopDetector } from './loop-detector.js'
+import { ToolRegistry, ToolResponse } from './registry.js'
+import { AgentToolContext, AgentToolResult, ToolCall } from './types.js'
 
 export class ToolDispatcher {
 	private readonly loopDetector: LoopDetector

@@ -1,4 +1,4 @@
-import { JsonArray, JsonObject, JsonValue, ScoredElement } from './semantic-scorer'
+import { JsonArray, JsonObject, JsonValue, ScoredElement } from './semantic-scorer.js'
 
 export function reconstructTree(originalJson: JsonValue, selectedElements: ScoredElement[]): JsonValue {
 	if (selectedElements.length === 0) {

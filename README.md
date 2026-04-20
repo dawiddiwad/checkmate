@@ -58,7 +58,7 @@ await ai.run({
 ### 1. Install
 
 ```bash
-npm install -D @playwright/test @xoxoai/checkmate
+npm install -D dotenv @playwright/test @xoxoai/checkmate
 npx playwright install
 ```
 
@@ -77,25 +77,31 @@ OPENAI_BASE_URL=https://api.groq.com/openai/v1
 OPENAI_MODEL=openai/gpt-oss-20b
 ```
 
-### 3. Run Tests
+### 3. Scaffold Test Examples
 
+```bash
+npx checkmate create-examples
 ```
+
+### 4. Run Tests
+
+```bash
 npm run test:web:example
 ```
 
-### 4. View Report
+### 5. View Report
 
-```
+```bash
 npm run show:report
 ```
 
 ## Writing Tests
 
-Import `test` and `expect` from `@xoxoai/checkmate/playwright` and use the `ai` fixture to run AI-driven tests alongside standard Playwright assertions.  
+Import `test` from `@xoxoai/checkmate/playwright` and use the `ai` fixture.  
 **_checkmate_** tests are written using natural language by specifying `action` and `expect`:
 
 ```typescript
-import { expect, test } from '@xoxoai/checkmate/playwright'
+import { test } from '@xoxoai/checkmate/playwright'
 
 test('google search', async ({ ai }) => {
 	await ai.run({
@@ -114,6 +120,7 @@ That's it. No page objects, no selectors. No locators. Peace on Earth.
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
 See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+See [guide](docs/GUIDE.md#core-concepts) for the main building blocks and [extensions](docs/EXTENSIONS.md) for customization.
 
 ### Programmatic API
 
@@ -133,7 +140,7 @@ await ai.run({
 })
 ```
 
-See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions](docs/EXTENSIONS.md) for building custom tools, extensions, and runners.
+See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions](docs/EXTENSIONS.md) for building custom tools, extensions, runners, and scaffolded starter projects.
 
 Published entry points:
 

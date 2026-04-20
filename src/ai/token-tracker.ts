@@ -1,7 +1,7 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config'
-import { logger } from '../logging'
-import { TokenPricing } from './token-pricing'
+import { RuntimeConfig } from '../config/runtime-config.js'
+import { logger } from '../logging/index.js'
+import { TokenPricing } from './token-pricing.js'
 
 export class TokenTracker {
 	private _inputTokensUsedForTest = 0

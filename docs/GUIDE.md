@@ -45,6 +45,14 @@ test('search flow', async ({ ai }) => {
 })
 ```
 
+If you want a runnable sample project quickly, use the built-in scaffold command after installing the package:
+
+```bash
+npx checkmate create-examples
+```
+
+That command copies the repo example `playwright.config.ts`, example tests, and package scripts into your project.
+
 ## Configuration Reference
 
 ### AI API Settings

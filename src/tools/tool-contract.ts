@@ -5,5 +5,5 @@ export type {
 	AgentToolResponse,
 	AgentToolResult,
 	ToolCall,
-} from './types'
-export { getToolName } from './types'
+} from './types.js'
+export { getToolName } from './types.js'

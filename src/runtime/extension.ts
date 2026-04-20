@@ -1,9 +1,9 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config'
-import { ToolRegistry, ToolResponse } from '../tools/registry'
-import { AgentTool, ToolCall } from '../tools/types'
-import { ResolveStepResult, Step } from './types'
-import type { AiClient } from '../ai/client'
+import { RuntimeConfig } from '../config/runtime-config.js'
+import { ToolRegistry, ToolResponse } from '../tools/registry.js'
+import { AgentTool, ToolCall } from '../tools/types.js'
+import { ResolveStepResult, Step } from './types.js'
+import type { AiClient } from '../ai/client.js'
 
 /**
  * One tool execution observed during the runner loop.

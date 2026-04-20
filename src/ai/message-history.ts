@@ -1,5 +1,5 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { AiClient } from './client'
+import { AiClient } from './client.js'
 
 type InitialMessageParameters = {
 	systemPrompt: string

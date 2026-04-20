@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { SalesforceCliHandler } from './cli-handler'
+import { SalesforceCliHandler } from './cli-handler.js'
 
 export type TargetOrg = {
 	status: number

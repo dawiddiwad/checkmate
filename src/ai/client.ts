@@ -4,15 +4,15 @@ import {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config'
-import { logger } from '../logging'
-import { CheckmateLogger } from '../logging/logger'
-import { LoopDetectedError } from '../tools/loop-detector'
-import { ToolRegistry } from '../tools/registry'
-import { Step, ResolveStepResult } from '../runtime/types'
-import { MessageHistory } from './message-history'
-import { ResponseProcessor } from './response-processor'
-import { ExtensionHost } from '../runtime/extension'
+import { RuntimeConfig } from '../config/runtime-config.js'
+import { logger } from '../logging/index.js'
+import { CheckmateLogger } from '../logging/logger.js'
+import { LoopDetectedError } from '../tools/loop-detector.js'
+import { ToolRegistry } from '../tools/registry.js'
+import { Step, ResolveStepResult } from '../runtime/types.js'
+import { MessageHistory } from './message-history.js'
+import { ResponseProcessor } from './response-processor.js'
+import { ExtensionHost } from '../runtime/extension.js'
 
 export type AiClientDependencies = {
 	runtimeConfig: RuntimeConfig

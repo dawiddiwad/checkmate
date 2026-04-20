@@ -1,7 +1,7 @@
-import { logger } from '../../../logging'
-import { Step } from '../../../runtime/types'
-import { filterByThreshold, filterTopPercent, JsonValue, scoreSnapshotElements } from './semantic-scorer'
-import { reconstructTree } from './tree-reconstructor'
+import { logger } from '../../../logging/index.js'
+import { Step } from '../../../runtime/types.js'
+import { filterByThreshold, filterTopPercent, JsonValue, scoreSnapshotElements } from './semantic-scorer.js'
+import { reconstructTree } from './tree-reconstructor.js'
 
 const DEFAULT_SCORE_THRESHOLD = 0.3
 const DEFAULT_TOP_PERCENT = 10

@@ -1,4 +1,4 @@
-import { LogLevel } from '../logging/logger'
+import { LogLevel } from '../logging/logger.js'
 
 export class RuntimeConfig {
 	private isExplicitlyTrue(value: string | undefined): boolean {

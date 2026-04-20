@@ -1,9 +1,9 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { logger } from '../logging'
-import { Step, ResolveStepResult } from '../runtime/types'
-import { StepResultTool } from '../tools/step/result-tool'
-import { AiClient } from './client'
-import { ResponseProcessor } from './response-processor'
+import { logger } from '../logging/index.js'
+import { Step, ResolveStepResult } from '../runtime/types.js'
+import { StepResultTool } from '../tools/step/result-tool.js'
+import { AiClient } from './client.js'
+import { ResponseProcessor } from './response-processor.js'
 
 export class MessageHandler {
 	constructor(

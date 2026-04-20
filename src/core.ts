@@ -1,6 +1,6 @@
-export { CheckmateRunner, createRunner } from './runtime/runner'
-export type { CheckmateRunnerOptions } from './runtime/runner'
-export { defineExtension } from './runtime/extension'
+export { CheckmateRunner, createRunner } from './runtime/runner.js'
+export type { CheckmateRunnerOptions } from './runtime/runner.js'
+export { defineExtension } from './runtime/extension.js'
 export type {
 	CheckmateExtension,
 	ExtensionDefinition,
@@ -10,8 +10,8 @@ export type {
 	ExtensionTeardown,
 	ExtensionToolResponsesHook,
 	ToolExecution,
-} from './runtime/extension'
-export { defineAgentTool, defineTool } from './tools/define-agent-tool'
+} from './runtime/extension.js'
+export { defineAgentTool, defineTool } from './tools/define-agent-tool.js'
 export type {
 	AgentTool,
 	AgentToolContext,
@@ -19,5 +19,5 @@ export type {
 	AgentToolResponse,
 	AgentToolResult,
 	ToolCall,
-} from './tools/tool-contract'
-export type { Step, StepResult, ResolveStepResult } from './runtime/types'
+} from './tools/tool-contract.js'
+export type { Step, StepResult, ResolveStepResult } from './runtime/types.js'

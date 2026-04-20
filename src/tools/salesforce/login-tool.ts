@@ -14,7 +14,7 @@ export function createSalesforceTools(browserRuntime: BrowserToolRuntime): Agent
 		defineAgentTool({
 			name: SalesforceLoginTool.TOOL_LOGIN_TO_SALESFORCE_ORG,
 			description:
-				'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in.',
+				'Login to a Salesforce org in a browser. Do not use if Salesforce org is opened and logged in. You do not need to specify credentials, the tool will handle it for you.',
 			schema: z
 				.object({
 					goal: z.string().describe('The goal or purpose of logging into the Salesforce org'),

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Page } from '@playwright/test'
 import { AiClient } from '../ai/client'
-import { CheckmateRunner } from '../runtime/runner'
+import { CheckmateRunner } from '../core'
 import { RuntimeConfig } from '../config/runtime-config'
 import { Step, StepResult, ResolveStepResult } from '../runtime/types'
 import { ToolRegistry } from '../tools/registry'
@@ -9,6 +9,7 @@ import { createStepResultTools } from '../tools/step/result-tool'
 import { BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
 import { createSalesforceTools } from '../tools/salesforce/login-tool'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { createPlaywrightRunner } from '../playwright'
 
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
@@ -69,42 +70,36 @@ vi.mock('../tools/browser/tool', () => ({
 	createBrowserTools: vi.fn(() => [
 		{
 			definition: {
-				type: 'function',
-				function: {
-					name: 'browser_navigate',
-					description: 'Navigate to a url',
-					parameters: {
-						type: 'object',
-						properties: {
-							url: { type: 'string' },
-							goal: { type: 'string' },
-						},
-						required: ['url'],
-						additionalProperties: false,
+				name: 'browser_navigate',
+				description: 'Navigate to a url',
+				parameters: {
+					type: 'object',
+					properties: {
+						url: { type: 'string' },
+						goal: { type: 'string' },
 					},
-					strict: true,
+					required: ['url'],
+					additionalProperties: false,
 				},
+				strict: true,
 			},
 			execute: vi.fn((args) => browserCallMock({ name: 'browser_navigate', arguments: args })),
 		},
 		{
 			definition: {
-				type: 'function',
-				function: {
-					name: 'browser_type',
-					description: 'Type text into a field',
-					parameters: {
-						type: 'object',
-						properties: {
-							ref: { type: 'string' },
-							text: { type: 'string' },
-							goal: { type: 'string' },
-						},
-						required: ['ref', 'text'],
-						additionalProperties: false,
+				name: 'browser_type',
+				description: 'Type text into a field',
+				parameters: {
+					type: 'object',
+					properties: {
+						ref: { type: 'string' },
+						text: { type: 'string' },
+						goal: { type: 'string' },
 					},
-					strict: true,
+					required: ['ref', 'text'],
+					additionalProperties: false,
 				},
+				strict: true,
 			},
 			execute: vi.fn((args) => browserCallMock({ name: 'browser_type', arguments: args })),
 		},
@@ -119,13 +114,10 @@ vi.mock('../tools/step/result-tool', () => ({
 	createStepResultTools: vi.fn(() => [
 		{
 			definition: {
-				type: 'function',
-				function: {
-					name: 'pass_test_step',
-					description: 'pass',
-					parameters: { type: 'object', properties: {}, additionalProperties: false },
-					strict: true,
-				},
+				name: 'pass_test_step',
+				description: 'pass',
+				parameters: { type: 'object', properties: {}, additionalProperties: false },
+				strict: true,
 			},
 			execute: vi.fn((args, context) => {
 				context.resolveStepResult({ passed: true, actual: (args as { actualResult: string }).actualResult })
@@ -133,13 +125,10 @@ vi.mock('../tools/step/result-tool', () => ({
 		},
 		{
 			definition: {
-				type: 'function',
-				function: {
-					name: 'fail_test_step',
-					description: 'fail',
-					parameters: { type: 'object', properties: {}, additionalProperties: false },
-					strict: true,
-				},
+				name: 'fail_test_step',
+				description: 'fail',
+				parameters: { type: 'object', properties: {}, additionalProperties: false },
+				strict: true,
 			},
 			execute: vi.fn((args, context) => {
 				context.resolveStepResult({ passed: false, actual: (args as { actualResult: string }).actualResult })
@@ -162,7 +151,7 @@ describe('Simple step execution integration', () => {
 		vi.clearAllMocks()
 		browserCallMock.mockReturnValue('nav-ok')
 		page = {} as Page
-		manager = new CheckmateRunner(page)
+		manager = createPlaywrightRunner(page)
 	})
 
 	it('runs a step and routes tool calls from the model', async () => {
@@ -502,7 +491,11 @@ describe('Simple step execution integration', () => {
 		toolRegistry.register(createBrowserTools(browserRuntime))
 		toolRegistry.register(createStepResultTools())
 		toolRegistry.register(createSalesforceTools(browserRuntime))
-		const client = new AiClient({ runtimeConfig: configurationManager, toolRegistry, page })
+		const client = new AiClient({
+			runtimeConfig: configurationManager,
+			toolRegistry,
+			extensionHost: { handleToolResponses: vi.fn().mockResolvedValue(undefined) } as never,
+		})
 
 		const step: Step = {
 			action: 'Report current status',

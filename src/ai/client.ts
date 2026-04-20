@@ -4,7 +4,6 @@ import {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
-import { Page } from '@playwright/test'
 import { RuntimeConfig } from '../config/runtime-config'
 import { logger } from '../logging'
 import { CheckmateLogger } from '../logging/logger'
@@ -13,11 +12,12 @@ import { ToolRegistry } from '../tools/registry'
 import { Step, ResolveStepResult } from '../runtime/types'
 import { MessageHistory } from './message-history'
 import { ResponseProcessor } from './response-processor'
+import { ExtensionHost } from '../runtime/extension'
 
 export type AiClientDependencies = {
 	runtimeConfig: RuntimeConfig
 	toolRegistry: ToolRegistry
-	page: Page
+	extensionHost: ExtensionHost
 }
 
 export class AiClient {
@@ -37,18 +37,17 @@ export class AiClient {
 	private step!: Step
 	private resolveStepResult!: ResolveStepResult
 	temperature: number
+	private readonly messageHistory = new MessageHistory()
 
-	constructor({ runtimeConfig, toolRegistry, page }: AiClientDependencies) {
+	constructor({ runtimeConfig, toolRegistry, extensionHost }: AiClientDependencies) {
 		this.runtimeConfig = runtimeConfig
 		this.toolRegistry = toolRegistry
-		this.page = page
-		this.responseProcessor = new ResponseProcessor({ page, aiClient: this })
+		this.responseProcessor = new ResponseProcessor({ aiClient: this, extensionHost })
 		this.temperature = this.runtimeConfig.getTemperature()
 	}
 
 	private readonly runtimeConfig: RuntimeConfig
 	private readonly toolRegistry: ToolRegistry
-	readonly page: Page
 
 	async initialize(step: Step, resolveStepResult: ResolveStepResult): Promise<void> {
 		this.client = new OpenAI({
@@ -110,20 +109,11 @@ export class AiClient {
 	}
 
 	async addCurrentSnapshotMessage(snapshotContent: string): Promise<void> {
-		this.messages.push({
-			role: 'user',
-			content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}` }],
-		})
+		this.messages.push(this.messageHistory.createSnapshotMessage(snapshotContent))
 	}
 
 	async addCurrentScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
-		this.messages.push({
-			role: 'user',
-			content: [
-				{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
-				{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' } },
-			],
-		})
+		this.messages.push(this.messageHistory.createScreenshotMessage(base64Data, mimeType))
 	}
 
 	async sendToolResponseWithRetry(): Promise<ChatCompletion> {

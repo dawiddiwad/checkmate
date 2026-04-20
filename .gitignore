@@ -7,3 +7,4 @@ test-reports
 TODO
 coverage
 dist
+**.tgz

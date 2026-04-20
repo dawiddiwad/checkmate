@@ -3,7 +3,6 @@ import { ResponseProcessor } from '../ai/response-processor'
 import { AiClient } from '../ai/client'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { Page } from '@playwright/test'
 import { MockOpenAIClient } from './test-types'
 
 interface TestableResponseProcessor {
@@ -74,20 +73,13 @@ vi.mock('../../src/ai/message-history', () => ({
 	},
 }))
 
-vi.mock('../../src/tools/browser/screenshot-service', () => ({
-	BrowserScreenshotService: class {},
-}))
-
 describe('ResponseProcessor', () => {
 	let responseProcessor: ResponseProcessor
 	let mockOpenAIClient: MockOpenAIClient
-	let mockPage: Page
 	let mockStep: Step
 	let mockCallback: ResolveStepResult
 
 	beforeEach(() => {
-		mockPage = {} as Page
-
 		mockOpenAIClient = {
 			countHistoryTokens: vi.fn().mockReturnValue(1000),
 			getRuntimeConfig: vi.fn().mockReturnValue({
@@ -99,8 +91,8 @@ describe('ResponseProcessor', () => {
 		}
 
 		responseProcessor = new ResponseProcessor({
-			page: mockPage,
 			aiClient: mockOpenAIClient as unknown as AiClient,
+			extensionHost: {} as never,
 		})
 
 		mockStep = {

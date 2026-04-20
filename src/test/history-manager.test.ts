@@ -26,7 +26,7 @@ describe('MessageHistory', () => {
 			const initialMessages = historyManager.buildInitialMessages({
 				systemPrompt: 'system prompt',
 				userPrompt: 'step prompt',
-				snapshotContent: 'Page Title: Test Page\nButton: Click Me',
+				contextMessages: [historyManager.createSnapshotMessage('Page Title: Test Page\nButton: Click Me')],
 			})
 
 			expect(initialMessages).toHaveLength(3)

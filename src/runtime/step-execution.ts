@@ -4,14 +4,17 @@ import { Step, StepResult, StepResultPromise, ResolveStepResult } from './types'
 import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts'
 import { MessageHistory } from '../ai/message-history'
 import { AiClient } from '../ai/client'
-import { SnapshotService } from '../tools/browser/snapshot-service'
+import { ExtensionHost } from './extension'
 
 export class StepExecution {
 	private stepResult: StepResult = { passed: false, actual: '' }
 	private resolveStepResult!: ResolveStepResult
 	private readonly stepResultPromise: StepResultPromise
 
-	constructor(private readonly aiClient: AiClient) {
+	constructor(
+		private readonly aiClient: AiClient,
+		private readonly extensionHost: ExtensionHost
+	) {
 		this.stepResultPromise = new Promise<StepResult>((resolve) => {
 			this.resolveStepResult = resolve
 		})
@@ -22,11 +25,10 @@ export class StepExecution {
 
 		try {
 			await this.aiClient.initialize(step, this.resolveStepResult)
-			const snapshotService = new SnapshotService(this.aiClient.page, step)
 			const initialMessages = new MessageHistory().buildInitialMessages({
-				systemPrompt: STEP_SYSTEM_PROMPT(),
+				systemPrompt: STEP_SYSTEM_PROMPT(this.extensionHost.getInstructions()),
 				userPrompt: STEP_START_USER_PROMPT(step),
-				snapshotContent: await snapshotService.get(),
+				contextMessages: await this.extensionHost.buildInitialMessages(step),
 			})
 			await this.aiClient.sendMessage(initialMessages)
 			this.stepResult = await this.stepResultPromise

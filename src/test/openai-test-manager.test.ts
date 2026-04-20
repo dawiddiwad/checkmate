@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { CheckmateRunner } from '../runtime/runner'
+import { CheckmateRunner } from '../core'
 import { Step, ResolveStepResult } from '../runtime/types'
 import { Page } from '@playwright/test'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { createPlaywrightRunner } from '../playwright'
 
 interface TestableTestManager {
 	aiClient: {
@@ -39,6 +40,9 @@ vi.mock('../../src/tools/step/result-tool', () => ({
 }))
 
 vi.mock('../../src/tools/browser/tool', () => ({
+	BrowserTool: {
+		TOOL_SNAPSHOT: 'browser_snapshot',
+	},
 	BrowserToolRuntime: class {
 		constructor() {}
 	},
@@ -66,6 +70,10 @@ vi.mock('../../src/ai/client', () => ({
 
 vi.mock('../../src/ai/message-history', () => {
 	class MockHistoryManager {
+		createSnapshotMessage = vi.fn().mockReturnValue({
+			role: 'user',
+			content: [{ type: 'text', text: 'snapshot prompt' }],
+		})
 		buildInitialMessages = vi.fn().mockReturnValue([
 			{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
 			{ role: 'user', content: [{ type: 'text', text: 'step prompt' }] },
@@ -100,7 +108,7 @@ describe('CheckmateRunner', () => {
 
 	beforeEach(() => {
 		mockPage = {} as Page
-		testManager = new CheckmateRunner(mockPage)
+		testManager = createPlaywrightRunner(mockPage)
 	})
 
 	describe('constructor', () => {
@@ -124,7 +132,7 @@ describe('CheckmateRunner', () => {
 				expect: 'Button should be clicked',
 			}
 
-			testManager = new CheckmateRunner(mockPage)
+			testManager = createPlaywrightRunner(mockPage)
 		})
 
 		it('should successfully run when step passes', async () => {
@@ -198,17 +206,8 @@ describe('CheckmateRunner', () => {
 				return Promise.resolve()
 			})
 
-			const historyModule = (await import('../../src/ai/message-history')) as unknown as {
-				getBuildInitialMessagesMock: () => Mock | undefined
-			}
-
 			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
 
-			expect(historyModule.getBuildInitialMessagesMock()).toHaveBeenCalledWith({
-				systemPrompt: 'system prompt',
-				userPrompt: `Execute: ${mockStep.action}`,
-				snapshotContent: 'mocked snapshot',
-			})
 			expect(mockClient.sendMessage).toHaveBeenCalledWith([
 				{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
 				{ role: 'user', content: [{ type: 'text', text: 'step prompt' }] },

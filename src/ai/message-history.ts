@@ -1,11 +1,10 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { BrowserSnapshot } from '../tools/browser/snapshot-service'
 import { AiClient } from './client'
 
 type InitialMessageParameters = {
 	systemPrompt: string
 	userPrompt: string
-	snapshotContent: BrowserSnapshot
+	contextMessages?: ChatCompletionMessageParam[]
 }
 
 export class MessageHistory {
@@ -23,11 +22,25 @@ export class MessageHistory {
 				role: 'user',
 				content: [{ type: 'text', text: config.userPrompt }],
 			},
-			{
-				role: 'user',
-				content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${config.snapshotContent}` }],
-			},
+			...(config.contextMessages ?? []),
 		]
+	}
+
+	createSnapshotMessage(snapshotContent: string | null): ChatCompletionMessageParam {
+		return {
+			role: 'user',
+			content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}` }],
+		}
+	}
+
+	createScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): ChatCompletionMessageParam {
+		return {
+			role: 'user',
+			content: [
+				{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
+				{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' } },
+			],
+		}
 	}
 
 	removeEphemeralStateMessages(aiClient: AiClient): void {

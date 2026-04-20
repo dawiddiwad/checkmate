@@ -1,7 +1,5 @@
-import { Page } from '@playwright/test'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { BrowserScreenshotService } from '../tools/browser/screenshot-service'
 import { ToolDispatcher } from '../tools/dispatcher'
 import { ToolResponse } from '../tools/registry'
 import { ToolCall } from '../tools/types'
@@ -11,10 +9,11 @@ import { MessageHistory } from './message-history'
 import { RateLimitPolicy } from './rate-limit-policy'
 import { TokenTracker } from './token-tracker'
 import { ToolResponseHandler } from './tool-response-handler'
+import { ExtensionHost } from '../runtime/extension'
 
 export type ResponseProcessorDependencies = {
-	page: Page
 	aiClient: AiClient
+	extensionHost: ExtensionHost
 }
 
 export class ResponseProcessor {
@@ -25,15 +24,10 @@ export class ResponseProcessor {
 	private readonly messageHandler: MessageHandler
 	private readonly aiClient: AiClient
 
-	constructor({ page, aiClient }: ResponseProcessorDependencies) {
+	constructor({ aiClient, extensionHost }: ResponseProcessorDependencies) {
 		this.aiClient = aiClient
 		this.toolDispatcher = new ToolDispatcher(aiClient.getToolRegistry())
-		this.toolResponseHandler = new ToolResponseHandler(
-			aiClient,
-			new MessageHistory(),
-			new BrowserScreenshotService(page),
-			this
-		)
+		this.toolResponseHandler = new ToolResponseHandler(aiClient, new MessageHistory(), this, extensionHost)
 		this.messageHandler = new MessageHandler(aiClient, this)
 	}
 

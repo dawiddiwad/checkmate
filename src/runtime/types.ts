@@ -49,6 +49,14 @@ export interface Step {
 
 /**
  * Final result returned by a step execution.
+ *
+ * @example
+ * ```ts
+ * const result: StepResult = {
+ *   passed: true,
+ *   actual: 'Checkout page is visible',
+ * }
+ * ```
  */
 export interface StepResult {
 	/**
@@ -66,5 +74,12 @@ export type StepResultPromise = Promise<StepResult>
 
 /**
  * Callback used internally to resolve a running step result.
+ *
+ * @example
+ * ```ts
+ * const resolve: ResolveStepResult = (result) => {
+ *   console.log(result.actual)
+ * }
+ * ```
  */
 export type ResolveStepResult = (result: StepResult) => void

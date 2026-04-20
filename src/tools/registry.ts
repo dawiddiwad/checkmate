@@ -39,12 +39,24 @@ export class ToolRegistry {
 
 	async getTools(): Promise<ChatCompletionFunctionTool[]> {
 		const allowedNames = this.runtimeConfig.getAllowedFunctionNames()
-		const definitions = this.tools.map((tool) => tool.definition)
+		const definitions = this.tools.map((tool) => this.toOpenAiTool(tool))
 
 		if (allowedNames.length === 0) {
 			return definitions
 		}
 
 		return definitions.filter((tool) => allowedNames.includes(tool.function.name))
+	}
+
+	private toOpenAiTool(tool: AgentTool): ChatCompletionFunctionTool {
+		return {
+			type: 'function',
+			function: {
+				name: tool.definition.name,
+				description: tool.definition.description,
+				parameters: tool.definition.parameters,
+				strict: tool.definition.strict,
+			},
+		}
 	}
 }

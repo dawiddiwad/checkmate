@@ -8,6 +8,12 @@
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
+		"paths": {
+			"@xoxoai/checkmate": ["./src/index.ts"],
+			"@xoxoai/checkmate/core": ["./src/core.ts"],
+			"@xoxoai/checkmate/playwright": ["./src/playwright.ts"],
+			"@xoxoai/checkmate/salesforce": ["./src/salesforce.ts"]
+		},
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"declaration": true,
@@ -17,5 +23,5 @@
 		"noImplicitAny": true
 	},
 	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "test-results", "test-reports"]
+	"exclude": ["node_modules", "dist", "test-results", "test-reports", "package"]
 }

@@ -43,7 +43,8 @@ await ai.run({
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box  
 ✅ **Cost Optimized** - Built-in token management and budgeting  
-✅ **Full Playwright** - Reports, traces, debugging - all included
+✅ **Playwright Test** - Native reports, traces and debugging  
+✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
 
 <img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
 
@@ -57,9 +58,8 @@ await ai.run({
 ### 1. Install
 
 ```bash
-git clone https://github.com/dawiddiwad/checkmate.git
-cd checkmate
-npm run checkmate:install
+npm install -D @playwright/test @xoxoai/checkmate
+npx playwright install
 ```
 
 ### 2. Configure `.env`
@@ -91,11 +91,11 @@ npm run show:report
 
 ## Writing Tests
 
-Import the `test` from `./test/fixtures/checkmate` and use the `ai` fixture to run AI-driven tests along standard Playwright features.  
+Import `test` and `expect` from `@xoxoai/checkmate/playwright` and use the `ai` fixture to run AI-driven tests alongside standard Playwright assertions.  
 **_checkmate_** tests are written using natural language by specifying `action` and `expect`:
 
 ```typescript
-import { test } from '../../fixtures/checkmate'
+import { expect, test } from '@xoxoai/checkmate/playwright'
 
 test('google search', async ({ ai }) => {
 	await ai.run({
@@ -113,21 +113,35 @@ That's it. No page objects, no selectors. No locators. Peace on Earth.
 
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
+See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+
 ### Programmatic API
 
-If you use **_checkmate_** without the fixture wrapper, the public entry point is `CheckmateRunner`:
+If you use **_checkmate_** without the fixture wrapper, compose a runner from `@xoxoai/checkmate/core` and extensions:
 
 ```typescript
-import { CheckmateRunner } from 'checkmate-exp'
+import { createRunner } from '@xoxoai/checkmate/core'
+import { web } from '@xoxoai/checkmate/playwright'
 
-const ai = new CheckmateRunner(page)
+const ai = createRunner({
+	extensions: [web({ page })],
+})
+
 await ai.run({
 	action: 'Open the pricing page',
 	expect: 'Pricing details are visible',
 })
 ```
 
-See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions](docs/EXTENSIONS.md) for building custom tools, extensions, and runners.
+
+Published entry points:
+
+`@xoxoai/checkmate/core`: Build your own runner with extensions.  
+`@xoxoai/checkmate/playwright`: Use the built-in web extension with Playwright `test` and `expect`.  
+`@xoxoai/checkmate/salesforce`: Use the built-in web + Salesforce extensions with the same `ai` fixture shape.
+
+The repository keeps runnable consumer-style examples under `test/examples/`.
 
 ## Costs
 

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToolResponseHandler } from '../ai/tool-response-handler'
 import { ToolResponse } from '../tools/registry'
 import { ResolveStepResult } from '../runtime/types'
-import { RuntimeConfig } from '../config/runtime-config'
 
 describe('ToolResponseHandler', () => {
 	let openaiClient: {
@@ -13,9 +12,8 @@ describe('ToolResponseHandler', () => {
 		sendToolResponseWithRetry: ReturnType<typeof vi.fn>
 	}
 	let historyManager: { removeEphemeralStateMessages: ReturnType<typeof vi.fn> }
-	let screenshotProcessor: { getCompressedScreenshot: ReturnType<typeof vi.fn> }
 	let responseProcessor: { handleResponse: ReturnType<typeof vi.fn> }
-	let runtimeConfig: { includeScreenshotInSnapshot: ReturnType<typeof vi.fn> }
+	let extensionHost: { handleToolResponses: ReturnType<typeof vi.fn> }
 	let handler: ToolResponseHandler
 	let callback: ResolveStepResult
 
@@ -27,24 +25,27 @@ describe('ToolResponseHandler', () => {
 			addCurrentScreenshotMessage: vi.fn().mockResolvedValue(undefined),
 			sendToolResponseWithRetry: vi.fn().mockResolvedValue({ choices: [] }),
 		}
-		runtimeConfig = {
-			includeScreenshotInSnapshot: vi.fn().mockReturnValue(true),
-		}
 		historyManager = {
 			removeEphemeralStateMessages: vi.fn(),
-		}
-		screenshotProcessor = {
-			getCompressedScreenshot: vi.fn().mockResolvedValue({ data: 'YmFzZTY0', mimeType: 'image/png' }),
 		}
 		responseProcessor = {
 			handleResponse: vi.fn().mockResolvedValue(undefined),
 		}
+		extensionHost = {
+			handleToolResponses: vi.fn().mockImplementation(async ({ aiClient, toolResponses }) => {
+				const latestSnapshot = toolResponses.at(-1)?.toolResponse.snapshot
+				if (latestSnapshot) {
+					await aiClient.addCurrentSnapshotMessage(latestSnapshot)
+				}
+
+				await aiClient.addCurrentScreenshotMessage('YmFzZTY0', 'image/png')
+			}),
+		}
 		handler = new ToolResponseHandler(
 			openaiClient as never,
 			historyManager as never,
-			screenshotProcessor as never,
 			responseProcessor as never,
-			runtimeConfig as unknown as RuntimeConfig
+			extensionHost as never
 		)
 		callback = vi.fn()
 	})

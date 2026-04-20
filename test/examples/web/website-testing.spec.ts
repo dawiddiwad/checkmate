@@ -20,7 +20,7 @@
  * All tests use the `ai` fixture and call `ai.run({ action, expect })`
  * to describe actions and assert visible outcomes.
  */
-import { test } from '../../fixtures/checkmate'
+import { test } from '@xoxoai/checkmate/playwright'
 
 test.describe('single-step : quick examples', async () => {
 	test('browsing ollama models', async ({ ai }) => {
@@ -28,7 +28,7 @@ test.describe('single-step : quick examples', async () => {
 			await ai.run({
 				action: `
                 Navigate to https://ollama.com
-                Type 'qwen3' into the 'Search models' search bar
+                Type 'qwen3-vl' into the 'Search models' search bar
                 Click on 'qwen3-vl' link from the results,
                 Click on 'qwen3-vl:235b' link from the models list,`,
 				expect: `

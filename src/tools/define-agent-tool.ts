@@ -1,6 +1,5 @@
 import { z } from 'zod/v4'
-import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
-import { AgentTool, AgentToolContext, AgentToolResult } from './types'
+import { AgentTool, AgentToolContext, AgentToolDefinition, AgentToolResult } from './types'
 
 type ToolConfig<TSchema extends z.ZodType> = {
 	name: string
@@ -10,18 +9,31 @@ type ToolConfig<TSchema extends z.ZodType> = {
 	handler: (args: z.infer<TSchema>, context: AgentToolContext) => Promise<AgentToolResult> | AgentToolResult
 }
 
+/**
+ * Creates a typed Checkmate tool from a Zod schema and handler.
+ *
+ * @example
+ * ```ts
+ * import { defineAgentTool } from '@xoxoai/checkmate/core'
+ * import { z } from 'zod/v4'
+ *
+ * const apiHealthTool = defineAgentTool({
+ *   name: 'check_api_health',
+ *   description: 'Check whether the API is healthy',
+ *   schema: z.object({ url: z.string() }).strict(),
+ *   handler: async ({ url }) => `API health is good for ${url}`,
+ * })
+ * ```
+ */
 export function defineAgentTool<TSchema extends z.ZodType>(toolConfig: ToolConfig<TSchema>): AgentTool {
 	const jsonSchema = z.toJSONSchema(toolConfig.schema) as Record<string, unknown>
 	delete jsonSchema.$schema
 
-	const definition: ChatCompletionFunctionTool = {
-		type: 'function',
-		function: {
-			name: toolConfig.name,
-			description: toolConfig.description,
-			parameters: jsonSchema,
-			strict: toolConfig.strict ?? true,
-		},
+	const definition: AgentToolDefinition = {
+		name: toolConfig.name,
+		description: toolConfig.description,
+		parameters: jsonSchema,
+		strict: toolConfig.strict ?? true,
 	}
 
 	return {
@@ -36,3 +48,21 @@ export function defineAgentTool<TSchema extends z.ZodType>(toolConfig: ToolConfi
 		},
 	}
 }
+
+/**
+ * Preferred alias for `defineAgentTool()`.
+ *
+ * @example
+ * ```ts
+ * import { defineTool } from '@xoxoai/checkmate/core'
+ * import { z } from 'zod/v4'
+ *
+ * const tool = defineTool({
+ *   name: 'check_api_health',
+ *   description: 'Check whether the API is healthy',
+ *   schema: z.object({ url: z.string() }).strict(),
+ *   handler: async ({ url }) => `API health is good for ${url}`,
+ * })
+ * ```
+ */
+export const defineTool = defineAgentTool

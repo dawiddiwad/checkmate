@@ -3,7 +3,6 @@ import { AiClient } from '../ai/client'
 import { RuntimeConfig } from '../config/runtime-config'
 import { ToolRegistry } from '../tools/registry'
 import { LoopDetectedError } from '../tools/loop-detector'
-import { Page } from '@playwright/test'
 import {
 	MockConfigurationManager,
 	MockToolRegistry,
@@ -52,7 +51,6 @@ describe('AiClient - Retry Logic', () => {
 	let openAIClient: AiClient
 	let mockConfig: MockConfigurationManager
 	let mockToolRegistry: MockToolRegistry
-	let mockPage: Page
 	let mockOperation: Mock<() => Promise<unknown>>
 
 	beforeEach(() => {
@@ -70,12 +68,10 @@ describe('AiClient - Retry Logic', () => {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
-		mockPage = {} as Page
-
 		openAIClient = new AiClient({
 			runtimeConfig: mockConfig as unknown as RuntimeConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
-			page: mockPage,
+			extensionHost: {} as never,
 		})
 
 		vi.spyOn(openAIClient as unknown as AiClientTestable, 'sleep').mockResolvedValue(undefined)
@@ -430,7 +426,6 @@ describe('AiClient - message flow', () => {
 	let openAIClient: AiClient
 	let mockConfig: MockConfigurationManager
 	let mockToolRegistry: MockToolRegistry
-	let mockPage: Page
 	let createMock: Mock
 
 	beforeEach(async () => {
@@ -460,12 +455,10 @@ describe('AiClient - message flow', () => {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
-		mockPage = {} as Page
-
 		openAIClient = new AiClient({
 			runtimeConfig: mockConfig as unknown as RuntimeConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
-			page: mockPage,
+			extensionHost: {} as never,
 		})
 	})
 

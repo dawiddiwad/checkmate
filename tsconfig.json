@@ -9,8 +9,10 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"paths": {
-			"@alepoco/checkmate": ["./src/index.ts"],
-			"@alepoco/checkmate/playwright": ["./src/playwright.ts"]
+			"@xoxoai/checkmate": ["./src/index.ts"],
+			"@xoxoai/checkmate/core": ["./src/core.ts"],
+			"@xoxoai/checkmate/playwright": ["./src/playwright.ts"],
+			"@xoxoai/checkmate/salesforce": ["./src/salesforce.ts"]
 		},
 		"outDir": "./dist",
 		"rootDir": "./src",

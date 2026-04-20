@@ -7,7 +7,7 @@ describe('Step result tools', () => {
 	let context: AgentToolContext
 
 	function getTool(name: string): AgentTool {
-		const tool = tools.find((candidate) => candidate.definition.function.name === name)
+		const tool = tools.find((candidate) => candidate.definition.name === name)
 		if (!tool) {
 			throw new Error(`Missing tool ${name}`)
 		}
@@ -25,7 +25,7 @@ describe('Step result tools', () => {
 
 	it('creates pass and fail tools', () => {
 		expect(tools).toHaveLength(2)
-		expect(tools.map((tool) => tool.definition.function.name)).toEqual([
+		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			StepResultTool.TOOL_FAIL_TEST_STEP,
 			StepResultTool.TOOL_PASS_TEST_STEP,
 		])

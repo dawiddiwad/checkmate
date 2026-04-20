@@ -57,7 +57,7 @@ await ai.run({
 ### 1. Install
 
 ```bash
-npm install -D @playwright/test @alepoco/checkmate
+npm install -D @playwright/test @xoxoai/checkmate
 npx playwright install
 ```
 
@@ -90,11 +90,11 @@ npm run show:report
 
 ## Writing Tests
 
-Import `test` and `expect` from `@alepoco/checkmate/playwright` and use the `ai` fixture to run AI-driven tests alongside standard Playwright assertions.  
+Import `test` and `expect` from `@xoxoai/checkmate/playwright` and use the `ai` fixture to run AI-driven tests alongside standard Playwright assertions.  
 **_checkmate_** tests are written using natural language by specifying `action` and `expect`:
 
 ```typescript
-import { expect, test } from '@alepoco/checkmate/playwright'
+import { expect, test } from '@xoxoai/checkmate/playwright'
 
 test('google search', async ({ page, ai }) => {
 	await ai.run({
@@ -116,17 +116,26 @@ Browser settings (viewport, headless mode, video recording, timeouts, etc.) are 
 
 ### Programmatic API
 
-If you use **_checkmate_** without the fixture wrapper, the public entry point is `CheckmateRunner`:
+If you use **_checkmate_** without the fixture wrapper, compose a runner from `@xoxoai/checkmate/core` and extensions:
 
 ```typescript
-import { CheckmateRunner } from '@alepoco/checkmate'
+import { createRunner } from '@xoxoai/checkmate/core'
+import { web } from '@xoxoai/checkmate/playwright'
 
-const ai = new CheckmateRunner(page)
+const ai = createRunner({
+	extensions: [web({ page })],
+})
+
 await ai.run({
 	action: 'Open the pricing page',
 	expect: 'Pricing details are visible',
 })
 ```
+
+Convenience entry points are also available:
+
+- `@xoxoai/checkmate/playwright` exports `test`, `expect`, `web()`, and `createPlaywrightRunner(page)`
+- `@xoxoai/checkmate/salesforce` exports `test`, `expect`, `salesforce()`, and `createSalesforceRunner(page)`
 
 See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
 
@@ -230,4 +239,4 @@ Test automation shouldn't require a PhD in XPath. This project explores how AI c
 
 Less coding, more testing.
 
-Built with ❤️ by [Dawid Dobrowolski](https://github.com/alepoco)
+Built with ❤️ by [Dawid Dobrowolski](https://github.com/xoxoai)

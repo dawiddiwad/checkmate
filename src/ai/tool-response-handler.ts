@@ -1,19 +1,17 @@
-import { RuntimeConfig } from '../config/runtime-config'
 import { Step, ResolveStepResult } from '../runtime/types'
-import { BrowserScreenshotService } from '../tools/browser/screenshot-service'
 import { ToolResponse } from '../tools/registry'
 import { ToolCall } from '../tools/types'
 import { AiClient } from './client'
 import { MessageHistory } from './message-history'
 import { ResponseProcessor } from './response-processor'
+import { ExtensionHost } from '../runtime/extension'
 
 export class ToolResponseHandler {
 	constructor(
 		private readonly aiClient: AiClient,
 		private readonly messageHistory: MessageHistory,
-		private readonly screenshotService: BrowserScreenshotService,
 		private readonly responseProcessor: ResponseProcessor,
-		private readonly config: RuntimeConfig = new RuntimeConfig()
+		private readonly extensionHost: ExtensionHost
 	) {}
 
 	async handle(
@@ -37,13 +35,6 @@ export class ToolResponseHandler {
 
 		this.messageHistory.removeEphemeralStateMessages(this.aiClient)
 
-		let latestSnapshot: string | null = null
-		for (const { toolResponse } of toolResponses) {
-			if (toolResponse.snapshot) {
-				latestSnapshot = toolResponse.snapshot
-			}
-		}
-
 		for (const { toolCallId, toolResponse } of toolResponses) {
 			await this.aiClient.addToolResponse(toolCallId, toolResponse.response)
 		}
@@ -53,17 +44,12 @@ export class ToolResponseHandler {
 			await this.aiClient.addToolExecutionSummaryMessage(executionSummary)
 		}
 
-		for (const [index] of toolResponses.entries()) {
-			const isLast = index === toolResponses.length - 1
-			if (isLast && latestSnapshot) {
-				await this.aiClient.addCurrentSnapshotMessage(latestSnapshot)
-			}
-
-			if (isLast && this.config.includeScreenshotInSnapshot()) {
-				const screenshot = await this.screenshotService.getCompressedScreenshot()
-				await this.aiClient.addCurrentScreenshotMessage(screenshot.data, screenshot.mimeType ?? 'image/png')
-			}
-		}
+		await this.extensionHost.handleToolResponses({
+			aiClient: this.aiClient,
+			step,
+			resolveStepResult,
+			toolResponses,
+		})
 
 		const nextResponse = await this.aiClient.sendToolResponseWithRetry()
 		await this.responseProcessor.handleResponse(nextResponse, step, resolveStepResult)

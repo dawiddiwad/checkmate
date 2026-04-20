@@ -1,6 +1,6 @@
 {
-	"name": "@alepoco/checkmate",
-	"version": "0.3.1",
+	"name": "@xoxoai/checkmate",
+	"version": "0.4.0",
 	"description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
 	"homepage": "https://github.com/dawiddiwad/checkmate",
 	"repository": {
@@ -28,17 +28,25 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"main": "dist/core.js",
+	"types": "dist/core.d.ts",
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"default": "./dist/index.js"
+			"types": "./dist/core.d.ts",
+			"default": "./dist/core.js"
+		},
+		"./core": {
+			"types": "./dist/core.d.ts",
+			"default": "./dist/core.js"
 		},
 		"./playwright": {
 			"types": "./dist/playwright.d.ts",
 			"default": "./dist/playwright.js"
+		},
+		"./salesforce": {
+			"types": "./dist/salesforce.d.ts",
+			"default": "./dist/salesforce.js"
 		}
 	},
 	"scripts": {

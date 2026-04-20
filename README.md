@@ -114,6 +114,8 @@ That's it. No page objects, no selectors. No locators. Peace on Earth.
 
 Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
+See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+
 ### Programmatic API
 
 If you use **_checkmate_** without the fixture wrapper, compose a runner from `@xoxoai/checkmate/core` and extensions:
@@ -132,12 +134,12 @@ await ai.run({
 })
 ```
 
+See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions guide](docs/EXTENSIONS.md) for building custom tools, extensions, and runners.
+
 Convenience entry points are also available:
 
 - `@xoxoai/checkmate/playwright` exports `test`, `expect`, `web()`, and `createPlaywrightRunner(page)`
 - `@xoxoai/checkmate/salesforce` exports `test`, `expect`, `salesforce()`, and `createSalesforceRunner(page)`
-
-See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
 
 The repository keeps runnable consumer-style examples under `test/examples/`.
 
@@ -239,4 +241,4 @@ Test automation shouldn't require a PhD in XPath. This project explores how AI c
 
 Less coding, more testing.
 
-Built with ❤️ by [Dawid Dobrowolski](https://github.com/xoxoai)
+Built with ❤️ by [Dawid Dobrowolski](https://github.com/dawiddiwad)

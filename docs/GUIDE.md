@@ -434,36 +434,7 @@ npx playwright show-report test-reports/html
 
 ### Custom Tool Integration
 
-**_checkmate_**'s runtime can be extended with custom tools and full extensions for specific testing needs. Tools are defined as single-function contracts with:
-
-- one tool definition
-- one Zod schema
-- one `execute` function
-
-Use `defineTool` from `@xoxoai/checkmate/core` for new tools and `defineExtension` when you need to add instructions, context, hooks, or capabilities.
-
-```typescript
-import { createRunner, defineExtension, defineTool } from '@xoxoai/checkmate/core'
-import { web } from '@xoxoai/checkmate/playwright'
-import { z } from 'zod/v4'
-
-const apiHealthTool = defineTool({
-	name: 'check_api_health',
-	description: 'Check whether the API is healthy',
-	schema: z.object({ url: z.string() }).strict(),
-	handler: async ({ url }) => `API health is good for ${url}`,
-})
-
-const apiExtension = defineExtension({
-	name: 'api-health',
-	tools: [apiHealthTool],
-	instructions: ['Use check_api_health before relying on API-driven UI state.'],
-})
-
-const ai = createRunner({
-	extensions: [web({ page }), apiExtension],
-})
-```
+For custom tools, extensions, built-in extension composition, and custom runners, see the dedicated [Extensions guide](./EXTENSIONS.md).
 
 ### Performance Optimization
 
@@ -490,6 +461,7 @@ For large test suites:
     path: test-reports/
 ```
 
----
+## See Also
 
-See [readme](../README.md) for more information and getting started guide.
+- [EXTENSIONS](./EXTENSIONS.md)
+- [README](../README.md)

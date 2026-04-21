@@ -21,10 +21,10 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 
 Main building blocks:
 
-- **Runner**: The object that executes steps. The main programmatic entry point is `createRunner()` from `@xoxoai/checkmate/core`.
+- **Runner**: The object that executes steps. The main API entry point is `createRunner()` from `@xoxoai/checkmate/core`.
 - **Step**: A plain object with `action` and `expect`. This is the main unit of execution.
 - **Extensions**: Composable modules that add tools and runtime behavior. Built-ins include `web()` and `salesforce()`.
-- **Fixtures**: Convenience Playwright entry points that provide an `ai` runner in tests.
+- **Fixtures**: Convenience [Playwright](https://playwright.dev/docs/test-fixtures) entry points that provide an `ai` runner in tests.
 
 Published entry points:
 
@@ -39,21 +39,15 @@ import { test } from '@xoxoai/checkmate/playwright'
 
 test('search flow', async ({ ai }) => {
 	await ai.run({
-		action: 'Search for playwright documentation',
-		expect: 'Search results are displayed',
+		action: `Type 'documentation' in the search bar and press Enter`,
+		expect: `At least 5 search results are displayed`,
 	})
 })
 ```
 
-If you want a runnable sample project quickly, use the built-in scaffold command after installing the package:
-
-```bash
-npx checkmate create-examples
-```
-
-That command copies the repo example `playwright.config.ts`, example tests, and package scripts into your project.
-
 ## Configuration Reference
+
+Tests are managed in [Playwright's](https://playwright.dev/docs/test-configuration) standard [config](playwright.config.ts).
 
 ### AI API Settings
 
@@ -75,10 +69,6 @@ That command copies the repo example `playwright.config.ts`, example tests, and 
 | `OPENAI_LOOP_MAX_REPETITIONS`           | `5`          | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
 | `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off                                                          |
 | `CHECKMATE_SNAPSHOT_FILTERING`          | `false`      | Enable semantic page snapshot filtering before requests are sent to the model                             |
-
-### Playwright Configuration
-
-Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](../playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
 
 ## Writing Effective Tests
 

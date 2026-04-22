@@ -10,10 +10,6 @@ AI test automation that actually works. Write tests in plain English, without lo
 
 ##
 
-Spending countless hours building and maintaining E2E tests?
-
-Try **_checkmate_**!
-
 ```typescript
 await ai.run({
 	action: `
@@ -91,20 +87,23 @@ npm run show:report
 import { test } from '@xoxoai/checkmate/playwright'
 
 test.describe('multi-step : full AI mode', async () => {
-	test.beforeEach(async ({ ai }) => {
-		await ai.run({
-			action: `Navigate to https://my-shop.com`,
-			expect: `My Shop home page is loaded`,
-		})
-	})
-
 	test('purchase flow', async ({ ai }) => {
+		await test.step('Open Shop', async () => {
+			await ai.run({
+				action: `
+				Navigate to https://my-shop.com`,
+				expect: `
+				My Shop home page is loaded`,
+			})
+		})
+
 		await test.step('Select product', async () => {
 			await ai.run({
 				action: `
 				Click 'Shop Now' on 'Men's Outerwear' category
 				Click on the first Shell product in the list`,
-				expect: `Product detail with title and price.`,
+				expect: `
+				Product detail with title and price.`,
 			})
 		})
 
@@ -113,7 +112,8 @@ test.describe('multi-step : full AI mode', async () => {
 				action: `
 				Click 'Add to Cart'
 				Click 'Checkout' in the 'Added to cart' dialog`,
-				expect: `Checkout with Order Summary and totals`,
+				expect: `
+				Checkout with Order Summary and totals`,
 			})
 		})
 	})
@@ -122,11 +122,11 @@ test.describe('multi-step : full AI mode', async () => {
 
 That's it. No page objects, no selectors. No locators. Peace on Earth.
 
-Tests are managed in [Playwright's](https://playwright.dev/docs/test-configuration) standard [config](playwright.config.ts).
+Tests are orchestrated by [playwright](https://playwright.dev/docs/test-configuration) [config](playwright.config.ts).
 
 ### API
 
-Compose your own **_checkmate_** runner using `@xoxoai/checkmate/core` and [extensions](docs/EXTENSIONS.md):
+Compose your own **_checkmate_** using [extensions](docs/EXTENSIONS.md):
 
 ```typescript
 import { createRunner } from '@xoxoai/checkmate/core'
@@ -143,19 +143,19 @@ await ai.run({
 })
 ```
 
-### Modules:
+### Entry Points:
 
 `@xoxoai/checkmate/core`: compose runner, tools, and extensions.  
 `@xoxoai/checkmate/playwright`: Web extension with Playwright `test` and `expect`.  
 `@xoxoai/checkmate/salesforce`: Salesforce extensions with the same `ai` fixture shape.
 
-See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
+See [guide](docs/GUIDE.md#best-practices) for tips on writing effective tests.
 
 ## Costs
 
 They depend on the model, provider, test complexity, and number of steps.
 
-Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) for optimal balance:
+Estimates for [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b):
 
 - Simple test (~5 steps): ~$0.001 - $0.01
 - Complex test (~20 steps): ~$0.01 - $0.05
@@ -163,34 +163,36 @@ Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/do
 
 **_checkmate_** includes built-in token usage [monitoring](docs/GUIDE.md#cost-management).
 
-See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
+See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring options.
 
 ## Common Issues
 
 **AI makes incorrect decisions**
 
-- Provide precise descriptions in `action` and more focused assertions in `expect`
-- Reference specific element identifiers and roles (for example: text, label, button, list)
-- Break complex workflows into single-action steps; use a step-by-step approach
+- Provide precise descriptions in `action` and focused assertions in `expect`
+- Reference specific element and roles, for example: text, label, button, list, etc.
+- Break complex workflows into single-action steps and use a step-by-step approach
 
 **Tests loop during step execution**
 
 - Increase `OPENAI_TEMPERATURE` to encourage exploration
-- Use a reasoning/thinking model (if available) to improve planning and avoid repetitive loops
+- Use a reasoning model if possible to improve accuracy
 
 **High token costs**
 
-- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` to score and narrow the elements automatically from `action` and `expect`. Use `topPercent` to dial how much of the scored snapshot to keep for a step.
-- Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
-- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
-- Use a cheaper model, lower-end models often perform well (e.g., `gpt-5.4-nano` or `gpt-oss-20b`)
+- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` auto-filter elements
+- Adjust reasoning effort: `OPENAI_REASONING_EFFORT`
+- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` if visuals are not needed
+- Use a cheaper model, lower-end models often perform well: `gpt-5.4-nano` or `gpt-oss-20b`
 
-See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
+See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and tips.
 
 ## FAQ
 
 **Which models work best?**  
-You can use any model that was trained for tool use. Here are the best picks based on extensive testing:
+You can use any model that was trained for tool use.
+
+Here are the best picks based on extensive testing:
 
 - Highly recommended: [`gpt-oss-20b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
 - Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
@@ -226,8 +228,9 @@ await ai.run({
 
 ## Documentation
 
-- [**_checkmate_**](docs/GUIDE.md)
-- [Playwright](https://playwright.dev/)
+- [**_checkmate_** guide](docs/GUIDE.md)
+- [**_checkmate_** extensions](docs/EXTENSIONS.md)
+- [**playwright** official website](https://playwright.dev/)
 
 ## Contributing
 
@@ -240,9 +243,9 @@ I'd love your help! Key areas:
 
 See [roadmap](docs/ROADMAP.md) for future plans and development
 
-## MIT License
+## License
 
-See [license](LICENSE) file for details
+MIT [license](LICENSE)
 
 ## Why I build this?
 

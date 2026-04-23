@@ -15,29 +15,28 @@ Use it when you want to:
 
 The runner owns:
 
-- the model loop
-- retries
+- the model loop with retries
 - pass/fail resolution
 - tool dispatch
 
-Extensions add domain-specific behavior such as:
+Extensions add domain-specific skills such as:
 
 - tools
 - system instructions
 - initial step context
 - post-tool context
-- shared capabilities for other extensions
 - teardown logic
+- shared capabilities across extensions
 
-That is how `web()` and `salesforce()` work, and it is the same model you use for your own extensions.
+Pre-built `web()` and `salesforce()` are in fact extensions - made the same way as you would build your own.
 
 ## Tool vs Extension
 
-Use `defineTool()` when you need one new action the model can call.
+Use `defineTool()` to create a new action the model can call.
 
-Use `defineExtension()` when you need to bundle tools with runtime behavior such as instructions, setup, or extra context.
+Use `defineExtension()` to bundle different tools and instructions, setup, or extra context.
 
-Use `createRunner()` when you want to compose your own runtime from built-in and custom extensions.
+Use `createRunner()` to compose your own runtime from extensions.
 
 ## Your First Tool
 
@@ -47,8 +46,8 @@ A tool is the smallest unit of behavior.
 import { defineTool } from '@xoxoai/checkmate/core'
 import { z } from 'zod/v4'
 
-export const apiHealthTool = defineTool({
-	name: 'check_api_health',
+export const health = defineTool({
+	name: 'api-health',
 	description: 'Check whether the API is healthy',
 	schema: z.object({ url: z.string().url() }).strict(),
 	handler: async ({ url }) => {
@@ -69,21 +68,21 @@ Good tools are:
 
 ## Your First Extension
 
-An extension can be as small as a name, one tool, and one instruction.
+An extension can bundle one or more tools and instructions.
 
 ```typescript
 import { createRunner, defineExtension } from '@xoxoai/checkmate/core'
 import { web } from '@xoxoai/checkmate/playwright'
-import { apiHealthTool } from './api-health-tool'
+import { health, queryRecords } from './api-tools'
 
-export const apiHealth = defineExtension({
-	name: 'api-health',
-	tools: [apiHealthTool],
-	instructions: ['Use check_api_health before relying on API-driven UI state.'],
+export const apiExtension = defineExtension({
+	name: 'api',
+	tools: [health, queryRecords],
+	instructions: ['Use api tools to interact with xyz service.', 'Prefer api tools over web tools when possible.'],
 })
 
 const ai = createRunner({
-	extensions: [web({ page }), apiHealth],
+	extensions: [web({ page }), apiExtension],
 })
 ```
 

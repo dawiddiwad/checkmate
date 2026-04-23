@@ -8,38 +8,22 @@ AI test automation that actually works. Write tests in plain English, without lo
 ![openai](https://img.shields.io/badge/OpenAI-API-yellow.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Why?
-
-Spending countless hours building and maintaining E2E tests that look like this?
-
-```
-await page.goto('https://www.google.com')
-const searchBox = page.getByRole('combobox', { name: 'Search', exact: true })
-await searchBox.fill('playwright test automation')
-await searchBox.press('Enter')
-await expect(page.getByRole('link', { name: 'playwright' })
-    .filter({ hasText: 'playwright.dev' })
-    .first(), 'playwright.dev link should be visible')
-    .toBeVisible( { timeout: 30 * 1000 } )
-```
-
-Try **_checkmate_**!
+##
 
 ```typescript
 await ai.run({
 	action: `
-        Navigate to google.com
-        Type 'playwright test automation' in the search bar
-        Press Enter key`,
+		Navigate to google.com
+		Type 'playwright test automation' in the search bar
+		Press Enter key`,
 	expect: `
-        Search results contain the playwright.dev link`,
+		Search results contain the playwright.dev link`,
 })
 ```
 
-## What You Get
+##
 
 ✅ **Zero Locators** - Write tests in plain English  
-✅ **Self-Healing** - Tests adapt to UI changes automatically  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box  
 ✅ **Cost Optimized** - Built-in token management and budgeting  
@@ -97,41 +81,60 @@ npm run show:report
 
 ## Writing Tests
 
-Import `test` from `@xoxoai/checkmate/playwright` and use the `ai` fixture.  
 **_checkmate_** tests are written using natural language by specifying `action` and `expect`:
 
 ```typescript
 import { test } from '@xoxoai/checkmate/playwright'
 
-test('google search', async ({ ai }) => {
-	await ai.run({
-		action: `
-            Open the browser and navigate to google.com.
-            Type 'playwright test automation' in the search bar.
-            Press Enter key.`,
-		expect: `
-            Search results contain the 'playwright.dev' link`,
+test.describe('multi-step : full AI mode', async () => {
+	test('purchase flow', async ({ ai }) => {
+		await test.step('Open Shop', async () => {
+			await ai.run({
+				action: `
+				Navigate to https://my-shop.com`,
+				expect: `
+				My Shop home page is loaded`,
+			})
+		})
+
+		await test.step('Select product', async () => {
+			await ai.run({
+				action: `
+				Click 'Shop Now' on 'Men's Outerwear' category
+				Click on the first Shell product in the list`,
+				expect: `
+				Product detail with title and price.`,
+			})
+		})
+
+		await test.step('Cart and checkout', async () => {
+			await ai.run({
+				action: `
+				Click 'Add to Cart'
+				Click 'Checkout' in the 'Added to cart' dialog`,
+				expect: `
+				Checkout with Order Summary and totals`,
+			})
+		})
 	})
 })
 ```
 
 That's it. No page objects, no selectors. No locators. Peace on Earth.
 
-Browser settings (viewport, headless mode, video recording, timeouts, etc.) are configured in [playwright.config.ts](playwright.config.ts) using Playwright's [standard](https://playwright.dev/docs/test-configuration) configuration mechanism.
+Tests are orchestrated by [playwright](https://playwright.dev/docs/test-configuration) [config](playwright.config.ts).
 
-See [guide](docs/GUIDE.md#best-practices) for detailed examples and best practices.
-See [guide](docs/GUIDE.md#core-concepts) for the main building blocks and [extensions](docs/EXTENSIONS.md) for customization.
+### API
 
-### Programmatic API
-
-If you use **_checkmate_** without the fixture wrapper, compose a runner from `@xoxoai/checkmate/core` and extensions:
+Compose your own **_checkmate_** using [extensions](docs/EXTENSIONS.md):
 
 ```typescript
 import { createRunner } from '@xoxoai/checkmate/core'
 import { web } from '@xoxoai/checkmate/playwright'
+import { notion, database, api } from 'my-custom-extensions'
 
 const ai = createRunner({
-	extensions: [web({ page })],
+	extensions: [web({ page }), notion(), database(), api()],
 })
 
 await ai.run({
@@ -140,55 +143,56 @@ await ai.run({
 })
 ```
 
-See [guide](docs/GUIDE.md#advanced-topics) for advanced topics and [extensions](docs/EXTENSIONS.md) for building custom tools, extensions, runners, and scaffolded starter projects.
+### Entry Points:
 
-Published entry points:
+`@xoxoai/checkmate/core`: compose runner, tools, and extensions.  
+`@xoxoai/checkmate/playwright`: Web extension with Playwright `test` and `expect`.  
+`@xoxoai/checkmate/salesforce`: Salesforce extensions with the same `ai` fixture shape.
 
-`@xoxoai/checkmate/core`: Build your own runner with extensions.  
-`@xoxoai/checkmate/playwright`: Use the built-in web extension with Playwright `test` and `expect`.  
-`@xoxoai/checkmate/salesforce`: Use the built-in web + Salesforce extensions with the same `ai` fixture shape.
-
-The repository keeps runnable consumer-style examples under `test/examples/`.
+See [guide](docs/GUIDE.md#best-practices) for tips on writing effective tests.
 
 ## Costs
 
-Costs vary based on model and provider, test complexity and number of steps.
-**_checkmate_** includes built-in token usage [monitoring](docs/GUIDE.md#cost-management).
+They depend on the model, provider, test complexity, and number of steps.
 
-Cost estimates with [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b) for optimal balance:
+Estimates for [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b):
 
 - Simple test (~5 steps): ~$0.001 - $0.01
 - Complex test (~20 steps): ~$0.01 - $0.05
 - Full E2E suite (~50 complex tests): ~$1.00 - $2.00
 
-See [guide](docs/GUIDE.md#cost-management) for detailed cost control and monitoring options.
+**_checkmate_** includes built-in token usage [monitoring](docs/GUIDE.md#cost-management).
+
+See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring options.
 
 ## Common Issues
 
 **AI makes incorrect decisions**
 
-- Provide precise descriptions in `action` and more focused assertions in `expect`
-- Reference specific element identifiers and roles (for example: text, label, button, list)
-- Break complex workflows into single-action steps; use a step-by-step approach
+- Provide precise descriptions in `action` and focused assertions in `expect`
+- Reference specific element and roles, for example: text, label, button, list, etc.
+- Break complex workflows into single-action steps and use a step-by-step approach
 
 **Tests loop during step execution**
 
 - Increase `OPENAI_TEMPERATURE` to encourage exploration
-- Use a reasoning/thinking model (if available) to improve planning and avoid repetitive loops
+- Use a reasoning model if possible to improve accuracy
 
 **High token costs**
 
-- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` to score and narrow the elements automatically from `action` and `expect`. Use `topPercent` to dial how much of the scored snapshot to keep for a step.
-- Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
-- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
-- Use a cheaper model, lower-end models often perform well (e.g., `gpt-5.4-nano` or `gpt-oss-20b`)
+- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` auto-filter elements
+- Adjust reasoning effort: `OPENAI_REASONING_EFFORT`
+- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` if visuals are not needed
+- Use a cheaper model, lower-end models often perform well: `gpt-5.4-nano` or `gpt-oss-20b`
 
-See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and troubleshooting tips.
+See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and tips.
 
 ## FAQ
 
 **Which models work best?**  
-You can use any model that was trained for tool use. Here are the best picks based on extensive testing:
+You can use any model that was trained for tool use.
+
+Here are the best picks based on extensive testing:
 
 - Highly recommended: [`gpt-oss-20b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
 - Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
@@ -224,8 +228,9 @@ await ai.run({
 
 ## Documentation
 
-- [**_checkmate_**](docs/GUIDE.md)
-- [Playwright](https://playwright.dev/)
+- [**_checkmate_** guide](docs/GUIDE.md)
+- [**_checkmate_** extensions](docs/EXTENSIONS.md)
+- [**playwright** official website](https://playwright.dev/)
 
 ## Contributing
 
@@ -238,9 +243,9 @@ I'd love your help! Key areas:
 
 See [roadmap](docs/ROADMAP.md) for future plans and development
 
-## MIT License
+## License
 
-See [license](LICENSE) file for details
+MIT [license](LICENSE)
 
 ## Why I build this?
 

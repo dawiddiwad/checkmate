@@ -4,6 +4,7 @@ test-reports
 .DS_Store
 .env
 .playwright-mcp
+.sf
 TODO
 coverage
 dist

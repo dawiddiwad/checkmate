@@ -167,4 +167,65 @@ describe('ToolResponseHandler', () => {
 		expect(warnings).not.toContain(base64)
 		expect(warnings).not.toContain('session=secret')
 	})
+
+	it('redacts JSON and env-style secret fields from error diagnostics', async () => {
+		const step = { action: 'act', expect: 'done' }
+		const base64 = 'B'.repeat(220)
+		const toolResponse: ToolResponse = {
+			name: 'browser_upload',
+			response: `failed OPENAI_API_KEY=response-secret api_key=response-snake authorization=Bearer response-auth cookie=session=response-cookie data:image/png;base64,${base64}`,
+			snapshot: null,
+			status: 'error',
+		}
+
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_json_secret',
+					toolCall: {
+						name: 'browser_upload',
+						arguments: {
+							OPENAI_API_KEY: 'openai-secret-value',
+							api_key: 'snake-secret-value',
+							apiKey: 'camel-secret-value',
+							authorization: 'Bearer auth-secret-value',
+							cookie: 'session=cookie-secret-value',
+							image: `data:image/png;base64,${base64}`,
+						},
+					},
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
+
+		const warnings = vi
+			.mocked(logger.warn)
+			.mock.calls.map((call) => String(call[0]))
+			.join('\n')
+		expect(warnings).toContain('tool response error')
+		expect(warnings).toContain('call_json_secret')
+		expect(warnings).toContain('[secret omitted]')
+		expect(warnings).toContain('[image omitted]')
+
+		for (const secret of [
+			'openai-secret-value',
+			'snake-secret-value',
+			'camel-secret-value',
+			'auth-secret-value',
+			'cookie-secret-value',
+			'response-secret',
+			'response-snake',
+			'response-auth',
+			'response-cookie',
+			base64,
+		]) {
+			expect(warnings).not.toContain(secret)
+		}
+
+		for (const keyName of ['OPENAI_API_KEY', 'api_key', 'apiKey', 'authorization', 'cookie']) {
+			expect(warnings).not.toContain(keyName)
+		}
+	})
 })

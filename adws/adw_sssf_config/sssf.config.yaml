@@ -2,11 +2,12 @@
 # v1 runs the Pi coding agent only; coding_agent: claude_code arrives in v2.
 defaults:
   coding_agent: pi
-  model: openai/gpt-5.5             # provider/id — a bare pattern is ambiguous across providers
-                                    # single-provider roster: only OPENAI_API_KEY is required
+  model: openai-codex/gpt-5.5       # provider/id — a bare pattern is ambiguous across providers
+                                    # rides the ChatGPT/Codex subscription login in
+                                    # ~/.pi/agent/auth.json — no OPENAI_API_KEY needed
                                     # (repo template named gpt-5.6-terra/-luna, which `pi
                                     # --list-models` doesn't recognize; gpt-5.5 is the latest
-                                    # real openai model pi currently knows about)
+                                    # real model pi currently knows about)
   thinking: medium                 # off | minimal | low | medium | high | xhigh | max
   harness_engineering: []          # pi extensions loaded into the harness (-e)
   # Roster-wide allowlist; any agent may override with its own list.

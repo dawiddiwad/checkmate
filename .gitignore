@@ -9,3 +9,8 @@ TODO
 coverage
 dist
 **.tgz
+# sssf runtime
+adws/adw_data/sessions/
+adws/adw_data/sssf.db*
+__pycache__/
+*.pyc

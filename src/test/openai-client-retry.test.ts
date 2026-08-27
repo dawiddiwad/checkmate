@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { AiClient } from '../ai/client'
 import { RuntimeConfig } from '../config/runtime-config'
+import { logger } from '../logging'
 import { ToolRegistry } from '../tools/registry'
 import { LoopDetectedError } from '../tools/loop-detector'
 import {
@@ -62,6 +63,8 @@ describe('AiClient - Retry Logic', () => {
 			getMaxRetries: vi.fn().mockReturnValue(3),
 			getLogLevel: vi.fn().mockReturnValue('off'),
 			getTemperature: vi.fn().mockReturnValue(1),
+			getToolChoice: vi.fn().mockReturnValue('required'),
+			getReasoningEffort: vi.fn().mockReturnValue('low'),
 		} as MockConfigurationManager
 
 		mockToolRegistry = {
@@ -633,6 +636,68 @@ describe('AiClient - message flow', () => {
 		)
 		const imageContent = last.content[1] as { type: 'image_url'; image_url: { url: string } }
 		expect(imageContent.image_url.url).toContain('data:image/png;base64,YmFzZTY0')
+	})
+
+	it('includes request and recent message context in final API errors', async () => {
+		vi.mocked(mockConfig.getMaxRetries).mockReturnValue(0)
+		vi.mocked(mockConfig.getTemperature).mockReturnValue(0.4)
+		vi.mocked(mockConfig.getToolChoice).mockReturnValue('required')
+		vi.mocked(mockConfig.getReasoningEffort).mockReturnValue('low')
+		const error = createHttpError('provider failed', 500)
+		const operation = vi.fn<() => Promise<unknown>>().mockRejectedValue(error)
+		;(error as unknown as Record<string, unknown>).body = { error: { message: 'bad model response' } }
+		;(openAIClient as unknown as AiClientTestable).messages = [{ role: 'user', content: 'click submit' }]
+		;(openAIClient as unknown as { temperature: number }).temperature = 0.4
+		;(openAIClient as unknown as { step: { action: string; expect: string } }).step = {
+			action: 'submit form',
+			expect: 'success page',
+		}
+
+		await expect((openAIClient as unknown as AiClientTestable).executeWithRetry(operation)).rejects.toThrow(
+			/model: gpt-4o-mini[\s\S]*tool_choice: required[\s\S]*reasoning_effort: low[\s\S]*temperature: 0.4[\s\S]*step_action: submit form[\s\S]*step_expect: success page[\s\S]*user: click submit[\s\S]*bad model response/
+		)
+	})
+
+	it('logs sanitized provider details and recent messages for recoverable 400 tool errors', async () => {
+		vi.mocked(mockConfig.getMaxRetries).mockReturnValue(1)
+		const base64 = 'A'.repeat(220)
+		const error = createHttpError('tool call rejected', 400)
+		const operation = vi.fn<() => Promise<unknown>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok')
+		;(error as unknown as Record<string, unknown>).body = {
+			error: 'invalid tool arguments',
+			api_key: 'sk-secret123',
+			image: `data:image/png;base64,${base64}`,
+		}
+		;(openAIClient as unknown as { step: { action: string; expect: string } }).step = {
+			action: 'use upload tool',
+			expect: 'file uploaded',
+		}
+		;(openAIClient as unknown as AiClientTestable).messages = [
+			{ role: 'user', content: 'before image' },
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'see screenshot' },
+					{ type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } },
+				],
+			},
+		]
+
+		await expect((openAIClient as unknown as AiClientTestable).executeWithRetry(operation)).resolves.toBe('ok')
+
+		const warnings = vi
+			.mocked(logger.warn)
+			.mock.calls.map((call) => String(call[0]))
+			.join('\n')
+		expect(operation).toHaveBeenCalledTimes(2)
+		expect(warnings).toContain('tool call error detected [400]')
+		expect(warnings).toContain('status')
+		expect(warnings).toContain('step_action: use upload tool')
+		expect(warnings).toContain('step_expect: file uploaded')
+		expect(warnings).toContain('before image')
+		expect(warnings).toContain('[image omitted]')
+		expect(warnings).not.toContain('sk-secret123')
+		expect(warnings).not.toContain(base64)
 	})
 
 	it('counts string and array history when estimating tokens', () => {

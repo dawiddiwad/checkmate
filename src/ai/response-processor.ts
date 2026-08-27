@@ -62,9 +62,30 @@ export class ResponseProcessor {
 				dispatchedToolCall = true
 				const parsedToolCall: ToolCall = {
 					name: toolCall.function.name,
-					arguments: JSON.parse(toolCall.function.arguments || '{}'),
+					arguments: this.parseToolArguments(
+						toolCall.function.arguments || '{}',
+						toolCall.id,
+						toolCall.function.name,
+						choice,
+						response,
+						step
+					),
 				}
-				const toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, { step, resolveStepResult })
+				let toolResponse: ToolResponse | null
+				try {
+					toolResponse = await this.toolDispatcher.dispatch(parsedToolCall, { step, resolveStepResult })
+				} catch (error) {
+					throw new Error(
+						[
+							`Tool dispatch failed: ${parsedToolCall.name}`,
+							`tool_call_id: ${toolCall.id}`,
+							`arguments: ${preview(parsedToolCall.arguments, 1_000)}`,
+							this.formatChoiceContext(choice, response, step),
+							`original_error: ${error instanceof Error ? error.message : String(error)}`,
+						].join('\n'),
+						{ cause: error }
+					)
+				}
 				if (toolResponse) {
 					toolResponses.push({ toolCallId: toolCall.id, toolCall: parsedToolCall, toolResponse })
 				}
@@ -82,4 +103,50 @@ export class ResponseProcessor {
 			await this.messageHandler.handle(choice, step, resolveStepResult)
 		}
 	}
+
+	private parseToolArguments(
+		rawArguments: string,
+		toolCallId: string,
+		toolName: string,
+		choice: ChatCompletion.Choice,
+		response: ChatCompletion,
+		step: Step
+	): unknown {
+		try {
+			return JSON.parse(rawArguments)
+		} catch (error) {
+			throw new Error(
+				[
+					`Malformed tool arguments for ${toolName}`,
+					`tool_call_id: ${toolCallId}`,
+					`raw_arguments: ${preview(rawArguments, 1_000)}`,
+					this.formatChoiceContext(choice, response, step),
+					`original_error: ${error instanceof Error ? error.message : String(error)}`,
+				].join('\n'),
+				{ cause: error }
+			)
+		}
+	}
+
+	private formatChoiceContext(choice: ChatCompletion.Choice, response: ChatCompletion, step: Step): string {
+		return [
+			`step_action: ${step.action}`,
+			`step_expect: ${step.expect}`,
+			`response_id: ${response.id}`,
+			`response_model: ${response.model}`,
+			`choice_index: ${choice.index}`,
+			`finish_reason: ${choice.finish_reason}`,
+			`assistant_content: ${preview(choice.message.content, 1_000)}`,
+			`assistant_refusal: ${preview(choice.message.refusal, 1_000)}`,
+		].join('\n')
+	}
+}
+
+function preview(value: unknown, maxLength: number): string {
+	const text = typeof value === 'string' ? value : JSON.stringify(value)
+	const safeText = (text ?? String(value))
+		.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g, '[image omitted]')
+		.replace(/[A-Za-z0-9+/]{200,}={0,2}/g, '[base64 omitted]')
+		.replace(/sk-[A-Za-z0-9_-]+/g, '[secret omitted]')
+	return safeText.length <= maxLength ? safeText : `${safeText.slice(0, maxLength - 3)}...`
 }

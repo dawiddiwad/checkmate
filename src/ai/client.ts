@@ -205,7 +205,7 @@ export class AiClient {
 				logger.warn(
 					`status: ${this.getStatus(error)} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`
 				)
-				logger.debug(`retryable error details:\n${JSON.stringify(error, null, 2)}`)
+				logger.debug(`retryable error details:\n${this.formatError(error)}`)
 				await this.sleep(delay)
 			}
 		}
@@ -271,14 +271,27 @@ export class AiClient {
 
 	private enhanceError(error: unknown): Error {
 		const status = this.getStatus(error) ?? 'unknown'
-		const message = error instanceof Error ? error.message : null
-		return new Error(`OpenAI API error [${status}]: ${message ?? JSON.stringify(error, null, 2)}`)
+		const message = error instanceof Error ? error.message : String(error)
+		return new Error(
+			[
+				`OpenAI API error [${status}]: ${message}`,
+				`model: ${this.runtimeConfig.getModel()}`,
+				`tool_choice: ${this.runtimeConfig.getToolChoice?.() ?? 'unknown'}`,
+				`reasoning_effort: ${this.runtimeConfig.getReasoningEffort?.() ?? 'unknown'}`,
+				`temperature: ${this.temperature}`,
+				this.formatStepContext(),
+				`recent_messages:\n${this.formatRecentMessages()}`,
+				`provider_error:\n${this.formatError(error)}`,
+			].join('\n')
+		)
 	}
 
 	private isToolError(error: unknown): boolean {
-		const errorAsString = JSON.stringify(error, null, 2).toLowerCase()
+		const errorAsString = this.formatError(error).toLowerCase()
 		if (this.getStatus(error) === 400 && errorAsString.includes('tool')) {
-			logger.warn('tool call error detected [400]')
+			logger.warn(
+				`tool call error detected [400]\n${this.formatStepContext()}\nprovider_error:\n${this.formatError(error)}\nrecent_messages:\n${this.formatRecentMessages()}`
+			)
 			void this.addUserMessage(
 				'you did not call a tool or called it incorrectly, try again and always only call a tool with correct parameters to proceed with the step.'
 			)
@@ -286,6 +299,94 @@ export class AiClient {
 		}
 
 		return false
+	}
+
+	private formatStepContext(): string {
+		const step = this.step as Step | undefined
+		return [`step_action: ${step?.action ?? '(unknown)'}`, `step_expect: ${step?.expect ?? '(unknown)'}`].join('\n')
+	}
+
+	private formatRecentMessages(): string {
+		const recentMessages = this.messages.slice(-6)
+		if (recentMessages.length === 0) {
+			return '(none)'
+		}
+
+		return recentMessages
+			.map(
+				(message, index) => `${index + 1}. ${message.role}: ${this.formatContentPreview(message.content, 500)}`
+			)
+			.join('\n')
+	}
+
+	private formatError(error: unknown): string {
+		const seen = new WeakSet<object>()
+		return this.formatContentPreview(
+			JSON.stringify(
+				error,
+				(key, value) => {
+					const lowerKey = key.toLowerCase()
+					if (
+						lowerKey.includes('authorization') ||
+						lowerKey.includes('api_key') ||
+						lowerKey.includes('apikey') ||
+						lowerKey.includes('cookie')
+					) {
+						return '[secret omitted]'
+					}
+					if (value instanceof Error) {
+						const errorRecord = value as unknown as Record<string, unknown>
+						return {
+							name: value.name,
+							message: value.message,
+							stack: value.stack,
+							status: errorRecord.status,
+							statusCode: errorRecord.statusCode,
+							code: errorRecord.code,
+							body: errorRecord.body,
+							error: errorRecord.error,
+						}
+					}
+					if (typeof value === 'object' && value !== null) {
+						if (seen.has(value)) {
+							return '[circular]'
+						}
+						seen.add(value)
+					}
+					return value
+				},
+				2
+			) ?? String(error),
+			2_000
+		)
+	}
+
+	private formatContentPreview(content: unknown, maxLength: number): string {
+		let text: string
+		if (typeof content === 'string') {
+			text = content
+		} else if (Array.isArray(content)) {
+			text = content
+				.map((part) => {
+					if (part && typeof part === 'object' && 'image_url' in part) {
+						return '[image omitted]'
+					}
+					if (part && typeof part === 'object' && 'text' in part) {
+						return String((part as { text?: unknown }).text ?? '')
+					}
+					return '[content omitted]'
+				})
+				.join(' ')
+		} else {
+			text = JSON.stringify(content) ?? String(content)
+		}
+
+		text = text
+			.replace(/sk-[A-Za-z0-9_-]+/g, '[secret omitted]')
+			.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g, '[image omitted]')
+			.replace(/[A-Za-z0-9+/]{200,}={0,2}/g, '[base64 omitted]')
+
+		return text.length <= maxLength ? text : `${text.slice(0, maxLength - 3)}...`
 	}
 
 	private countContentChars(content: ChatCompletionMessageParam['content']): number {

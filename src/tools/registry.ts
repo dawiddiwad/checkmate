@@ -37,6 +37,10 @@ export class ToolRegistry {
 		return this.toolsByName.get(toolName)
 	}
 
+	getRegisteredToolNames(): string[] {
+		return this.tools.map((tool) => getToolName(tool))
+	}
+
 	async getTools(): Promise<ChatCompletionFunctionTool[]> {
 		const allowedNames = this.runtimeConfig.getAllowedFunctionNames()
 		const definitions = this.tools.map((tool) => this.toOpenAiTool(tool))

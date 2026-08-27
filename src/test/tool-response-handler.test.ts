@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToolResponseHandler } from '../ai/tool-response-handler'
 import { ToolResponse } from '../tools/registry'
 import { ResolveStepResult } from '../runtime/types'
+import { logger } from '../logging'
+
+vi.mock('../../src/logging', () => ({
+	logger: {
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn(),
+	},
+}))
 
 describe('ToolResponseHandler', () => {
 	let openaiClient: {
@@ -18,6 +28,7 @@ describe('ToolResponseHandler', () => {
 	let callback: ResolveStepResult
 
 	beforeEach(() => {
+		vi.clearAllMocks()
 		openaiClient = {
 			addToolResponse: vi.fn().mockResolvedValue(undefined),
 			addToolExecutionSummaryMessage: vi.fn().mockResolvedValue(undefined),
@@ -113,5 +124,47 @@ describe('ToolResponseHandler', () => {
 		)
 		expect(openaiClient.addCurrentSnapshotMessage).not.toHaveBeenCalled()
 		expect(openaiClient.addCurrentScreenshotMessage).toHaveBeenCalledTimes(1)
+	})
+
+	it('redacts secrets and image data from error diagnostics', async () => {
+		const step = { action: 'act', expect: 'done' }
+		const base64 = 'A'.repeat(220)
+		const toolResponse: ToolResponse = {
+			name: 'browser_upload',
+			response: `failed with Authorization: Bearer sk-response and data:image/png;base64,${base64}`,
+			snapshot: null,
+			status: 'error',
+		}
+
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_secret',
+					toolCall: {
+						name: 'browser_upload',
+						arguments: {
+							apiKey: 'sk-argument',
+							cookie: 'Cookie: session=secret',
+							image: `data:image/png;base64,${base64}`,
+						},
+					},
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
+
+		const warnings = vi
+			.mocked(logger.warn)
+			.mock.calls.map((call) => String(call[0]))
+			.join('\n')
+		expect(warnings).toContain('call_secret')
+		expect(warnings).toContain('[secret omitted]')
+		expect(warnings).toContain('[image omitted]')
+		expect(warnings).not.toContain('sk-argument')
+		expect(warnings).not.toContain('sk-response')
+		expect(warnings).not.toContain(base64)
+		expect(warnings).not.toContain('session=secret')
 	})
 })

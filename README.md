@@ -177,6 +177,7 @@ See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring optio
 
 - Increase `OPENAI_TEMPERATURE` to encourage exploration
 - Use a reasoning model if possible to improve accuracy
+- Set `CHECKMATE_LOG_LEVEL=debug` to inspect model/tool loop diagnostics, including tool calls and recent message summaries
 
 **High token costs**
 

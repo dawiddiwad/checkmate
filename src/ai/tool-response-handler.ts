@@ -1,3 +1,4 @@
+import { logger } from '../logging/index.js'
 import { Step, ResolveStepResult } from '../runtime/types.js'
 import { ToolResponse } from '../tools/registry.js'
 import { ToolCall } from '../tools/types.js'
@@ -35,7 +36,12 @@ export class ToolResponseHandler {
 
 		this.messageHistory.removeEphemeralStateMessages(this.aiClient)
 
-		for (const { toolCallId, toolResponse } of toolResponses) {
+		for (const { toolCallId, toolCall, toolResponse } of toolResponses) {
+			if (toolResponse.status === 'error') {
+				logger.warn(
+					`tool response error:\ntool_call_id: ${toolCallId}\ntool: ${toolCall.name}\narguments: ${safePreview(JSON.stringify(toolCall.arguments ?? {}), 1_000)}\nresponse: ${safePreview(toolResponse.response, 2_000)}`
+				)
+			}
 			await this.aiClient.addToolResponse(toolCallId, toolResponse.response)
 		}
 
@@ -72,6 +78,20 @@ function formatToolExecutionSummary(toolCall: ToolCall, toolResponse: ToolRespon
 	}
 
 	return `- successfully executed: ${toolCall.name} ${serializedArguments}`
+}
+
+function safePreview(value: string, maxLength: number): string {
+	return truncateText(redact(value), maxLength)
+}
+
+function redact(value: string): string {
+	return value
+		.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g, '[image omitted]')
+		.replace(/[A-Za-z0-9+/]{200,}={0,2}/g, '[base64 omitted]')
+		.replace(/sk-[A-Za-z0-9_-]+/g, '[secret omitted]')
+		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [secret omitted]')
+		.replace(/Authorization\s*[:=]\s*[^\s,;}]+/gi, 'Authorization: [secret omitted]')
+		.replace(/Cookie\s*[:=]\s*[^\n,;}]+/gi, 'Cookie: [secret omitted]')
 }
 
 function truncateText(value: string, maxLength: number): string {

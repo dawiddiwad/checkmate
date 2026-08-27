@@ -67,7 +67,7 @@ Tests are managed in [Playwright's](https://playwright.dev/docs/test-configurati
 | `OPENAI_API_TOKEN_BUDGET_USD`           | -            | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced. |
 | `OPENAI_API_TOKEN_BUDGET_COUNT`         | -            | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
 | `OPENAI_LOOP_MAX_REPETITIONS`           | `5`          | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
-| `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off                                                          |
+| `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off. `debug` includes model/tool loop diagnostics            |
 | `CHECKMATE_SNAPSHOT_FILTERING`          | `false`      | Enable semantic page snapshot filtering before requests are sent to the model                             |
 
 ## Writing Effective Tests
@@ -318,6 +318,16 @@ npx playwright show-report test-reports/html
 - Provide more precise descriptions in `action` and more focused assertions in `expect`
 - Reference specific element identifiers and roles (for example: text, label, button, list)
 - Break complex workflows into single-action steps; use a step-by-step approach
+
+### Model does not call tools or sends invalid tool arguments
+
+**Symptoms**: A step fails because the model returned text, called an unknown tool, or sent malformed tool arguments.
+
+**Solutions**:
+
+- Set `CHECKMATE_LOG_LEVEL=debug` to see response summaries, tool calls, available tools, and recent message summaries
+- Check the failure output for the step `action` / `expect`, tool name, raw arguments, and provider error details
+- Make the step action more direct and mention the expected interaction target
 
 ### Tests loop during step execution
 

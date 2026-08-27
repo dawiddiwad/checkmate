@@ -27,7 +27,7 @@ Focus: Product usability and broader workflow support.
 
 - [ ] UI layer for recording, editing, and replaying AI-driven steps
 - [ ] Flow-level execution mode for multi-step business journeys
-- [ ] Richer debugging output for model/tool reasoning failures
+- [x] Richer debugging output for model/tool reasoning failures
 - [ ] Better parallel execution support across large suites
 
 ## Long Term

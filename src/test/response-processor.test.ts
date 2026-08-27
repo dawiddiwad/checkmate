@@ -389,6 +389,82 @@ describe('ResponseProcessor', () => {
 				'No choices found in response'
 			)
 		})
+
+		it('should include model context when tool arguments are malformed JSON', async () => {
+			const mockResponse: ChatCompletion = {
+				id: 'response_1',
+				object: 'chat.completion',
+				created: Date.now(),
+				model: 'gpt-4o-mini',
+				choices: [
+					{
+						index: 2,
+						logprobs: null,
+						message: {
+							role: 'assistant',
+							content: 'calling tool',
+							refusal: null,
+							tool_calls: [
+								{
+									id: 'call_bad',
+									type: 'function',
+									function: { name: 'browser_click', arguments: '{bad json' },
+								},
+							],
+						},
+						finish_reason: 'tool_calls',
+					},
+				],
+			}
+
+			await expect(responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)).rejects.toThrow(
+				/browser_click[\s\S]*call_bad[\s\S]*\{bad json[\s\S]*test action[\s\S]*test expectation[\s\S]*choice_index: 2[\s\S]*finish_reason: tool_calls/
+			)
+		})
+
+		it('should wrap dispatch failures with tool and model context', async () => {
+			const mockResponse: ChatCompletion = {
+				id: 'response_2',
+				object: 'chat.completion',
+				created: Date.now(),
+				model: 'gpt-4o-mini',
+				choices: [
+					{
+						index: 1,
+						logprobs: null,
+						message: {
+							role: 'assistant',
+							content: null,
+							refusal: null,
+							tool_calls: [
+								{
+									id: 'call_dispatch',
+									type: 'function',
+									function: { name: 'browser_type', arguments: '{"text":"hello"}' },
+								},
+							],
+						},
+						finish_reason: 'tool_calls',
+					},
+				],
+			}
+			const cause = new Error('dispatch exploded')
+			const toolDispatcher = (responseProcessor as unknown as TestableResponseProcessor).toolDispatcher
+			vi.mocked(toolDispatcher.dispatch).mockRejectedValue(cause)
+
+			let caught: unknown
+			try {
+				await responseProcessor.handleResponse(mockResponse, mockStep, mockCallback)
+			} catch (error) {
+				caught = error
+			}
+
+			expect(caught).toBeInstanceOf(Error)
+			expect((caught as Error).message).toMatch(
+				/browser_type[\s\S]*call_dispatch[\s\S]*hello[\s\S]*test action[\s\S]*choice_index: 1/
+			)
+			expect((caught as Error).cause).toBe(cause)
+		})
 	})
 
 	describe('handleResponse - rate limiting and token tracking', () => {

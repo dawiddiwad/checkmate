@@ -4,6 +4,13 @@ import { AiClient } from '../ai/client'
 import { ResolveStepResult } from '../runtime/types'
 import { LoopDetectedError } from '../tools/loop-detector'
 
+export interface MockBrowserContext {
+	pages: Mock<() => MockPage[]>
+	on: Mock<(event: string, handler: (page: MockPage) => void) => MockBrowserContext>
+	off: Mock<(event: string, handler: (page: MockPage) => void) => MockBrowserContext>
+	emitPage: (page: MockPage) => void
+}
+
 export interface MockPage {
 	goto: Mock
 	click: Mock
@@ -11,6 +18,14 @@ export interface MockPage {
 	locator: Mock<(selector: string) => MockLocator>
 	keyboard: MockKeyboard
 	waitForTimeout: Mock
+	context: Mock<() => MockBrowserContext>
+	url: Mock<() => string>
+	title: Mock<() => Promise<string>>
+	bringToFront: Mock<() => Promise<void>>
+	waitForLoadState: Mock<() => Promise<void>>
+	isClosed: Mock<() => boolean>
+	close: Mock<() => Promise<void>>
+	opener: Mock<() => Promise<MockPage | null>>
 }
 
 export interface MockLocator {

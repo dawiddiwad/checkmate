@@ -25,7 +25,7 @@ await ai.run({
 
 ✅ **Zero Locators** - Write tests in plain English  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
-✅ **Web & Salesforce** - Basic support out of the box  
+✅ **Web & Salesforce** - Basic support out of the box, including active tab/popup tracking  
 ✅ **Cost Optimized** - Built-in token management and budgeting  
 ✅ **Playwright Test** - Native reports, traces and debugging  
 ✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
@@ -146,7 +146,7 @@ await ai.run({
 ### Entry Points:
 
 `@xoxoai/checkmate/core`: compose runner, tools, and extensions.  
-`@xoxoai/checkmate/playwright`: Web extension with Playwright `test` and `expect`.  
+`@xoxoai/checkmate/playwright`: Web extension with Playwright `test` and `expect`; browser tools operate on the active tab and automatically switch to tabs/popups opened by actions.  
 `@xoxoai/checkmate/salesforce`: Salesforce extensions with the same `ai` fixture shape.
 
 See [guide](docs/GUIDE.md#best-practices) for tips on writing effective tests.

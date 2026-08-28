@@ -244,7 +244,9 @@ _Costs vary based on model, screenshot size and count, and page complexity_
 
 What it adds:
 
-- browser tools for navigation and interaction
+- browser tools for navigation and interaction on the active tab/page
+- automatic active-tab switching when an action opens a new tab or popup
+- tab tools to list, select, and close tabs/popups during OAuth, payment, or "open in new tab" flows
 - one-shot JavaScript dialog handling for alert, confirm, and prompt dialogs
 - initial page snapshots and optional screenshots
 - `test`, `expect`, `web()`, and `createPlaywrightRunner(page)` exports
@@ -259,6 +261,8 @@ test('search flow', async ({ ai }) => {
 	})
 })
 ```
+
+All browser tools operate on the active tab/page. New tabs and popups opened by an action become active automatically. If a flow must return to an earlier page or close an OAuth/payment popup, the agent can use `browser_list_tabs`, `browser_select_tab`, and `browser_close_tab`.
 
 Unarmed JavaScript dialogs are dismissed automatically. If a flow needs OK/Cancel or prompt input, describe it in the step, for example: "accept the Delete confirmation" or "enter 'Alice' in the prompt". The agent will arm the dialog response before clicking the control that opens it.
 
@@ -332,6 +336,7 @@ npx playwright show-report test-reports/html
 - Check the failure output for the step `action` / `expect`, tool name, raw arguments, and provider error details
 - Make the step action more direct and mention the expected interaction target
 - If you restrict tools with `OPENAI_ALLOWED_TOOLS` and need JavaScript dialog control, include `browser_set_dialog_response` with the browser action tools.
+- If a restricted-tool test needs tab or popup control, include `browser_list_tabs`, `browser_select_tab`, and `browser_close_tab`.
 
 ### Tests loop during step execution
 
@@ -427,7 +432,7 @@ npx playwright show-report test-reports/html
 **Tools**
 
 - **Core Tools**: Step control (pass/fail step assertions)
-- **Web Extension**: Playwright-powered browser tools, snapshots, and screenshots
+- **Web Extension**: Playwright-powered browser tools, active tab/popup tracking, snapshots, and screenshots
 - **Salesforce Extension**: SF CLI login flow layered on top of the web extension
 
 **Cost Optimization**

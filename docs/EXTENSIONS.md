@@ -150,14 +150,14 @@ import { PlaywrightCapability } from '@xoxoai/checkmate/playwright'
 export const auditTrail = defineExtension({
 	name: 'audit-trail',
 	setup(api) {
-		const page = api.getCapability<Page>(PlaywrightCapability.PAGE)
+		const activePage = api.getCapability<() => Page>(PlaywrightCapability.ACTIVE_PAGE)
 
-		api.addInstruction(`Current page starts at: ${page.url()}`)
+		api.addInstruction(`Current page starts at: ${activePage().url()}`)
 	},
 })
 ```
 
-Prefer capabilities when one extension depends on another extension's runtime objects.
+Prefer capabilities when one extension depends on another extension's runtime objects. In the Playwright web extension, `PlaywrightCapability.PAGE` is the original fixture page; use `PlaywrightCapability.ACTIVE_PAGE` or `PlaywrightCapability.BROWSER_RUNTIME` when you need the current active tab after browser tools have opened or switched tabs.
 
 ## Extending Built-In Extensions
 

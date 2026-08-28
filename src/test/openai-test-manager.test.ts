@@ -44,7 +44,16 @@ vi.mock('../../src/tools/browser/tool', () => ({
 		TOOL_SNAPSHOT: 'browser_snapshot',
 	},
 	BrowserToolRuntime: class {
-		constructor() {}
+		constructor(private readonly page: Page) {}
+		getActivePage() {
+			return this.page
+		}
+		ensureActivePage() {
+			return this.page
+		}
+		getBrowserContext() {
+			return this.page.context?.() ?? {}
+		}
 	},
 	createBrowserTools: vi.fn(() => []),
 }))

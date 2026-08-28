@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Page } from '@playwright/test'
 import { BrowserTool, BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
 import { AgentTool, AgentToolContext } from '../tools/types'
-import { MockPage, MockLocator } from './test-types'
+import { MockBrowserContext, MockPage, MockLocator } from './test-types'
 
 const trackerMocks = vi.hoisted(() => ({
 	startMock: vi.fn().mockResolvedValue(undefined),
@@ -39,6 +39,7 @@ vi.mock('../tools/browser/transient-state-tracker', () => ({
 }))
 
 describe('Browser tools', () => {
+	let mockContext: MockBrowserContext
 	let mockPage: MockPage
 	let runtime: BrowserToolRuntime
 	let tools: AgentTool[]
@@ -53,9 +54,34 @@ describe('Browser tools', () => {
 		return tool
 	}
 
-	beforeEach(() => {
-		vi.clearAllMocks()
-		mockPage = {
+	function createMockContext(): MockBrowserContext {
+		const handlers: Array<(page: MockPage) => void> = []
+		const pages: MockPage[] = []
+		const context = {
+			pages: vi.fn(() => pages),
+			on: vi.fn((_event: string, handler: (page: MockPage) => void) => {
+				handlers.push(handler)
+				return context
+			}),
+			off: vi.fn((_event: string, handler: (page: MockPage) => void) => {
+				const index = handlers.indexOf(handler)
+				if (index >= 0) {
+					handlers.splice(index, 1)
+				}
+				return context
+			}),
+			emitPage: (page: MockPage) => {
+				pages.push(page)
+				for (const handler of handlers) {
+					handler(page)
+				}
+			},
+		} as MockBrowserContext
+		return context
+	}
+
+	function createMockPage(context: MockBrowserContext, url = 'https://example.com', title = 'Example'): MockPage {
+		const page = {
 			goto: vi.fn().mockResolvedValue(undefined),
 			click: vi.fn().mockResolvedValue(undefined),
 			hover: vi.fn().mockResolvedValue(undefined),
@@ -71,7 +97,23 @@ describe('Browser tools', () => {
 				press: vi.fn().mockResolvedValue(undefined),
 			},
 			waitForTimeout: vi.fn().mockResolvedValue(undefined),
-		}
+			context: vi.fn(() => context),
+			url: vi.fn(() => url),
+			title: vi.fn().mockResolvedValue(title),
+			bringToFront: vi.fn().mockResolvedValue(undefined),
+			waitForLoadState: vi.fn().mockResolvedValue(undefined),
+			isClosed: vi.fn(() => false),
+			close: vi.fn().mockResolvedValue(undefined),
+			opener: vi.fn().mockResolvedValue(null),
+		} as MockPage
+		context.emitPage(page)
+		return page
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		mockContext = createMockContext()
+		mockPage = createMockPage(mockContext)
 
 		runtime = new BrowserToolRuntime(mockPage as unknown as Page)
 		tools = createBrowserTools(runtime)
@@ -81,8 +123,8 @@ describe('Browser tools', () => {
 		}
 	})
 
-	it('creates nine browser tool definitions', () => {
-		expect(tools).toHaveLength(9)
+	it('creates twelve browser tool definitions', () => {
+		expect(tools).toHaveLength(12)
 		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			BrowserTool.TOOL_NAVIGATE,
 			BrowserTool.TOOL_CLICK_OR_HOVER,
@@ -93,6 +135,9 @@ describe('Browser tools', () => {
 			BrowserTool.TOOL_PRESS_KEY,
 			BrowserTool.TOOL_SNAPSHOT,
 			BrowserTool.TOOL_WAIT,
+			BrowserTool.TOOL_LIST_TABS,
+			BrowserTool.TOOL_SELECT_TAB,
+			BrowserTool.TOOL_CLOSE_TAB,
 		])
 	})
 
@@ -369,5 +414,110 @@ describe('Browser tools', () => {
 	it('validates wait arguments with zod when missing', async () => {
 		const result = await getTool(BrowserTool.TOOL_WAIT).execute({ goal: 'wait' }, context)
 		expect(result).toContain("Invalid args for 'browser_wait'")
+	})
+
+	it('uses the selected tab for later navigation and actions', async () => {
+		const secondPage = createMockPage(mockContext, 'https://second.example', 'Second')
+
+		await getTool(BrowserTool.TOOL_SELECT_TAB).execute({ pageId: 'p2', goal: 'switch' }, context)
+		await getTool(BrowserTool.TOOL_NAVIGATE).execute({ url: 'https://target.example', goal: 'go' }, context)
+		await getTool(BrowserTool.TOOL_PRESS_KEY).execute({ key: 'Enter', goal: 'submit' }, context)
+
+		expect(secondPage.goto).toHaveBeenCalledWith('https://target.example')
+		expect(secondPage.keyboard.press).toHaveBeenCalledWith('Enter')
+		expect(mockPage.goto).not.toHaveBeenCalled()
+	})
+
+	it('lists tabs with stable ids, titles, urls, and active marker', async () => {
+		createMockPage(mockContext, 'https://second.example', 'Second')
+
+		const result = await getTool(BrowserTool.TOOL_LIST_TABS).execute({ goal: 'inspect tabs' }, context)
+
+		expect(result).toContain('p1: https://example.com - Example')
+		expect(result).toContain('p2 (active): https://second.example - Second')
+	})
+
+	it('selects a tab and returns a snapshot', async () => {
+		const secondPage = createMockPage(mockContext, 'https://second.example', 'Second')
+
+		const result = await getTool(BrowserTool.TOOL_SELECT_TAB).execute({ pageId: 'p2', goal: 'switch' }, context)
+
+		expect(secondPage.bringToFront).toHaveBeenCalled()
+		expect(result).toEqual({
+			response: 'Selected browser tab p2: https://second.example',
+			snapshot: 'mocked snapshot content',
+		})
+	})
+
+	it('returns a clear error for unknown tabs', async () => {
+		const result = await getTool(BrowserTool.TOOL_SELECT_TAB).execute({ pageId: 'p99', goal: 'switch' }, context)
+		expect(result).toBe("Browser tab 'p99' was not found or is closed.")
+	})
+
+	it('returns a clear error for closed tabs', async () => {
+		const secondPage = createMockPage(mockContext, 'https://second.example', 'Second')
+		secondPage.isClosed.mockReturnValue(true)
+
+		const result = await getTool(BrowserTool.TOOL_SELECT_TAB).execute({ pageId: 'p2', goal: 'switch' }, context)
+
+		expect(result).toBe("Browser tab 'p2' was not found or is closed.")
+	})
+
+	it('makes a newly opened tab active and uses it for later actions', async () => {
+		let popup: MockPage | null = null
+		mockPage.click.mockImplementation(async () => {
+			popup = createMockPage(mockContext, 'https://popup.example', 'Popup')
+			popup.opener.mockResolvedValue(mockPage)
+		})
+
+		const result = await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Open Popup', hover: false, goal: 'open popup' },
+			context
+		)
+		await getTool(BrowserTool.TOOL_PRESS_KEY).execute({ key: 'Escape', goal: 'close menu' }, context)
+
+		expect(result).toEqual({
+			response:
+				"Opened new tab p2: https://popup.example. Active tab is now p2.\nClicked element with ref 'e123'.",
+			snapshot: 'mocked snapshot content',
+		})
+		expect(popup?.keyboard.press).toHaveBeenCalledWith('Escape')
+		expect(mockPage.keyboard.press).not.toHaveBeenCalled()
+	})
+
+	it('falls back to the opener when the active tab closes before the next action', async () => {
+		const popup = createMockPage(mockContext, 'https://popup.example', 'Popup')
+		popup.opener.mockResolvedValue(mockPage)
+		await getTool(BrowserTool.TOOL_SELECT_TAB).execute({ pageId: 'p2', goal: 'switch' }, context)
+		popup.isClosed.mockReturnValue(true)
+
+		await getTool(BrowserTool.TOOL_PRESS_KEY).execute({ key: 'Escape', goal: 'recover' }, context)
+
+		expect(mockPage.bringToFront).toHaveBeenCalled()
+		expect(mockPage.keyboard.press).toHaveBeenCalledWith('Escape')
+		expect(popup.keyboard.press).not.toHaveBeenCalled()
+	})
+
+	it('closes the active tab and falls back to its opener', async () => {
+		const popup = createMockPage(mockContext, 'https://popup.example', 'Popup')
+		popup.opener.mockResolvedValue(mockPage)
+		await getTool(BrowserTool.TOOL_SELECT_TAB).execute({ pageId: 'p2', goal: 'switch' }, context)
+		popup.close.mockImplementation(async () => {
+			popup.isClosed.mockReturnValue(true)
+		})
+
+		const result = await getTool(BrowserTool.TOOL_CLOSE_TAB).execute({ pageId: null, goal: 'close popup' }, context)
+
+		expect(popup.close).toHaveBeenCalled()
+		expect(mockPage.bringToFront).toHaveBeenCalled()
+		expect(result).toEqual({
+			response: 'Closed browser tab p2. Active tab is now p1: https://example.com',
+			snapshot: 'mocked snapshot content',
+		})
+	})
+
+	it('does not close the last remaining tab', async () => {
+		const result = await getTool(BrowserTool.TOOL_CLOSE_TAB).execute({ pageId: null, goal: 'close' }, context)
+		expect(result).toBe('Cannot close the last open browser tab.')
 	})
 })

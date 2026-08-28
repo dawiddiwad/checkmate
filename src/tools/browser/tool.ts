@@ -42,7 +42,7 @@ const browserInputElementSchema = z
 const dialogResponseSchema = z
 	.object({
 		action: z.enum(['accept', 'dismiss']).describe('How to answer the next JavaScript alert, confirm, or prompt'),
-		promptText: z.string().optional().describe('Text to submit when accepting a prompt() dialog'),
+		promptText: z.string().nullable().describe('Text to submit when accepting a prompt() dialog'),
 		goal: z.string().describe('The goal or purpose of handling the next dialog'),
 	})
 	.strict()

@@ -33,7 +33,8 @@ test.describe('single-step : quick examples', async () => {
                 Click on 'qwen3-vl:235b' link from the models list,`,
 				expect: `
 				qwen3-vl:235b model page is displayed with model details,
-                describing its features and capabilities.`,
+                describing its features and capabilities,
+				there is only one browser tab opened.`,
 			})
 		})
 	})

@@ -14,3 +14,6 @@ adws/adw_data/sessions/
 adws/adw_data/sssf.db*
 __pycache__/
 *.pyc
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/

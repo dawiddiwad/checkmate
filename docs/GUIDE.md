@@ -288,6 +288,25 @@ Network requests since the last browser action (call again after the next action
 
 Images, fonts, stylesheets, and other static resources are hidden by default. The agent can pass `static: true` to see them.
 
+To assert on a specific response payload, the agent can follow up with `browser_network_request`, passing the number shown by `browser_network_requests` and the `part` to read (`detail` for headers and timing, `request-body`, or `response-body`):
+
+```typescript
+await ai.run({
+	action: `Click "Place Order"`,
+	expect: `Order confirmation is displayed, the checkout API call returned a successful status,
+	and the response body includes an order id.`,
+})
+```
+
+`browser_network_request` with `part: 'response-body'` for the checkout call returns:
+
+```text
+1. [POST] https://shop.example.com/api/checkout response body (application/json):
+{"orderId":"ORD-8231","total":129.99,"status":"confirmed"}
+```
+
+Numbers only stay valid for the buffer's current contents - they go stale as soon as the next browser action resets it.
+
 ## Salesforce Extension
 
 `@xoxoai/checkmate/salesforce` builds on the web extension. It adds Salesforce-specific tools and keeps the same `ai` fixture shape as the Playwright entry point.
@@ -359,7 +378,7 @@ npx playwright show-report test-reports/html
 - Make the step action more direct and mention the expected interaction target
 - If you restrict tools with `OPENAI_ALLOWED_TOOLS` and need JavaScript dialog control, include `browser_set_dialog_response` with the browser action tools.
 - If a restricted-tool test needs tab or popup control, include `browser_list_tabs`, `browser_select_tab`, and `browser_close_tab`.
-- If a restricted-tool test asserts on backend calls, include `browser_network_requests`.
+- If a restricted-tool test asserts on backend calls, include `browser_network_requests`, and `browser_network_request` if the test needs to inspect a specific request's headers or body.
 
 ### Tests loop during step execution
 

@@ -106,4 +106,50 @@ describe('NetworkRequestRecorder', () => {
 		expect(recorder.list()).toHaveLength(0)
 		expect(recorder.format()).toBe('')
 	})
+
+	test('reads back detail and body for a real request', async () => {
+		await page.evaluate(async () => {
+			await fetch('/api/ok', {
+				method: 'POST',
+				body: '{"item":"widget"}',
+				headers: { 'Content-Type': 'application/json' },
+			})
+		})
+
+		const records = recorder.list()
+		expect(records).toHaveLength(1)
+		const sequence = records[0].sequence
+
+		const detail = await recorder.detail(sequence)
+		expect(detail).toContain(`${sequence}. [POST] https://shop.example.com/api/ok => [200] OK (`)
+		expect(detail).toContain('resourceType: fetch')
+		expect(detail).toContain('request headers:')
+		expect(detail).toContain('response headers:')
+
+		const requestBody = await recorder.body(sequence, 'request')
+		expect(requestBody).toContain('request body:')
+		expect(requestBody).toContain('{"item":"widget"}')
+
+		const responseBody = await recorder.body(sequence, 'response')
+		expect(responseBody).toContain('response body (application/json):')
+		expect(responseBody).toContain('{"orderId":"ORD-8231"}')
+	})
+
+	test('a request whose response was already consumed on the page still reads back correctly', async () => {
+		await page.evaluate(async () => {
+			const response = await fetch('/api/ok')
+			await response.text()
+		})
+
+		const records = recorder.list()
+		expect(records).toHaveLength(1)
+
+		const responseBody = await recorder.body(records[0].sequence, 'response')
+		expect(responseBody).toContain('{"orderId":"ORD-8231"}')
+	})
+
+	test('an unknown sequence returns an error string instead of throwing', async () => {
+		await expect(recorder.detail(999)).resolves.toContain("'999'")
+		await expect(recorder.body(999, 'response')).resolves.toContain("'999'")
+	})
 })

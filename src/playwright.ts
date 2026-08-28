@@ -87,7 +87,7 @@ export function web({ page }: WebExtensionOptions): CheckmateExtension {
 			`Use '${BrowserTool.TOOL_LIST_TABS}', '${BrowserTool.TOOL_SELECT_TAB}', and '${BrowserTool.TOOL_CLOSE_TAB}' to inspect, switch, or close browser tabs and popups.`,
 			`If you cannot find elements, call '${BrowserTool.TOOL_SNAPSHOT}' to fetch the latest full snapshot of the active page.`,
 			`For JavaScript alert, confirm, or prompt dialogs, call '${BrowserTool.TOOL_SET_DIALOG_RESPONSE}' immediately before the browser action that opens the dialog when the step needs OK, Cancel, or prompt text. Unarmed dialogs are dismissed automatically.`,
-			`To verify backend behavior, call '${BrowserTool.TOOL_NETWORK_REQUESTS}' after a browser action to see the API calls that action triggered. Each call only covers the browser action immediately before it.`,
+			`To verify backend behavior, call '${BrowserTool.TOOL_NETWORK_REQUESTS}' after a browser action to see the API calls that action triggered. Each call only covers the browser action immediately before it. Use '${BrowserTool.TOOL_NETWORK_REQUEST}' with a request's number to inspect its headers or read its request/response body.`,
 		],
 		setup(api) {
 			api.setCapability(PlaywrightCapability.PAGE, page)

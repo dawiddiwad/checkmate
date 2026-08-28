@@ -104,8 +104,8 @@ describe('Browser tools', () => {
 		}
 	})
 
-	it('creates thirteen browser tool definitions', () => {
-		expect(tools).toHaveLength(13)
+	it('creates fourteen browser tool definitions', () => {
+		expect(tools).toHaveLength(14)
 		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			BrowserTool.TOOL_NAVIGATE,
 			BrowserTool.TOOL_CLICK_OR_HOVER,
@@ -120,6 +120,7 @@ describe('Browser tools', () => {
 			BrowserTool.TOOL_SELECT_TAB,
 			BrowserTool.TOOL_CLOSE_TAB,
 			BrowserTool.TOOL_NETWORK_REQUESTS,
+			BrowserTool.TOOL_NETWORK_REQUEST,
 		])
 	})
 
@@ -622,5 +623,65 @@ describe('Browser tools', () => {
 		)
 
 		expect(result).toBe('No API calls were made since the last browser action.')
+	})
+
+	it('inspects a captured network request by sequence', async () => {
+		const checkout = createMockNetworkRequest('POST', 'https://example.com/api/checkout', 'fetch', null, {
+			headers: { 'content-type': 'application/json' },
+			postData: '{"item":"widget"}',
+		})
+		mockPage.click.mockImplementation(async () => {
+			mockContext.emitRequest(checkout)
+			mockContext.emitResponse(
+				createMockNetworkResponse(checkout, 200, 'OK', {
+					headers: { 'content-type': 'application/json' },
+					text: '{"orderId":"ORD-8231"}',
+				})
+			)
+		})
+
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Place Order', hover: false, goal: 'place order' },
+			context
+		)
+
+		const detail = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, part: 'detail', goal: 'inspect checkout call' },
+			context
+		)
+		expect(detail).toContain('1. [POST] https://example.com/api/checkout => [200] OK')
+		expect(detail).toContain('request headers: content-type: application/json')
+		expect(detail).toContain('response headers: content-type: application/json')
+
+		const responseBody = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, part: 'response-body', goal: 'read order id' },
+			context
+		)
+		expect(responseBody).toContain('response body (application/json):')
+		expect(responseBody).toContain('{"orderId":"ORD-8231"}')
+
+		const requestBody = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, part: 'request-body', goal: 'read post data' },
+			context
+		)
+		expect(requestBody).toContain('request body:')
+		expect(requestBody).toContain('{"item":"widget"}')
+	})
+
+	it('returns an error string for an unknown sequence instead of throwing', async () => {
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 99, part: 'detail', goal: 'inspect missing request' },
+			context
+		)
+
+		expect(result).toContain("'99'")
+	})
+
+	it('validates network request detail arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, goal: 'inspect' },
+			context
+		)
+		expect(result).toContain("Invalid args for 'browser_network_request'")
 	})
 })

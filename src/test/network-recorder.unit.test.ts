@@ -17,20 +17,46 @@ class FakeContext extends EventEmitter {
 	[key: string]: unknown
 }
 
-const makeRequest = (method: string, url: string, resourceType = 'fetch', errorText: string | null = null): Request =>
-	({
+type FakeRequest = Request & { __setResponse: (response: Response) => void }
+
+const makeRequest = (
+	method: string,
+	url: string,
+	resourceType = 'fetch',
+	errorText: string | null = null,
+	options: { headers?: Record<string, string>; postData?: string | null } = {}
+): FakeRequest => {
+	let response: Response | null = null
+	return {
 		method: () => method,
 		url: () => url,
 		resourceType: () => resourceType,
 		failure: () => (errorText === null ? null : { errorText }),
-	}) as unknown as Request
+		headers: () => options.headers ?? {},
+		postData: () => options.postData ?? null,
+		response: () => Promise.resolve(response),
+		__setResponse: (nextResponse: Response) => {
+			response = nextResponse
+		},
+	} as unknown as FakeRequest
+}
 
-const makeResponse = (request: Request, status: number, statusText: string): Response =>
-	({
+const makeResponse = (
+	request: FakeRequest,
+	status: number,
+	statusText: string,
+	options: { headers?: Record<string, string>; text?: string } = {}
+): Response => {
+	const response = {
 		request: () => request,
 		status: () => status,
 		statusText: () => statusText,
-	}) as unknown as Response
+		headers: () => options.headers ?? {},
+		text: () => Promise.resolve(options.text ?? ''),
+	} as unknown as Response
+	request.__setResponse(response)
+	return response
+}
 
 describe('NetworkRequestRecorder (unit)', () => {
 	let context: FakeContext
@@ -212,5 +238,86 @@ describe('NetworkRequestRecorder (unit)', () => {
 		context.emit('request', makeRequest('GET', 'https://shop.example.com/logo.png', 'image'))
 		expect(recorder.format()).toBe('')
 		expect(recorder.format({ includeStatic: true })).not.toBe('')
+	})
+
+	test('detail renders headers and timing for a recorded sequence', async () => {
+		const recorder = createRecorder()
+		recorder.attach()
+
+		const request = makeRequest('POST', 'https://shop.example.com/api/checkout', 'fetch', null, {
+			headers: { 'content-type': 'application/json', accept: 'application/json' },
+		})
+		context.emit('request', request)
+		clock = 231
+		context.emit(
+			'response',
+			makeResponse(request, 200, 'OK', {
+				headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+			})
+		)
+
+		const detail = await recorder.detail(1)
+		expect(detail).toContain('1. [POST] https://shop.example.com/api/checkout => [200] OK (231ms)')
+		expect(detail).toContain('resourceType: fetch')
+		expect(detail).toContain('request headers: content-type: application/json, accept: application/json')
+		expect(detail).toContain('response headers: content-type: application/json, cache-control: no-store')
+	})
+
+	test("body('response') returns response.text(); body('request') returns postData()", async () => {
+		const recorder = createRecorder()
+		recorder.attach()
+
+		const request = makeRequest('POST', 'https://shop.example.com/api/checkout', 'fetch', null, {
+			postData: '{"item":"widget"}',
+		})
+		context.emit('request', request)
+		context.emit(
+			'response',
+			makeResponse(request, 200, 'OK', {
+				headers: { 'content-type': 'application/json' },
+				text: '{"orderId":"ORD-8231"}',
+			})
+		)
+
+		const responseBody = await recorder.body(1, 'response')
+		expect(responseBody).toContain('response body (application/json):')
+		expect(responseBody).toContain('{"orderId":"ORD-8231"}')
+
+		const requestBody = await recorder.body(1, 'request')
+		expect(requestBody).toContain('request body:')
+		expect(requestBody).toContain('{"item":"widget"}')
+	})
+
+	test('a request with no post data reports no request body', async () => {
+		const recorder = createRecorder()
+		recorder.attach()
+
+		context.emit('request', makeRequest('GET', 'https://shop.example.com/api/cart'))
+
+		expect(await recorder.body(1, 'request')).toBe(
+			'1. [GET] https://shop.example.com/api/cart has no request body.'
+		)
+	})
+
+	test('unknown sequence returns an error string, not a throw', async () => {
+		const recorder = createRecorder()
+		recorder.attach()
+
+		await expect(recorder.detail(99)).resolves.toContain("'99'")
+		await expect(recorder.body(99, 'response')).resolves.toContain("'99'")
+	})
+
+	test('a body over MAX_BODY_CHARS is truncated with the total-length suffix', async () => {
+		const recorder = createRecorder()
+		recorder.attach()
+
+		const longText = 'a'.repeat(NetworkRequestRecorder.MAX_BODY_CHARS + 500)
+		const request = makeRequest('GET', 'https://shop.example.com/api/cart')
+		context.emit('request', request)
+		context.emit('response', makeResponse(request, 200, 'OK', { text: longText }))
+
+		const body = await recorder.body(1, 'response')
+		expect(body).toContain(`... (truncated, ${longText.length} chars total)`)
+		expect(body.length).toBeLessThan(longText.length)
 	})
 })

@@ -9,12 +9,17 @@ export interface MockNetworkRequest {
 	url: Mock<() => string>
 	resourceType: Mock<() => string>
 	failure: Mock<() => { errorText: string } | null>
+	headers: Mock<() => Record<string, string>>
+	postData: Mock<() => string | null>
+	response: Mock<() => Promise<MockNetworkResponse | null>>
 }
 
 export interface MockNetworkResponse {
 	request: Mock<() => MockNetworkRequest>
 	status: Mock<() => number>
 	statusText: Mock<() => string>
+	headers: Mock<() => Record<string, string>>
+	text: Mock<() => Promise<string>>
 }
 
 export interface MockBrowserContext {
@@ -66,26 +71,35 @@ export function createMockNetworkRequest(
 	method: string,
 	url: string,
 	resourceType = 'fetch',
-	errorText: string | null = null
+	errorText: string | null = null,
+	options: { headers?: Record<string, string>; postData?: string | null } = {}
 ): MockNetworkRequest {
 	return {
 		method: vi.fn(() => method),
 		url: vi.fn(() => url),
 		resourceType: vi.fn(() => resourceType),
 		failure: vi.fn(() => (errorText === null ? null : { errorText })),
+		headers: vi.fn(() => options.headers ?? {}),
+		postData: vi.fn(() => options.postData ?? null),
+		response: vi.fn(() => Promise.resolve(null)),
 	}
 }
 
 export function createMockNetworkResponse(
 	request: MockNetworkRequest,
 	status: number,
-	statusText: string
+	statusText: string,
+	options: { headers?: Record<string, string>; text?: string } = {}
 ): MockNetworkResponse {
-	return {
+	const response: MockNetworkResponse = {
 		request: vi.fn(() => request),
 		status: vi.fn(() => status),
 		statusText: vi.fn(() => statusText),
+		headers: vi.fn(() => options.headers ?? {}),
+		text: vi.fn(() => Promise.resolve(options.text ?? '')),
 	}
+	request.response.mockResolvedValue(response)
+	return response
 }
 
 export interface MockPage {

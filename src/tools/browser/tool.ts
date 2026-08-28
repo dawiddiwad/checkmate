@@ -30,6 +30,7 @@ export const BrowserTool = {
 	TOOL_SELECT_TAB: 'browser_select_tab',
 	TOOL_CLOSE_TAB: 'browser_close_tab',
 	TOOL_NETWORK_REQUESTS: 'browser_network_requests',
+	TOOL_NETWORK_REQUEST: 'browser_network_request',
 } as const
 
 const browserInputElementSchema = z
@@ -92,6 +93,14 @@ export class BrowserToolRuntime {
 
 	listNetworkRequests(includeStatic: boolean): string {
 		return this.networkRecorder.format({ includeStatic }) || 'No API calls were made since the last browser action.'
+	}
+
+	async inspectNetworkRequest(sequence: number, part: 'detail' | 'request-body' | 'response-body'): Promise<string> {
+		if (part === 'detail') {
+			return this.networkRecorder.detail(sequence)
+		}
+
+		return this.networkRecorder.body(sequence, part === 'request-body' ? 'request' : 'response')
 	}
 
 	dispose(): void {
@@ -654,6 +663,23 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				})
 				.strict(),
 			handler: ({ static: includeStatic }) => runtime.listNetworkRequests(includeStatic),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_NETWORK_REQUEST,
+			description:
+				'Inspect one network request from the most recent browser_network_requests result, using its number. Only valid until the next browser action resets the list.',
+			schema: z
+				.object({
+					sequence: z
+						.number()
+						.describe('The number of the request from browser_network_requests, example: 1'),
+					part: z
+						.enum(['detail', 'request-body', 'response-body'])
+						.describe("What to return: 'detail' for headers and timing, or the request/response body"),
+					goal: z.string().describe('The goal or purpose of inspecting this network request'),
+				})
+				.strict(),
+			handler: ({ sequence, part }) => runtime.inspectNetworkRequest(sequence, part),
 		}),
 	]
 }

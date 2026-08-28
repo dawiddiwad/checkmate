@@ -17,7 +17,7 @@ Focus: Stability, extension points, and better contributor ergonomics.
 - ✅ Custom tool registration API for external integrations
 - ✅ Better public examples for programmatic runner usage
 - ✅ Publishable npm package layout with dedicated `core`, `playwright`, and `salesforce` entry points
-- [ ] Visual interactions (click, drag, etc.) in the Playwright extension
+- ✅ Visual interactions (click, drag, etc.) in the Playwright extension
 - [ ] Snapshot filtering tuning hooks beyond top-percent selection
 - [ ] Better reporting around filtered snapshot size and selected branches
 
@@ -27,7 +27,7 @@ Focus: Product usability and broader workflow support.
 
 - [ ] UI layer for recording, editing, and replaying AI-driven steps
 - [ ] Flow-level execution mode for multi-step business journeys
-- [x] Richer debugging output for model/tool reasoning failures
+- ✅ Richer debugging output for model/tool reasoning failures
 - [ ] Better parallel execution support across large suites
 
 ## Long Term

@@ -17,6 +17,7 @@ export interface MockLocator {
 	clear: Mock
 	pressSequentially: Mock
 	selectOption: Mock
+	dragTo: Mock
 	innerHTML: Mock
 }
 

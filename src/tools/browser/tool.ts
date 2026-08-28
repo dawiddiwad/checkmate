@@ -18,6 +18,7 @@ type BrowserInputElement = {
 export const BrowserTool = {
 	TOOL_NAVIGATE: 'browser_navigate',
 	TOOL_CLICK_OR_HOVER: 'browser_click_or_hover',
+	TOOL_DRAG: 'browser_drag',
 	TOOL_TYPE_OR_SELECT: 'browser_type_or_select',
 	TOOL_PRESS_KEY: 'browser_press_key',
 	TOOL_SNAPSHOT: 'browser_snapshot',
@@ -72,6 +73,31 @@ export class BrowserToolRuntime {
 				}
 			},
 			hover ? `Hovered element with ref '${ref}'.` : `Clicked element with ref '${ref}'.`,
+			step
+		)
+	}
+
+	async dragElement(sourceRef: string, targetRef: string, step: Step): Promise<AgentToolResponse | string> {
+		return this.wrapWithTracker(
+			async () => {
+				try {
+					if (!sourceRef || !targetRef) {
+						throw new Error(
+							`both 'sourceRef' and 'targetRef' are required for ${BrowserTool.TOOL_DRAG} but received sourceRef='${sourceRef}' and targetRef='${targetRef}'`
+						)
+					}
+
+					const source = this.page.locator(`aria-ref=${sourceRef}`)
+					const target = this.page.locator(`aria-ref=${targetRef}`)
+					await source.dragTo(target)
+				} catch (error) {
+					logger.error(
+						`error dragging element with ref '${sourceRef}' to element with ref '${targetRef}' due to:\n${error}`
+					)
+					return `failed to drag element with ref '${sourceRef}' to element with ref '${targetRef}':\n${error}\n try with different element type or ref`
+				}
+			},
+			`Dragged element with ref '${sourceRef}' to element with ref '${targetRef}'.`,
 			step
 		)
 	}
@@ -224,6 +250,20 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				})
 				.strict(),
 			handler: ({ ref, hover }, context) => runtime.clickElement(ref, hover, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_DRAG,
+			description: 'Drag a source element onto a target or drop element in the browser',
+			schema: z
+				.object({
+					sourceRef: z.string().describe('ref value of the element to drag from the snapshot, example: e123'),
+					sourceName: z.string().describe('name of the element to drag, example: File card'),
+					targetRef: z.string().describe('ref value of the drop target from the snapshot, example: e456'),
+					targetName: z.string().describe('name of the element to drop onto, example: Done column'),
+					goal: z.string().describe('The goal or purpose of dragging this element'),
+				})
+				.strict(),
+			handler: ({ sourceRef, targetRef }, context) => runtime.dragElement(sourceRef, targetRef, context.step),
 		}),
 		defineAgentTool({
 			name: BrowserTool.TOOL_TYPE_OR_SELECT,

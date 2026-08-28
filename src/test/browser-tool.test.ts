@@ -58,6 +58,7 @@ describe('Browser tools', () => {
 				clear: vi.fn().mockResolvedValue(undefined),
 				pressSequentially: vi.fn().mockResolvedValue(undefined),
 				selectOption: vi.fn().mockResolvedValue(undefined),
+				dragTo: vi.fn().mockResolvedValue(undefined),
 				innerHTML: vi.fn().mockResolvedValue('<html>content</html>'),
 			} as MockLocator),
 			keyboard: {
@@ -74,11 +75,12 @@ describe('Browser tools', () => {
 		}
 	})
 
-	it('creates six browser tool definitions', () => {
-		expect(tools).toHaveLength(6)
+	it('creates seven browser tool definitions', () => {
+		expect(tools).toHaveLength(7)
 		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			BrowserTool.TOOL_NAVIGATE,
 			BrowserTool.TOOL_CLICK_OR_HOVER,
+			BrowserTool.TOOL_DRAG,
 			BrowserTool.TOOL_TYPE_OR_SELECT,
 			BrowserTool.TOOL_PRESS_KEY,
 			BrowserTool.TOOL_SNAPSHOT,
@@ -130,6 +132,67 @@ describe('Browser tools', () => {
 		)
 
 		expect(result).toEqual({ response: 'timeline: click flow', snapshot: 'mocked snapshot content' })
+	})
+
+	it('drags an element onto a target', async () => {
+		const sourceLocator = {
+			clear: vi.fn().mockResolvedValue(undefined),
+			pressSequentially: vi.fn().mockResolvedValue(undefined),
+			selectOption: vi.fn().mockResolvedValue(undefined),
+			dragTo: vi.fn().mockResolvedValue(undefined),
+			innerHTML: vi.fn().mockResolvedValue('<html>source</html>'),
+		} as MockLocator
+		const targetLocator = {
+			clear: vi.fn().mockResolvedValue(undefined),
+			pressSequentially: vi.fn().mockResolvedValue(undefined),
+			selectOption: vi.fn().mockResolvedValue(undefined),
+			dragTo: vi.fn().mockResolvedValue(undefined),
+			innerHTML: vi.fn().mockResolvedValue('<html>target</html>'),
+		} as MockLocator
+		const htmlLocator = {
+			clear: vi.fn().mockResolvedValue(undefined),
+			pressSequentially: vi.fn().mockResolvedValue(undefined),
+			selectOption: vi.fn().mockResolvedValue(undefined),
+			dragTo: vi.fn().mockResolvedValue(undefined),
+			innerHTML: vi.fn().mockResolvedValue('<html>content</html>'),
+		} as MockLocator
+
+		mockPage.locator.mockImplementation((selector: string) => {
+			if (selector === 'aria-ref=e123') {
+				return sourceLocator
+			}
+			if (selector === 'aria-ref=e456') {
+				return targetLocator
+			}
+			return htmlLocator
+		})
+
+		const result = await getTool(BrowserTool.TOOL_DRAG).execute(
+			{
+				sourceRef: 'e123',
+				sourceName: 'File card',
+				targetRef: 'e456',
+				targetName: 'Done column',
+				goal: 'move card',
+			},
+			context
+		)
+
+		expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e123')
+		expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e456')
+		expect(sourceLocator.dragTo).toHaveBeenCalledWith(targetLocator)
+		expect(result).toEqual({
+			response: "Dragged element with ref 'e123' to element with ref 'e456'.",
+			snapshot: 'mocked snapshot content',
+		})
+	})
+
+	it('validates drag arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_DRAG).execute(
+			{ sourceRef: 'e123', sourceName: 'File card', targetName: 'Done column', goal: 'move card' },
+			context
+		)
+		expect(result).toContain("Invalid args for 'browser_drag'")
 	})
 
 	it('types text into an element', async () => {

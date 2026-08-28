@@ -4,3 +4,9 @@ test-reports
 test-results
 node_modules
 playwright-report
+
+# sssf software factory (stamped, not project source)
+adws
+.claude
+app_docs
+specs

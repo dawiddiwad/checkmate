@@ -50,8 +50,8 @@ from adw_modules.data_types import (AgentCall, BuildOutput, ChangeCapture,
                                     ReviewOutput)
 
 REQUIRED_AGENTS = ["planner", "builder", "reviewer", "documenter"]
-MAX_FIX_LOOPS = 3
-MAX_REVISION_LOOPS = 2
+MAX_FIX_LOOPS = 5
+MAX_REVISION_LOOPS = 5
 
 DOCUMENT_NOTES = ("Read diff_path in full before writing. Document only what the "
                   "diff shows, then copy the write-up into app_docs/ as your task "

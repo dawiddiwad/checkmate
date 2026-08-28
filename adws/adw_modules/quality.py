@@ -5,27 +5,12 @@ down belongs here as code — it runs in milliseconds, costs nothing, and return
 the same answer every time. Agents are for the parts that need reading and
 deciding.
 
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  REPLACE THE PLACEHOLDER COMMANDS BELOW.                                     ║
-║                                                                              ║
-║  Every block ships as an `echo` that exits 0 and announces it is fake. They   ║
-║  are placeholders on purpose: a stamped repo has no way to guess your test    ║
-║  runner, and a wrong-but-plausible command that silently passes is worse      ║
-║  than one that says so out loud.                                             ║
-║                                                                              ║
-║  For each block you want: swap `_placeholder(...)` for the real argv, e.g.    ║
-║      argv=["bun", "test", "apps/web/server.test.ts"]                         ║
-║      argv=["uv", "run", "pytest", "-q"]                                      ║
-║      argv=["npm", "run", "lint"]                                             ║
-║  Delete the blocks you don't need, and drop them from run_quality()'s list.   ║
-║                                                                              ║
-║  Two rules when you write the real command:                                  ║
-║    1. argv LIST, never a shell string — no quoting bugs, no shell injection.  ║
-║    2. Call binaries by BARE NAME. These blocks inherit the operator's         ║
-║       environment (see utils.operator_env), so `bun`, `uv`, `pytest` resolve  ║
-║       exactly as they do in their terminal. Never hard-code an absolute path  ║
-║       like /Users/you/.bun/bin/bun — that bakes your machine into the trace.  ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+Blocks below invoke this repo's npm scripts (see package.json). Two rules when
+writing a command like this:
+  1. argv LIST, never a shell string — no quoting bugs, no shell injection.
+  2. Call binaries by BARE NAME. These blocks inherit the operator's
+     environment (see utils.operator_env), so `npm` resolves exactly as it
+     does in the operator's own terminal. Never hard-code an absolute path.
 """
 
 from __future__ import annotations
@@ -44,12 +29,6 @@ from .utils import now_iso, operator_env
 # for a builder to act on without opening the artifact; bounded so a runaway
 # stack trace can't swamp the next agent's context.
 TAIL_CHARS = 4_000
-
-
-def _placeholder(name: str) -> list[str]:
-    """A command that does nothing and admits it. Replace every call to this."""
-    return ["echo", f"PLACEHOLDER {name}: edit adws/adw_modules/quality.py and "
-                    f"replace this echo with the real {name} command"]
 
 
 def _check_dir(run, name: str) -> Path:
@@ -133,7 +112,6 @@ def _run(spec: QualityCheckSpec, run) -> QualityCheckResult:
 
 
 # ── Blocks ────────────────────────────────────────────────────────────────────
-# Replace every argv below. See the banner at the top of this file.
 
 def test(run) -> QualityCheckResult:
     """Run the project's test suite. The highest-value block to wire up first."""
@@ -141,7 +119,7 @@ def test(run) -> QualityCheckResult:
         name="test",
         area="backend",
         operation="build",
-        argv=_placeholder("test"),        # e.g. ["bun", "test"] or ["uv", "run", "pytest", "-q"]
+        argv=["npm", "run", "test:unit:run"],
         timeout_seconds=600,
     ), run)
 
@@ -151,7 +129,7 @@ def lint(run) -> QualityCheckResult:
         name="lint",
         area="backend",
         operation="lint",
-        argv=_placeholder("lint"),        # e.g. ["bun", "x", "oxlint@1.36.0", "src"]
+        argv=["npm", "run", "lint:check"],
     ), run)
 
 
@@ -160,17 +138,36 @@ def typecheck(run) -> QualityCheckResult:
         name="typecheck",
         area="backend",
         operation="typecheck",
-        argv=_placeholder("typecheck"),   # e.g. ["bun", "x", "tsc", "--noEmit"]
+        argv=["npm", "run", "compile:check"],
+    ), run)
+
+
+def format(run) -> QualityCheckResult:
+    return _run(QualityCheckSpec(
+        name="format",
+        area="backend",
+        operation="lint",
+        argv=["npm", "run", "format:check"],
     ), run)
 
 
 def build(run) -> QualityCheckResult:
-    output_dir = _check_dir(run, "build") / "bundle"
     return _run(QualityCheckSpec(
         name="build",
         area="backend",
         operation="build",
-        argv=_placeholder("build"),       # e.g. ["bun", "build", "src/index.ts", "--outdir", str(output_dir)]
+        argv=["npm", "run", "build:dist"],
+    ), run)
+
+
+def e2e(run) -> QualityCheckResult:
+    """One real e2e run (the `ollama` example project) — not just unit mocks."""
+    return _run(QualityCheckSpec(
+        name="e2e",
+        area="backend",
+        operation="build",
+        argv=["npm", "run", "test:web:example"],
+        timeout_seconds=120,
     ), run)
 
 
@@ -222,7 +219,9 @@ def run_quality(run) -> QualityResult:
         test,
         lint,
         typecheck,
+        format,
         build,
+        e2e,
     ]
     checks = [block(run) for block in blocks]
     # A failure is the command, its exit code, and what it actually printed —

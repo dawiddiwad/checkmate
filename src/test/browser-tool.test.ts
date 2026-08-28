@@ -59,6 +59,7 @@ describe('Browser tools', () => {
 				pressSequentially: vi.fn().mockResolvedValue(undefined),
 				selectOption: vi.fn().mockResolvedValue(undefined),
 				dragTo: vi.fn().mockResolvedValue(undefined),
+				setInputFiles: vi.fn().mockResolvedValue(undefined),
 				innerHTML: vi.fn().mockResolvedValue('<html>content</html>'),
 			} as MockLocator),
 			keyboard: {
@@ -75,12 +76,13 @@ describe('Browser tools', () => {
 		}
 	})
 
-	it('creates seven browser tool definitions', () => {
-		expect(tools).toHaveLength(7)
+	it('creates eight browser tool definitions', () => {
+		expect(tools).toHaveLength(8)
 		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			BrowserTool.TOOL_NAVIGATE,
 			BrowserTool.TOOL_CLICK_OR_HOVER,
 			BrowserTool.TOOL_DRAG,
+			BrowserTool.TOOL_UPLOAD,
 			BrowserTool.TOOL_TYPE_OR_SELECT,
 			BrowserTool.TOOL_PRESS_KEY,
 			BrowserTool.TOOL_SNAPSHOT,
@@ -140,6 +142,7 @@ describe('Browser tools', () => {
 			pressSequentially: vi.fn().mockResolvedValue(undefined),
 			selectOption: vi.fn().mockResolvedValue(undefined),
 			dragTo: vi.fn().mockResolvedValue(undefined),
+			setInputFiles: vi.fn().mockResolvedValue(undefined),
 			innerHTML: vi.fn().mockResolvedValue('<html>source</html>'),
 		} as MockLocator
 		const targetLocator = {
@@ -147,6 +150,7 @@ describe('Browser tools', () => {
 			pressSequentially: vi.fn().mockResolvedValue(undefined),
 			selectOption: vi.fn().mockResolvedValue(undefined),
 			dragTo: vi.fn().mockResolvedValue(undefined),
+			setInputFiles: vi.fn().mockResolvedValue(undefined),
 			innerHTML: vi.fn().mockResolvedValue('<html>target</html>'),
 		} as MockLocator
 		const htmlLocator = {
@@ -154,6 +158,7 @@ describe('Browser tools', () => {
 			pressSequentially: vi.fn().mockResolvedValue(undefined),
 			selectOption: vi.fn().mockResolvedValue(undefined),
 			dragTo: vi.fn().mockResolvedValue(undefined),
+			setInputFiles: vi.fn().mockResolvedValue(undefined),
 			innerHTML: vi.fn().mockResolvedValue('<html>content</html>'),
 		} as MockLocator
 
@@ -193,6 +198,41 @@ describe('Browser tools', () => {
 			context
 		)
 		expect(result).toContain("Invalid args for 'browser_drag'")
+	})
+
+	it('uploads files to an input element', async () => {
+		const result = await getTool(BrowserTool.TOOL_UPLOAD).execute(
+			{
+				ref: 'e123',
+				name: 'Resume Upload',
+				filePaths: ['fixtures/resume.pdf'],
+				goal: 'attach resume',
+			},
+			context
+		)
+
+		expect(mockPage.locator).toHaveBeenCalledWith('aria-ref=e123')
+		expect(mockPage.locator('aria-ref=e123').setInputFiles).toHaveBeenCalledWith(['fixtures/resume.pdf'])
+		expect(result).toEqual({
+			response: "Uploaded 1 file to element with ref 'e123'.",
+			snapshot: 'mocked snapshot content',
+		})
+	})
+
+	it('validates upload arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_UPLOAD).execute(
+			{ ref: 'e123', name: 'Resume Upload', filePaths: [], goal: 'attach resume' },
+			context
+		)
+		expect(result).toContain("Invalid args for 'browser_upload'")
+	})
+
+	it('returns runtime error when upload file path is empty', async () => {
+		const result = await getTool(BrowserTool.TOOL_UPLOAD).execute(
+			{ ref: 'e123', name: 'Resume Upload', filePaths: [''], goal: 'attach resume' },
+			context
+		)
+		expect(result).toContain("failed to upload files to element with ref 'e123'")
 	})
 
 	it('types text into an element', async () => {

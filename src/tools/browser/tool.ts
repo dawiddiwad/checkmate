@@ -19,6 +19,7 @@ export const BrowserTool = {
 	TOOL_NAVIGATE: 'browser_navigate',
 	TOOL_CLICK_OR_HOVER: 'browser_click_or_hover',
 	TOOL_DRAG: 'browser_drag',
+	TOOL_UPLOAD: 'browser_upload',
 	TOOL_TYPE_OR_SELECT: 'browser_type_or_select',
 	TOOL_PRESS_KEY: 'browser_press_key',
 	TOOL_SNAPSHOT: 'browser_snapshot',
@@ -98,6 +99,27 @@ export class BrowserToolRuntime {
 				}
 			},
 			`Dragged element with ref '${sourceRef}' to element with ref '${targetRef}'.`,
+			step
+		)
+	}
+
+	async uploadFiles(ref: string, filePaths: string[], step: Step): Promise<AgentToolResponse | string> {
+		return this.wrapWithTracker(
+			async () => {
+				try {
+					if (!ref || filePaths.length === 0 || filePaths.some((filePath) => !filePath)) {
+						throw new Error(
+							`'ref' and at least one file path are required for ${BrowserTool.TOOL_UPLOAD} but received ref='${ref}' and filePaths='${filePaths.join(', ')}'`
+						)
+					}
+
+					await this.page.locator(`aria-ref=${ref}`).setInputFiles(filePaths)
+				} catch (error) {
+					logger.error(`error uploading files to element with ref '${ref}' due to:\n${error}`)
+					return `failed to upload files to element with ref '${ref}':\n${error}\n try with different element type, ref, or file path`
+				}
+			},
+			`Uploaded ${filePaths.length} file${filePaths.length === 1 ? '' : 's'} to element with ref '${ref}'.`,
 			step
 		)
 	}
@@ -264,6 +286,22 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				})
 				.strict(),
 			handler: ({ sourceRef, targetRef }, context) => runtime.dragElement(sourceRef, targetRef, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_UPLOAD,
+			description: 'Upload one or more local files to a file input element in the browser',
+			schema: z
+				.object({
+					ref: z.string().describe('ref value of the file input element from the snapshot, example: e123'),
+					name: z.string().describe('name of the file input element, example: Resume Upload'),
+					filePaths: z
+						.array(z.string())
+						.min(1)
+						.describe('local file paths to upload, example: ["fixtures/resume.pdf"]'),
+					goal: z.string().describe('The goal or purpose of uploading these files'),
+				})
+				.strict(),
+			handler: ({ ref, filePaths }, context) => runtime.uploadFiles(ref, filePaths, context.step),
 		}),
 		defineAgentTool({
 			name: BrowserTool.TOOL_TYPE_OR_SELECT,

@@ -18,6 +18,7 @@ export interface MockLocator {
 	pressSequentially: Mock
 	selectOption: Mock
 	dragTo: Mock
+	setInputFiles: Mock
 	innerHTML: Mock
 }
 

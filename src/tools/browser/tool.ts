@@ -5,7 +5,7 @@ import { Step } from '../../runtime/types.js'
 import { defineAgentTool } from '../define-agent-tool.js'
 import { AgentTool, AgentToolResponse } from '../types.js'
 import { SnapshotService } from './snapshot-service.js'
-import { TransientStateTracker } from './transient-state-tracker.js'
+import { DialogHandlingIntent, TransientStateTracker } from './transient-state-tracker.js'
 
 type BrowserInputElement = {
 	ref: string
@@ -18,6 +18,7 @@ type BrowserInputElement = {
 export const BrowserTool = {
 	TOOL_NAVIGATE: 'browser_navigate',
 	TOOL_CLICK_OR_HOVER: 'browser_click_or_hover',
+	TOOL_SET_DIALOG_RESPONSE: 'browser_set_dialog_response',
 	TOOL_DRAG: 'browser_drag',
 	TOOL_UPLOAD: 'browser_upload',
 	TOOL_TYPE_OR_SELECT: 'browser_type_or_select',
@@ -38,8 +39,30 @@ const browserInputElementSchema = z
 	})
 	.strict()
 
+const dialogResponseSchema = z
+	.object({
+		action: z.enum(['accept', 'dismiss']).describe('How to answer the next JavaScript alert, confirm, or prompt'),
+		promptText: z.string().optional().describe('Text to submit when accepting a prompt() dialog'),
+		goal: z.string().describe('The goal or purpose of handling the next dialog'),
+	})
+	.strict()
+
 export class BrowserToolRuntime {
+	private pendingDialogHandlingIntent: DialogHandlingIntent | null = null
+
 	constructor(private readonly page: Page) {}
+
+	setDialogResponse(action: 'accept' | 'dismiss', promptText?: string): string {
+		if (action === 'dismiss') {
+			this.pendingDialogHandlingIntent = { action }
+			return 'Will dismiss the next JavaScript dialog.'
+		}
+
+		this.pendingDialogHandlingIntent = promptText === undefined ? { action } : { action, promptText }
+		return promptText === undefined
+			? 'Will accept the next JavaScript dialog.'
+			: 'Will accept the next JavaScript dialog with prompt text.'
+	}
 
 	async navigateToUrl(url: string, step: Step): Promise<AgentToolResponse | string> {
 		return this.wrapWithTracker(
@@ -221,12 +244,20 @@ export class BrowserToolRuntime {
 		)
 	}
 
+	private consumePendingDialogHandlingIntent(): DialogHandlingIntent | null {
+		const intent = this.pendingDialogHandlingIntent
+		this.pendingDialogHandlingIntent = null
+		return intent
+	}
+
 	private async wrapWithTracker(
 		action: () => Promise<unknown>,
 		fallbackResponse: string,
 		step: Step
 	): Promise<AgentToolResponse | string> {
-		const tracker = new TransientStateTracker(this.page)
+		const tracker = new TransientStateTracker(this.page, {
+			consumeDialogHandlingIntent: () => this.consumePendingDialogHandlingIntent(),
+		})
 		await tracker.start()
 
 		try {
@@ -243,6 +274,8 @@ export class BrowserToolRuntime {
 		} catch (error) {
 			await tracker.stop()
 			throw error
+		} finally {
+			this.pendingDialogHandlingIntent = null
 		}
 	}
 }
@@ -272,6 +305,13 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				})
 				.strict(),
 			handler: ({ ref, hover }, context) => runtime.clickElement(ref, hover, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_SET_DIALOG_RESPONSE,
+			description:
+				'Set how to answer the next JavaScript alert, confirm, or prompt. Call this immediately before the browser action expected to open the dialog. Unarmed dialogs are dismissed automatically.',
+			schema: dialogResponseSchema,
+			handler: ({ action, promptText }) => runtime.setDialogResponse(action, promptText),
 		}),
 		defineAgentTool({
 			name: BrowserTool.TOOL_DRAG,

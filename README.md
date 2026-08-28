@@ -179,6 +179,11 @@ See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring optio
 - Use a reasoning model if possible to improve accuracy
 - Set `CHECKMATE_LOG_LEVEL=debug` to inspect model/tool loop diagnostics, including tool calls and recent message summaries
 
+**JavaScript dialogs do not behave as expected**
+
+- JavaScript `alert`/`confirm`/`prompt` dialogs are dismissed by default.
+- Tell the step to accept, dismiss, or fill the dialog when the flow requires it.
+
 **High token costs**
 
 - Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` auto-filter elements

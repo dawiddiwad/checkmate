@@ -80,6 +80,7 @@ export function web({ page }: WebExtensionOptions): CheckmateExtension {
 		name: 'web',
 		instructions: [
 			`If you cannot find elements, call '${BrowserTool.TOOL_SNAPSHOT}' to fetch the latest full snapshot of the page.`,
+			`For JavaScript alert, confirm, or prompt dialogs, call '${BrowserTool.TOOL_SET_DIALOG_RESPONSE}' immediately before the browser action that opens the dialog when the step needs OK, Cancel, or prompt text. Unarmed dialogs are dismissed automatically.`,
 		],
 		setup(api) {
 			const browserRuntime = new BrowserToolRuntime(page)

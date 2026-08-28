@@ -8,6 +8,7 @@ const trackerMocks = vi.hoisted(() => ({
 	startMock: vi.fn().mockResolvedValue(undefined),
 	stopMock: vi.fn().mockResolvedValue([]),
 	formatTimelineMock: vi.fn().mockReturnValue(''),
+	constructorMock: vi.fn(),
 }))
 
 vi.mock('../../src/logging', () => ({
@@ -30,6 +31,10 @@ vi.mock('../tools/browser/transient-state-tracker', () => ({
 		start = trackerMocks.startMock
 		stop = trackerMocks.stopMock
 		formatTimeline = trackerMocks.formatTimelineMock
+
+		constructor(page: Page, options?: unknown) {
+			trackerMocks.constructorMock(page, options)
+		}
 	},
 }))
 
@@ -76,11 +81,12 @@ describe('Browser tools', () => {
 		}
 	})
 
-	it('creates eight browser tool definitions', () => {
-		expect(tools).toHaveLength(8)
+	it('creates nine browser tool definitions', () => {
+		expect(tools).toHaveLength(9)
 		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			BrowserTool.TOOL_NAVIGATE,
 			BrowserTool.TOOL_CLICK_OR_HOVER,
+			BrowserTool.TOOL_SET_DIALOG_RESPONSE,
 			BrowserTool.TOOL_DRAG,
 			BrowserTool.TOOL_UPLOAD,
 			BrowserTool.TOOL_TYPE_OR_SELECT,
@@ -103,6 +109,66 @@ describe('Browser tools', () => {
 	it('validates navigate arguments with zod', async () => {
 		const result = await getTool(BrowserTool.TOOL_NAVIGATE).execute({ goal: 'test' }, context)
 		expect(result).toContain("Invalid args for 'browser_navigate'")
+	})
+
+	it('arms the next JavaScript dialog response', async () => {
+		const result = await getTool(BrowserTool.TOOL_SET_DIALOG_RESPONSE).execute(
+			{ action: 'accept', promptText: 'Alice', goal: 'fill prompt' },
+			context
+		)
+
+		expect(result).toBe('Will accept the next JavaScript dialog with prompt text.')
+	})
+
+	it('validates dialog response arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_SET_DIALOG_RESPONSE).execute(
+			{ action: 'approve', goal: 'confirm' },
+			context
+		)
+		expect(result).toContain("Invalid args for 'browser_set_dialog_response'")
+	})
+
+	it('makes pending dialog intent available to the next tracked action', async () => {
+		let consumedIntent: unknown = null
+		mockPage.click.mockImplementation(async () => {
+			const options = trackerMocks.constructorMock.mock.calls.at(-1)?.[1] as {
+				consumeDialogHandlingIntent: () => unknown
+			}
+			consumedIntent = options.consumeDialogHandlingIntent()
+		})
+
+		await getTool(BrowserTool.TOOL_SET_DIALOG_RESPONSE).execute(
+			{ action: 'accept', promptText: 'Alice', goal: 'fill prompt' },
+			context
+		)
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Prompt Button', hover: false, goal: 'open prompt' },
+			context
+		)
+
+		expect(consumedIntent).toEqual({ action: 'accept', promptText: 'Alice' })
+	})
+
+	it('clears unused dialog intent after a tracked action finishes', async () => {
+		const consumedIntents: unknown[] = []
+		mockPage.click.mockResolvedValueOnce(undefined).mockImplementationOnce(async () => {
+			const options = trackerMocks.constructorMock.mock.calls.at(-1)?.[1] as {
+				consumeDialogHandlingIntent: () => unknown
+			}
+			consumedIntents.push(options.consumeDialogHandlingIntent())
+		})
+
+		await getTool(BrowserTool.TOOL_SET_DIALOG_RESPONSE).execute({ action: 'accept', goal: 'confirm' }, context)
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Safe Button', hover: false, goal: 'no dialog' },
+			context
+		)
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e456', name: 'Other Button', hover: false, goal: 'other action' },
+			context
+		)
+
+		expect(consumedIntents).toEqual([null])
 	})
 
 	it('clicks and returns separate response and snapshot', async () => {

@@ -78,7 +78,7 @@ Tests are managed in [Playwright's](https://playwright.dev/docs/test-configurati
 2. **One Action Per Step** - Break complex flows into discrete steps
 3. **Include Context** - Mention relevant UI elements and expected behavior
 4. **Add Timing Hints** - For slow operations, mention expected wait times
-5. **Handle Popups** - Explicitly mention consent dialogs or modals
+5. **Handle Popups and Dialogs** - Explicitly mention consent dialogs, modals, and JavaScript alert/confirm/prompt dialogs. For JavaScript dialogs, say whether to accept, dismiss, or provide prompt text before the triggering action.
 
 ### Basic Example
 
@@ -245,6 +245,7 @@ _Costs vary based on model, screenshot size and count, and page complexity_
 What it adds:
 
 - browser tools for navigation and interaction
+- one-shot JavaScript dialog handling for alert, confirm, and prompt dialogs
 - initial page snapshots and optional screenshots
 - `test`, `expect`, `web()`, and `createPlaywrightRunner(page)` exports
 
@@ -258,6 +259,8 @@ test('search flow', async ({ ai }) => {
 	})
 })
 ```
+
+Unarmed JavaScript dialogs are dismissed automatically. If a flow needs OK/Cancel or prompt input, describe it in the step, for example: "accept the Delete confirmation" or "enter 'Alice' in the prompt". The agent will arm the dialog response before clicking the control that opens it.
 
 ## Salesforce Extension
 
@@ -328,6 +331,7 @@ npx playwright show-report test-reports/html
 - Set `CHECKMATE_LOG_LEVEL=debug` to see response summaries, tool calls, available tools, and recent message summaries
 - Check the failure output for the step `action` / `expect`, tool name, raw arguments, and provider error details
 - Make the step action more direct and mention the expected interaction target
+- If you restrict tools with `OPENAI_ALLOWED_TOOLS` and need JavaScript dialog control, include `browser_set_dialog_response` with the browser action tools.
 
 ### Tests loop during step execution
 

@@ -1,14 +1,91 @@
-import { Mock } from 'vitest'
+import { Mock, vi } from 'vitest'
 import { ChatCompletionMessageParam, ChatCompletionContentPartText } from 'openai/resources/chat/completions'
 import { AiClient } from '../ai/client'
 import { ResolveStepResult } from '../runtime/types'
 import { LoopDetectedError } from '../tools/loop-detector'
 
+export interface MockNetworkRequest {
+	method: Mock<() => string>
+	url: Mock<() => string>
+	resourceType: Mock<() => string>
+	failure: Mock<() => { errorText: string } | null>
+}
+
+export interface MockNetworkResponse {
+	request: Mock<() => MockNetworkRequest>
+	status: Mock<() => number>
+	statusText: Mock<() => string>
+}
+
 export interface MockBrowserContext {
 	pages: Mock<() => MockPage[]>
-	on: Mock<(event: string, handler: (page: MockPage) => void) => MockBrowserContext>
-	off: Mock<(event: string, handler: (page: MockPage) => void) => MockBrowserContext>
+	on: Mock<(event: string, handler: (payload: never) => void) => MockBrowserContext>
+	off: Mock<(event: string, handler: (payload: never) => void) => MockBrowserContext>
 	emitPage: (page: MockPage) => void
+	emitRequest: (request: MockNetworkRequest) => void
+	emitResponse: (response: MockNetworkResponse) => void
+	emitRequestFailed: (request: MockNetworkRequest) => void
+}
+
+export function createMockBrowserContext(): MockBrowserContext {
+	const handlers = new Map<string, Array<(payload: never) => void>>()
+	const pages: MockPage[] = []
+	const emit = (event: string, payload: unknown) => {
+		for (const handler of [...(handlers.get(event) ?? [])]) {
+			handler(payload as never)
+		}
+	}
+	const context = {
+		pages: vi.fn(() => pages),
+		on: vi.fn((event: string, handler: (payload: never) => void) => {
+			const registered = handlers.get(event) ?? []
+			registered.push(handler)
+			handlers.set(event, registered)
+			return context
+		}),
+		off: vi.fn((event: string, handler: (payload: never) => void) => {
+			const registered = handlers.get(event) ?? []
+			const index = registered.indexOf(handler)
+			if (index >= 0) {
+				registered.splice(index, 1)
+			}
+			return context
+		}),
+		emitPage: (page: MockPage) => {
+			pages.push(page)
+			emit('page', page)
+		},
+		emitRequest: (request: MockNetworkRequest) => emit('request', request),
+		emitResponse: (response: MockNetworkResponse) => emit('response', response),
+		emitRequestFailed: (request: MockNetworkRequest) => emit('requestfailed', request),
+	} as MockBrowserContext
+	return context
+}
+
+export function createMockNetworkRequest(
+	method: string,
+	url: string,
+	resourceType = 'fetch',
+	errorText: string | null = null
+): MockNetworkRequest {
+	return {
+		method: vi.fn(() => method),
+		url: vi.fn(() => url),
+		resourceType: vi.fn(() => resourceType),
+		failure: vi.fn(() => (errorText === null ? null : { errorText })),
+	}
+}
+
+export function createMockNetworkResponse(
+	request: MockNetworkRequest,
+	status: number,
+	statusText: string
+): MockNetworkResponse {
+	return {
+		request: vi.fn(() => request),
+		status: vi.fn(() => status),
+		statusText: vi.fn(() => statusText),
+	}
 }
 
 export interface MockPage {

@@ -47,7 +47,8 @@ test.describe('single-step : quick examples', async () => {
 				Type 'Qwen3-VL-4B' in the search bar.
 				Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.`,
 				expect: `
-				Qwen3-VL-4B-Instruct model page is displayed with model details`,
+				Qwen3-VL-4B-Instruct model page is displayed with model details,
+				and the search API call returned a successful status.`,
 			})
 		})
 	})

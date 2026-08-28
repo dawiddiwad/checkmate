@@ -4,6 +4,7 @@ import { logger } from '../../logging/index.js'
 import { Step } from '../../runtime/types.js'
 import { defineAgentTool } from '../define-agent-tool.js'
 import { AgentTool, AgentToolResponse } from '../types.js'
+import { NetworkRequestRecorder } from './network-request-recorder.js'
 import { SnapshotService } from './snapshot-service.js'
 import { DialogHandlingIntent, TransientStateTracker } from './transient-state-tracker.js'
 
@@ -28,6 +29,7 @@ export const BrowserTool = {
 	TOOL_LIST_TABS: 'browser_list_tabs',
 	TOOL_SELECT_TAB: 'browser_select_tab',
 	TOOL_CLOSE_TAB: 'browser_close_tab',
+	TOOL_NETWORK_REQUESTS: 'browser_network_requests',
 } as const
 
 const browserInputElementSchema = z
@@ -57,10 +59,13 @@ export class BrowserToolRuntime {
 	private readonly pageIds = new Map<Page, string>()
 	private readonly pagesById = new Map<string, Page>()
 	private pendingDialogHandlingIntent: DialogHandlingIntent | null = null
+	private readonly networkRecorder: NetworkRequestRecorder
 
 	constructor(page: Page) {
 		this.browserContext = page.context()
 		this.activePage = page
+		this.networkRecorder = new NetworkRequestRecorder(this.browserContext)
+		this.networkRecorder.attach()
 		this.registerExistingPages()
 		this.setActivePage(page)
 		this.browserContext.on('page', (newPage) => {
@@ -83,6 +88,14 @@ export class BrowserToolRuntime {
 
 	getBrowserContext(): BrowserContext {
 		return this.browserContext
+	}
+
+	listNetworkRequests(includeStatic: boolean): string {
+		return this.networkRecorder.format({ includeStatic }) || 'No API calls were made since the last browser action.'
+	}
+
+	dispose(): void {
+		this.networkRecorder.detach()
 	}
 
 	async listPages(): Promise<string> {
@@ -454,6 +467,7 @@ export class BrowserToolRuntime {
 	): Promise<AgentToolResponse | string> {
 		const page = await this.ensureActivePage()
 		const knownPages = new Set(this.browserContext.pages())
+		this.networkRecorder.reset()
 		const tracker = new TransientStateTracker(page, {
 			consumeDialogHandlingIntent: () => this.consumePendingDialogHandlingIntent(),
 		})
@@ -618,11 +632,28 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 			description: 'Close a browser tab by pageId, or close the active tab when pageId is null',
 			schema: z
 				.object({
-					pageId: z.string().nullable().describe('Browser tab id from browser_list_tabs, or null for active tab'),
+					pageId: z
+						.string()
+						.nullable()
+						.describe('Browser tab id from browser_list_tabs, or null for active tab'),
 					goal: z.string().describe('The goal or purpose of closing this browser tab'),
 				})
 				.strict(),
 			handler: ({ pageId }, context) => runtime.closePage(pageId, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_NETWORK_REQUESTS,
+			description:
+				"List the API calls (fetch/XHR) the browser made during the last browser action only - call this again after each new action to see its calls. Set 'static' to true to also include images, fonts, and other non-API resources.",
+			schema: z
+				.object({
+					static: z
+						.boolean()
+						.describe('If true, also include non-API resource types like images, fonts, and stylesheets'),
+					goal: z.string().describe('The goal or purpose of listing network requests'),
+				})
+				.strict(),
+			handler: ({ static: includeStatic }) => runtime.listNetworkRequests(includeStatic),
 		}),
 	]
 }

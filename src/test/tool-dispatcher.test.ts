@@ -103,7 +103,9 @@ describe('ToolDispatcher diagnostics', () => {
 		const dispatcher = new ToolDispatcher(registry)
 		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
 
-		await expect(dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)).resolves.toBeNull()
+		await expect(
+			dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)
+		).resolves.toBeNull()
 
 		expect(logger.debug).toHaveBeenCalledTimes(1)
 		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
@@ -118,7 +120,9 @@ describe('ToolDispatcher diagnostics', () => {
 		const dispatcher = new ToolDispatcher(registry)
 		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
 
-		await expect(dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)).resolves.toBeNull()
+		await expect(
+			dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)
+		).resolves.toBeNull()
 
 		expect(logger.debug).not.toHaveBeenCalled()
 	})

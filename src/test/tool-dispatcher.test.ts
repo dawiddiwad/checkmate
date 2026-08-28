@@ -14,10 +14,11 @@ vi.mock('../../src/logging', () => ({
 	},
 }))
 
-function createConfig(allowedNames: string[] = []): RuntimeConfig {
+function createConfig(allowedNames: string[] = [], logLevel = 'off'): RuntimeConfig {
 	return {
 		getAllowedFunctionNames: vi.fn().mockReturnValue(allowedNames),
 		getLoopMaxRepetitions: vi.fn().mockReturnValue(10),
+		getLogLevel: vi.fn().mockReturnValue(logLevel),
 	} as unknown as RuntimeConfig
 }
 
@@ -76,7 +77,7 @@ describe('ToolDispatcher diagnostics', () => {
 		expect((caught as Error).cause).toBe(cause)
 	})
 
-	it('normalizes string and object error responses and logs them', async () => {
+	it('normalizes string and object error responses', async () => {
 		const registry = new ToolRegistry(createConfig())
 		registry.register([
 			createTool('string_error_tool', () => 'Error: bad result'),
@@ -93,6 +94,32 @@ describe('ToolDispatcher diagnostics', () => {
 			status: 'error',
 			response: 'bad object',
 		})
-		expect(logger.warn).toHaveBeenCalledTimes(2)
+		expect(logger.warn).not.toHaveBeenCalled()
+	})
+
+	it('logs tools completed without model responses in debug mode', async () => {
+		const registry = new ToolRegistry(createConfig([], 'debug'))
+		registry.register(createTool('pass_test_step', () => undefined))
+		const dispatcher = new ToolDispatcher(registry)
+		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
+
+		await expect(dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)).resolves.toBeNull()
+
+		expect(logger.debug).toHaveBeenCalledTimes(1)
+		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
+		expect(debugLog).toContain('tool completed without model response')
+		expect(debugLog).toContain('pass_test_step')
+		expect(debugLog).toContain('done')
+	})
+
+	it('does not log tools completed without model responses outside debug mode', async () => {
+		const registry = new ToolRegistry(createConfig())
+		registry.register(createTool('pass_test_step', () => undefined))
+		const dispatcher = new ToolDispatcher(registry)
+		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
+
+		await expect(dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)).resolves.toBeNull()
+
+		expect(logger.debug).not.toHaveBeenCalled()
 	})
 })

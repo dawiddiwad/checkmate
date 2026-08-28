@@ -20,6 +20,7 @@ describe('ToolResponseHandler', () => {
 		addCurrentSnapshotMessage: ReturnType<typeof vi.fn>
 		addCurrentScreenshotMessage: ReturnType<typeof vi.fn>
 		sendToolResponseWithRetry: ReturnType<typeof vi.fn>
+		getRuntimeConfig: ReturnType<typeof vi.fn>
 	}
 	let historyManager: { removeEphemeralStateMessages: ReturnType<typeof vi.fn> }
 	let responseProcessor: { handleResponse: ReturnType<typeof vi.fn> }
@@ -35,6 +36,9 @@ describe('ToolResponseHandler', () => {
 			addCurrentSnapshotMessage: vi.fn().mockResolvedValue(undefined),
 			addCurrentScreenshotMessage: vi.fn().mockResolvedValue(undefined),
 			sendToolResponseWithRetry: vi.fn().mockResolvedValue({ choices: [] }),
+			getRuntimeConfig: vi.fn().mockReturnValue({
+				getLogLevel: vi.fn().mockReturnValue('off'),
+			}),
 		}
 		historyManager = {
 			removeEphemeralStateMessages: vi.fn(),
@@ -124,6 +128,129 @@ describe('ToolResponseHandler', () => {
 		)
 		expect(openaiClient.addCurrentSnapshotMessage).not.toHaveBeenCalled()
 		expect(openaiClient.addCurrentScreenshotMessage).toHaveBeenCalledTimes(1)
+	})
+
+	it('logs model-bound tool responses in debug mode', async () => {
+		openaiClient.getRuntimeConfig.mockReturnValue({ getLogLevel: vi.fn().mockReturnValue('debug') })
+		const step = { action: 'act', expect: 'done' }
+		const toolResponse: ToolResponse = {
+			name: 'browser_click_or_hover',
+			response: 'Clicked submit button',
+			snapshot: null,
+			status: 'success',
+		}
+
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_debug',
+					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123', goal: 'submit form' } },
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
+
+		expect(logger.debug).toHaveBeenCalledTimes(1)
+		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
+		expect(debugLog).toContain('tool response returned to model')
+		expect(debugLog).toContain('call_debug')
+		expect(debugLog).toContain('browser_click_or_hover')
+		expect(debugLog).toContain('status: success')
+		expect(debugLog).toContain('submit form')
+		expect(debugLog).toContain('Clicked submit button')
+		expect(debugLog).toContain('snapshot: none')
+	})
+
+	it('does not log model-bound tool responses outside debug mode', async () => {
+		const step = { action: 'act', expect: 'done' }
+		const toolResponse: ToolResponse = {
+			name: 'browser_click_or_hover',
+			response: 'Clicked submit button',
+			snapshot: null,
+			status: 'success',
+		}
+
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_info',
+					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123' } },
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
+
+		expect(logger.debug).not.toHaveBeenCalled()
+	})
+
+	it('does not duplicate error response bodies between warning and debug logs in debug mode', async () => {
+		openaiClient.getRuntimeConfig.mockReturnValue({ getLogLevel: vi.fn().mockReturnValue('debug') })
+		const step = { action: 'act', expect: 'done' }
+		const uniqueResponse = 'unique debug-only error body'
+		const toolResponse: ToolResponse = {
+			name: 'browser_click_or_hover',
+			response: uniqueResponse,
+			snapshot: null,
+			status: 'error',
+		}
+
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_error_debug',
+					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'missing' } },
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
+
+		const debugLog = vi
+			.mocked(logger.debug)
+			.mock.calls.map((call) => String(call[0]))
+			.join('\n')
+		const warnings = vi
+			.mocked(logger.warn)
+			.mock.calls.map((call) => String(call[0]))
+			.join('\n')
+
+		expect(debugLog).toContain(uniqueResponse)
+		expect(warnings).toContain('response: logged at debug level')
+		expect(warnings).not.toContain(uniqueResponse)
+	})
+
+	it('does not include full snapshot content in generic tool response debug logs', async () => {
+		openaiClient.getRuntimeConfig.mockReturnValue({ getLogLevel: vi.fn().mockReturnValue('debug') })
+		const step = { action: 'act', expect: 'done' }
+		const snapshot = 'page snapshot:\n{button Submit}'
+		const toolResponse: ToolResponse = {
+			name: 'browser_click_or_hover',
+			response: 'clicked',
+			snapshot,
+			status: 'success',
+		}
+
+		await handler.handleMultiple(
+			[
+				{
+					toolCallId: 'call_snapshot',
+					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123' } },
+					toolResponse,
+				},
+			],
+			step,
+			callback
+		)
+
+		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
+		expect(debugLog).toContain(`snapshot: present (${snapshot.length} chars, content logged by SnapshotService)`)
+		expect(debugLog).not.toContain('page snapshot:')
+		expect(debugLog).not.toContain('{button Submit}')
 	})
 
 	it('redacts secrets and image data from error diagnostics', async () => {

@@ -37,10 +37,9 @@ export class ToolResponseHandler {
 		this.messageHistory.removeEphemeralStateMessages(this.aiClient)
 
 		for (const { toolCallId, toolCall, toolResponse } of toolResponses) {
+			this.logModelBoundToolResponse(toolCallId, toolCall, toolResponse)
 			if (toolResponse.status === 'error') {
-				logger.warn(
-					`tool response error:\ntool_call_id: ${toolCallId}\ntool: ${toolCall.name}\narguments: ${safePreview(JSON.stringify(toolCall.arguments ?? {}), 1_000)}\nresponse: ${safePreview(toolResponse.response, 2_000)}`
-				)
+				this.logErrorResponse(toolCallId, toolCall, toolResponse)
 			}
 			await this.aiClient.addToolResponse(toolCallId, toolResponse.response)
 		}
@@ -60,6 +59,44 @@ export class ToolResponseHandler {
 		const nextResponse = await this.aiClient.sendToolResponseWithRetry()
 		await this.responseProcessor.handleResponse(nextResponse, step, resolveStepResult)
 	}
+
+	private logModelBoundToolResponse(toolCallId: string, toolCall: ToolCall, toolResponse: ToolResponse): void {
+		if (!this.isDebugMode()) {
+			return
+		}
+
+		logger.debug(
+			[
+				'tool response returned to model:',
+				`tool_call_id: ${toolCallId}`,
+				`tool: ${toolCall.name}`,
+				`status: ${toolResponse.status}`,
+				`arguments: ${safePreview(JSON.stringify(toolCall.arguments ?? {}), 1_000)}`,
+				`response: ${safePreview(toolResponse.response, 2_000)}`,
+				`snapshot: ${formatSnapshotMetadata(toolResponse.snapshot)}`,
+			].join('\n')
+		)
+	}
+
+	private logErrorResponse(toolCallId: string, toolCall: ToolCall, toolResponse: ToolResponse): void {
+		const responseLine = this.isDebugMode()
+			? 'response: logged at debug level'
+			: `response: ${safePreview(toolResponse.response, 2_000)}`
+
+		logger.warn(
+			[
+				'tool response error:',
+				`tool_call_id: ${toolCallId}`,
+				`tool: ${toolCall.name}`,
+				`arguments: ${safePreview(JSON.stringify(toolCall.arguments ?? {}), 1_000)}`,
+				responseLine,
+			].join('\n')
+		)
+	}
+
+	private isDebugMode(): boolean {
+		return this.aiClient.getRuntimeConfig().getLogLevel() === 'debug'
+	}
 }
 
 function buildToolExecutionSummary(
@@ -78,6 +115,14 @@ function formatToolExecutionSummary(toolCall: ToolCall, toolResponse: ToolRespon
 	}
 
 	return `- successfully executed: ${toolCall.name} ${serializedArguments}`
+}
+
+function formatSnapshotMetadata(snapshot: string | null | undefined): string {
+	if (!snapshot) {
+		return 'none'
+	}
+
+	return `present (${snapshot.length} chars, content logged by SnapshotService)`
 }
 
 function safePreview(value: string, maxLength: number): string {

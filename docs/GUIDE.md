@@ -104,6 +104,34 @@ the reason is the specific event:
 Checkmate classifies the layer, not the meaning. An `app` outcome says the evidence points at the
 product under test — not whether that is a legitimate UI change or a bug.
 
+### A retry that disagrees with itself is reported
+
+Playwright's `retries` option (`playwright.config.ts:retries`, or `test.describe.configure({ retries })`)
+reruns a failed test in a fresh worker and, if the rerun passes, marks it **flaky** rather than failed —
+most triage treats a flaky label as noise to rerun past, not evidence to read. With a model-owned
+assertion that hides a specific hazard: a genuine regression caught on attempt 1, absorbed by a lucky
+attempt 2. Checkmate does not change retry behaviour; it changes what a retried step tells you
+afterwards.
+
+Each attempt's `ai.step` calls append their assertions to a small ledger keyed by the test, kept
+alongside Playwright's own `test-results/` output and wiped at the start of every run. When a step
+passes after an earlier attempt of that same step failed at the `app` layer, its report is marked:
+
+```jsonc
+{
+	"outcome": "passed",
+	"category": "app",
+	"reason": "met-expectation",
+	"assertionUnstable": true,
+}
+```
+
+`assertionUnstable` only appears on a pass, and only when a prior attempt's failure was `app` —
+a `model` or `infra` failure on an earlier attempt means the loop never reached an assertion at
+all, not that it disagreed with itself. This lands in the same `checkmate-step.json` a triage agent
+already opens, so nothing about it requires a reporter: the whole install is still `mergeTests` plus
+config.
+
 ## Configuration Reference
 
 Checkmate is configured in [Playwright's](https://playwright.dev/docs/test-configuration) standard

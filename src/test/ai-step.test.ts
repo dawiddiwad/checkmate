@@ -1,13 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertionMessage, CheckmateStepError, runAiStep, stepLabel, testTimeoutRemaining } from '../playwright/ai-step'
 import { attachmentPrefix } from '../playwright/attachments'
+import { appendLedgerStep, stepIdentity } from '../playwright/ledger'
 import { CheckmateRunner } from '../runtime/runner'
 import { StepReport } from '../runtime/types'
 
 const playwright = vi.hoisted(() => ({
 	stepNames: [] as string[],
 	attachments: [] as Array<{ name: string; body: string; contentType: string }>,
-	testInfo: { timeout: 30_000, duration: 0 },
+	testInfo: { timeout: 30_000, duration: 0, project: { outputDir: '' }, testId: 'test-id', retry: 0 },
 }))
 
 vi.mock('@playwright/test', () => ({
@@ -47,19 +51,26 @@ function runnerReturning(stepReport: StepReport): CheckmateRunner {
 }
 
 describe('ai.step', () => {
-	beforeEach(() => {
+	let outputDir: string
+
+	beforeEach(async () => {
+		outputDir = await mkdtemp(path.join(tmpdir(), 'checkmate-ai-step-'))
 		playwright.stepNames.length = 0
 		playwright.attachments.length = 0
-		playwright.testInfo = { timeout: 30_000, duration: 0 }
+		playwright.testInfo = { timeout: 30_000, duration: 0, project: { outputDir }, testId: 'test-id', retry: 0 }
+	})
+
+	afterEach(async () => {
+		await rm(outputDir, { recursive: true, force: true })
 	})
 
 	it('reports the test timeout remaining, minus time already spent', () => {
-		playwright.testInfo = { timeout: 30_000, duration: 5_000 }
+		playwright.testInfo = { ...playwright.testInfo, timeout: 30_000, duration: 5_000 }
 		expect(testTimeoutRemaining()).toBe(25_000)
 	})
 
 	it('treats a disabled test timeout (0) as unbounded rather than already exhausted', () => {
-		playwright.testInfo = { timeout: 0, duration: 5_000 }
+		playwright.testInfo = { ...playwright.testInfo, timeout: 0, duration: 5_000 }
 		expect(testTimeoutRemaining()).toBeUndefined()
 	})
 
@@ -131,6 +142,42 @@ describe('ai.step', () => {
 
 		expect(error).toBeInstanceOf(CheckmateStepError)
 		expect((error as CheckmateStepError).report).toEqual(stepReport)
+	})
+
+	it('marks a passing report assertionUnstable when a prior attempt recorded an app failure for this step', async () => {
+		const step = { action: 'apply SPRING25', expect: 'the order total drops' }
+		const id = stepIdentity(1, step.action)
+		await appendLedgerStep(outputDir, 'test-id', 0, { id, outcome: 'failed', category: 'app' })
+		playwright.testInfo = { ...playwright.testInfo, retry: 1 }
+
+		const stepReport = report({ outcome: 'passed', reason: 'met-expectation' })
+		await runAiStep(runnerReturning(stepReport), step)
+
+		expect(JSON.parse(playwright.attachments[0].body).assertionUnstable).toBe(true)
+	})
+
+	it('does not mark a report assertionUnstable when the prior failure was not at the app layer', async () => {
+		const step = { action: 'apply SPRING25', expect: 'the order total drops' }
+		const id = stepIdentity(1, step.action)
+		await appendLedgerStep(outputDir, 'test-id', 0, { id, outcome: 'failed', category: 'model' })
+		playwright.testInfo = { ...playwright.testInfo, retry: 1 }
+
+		const stepReport = report({ outcome: 'passed', reason: 'met-expectation' })
+		await runAiStep(runnerReturning(stepReport), step)
+
+		expect(JSON.parse(playwright.attachments[0].body).assertionUnstable).toBeUndefined()
+	})
+
+	it('does not mark a failing report assertionUnstable, even after a prior app failure', async () => {
+		const step = { action: 'apply SPRING25', expect: 'the order total drops' }
+		const id = stepIdentity(1, step.action)
+		await appendLedgerStep(outputDir, 'test-id', 0, { id, outcome: 'failed', category: 'app' })
+		playwright.testInfo = { ...playwright.testInfo, retry: 1 }
+
+		const stepReport = report({ outcome: 'failed', category: 'app', reason: 'failed-expectation' })
+		await expect(runAiStep(runnerReturning(stepReport), step)).rejects.toThrow(CheckmateStepError)
+
+		expect(JSON.parse(playwright.attachments[0].body).assertionUnstable).toBeUndefined()
 	})
 
 	it('states the expectation, the observation, and the layer in the assertion message', () => {

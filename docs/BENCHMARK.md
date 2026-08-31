@@ -109,15 +109,23 @@ Not yet published in full. A release run costs real money across every flow and 
 `FLOWS` / `MODEL_TIERS` and is a release-time decision, made and recorded here — whichever way
 the number comes out — the next time this benchmark is run for a release.
 
-One flow has been run for real, scoped to match `npm run test:web:example`
-(`ollama-model-search` on `gpt-oss-20b (groq)`), as a sanity check that the benchmark measures
-what it claims to — not as the published release number, which still requires every flow and
-model tier:
+Three of the four single-step "quick example" flows from
+`test/examples/web/website-testing.spec.ts` have been run for real, against `gpt-oss-20b (groq)`
+(the model `npm run test:web:example` uses), as a sanity check that the benchmark measures what
+it claims to — not as the published release number, which still requires every flow in `FLOWS`
+and every entry in `MODEL_TIERS`, including `gpt-5-mini`. The Mojeek search flow and the
+Salesforce example were excluded from this check by request; the multi-step Polymer Shop flows
+don't fit the benchmark's one-`ai.step`-per-flow shape and would need harness changes to include:
 
 | Flow | Model | checkmate cost | mcp-baseline cost | Ratio |
 | --- | --- | --- | --- | --- |
-| ollama-model-search | gpt-oss-20b (groq) | $0.0010 | $0.0030 | 3.00x |
+| ollama-model-search | gpt-oss-20b (groq) | $0.0010 | $0.0040 | 4.00x |
+| huggingface-model-search | gpt-oss-20b (groq) | $0.0020 | $0.0120 | 6.00x |
+| nypl-catcher-in-the-rye | gpt-oss-20b (groq) | $0.0020 | $0.0100 | 5.00x |
 
-Both arms passed (`outcome: 'passed'`, `category: 'app'`, `reason: 'met-expectation'`); `checkmate`
-took 7 turns / 10.2s, `mcp-baseline` took 6 turns / 11.6s. The 3.00x ratio sits inside the PRD's
-claimed ~2-3x range for this one flow and model.
+All six runs passed (`outcome: 'passed'`, `category: 'app'`, `reason: 'met-expectation'`).
+`checkmate` took 4-5 turns across all three flows; `mcp-baseline` took 6-11 turns, and its
+`huggingface-model-search` run in particular took 113.9s against `checkmate`'s 9.8s. Every ratio
+here (4-6x) comes in above the PRD's claimed ~2-3x range — worth flagging rather than smoothing
+over, since a wider gap than claimed is still a claim worth re-checking against the full flow and
+model-tier matrix before publication, not just a pleasant surprise.

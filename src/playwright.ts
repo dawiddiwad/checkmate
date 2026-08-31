@@ -38,8 +38,8 @@ export const PlaywrightCapability = {
  * The `ai` fixture contributed by the `checkmate` test object.
  *
  * `step()` is the only way to run a natural-language step. It always creates its own
- * `test.step`, always attaches `checkmate-step.json`, and fails the test when the
- * reported outcome is `failed`.
+ * `test.step`, always attaches a `checkmate-step.json`-shaped summary, and fails the test
+ * when the reported outcome is `failed`.
  *
  * @example
  * ```ts
@@ -204,9 +204,10 @@ export function createPlaywrightRunner(page: Page, config: ResolvedConfig = reso
  */
 export function createAi(page: Page, config: ResolvedConfig = resolveConfig()): CheckmateAi {
 	const runner = createPlaywrightRunner(page, config)
+	let ordinal = 0
 
 	return {
-		step: (step: Step) => runAiStep(runner, step),
+		step: (step: Step) => runAiStep(runner, step, { ordinal: ++ordinal, evidence: config.evidence }),
 		teardown: () => runner.teardown(),
 	}
 }

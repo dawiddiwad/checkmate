@@ -21,6 +21,17 @@ vi.mock('../../src/logging', () => ({
 	},
 }))
 
+const playwrightTest = vi.hoisted(() => ({ stepNames: [] as string[] }))
+
+vi.mock('@playwright/test', () => ({
+	test: {
+		step: async (name: string, body: () => Promise<unknown>) => {
+			playwrightTest.stepNames.push(name)
+			return body()
+		},
+	},
+}))
+
 vi.mock('../../src/tools/browser/snapshot-service', () => ({
 	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot content')
@@ -113,6 +124,7 @@ describe('Browser tools', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		playwrightTest.stepNames.length = 0
 		mockContext = createMockContext()
 		mockPage = createMockPage(mockContext)
 
@@ -120,7 +132,17 @@ describe('Browser tools', () => {
 		tools = createBrowserTools(runtime)
 		context = {
 			step: { action: 'act', expect: 'done' },
+			turn: 1,
 		}
+	})
+
+	it('wraps each dispatched tool call in its own named test.step', async () => {
+		await getTool(BrowserTool.TOOL_NAVIGATE).execute(
+			{ url: 'https://example.com', goal: 'test' },
+			{ ...context, turn: 4 }
+		)
+
+		expect(playwrightTest.stepNames).toEqual([`turn 4 · ${BrowserTool.TOOL_NAVIGATE}`])
 	})
 
 	it('creates twelve browser tool definitions', () => {

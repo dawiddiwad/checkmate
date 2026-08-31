@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-	assertionMessage,
-	CheckmateStepError,
-	runAiStep,
-	stepLabel,
-	STEP_REPORT_ATTACHMENT,
-	testTimeoutRemaining,
-} from '../playwright/ai-step'
+import { assertionMessage, CheckmateStepError, runAiStep, stepLabel, testTimeoutRemaining } from '../playwright/ai-step'
+import { attachmentPrefix } from '../playwright/attachments'
 import { CheckmateRunner } from '../runtime/runner'
 import { StepReport } from '../runtime/types'
 
@@ -83,18 +77,28 @@ describe('ai.step', () => {
 
 	it('creates a labelled test step and attaches the report on a pass', async () => {
 		const stepReport = report({ name: 'apply promo code' })
-
-		await runAiStep(runnerReturning(stepReport), {
+		const step = {
 			name: 'apply promo code',
 			action: 'apply the seasonal promo code SPRING25',
 			expect: 'the order total drops',
-		})
+		}
+
+		await runAiStep(runnerReturning(stepReport), step)
 
 		expect(playwright.stepNames).toEqual(['ai: apply promo code'])
 		expect(playwright.attachments).toHaveLength(1)
-		expect(playwright.attachments[0].name).toBe(STEP_REPORT_ATTACHMENT)
+		expect(playwright.attachments[0].name).toBe(`${attachmentPrefix(1, step)}.json`)
 		expect(playwright.attachments[0].contentType).toBe('application/json')
 		expect(JSON.parse(playwright.attachments[0].body)).toEqual(stepReport)
+	})
+
+	it('names the attachment from its ordinal within the test', async () => {
+		const stepReport = report({ name: 'apply promo code' })
+		const step = { name: 'apply promo code', action: 'apply SPRING25', expect: 'the order total drops' }
+
+		await runAiStep(runnerReturning(stepReport), step, { ordinal: 3 })
+
+		expect(playwright.attachments[0].name).toBe('ai-step-3-apply-promo-code.json')
 	})
 
 	it('attaches a bounded report before failing the step', async () => {

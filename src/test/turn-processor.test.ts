@@ -103,7 +103,7 @@ describe('TurnProcessor', () => {
 
 		expect(dispatcher().dispatch).toHaveBeenCalledWith(
 			{ name: 'browser_click', arguments: { ref: 'e123', goal: 'click' } },
-			{ step }
+			{ step, turn: 1 }
 		)
 		expect(outcome).toEqual({
 			kind: 'continue',

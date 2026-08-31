@@ -1,10 +1,11 @@
 import { test } from '@playwright/test'
+import { attachStepEvidence } from './attachments.js'
+import { CHECKMATE_DEFAULTS } from '../config/resolved-config.js'
+import type { EvidenceLevel } from '../config/resolved-config.js'
 import { CheckmateRunner } from '../runtime/runner.js'
 import { Step, StepReport } from '../runtime/types.js'
 
 const STEP_LABEL_LIMIT = 80
-
-export const STEP_REPORT_ATTACHMENT = 'checkmate-step.json'
 
 /**
  * A step whose report says it failed.
@@ -26,13 +27,28 @@ export class CheckmateStepError extends Error {
 	}
 }
 
-export async function runAiStep(runner: CheckmateRunner, step: Step): Promise<void> {
+/**
+ * Options for {@link runAiStep} carried by the `ai` fixture, not authored by step callers.
+ */
+export type RunAiStepOptions = {
+	/**
+	 * The step's position within the test, starting at `1`, used to name its attachments.
+	 */
+	ordinal?: number
+
+	/**
+	 * How much evidence to retain, from `checkmateEvidence`.
+	 */
+	evidence?: EvidenceLevel
+}
+
+export async function runAiStep(runner: CheckmateRunner, step: Step, options: RunAiStepOptions = {}): Promise<void> {
+	const ordinal = options.ordinal ?? 1
+	const evidence = options.evidence ?? CHECKMATE_DEFAULTS.checkmateEvidence
+
 	await test.step(stepLabel(step), async () => {
 		const report = await runner.run(step, { testTimeoutRemaining: testTimeoutRemaining() })
-		await test.info().attach(STEP_REPORT_ATTACHMENT, {
-			body: JSON.stringify(report, null, 2),
-			contentType: 'application/json',
-		})
+		await attachStepEvidence({ testInfo: test.info(), step, report, ordinal, evidence })
 
 		if (report.outcome !== 'passed') {
 			throw new CheckmateStepError(report)

@@ -215,6 +215,29 @@ export type TranscriptEntry = {
 }
 
 /**
+ * One turn's ARIA page snapshot, captured while the step ran and already scrubbed.
+ *
+ * This is heavy evidence: `checkmate-step.json` never carries it. `@xoxoai/checkmate/playwright`
+ * writes it as a separate `turn-NN.yml` attachment, and only when `checkmateEvidence` retains it.
+ *
+ * @example
+ * ```ts
+ * const snapshot: StepSnapshot = { turn: 3, content: "page snapshot:\n{button 'Submit'}" }
+ * ```
+ */
+export type StepSnapshot = {
+	/**
+	 * Model turn the snapshot was captured on, starting at `1`.
+	 */
+	turn: number
+
+	/**
+	 * Snapshot text, already scrubbed.
+	 */
+	content: string
+}
+
+/**
  * The versioned evidence contract produced by every step.
  *
  * `CheckmateRunner.run()` resolves one of these, and `@xoxoai/checkmate/playwright`
@@ -298,6 +321,15 @@ export type StepReport = {
 	 * Human-readable transcript of the step.
 	 */
 	transcript: TranscriptEntry[]
+
+	/**
+	 * Per-turn ARIA page snapshots captured while the step ran, when any browser tool returned one.
+	 *
+	 * Omitted rather than empty when there is nothing to carry, and never written into
+	 * `checkmate-step.json` — `@xoxoai/checkmate/playwright` attaches these separately, tiered by
+	 * `checkmateEvidence`.
+	 */
+	snapshots?: StepSnapshot[]
 }
 
 /**

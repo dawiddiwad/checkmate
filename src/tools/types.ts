@@ -121,6 +121,14 @@ export type AgentToolContext = {
 	 * Step currently being executed.
 	 */
 	step: Step
+
+	/**
+	 * Model turn the tool is being dispatched on, starting at `1`, when known.
+	 *
+	 * The browser runtime uses this to label each dispatched call's `test.step` so the tree
+	 * and the report's `toolCalls` array agree on what turn it was.
+	 */
+	turn?: number
 }
 
 /**

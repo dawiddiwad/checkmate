@@ -135,7 +135,8 @@ describe('StepEvidence', () => {
 	it('truncates oversized transcript entries', () => {
 		const evidence = new StepEvidence({ step, model: 'gpt-5-mini' })
 
-		evidence.recordAssistantMessage(1, 'x'.repeat(5_000))
+		// Spaces break up the text so it isn't mistaken for a long base64 blob and scrubbed instead.
+		evidence.recordAssistantMessage(1, 'x '.repeat(2_500))
 
 		const report = evidence.buildReport({ outcome: 'passed', reason: 'met-expectation', turns: 1 })
 		expect(report.transcript[0].content).toHaveLength(2_000)

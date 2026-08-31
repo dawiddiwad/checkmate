@@ -44,7 +44,7 @@ export class StepExecution {
 		logger.info(`step started:\n${JSON.stringify(step, null, 2).replaceAll('  ', '').trim()}`)
 
 		const model = this.config.model
-		const evidence = new StepEvidence({ step, model })
+		const evidence = new StepEvidence({ step, model, redact: this.config.redact })
 		const deadline = new StepDeadline({
 			stepTimeout: this.config.stepTimeout,
 			testTimeoutRemaining: options.testTimeoutRemaining,

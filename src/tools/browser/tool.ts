@@ -1,10 +1,10 @@
-import { BrowserContext, expect, Page } from '@playwright/test'
+import { BrowserContext, Page, test } from '@playwright/test'
 import { z } from 'zod/v4'
 import { ResolvedConfig } from '../../config/resolved-config.js'
 import { logger } from '../../logging/index.js'
 import { Step } from '../../runtime/types.js'
 import { defineAgentTool } from '../define-agent-tool.js'
-import { AgentTool, AgentToolResponse } from '../types.js'
+import { AgentTool, AgentToolContext, AgentToolResponse, AgentToolResult } from '../types.js'
 import { SnapshotService } from './snapshot-service.js'
 import { DialogHandlingIntent, TransientStateTracker } from './transient-state-tracker.js'
 
@@ -295,24 +295,7 @@ export class BrowserToolRuntime {
 
 	async captureCurrentSnapshot(step: Step, options: { skipFilter?: boolean } = {}): Promise<string> {
 		const page = await this.ensureActivePage()
-		try {
-			await expect
-				.poll(
-					async () => {
-						const readHtml = async () => page.locator('html').innerHTML()
-						const first = await readHtml()
-						await page.waitForTimeout(500)
-						const second = await readHtml()
-						return first !== second ? 'not stable' : 'stable'
-					},
-					{ timeout: 30_000, message: 'page snapshots should be stable' }
-				)
-				.toEqual('stable')
-
-			return new SnapshotService(page, this.config, step, { skipFilter: options.skipFilter }).get()
-		} catch (error) {
-			throw new Error(`Failed to capture page snapshot:\n${error}`, { cause: error })
-		}
+		return new SnapshotService(page, this.config, step, { skipFilter: options.skipFilter }).get()
 	}
 
 	async wait(seconds: number, step: Step): Promise<AgentToolResponse | string> {
@@ -485,6 +468,25 @@ export class BrowserToolRuntime {
 	}
 }
 
+/**
+ * Wraps a tool's execution in its own named `test.step`, so Playwright's own instrumentation for
+ * the underlying `page.*` calls nests one level under it instead of appearing as its siblings.
+ *
+ * The turn number comes from the dispatch context rather than a counter kept here, so the tree
+ * and the `toolCalls` array in the report agree on what turn it was.
+ */
+function withTurnStep(tool: AgentTool): AgentTool {
+	return {
+		...tool,
+		execute: (args: unknown, context: AgentToolContext): Promise<AgentToolResult> =>
+			test.step(turnStepTitle(context.turn, tool.definition.name), () => tool.execute(args, context)),
+	}
+}
+
+function turnStepTitle(turn: number | undefined, toolName: string): string {
+	return turn === undefined ? toolName : `turn ${turn} · ${toolName}`
+}
+
 export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 	return [
 		defineAgentTool({
@@ -631,5 +633,5 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				.strict(),
 			handler: ({ pageId }, context) => runtime.closePage(pageId, context.step),
 		}),
-	]
+	].map(withTurnStep)
 }

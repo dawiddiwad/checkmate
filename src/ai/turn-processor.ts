@@ -71,7 +71,7 @@ export class TurnProcessor {
 			let toolResponse: ToolResponse
 			try {
 				toolResponse =
-					(await this.toolDispatcher.dispatch(parsedToolCall, { step })) ??
+					(await this.toolDispatcher.dispatch(parsedToolCall, { step, turn })) ??
 					noOutputResponse(parsedToolCall.name)
 			} catch (error) {
 				if (error instanceof LoopDetectedError) {

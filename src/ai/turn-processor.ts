@@ -1,5 +1,5 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { StepEvidence } from '../runtime/step-evidence.js'
 import { Step, TurnOutcome } from '../runtime/types.js'
 import { ToolDispatcher, ToolDispatchError } from '../tools/dispatcher.js'
@@ -12,7 +12,7 @@ import { RateLimitPolicy } from './rate-limit-policy.js'
 import { ToolResponseHandler } from './tool-response-handler.js'
 
 export type TurnProcessorDependencies = {
-	runtimeConfig: RuntimeConfig
+	config: ResolvedConfig
 	toolRegistry: ToolRegistry
 	loopDetector: LoopDetector
 	evidence: StepEvidence
@@ -31,10 +31,10 @@ export class TurnProcessor {
 	private readonly rateLimitPolicy: RateLimitPolicy
 	private readonly evidence: StepEvidence
 
-	constructor({ runtimeConfig, toolRegistry, loopDetector, evidence }: TurnProcessorDependencies) {
+	constructor({ config, toolRegistry, loopDetector, evidence }: TurnProcessorDependencies) {
 		this.toolDispatcher = new ToolDispatcher(toolRegistry, loopDetector)
-		this.toolResponseHandler = new ToolResponseHandler(runtimeConfig, new MessageHistory())
-		this.rateLimitPolicy = new RateLimitPolicy(runtimeConfig)
+		this.toolResponseHandler = new ToolResponseHandler(config, new MessageHistory())
+		this.rateLimitPolicy = new RateLimitPolicy(config)
 		this.evidence = evidence
 	}
 

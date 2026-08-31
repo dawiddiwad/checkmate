@@ -1,5 +1,6 @@
 import { BrowserContext, expect, Page } from '@playwright/test'
 import { z } from 'zod/v4'
+import { ResolvedConfig } from '../../config/resolved-config.js'
 import { logger } from '../../logging/index.js'
 import { Step } from '../../runtime/types.js'
 import { defineAgentTool } from '../define-agent-tool.js'
@@ -58,7 +59,10 @@ export class BrowserToolRuntime {
 	private readonly pagesById = new Map<string, Page>()
 	private pendingDialogHandlingIntent: DialogHandlingIntent | null = null
 
-	constructor(page: Page) {
+	constructor(
+		page: Page,
+		private readonly config: ResolvedConfig
+	) {
 		this.browserContext = page.context()
 		this.activePage = page
 		this.registerExistingPages()
@@ -305,7 +309,7 @@ export class BrowserToolRuntime {
 				)
 				.toEqual('stable')
 
-			return new SnapshotService(page, step, { skipFilter: options.skipFilter }).get()
+			return new SnapshotService(page, this.config, step, { skipFilter: options.skipFilter }).get()
 		} catch (error) {
 			throw new Error(`Failed to capture page snapshot:\n${error}`, { cause: error })
 		}

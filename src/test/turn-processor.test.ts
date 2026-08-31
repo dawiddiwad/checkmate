@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { TurnProcessor } from '../ai/turn-processor'
-import { RuntimeConfig } from '../config/runtime-config'
+import { testConfig } from './test-types'
 import { StepEvidence } from '../runtime/step-evidence'
 import { Step } from '../runtime/types'
 import { LoopDetectedError, LoopDetector } from '../tools/loop-detector'
@@ -68,7 +68,7 @@ describe('TurnProcessor', () => {
 		step = { action: 'test action', expect: 'test expectation' }
 		evidence = new StepEvidence({ step, model: 'gpt-4o-mini' })
 		turnProcessor = new TurnProcessor({
-			runtimeConfig: { getLogLevel: () => 'off' } as unknown as RuntimeConfig,
+			config: testConfig(),
 			toolRegistry: {} as ToolRegistry,
 			loopDetector: new LoopDetector(5),
 			evidence,

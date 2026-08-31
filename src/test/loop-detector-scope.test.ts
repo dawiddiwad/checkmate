@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Page } from '@playwright/test'
 import { createPlaywrightRunner } from '../playwright'
+import { testConfig } from './test-types'
 
 const createMock = vi.fn()
 
@@ -11,29 +12,9 @@ vi.mock('openai', () => ({
 	},
 }))
 
-vi.mock('../config/runtime-config', () => ({
-	RuntimeConfig: class {
-		getLogLevel = vi.fn().mockReturnValue('off')
-		getApiKey = vi.fn().mockReturnValue('test-key')
-		getBaseURL = vi.fn().mockReturnValue(undefined)
-		getModel = vi.fn().mockReturnValue('gpt-4o-mini')
-		getTimeout = vi.fn().mockReturnValue(5_000)
-		getMaxRetries = vi.fn().mockReturnValue(0)
-		getToolChoice = vi.fn().mockReturnValue('auto')
-		getTemperature = vi.fn().mockReturnValue(0)
-		getReasoningEffort = vi.fn().mockReturnValue(undefined)
-		includeScreenshotInSnapshot = vi.fn().mockReturnValue(false)
-		getAllowedFunctionNames = vi.fn().mockReturnValue([])
-		getLoopMaxRepetitions = vi.fn().mockReturnValue(2)
-		getTokenBudgetUSD = vi.fn().mockReturnValue(undefined)
-		getTokenBudgetCount = vi.fn().mockReturnValue(undefined)
-		getApiRateLimitDelayMs = vi.fn().mockReturnValue(0)
-		isSnapshotFilteringEnabled = vi.fn().mockReturnValue(false)
-	},
-}))
-
 vi.mock('../logging', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+	setLogLevel: vi.fn(),
 }))
 
 vi.mock('../tools/browser/tool', () => ({
@@ -106,7 +87,16 @@ describe('loop detection scope', () => {
 			.mockResolvedValueOnce(navigate())
 			.mockResolvedValueOnce(pass())
 
-		const runner = createPlaywrightRunner({} as Page)
+		const runner = createPlaywrightRunner(
+			{} as Page,
+			testConfig({
+				checkmateModel: 'gpt-4o-mini',
+				checkmateMaxRetries: 0,
+				checkmateToolChoice: 'auto',
+				checkmateRequestTimeout: 5_000,
+				checkmateLoopMaxRepetitions: 2,
+			})
+		)
 
 		const first = await runner.run({ action: 'Open the home page', expect: 'Home is visible' })
 		const second = await runner.run({ action: 'Open the home page again', expect: 'Home is visible' })
@@ -120,7 +110,16 @@ describe('loop detection scope', () => {
 
 		createMock.mockResolvedValue(navigate())
 
-		const runner = createPlaywrightRunner({} as Page)
+		const runner = createPlaywrightRunner(
+			{} as Page,
+			testConfig({
+				checkmateModel: 'gpt-4o-mini',
+				checkmateMaxRetries: 0,
+				checkmateToolChoice: 'auto',
+				checkmateRequestTimeout: 5_000,
+				checkmateLoopMaxRepetitions: 2,
+			})
+		)
 		const report = await runner.run({ action: 'Open the home page', expect: 'Home is visible' })
 
 		expect(report).toMatchObject({ outcome: 'failed', category: 'model', reason: 'loop-detected' })

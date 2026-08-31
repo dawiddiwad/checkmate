@@ -4,6 +4,7 @@ import { CheckmateRunner } from '../core'
 import { Step } from '../runtime/types'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { createPlaywrightRunner } from '../playwright'
+import { testConfig } from './test-types'
 
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
@@ -17,29 +18,6 @@ vi.mock('openai', () => {
 	}
 })
 
-vi.mock('../config/runtime-config', () => {
-	return {
-		RuntimeConfig: class {
-			getLogLevel = vi.fn().mockReturnValue('off')
-			getApiKey = vi.fn().mockReturnValue('test-key')
-			getBaseURL = vi.fn().mockReturnValue(undefined)
-			getModel = vi.fn().mockReturnValue('gpt-4o-mini')
-			getTimeout = vi.fn().mockReturnValue(5_000)
-			getMaxRetries = vi.fn().mockReturnValue(0)
-			getToolChoice = vi.fn().mockReturnValue('auto')
-			getTemperature = vi.fn().mockReturnValue(0)
-			getReasoningEffort = vi.fn().mockReturnValue(undefined)
-			includeScreenshotInSnapshot = vi.fn().mockReturnValue(false)
-			getAllowedFunctionNames = vi.fn().mockReturnValue([])
-			getLoopMaxRepetitions = vi.fn().mockReturnValue(3)
-			getTokenBudgetUSD = vi.fn().mockReturnValue(undefined)
-			getTokenBudgetCount = vi.fn().mockReturnValue(undefined)
-			getApiRateLimitDelayMs = vi.fn().mockReturnValue(0)
-			isSnapshotFilteringEnabled = vi.fn().mockReturnValue(true)
-		},
-	}
-})
-
 vi.mock('../logging', () => ({
 	logger: {
 		info: vi.fn(),
@@ -47,6 +25,7 @@ vi.mock('../logging', () => ({
 		error: vi.fn(),
 		debug: vi.fn(),
 	},
+	setLogLevel: vi.fn(),
 }))
 
 vi.mock('../tools/salesforce/login-tool', () => ({
@@ -140,7 +119,17 @@ describe('Simple step execution integration', () => {
 		vi.clearAllMocks()
 		browserCallMock.mockReturnValue('nav-ok')
 		page = {} as Page
-		runner = createPlaywrightRunner(page)
+		runner = createPlaywrightRunner(
+			page,
+			testConfig({
+				checkmateModel: 'gpt-4o-mini',
+				checkmateMaxRetries: 0,
+				checkmateToolChoice: 'auto',
+				checkmateRequestTimeout: 5_000,
+				checkmateLoopMaxRepetitions: 3,
+				checkmateSnapshotFilter: true,
+			})
+		)
 	})
 
 	it('runs a step and resolves a passing report', async () => {

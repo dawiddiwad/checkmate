@@ -10,13 +10,8 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
     timeout-minutes: 10
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
-      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-      OPENAI_TEMPERATURE: ${{ secrets.OPENAI_TEMPERATURE }}
-      OPENAI_API_TOKEN_BUDGET_USD: ${{ secrets.OPENAI_API_TOKEN_BUDGET_USD }}
-      OPENAI_API_TOKEN_BUDGET_COUNT: ${{ secrets.OPENAI_API_TOKEN_BUDGET_COUNT }}
-      CHECKMATE_LOG_LEVEL: ${{ secrets.CHECKMATE_LOG_LEVEL }}
+      CHECKMATE_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CHECKMATE_MODEL: ${{ secrets.OPENAI_MODEL }}
 
     steps:
       - uses: actions/checkout@v6

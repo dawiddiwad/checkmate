@@ -4,14 +4,14 @@ import {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { readApiKey, ResolvedConfig } from '../config/resolved-config.js'
 import { logger } from '../logging/index.js'
 import { CheckmateLogger } from '../logging/logger.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { Step } from '../runtime/types.js'
 
 export type AiClientDependencies = {
-	runtimeConfig: RuntimeConfig
+	config: ResolvedConfig
 	toolRegistry: ToolRegistry
 }
 
@@ -26,36 +26,36 @@ export type AiResponse = {
 
 export class AiClient {
 	private client: OpenAI | null = null
-	private readonly runtimeConfig: RuntimeConfig
+	private readonly config: ResolvedConfig
 	private readonly toolRegistry: ToolRegistry
 	private readonly retryableStatus: (number | string)[] = [408, 409, 429, 500, 502, 503, 504]
+	private sendsTemperature = true
 	readonly temperature: number
 
-	constructor({ runtimeConfig, toolRegistry }: AiClientDependencies) {
-		this.runtimeConfig = runtimeConfig
+	constructor({ config, toolRegistry }: AiClientDependencies) {
+		this.config = config
 		this.toolRegistry = toolRegistry
-		this.temperature = this.runtimeConfig.getTemperature()
-	}
-
-	getRuntimeConfig(): RuntimeConfig {
-		return this.runtimeConfig
+		this.temperature = config.temperature
 	}
 
 	async send(messages: ChatCompletionMessageParam[], options: AiSendOptions = {}): Promise<AiResponse> {
 		return this.executeWithRetry(messages, options, async () => {
 			const tools = await this.toolRegistry.getTools()
-			const response = await this.openai().chat.completions.create({
-				model: this.runtimeConfig.getModel(),
-				messages,
-				tools,
-				tool_choice: this.runtimeConfig.getToolChoice(),
-				parallel_tool_calls: false,
-				temperature: this.temperature,
-				reasoning_effort: this.runtimeConfig.getReasoningEffort(),
-				n: 1,
-			})
 
-			return { response, assistantMessages: this.retainAssistantMessages(response) }
+			try {
+				return await this.complete(messages, tools, this.sendsTemperature)
+			} catch (error: unknown) {
+				if (!this.sendsTemperature || !this.rejectsTemperature(error)) {
+					throw error
+				}
+
+				logger.warn(
+					`${this.config.model} does not accept temperature ${this.temperature}; ` +
+						'continuing on the provider default for the rest of this run'
+				)
+				this.sendsTemperature = false
+				return await this.complete(messages, tools, false)
+			}
 		})
 	}
 
@@ -64,15 +64,54 @@ export class AiClient {
 		return Math.ceil(totalChars / 4)
 	}
 
+	private async complete(
+		messages: ChatCompletionMessageParam[],
+		tools: Awaited<ReturnType<ToolRegistry['getTools']>>,
+		withTemperature: boolean
+	): Promise<AiResponse> {
+		const response = await this.openai().chat.completions.create({
+				model: this.config.model,
+				messages,
+				tools,
+				tool_choice: this.config.toolChoice,
+				parallel_tool_calls: false,
+				...(withTemperature ? { temperature: this.temperature } : {}),
+				reasoning_effort: this.config.reasoningEffort,
+				n: 1,
+		})
+
+		return { response, assistantMessages: this.retainAssistantMessages(response) }
+	}
+
+	/**
+	 * Whether the provider rejected the request because of the configured temperature.
+	 *
+	 * Some models — OpenAI's `gpt-5` family and its reasoning models among them — accept only
+	 * their own default temperature and answer any other value with a 400. Detecting that from
+	 * the response is what keeps `checkmateTemperature` working against any OpenAI-compatible
+	 * endpoint; a hard-coded list of model families would go stale the week after it was written.
+	 */
+	private rejectsTemperature(error: unknown): boolean {
+		if (this.getStatus(error) !== 400) {
+			return false
+		}
+
+		if (typeof error === 'object' && error !== null && 'param' in error) {
+			return (error as { param?: unknown }).param === 'temperature'
+		}
+
+		return String(error).toLowerCase().includes('temperature')
+	}
+
 	private openai(): OpenAI {
 		if (!this.client) {
 			this.client = new OpenAI({
-				apiKey: this.runtimeConfig.getApiKey(),
-				baseURL: this.runtimeConfig.getBaseURL(),
-				timeout: this.runtimeConfig.getTimeout(),
+				apiKey: readApiKey(),
+				baseURL: this.config.baseUrl,
+				timeout: this.config.requestTimeout,
 				maxRetries: 0,
-				logLevel: this.runtimeConfig.getLogLevel(),
-				logger: CheckmateLogger.create('ai_client', this.runtimeConfig.getLogLevel()),
+				logLevel: this.config.logLevel,
+				logger: CheckmateLogger.create('ai_client', this.config.logLevel),
 			})
 		}
 
@@ -122,7 +161,7 @@ export class AiClient {
 		options: AiSendOptions,
 		operation: () => Promise<T>
 	): Promise<T> {
-		const maxRetries = this.runtimeConfig.getMaxRetries()
+		const maxRetries = this.config.maxRetries
 		let lastError: Error | null = null
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -204,9 +243,9 @@ export class AiClient {
 		return new Error(
 			[
 				`OpenAI API error [${status}]: ${message}`,
-				`model: ${this.runtimeConfig.getModel()}`,
-				`tool_choice: ${this.runtimeConfig.getToolChoice?.() ?? 'unknown'}`,
-				`reasoning_effort: ${this.runtimeConfig.getReasoningEffort?.() ?? 'unknown'}`,
+				`model: ${this.config.model}`,
+				`tool_choice: ${this.config.toolChoice}`,
+				`reasoning_effort: ${this.config.reasoningEffort ?? 'unset'}`,
 				`temperature: ${this.temperature}`,
 				this.formatStepContext(options.step),
 				`recent_messages:\n${this.formatRecentMessages(messages)}`,

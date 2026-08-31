@@ -1,4 +1,4 @@
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { AgentTool, ToolExecution } from '../tools/types.js'
 import { ContextMessage, Step } from './types.js'
@@ -86,9 +86,9 @@ export type ExtensionTeardown = () => Promise<void> | void
  */
 export type ExtensionSetupApi = {
 	/**
-	 * Runtime config used by the current runner.
+	 * Resolved `checkmate*` configuration for the current runner.
 	 */
-	runtimeConfig: RuntimeConfig
+	config: ResolvedConfig
 
 	/**
 	 * Registers one or more tools.
@@ -267,12 +267,12 @@ export class ExtensionHost {
 	private readonly capabilities = new Map<string, unknown>()
 
 	constructor(
-		private readonly runtimeConfig: RuntimeConfig,
+		private readonly config: ResolvedConfig,
 		private readonly toolRegistry: ToolRegistry,
 		extensions: CheckmateExtension[]
 	) {
 		const api: ExtensionSetupApi = {
-			runtimeConfig,
+			config,
 			addTool: (tool) => this.toolRegistry.register(tool),
 			addInstruction: (instruction) => {
 				if (instruction.trim().length > 0) {

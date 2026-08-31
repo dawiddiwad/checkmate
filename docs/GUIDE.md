@@ -89,42 +89,127 @@ false pass and keeping the evidence on green steps is what makes it detectable.
 Every step ends in a **category** and a **reason**. The category is what a triage agent routes on;
 the reason is the specific event:
 
-| Category | Reason               | What it is evidence of                                                            |
-| -------- | -------------------- | --------------------------------------------------------------------------------- |
-| `app`    | `met-expectation`    | The model observed the app and judged the expectation met.                        |
-| `app`    | `failed-expectation` | The model observed the app and judged the expectation unmet.                      |
-| `model`  | `loop-detected`      | The same tool call repeated — the model is stuck, or the UI state is unreachable. |
-| `infra`  | `tool-error`         | A tool threw unrecoverably, or the model named a tool that does not exist.        |
-| `infra`  | `provider-error`     | The model provider failed after retries, or returned an unusable response.        |
-| `infra`  | `budget-exceeded`    | A token or cost budget was crossed.                                               |
+| Category | Reason                  | What it is evidence of                                                             |
+| -------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| `app`    | `met-expectation`       | The model observed the app and judged the expectation met.                         |
+| `app`    | `failed-expectation`    | The model observed the app and judged the expectation unmet.                       |
+| `model`  | `loop-detected`         | The same tool call repeated — the model is stuck, or the UI state is unreachable.  |
+| `infra`  | `tool-error`            | A tool threw unrecoverably, or the model named a tool that does not exist.         |
+| `infra`  | `provider-error`        | The model provider failed after retries, or returned an unusable response.         |
+| `infra`  | `budget-exceeded`       | A token or cost budget was crossed.                                                |
 
 Checkmate classifies the layer, not the meaning. An `app` outcome says the evidence points at the
 product under test — not whether that is a legitimate UI change or a bug.
 
 ## Configuration Reference
 
-Tests are managed in [Playwright's](https://playwright.dev/docs/test-configuration) standard [config](playwright.config.ts).
+Checkmate is configured in [Playwright's](https://playwright.dev/docs/test-configuration) standard
+[config](playwright.config.ts) as flat `checkmate*` options, set per project and overridable per test.
+Only the provider secrets stay in the environment.
 
-### AI API Settings
+```ts
+// playwright.config.ts
+import { defineConfig } from '@playwright/test'
+import type { CheckmateOptions } from '@xoxoai/checkmate/playwright'
 
-| Variable                                | Default      | Description                                                                                               |
-| --------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`                        | -            | **Required** - Your OpenAI API key (or compatible provider)                                               |
-| `OPENAI_BASE_URL`                       | -            | Optional - Override for compatible providers (Claude, Gemini, local LLMs)                                 |
-| `OPENAI_MODEL`                          | `gpt-5-mini` | Model: gpt-5, gemini-2.5-flash, claude-4-5-sonnet etc.                                                    |
-| `OPENAI_TEMPERATURE`                    | `1.0`        | Creativity (below 0.5 = deterministic, above 0.5 = creative)                                              |
-| `OPENAI_REASONING_EFFORT`               | -            | Optional - Reasoning effort for models: low, medium, high                                                 |
-| `OPENAI_TIMEOUT_SECONDS`                | `60`         | API request timeout in seconds                                                                            |
-| `OPENAI_API_RATE_LIMIT_DELAY_SECONDS`   | `0`          | Optional fixed delay before each API call, useful when your provider is sensitive to burst traffic        |
-| `OPENAI_RETRY_MAX_ATTEMPTS`             | `3`          | Max retries with backoff (1s, 10s, 60s) for rate limits and server errors                                 |
-| `OPENAI_TOOL_CHOICE`                    | `required`   | Tool choice: auto, required, none                                                                         |
-| `OPENAI_ALLOWED_TOOLS`                  | -            | Comma-separated list of allowed tools (if not set, all tools available)                                   |
-| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `false`      | Include compressed screenshots in snapshot responses                                                      |
-| `OPENAI_API_TOKEN_BUDGET_USD`           | -            | Optional - USD budget for total OpenAI API spend per test run. Only positive decimal values are enforced. |
-| `OPENAI_API_TOKEN_BUDGET_COUNT`         | -            | Optional - Token count limit for total tokens per test run. Only positive integers are enforced.          |
-| `OPENAI_LOOP_MAX_REPETITIONS`           | `5`          | Number of repetitive tool call patterns to detect before triggering loop recovery with random temperature |
-| `CHECKMATE_LOG_LEVEL`                   | `off`        | Logging verbosity: debug, info, warn, error, off. `debug` includes model/tool loop diagnostics            |
-| `CHECKMATE_SNAPSHOT_FILTERING`          | `false`      | Enable semantic page snapshot filtering before requests are sent to the model                             |
+export default defineConfig<CheckmateOptions>({
+	use: { checkmateModel: 'gpt-5-mini', checkmateTurnCap: 20 },
+	projects: [
+		{
+			name: 'smoke',
+			use: { checkmateModel: 'gpt-5-mini', checkmateTurnCap: 15, checkmateStepTimeout: 60_000 },
+		},
+		{
+			name: 'unstable-areas',
+			use: { checkmateModel: 'gpt-5', checkmateTurnCap: 30, checkmateBudgetUsd: 2 },
+		},
+	],
+})
+```
+
+```ts
+// hard-flows.spec.ts — overrides the model only; the project's limits stay in force
+test.use({ checkmateModel: 'gpt-5' })
+```
+
+Resolution is Playwright's, per key: package default, then `projects[].use`, then `test.use()`. The keys
+are flat rather than one nested object because Playwright resolves options one key at a time and never
+deep-merges — a nested option would make the `test.use()` above silently discard `checkmateTurnCap`.
+
+### Provider Secrets
+
+| Variable                   | Default | Description                                                             |
+| -------------------------- | ------- | ----------------------------------------------------------------------- |
+| `CHECKMATE_OPENAI_API_KEY` | -       | **Required** - Your API key (OpenAI, or any OpenAI-compatible provider) |
+
+Not an option, because a config file is checked in and an API key is not. The base URL for an
+OpenAI-compatible provider is `checkmateOpenaiBaseUrl` below — it isn't a secret, so it lives with
+the rest of the configuration.
+
+### AI Options
+
+| Option                        | Default             | Description                                                                        |
+| ----------------------------- | ------------------- | ---------------------------------------------------------------------------------- |
+| `checkmateModel`              | `gpt-5-mini`        | Which model runs the step: gpt-5, gemini-2.5-flash, claude-4-5-sonnet, etc.        |
+| `checkmateOpenaiBaseUrl`      | unset               | Base URL of the OpenAI-compatible endpoint. Unset uses the provider default        |
+| `checkmateReasoningEffort`    | unset               | Provider reasoning effort, when supported: `low`, `medium`, `high`                 |
+| `checkmateTemperature`        | `0`                 | Sampling temperature sent with every request                                       |
+| `checkmateTurnCap`            | `20`                | Model turns before the step is terminated                                          |
+| `checkmateStepTimeout`        | `120_000`           | Wall-clock budget for one step, in milliseconds                                    |
+| `checkmateBudgetUsd`          | unset               | USD ceiling per test. Must be positive                                             |
+| `checkmateBudgetTokens`       | unset               | Token ceiling per test. Must be a positive integer                                 |
+| `checkmateSnapshotFilter`     | `false`             | Whether semantic ARIA snapshot filtering is applied                                |
+| `checkmateSnapshotTopPercent` | `10`                | How much of the scored snapshot is kept when filtering, as a percent from 1 to 100 |
+| `checkmateEvidence`           | `retain-on-failure` | How much evidence attaches per step: `on`, `retain-on-failure`, `off`              |
+| `checkmateRedact`             | `true`              | Whether captured evidence is scrubbed. Turning it off is a local-only escape hatch |
+| `checkmateScreenshots`        | `false`             | Include a compressed screenshot of the active page with each snapshot              |
+| `checkmateToolChoice`         | `required`          | How the provider is told to pick tools: `auto`, `required`, `none`                 |
+| `checkmateAllowedTools`       | `[]`                | Tool names the model may call. Empty means every registered tool                   |
+| `checkmateMaxRetries`         | `3`                 | Provider retries with backoff (1s, 10s, 60s) for rate limits and server errors     |
+| `checkmateRequestTimeout`     | `60_000`            | Timeout for one provider request, in milliseconds                                  |
+| `checkmateLoopMaxRepetitions` | `5`                 | Repeated tool-call patterns tolerated before the step is reported `model` / stuck  |
+| `checkmateRateLimitDelay`     | `0`                 | Fixed delay before each provider request, in milliseconds                          |
+| `checkmateLogLevel`           | `off`               | Console verbosity: `debug`, `info`, `warn`, `error`, `off`                         |
+
+`checkmateTemperature` defaults to `0` rather than the provider default, so a rerun differs as little
+as the model allows — including through loop-detection recovery, which no longer randomises it. Some
+models accept only their own default and answer any other value with a 400 — OpenAI's `gpt-5` family
+among them. Checkmate detects that response, drops the parameter, and continues on the provider
+default for the rest of the run, so setting `checkmateTemperature` against those models has no effect.
+
+An option value that cannot be used fails the test that set it, with every problem listed at once,
+rather than falling back to a default.
+
+### Migrating from 0.4.x
+
+The environment variables that configured Checkmate were removed in 0.5.0 and are **not** read as a
+fallback. A stale one is an error at startup rather than something quietly ignored, because the hazard
+is the quiet break — an `OPENAI_MODEL` that stops applying, first noticed on the invoice:
+
+```text
+✗ OPENAI_MODEL is set but no longer read (removed in 0.5.0).
+  Move it to playwright.config.ts:  use: { checkmateModel: 'gpt-4.1-mini' }
+  Set CHECKMATE_ALLOW_LEGACY_ENV=1 to suppress this check.
+```
+
+| Removed variable                        | Replacement                                                          |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `OPENAI_MODEL`                          | `checkmateModel`                                                     |
+| `OPENAI_BASE_URL`                       | `checkmateOpenaiBaseUrl`                                             |
+| `OPENAI_TEMPERATURE`                    | `checkmateTemperature`                                               |
+| `OPENAI_REASONING_EFFORT`               | `checkmateReasoningEffort`                                           |
+| `OPENAI_TOOL_CHOICE`                    | `checkmateToolChoice`                                                |
+| `OPENAI_ALLOWED_TOOLS`                  | `checkmateAllowedTools`                                              |
+| `OPENAI_RETRY_MAX_ATTEMPTS`             | `checkmateMaxRetries`                                                |
+| `OPENAI_TIMEOUT_SECONDS`                | `checkmateRequestTimeout` (milliseconds)                             |
+| `OPENAI_API_RATE_LIMIT_DELAY_SECONDS`   | `checkmateRateLimitDelay` (milliseconds)                             |
+| `OPENAI_API_TOKEN_BUDGET_USD`           | `checkmateBudgetUsd`                                                 |
+| `OPENAI_API_TOKEN_BUDGET_COUNT`         | `checkmateBudgetTokens`                                              |
+| `OPENAI_LOOP_MAX_REPETITIONS`           | `checkmateLoopMaxRepetitions`                                        |
+| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `checkmateScreenshots`                                               |
+| `CHECKMATE_SNAPSHOT_FILTERING`          | `checkmateSnapshotFilter`                                            |
+| `CHECKMATE_LOG_LEVEL`                   | `checkmateLogLevel`                                                  |
+| `OPENAI_API_KEY`                        | renamed to `CHECKMATE_OPENAI_API_KEY`; still an environment variable |
 
 ## Writing Effective Tests
 
@@ -231,15 +316,15 @@ test, `ai.step` runs that loop and turns the report into a test result.
 
 ### Budgeting & Cost Limits
 
-You can set one or both token budget environment variables to enforce limits during a single test run.
+You can set one or both token budget options to enforce limits during a single test.
 
-- `OPENAI_API_TOKEN_BUDGET_USD` — Sets a USD budget (e.g. 0.50) per test execution. The framework checks the current estimated cost (input+output tokens) and throws an error if the budget is exceeded.
-- `OPENAI_API_TOKEN_BUDGET_COUNT` — Sets a token limit (e.g. 100000). The framework tracks input and output tokens across the test and throws an error when the total exceeds this limit.
+- `checkmateBudgetUsd` — a USD budget (e.g. `0.5`) per test. Checkmate checks the current estimated cost (input + output tokens) and terminates the step as `infra` / `budget-exceeded` when it is crossed.
+- `checkmateBudgetTokens` — a token limit (e.g. `100_000`). Checkmate tracks input and output tokens across the test and terminates when the total exceeds it.
 
 Notes:
 
-- Only positive numbers are enforced; `0` or non-positive values are effectively treated as disabled.
-- If the env var is unset or invalid (non-number), it is ignored.
+- Both are unset by default, which means no ceiling.
+- A non-positive value fails the test that set it rather than being silently treated as disabled.
 
 ### Using Snapshot Filtering for Token Optimization
 
@@ -271,7 +356,7 @@ debug: Filtered to 21 elements from top 20%
 debug: Reduced snapshot from 4283 to 326 chars (92% reduction)
 ```
 
-Feature is controlled by the `CHECKMATE_SNAPSHOT_FILTERING` environment variable (default: `false`). Set it explicitly to `true` to enable filtering. `search` is now an explicit keyword query override, and `topPercent` lets you tune how much of the scored snapshot should be kept for a specific step.
+Filtering is controlled by the `checkmateSnapshotFilter` option (default: `false`). Set it to `true` in `playwright.config.ts`, or per file with `test.use({ checkmateSnapshotFilter: true })`. `checkmateSnapshotTopPercent` sets how much of the scored snapshot is kept by default; a step's `search` is an explicit keyword query override, and its `topPercent` overrides the option for that step.
 
 The model can still request a full snapshot with the browser snapshot tool if the filtered tree is insufficient, so steps should not fail just because the initial snapshot was compact.
 
@@ -394,10 +479,10 @@ npx playwright show-report test-reports/html
 
 **Solutions**:
 
-- Set `CHECKMATE_LOG_LEVEL=debug` to see response summaries, tool calls, available tools, and recent message summaries
+- Set `checkmateLogLevel: 'debug'` to see response summaries, tool calls, available tools, and recent message summaries
 - Check the failure output for the step `action` / `expect`, tool name, raw arguments, and provider error details
 - Make the step action more direct and mention the expected interaction target
-- If you restrict tools with `OPENAI_ALLOWED_TOOLS` and need JavaScript dialog control, include `browser_set_dialog_response` with the browser action tools.
+- If you restrict tools with `checkmateAllowedTools` and need JavaScript dialog control, include `browser_set_dialog_response` with the browser action tools.
 - If a restricted-tool test needs tab or popup control, include `browser_list_tabs`, `browser_select_tab`, and `browser_close_tab`.
 
 ### Tests loop during step execution
@@ -406,8 +491,9 @@ npx playwright show-report test-reports/html
 
 **Solutions**:
 
-- Increase `OPENAI_TEMPERATURE` to encourage exploration
+- `checkmateTemperature` defaults to `0`, so a rerun differs as little as the model allows — lower it further only for a specific reason; models that reject the value fall back to their own default
 - Use a reasoning/thinking model (if available) to improve planning and avoid repetitive loops
+- Lower `checkmateLoopMaxRepetitions` so a stuck step is reported sooner instead of burning turns
 
 ### High token costs
 
@@ -415,8 +501,9 @@ npx playwright show-report test-reports/html
 
 **Solutions**:
 
-- Set a lower reasoning effort: `OPENAI_REASONING_EFFORT`
-- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT`
+- Set a lower reasoning effort: `checkmateReasoningEffort`
+- Consider leaving `checkmateScreenshots` off
+- Set `checkmateBudgetUsd` per project so a runaway step is stopped rather than paid for
 - Use a cheaper model, lower-end models often perform well (e.g., `gemini-2.5-flash-lite` or `gpt-5-nano`)
 
 ### Rate limiting errors
@@ -428,7 +515,8 @@ npx playwright show-report test-reports/html
 - The framework automatically retries with backoff (1s, 10s, 60s)
 - Upgrade your API plan with your provider
 - Reduce concurrent test execution
-- Increase `OPENAI_TIMEOUT_SECONDS` if needed
+- Add a `checkmateRateLimitDelay` when your provider is sensitive to burst traffic
+- Increase `checkmateRequestTimeout` if needed
 
 ### Timeout errors
 
@@ -436,7 +524,7 @@ npx playwright show-report test-reports/html
 
 **Solutions**:
 
-- Increase `OPENAI_TIMEOUT_SECONDS` in your `.env` file
+- Increase `checkmateRequestTimeout` in `playwright.config.ts`
 - Mention expected wait times in your action descriptions
 - Break long-running actions into smaller steps
 
@@ -508,8 +596,8 @@ npx playwright show-report test-reports/html
 
 **Configuration**
 
-- Test, Reporting and Browser settings: [playwright.config.ts](../playwright.config.ts)
-- API & AI settings: `.env` file
+- Test, reporting, browser, and `checkmate*` settings: [playwright.config.ts](../playwright.config.ts)
+- Provider secrets only: `.env` file
 
 ## Advanced Topics
 

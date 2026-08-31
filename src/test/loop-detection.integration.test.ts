@@ -1,33 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { LoopDetector, LoopDetectedError } from '../tools/loop-detector'
-import { RuntimeConfig } from '../config/runtime-config'
+import { resolveConfig } from '../config/resolved-config'
 import { ToolCall } from '../tools/tool-contract'
 
 /**
- * Simplified integration tests for LoopDetector with ConfigurationManager
- * Tests that loop detection configuration is properly read and applied
+ * Integration tests for LoopDetector and the resolved `checkmateLoopMaxRepetitions` option.
  */
 describe('Loop Detection Integration Tests', () => {
 	let loopDetector: LoopDetector
-	let originalEnv: string | undefined
 
-	beforeEach(() => {
-		originalEnv = process.env.OPENAI_LOOP_MAX_REPETITIONS
-	})
+	function detectorFor(maxRepetitions: number): LoopDetector {
+		return new LoopDetector(resolveConfig({ checkmateLoopMaxRepetitions: maxRepetitions }).loopMaxRepetitions)
+	}
 
-	afterEach(() => {
-		if (originalEnv) {
-			process.env.OPENAI_LOOP_MAX_REPETITIONS = originalEnv
-		} else {
-			delete process.env.OPENAI_LOOP_MAX_REPETITIONS
-		}
-	})
-
-	it('should use configuration from environment for max repetitions', () => {
-		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
-
-		const configManager = new RuntimeConfig()
-		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
+	it('uses the resolved max repetitions option', () => {
+		loopDetector = detectorFor(2)
 
 		const toolCall: ToolCall = {
 			name: 'browser_click',
@@ -42,10 +29,7 @@ describe('Loop Detection Integration Tests', () => {
 	})
 
 	it('should detect single-tool loop with configured threshold', () => {
-		process.env.OPENAI_LOOP_MAX_REPETITIONS = '3'
-
-		const configManager = new RuntimeConfig()
-		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
+		loopDetector = detectorFor(3)
 
 		const toolCall: ToolCall = {
 			name: 'browser_navigate',
@@ -61,10 +45,7 @@ describe('Loop Detection Integration Tests', () => {
 	})
 
 	it('should detect multi-tool pattern loop', () => {
-		process.env.OPENAI_LOOP_MAX_REPETITIONS = '3'
-
-		const configManager = new RuntimeConfig()
-		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
+		loopDetector = detectorFor(3)
 
 		const toolCall1: ToolCall = {
 			name: 'browser_click',
@@ -88,10 +69,7 @@ describe('Loop Detection Integration Tests', () => {
 	})
 
 	it('should include pattern details in error message', () => {
-		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
-
-		const configManager = new RuntimeConfig()
-		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
+		loopDetector = detectorFor(2)
 
 		const toolCall: ToolCall = {
 			name: 'browser_type',
@@ -112,10 +90,7 @@ describe('Loop Detection Integration Tests', () => {
 	})
 
 	it('should reset detector state after throwing', () => {
-		process.env.OPENAI_LOOP_MAX_REPETITIONS = '2'
-
-		const configManager = new RuntimeConfig()
-		loopDetector = new LoopDetector(configManager.getLoopMaxRepetitions())
+		loopDetector = detectorFor(2)
 
 		const toolCall: ToolCall = {
 			name: 'browser_click',

@@ -10,7 +10,11 @@
  *   - Ollama: search for "qwen3" and open the qwen3-vl model page.
  *   - HuggingFace: search for "Qwen3-VL-4B" and open the model page.
  *   - Mojeek: search Playwright docs and open the Planner Agent page.
- *   - NYPL: check availability for "The Catcher in the Rye" - with and without fuzzy search.
+ *   - NYPL: check availability for "The Catcher in the Rye" - with and without snapshot filtering.
+ *
+ * @note
+ * Checkmate is configured through `checkmate*` options in `playwright.config.ts`.
+ * `test.use({ ... })` overrides them per file or per describe block, one key at a time.
  *
  * - Multi-step (polymer-shop):
  *   - Full AI mode: all steps executed via `ai.step`.
@@ -34,7 +38,7 @@ test.describe('single-step : quick examples', async () => {
 			expect: `
 			qwen3-vl:235b model page is displayed with model details,
 			describing its features and capabilities,
-			there are 5 browser tabs opened.`,
+			single browser tab is opened.`,
 		})
 	})
 
@@ -80,23 +84,37 @@ test.describe('single-step : quick examples', async () => {
 		})
 	})
 
-	test('searching new york public library - fuzzy search enabled', async ({ ai }) => {
-		await test.step('the catcher in the rye availability', async () => {
-			await ai.step({
-				action: `
-                Navigate to https://www.nypl.org. 
-                Search for 'The Catcher in the Rye'.`,
-				expect: `
-				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+	test.describe('snapshot filtering', () => {
+		// Semantic snapshot filtering is off by default; this block turns it on for its tests only.
+		test.use({ checkmateSnapshotFilter: true, checkmateSnapshotTopPercent: 10 })
 
-				search: ['search', 'the catcher in the rye', 'shelf'],
-				topPercent: 10, // aggressive snapshot filtering (top 10% of elements on page)
+		test('searching new york public library - snapshot filtering enabled', async ({ ai }) => {
+			await test.step('the catcher in the rye availability', async () => {
+				await ai.step({
+					action: `
+					Navigate to https://www.nypl.org.
+					Search for 'The Catcher in the Rye'.`,
+					expect: `
+					'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+
+					search: ['search', 'the catcher in the rye', 'shelf'],
+					topPercent: 10, // this step overrides the project's checkmateSnapshotTopPercent
+				})
 			})
 		})
 	})
 })
 
 test.describe('multi-step : Polymer Shop : full AI mode', async () => {
+	// A longer flow gets a stronger model and more headroom. Playwright resolves each option
+	// key on its own, so the project's other `checkmate*` values stay in force here.
+	// In a suite pinned to one provider the model is just a literal, e.g. `checkmateModel: 'gpt-5'`.
+	test.use({
+		checkmateModel: process.env.CHECKMATE_MODEL ?? 'gpt-5-mini',
+		checkmateTurnCap: 25,
+		checkmateStepTimeout: 180_000,
+	})
+
 	test.beforeEach(async ({ ai }) => {
 		await ai.step({
 			action: `Navigate to https://shop.polymer-project.org/`,

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessageHistory } from '../ai/message-history'
 import { ToolResponseHandler } from '../ai/tool-response-handler'
-import { RuntimeConfig } from '../config/runtime-config'
+import { LogLevel } from '../logging/logger'
 import { logger } from '../logging'
 import { ToolExecution, ToolResponse } from '../tools/types'
+import { testConfig } from './test-types'
 
 vi.mock('../../src/logging', () => ({
 	logger: {
@@ -14,8 +15,8 @@ vi.mock('../../src/logging', () => ({
 	},
 }))
 
-function createHandler(logLevel = 'off'): ToolResponseHandler {
-	return new ToolResponseHandler({ getLogLevel: () => logLevel } as unknown as RuntimeConfig, new MessageHistory())
+function createHandler(logLevel: LogLevel = 'off'): ToolResponseHandler {
+	return new ToolResponseHandler(testConfig({ checkmateLogLevel: logLevel }), new MessageHistory())
 }
 
 function execution(toolCallId: string, name: string, args: unknown, toolResponse: ToolResponse): ToolExecution {
@@ -208,6 +209,7 @@ describe('ToolResponseHandler', () => {
 				'browser_upload',
 				{
 					OPENAI_API_KEY: 'openai-secret-value',
+					CHECKMATE_OPENAI_API_KEY: 'checkmate-secret-value',
 					api_key: 'snake-secret-value',
 					apiKey: 'camel-secret-value',
 					authorization: 'Bearer auth-secret-value',
@@ -216,7 +218,7 @@ describe('ToolResponseHandler', () => {
 				},
 				{
 					name: 'browser_upload',
-					response: `failed OPENAI_API_KEY=response-secret api_key=response-snake authorization=Bearer response-auth cookie=session=response-cookie data:image/png;base64,${base64}`,
+					response: `failed OPENAI_API_KEY=response-secret CHECKMATE_OPENAI_API_KEY=response-checkmate-secret api_key=response-snake authorization=Bearer response-auth cookie=session=response-cookie data:image/png;base64,${base64}`,
 					snapshot: null,
 					status: 'error',
 				}
@@ -234,11 +236,13 @@ describe('ToolResponseHandler', () => {
 
 		for (const secret of [
 			'openai-secret-value',
+			'checkmate-secret-value',
 			'snake-secret-value',
 			'camel-secret-value',
 			'auth-secret-value',
 			'cookie-secret-value',
 			'response-secret',
+			'response-checkmate-secret',
 			'response-snake',
 			'response-auth',
 			'response-cookie',
@@ -247,7 +251,14 @@ describe('ToolResponseHandler', () => {
 			expect(warnings).not.toContain(secret)
 		}
 
-		for (const keyName of ['OPENAI_API_KEY', 'api_key', 'apiKey', 'authorization', 'cookie']) {
+		for (const keyName of [
+			'OPENAI_API_KEY',
+			'CHECKMATE_OPENAI_API_KEY',
+			'api_key',
+			'apiKey',
+			'authorization',
+			'cookie',
+		]) {
 			expect(warnings).not.toContain(keyName)
 		}
 	})

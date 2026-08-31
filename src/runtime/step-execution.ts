@@ -4,7 +4,7 @@ import { MessageHistory } from '../ai/message-history.js'
 import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts.js'
 import { BudgetExceededError, TokenTracker } from '../ai/token-tracker.js'
 import { TurnProcessor } from '../ai/turn-processor.js'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { logger } from '../logging/index.js'
 import { ToolDispatchError } from '../tools/dispatcher.js'
 import { LoopDetector } from '../tools/loop-detector.js'
@@ -14,7 +14,7 @@ import { StepEvidence, StepTermination } from './step-evidence.js'
 import { ContextMessage, Step, StepReport, TerminationReason } from './types.js'
 
 export type StepExecutionDependencies = {
-	runtimeConfig: RuntimeConfig
+	config: ResolvedConfig
 	aiClient: AiClient
 	toolRegistry: ToolRegistry
 	extensionHost: ExtensionHost
@@ -22,7 +22,7 @@ export type StepExecutionDependencies = {
 }
 
 export class StepExecution {
-	private readonly runtimeConfig: RuntimeConfig
+	private readonly config: ResolvedConfig
 	private readonly aiClient: AiClient
 	private readonly toolRegistry: ToolRegistry
 	private readonly extensionHost: ExtensionHost
@@ -30,8 +30,8 @@ export class StepExecution {
 	private readonly messages: ChatCompletionMessageParam[] = []
 	private readonly ephemeralMessages = new Set<ChatCompletionMessageParam>()
 
-	constructor({ runtimeConfig, aiClient, toolRegistry, extensionHost, tokenTracker }: StepExecutionDependencies) {
-		this.runtimeConfig = runtimeConfig
+	constructor({ config, aiClient, toolRegistry, extensionHost, tokenTracker }: StepExecutionDependencies) {
+		this.config = config
 		this.aiClient = aiClient
 		this.toolRegistry = toolRegistry
 		this.extensionHost = extensionHost
@@ -41,12 +41,12 @@ export class StepExecution {
 	async run(step: Step): Promise<StepReport> {
 		logger.info(`step started:\n${JSON.stringify(step, null, 2).replaceAll('  ', '').trim()}`)
 
-		const model = this.runtimeConfig.getModel()
+		const model = this.config.model
 		const evidence = new StepEvidence({ step, model })
 		const turnProcessor = new TurnProcessor({
-			runtimeConfig: this.runtimeConfig,
+			config: this.config,
 			toolRegistry: this.toolRegistry,
-			loopDetector: new LoopDetector(this.runtimeConfig.getLoopMaxRepetitions()),
+			loopDetector: new LoopDetector(this.config.loopMaxRepetitions),
 			evidence,
 		})
 
@@ -60,53 +60,53 @@ export class StepExecution {
 		this.appendContext(await this.extensionHost.buildInitialMessages(step))
 
 		let turns = 0
-		for (;;) {
-			turns++
+			for (;;) {
+				turns++
 
-			try {
-				const { response, assistantMessages } = await this.aiClient.send(this.messages, { step })
-				this.messages.push(...assistantMessages)
-				this.tokenTracker.log(response, this.aiClient.countHistoryTokens(this.messages), model)
-				evidence.recordUsage(response.usage)
+				try {
+					const { response, assistantMessages } = await this.aiClient.send(this.messages, { step })
+					this.messages.push(...assistantMessages)
+					this.tokenTracker.log(response, this.aiClient.countHistoryTokens(this.messages), model)
+					evidence.recordUsage(response.usage)
 
-				const outcome = await turnProcessor.process({ response, step, turn: turns })
+					const outcome = await turnProcessor.process({ response, step, turn: turns })
 
-				if (outcome.kind === 'assertion') {
-					return this.finish(evidence, {
-						outcome: outcome.passed ? 'passed' : 'failed',
-						reason: outcome.passed ? 'met-expectation' : 'failed-expectation',
-						actual: outcome.actual,
-						turns,
-					})
-				}
+					if (outcome.kind === 'assertion') {
+						return this.finish(evidence, {
+							outcome: outcome.passed ? 'passed' : 'failed',
+							reason: outcome.passed ? 'met-expectation' : 'failed-expectation',
+							actual: outcome.actual,
+							turns,
+						})
+					}
 
-				if (outcome.kind === 'stuck') {
+					if (outcome.kind === 'stuck') {
+						return this.finish(evidence, {
+							outcome: 'failed',
+							reason: 'loop-detected',
+							actual: 'the model repeated the same tool calls without reaching a result',
+							turns,
+						})
+					}
+
+					this.dropEphemeralMessages()
+					this.messages.push(...outcome.messages)
+					this.appendContext(
+						await this.extensionHost.handleToolResponses({
+							step,
+							turn: turns,
+							toolResponses: outcome.toolResults,
+						})
+					)
+				} catch (error) {
 					return this.finish(evidence, {
 						outcome: 'failed',
-						reason: 'loop-detected',
-						actual: 'the model repeated the same tool calls without reaching a result',
+						reason: infraReason(error),
+						actual: describeError(error),
 						turns,
 					})
 				}
-
-				this.dropEphemeralMessages()
-				this.messages.push(...outcome.messages)
-				this.appendContext(
-					await this.extensionHost.handleToolResponses({
-						step,
-						turn: turns,
-						toolResponses: outcome.toolResults,
-					})
-				)
-			} catch (error) {
-				return this.finish(evidence, {
-					outcome: 'failed',
-					reason: infraReason(error),
-					actual: describeError(error),
-					turns,
-				})
 			}
-		}
 	}
 
 	private finish(evidence: StepEvidence, termination: StepTermination): StepReport {

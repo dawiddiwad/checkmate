@@ -1,6 +1,6 @@
 import { Page } from '@playwright/test'
 import { parse } from 'yaml'
-import { RuntimeConfig } from '../../config/runtime-config.js'
+import { ResolvedConfig } from '../../config/resolved-config.js'
 import { logger } from '../../logging/index.js'
 import { Step } from '../../runtime/types.js'
 import { filterSnapshot } from './snapshot-filter/index.js'
@@ -12,10 +12,9 @@ export interface SnapshotServiceOptions {
 }
 
 export class SnapshotService {
-	private readonly runtimeConfig = new RuntimeConfig()
-
 	constructor(
 		private readonly page: Page | null,
+		private readonly config: ResolvedConfig,
 		private readonly step?: Step,
 		private readonly options: SnapshotServiceOptions = {}
 	) {}
@@ -57,8 +56,10 @@ export class SnapshotService {
 
 	private async compress(snapshot: string): Promise<string> {
 		const snapshotTree = parse(snapshot)?.[0] ?? { state: 'page is blank - navigate to a relevant page url' }
-		const shouldSkipFilter = this.options.skipFilter || !this.runtimeConfig.isSnapshotFilteringEnabled()
-		const processed = shouldSkipFilter ? snapshotTree : await filterSnapshot(snapshotTree, this.step)
+		const shouldSkipFilter = this.options.skipFilter || !this.config.snapshotFilter
+		const processed = shouldSkipFilter
+			? snapshotTree
+			: await filterSnapshot(snapshotTree, this.step, this.config.snapshotTopPercent)
 		const minifiedSnapshot = `page snapshot:\n${this.minify(JSON.stringify(processed))}`
 		return this.redactAds(`${await this.getHeader()}\n${minifiedSnapshot}`)
 	}

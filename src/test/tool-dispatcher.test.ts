@@ -3,8 +3,9 @@ import { ToolDispatcher } from '../tools/dispatcher'
 import { LoopDetector } from '../tools/loop-detector'
 import { ToolRegistry } from '../tools/registry'
 import { AgentTool } from '../tools/types'
-import { RuntimeConfig } from '../config/runtime-config'
+import { LogLevel } from '../logging/logger'
 import { logger } from '../logging'
+import { testConfig } from './test-types'
 
 vi.mock('../../src/logging', () => ({
 	logger: {
@@ -15,12 +16,12 @@ vi.mock('../../src/logging', () => ({
 	},
 }))
 
-function createConfig(allowedNames: string[] = [], logLevel = 'off'): RuntimeConfig {
-	return {
-		getAllowedFunctionNames: vi.fn().mockReturnValue(allowedNames),
-		getLoopMaxRepetitions: vi.fn().mockReturnValue(10),
-		getLogLevel: vi.fn().mockReturnValue(logLevel),
-	} as unknown as RuntimeConfig
+function createConfig(allowedNames: string[] = [], logLevel: LogLevel = 'off') {
+	return testConfig({
+		checkmateAllowedTools: allowedNames,
+		checkmateLoopMaxRepetitions: 10,
+		checkmateLogLevel: logLevel,
+	})
 }
 
 function createTool(name: string, execute: AgentTool['execute']): AgentTool {

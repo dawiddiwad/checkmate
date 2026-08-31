@@ -1,6 +1,6 @@
 import { Page } from '@playwright/test'
 import { describe, expect, it, vi } from 'vitest'
-import { RuntimeConfig } from '../config/runtime-config'
+import { testConfig } from './test-types'
 import { ExtensionHost } from '../runtime/extension'
 import { ToolRegistry } from '../tools/registry'
 import { web } from '../playwright'
@@ -81,12 +81,12 @@ describe('Playwright web extension', () => {
 		const context = createMockContext()
 		const page = createMockPage(context)
 		const extension = web({ page: page as unknown as Page })
-		const activePage = createMockPage(context)
 		const host = new ExtensionHost(
-			{ includeScreenshotInSnapshot: () => true } as RuntimeConfig,
+			testConfig({ checkmateScreenshots: true }),
 			{ register: vi.fn() } as unknown as ToolRegistry,
 			[extension]
 		)
+		const activePage = createMockPage(context)
 
 		const contextMessages = await host.handleToolResponses({
 			step: { action: 'act', expect: 'done' },
@@ -106,7 +106,7 @@ describe('Playwright web extension', () => {
 		const context = createMockContext()
 		const page = createMockPage(context)
 		const host = new ExtensionHost(
-			{ includeScreenshotInSnapshot: () => false } as RuntimeConfig,
+			testConfig({ checkmateScreenshots: false }),
 			{ register: vi.fn() } as unknown as ToolRegistry,
 			[web({ page: page as unknown as Page })]
 		)

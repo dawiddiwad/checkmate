@@ -4,6 +4,7 @@ import { Step } from '../runtime/types'
 import { Page } from '@playwright/test'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { createPlaywrightRunner } from '../playwright'
+import { testConfig } from './test-types'
 
 interface TestableRunner {
 	aiClient: {
@@ -11,23 +12,6 @@ interface TestableRunner {
 		countHistoryTokens: Mock
 	}
 }
-
-vi.mock('../../src/config/runtime-config', () => ({
-	RuntimeConfig: class {
-		getLogLevel = vi.fn().mockReturnValue('off')
-		getApiKey = vi.fn().mockReturnValue('test-key')
-		getBaseURL = vi.fn().mockReturnValue(undefined)
-		getModel = vi.fn().mockReturnValue('gpt-4o-mini')
-		getTimeout = vi.fn().mockReturnValue(60000)
-		getMaxRetries = vi.fn().mockReturnValue(3)
-		getTemperature = vi.fn().mockReturnValue(1)
-		getLoopMaxRepetitions = vi.fn().mockReturnValue(5)
-		getTokenBudgetUSD = vi.fn().mockReturnValue(undefined)
-		getTokenBudgetCount = vi.fn().mockReturnValue(undefined)
-		getApiRateLimitDelayMs = vi.fn().mockReturnValue(0)
-		includeScreenshotInSnapshot = vi.fn().mockReturnValue(false)
-	},
-}))
 
 vi.mock('../../src/logging/logger', () => ({
 	CheckmateLogger: {
@@ -65,7 +49,7 @@ vi.mock('../../src/tools/registry', () => ({
 		getTools = vi.fn().mockResolvedValue([])
 		resolve = vi.fn().mockReturnValue(undefined)
 		getRegisteredToolNames = vi.fn().mockReturnValue([])
-		getRuntimeConfig = vi.fn()
+		getConfig = vi.fn()
 	},
 }))
 
@@ -122,7 +106,7 @@ describe('CheckmateRunner', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		mockPage = {} as Page
-		runner = createPlaywrightRunner(mockPage)
+		runner = createPlaywrightRunner(mockPage, testConfig({ checkmateModel: 'gpt-4o-mini' }))
 		mockStep = {
 			action: 'Click the submit button',
 			expect: 'Button should be clicked',

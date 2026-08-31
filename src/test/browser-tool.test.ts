@@ -3,6 +3,7 @@ import { Page } from '@playwright/test'
 import { BrowserTool, BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
 import { AgentTool, AgentToolContext } from '../tools/types'
 import { MockBrowserContext, MockPage, MockLocator } from './test-types'
+import { testConfig } from './test-types'
 
 const trackerMocks = vi.hoisted(() => ({
 	startMock: vi.fn().mockResolvedValue(undefined),
@@ -115,7 +116,7 @@ describe('Browser tools', () => {
 		mockContext = createMockContext()
 		mockPage = createMockPage(mockContext)
 
-		runtime = new BrowserToolRuntime(mockPage as unknown as Page)
+		runtime = new BrowserToolRuntime(mockPage as unknown as Page, testConfig())
 		tools = createBrowserTools(runtime)
 		context = {
 			step: { action: 'act', expect: 'done' },

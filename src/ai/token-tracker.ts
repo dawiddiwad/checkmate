@@ -1,5 +1,5 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { logger } from '../logging/index.js'
 import { TokenPricing } from './token-pricing.js'
 
@@ -20,7 +20,7 @@ export class TokenTracker {
 	private _outputTokensUsedForTest = 0
 	private _outputTokensUsedForStep = 0
 
-	constructor(private config = new RuntimeConfig()) {}
+	constructor(private readonly config: ResolvedConfig) {}
 
 	private get inputTokensUsedForTest(): number {
 		return this._inputTokensUsedForTest
@@ -77,12 +77,12 @@ export class TokenTracker {
 	}
 
 	private checkBudget() {
-		const budgetUSD = this.config.getTokenBudgetUSD()
-		const budgetTokens = this.config.getTokenBudgetCount()
+		const budgetUSD = this.config.budgetUsd
+		const budgetTokens = this.config.budgetTokens
 
 		if (budgetUSD) {
 			const totalCostUSD = TokenPricing.totalPriceUSD(
-				this.config.getModel(),
+				this.config.model,
 				this.inputTokensUsedForTest,
 				this.outputTokensUsedForTest,
 				this.cachedInputTokensUsedForTest

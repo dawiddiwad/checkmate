@@ -1,4 +1,4 @@
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig, resolveConfig } from '../config/resolved-config.js'
 import { Step, StepReport } from './types.js'
 import { createStepResultTools } from '../tools/step/result-tool.js'
 import { ToolRegistry } from '../tools/registry.js'
@@ -6,6 +6,7 @@ import { AiClient } from '../ai/client.js'
 import { TokenTracker } from '../ai/token-tracker.js'
 import { StepExecution } from './step-execution.js'
 import { CheckmateExtension, ExtensionHost } from './extension.js'
+import { setLogLevel } from '../logging/index.js'
 
 /**
  * Options for creating a Checkmate runner.
@@ -27,9 +28,12 @@ export type CheckmateRunnerOptions = {
 	extensions?: CheckmateExtension[]
 
 	/**
-	 * Advanced: provide a custom runtime config instance.
+	 * Resolved `checkmate*` configuration for this runner.
+	 *
+	 * Inside a Playwright test the `ai` fixture supplies this from the `checkmateConfig`
+	 * fixture. A script that drives the runner directly builds one with `resolveConfig()`.
 	 */
-	runtimeConfig?: RuntimeConfig
+	config?: ResolvedConfig
 }
 
 /**
@@ -49,7 +53,7 @@ export type CheckmateRunnerOptions = {
  * ```
  */
 export class CheckmateRunner {
-	private readonly runtimeConfig: RuntimeConfig
+	private readonly config: ResolvedConfig
 	private readonly toolRegistry: ToolRegistry
 	private readonly tokenTracker: TokenTracker
 	private readonly aiClient: AiClient
@@ -66,12 +70,13 @@ export class CheckmateRunner {
 	 * ```
 	 */
 	constructor(options: CheckmateRunnerOptions = {}) {
-		this.runtimeConfig = options.runtimeConfig ?? new RuntimeConfig()
-		this.toolRegistry = new ToolRegistry(this.runtimeConfig)
+		this.config = options.config ?? resolveConfig()
+		setLogLevel(this.config.logLevel)
+		this.toolRegistry = new ToolRegistry(this.config)
 		this.toolRegistry.register(createStepResultTools())
-		this.tokenTracker = new TokenTracker(this.runtimeConfig)
-		this.extensionHost = new ExtensionHost(this.runtimeConfig, this.toolRegistry, options.extensions ?? [])
-		this.aiClient = new AiClient({ runtimeConfig: this.runtimeConfig, toolRegistry: this.toolRegistry })
+		this.tokenTracker = new TokenTracker(this.config)
+		this.extensionHost = new ExtensionHost(this.config, this.toolRegistry, options.extensions ?? [])
+		this.aiClient = new AiClient({ config: this.config, toolRegistry: this.toolRegistry })
 	}
 
 	/**
@@ -102,7 +107,7 @@ export class CheckmateRunner {
 	 */
 	async run(step: Step): Promise<StepReport> {
 		return new StepExecution({
-			runtimeConfig: this.runtimeConfig,
+			config: this.config,
 			aiClient: this.aiClient,
 			toolRegistry: this.toolRegistry,
 			extensionHost: this.extensionHost,

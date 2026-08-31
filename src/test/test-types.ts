@@ -1,6 +1,7 @@
 import { Mock } from 'vitest'
 import { ChatCompletionMessageParam, ChatCompletionContentPartText } from 'openai/resources/chat/completions'
 import { AiSendOptions } from '../ai/client'
+import { CheckmateOptions, ResolvedConfig, resolveConfig } from '../config/resolved-config'
 import { LoopDetectedError } from '../tools/loop-detector'
 
 export interface MockBrowserContext {
@@ -40,18 +41,13 @@ export interface MockKeyboard {
 	press: Mock
 }
 
-export interface MockConfigurationManager {
-	getApiKey: Mock<() => string>
-	getBaseURL: Mock<() => string | undefined>
-	getModel: Mock<() => string>
-	getTimeout: Mock<() => number>
-	getMaxRetries: Mock<() => number>
-	getLogLevel: Mock<() => string>
-	getTemperature: Mock<() => number>
-	getTokenBudgetUSD?: Mock<() => number | undefined>
-	getTokenBudgetCount?: Mock<() => number | undefined>
-	getToolChoice?: Mock<() => string>
-	getReasoningEffort?: Mock<() => string | undefined>
+export type MutableConfig = { -readonly [K in keyof ResolvedConfig]: ResolvedConfig[K] }
+
+/**
+ * A resolved config a test can keep mutating after handing it to a collaborator.
+ */
+export function testConfig(overrides: Partial<CheckmateOptions> = {}): MutableConfig {
+	return { ...resolveConfig(overrides) }
 }
 
 export interface MockToolRegistry {

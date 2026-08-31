@@ -1,9 +1,10 @@
 import { defineConfig } from '@playwright/test'
+import type { CheckmateOptions } from '@xoxoai/checkmate/playwright'
 import { config as envConfig } from 'dotenv'
 
 envConfig({ quiet: true })
 
-export default defineConfig({
+export default defineConfig<CheckmateOptions>({
 	projects: [
 		{
 			name: 'salesforce',
@@ -28,6 +29,14 @@ export default defineConfig({
 		timeout: 1 * 10000,
 	},
 	use: {
+		checkmateModel: 'openai/gpt-oss-20b',
+		checkmateOpenaiBaseUrl: 'https://api.groq.com/openai/v1',
+		checkmateLogLevel: 'debug',
+		checkmateTurnCap: 20,
+		checkmateStepTimeout: 120_000,
+		checkmateBudgetUsd: 0.1,
+		checkmateBudgetTokens: 300000,
+		checkmateSnapshotFilter: false,
 		viewport: { width: 1360, height: 768 },
 		browserName: 'chromium',
 		actionTimeout: 1 * 5000,

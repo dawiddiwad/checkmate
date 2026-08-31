@@ -1,5 +1,7 @@
-import { expect, Page, test as base } from '@playwright/test'
+import { expect, Page } from '@playwright/test'
+import { ResolvedConfig, resolveConfig } from './config/resolved-config.js'
 import { runAiStep } from './playwright/ai-step.js'
+import { checkmateOptions } from './playwright/options.js'
 import { createRunner, CheckmateRunner } from './runtime/runner.js'
 import { CheckmateExtension, defineExtension } from './runtime/extension.js'
 import { Step } from './runtime/types.js'
@@ -65,8 +67,8 @@ export function salesforce(): CheckmateExtension {
  * const report = await runner.run({ action: 'Login to Salesforce org', expect: 'Home page is displayed' })
  * ```
  */
-export function createSalesforceRunner(page: Page): CheckmateRunner {
-	return createRunner({ extensions: [web({ page }), salesforce()] })
+export function createSalesforceRunner(page: Page, config: ResolvedConfig = resolveConfig()): CheckmateRunner {
+	return createRunner({ config, extensions: [web({ page }), salesforce()] })
 }
 
 /**
@@ -81,8 +83,8 @@ export function createSalesforceRunner(page: Page): CheckmateRunner {
  * await ai.teardown()
  * ```
  */
-export function createSalesforceAi(page: Page): CheckmateAi {
-	const runner = createSalesforceRunner(page)
+export function createSalesforceAi(page: Page, config: ResolvedConfig = resolveConfig()): CheckmateAi {
+	const runner = createSalesforceRunner(page, config)
 
 	return {
 		step: (step: Step) => runAiStep(runner, step),
@@ -102,9 +104,9 @@ export function createSalesforceAi(page: Page): CheckmateAi {
  * export const test = mergeTests(baseTest, checkmate)
  * ```
  */
-export const checkmate = base.extend<SalesforceFixtures>({
-	ai: async ({ page }, use) => {
-		const ai = createSalesforceAi(page)
+export const checkmate = checkmateOptions.extend<SalesforceFixtures>({
+	ai: async ({ page, checkmateConfig }, use) => {
+		const ai = createSalesforceAi(page, checkmateConfig)
 		await use(ai)
 		await ai.teardown()
 	},

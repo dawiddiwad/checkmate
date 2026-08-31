@@ -1,6 +1,8 @@
-import { expect, Page, test as base } from '@playwright/test'
+import { expect, Page } from '@playwright/test'
 import { MessageHistory } from './ai/message-history.js'
+import { ResolvedConfig, resolveConfig } from './config/resolved-config.js'
 import { runAiStep } from './playwright/ai-step.js'
+import { checkmateOptions } from './playwright/options.js'
 import { createRunner, CheckmateRunner } from './runtime/runner.js'
 import { CheckmateExtension, defineExtension } from './runtime/extension.js'
 import { ContextMessage, Step } from './runtime/types.js'
@@ -111,7 +113,6 @@ export type WebExtensionOptions = {
  * ```
  */
 export function web({ page }: WebExtensionOptions): CheckmateExtension {
-	const browserRuntime = new BrowserToolRuntime(page)
 	const messageHistory = new MessageHistory()
 
 	return defineExtension({
@@ -123,6 +124,8 @@ export function web({ page }: WebExtensionOptions): CheckmateExtension {
 			`For JavaScript alert, confirm, or prompt dialogs, call '${BrowserTool.TOOL_SET_DIALOG_RESPONSE}' immediately before the browser action that opens the dialog when the step needs OK, Cancel, or prompt text. Unarmed dialogs are dismissed automatically.`,
 		],
 		setup(api) {
+			const browserRuntime = new BrowserToolRuntime(page, api.config)
+
 			api.setCapability(PlaywrightCapability.PAGE, page)
 			api.setCapability(PlaywrightCapability.BROWSER_CONTEXT, browserRuntime.getBrowserContext())
 			api.setCapability(PlaywrightCapability.ACTIVE_PAGE, () => browserRuntime.getActivePage())
@@ -130,7 +133,11 @@ export function web({ page }: WebExtensionOptions): CheckmateExtension {
 			api.addTool(createBrowserTools(browserRuntime))
 
 			api.addInitialMessages(async ({ step }) => {
-				const snapshot = await new SnapshotService(await browserRuntime.ensureActivePage(), step).get()
+				const snapshot = await new SnapshotService(
+					await browserRuntime.ensureActivePage(),
+					api.config,
+					step
+				).get()
 				return [messageHistory.createSnapshotMessage(snapshot)]
 			})
 
@@ -148,7 +155,7 @@ export function web({ page }: WebExtensionOptions): CheckmateExtension {
 					context.push(messageHistory.createSnapshotMessage(latestSnapshot))
 				}
 
-				if (api.runtimeConfig.includeScreenshotInSnapshot()) {
+				if (api.config.screenshots) {
 					const screenshot = await new BrowserScreenshotService(
 						await browserRuntime.ensureActivePage()
 					).getCompressedScreenshot()
@@ -177,8 +184,8 @@ export function web({ page }: WebExtensionOptions): CheckmateExtension {
  * const report = await runner.run({ action: 'Open the pricing page', expect: 'Pricing is visible' })
  * ```
  */
-export function createPlaywrightRunner(page: Page): CheckmateRunner {
-	return createRunner({ extensions: [web({ page })] })
+export function createPlaywrightRunner(page: Page, config: ResolvedConfig = resolveConfig()): CheckmateRunner {
+	return createRunner({ config, extensions: [web({ page })] })
 }
 
 /**
@@ -195,8 +202,8 @@ export function createPlaywrightRunner(page: Page): CheckmateRunner {
  * await ai.teardown()
  * ```
  */
-export function createAi(page: Page): CheckmateAi {
-	const runner = createPlaywrightRunner(page)
+export function createAi(page: Page, config: ResolvedConfig = resolveConfig()): CheckmateAi {
+	const runner = createPlaywrightRunner(page, config)
 
 	return {
 		step: (step: Step) => runAiStep(runner, step),
@@ -218,9 +225,9 @@ export function createAi(page: Page): CheckmateAi {
  * export const test = mergeTests(baseTest, checkmate)
  * ```
  */
-export const checkmate = base.extend<CheckmateFixtures>({
-	ai: async ({ page }, use) => {
-		const ai = createAi(page)
+export const checkmate = checkmateOptions.extend<CheckmateFixtures>({
+	ai: async ({ page, checkmateConfig }, use) => {
+		const ai = createAi(page, checkmateConfig)
 		await use(ai)
 		await ai.teardown()
 	},
@@ -247,3 +254,14 @@ export const test = checkmate
  * Re-export of Playwright's `expect` for convenience.
  */
 export { expect }
+
+export { checkmateOptions } from './playwright/options.js'
+export type { CheckmateOptionFixtures } from './playwright/options.js'
+export { CHECKMATE_DEFAULTS, resolveConfig } from './config/resolved-config.js'
+export type {
+	CheckmateOptions,
+	EvidenceLevel,
+	ReasoningEffort,
+	ResolvedConfig,
+	ToolChoice,
+} from './config/resolved-config.js'

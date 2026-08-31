@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { AiClient } from '../ai/client'
-import { RuntimeConfig } from '../config/runtime-config'
 import { logger } from '../logging'
 import { ToolRegistry } from '../tools/registry'
-import { MockConfigurationManager, MockToolRegistry, AiClientTestable, createHttpError } from './test-types'
+import { MockToolRegistry, MutableConfig, AiClientTestable, createHttpError, HttpError, testConfig } from './test-types'
 
 vi.mock('../../src/logging', () => ({
 	logger: {
@@ -32,30 +31,24 @@ function testable(client: AiClient): AiClientTestable {
 
 describe('AiClient - Retry Logic', () => {
 	let openAIClient: AiClient
-	let mockConfig: MockConfigurationManager
+	let mockConfig: MutableConfig
 	let mockToolRegistry: MockToolRegistry
 	let mockOperation: Mock<() => Promise<unknown>>
 	let messages: ChatCompletionMessageParam[]
 
 	beforeEach(() => {
-		mockConfig = {
-			getApiKey: vi.fn().mockReturnValue('test-api-key'),
-			getBaseURL: vi.fn().mockReturnValue(undefined),
-			getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-			getTimeout: vi.fn().mockReturnValue(60000),
-			getMaxRetries: vi.fn().mockReturnValue(3),
-			getLogLevel: vi.fn().mockReturnValue('off'),
-			getTemperature: vi.fn().mockReturnValue(1),
-			getToolChoice: vi.fn().mockReturnValue('required'),
-			getReasoningEffort: vi.fn().mockReturnValue('low'),
-		} as MockConfigurationManager
+		mockConfig = testConfig({
+			checkmateModel: 'gpt-4o-mini',
+			checkmateMaxRetries: 3,
+			checkmateReasoningEffort: 'low',
+		})
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
 		openAIClient = new AiClient({
-			runtimeConfig: mockConfig as unknown as RuntimeConfig,
+			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
 		})
 
@@ -102,7 +95,7 @@ describe('AiClient - Retry Logic', () => {
 
 	describe('max retries enforcement', () => {
 		it('should respect max retries limit', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(3)
+			mockConfig.maxRetries = 3
 			mockOperation.mockRejectedValue(createHttpError('Persistent error', 500))
 
 			await expect(run()).rejects.toThrow()
@@ -110,7 +103,7 @@ describe('AiClient - Retry Logic', () => {
 		})
 
 		it('should work with zero max retries', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(0)
+			mockConfig.maxRetries = 0
 			mockOperation.mockRejectedValue(createHttpError('Error', 500))
 
 			await expect(run()).rejects.toThrow()
@@ -118,7 +111,7 @@ describe('AiClient - Retry Logic', () => {
 		})
 
 		it('should succeed before max retries if operation succeeds', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(5)
+			mockConfig.maxRetries = 5
 			const error = createHttpError('Temporary error', 503)
 			mockOperation.mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
@@ -127,7 +120,7 @@ describe('AiClient - Retry Logic', () => {
 		})
 
 		it('should throw unexpected error when max retries is negative', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(-1)
+			mockConfig.maxRetries = -1
 			mockOperation.mockRejectedValue(createHttpError('Error', 500))
 
 			await expect(run()).rejects.toThrow('Unexpected error in retry loop')
@@ -264,7 +257,7 @@ describe('AiClient - Retry Logic', () => {
 
 describe('AiClient - send', () => {
 	let openAIClient: AiClient
-	let mockConfig: MockConfigurationManager
+	let mockConfig: MutableConfig
 	let mockToolRegistry: MockToolRegistry
 	let createMock: Mock
 
@@ -274,24 +267,18 @@ describe('AiClient - send', () => {
 		const openaiModule = (await import('openai')) as unknown as { getCreateMock: () => Mock }
 		createMock = openaiModule.getCreateMock()
 
-		mockConfig = {
-			getApiKey: vi.fn().mockReturnValue('test-api-key'),
-			getBaseURL: vi.fn().mockReturnValue(undefined),
-			getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-			getTimeout: vi.fn().mockReturnValue(60000),
-			getMaxRetries: vi.fn().mockReturnValue(0),
-			getLogLevel: vi.fn().mockReturnValue('off'),
-			getToolChoice: vi.fn().mockReturnValue('auto'),
-			getTemperature: vi.fn().mockReturnValue(0.2),
-			getReasoningEffort: vi.fn().mockReturnValue(undefined),
-		} as MockConfigurationManager
+		mockConfig = testConfig({
+			checkmateModel: 'gpt-4o-mini',
+			checkmateMaxRetries: 0,
+			checkmateToolChoice: 'auto',
+		})
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
 		openAIClient = new AiClient({
-			runtimeConfig: mockConfig as unknown as RuntimeConfig,
+			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
 		})
 	})
@@ -314,7 +301,7 @@ describe('AiClient - send', () => {
 				model: 'gpt-4o-mini',
 				messages,
 				parallel_tool_calls: false,
-				temperature: 0.2,
+				temperature: 0,
 				tool_choice: 'auto',
 			})
 		)
@@ -363,9 +350,9 @@ describe('AiClient - send', () => {
 	})
 
 	it('includes request and recent message context in final API errors', async () => {
-		vi.mocked(mockConfig.getMaxRetries).mockReturnValue(0)
-		vi.mocked(mockConfig.getToolChoice).mockReturnValue('required')
-		vi.mocked(mockConfig.getReasoningEffort).mockReturnValue('low')
+		mockConfig.maxRetries = 0
+		mockConfig.toolChoice = 'required'
+		mockConfig.reasoningEffort = 'low'
 		const error = createHttpError('provider failed', 500)
 		;(error as unknown as Record<string, unknown>).body = { error: { message: 'bad model response' } }
 		createMock.mockRejectedValue(error)
@@ -375,12 +362,12 @@ describe('AiClient - send', () => {
 				step: { action: 'submit form', expect: 'success page' },
 			})
 		).rejects.toThrow(
-			/model: gpt-4o-mini[\s\S]*tool_choice: required[\s\S]*reasoning_effort: low[\s\S]*temperature: 0.2[\s\S]*step_action: submit form[\s\S]*step_expect: success page[\s\S]*user: click submit[\s\S]*bad model response/
+			/model: gpt-4o-mini[\s\S]*tool_choice: required[\s\S]*reasoning_effort: low[\s\S]*temperature: 0[\s\S]*step_action: submit form[\s\S]*step_expect: success page[\s\S]*user: click submit[\s\S]*bad model response/
 		)
 	})
 
 	it('appends a corrective message and retries recoverable 400 tool errors', async () => {
-		vi.mocked(mockConfig.getMaxRetries).mockReturnValue(1)
+		mockConfig.maxRetries = 1
 		const base64 = 'A'.repeat(220)
 		const error = createHttpError('tool call rejected', 400)
 		;(error as unknown as Record<string, unknown>).body = {
@@ -433,5 +420,73 @@ describe('AiClient - send', () => {
 		])
 
 		expect(tokens).toBe(3)
+	})
+})
+
+describe('AiClient - temperature pinning', () => {
+	let openAIClient: AiClient
+	let createMock: Mock
+
+	function completion() {
+		return { choices: [{ message: { role: 'assistant', content: 'ack' } }], usage: {} }
+	}
+
+	function temperatureRejection(): HttpError & { param?: string } {
+		const error = createHttpError(
+			"Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) is supported.",
+			400
+		) as HttpError & { param?: string }
+		error.param = 'temperature'
+		return error
+	}
+
+	beforeEach(async () => {
+		vi.clearAllMocks()
+
+		const openaiModule = (await import('openai')) as unknown as { getCreateMock: () => Mock }
+		createMock = openaiModule.getCreateMock()
+
+		openAIClient = new AiClient({
+			config: testConfig({ checkmateModel: 'gpt-5-mini', checkmateMaxRetries: 0 }),
+			toolRegistry: { getTools: vi.fn().mockResolvedValue([]) } as unknown as ToolRegistry,
+		})
+	})
+
+	it('pins the temperature when the model accepts it', async () => {
+		createMock.mockResolvedValueOnce(completion())
+
+		await openAIClient.send([{ role: 'user', content: 'hello' }])
+
+		expect(createMock.mock.calls[0][0]).toEqual(expect.objectContaining({ temperature: 0 }))
+	})
+
+	it('retries without the temperature when the model rejects the pinned value', async () => {
+		createMock.mockRejectedValueOnce(temperatureRejection()).mockResolvedValueOnce(completion())
+
+		await openAIClient.send([{ role: 'user', content: 'hello' }])
+
+		expect(createMock).toHaveBeenCalledTimes(2)
+		expect(createMock.mock.calls[0][0]).toEqual(expect.objectContaining({ temperature: 0 }))
+		expect(createMock.mock.calls[1][0]).not.toHaveProperty('temperature')
+	})
+
+	it('stops sending the temperature for the rest of the run once it has been rejected', async () => {
+		createMock
+			.mockRejectedValueOnce(temperatureRejection())
+			.mockResolvedValueOnce(completion())
+			.mockResolvedValueOnce(completion())
+
+		await openAIClient.send([{ role: 'user', content: 'first' }])
+		await openAIClient.send([{ role: 'user', content: 'second' }])
+
+		expect(createMock).toHaveBeenCalledTimes(3)
+		expect(createMock.mock.calls[2][0]).not.toHaveProperty('temperature')
+	})
+
+	it('leaves any other 400 to the caller', async () => {
+		createMock.mockRejectedValue(createHttpError('Invalid schema for function', 400))
+
+		await expect(openAIClient.send([{ role: 'user', content: 'hello' }])).rejects.toThrow()
+		expect(createMock).toHaveBeenCalledTimes(1)
 	})
 })

@@ -44,7 +44,7 @@ export class ToolDispatcher {
 		}
 
 		const response = this.normalizeToolResponse(toolCall.name, result)
-		if (response === null && this.toolRegistry.getRuntimeConfig().getLogLevel() === 'debug') {
+		if (response === null && this.toolRegistry.getConfig().logLevel === 'debug') {
 			logger.debug(
 				[
 					'tool completed without model response:',
@@ -57,7 +57,7 @@ export class ToolDispatcher {
 	}
 
 	private formatAllowedToolNames(): string {
-		const allowedNames = this.toolRegistry.getRuntimeConfig().getAllowedFunctionNames()
+		const allowedNames = this.toolRegistry.getConfig().allowedTools
 		return allowedNames.length > 0 ? allowedNames.join(', ') : '(all registered tools allowed)'
 	}
 
@@ -105,7 +105,7 @@ function redact(value: string): string {
 }
 
 function redactSecretFields(value: string): string {
-	const secretKey = String.raw`(?:OPENAI_API_KEY|api[_-]?key|apikey|authorization|cookie)`
+	const secretKey = String.raw`(?:CHECKMATE_OPENAI_API_KEY|OPENAI_API_KEY|api[_-]?key|apikey|authorization|cookie)`
 	return value
 		.replace(
 			new RegExp(String.raw`(["'])${secretKey}\1\s*:\s*(["'])(?:\\.|(?!\2).)*\2\s*,?`, 'gi'),

@@ -1,12 +1,12 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { logger } from '../logging/index.js'
 import { ToolCall, ToolExecution, ToolResponse } from '../tools/types.js'
 import { MessageHistory } from './message-history.js'
 
 export class ToolResponseHandler {
 	constructor(
-		private readonly runtimeConfig: RuntimeConfig,
+		private readonly config: ResolvedConfig,
 		private readonly messageHistory: MessageHistory
 	) {}
 
@@ -68,7 +68,7 @@ export class ToolResponseHandler {
 	}
 
 	private isDebugMode(): boolean {
-		return this.runtimeConfig.getLogLevel() === 'debug'
+		return this.config.logLevel === 'debug'
 	}
 }
 
@@ -111,7 +111,7 @@ function redact(value: string): string {
 }
 
 function redactSecretFields(value: string): string {
-	const secretKey = String.raw`(?:OPENAI_API_KEY|api[_-]?key|apikey|authorization|cookie)`
+	const secretKey = String.raw`(?:CHECKMATE_OPENAI_API_KEY|OPENAI_API_KEY|api[_-]?key|apikey|authorization|cookie)`
 	return value
 		.replace(
 			new RegExp(String.raw`(["'])${secretKey}\1\s*:\s*(["'])(?:\\.|(?!\2).)*\2\s*,?`, 'gi'),

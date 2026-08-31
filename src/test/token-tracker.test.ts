@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { TokenTracker } from '../ai/token-tracker'
-import { RuntimeConfig } from '../config/runtime-config'
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { MockConfigurationManager } from './test-types'
+import { MutableConfig, testConfig } from './test-types'
 import { logger } from '../logging'
 
 vi.mock('../../src/logging', () => ({
@@ -16,17 +15,12 @@ vi.mock('../../src/logging', () => ({
 
 describe('TokenTracker', () => {
 	let tokenTracker: TokenTracker
-	let mockConfig: MockConfigurationManager
+	let mockConfig: MutableConfig
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		mockConfig = {
-			getTokenBudgetUSD: vi.fn().mockReturnValue(undefined),
-			getTokenBudgetCount: vi.fn().mockReturnValue(undefined),
-			getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-		} as MockConfigurationManager
-
-		tokenTracker = new TokenTracker(mockConfig as unknown as RuntimeConfig)
+		mockConfig = testConfig({ checkmateModel: 'gpt-4o-mini' })
+		tokenTracker = new TokenTracker(mockConfig)
 	})
 
 	describe('budget enforcement - USD', () => {
@@ -54,7 +48,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should apply cached input discount when enforcing USD budgets', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.05)
+			mockConfig.budgetUsd = 0.05
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -78,7 +72,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should throw error when USD budget is exceeded', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.01)
+			mockConfig.budgetUsd = 0.01
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -99,7 +93,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not throw error when USD budget is not set', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(undefined)
+			mockConfig.budgetUsd = undefined
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -120,7 +114,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not throw error when within USD budget', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(10.0)
+			mockConfig.budgetUsd = 10.0
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -141,7 +135,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should accumulate costs across multiple calls', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.05)
+			mockConfig.budgetUsd = 0.05
 
 			const response1: ChatCompletion = {
 				id: 'test1',
@@ -181,7 +175,7 @@ describe('TokenTracker', () => {
 
 	describe('budget enforcement - token count', () => {
 		it('should throw error when token count budget is exceeded', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(100)
+			mockConfig.budgetTokens = 100
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -202,7 +196,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not throw error when token count budget is not set', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(undefined)
+			mockConfig.budgetTokens = undefined
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -223,7 +217,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not throw error when within token count budget', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(1000)
+			mockConfig.budgetTokens = 1000
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -244,7 +238,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should accumulate token counts across multiple calls', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(200)
+			mockConfig.budgetTokens = 200
 
 			const response1: ChatCompletion = {
 				id: 'test1',
@@ -284,8 +278,8 @@ describe('TokenTracker', () => {
 
 	describe('budget enforcement - both USD and token count', () => {
 		it('should throw error when USD budget is exceeded first', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(0.001)
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(1000000)
+			mockConfig.budgetUsd = 0.001
+			mockConfig.budgetTokens = 1000000
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -306,8 +300,8 @@ describe('TokenTracker', () => {
 		})
 
 		it('should throw error when token count budget is exceeded first', () => {
-			vi.mocked(mockConfig.getTokenBudgetUSD).mockReturnValue(100)
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(10)
+			mockConfig.budgetUsd = 100
+			mockConfig.budgetTokens = 10
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -366,7 +360,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should not affect test token counts', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(300)
+			mockConfig.budgetTokens = 300
 
 			const response1: ChatCompletion = {
 				id: 'test1',
@@ -504,7 +498,7 @@ describe('TokenTracker', () => {
 
 	describe('edge cases', () => {
 		it('should handle zero token usage', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(100)
+			mockConfig.budgetTokens = 100
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -525,7 +519,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should handle exact budget match for token count', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(100)
+			mockConfig.budgetTokens = 100
 
 			const response: ChatCompletion = {
 				id: 'test',
@@ -546,7 +540,7 @@ describe('TokenTracker', () => {
 		})
 
 		it('should throw on budget exceeded by 1 token', () => {
-			vi.mocked(mockConfig.getTokenBudgetCount).mockReturnValue(100)
+			mockConfig.budgetTokens = 100
 
 			const response: ChatCompletion = {
 				id: 'test',

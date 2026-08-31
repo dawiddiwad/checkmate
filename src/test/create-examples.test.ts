@@ -29,8 +29,7 @@ describe('createExamples', () => {
 		expect(packageJson.scripts).toMatchObject({
 			'test:web': 'npx playwright test --project=web',
 			'test:salesforce': 'npx playwright test --project=salesforce',
-			'test:web:example':
-				'export CHECKMATE_LOG_LEVEL=info && npx playwright test --project=web --grep=ollama --headed',
+			'test:web:example': 'npx playwright test --project=web --grep=ollama --headed',
 			'show:report': 'npx playwright show-report test-reports/html',
 		})
 		expect(packageJson.devDependencies).toMatchObject({

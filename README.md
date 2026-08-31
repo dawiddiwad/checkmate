@@ -47,19 +47,27 @@ npm install -D dotenv @playwright/test @xoxoai/checkmate
 npx playwright install
 ```
 
-### 2. Configure `.env`
+### 2. Configure the provider key and the `checkmate*` options
 
-_using [OpenAI API](https://platform.openai.com/settings/organization/api-keys) key and default settings:_
+_the key is the only thing that lives in `.env`:_
 
 ```bash
-OPENAI_API_KEY=#your_api_key_here
+CHECKMATE_OPENAI_API_KEY=#your_api_key_here
 ```
 
-_for other providers, set the base url and model:_
+_everything else is set in `playwright.config.ts`, per project and overridable per test:_
 
-```bash
-OPENAI_BASE_URL=https://api.groq.com/openai/v1
-OPENAI_MODEL=openai/gpt-oss-20b
+```ts
+import { defineConfig } from '@playwright/test'
+import type { CheckmateOptions } from '@xoxoai/checkmate/playwright'
+
+export default defineConfig<CheckmateOptions>({
+	use: {
+		checkmateModel: 'openai/gpt-oss-20b',
+		checkmateOpenaiBaseUrl: 'https://api.groq.com/openai/v1', // optional, for OpenAI-compatible providers
+		checkmateTurnCap: 20,
+	},
+})
 ```
 
 ### 3. Scaffold Test Examples
@@ -196,9 +204,9 @@ See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring optio
 
 **Tests loop during step execution**
 
-- Increase `OPENAI_TEMPERATURE` to encourage exploration
+- `checkmateTemperature` defaults to `0`, so a rerun differs as little as the model allows — lower it further only for a specific reason; models that reject the value fall back to their own default
 - Use a reasoning model if possible to improve accuracy
-- Set `CHECKMATE_LOG_LEVEL=debug` to inspect model/tool loop diagnostics, including tool calls and recent message summaries
+- Set `checkmateLogLevel: 'debug'` to inspect model/tool loop diagnostics, including tool calls and recent message summaries
 
 **JavaScript dialogs do not behave as expected**
 
@@ -207,12 +215,13 @@ See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring optio
 
 **High token costs**
 
-- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` auto-filter elements
-- Adjust reasoning effort: `OPENAI_REASONING_EFFORT`
-- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` if visuals are not needed
+- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `checkmateSnapshotFilter: true` to auto-filter elements
+- Adjust reasoning effort: `checkmateReasoningEffort`
+- Leave `checkmateScreenshots` off if visuals are not needed
 - Use a cheaper model, lower-end models often perform well: `gpt-5.4-nano` or `gpt-oss-20b`
+- Set `checkmateBudgetUsd` per project so a runaway step is stopped rather than paid for
 
-See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and tips.
+See [guide](docs/GUIDE.md#ai-options) for detailed configuration options and tips.
 
 ## FAQ
 

@@ -23,7 +23,7 @@
  * @see {@link https://www.salesforce.com/form/developer-signup/} - Sign up for a Salesforce Developer org.
  *
  * @note
- * All tests use the `ai` fixture and call `ai.run({ action, expect })`
+ * All tests use the `ai` fixture and call `ai.step({ action, expect })`
  * to describe actions and assert visible outcomes.
  */
 import { test } from '@xoxoai/checkmate/salesforce'
@@ -31,7 +31,7 @@ import { test } from '@xoxoai/checkmate/salesforce'
 test.describe('trial dev org', async () => {
 	test('creating new account in sales app', async ({ ai }) => {
 		await test.step('Login to Salesforce Org', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
                	Login to Salesforce org`,
 				expect: `
@@ -40,7 +40,7 @@ test.describe('trial dev org', async () => {
 		})
 
 		await test.step('Open Sales App from App Launcher', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click the App Launcher icon (nine dots) in the top left corner.
 				Type 'Sales' into the App Launcher 'Search apps and items' search bar.
@@ -51,7 +51,7 @@ test.describe('trial dev org', async () => {
 		})
 
 		await test.step('Switch to Accounts tab', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click the 'Accounts' tab within the Sales app.`,
 				expect: `
@@ -60,7 +60,7 @@ test.describe('trial dev org', async () => {
 		})
 
 		await test.step('Start creating a new Account', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click the 'New' button on the Accounts tab to create a new Account record.
 				Fill 'Account Name' field with 'Agentic Test Account' followed by space and some random alphanumeric string
@@ -71,7 +71,7 @@ test.describe('trial dev org', async () => {
 		})
 
 		await test.step('Save new Account record', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click the 'Save' button on the 'New Account' form.`,
 				expect: `

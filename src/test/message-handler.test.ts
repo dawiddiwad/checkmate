@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { MessageHandler } from '../ai/message-handler'
-import { AiClient } from '../ai/client'
-import { ResponseProcessor } from '../ai/response-processor'
 import { logger } from '../logging'
 
 vi.mock('../../src/logging', () => ({
@@ -15,24 +13,15 @@ vi.mock('../../src/logging', () => ({
 }))
 
 describe('MessageHandler diagnostics', () => {
-	let aiClient: Pick<AiClient, 'addUserMessage' | 'sendToolResponseWithRetry'>
-	let responseProcessor: Pick<ResponseProcessor, 'handleResponse'>
 	const step = { action: 'click submit', expect: 'form submitted' }
+	let handler: MessageHandler
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		aiClient = {
-			addUserMessage: vi.fn().mockResolvedValue(undefined),
-			sendToolResponseWithRetry: vi.fn().mockResolvedValue({ choices: [] }),
-		}
-		responseProcessor = {
-			handleResponse: vi.fn().mockResolvedValue(undefined),
-		}
+		handler = new MessageHandler()
 	})
 
-	it('includes finish reason, previews, and step context for unexpected finish reasons', async () => {
-		const handler = new MessageHandler(aiClient as AiClient, responseProcessor as ResponseProcessor)
-		const resolveStepResult = vi.fn()
+	it('throws enriched diagnostics for unexpected finish reasons', () => {
 		const choice: ChatCompletion.Choice = {
 			index: 3,
 			logprobs: null,
@@ -44,18 +33,12 @@ describe('MessageHandler diagnostics', () => {
 			},
 		}
 
-		await handler.handle(choice, step, resolveStepResult)
-
-		expect(resolveStepResult).toHaveBeenCalledWith({
-			passed: false,
-			actual: expect.stringMatching(
-				/length[\s\S]*step_action: click submit[\s\S]*step_expect: form submitted[\s\S]*choice_index: 3[\s\S]*refusal: cannot continue/
-			),
-		})
+		expect(() => handler.handle(choice, step)).toThrow(
+			/length[\s\S]*step_action: click submit[\s\S]*step_expect: form submitted[\s\S]*choice_index: 3[\s\S]*refusal: cannot continue/
+		)
 	})
 
-	it('throws enriched no-content and no-tool diagnostics', async () => {
-		const handler = new MessageHandler(aiClient as AiClient, responseProcessor as ResponseProcessor)
+	it('throws enriched no-content and no-tool diagnostics', () => {
 		const choice: ChatCompletion.Choice = {
 			index: 1,
 			logprobs: null,
@@ -67,13 +50,12 @@ describe('MessageHandler diagnostics', () => {
 			},
 		}
 
-		await expect(handler.handle(choice, step, vi.fn())).rejects.toThrow(
+		expect(() => handler.handle(choice, step)).toThrow(
 			/No content or tool calls[\s\S]*step_action: click submit[\s\S]*step_expect: form submitted[\s\S]*choice_index: 1[\s\S]*finish_reason: null/
 		)
 	})
 
-	it('logs enriched text responses and keeps pass/fail follow-up behavior', async () => {
-		const handler = new MessageHandler(aiClient as AiClient, responseProcessor as ResponseProcessor)
+	it('returns a corrective user message for text-only responses', () => {
 		const choice: ChatCompletion.Choice = {
 			index: 0,
 			logprobs: null,
@@ -84,17 +66,18 @@ describe('MessageHandler diagnostics', () => {
 				refusal: null,
 			},
 		}
-		const resolveStepResult = vi.fn()
 
-		await handler.handle(choice, step, resolveStepResult)
+		const outcome = handler.handle(choice, step)
 
 		const warnings = vi
 			.mocked(logger.warn)
 			.mock.calls.map((call) => String(call[0]))
 			.join('\n')
 		expect(warnings).toMatch(/step_action: click submit[\s\S]*content: I think it passed/)
-		expect(aiClient.addUserMessage).toHaveBeenCalledWith(expect.stringContaining('pass_test_step'))
-		expect(aiClient.sendToolResponseWithRetry).toHaveBeenCalledTimes(1)
-		expect(responseProcessor.handleResponse).toHaveBeenCalledWith({ choices: [] }, step, resolveStepResult)
+		expect(outcome).toEqual({
+			kind: 'continue',
+			toolResults: [],
+			messages: [{ role: 'user', content: expect.stringContaining('pass_test_step') }],
+		})
 	})
 })

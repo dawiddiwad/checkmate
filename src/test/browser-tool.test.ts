@@ -119,7 +119,6 @@ describe('Browser tools', () => {
 		tools = createBrowserTools(runtime)
 		context = {
 			step: { action: 'act', expect: 'done' },
-			resolveStepResult: vi.fn(),
 		}
 	})
 

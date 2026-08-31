@@ -1,4 +1,4 @@
-import { ResolveStepResult, Step } from '../runtime/types.js'
+import { Step, StepAssertion } from '../runtime/types.js'
 
 /**
  * Normalized tool call emitted by the model.
@@ -84,6 +84,11 @@ export type AgentToolResponse = {
 	 * Outcome status used in tool execution summaries.
 	 */
 	status?: 'success' | 'error'
+
+	/**
+	 * Ends the step with this assertion instead of running another model turn.
+	 */
+	assertion?: StepAssertion
 }
 
 /**
@@ -107,7 +112,7 @@ export type AgentToolResult = AgentToolResponse | string | void
  * @example
  * ```ts
  * const handler = async (_args: unknown, context: AgentToolContext) => {
- *   context.resolveStepResult({ passed: true, actual: context.step.expect })
+ *   return `Working on: ${context.step.action}`
  * }
  * ```
  */
@@ -116,11 +121,6 @@ export type AgentToolContext = {
 	 * Step currently being executed.
 	 */
 	step: Step
-
-	/**
-	 * Callback used to finish the step.
-	 */
-	resolveStepResult: ResolveStepResult
 }
 
 /**
@@ -148,6 +148,77 @@ export type AgentTool = {
 	 * Tool implementation.
 	 */
 	execute: (args: unknown, context: AgentToolContext) => Promise<AgentToolResult> | AgentToolResult
+}
+
+/**
+ * Normalized tool response recorded by the runner loop.
+ *
+ * @example
+ * ```ts
+ * const response: ToolResponse = {
+ *   name: 'browser_navigate',
+ *   response: 'Navigated to https://example.com',
+ *   snapshot: null,
+ *   status: 'success',
+ * }
+ * ```
+ */
+export type ToolResponse = {
+	/**
+	 * Tool that produced the response.
+	 */
+	name?: string
+
+	/**
+	 * Human-readable result returned to the model.
+	 */
+	response: string
+
+	/**
+	 * Fresh page snapshot captured after the tool ran.
+	 */
+	snapshot?: string | null
+
+	/**
+	 * Outcome status used in tool execution summaries.
+	 */
+	status: 'success' | 'error'
+
+	/**
+	 * Assertion that ends the step, when the tool produced one.
+	 */
+	assertion?: StepAssertion
+}
+
+/**
+ * One tool execution observed during the runner loop.
+ *
+ * Extensions receive these objects in post-tool hooks.
+ *
+ * @example
+ * ```ts
+ * const execution: ToolExecution = {
+ *   toolCallId: 'call_1',
+ *   toolCall: { name: 'browser_navigate', arguments: { url: 'https://example.com' } },
+ *   toolResponse: { response: 'Navigated to example.com', status: 'success' },
+ * }
+ * ```
+ */
+export type ToolExecution = {
+	/**
+	 * Provider-issued id for the tool call.
+	 */
+	toolCallId: string
+
+	/**
+	 * Normalized tool call request.
+	 */
+	toolCall: ToolCall
+
+	/**
+	 * Normalized tool response returned by Checkmate.
+	 */
+	toolResponse: ToolResponse
 }
 
 export function getToolName(tool: AgentTool): string {

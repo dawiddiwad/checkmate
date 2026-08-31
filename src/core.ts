@@ -19,5 +19,16 @@ export type {
 	AgentToolResponse,
 	AgentToolResult,
 	ToolCall,
+	ToolResponse,
 } from './tools/tool-contract.js'
-export type { Step, StepResult, ResolveStepResult } from './runtime/types.js'
+export type {
+	ContextMessage,
+	Step,
+	StepAssertion,
+	StepCategory,
+	StepReport,
+	StepToolCall,
+	StepUsage,
+	TerminationReason,
+	TranscriptEntry,
+} from './runtime/types.js'

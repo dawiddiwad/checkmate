@@ -1,8 +1,9 @@
 import { RuntimeConfig } from '../config/runtime-config.js'
-import { Step } from './types.js'
+import { Step, StepReport } from './types.js'
 import { createStepResultTools } from '../tools/step/result-tool.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { AiClient } from '../ai/client.js'
+import { TokenTracker } from '../ai/token-tracker.js'
 import { StepExecution } from './step-execution.js'
 import { CheckmateExtension, ExtensionHost } from './extension.js'
 
@@ -14,7 +15,7 @@ import { CheckmateExtension, ExtensionHost } from './extension.js'
  * import { createRunner } from '@xoxoai/checkmate/core'
  * import { web } from '@xoxoai/checkmate/playwright'
  *
- * const ai = createRunner({
+ * const runner = createRunner({
  *   extensions: [web({ page })],
  * })
  * ```
@@ -34,16 +35,23 @@ export type CheckmateRunnerOptions = {
 /**
  * Public runtime entry point for executing natural-language steps with Checkmate.
  *
+ * `run()` resolves a `StepReport` instead of throwing, so a caller outside Playwright
+ * Test can decide what a failed step means.
+ *
  * @example
  * ```ts
  * const runner = new CheckmateRunner()
- * await runner.run({
+ * const report = await runner.run({
  *   action: 'Open the pricing page',
  *   expect: 'Pricing details are visible',
  * })
+ * console.log(report.outcome, report.category, report.usage.costUsd)
  * ```
  */
 export class CheckmateRunner {
+	private readonly runtimeConfig: RuntimeConfig
+	private readonly toolRegistry: ToolRegistry
+	private readonly tokenTracker: TokenTracker
 	private readonly aiClient: AiClient
 	private readonly extensionHost: ExtensionHost
 
@@ -52,17 +60,18 @@ export class CheckmateRunner {
 	 *
 	 * @example
 	 * ```ts
-	 * const ai = new CheckmateRunner({
+	 * const runner = new CheckmateRunner({
 	 *   extensions: [web({ page })],
 	 * })
 	 * ```
 	 */
 	constructor(options: CheckmateRunnerOptions = {}) {
-		const runtimeConfig = options.runtimeConfig ?? new RuntimeConfig()
-		const toolRegistry = new ToolRegistry(runtimeConfig)
-		toolRegistry.register(createStepResultTools())
-		this.extensionHost = new ExtensionHost(runtimeConfig, toolRegistry, options.extensions ?? [])
-		this.aiClient = new AiClient({ runtimeConfig, toolRegistry, extensionHost: this.extensionHost })
+		this.runtimeConfig = options.runtimeConfig ?? new RuntimeConfig()
+		this.toolRegistry = new ToolRegistry(this.runtimeConfig)
+		this.toolRegistry.register(createStepResultTools())
+		this.tokenTracker = new TokenTracker(this.runtimeConfig)
+		this.extensionHost = new ExtensionHost(this.runtimeConfig, this.toolRegistry, options.extensions ?? [])
+		this.aiClient = new AiClient({ runtimeConfig: this.runtimeConfig, toolRegistry: this.toolRegistry })
 	}
 
 	/**
@@ -70,7 +79,7 @@ export class CheckmateRunner {
 	 *
 	 * @example
 	 * ```ts
-	 * await ai.teardown()
+	 * await runner.teardown()
 	 * ```
 	 */
 	async teardown(): Promise<void> {
@@ -78,21 +87,27 @@ export class CheckmateRunner {
 	}
 
 	/**
-	 * Executes one natural-language test step.
+	 * Executes one natural-language test step and resolves its report.
 	 *
 	 * @param step - The step definition to execute.
 	 *
 	 * @example
 	 * ```ts
-	 * await runner.run({
+	 * const report = await runner.run({
 	 *   action: 'Search for qwen3-vl',
 	 *   expect: 'The qwen3-vl model page is displayed',
 	 *   topPercent: 10,
 	 * })
 	 * ```
 	 */
-	async run(step: Step): Promise<void> {
-		await new StepExecution(this.aiClient, this.extensionHost).run(step)
+	async run(step: Step): Promise<StepReport> {
+		return new StepExecution({
+			runtimeConfig: this.runtimeConfig,
+			aiClient: this.aiClient,
+			toolRegistry: this.toolRegistry,
+			extensionHost: this.extensionHost,
+			tokenTracker: this.tokenTracker,
+		}).run(step)
 	}
 }
 
@@ -106,7 +121,7 @@ export class CheckmateRunner {
  * import { createRunner } from '@xoxoai/checkmate/core'
  * import { web } from '@xoxoai/checkmate/playwright'
  *
- * const ai = createRunner({
+ * const runner = createRunner({
  *   extensions: [web({ page })],
  * })
  * ```

@@ -76,7 +76,7 @@ function createMockPage(context: MockBrowserContext): MockPage {
 }
 
 describe('Playwright web extension', () => {
-	it('captures post-tool screenshots from the active page after a tab switch', async () => {
+	it('returns a fresh snapshot and screenshot from the active page after a tab switch', async () => {
 		vi.clearAllMocks()
 		const context = createMockContext()
 		const page = createMockPage(context)
@@ -87,20 +87,37 @@ describe('Playwright web extension', () => {
 			{ register: vi.fn() } as unknown as ToolRegistry,
 			[extension]
 		)
-		const aiClient = {
-			getRuntimeConfig: () => ({ includeScreenshotInSnapshot: () => true }),
-			addCurrentSnapshotMessage: vi.fn(),
-			addCurrentScreenshotMessage: vi.fn(),
-		}
 
-		await host.handleToolResponses({
-			aiClient: aiClient as never,
+		const contextMessages = await host.handleToolResponses({
 			step: { action: 'act', expect: 'done' },
-			resolveStepResult: vi.fn(),
-			toolResponses: [{ toolResponse: { response: 'ok' } }] as never,
+			turn: 1,
+			toolResponses: [{ toolResponse: { response: 'ok', snapshot: 'page snapshot' } }] as never,
 		})
 
 		expect(screenshotMocks.constructorMock).toHaveBeenCalledWith(activePage)
-		expect(aiClient.addCurrentScreenshotMessage).toHaveBeenCalledWith('image-data', 'image/png')
+		expect(contextMessages).toHaveLength(2)
+		expect(contextMessages.every((message) => message.ephemeral)).toBe(true)
+		expect(JSON.stringify(contextMessages[0].message)).toContain('page snapshot')
+		expect(JSON.stringify(contextMessages[1].message)).toContain('data:image/png;base64,image-data')
+	})
+
+	it('returns no context when there is no snapshot and screenshots are disabled', async () => {
+		vi.clearAllMocks()
+		const context = createMockContext()
+		const page = createMockPage(context)
+		const host = new ExtensionHost(
+			{ includeScreenshotInSnapshot: () => false } as RuntimeConfig,
+			{ register: vi.fn() } as unknown as ToolRegistry,
+			[web({ page: page as unknown as Page })]
+		)
+
+		const contextMessages = await host.handleToolResponses({
+			step: { action: 'act', expect: 'done' },
+			turn: 2,
+			toolResponses: [{ toolResponse: { response: 'ok', snapshot: null } }] as never,
+		})
+
+		expect(contextMessages).toEqual([])
+		expect(screenshotMocks.constructorMock).not.toHaveBeenCalled()
 	})
 })

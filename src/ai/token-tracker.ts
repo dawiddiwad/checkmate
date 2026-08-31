@@ -3,6 +3,13 @@ import { RuntimeConfig } from '../config/runtime-config.js'
 import { logger } from '../logging/index.js'
 import { TokenPricing } from './token-pricing.js'
 
+export class BudgetExceededError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'BudgetExceededError'
+	}
+}
+
 export class TokenTracker {
 	private _inputTokensUsedForTest = 0
 	private _inputTokensUsedForStep = 0
@@ -82,7 +89,7 @@ export class TokenTracker {
 			)
 
 			if (totalCostUSD > budgetUSD) {
-				throw new Error(
+				throw new BudgetExceededError(
 					`OpenAI API budget of ${budgetUSD}$ per test exceeded. Total cost was: ${totalCostUSD}$`
 				)
 			}
@@ -91,7 +98,7 @@ export class TokenTracker {
 		if (budgetTokens) {
 			const totalTokens = this.inputTokensUsedForTest + this.outputTokensUsedForTest
 			if (totalTokens > budgetTokens) {
-				throw new Error(
+				throw new BudgetExceededError(
 					`OpenAI API budget of ${budgetTokens} tokens per test exceeded. Total tokens used: ${totalTokens}`
 				)
 			}

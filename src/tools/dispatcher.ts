@@ -1,14 +1,13 @@
 import { logger } from '../logging/index.js'
 import { LoopDetector } from './loop-detector.js'
-import { ToolRegistry, ToolResponse } from './registry.js'
-import { AgentToolContext, AgentToolResult, ToolCall } from './types.js'
+import { ToolRegistry } from './registry.js'
+import { AgentToolContext, AgentToolResponse, AgentToolResult, ToolCall, ToolResponse } from './types.js'
 
 export class ToolDispatcher {
-	private readonly loopDetector: LoopDetector
-
-	constructor(private readonly toolRegistry: ToolRegistry) {
-		this.loopDetector = new LoopDetector(toolRegistry.getRuntimeConfig().getLoopMaxRepetitions())
-	}
+	constructor(
+		private readonly toolRegistry: ToolRegistry,
+		private readonly loopDetector: LoopDetector
+	) {}
 
 	getToolRegistry(): ToolRegistry {
 		return this.toolRegistry
@@ -20,7 +19,7 @@ export class ToolDispatcher {
 
 		const tool = this.toolRegistry.resolve(toolCall.name)
 		if (!tool) {
-			throw new Error(
+			throw new ToolDispatchError(
 				[
 					`Invalid tool name: ${toolCall.name}`,
 					`arguments: ${preview(toolCall.arguments, 1_000)}`,
@@ -34,7 +33,7 @@ export class ToolDispatcher {
 		try {
 			result = await tool.execute(toolCall.arguments, context)
 		} catch (error) {
-			throw new Error(
+			throw new ToolDispatchError(
 				[
 					`Tool execution failed: ${toolCall.name}`,
 					`arguments: ${preview(toolCall.arguments, 1_000)}`,
@@ -71,17 +70,21 @@ export class ToolDispatcher {
 			return { name: toolName, response: result, status: inferToolResponseStatus(result) }
 		}
 
-		const normalizedResult = (result ?? { response: '' }) as {
-			response: string
-			snapshot?: string | null
-			status?: 'success' | 'error'
-		}
+		const normalizedResult = (result ?? { response: '' }) as AgentToolResponse
 		return {
 			name: toolName,
 			response: normalizedResult.response,
 			snapshot: normalizedResult.snapshot ?? null,
 			status: normalizedResult.status ?? 'success',
+			...(normalizedResult.assertion ? { assertion: normalizedResult.assertion } : {}),
 		}
+	}
+}
+
+export class ToolDispatchError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options)
+		this.name = 'ToolDispatchError'
 	}
 }
 

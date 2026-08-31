@@ -1,10 +1,9 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { AiClient } from './client.js'
+import { ContextMessage } from '../runtime/types.js'
 
 type InitialMessageParameters = {
 	systemPrompt: string
 	userPrompt: string
-	contextMessages?: ChatCompletionMessageParam[]
 }
 
 export class MessageHistory {
@@ -22,44 +21,36 @@ export class MessageHistory {
 				role: 'user',
 				content: [{ type: 'text', text: config.userPrompt }],
 			},
-			...(config.contextMessages ?? []),
 		]
 	}
 
-	createSnapshotMessage(snapshotContent: string | null): ChatCompletionMessageParam {
+	createSnapshotMessage(snapshotContent: string | null): ContextMessage {
+		return {
+			message: {
+				role: 'user',
+				content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}` }],
+			},
+			ephemeral: true,
+		}
+	}
+
+	createScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): ContextMessage {
+		return {
+			message: {
+				role: 'user',
+				content: [
+					{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
+					{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' } },
+				],
+			},
+			ephemeral: true,
+		}
+	}
+
+	createToolExecutionSummaryMessage(summary: string): ChatCompletionMessageParam {
 		return {
 			role: 'user',
-			content: [{ type: 'text', text: `${MessageHistory.SNAPSHOT_IDENTIFIER}:\n${snapshotContent}` }],
+			content: `${MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER}:\n${summary}`,
 		}
-	}
-
-	createScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): ChatCompletionMessageParam {
-		return {
-			role: 'user',
-			content: [
-				{ type: 'text', text: MessageHistory.SCREENSHOT_IDENTIFIER },
-				{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' } },
-			],
-		}
-	}
-
-	removeEphemeralStateMessages(aiClient: AiClient): void {
-		aiClient.replaceHistory(aiClient.getMessages().filter((message) => !this.isEphemeralStateMessage(message)))
-	}
-
-	private isEphemeralStateMessage(message: ChatCompletionMessageParam): boolean {
-		if (message.role !== 'user' || !Array.isArray(message.content) || message.content.length === 0) {
-			return false
-		}
-
-		const firstPart = message.content[0]
-		if (!('text' in firstPart) || typeof firstPart.text !== 'string') {
-			return false
-		}
-
-		return (
-			firstPart.text.startsWith(`${MessageHistory.SNAPSHOT_IDENTIFIER}:`) ||
-			firstPart.text === MessageHistory.SCREENSHOT_IDENTIFIER
-		)
 	}
 }

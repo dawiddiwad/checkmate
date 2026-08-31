@@ -7,143 +7,82 @@ import {
 import { RuntimeConfig } from '../config/runtime-config.js'
 import { logger } from '../logging/index.js'
 import { CheckmateLogger } from '../logging/logger.js'
-import { LoopDetectedError } from '../tools/loop-detector.js'
 import { ToolRegistry } from '../tools/registry.js'
-import { Step, ResolveStepResult } from '../runtime/types.js'
-import { MessageHistory } from './message-history.js'
-import { ResponseProcessor } from './response-processor.js'
-import { ExtensionHost } from '../runtime/extension.js'
+import { Step } from '../runtime/types.js'
 
 export type AiClientDependencies = {
 	runtimeConfig: RuntimeConfig
 	toolRegistry: ToolRegistry
-	extensionHost: ExtensionHost
+}
+
+export type AiSendOptions = {
+	step?: Step
+}
+
+export type AiResponse = {
+	response: ChatCompletion
+	assistantMessages: ChatCompletionAssistantMessageParam[]
 }
 
 export class AiClient {
-	private client!: OpenAI
-	private messages: ChatCompletionMessageParam[] = []
-	private readonly responseProcessor: ResponseProcessor
-	private readonly retryableStatus: (number | string)[] = [
-		408,
-		409,
-		429,
-		500,
-		502,
-		503,
-		504,
-		LoopDetectedError.STATUS,
-	]
-	private step!: Step
-	private resolveStepResult!: ResolveStepResult
-	temperature: number
-	private readonly messageHistory = new MessageHistory()
-
-	constructor({ runtimeConfig, toolRegistry, extensionHost }: AiClientDependencies) {
-		this.runtimeConfig = runtimeConfig
-		this.toolRegistry = toolRegistry
-		this.responseProcessor = new ResponseProcessor({ aiClient: this, extensionHost })
-		this.temperature = this.runtimeConfig.getTemperature()
-	}
-
+	private client: OpenAI | null = null
 	private readonly runtimeConfig: RuntimeConfig
 	private readonly toolRegistry: ToolRegistry
+	private readonly retryableStatus: (number | string)[] = [408, 409, 429, 500, 502, 503, 504]
+	readonly temperature: number
 
-	async initialize(step: Step, resolveStepResult: ResolveStepResult): Promise<void> {
-		this.client = new OpenAI({
-			apiKey: this.runtimeConfig.getApiKey(),
-			baseURL: this.runtimeConfig.getBaseURL(),
-			timeout: this.runtimeConfig.getTimeout(),
-			maxRetries: 0,
-			logLevel: this.runtimeConfig.getLogLevel(),
-			logger: CheckmateLogger.create('ai_client', this.runtimeConfig.getLogLevel()),
-		})
-
-		this.messages = []
-		this.step = step
-		this.resolveStepResult = resolveStepResult
-		this.responseProcessor.resetStepTokens()
+	constructor({ runtimeConfig, toolRegistry }: AiClientDependencies) {
+		this.runtimeConfig = runtimeConfig
+		this.toolRegistry = toolRegistry
 		this.temperature = this.runtimeConfig.getTemperature()
-	}
-
-	getMessages(): ChatCompletionMessageParam[] {
-		return this.messages
-	}
-
-	getToolRegistry(): ToolRegistry {
-		return this.toolRegistry
 	}
 
 	getRuntimeConfig(): RuntimeConfig {
 		return this.runtimeConfig
 	}
 
-	async sendMessage(userMessage: string | ChatCompletionMessageParam[]) {
-		if (typeof userMessage === 'string') {
-			this.messages.push({ role: 'user', content: userMessage })
-		} else {
-			this.messages.push(...userMessage)
+	async send(messages: ChatCompletionMessageParam[], options: AiSendOptions = {}): Promise<AiResponse> {
+		return this.executeWithRetry(messages, options, async () => {
+			const tools = await this.toolRegistry.getTools()
+			const response = await this.openai().chat.completions.create({
+				model: this.runtimeConfig.getModel(),
+				messages,
+				tools,
+				tool_choice: this.runtimeConfig.getToolChoice(),
+				parallel_tool_calls: false,
+				temperature: this.temperature,
+				reasoning_effort: this.runtimeConfig.getReasoningEffort(),
+				n: 1,
+			})
+
+			return { response, assistantMessages: this.retainAssistantMessages(response) }
+		})
+	}
+
+	countHistoryTokens(messages: ChatCompletionMessageParam[]): number {
+		const totalChars = messages.reduce((sum, message) => sum + this.countContentChars(message.content), 0)
+		return Math.ceil(totalChars / 4)
+	}
+
+	private openai(): OpenAI {
+		if (!this.client) {
+			this.client = new OpenAI({
+				apiKey: this.runtimeConfig.getApiKey(),
+				baseURL: this.runtimeConfig.getBaseURL(),
+				timeout: this.runtimeConfig.getTimeout(),
+				maxRetries: 0,
+				logLevel: this.runtimeConfig.getLogLevel(),
+				logger: CheckmateLogger.create('ai_client', this.runtimeConfig.getLogLevel()),
+			})
 		}
 
-		return this.executeWithRetry(async () => {
-			const tools = await this.toolRegistry.getTools()
-			const response = await this.createChatCompletion(tools, true)
-			this.appendResponseMessages(response)
-			await this.responseProcessor.handleResponse(response, this.step, this.resolveStepResult)
-		})
+		return this.client
 	}
 
-	async addToolResponse(toolCallId: string, content: string): Promise<void> {
-		this.messages.push({ role: 'tool', tool_call_id: toolCallId, content })
-	}
-
-	async addUserMessage(content: string): Promise<void> {
-		this.messages.push({ role: 'user', content })
-	}
-
-	async addToolExecutionSummaryMessage(content: string): Promise<void> {
-		this.messages.push({
-			role: 'user',
-			content: `${MessageHistory.TOOL_EXECUTION_SUMMARY_IDENTIFIER}:\n${content}`,
-		})
-	}
-
-	async addCurrentSnapshotMessage(snapshotContent: string): Promise<void> {
-		this.messages.push(this.messageHistory.createSnapshotMessage(snapshotContent))
-	}
-
-	async addCurrentScreenshotMessage(base64Data: string, mimeType: string = 'image/png'): Promise<void> {
-		this.messages.push(this.messageHistory.createScreenshotMessage(base64Data, mimeType))
-	}
-
-	async sendToolResponseWithRetry(): Promise<ChatCompletion> {
-		return this.executeWithRetry(async () => {
-			const tools = await this.toolRegistry.getTools()
-			const response = await this.createChatCompletion(tools, false)
-			this.appendResponseMessages(response)
-			return response
-		})
-	}
-
-	private async createChatCompletion(tools: Awaited<ReturnType<ToolRegistry['getTools']>>, includeN: boolean) {
-		return this.client.chat.completions.create({
-			model: this.runtimeConfig.getModel(),
-			messages: this.messages,
-			tools,
-			tool_choice: this.runtimeConfig.getToolChoice(),
-			parallel_tool_calls: false,
-			temperature: this.temperature,
-			reasoning_effort: this.runtimeConfig.getReasoningEffort(),
-			...(includeN ? { n: 1 } : {}),
-		})
-	}
-
-	private appendResponseMessages(response: ChatCompletion): void {
-		response.choices.forEach((choice) => {
-			if (choice.message) {
-				this.messages.push(this.sanitizeAssistantMessage(choice.message))
-			}
-		})
+	private retainAssistantMessages(response: ChatCompletion): ChatCompletionAssistantMessageParam[] {
+		return (response.choices ?? [])
+			.filter((choice) => choice.message)
+			.map((choice) => this.sanitizeAssistantMessage(choice.message))
 	}
 
 	private sanitizeAssistantMessage(
@@ -178,7 +117,11 @@ export class AiClient {
 		return sanitizedMessage
 	}
 
-	private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+	private async executeWithRetry<T>(
+		messages: ChatCompletionMessageParam[],
+		options: AiSendOptions,
+		operation: () => Promise<T>
+	): Promise<T> {
 		const maxRetries = this.runtimeConfig.getMaxRetries()
 		let lastError: Error | null = null
 
@@ -188,16 +131,11 @@ export class AiClient {
 			} catch (error: unknown) {
 				lastError = error instanceof Error ? error : new Error(String(error))
 
-				if ((!this.isRetryable(error) && !this.isToolError(error)) || attempt === maxRetries) {
-					throw this.enhanceError(error)
-				}
-
-				if (error instanceof LoopDetectedError) {
-					const antiLoopTempChange = Math.round(Math.random() * 10) / 10
-					logger.warn(
-						`repeated tool calls detected: adjusting temperature from ${this.temperature} to ${antiLoopTempChange} to mitigate looping`
-					)
-					this.temperature = antiLoopTempChange
+				if (
+					(!this.isRetryable(error) && !this.isToolError(error, messages, options)) ||
+					attempt === maxRetries
+				) {
+					throw this.enhanceError(error, messages, options)
 				}
 
 				const retryAfter = this.getRetryAfterSeconds(error)
@@ -260,16 +198,7 @@ export class AiClient {
 		return new Promise((resolve) => setTimeout(resolve, ms))
 	}
 
-	countHistoryTokens(): number {
-		const totalChars = this.messages.reduce((sum, msg) => sum + this.countContentChars(msg.content), 0)
-		return Math.ceil(totalChars / 4)
-	}
-
-	replaceHistory(history: ChatCompletionMessageParam[]): void {
-		this.messages = [...history]
-	}
-
-	private enhanceError(error: unknown): Error {
+	private enhanceError(error: unknown, messages: ChatCompletionMessageParam[], options: AiSendOptions): Error {
 		const status = this.getStatus(error) ?? 'unknown'
 		const message = error instanceof Error ? error.message : String(error)
 		return new Error(
@@ -279,35 +208,41 @@ export class AiClient {
 				`tool_choice: ${this.runtimeConfig.getToolChoice?.() ?? 'unknown'}`,
 				`reasoning_effort: ${this.runtimeConfig.getReasoningEffort?.() ?? 'unknown'}`,
 				`temperature: ${this.temperature}`,
-				this.formatStepContext(),
-				`recent_messages:\n${this.formatRecentMessages()}`,
+				this.formatStepContext(options.step),
+				`recent_messages:\n${this.formatRecentMessages(messages)}`,
 				`provider_error:\n${this.formatError(error)}`,
-			].join('\n')
+			].join('\n'),
+			{ cause: error }
 		)
 	}
 
-	private isToolError(error: unknown): boolean {
+	private isToolError(
+		error: unknown,
+		messages: ChatCompletionMessageParam[],
+		options: AiSendOptions
+	): error is Error {
 		const errorAsString = this.formatError(error).toLowerCase()
 		if (this.getStatus(error) === 400 && errorAsString.includes('tool')) {
 			logger.warn(
-				`tool call error detected [400]\n${this.formatStepContext()}\nprovider_error:\n${this.formatError(error)}\nrecent_messages:\n${this.formatRecentMessages()}`
+				`tool call error detected [400]\n${this.formatStepContext(options.step)}\nprovider_error:\n${this.formatError(error)}\nrecent_messages:\n${this.formatRecentMessages(messages)}`
 			)
-			void this.addUserMessage(
-				'you did not call a tool or called it incorrectly, try again and always only call a tool with correct parameters to proceed with the step.'
-			)
+			messages.push({
+				role: 'user',
+				content:
+					'you did not call a tool or called it incorrectly, try again and always only call a tool with correct parameters to proceed with the step.',
+			})
 			return true
 		}
 
 		return false
 	}
 
-	private formatStepContext(): string {
-		const step = this.step as Step | undefined
+	private formatStepContext(step: Step | undefined): string {
 		return [`step_action: ${step?.action ?? '(unknown)'}`, `step_expect: ${step?.expect ?? '(unknown)'}`].join('\n')
 	}
 
-	private formatRecentMessages(): string {
-		const recentMessages = this.messages.slice(-6)
+	private formatRecentMessages(messages: ChatCompletionMessageParam[]): string {
+		const recentMessages = messages.slice(-6)
 		if (recentMessages.length === 0) {
 			return '(none)'
 		}

@@ -1,17 +1,10 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { logger } from '../logging/index.js'
-import { Step, ResolveStepResult } from '../runtime/types.js'
+import { Step, TurnOutcome } from '../runtime/types.js'
 import { StepResultTool } from '../tools/step/result-tool.js'
-import { AiClient } from './client.js'
-import { ResponseProcessor } from './response-processor.js'
 
 export class MessageHandler {
-	constructor(
-		private readonly aiClient: AiClient,
-		private readonly responseProcessor: ResponseProcessor
-	) {}
-
-	async handle(choice: ChatCompletion.Choice, step: Step, resolveStepResult: ResolveStepResult): Promise<void> {
+	handle(choice: ChatCompletion.Choice, step: Step): TurnOutcome {
 		const { message } = choice
 
 		if (choice.finish_reason === 'stop' || message.content) {
@@ -19,23 +12,26 @@ export class MessageHandler {
 			logger.warn(
 				`warning: model responded with text but no tool call. Prompting to use ${StepResultTool.TOOL_PASS_TEST_STEP} or ${StepResultTool.TOOL_FAIL_TEST_STEP}.`
 			)
-			await this.aiClient.addUserMessage(
-				`You provided a text response but did not call a tool. Based on your analysis, call either '${StepResultTool.TOOL_PASS_TEST_STEP}' or '${StepResultTool.TOOL_FAIL_TEST_STEP}' with the actual result. Do not respond with text. Only use the tool.`
-			)
-			const followUpResponse = await this.aiClient.sendToolResponseWithRetry()
-			await this.responseProcessor.handleResponse(followUpResponse, step, resolveStepResult)
-			return
+
+			return {
+				kind: 'continue',
+				toolResults: [],
+				messages: [
+					{
+						role: 'user',
+						content: `You provided a text response but did not call a tool. Based on your analysis, call either '${StepResultTool.TOOL_PASS_TEST_STEP}' or '${StepResultTool.TOOL_FAIL_TEST_STEP}' with the actual result. Do not respond with text. Only use the tool.`,
+					},
+				],
+			}
 		}
 
 		if (choice.finish_reason && choice.finish_reason !== 'tool_calls') {
-			resolveStepResult({
-				passed: false,
-				actual: `OpenAI API finished unexpectedly with reason: ${choice.finish_reason}\n${formatChoiceDetails(choice, step)}`,
-			})
-			return
+			throw new Error(
+				`OpenAI API finished unexpectedly with reason: ${choice.finish_reason}\n${formatChoiceDetails(choice, step)}`
+			)
 		}
 
-		if (!choice.message.content && (!choice.message.tool_calls || choice.message.tool_calls.length === 0)) {
+		if (!message.content && (!message.tool_calls || message.tool_calls.length === 0)) {
 			throw new Error(`No content or tool calls found in message:\n${formatChoiceDetails(choice, step)}`)
 		}
 

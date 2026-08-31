@@ -1,28 +1,28 @@
 import { expect, Page, test as base } from '@playwright/test'
+import { runAiStep } from './playwright/ai-step.js'
 import { createRunner, CheckmateRunner } from './runtime/runner.js'
 import { CheckmateExtension, defineExtension } from './runtime/extension.js'
-import { PlaywrightCapability, web } from './playwright.js'
+import { Step } from './runtime/types.js'
+import { CheckmateAi, PlaywrightCapability, web } from './playwright.js'
 import { BrowserToolRuntime } from './tools/browser/tool.js'
 import { createSalesforceTools, SalesforceLoginTool } from './tools/salesforce/login-tool.js'
 
 /**
- * Fixture type exported by `@xoxoai/checkmate/salesforce`.
+ * Fixture type contributed by `@xoxoai/checkmate/salesforce`.
  *
  * @example
  * ```ts
- * test('salesforce flow', async ({ ai }) => {
- *   await ai.run({
- *     action: 'Login to Salesforce org',
- *     expect: 'The Salesforce home page is displayed',
- *   })
- * })
+ * import { mergeTests } from '@playwright/test'
+ * import { checkmate } from '@xoxoai/checkmate/salesforce'
+ *
+ * export const test = mergeTests(baseTest, checkmate)
  * ```
  */
 export type SalesforceFixtures = {
 	/**
-	 * Runner composed with the built-in web and Salesforce extensions.
+	 * Step runner composed with the built-in web and Salesforce extensions.
 	 */
-	ai: CheckmateRunner
+	ai: CheckmateAi
 }
 
 /**
@@ -36,7 +36,7 @@ export type SalesforceFixtures = {
  * import { web } from '@xoxoai/checkmate/playwright'
  * import { salesforce } from '@xoxoai/checkmate/salesforce'
  *
- * const ai = createRunner({
+ * const runner = createRunner({
  *   extensions: [web({ page }), salesforce()],
  * })
  * ```
@@ -61,7 +61,8 @@ export function salesforce(): CheckmateExtension {
  * ```ts
  * import { createSalesforceRunner } from '@xoxoai/checkmate/salesforce'
  *
- * const ai = createSalesforceRunner(page)
+ * const runner = createSalesforceRunner(page)
+ * const report = await runner.run({ action: 'Login to Salesforce org', expect: 'Home page is displayed' })
  * ```
  */
 export function createSalesforceRunner(page: Page): CheckmateRunner {
@@ -69,27 +70,62 @@ export function createSalesforceRunner(page: Page): CheckmateRunner {
 }
 
 /**
- * Playwright Test fixture with the `ai` runner.
+ * Creates the Salesforce `ai` step runner outside a fixture.
+ *
+ * @example
+ * ```ts
+ * import { createSalesforceAi } from '@xoxoai/checkmate/salesforce'
+ *
+ * const ai = createSalesforceAi(page)
+ * await ai.step({ action: 'Login to Salesforce org', expect: 'Home page is displayed' })
+ * await ai.teardown()
+ * ```
+ */
+export function createSalesforceAi(page: Page): CheckmateAi {
+	const runner = createSalesforceRunner(page)
+
+	return {
+		step: (step: Step) => runAiStep(runner, step),
+		teardown: () => runner.teardown(),
+	}
+}
+
+/**
+ * Checkmate's Salesforce test object, contributing the `ai` fixture.
+ *
+ * @example
+ * ```ts
+ * import { mergeTests } from '@playwright/test'
+ * import { checkmate } from '@xoxoai/checkmate/salesforce'
+ * import { test as baseTest } from './fixtures'
+ *
+ * export const test = mergeTests(baseTest, checkmate)
+ * ```
+ */
+export const checkmate = base.extend<SalesforceFixtures>({
+	ai: async ({ page }, use) => {
+		const ai = createSalesforceAi(page)
+		await use(ai)
+		await ai.teardown()
+	},
+})
+
+/**
+ * Bundled test object for greenfield Salesforce suites.
  *
  * @example
  * ```ts
  * import { test } from '@xoxoai/checkmate/salesforce'
  *
- * test('salesforce account creation', async ({ ai }) => {
- *   await ai.run({
+ * test('salesforce flow', async ({ ai }) => {
+ *   await ai.step({
  *     action: 'Login to Salesforce org',
  *     expect: 'The Salesforce home page is displayed',
  *   })
  * })
  * ```
  */
-export const test = base.extend<SalesforceFixtures>({
-	ai: async ({ page }, use) => {
-		const ai = createSalesforceRunner(page)
-		await use(ai)
-		await ai.teardown()
-	},
-})
+export const test = checkmate
 
 /**
  * Re-export of Playwright's `expect` for convenience.

@@ -1,63 +1,36 @@
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { RuntimeConfig } from '../config/runtime-config.js'
 import { logger } from '../logging/index.js'
-import { Step, ResolveStepResult } from '../runtime/types.js'
-import { ToolResponse } from '../tools/registry.js'
-import { ToolCall } from '../tools/types.js'
-import { AiClient } from './client.js'
+import { ToolCall, ToolExecution, ToolResponse } from '../tools/types.js'
 import { MessageHistory } from './message-history.js'
-import { ResponseProcessor } from './response-processor.js'
-import { ExtensionHost } from '../runtime/extension.js'
 
 export class ToolResponseHandler {
 	constructor(
-		private readonly aiClient: AiClient,
-		private readonly messageHistory: MessageHistory,
-		private readonly responseProcessor: ResponseProcessor,
-		private readonly extensionHost: ExtensionHost
+		private readonly runtimeConfig: RuntimeConfig,
+		private readonly messageHistory: MessageHistory
 	) {}
 
-	async handle(
-		toolCallId: string,
-		toolCall: ToolCall,
-		toolResponse: ToolResponse,
-		step: Step,
-		resolveStepResult: ResolveStepResult
-	): Promise<void> {
-		await this.handleMultiple([{ toolCallId, toolCall, toolResponse }], step, resolveStepResult)
-	}
-
-	async handleMultiple(
-		toolResponses: Array<{ toolCallId: string; toolCall: ToolCall; toolResponse: ToolResponse }>,
-		step: Step,
-		resolveStepResult: ResolveStepResult
-	): Promise<void> {
-		if (toolResponses.length === 0) {
-			return
+	build(toolResults: ToolExecution[]): ChatCompletionMessageParam[] {
+		if (toolResults.length === 0) {
+			return []
 		}
 
-		this.messageHistory.removeEphemeralStateMessages(this.aiClient)
+		const messages: ChatCompletionMessageParam[] = []
 
-		for (const { toolCallId, toolCall, toolResponse } of toolResponses) {
+		for (const { toolCallId, toolCall, toolResponse } of toolResults) {
 			this.logModelBoundToolResponse(toolCallId, toolCall, toolResponse)
 			if (toolResponse.status === 'error') {
 				this.logErrorResponse(toolCallId, toolCall, toolResponse)
 			}
-			await this.aiClient.addToolResponse(toolCallId, toolResponse.response)
+			messages.push({ role: 'tool', tool_call_id: toolCallId, content: toolResponse.response })
 		}
 
-		const executionSummary = buildToolExecutionSummary(toolResponses)
+		const executionSummary = buildToolExecutionSummary(toolResults)
 		if (executionSummary) {
-			await this.aiClient.addToolExecutionSummaryMessage(executionSummary)
+			messages.push(this.messageHistory.createToolExecutionSummaryMessage(executionSummary))
 		}
 
-		await this.extensionHost.handleToolResponses({
-			aiClient: this.aiClient,
-			step,
-			resolveStepResult,
-			toolResponses,
-		})
-
-		const nextResponse = await this.aiClient.sendToolResponseWithRetry()
-		await this.responseProcessor.handleResponse(nextResponse, step, resolveStepResult)
+		return messages
 	}
 
 	private logModelBoundToolResponse(toolCallId: string, toolCall: ToolCall, toolResponse: ToolResponse): void {
@@ -95,14 +68,12 @@ export class ToolResponseHandler {
 	}
 
 	private isDebugMode(): boolean {
-		return this.aiClient.getRuntimeConfig().getLogLevel() === 'debug'
+		return this.runtimeConfig.getLogLevel() === 'debug'
 	}
 }
 
-function buildToolExecutionSummary(
-	toolResponses: Array<{ toolCallId: string; toolCall: ToolCall; toolResponse: ToolResponse }>
-): string {
-	const summaryLines = toolResponses.map(({ toolCall, toolResponse }) =>
+function buildToolExecutionSummary(toolResults: ToolExecution[]): string {
+	const summaryLines = toolResults.map(({ toolCall, toolResponse }) =>
 		formatToolExecutionSummary(toolCall, toolResponse)
 	)
 	return summaryLines.join('\n')

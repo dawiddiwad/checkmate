@@ -618,7 +618,10 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 			description: 'Close a browser tab by pageId, or close the active tab when pageId is null',
 			schema: z
 				.object({
-					pageId: z.string().nullable().describe('Browser tab id from browser_list_tabs, or null for active tab'),
+					pageId: z
+						.string()
+						.nullable()
+						.describe('Browser tab id from browser_list_tabs, or null for active tab'),
 					goal: z.string().describe('The goal or purpose of closing this browser tab'),
 				})
 				.strict(),

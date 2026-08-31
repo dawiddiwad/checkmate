@@ -1,13 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Page } from '@playwright/test'
-import { AiClient } from '../ai/client'
 import { CheckmateRunner } from '../core'
-import { RuntimeConfig } from '../config/runtime-config'
-import { Step, StepResult, ResolveStepResult } from '../runtime/types'
-import { ToolRegistry } from '../tools/registry'
-import { createStepResultTools } from '../tools/step/result-tool'
-import { BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
-import { createSalesforceTools } from '../tools/salesforce/login-tool'
+import { Step } from '../runtime/types'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { createPlaywrightRunner } from '../playwright'
 
@@ -115,106 +109,76 @@ vi.mock('../tools/browser/tool', () => ({
 	]),
 }))
 
-vi.mock('../tools/step/result-tool', () => ({
-	StepResultTool: {
-		TOOL_PASS_TEST_STEP: 'pass_test_step',
-		TOOL_FAIL_TEST_STEP: 'fail_test_step',
-	},
-	createStepResultTools: vi.fn(() => [
-		{
-			definition: {
-				name: 'pass_test_step',
-				description: 'pass',
-				parameters: { type: 'object', properties: {}, additionalProperties: false },
-				strict: true,
-			},
-			execute: vi.fn((args, context) => {
-				context.resolveStepResult({ passed: true, actual: (args as { actualResult: string }).actualResult })
-			}),
-		},
-		{
-			definition: {
-				name: 'fail_test_step',
-				description: 'fail',
-				parameters: { type: 'object', properties: {}, additionalProperties: false },
-				strict: true,
-			},
-			execute: vi.fn((args, context) => {
-				context.resolveStepResult({ passed: false, actual: (args as { actualResult: string }).actualResult })
-			}),
-		},
-	]),
-}))
-
 vi.mock('../tools/browser/snapshot-service', () => ({
 	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot')
 	},
 }))
 
+function toolCallResponse(id: string, name: string, args: Record<string, unknown>) {
+	return {
+		choices: [
+			{
+				index: 0,
+				finish_reason: 'tool_calls',
+				message: {
+					role: 'assistant',
+					content: null as string | null,
+					tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+				},
+			},
+		],
+		usage: { prompt_tokens: 10, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 4 } },
+	}
+}
+
 describe('Simple step execution integration', () => {
-	let manager: CheckmateRunner
+	let runner: CheckmateRunner
 	let page: Page
 
 	beforeEach(() => {
 		vi.clearAllMocks()
 		browserCallMock.mockReturnValue('nav-ok')
 		page = {} as Page
-		manager = createPlaywrightRunner(page)
+		runner = createPlaywrightRunner(page)
 	})
 
-	it('runs a step and routes tool calls from the model', async () => {
-		const firstResponse = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'tool-1',
-								type: 'function',
-								function: {
-									name: 'browser_navigate',
-									arguments: JSON.stringify({ url: 'https://example.com', goal: 'open home' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 10, completion_tokens: 5 },
-		}
-
-		const secondResponse = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'tool-2',
-								type: 'function',
-								function: {
-									name: 'pass_test_step',
-									arguments: JSON.stringify({ actualResult: 'page opened' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 6, completion_tokens: 4 },
-		}
-
-		createMock.mockResolvedValueOnce(firstResponse).mockResolvedValueOnce(secondResponse)
+	it('runs a step and resolves a passing report', async () => {
+		createMock
+			.mockResolvedValueOnce(
+				toolCallResponse('tool-1', 'browser_navigate', { url: 'https://example.com', goal: 'open home' })
+			)
+			.mockResolvedValueOnce(toolCallResponse('tool-2', 'pass_test_step', { actualResult: 'page opened' }))
 
 		const step: Step = {
+			name: 'open the homepage',
 			action: 'Navigate to example.com',
 			expect: 'Example homepage is shown',
 		}
 
-		await expect(manager.run(step)).resolves.toBeUndefined()
+		const report = await runner.run(step)
 
+		expect(report).toMatchObject({
+			schemaVersion: 1,
+			name: 'open the homepage',
+			action: 'Navigate to example.com',
+			expect: 'Example homepage is shown',
+			outcome: 'passed',
+			category: 'app',
+			reason: 'met-expectation',
+			actual: 'page opened',
+			turns: 2,
+		})
+		expect(report.toolCalls).toEqual([
+			{
+				turn: 1,
+				name: 'browser_navigate',
+				arguments: { url: 'https://example.com', goal: 'open home' },
+				status: 'ok',
+			},
+			{ turn: 2, name: 'pass_test_step', arguments: { actualResult: 'page opened' }, status: 'ok' },
+		])
+		expect(report.usage).toMatchObject({ promptTokens: 20, cachedPromptTokens: 8, completionTokens: 10 })
 		expect(createMock).toHaveBeenCalledTimes(2)
 		expect(browserCallMock).toHaveBeenCalledWith({
 			name: 'browser_navigate',
@@ -222,82 +186,36 @@ describe('Simple step execution integration', () => {
 		})
 	})
 
+	it('resolves a failing report instead of throwing when the model fails the step', async () => {
+		createMock.mockResolvedValueOnce(
+			toolCallResponse('tool-1', 'fail_test_step', { actualResult: 'the homepage never loaded' })
+		)
+
+		const report = await runner.run({ action: 'Navigate to example.com', expect: 'Example homepage is shown' })
+
+		expect(report).toMatchObject({
+			outcome: 'failed',
+			category: 'app',
+			reason: 'failed-expectation',
+			actual: 'the homepage never loaded',
+			turns: 1,
+		})
+	})
+
 	it('runs a multi-step flow with multiple tool calls before pass', async () => {
-		const navigateResponse = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'nav-1',
-								type: 'function',
-								function: {
-									name: 'browser_navigate',
-									arguments: JSON.stringify({ url: 'https://example.com', goal: 'open home' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 8, completion_tokens: 4 },
-		}
-
-		const typeResponse = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'type-1',
-								type: 'function',
-								function: {
-									name: 'browser_type',
-									arguments: JSON.stringify({ ref: 'e1', text: 'hello', goal: 'fill input' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 9, completion_tokens: 4 },
-		}
-
-		const passResponse = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'pass-1',
-								type: 'function',
-								function: {
-									name: 'pass_test_step',
-									arguments: JSON.stringify({ actualResult: 'completed' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 7, completion_tokens: 3 },
-		}
-
 		createMock
-			.mockResolvedValueOnce(navigateResponse)
-			.mockResolvedValueOnce(typeResponse)
-			.mockResolvedValueOnce(passResponse)
+			.mockResolvedValueOnce(
+				toolCallResponse('nav-1', 'browser_navigate', { url: 'https://example.com', goal: 'open home' })
+			)
+			.mockResolvedValueOnce(
+				toolCallResponse('type-1', 'browser_type', { ref: 'e1', text: 'hello', goal: 'fill input' })
+			)
+			.mockResolvedValueOnce(toolCallResponse('pass-1', 'pass_test_step', { actualResult: 'completed' }))
 
-		const step: Step = {
-			action: 'Navigate then type hello',
-			expect: 'Input is filled',
-		}
+		const report = await runner.run({ action: 'Navigate then type hello', expect: 'Input is filled' })
 
-		await expect(manager.run(step)).resolves.toBeUndefined()
-
+		expect(report.outcome).toBe('passed')
+		expect(report.turns).toBe(3)
 		expect(createMock).toHaveBeenCalledTimes(3)
 		expect(browserCallMock).toHaveBeenNthCalledWith(1, {
 			name: 'browser_navigate',
@@ -309,222 +227,80 @@ describe('Simple step execution integration', () => {
 		})
 	})
 
-	it('runs two sequential test steps, each with their own tool calls', async () => {
-		const step1Navigate = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'nav-step1',
-								type: 'function',
-								function: {
-									name: 'browser_navigate',
-									arguments: JSON.stringify({ url: 'https://example.com', goal: 'open home' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 8, completion_tokens: 3 },
-		}
-
-		const step1Pass = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'pass-step1',
-								type: 'function',
-								function: {
-									name: 'pass_test_step',
-									arguments: JSON.stringify({ actualResult: 'home opened' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 5, completion_tokens: 2 },
-		}
-
-		const step2Navigate = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'nav-step2',
-								type: 'function',
-								function: {
-									name: 'browser_navigate',
-									arguments: JSON.stringify({
-										url: 'https://example.com/login',
-										goal: 'go to login',
-									}),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 9, completion_tokens: 4 },
-		}
-
-		const step2Type = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'type-step2',
-								type: 'function',
-								function: {
-									name: 'browser_type',
-									arguments: JSON.stringify({
-										ref: 'email',
-										text: 'user@example.com',
-										goal: 'enter email',
-									}),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 10, completion_tokens: 4 },
-		}
-
-		const step2Pass = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'pass-step2',
-								type: 'function',
-								function: {
-									name: 'pass_test_step',
-									arguments: JSON.stringify({ actualResult: 'login form filled' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 6, completion_tokens: 3 },
-		}
-
+	it('runs two sequential steps, each with its own message history', async () => {
 		createMock
-			.mockResolvedValueOnce(step1Navigate)
-			.mockResolvedValueOnce(step1Pass)
-			.mockResolvedValueOnce(step2Navigate)
-			.mockResolvedValueOnce(step2Type)
-			.mockResolvedValueOnce(step2Pass)
+			.mockResolvedValueOnce(
+				toolCallResponse('nav-step1', 'browser_navigate', { url: 'https://example.com', goal: 'open home' })
+			)
+			.mockResolvedValueOnce(toolCallResponse('pass-step1', 'pass_test_step', { actualResult: 'home opened' }))
+			.mockResolvedValueOnce(
+				toolCallResponse('nav-step2', 'browser_navigate', {
+					url: 'https://example.com/login',
+					goal: 'go to login',
+				})
+			)
+			.mockResolvedValueOnce(
+				toolCallResponse('type-step2', 'browser_type', {
+					ref: 'email',
+					text: 'user@example.com',
+					goal: 'enter email',
+				})
+			)
+			.mockResolvedValueOnce(
+				toolCallResponse('pass-step2', 'pass_test_step', { actualResult: 'login form filled' })
+			)
 
-		const stepOne: Step = {
-			action: 'Open home page',
-			expect: 'Home is visible',
-		}
+		const first = await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+		const second = await runner.run({ action: 'Open login and enter email', expect: 'Email filled' })
 
-		const stepTwo: Step = {
-			action: 'Open login and enter email',
-			expect: 'Email filled',
-		}
-
-		await expect(manager.run(stepOne)).resolves.toBeUndefined()
-		await expect(manager.run(stepTwo)).resolves.toBeUndefined()
-
+		expect(first.outcome).toBe('passed')
+		expect(second.outcome).toBe('passed')
 		expect(createMock).toHaveBeenCalledTimes(5)
-		expect(browserCallMock).toHaveBeenNthCalledWith(1, {
-			name: 'browser_navigate',
-			arguments: expect.objectContaining({ url: 'https://example.com', goal: 'open home' }),
-		})
-		expect(browserCallMock).toHaveBeenNthCalledWith(2, {
-			name: 'browser_navigate',
-			arguments: expect.objectContaining({ url: 'https://example.com/login', goal: 'go to login' }),
-		})
-		expect(browserCallMock).toHaveBeenNthCalledWith(3, {
-			name: 'browser_type',
-			arguments: expect.objectContaining({ ref: 'email', text: 'user@example.com', goal: 'enter email' }),
-		})
+
+		const secondStepFirstRequest = createMock.mock.calls[2][0] as { messages: ChatCompletionMessageParam[] }
+		expect(JSON.stringify(secondStepFirstRequest.messages)).not.toContain('home opened')
+	})
+
+	it('replaces the page snapshot instead of accumulating one per turn', async () => {
+		browserCallMock.mockReturnValue({ response: 'nav-ok', snapshot: 'updated snapshot' })
+		createMock
+			.mockResolvedValueOnce(
+				toolCallResponse('nav-1', 'browser_navigate', { url: 'https://example.com', goal: 'open home' })
+			)
+			.mockResolvedValueOnce(toolCallResponse('pass-1', 'pass_test_step', { actualResult: 'done' }))
+
+		await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+
+		const secondRequest = createMock.mock.calls[1][0] as { messages: ChatCompletionMessageParam[] }
+		const snapshots = secondRequest.messages.filter((message) =>
+			JSON.stringify(message.content).includes('this is a current page snapshot')
+		)
+		expect(snapshots).toHaveLength(1)
+		expect(JSON.stringify(snapshots[0].content)).toContain('updated snapshot')
 	})
 
 	it('recovers when the model replies with text by prompting for a pass/fail tool call', async () => {
-		const textResponse = {
-			choices: [
-				{
-					finish_reason: 'stop',
-					message: {
-						role: 'assistant',
-						content: 'Here is your summary',
+		createMock
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						index: 0,
+						finish_reason: 'stop',
+						message: { role: 'assistant', content: 'Here is your summary' },
 					},
-				},
-			],
-			usage: { prompt_tokens: 8, completion_tokens: 3 },
-		}
+				],
+				usage: { prompt_tokens: 8, completion_tokens: 3 },
+			})
+			.mockResolvedValueOnce(toolCallResponse('pass-1', 'pass_test_step', { actualResult: 'status ok' }))
 
-		const passResponse = {
-			choices: [
-				{
-					message: {
-						role: 'assistant',
-						tool_calls: [
-							{
-								id: 'pass-1',
-								type: 'function',
-								function: {
-									name: 'pass_test_step',
-									arguments: JSON.stringify({ actualResult: 'status ok' }),
-								},
-							},
-						],
-					},
-				},
-			],
-			usage: { prompt_tokens: 6, completion_tokens: 2 },
-		}
+		const report = await runner.run({ action: 'Report current status', expect: 'Status is reported' })
 
-		createMock.mockResolvedValueOnce(textResponse).mockResolvedValueOnce(passResponse)
-
-		const configurationManager = new RuntimeConfig()
-		const browserRuntime = new BrowserToolRuntime(page)
-		const toolRegistry = new ToolRegistry(configurationManager)
-		toolRegistry.register(createBrowserTools(browserRuntime))
-		toolRegistry.register(createStepResultTools())
-		toolRegistry.register(createSalesforceTools(browserRuntime))
-		const client = new AiClient({
-			runtimeConfig: configurationManager,
-			toolRegistry,
-			extensionHost: { handleToolResponses: vi.fn().mockResolvedValue(undefined) } as never,
-		})
-
-		const step: Step = {
-			action: 'Report current status',
-			expect: 'Status is reported',
-		}
-
-		let reportedStatus: StepResult | undefined
-		const statusCallback: ResolveStepResult = (status: StepResult) => {
-			reportedStatus = status
-		}
-
-		await client.initialize(step, statusCallback)
-		await client.sendMessage([{ role: 'user', content: 'Please report the current status' }])
-
+		expect(report).toMatchObject({ outcome: 'passed', actual: 'status ok', turns: 2 })
 		expect(createMock).toHaveBeenCalledTimes(2)
-		expect(reportedStatus).toEqual({ passed: true, actual: 'status ok' })
 
 		const secondCallMessages = (createMock.mock.calls[1][0] as { messages: ChatCompletionMessageParam[] }).messages
 		const reminder = secondCallMessages
-			.map((m) => m.content)
+			.map((message) => message.content)
 			.find(
 				(content) =>
 					typeof content === 'string' &&
@@ -532,5 +308,24 @@ describe('Simple step execution integration', () => {
 			)
 
 		expect(reminder).toBeDefined()
+		expect(report.transcript).toContainEqual({ turn: 1, role: 'assistant', content: 'Here is your summary' })
+	})
+
+	it('converts a provider failure into an infra report so the evidence survives', async () => {
+		createMock.mockRejectedValue(Object.assign(new Error('provider exploded'), { status: 401 }))
+
+		const report = await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+
+		expect(report).toMatchObject({ outcome: 'failed', category: 'infra', reason: 'provider-error', turns: 1 })
+		expect(report.actual).toContain('provider exploded')
+	})
+
+	it('converts an unknown tool call into an infra tool-error report', async () => {
+		createMock.mockResolvedValueOnce(toolCallResponse('call-1', 'not_a_tool', {}))
+
+		const report = await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+
+		expect(report).toMatchObject({ outcome: 'failed', category: 'infra', reason: 'tool-error' })
+		expect(report.actual).toContain('not_a_tool')
 	})
 })

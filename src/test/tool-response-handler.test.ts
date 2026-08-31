@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MessageHistory } from '../ai/message-history'
 import { ToolResponseHandler } from '../ai/tool-response-handler'
-import { ToolResponse } from '../tools/registry'
-import { ResolveStepResult } from '../runtime/types'
+import { RuntimeConfig } from '../config/runtime-config'
 import { logger } from '../logging'
+import { ToolExecution, ToolResponse } from '../tools/types'
 
 vi.mock('../../src/logging', () => ({
 	logger: {
@@ -13,144 +14,88 @@ vi.mock('../../src/logging', () => ({
 	},
 }))
 
-describe('ToolResponseHandler', () => {
-	let openaiClient: {
-		addToolResponse: ReturnType<typeof vi.fn>
-		addToolExecutionSummaryMessage: ReturnType<typeof vi.fn>
-		addCurrentSnapshotMessage: ReturnType<typeof vi.fn>
-		addCurrentScreenshotMessage: ReturnType<typeof vi.fn>
-		sendToolResponseWithRetry: ReturnType<typeof vi.fn>
-		getRuntimeConfig: ReturnType<typeof vi.fn>
-	}
-	let historyManager: { removeEphemeralStateMessages: ReturnType<typeof vi.fn> }
-	let responseProcessor: { handleResponse: ReturnType<typeof vi.fn> }
-	let extensionHost: { handleToolResponses: ReturnType<typeof vi.fn> }
-	let handler: ToolResponseHandler
-	let callback: ResolveStepResult
+function createHandler(logLevel = 'off'): ToolResponseHandler {
+	return new ToolResponseHandler({ getLogLevel: () => logLevel } as unknown as RuntimeConfig, new MessageHistory())
+}
 
+function execution(toolCallId: string, name: string, args: unknown, toolResponse: ToolResponse): ToolExecution {
+	return { toolCallId, toolCall: { name, arguments: args }, toolResponse }
+}
+
+describe('ToolResponseHandler', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
-		openaiClient = {
-			addToolResponse: vi.fn().mockResolvedValue(undefined),
-			addToolExecutionSummaryMessage: vi.fn().mockResolvedValue(undefined),
-			addCurrentSnapshotMessage: vi.fn().mockResolvedValue(undefined),
-			addCurrentScreenshotMessage: vi.fn().mockResolvedValue(undefined),
-			sendToolResponseWithRetry: vi.fn().mockResolvedValue({ choices: [] }),
-			getRuntimeConfig: vi.fn().mockReturnValue({
-				getLogLevel: vi.fn().mockReturnValue('off'),
-			}),
-		}
-		historyManager = {
-			removeEphemeralStateMessages: vi.fn(),
-		}
-		responseProcessor = {
-			handleResponse: vi.fn().mockResolvedValue(undefined),
-		}
-		extensionHost = {
-			handleToolResponses: vi.fn().mockImplementation(async ({ aiClient, toolResponses }) => {
-				const latestSnapshot = toolResponses.at(-1)?.toolResponse.snapshot
-				if (latestSnapshot) {
-					await aiClient.addCurrentSnapshotMessage(latestSnapshot)
+	})
+
+	it('returns one tool message per call plus a single execution summary', () => {
+		const messages = createHandler().build([
+			execution(
+				'call_1',
+				'browser_click_or_hover',
+				{ ref: 'e123', goal: 'submit form' },
+				{
+					name: 'browser_click_or_hover',
+					response: 'Timeline of events after last function call:\n[123ms] Clicked submit',
+					snapshot: 'page snapshot:\n{button Submit}',
+					status: 'success',
 				}
+			),
+		])
 
-				await aiClient.addCurrentScreenshotMessage('YmFzZTY0', 'image/png')
-			}),
-		}
-		handler = new ToolResponseHandler(
-			openaiClient as never,
-			historyManager as never,
-			responseProcessor as never,
-			extensionHost as never
-		)
-		callback = vi.fn()
+		expect(messages).toEqual([
+			{
+				role: 'tool',
+				tool_call_id: 'call_1',
+				content: 'Timeline of events after last function call:\n[123ms] Clicked submit',
+			},
+			{
+				role: 'user',
+				content:
+					'tool execution summary:\n- successfully executed: browser_click_or_hover {"ref":"e123","goal":"submit form"}',
+			},
+		])
 	})
 
-	it('removes previous floating state and appends summary, snapshot, and screenshot', async () => {
-		const step = { action: 'act', expect: 'done' }
-		const toolResponse: ToolResponse = {
-			name: 'browser_click_or_hover',
-			response: 'Timeline of events after last function call:\n[123ms] Clicked submit',
-			snapshot: 'page snapshot:\n{button Submit}',
-			status: 'success',
-		}
-
-		await handler.handleMultiple(
-			[
+	it('summarizes tool errors with the failing response', () => {
+		const messages = createHandler().build([
+			execution(
+				'call_1',
+				'browser_click_or_hover',
+				{ ref: 'e999', goal: 'click missing button' },
 				{
-					toolCallId: 'call_1',
-					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123', goal: 'submit form' } },
-					toolResponse,
-				},
-			],
-			step,
-			callback
-		)
+					name: 'browser_click_or_hover',
+					response: 'failed to click element',
+					snapshot: null,
+					status: 'error',
+				}
+			),
+		])
 
-		expect(historyManager.removeEphemeralStateMessages).toHaveBeenCalledWith(openaiClient)
-		expect(openaiClient.addToolResponse).toHaveBeenCalledWith('call_1', toolResponse.response)
-		expect(openaiClient.addToolExecutionSummaryMessage).toHaveBeenCalledWith(
-			'- successfully executed: browser_click_or_hover {"ref":"e123","goal":"submit form"}'
-		)
-		expect(openaiClient.addCurrentSnapshotMessage).toHaveBeenCalledWith(toolResponse.snapshot)
-		expect(openaiClient.addCurrentScreenshotMessage).toHaveBeenCalledWith('YmFzZTY0', 'image/png')
-		expect(openaiClient.sendToolResponseWithRetry).toHaveBeenCalledTimes(1)
-		expect(responseProcessor.handleResponse).toHaveBeenCalledWith({ choices: [] }, step, callback)
+		expect(messages[1]).toEqual({
+			role: 'user',
+			content:
+				'tool execution summary:\n- tool call error: browser_click_or_hover {"ref":"e999","goal":"click missing button"} -> failed to click element',
+		})
 	})
 
-	it('keeps append-only history even when no snapshot is returned', async () => {
-		const step = { action: 'act', expect: 'done' }
-		const toolResponse: ToolResponse = {
-			name: 'browser_click_or_hover',
-			response: 'failed to click element',
-			snapshot: null,
-			status: 'error',
-		}
-
-		await handler.handleMultiple(
-			[
-				{
-					toolCallId: 'call_1',
-					toolCall: {
-						name: 'browser_click_or_hover',
-						arguments: { ref: 'e999', goal: 'click missing button' },
-					},
-					toolResponse,
-				},
-			],
-			step,
-			callback
-		)
-
-		expect(historyManager.removeEphemeralStateMessages).toHaveBeenCalledWith(openaiClient)
-		expect(openaiClient.addToolResponse).toHaveBeenCalledWith('call_1', toolResponse.response)
-		expect(openaiClient.addToolExecutionSummaryMessage).toHaveBeenCalledWith(
-			'- tool call error: browser_click_or_hover {"ref":"e999","goal":"click missing button"} -> failed to click element'
-		)
-		expect(openaiClient.addCurrentSnapshotMessage).not.toHaveBeenCalled()
-		expect(openaiClient.addCurrentScreenshotMessage).toHaveBeenCalledTimes(1)
+	it('returns nothing when no tools ran', () => {
+		expect(createHandler().build([])).toEqual([])
 	})
 
-	it('logs model-bound tool responses in debug mode', async () => {
-		openaiClient.getRuntimeConfig.mockReturnValue({ getLogLevel: vi.fn().mockReturnValue('debug') })
-		const step = { action: 'act', expect: 'done' }
-		const toolResponse: ToolResponse = {
-			name: 'browser_click_or_hover',
-			response: 'Clicked submit button',
-			snapshot: null,
-			status: 'success',
-		}
-
-		await handler.handleMultiple(
-			[
+	it('logs model-bound tool responses in debug mode', () => {
+		createHandler('debug').build([
+			execution(
+				'call_debug',
+				'browser_click_or_hover',
+				{ ref: 'e123', goal: 'submit form' },
 				{
-					toolCallId: 'call_debug',
-					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123', goal: 'submit form' } },
-					toolResponse,
-				},
-			],
-			step,
-			callback
-		)
+					name: 'browser_click_or_hover',
+					response: 'Clicked submit button',
+					snapshot: null,
+					status: 'success',
+				}
+			),
+		])
 
 		expect(logger.debug).toHaveBeenCalledTimes(1)
 		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
@@ -163,52 +108,30 @@ describe('ToolResponseHandler', () => {
 		expect(debugLog).toContain('snapshot: none')
 	})
 
-	it('does not log model-bound tool responses outside debug mode', async () => {
-		const step = { action: 'act', expect: 'done' }
-		const toolResponse: ToolResponse = {
-			name: 'browser_click_or_hover',
-			response: 'Clicked submit button',
-			snapshot: null,
-			status: 'success',
-		}
-
-		await handler.handleMultiple(
-			[
-				{
-					toolCallId: 'call_info',
-					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123' } },
-					toolResponse,
-				},
-			],
-			step,
-			callback
-		)
+	it('does not log model-bound tool responses outside debug mode', () => {
+		createHandler().build([
+			execution(
+				'call_info',
+				'browser_click_or_hover',
+				{ ref: 'e123' },
+				{ name: 'browser_click_or_hover', response: 'Clicked submit button', snapshot: null, status: 'success' }
+			),
+		])
 
 		expect(logger.debug).not.toHaveBeenCalled()
 	})
 
-	it('does not duplicate error response bodies between warning and debug logs in debug mode', async () => {
-		openaiClient.getRuntimeConfig.mockReturnValue({ getLogLevel: vi.fn().mockReturnValue('debug') })
-		const step = { action: 'act', expect: 'done' }
+	it('does not duplicate error response bodies between warning and debug logs in debug mode', () => {
 		const uniqueResponse = 'unique debug-only error body'
-		const toolResponse: ToolResponse = {
-			name: 'browser_click_or_hover',
-			response: uniqueResponse,
-			snapshot: null,
-			status: 'error',
-		}
 
-		await handler.handleMultiple(
-			[
-				{
-					toolCallId: 'call_error_debug',
-					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'missing' } },
-					toolResponse,
-				},
-			],
-			step,
-			callback
-		)
+		createHandler('debug').build([
+			execution(
+				'call_error_debug',
+				'browser_click_or_hover',
+				{ ref: 'missing' },
+				{ name: 'browser_click_or_hover', response: uniqueResponse, snapshot: null, status: 'error' }
+			),
+		])
 
 		const debugLog = vi
 			.mocked(logger.debug)
@@ -224,28 +147,17 @@ describe('ToolResponseHandler', () => {
 		expect(warnings).not.toContain(uniqueResponse)
 	})
 
-	it('does not include full snapshot content in generic tool response debug logs', async () => {
-		openaiClient.getRuntimeConfig.mockReturnValue({ getLogLevel: vi.fn().mockReturnValue('debug') })
-		const step = { action: 'act', expect: 'done' }
+	it('does not include full snapshot content in generic tool response debug logs', () => {
 		const snapshot = 'page snapshot:\n{button Submit}'
-		const toolResponse: ToolResponse = {
-			name: 'browser_click_or_hover',
-			response: 'clicked',
-			snapshot,
-			status: 'success',
-		}
 
-		await handler.handleMultiple(
-			[
-				{
-					toolCallId: 'call_snapshot',
-					toolCall: { name: 'browser_click_or_hover', arguments: { ref: 'e123' } },
-					toolResponse,
-				},
-			],
-			step,
-			callback
-		)
+		createHandler('debug').build([
+			execution(
+				'call_snapshot',
+				'browser_click_or_hover',
+				{ ref: 'e123' },
+				{ name: 'browser_click_or_hover', response: 'clicked', snapshot, status: 'success' }
+			),
+		])
 
 		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
 		expect(debugLog).toContain(`snapshot: present (${snapshot.length} chars, content logged by SnapshotService)`)
@@ -253,34 +165,26 @@ describe('ToolResponseHandler', () => {
 		expect(debugLog).not.toContain('{button Submit}')
 	})
 
-	it('redacts secrets and image data from error diagnostics', async () => {
-		const step = { action: 'act', expect: 'done' }
+	it('redacts secrets and image data from error diagnostics', () => {
 		const base64 = 'A'.repeat(220)
-		const toolResponse: ToolResponse = {
-			name: 'browser_upload',
-			response: `failed with Authorization: Bearer sk-response and data:image/png;base64,${base64}`,
-			snapshot: null,
-			status: 'error',
-		}
 
-		await handler.handleMultiple(
-			[
+		createHandler().build([
+			execution(
+				'call_secret',
+				'browser_upload',
 				{
-					toolCallId: 'call_secret',
-					toolCall: {
-						name: 'browser_upload',
-						arguments: {
-							apiKey: 'sk-argument',
-							cookie: 'Cookie: session=secret',
-							image: `data:image/png;base64,${base64}`,
-						},
-					},
-					toolResponse,
+					apiKey: 'sk-argument',
+					cookie: 'Cookie: session=secret',
+					image: `data:image/png;base64,${base64}`,
 				},
-			],
-			step,
-			callback
-		)
+				{
+					name: 'browser_upload',
+					response: `failed with Authorization: Bearer sk-response and data:image/png;base64,${base64}`,
+					snapshot: null,
+					status: 'error',
+				}
+			),
+		])
 
 		const warnings = vi
 			.mocked(logger.warn)
@@ -295,37 +199,29 @@ describe('ToolResponseHandler', () => {
 		expect(warnings).not.toContain('session=secret')
 	})
 
-	it('redacts JSON and env-style secret fields from error diagnostics', async () => {
-		const step = { action: 'act', expect: 'done' }
+	it('redacts JSON and env-style secret fields from error diagnostics', () => {
 		const base64 = 'B'.repeat(220)
-		const toolResponse: ToolResponse = {
-			name: 'browser_upload',
-			response: `failed OPENAI_API_KEY=response-secret api_key=response-snake authorization=Bearer response-auth cookie=session=response-cookie data:image/png;base64,${base64}`,
-			snapshot: null,
-			status: 'error',
-		}
 
-		await handler.handleMultiple(
-			[
+		createHandler().build([
+			execution(
+				'call_json_secret',
+				'browser_upload',
 				{
-					toolCallId: 'call_json_secret',
-					toolCall: {
-						name: 'browser_upload',
-						arguments: {
-							OPENAI_API_KEY: 'openai-secret-value',
-							api_key: 'snake-secret-value',
-							apiKey: 'camel-secret-value',
-							authorization: 'Bearer auth-secret-value',
-							cookie: 'session=cookie-secret-value',
-							image: `data:image/png;base64,${base64}`,
-						},
-					},
-					toolResponse,
+					OPENAI_API_KEY: 'openai-secret-value',
+					api_key: 'snake-secret-value',
+					apiKey: 'camel-secret-value',
+					authorization: 'Bearer auth-secret-value',
+					cookie: 'session=cookie-secret-value',
+					image: `data:image/png;base64,${base64}`,
 				},
-			],
-			step,
-			callback
-		)
+				{
+					name: 'browser_upload',
+					response: `failed OPENAI_API_KEY=response-secret api_key=response-snake authorization=Bearer response-auth cookie=session=response-cookie data:image/png;base64,${base64}`,
+					snapshot: null,
+					status: 'error',
+				}
+			),
+		])
 
 		const warnings = vi
 			.mocked(logger.warn)

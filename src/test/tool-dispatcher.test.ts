@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToolDispatcher } from '../tools/dispatcher'
+import { LoopDetector } from '../tools/loop-detector'
 import { ToolRegistry } from '../tools/registry'
 import { AgentTool } from '../tools/types'
 import { RuntimeConfig } from '../config/runtime-config'
@@ -42,12 +43,12 @@ describe('ToolDispatcher diagnostics', () => {
 	it('includes requested, arguments, registered, and allowed tool names for invalid tools', async () => {
 		const registry = new ToolRegistry(createConfig(['allowed_tool']))
 		registry.register(createTool('registered_tool', () => 'ok'))
-		const dispatcher = new ToolDispatcher(registry)
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
 
 		await expect(
 			dispatcher.dispatch(
 				{ name: 'missing_tool', arguments: { ref: 'button' } },
-				{ step: { action: 'click', expect: 'clicked' }, resolveStepResult: vi.fn() }
+				{ step: { action: 'click', expect: 'clicked' } }
 			)
 		).rejects.toThrow(/missing_tool[\s\S]*ref[\s\S]*registered_tool[\s\S]*allowed_tool/)
 	})
@@ -60,13 +61,13 @@ describe('ToolDispatcher diagnostics', () => {
 				throw cause
 			})
 		)
-		const dispatcher = new ToolDispatcher(registry)
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
 
 		let caught: unknown
 		try {
 			await dispatcher.dispatch(
 				{ name: 'throwing_tool', arguments: { id: 123 } },
-				{ step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
+				{ step: { action: 'run', expect: 'done' } }
 			)
 		} catch (error) {
 			caught = error
@@ -83,8 +84,8 @@ describe('ToolDispatcher diagnostics', () => {
 			createTool('string_error_tool', () => 'Error: bad result'),
 			createTool('object_error_tool', () => ({ response: 'bad object', status: 'error' })),
 		])
-		const dispatcher = new ToolDispatcher(registry)
-		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const context = { step: { action: 'run', expect: 'done' } }
 
 		await expect(dispatcher.dispatch({ name: 'string_error_tool' }, context)).resolves.toMatchObject({
 			status: 'error',
@@ -100,10 +101,12 @@ describe('ToolDispatcher diagnostics', () => {
 	it('logs tools completed without model responses in debug mode', async () => {
 		const registry = new ToolRegistry(createConfig([], 'debug'))
 		registry.register(createTool('pass_test_step', () => undefined))
-		const dispatcher = new ToolDispatcher(registry)
-		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const context = { step: { action: 'run', expect: 'done' } }
 
-		await expect(dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)).resolves.toBeNull()
+		await expect(
+			dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)
+		).resolves.toBeNull()
 
 		expect(logger.debug).toHaveBeenCalledTimes(1)
 		const debugLog = String(vi.mocked(logger.debug).mock.calls[0][0])
@@ -115,10 +118,12 @@ describe('ToolDispatcher diagnostics', () => {
 	it('does not log tools completed without model responses outside debug mode', async () => {
 		const registry = new ToolRegistry(createConfig())
 		registry.register(createTool('pass_test_step', () => undefined))
-		const dispatcher = new ToolDispatcher(registry)
-		const context = { step: { action: 'run', expect: 'done' }, resolveStepResult: vi.fn() }
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const context = { step: { action: 'run', expect: 'done' } }
 
-		await expect(dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)).resolves.toBeNull()
+		await expect(
+			dispatcher.dispatch({ name: 'pass_test_step', arguments: { note: 'done' } }, context)
+		).resolves.toBeNull()
 
 		expect(logger.debug).not.toHaveBeenCalled()
 	})

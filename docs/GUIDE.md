@@ -22,28 +22,84 @@ Technical documentation for **_checkmate_** - AI test automation with Playwright
 Main building blocks:
 
 - **Runner**: The object that executes steps. The main API entry point is `createRunner()` from `@xoxoai/checkmate/core`.
-- **Step**: A plain object with `action` and `expect`. This is the main unit of execution.
+- **Step**: A plain object with `action`, `expect`, and an optional `name`. This is the main unit of execution.
+- **Step report**: The versioned `checkmate-step.json` every step attaches. It carries the assertion, the layer that produced it (`app`, `model`, or `infra`), the termination reason, the tool calls, the turn count, and the cost.
 - **Extensions**: Composable modules that add tools and runtime behavior. Built-ins include `web()` and `salesforce()`.
 - **Fixtures**: Convenience [Playwright](https://playwright.dev/docs/test-fixtures) entry points that provide an `ai` runner in tests.
 
 Published entry points:
 
 - `@xoxoai/checkmate/core`: Build your own runner with extensions.
-- `@xoxoai/checkmate/playwright`: Use the built-in web extension with Playwright `test` and `expect`.
+- `@xoxoai/checkmate/playwright`: The mergeable `checkmate` test object, a bundled `test`, and `expect`.
 - `@xoxoai/checkmate/salesforce`: Use the built-in web + Salesforce extensions with the same `ai` fixture shape.
 
-Most users start here:
+The documented path adds one line to a fixtures file the team already owns:
 
 ```typescript
-import { test } from '@xoxoai/checkmate/playwright'
+// fixtures.ts
+import { mergeTests } from '@playwright/test'
+import { checkmate } from '@xoxoai/checkmate/playwright'
+import { test as baseTest } from './my-existing-fixtures'
+
+export const test = mergeTests(baseTest, checkmate)
+```
+
+```typescript
+import { test } from './fixtures'
 
 test('search flow', async ({ ai }) => {
-	await ai.run({
+	await ai.step({
+		name: 'search the docs',
 		action: `Type 'documentation' in the search bar and press Enter`,
 		expect: `At least 5 search results are displayed`,
 	})
 })
 ```
+
+Two other entry points ship but are not the documented path:
+
+- A bundled `test` — `import { test, expect } from '@xoxoai/checkmate/playwright'`. Zero setup, but it takes over the test object, so it collides with a suite that already has custom fixtures. This is what the scaffolded greenfield examples use.
+- A factory — `createAi(page)`. No fixture integration at all, usable inside a helper or page object, at the cost of caller-owned `teardown()`.
+
+### Every step is a Playwright step
+
+`ai.step` always creates its own `test.step`, labelled `ai: <name>` so a reviewer scanning a
+report can see which steps were nondeterministic, and always attaches `checkmate-step.json` —
+on passes as well as failures, because with a model-owned assertion the dangerous failure is a
+false pass and keeping the evidence on green steps is what makes it detectable.
+
+```jsonc
+{
+	"schemaVersion": 1,
+	"name": "apply promo code",
+	"action": "apply the seasonal promo code SPRING25 at checkout",
+	"expect": "the order total drops and the discount is itemised",
+	"outcome": "failed",
+	"category": "app",
+	"reason": "failed-expectation",
+	"actual": "the order total stayed at $40.00",
+	"turns": 7,
+	"durationMs": 46900,
+	"usage": { "promptTokens": 18320, "cachedPromptTokens": 14208, "completionTokens": 812, "costUsd": 0.006 },
+	"toolCalls": [{ "turn": 3, "name": "browser_click_or_hover", "arguments": { "ref": "e17" }, "status": "ok" }],
+	"transcript": [{ "turn": 3, "role": "tool", "content": "browser_click_or_hover -> clicked Apply" }],
+}
+```
+
+Every step ends in a **category** and a **reason**. The category is what a triage agent routes on;
+the reason is the specific event:
+
+| Category | Reason               | What it is evidence of                                                            |
+| -------- | -------------------- | --------------------------------------------------------------------------------- |
+| `app`    | `met-expectation`    | The model observed the app and judged the expectation met.                        |
+| `app`    | `failed-expectation` | The model observed the app and judged the expectation unmet.                      |
+| `model`  | `loop-detected`      | The same tool call repeated — the model is stuck, or the UI state is unreachable. |
+| `infra`  | `tool-error`         | A tool threw unrecoverably, or the model named a tool that does not exist.        |
+| `infra`  | `provider-error`     | The model provider failed after retries, or returned an unusable response.        |
+| `infra`  | `budget-exceeded`    | A token or cost budget was crossed.                                               |
+
+Checkmate classifies the layer, not the meaning. An `app` outcome says the evidence points at the
+product under test — not whether that is a legitimate UI change or a bug.
 
 ## Configuration Reference
 
@@ -83,21 +139,20 @@ Tests are managed in [Playwright's](https://playwright.dev/docs/test-configurati
 ### Basic Example
 
 ```typescript
-import { expect, test } from '@xoxoai/checkmate/playwright'
+import { expect } from '@playwright/test'
+import { test } from './fixtures'
 
 test('search for playwright documentation', async ({ page, ai }) => {
-	await test.step('Navigate to Google', async () => {
-		await ai.run({
-			action: `Open the browser and navigate to google.com`,
-			expect: `google.com is loaded and the search bar is visible`,
-		})
+	await ai.step({
+		name: 'Navigate to Google',
+		action: `Open the browser and navigate to google.com`,
+		expect: `google.com is loaded and the search bar is visible`,
 	})
 
-	await test.step('Search for Playwright', async () => {
-		await ai.run({
-			action: `Type 'playwright test automation' in the search bar and press Enter`,
-			expect: `Search results contain the playwright.dev link`,
-		})
+	await ai.step({
+		name: 'Search for Playwright',
+		action: `Type 'playwright test automation' in the search bar and press Enter`,
+		expect: `Search results contain the playwright.dev link`,
 	})
 
 	await expect(page.getByRole('link', { name: /playwright/i }).first()).toBeVisible()
@@ -107,21 +162,20 @@ test('search for playwright documentation', async ({ page, ai }) => {
 ### Complex Interactions
 
 ```typescript
-await test.step('Fill form and submit', async () => {
-	await ai.run({
-		action: `
-            Wait for the newsletter popup (takes ~30 seconds), 
-            then close it by clicking the X button.
-            Scroll to the comment section and click to activate it.
-            Type 'Great article!' into the comment textarea.
-            Click the Submit button.
-        `,
-		expect: `
-            The comment is submitted, 
-            and either a success message appears 
-            or a login form is displayed if not authenticated.
-        `,
-	})
+await ai.step({
+	name: 'Fill form and submit',
+	action: `
+        Wait for the newsletter popup (takes ~30 seconds), 
+        then close it by clicking the X button.
+        Scroll to the comment section and click to activate it.
+        Type 'Great article!' into the comment textarea.
+        Click the Submit button.
+    `,
+	expect: `
+        The comment is submitted, 
+        and either a success message appears 
+        or a login form is displayed if not authenticated.
+    `,
 })
 ```
 
@@ -134,10 +188,19 @@ import { createRunner } from '@xoxoai/checkmate/core'
 import { web } from '@xoxoai/checkmate/playwright'
 import { jira, notion, database } from 'your-own-extension-examples'
 
-const ai = createRunner({
+const runner = createRunner({
 	extensions: [web({ page }), jira(), notion(), database()],
 })
+
+const report = await runner.run({
+	action: 'Open the pricing page',
+	expect: 'Pricing details are visible',
+})
 ```
+
+`@xoxoai/checkmate/core` never imports `@playwright/test`. `runner.run()` resolves a `StepReport`
+rather than asserting, so the same loop can be driven from a plain script. Inside a Playwright
+test, `ai.step` runs that loop and turns the report into a test result.
 
 ## Cost Management
 
@@ -193,7 +256,7 @@ Default behavior:
 **This feature significantly reduces the payload size, minimizing costs while improving AI determinism, reliability and speed.**
 
 ```typescript
-await ai.run({
+await ai.step({
 	action: `Click on the link that leads to playwright.dev`,
 	expect: `The playwright.dev homepage is displayed`,
 
@@ -249,13 +312,13 @@ What it adds:
 - tab tools to list, select, and close tabs/popups during OAuth, payment, or "open in new tab" flows
 - one-shot JavaScript dialog handling for alert, confirm, and prompt dialogs
 - initial page snapshots and optional screenshots
-- `test`, `expect`, `web()`, and `createPlaywrightRunner(page)` exports
+- `checkmate`, `test`, `expect`, `web()`, `createAi(page)`, and `createPlaywrightRunner(page)` exports
 
 ```typescript
 import { test } from '@xoxoai/checkmate/playwright'
 
 test('search flow', async ({ ai }) => {
-	await ai.run({
+	await ai.step({
 		action: 'Search for playwright documentation',
 		expect: 'Search results are displayed',
 	})
@@ -273,7 +336,7 @@ Unarmed JavaScript dialogs are dismissed automatically. If a flow needs OK/Cance
 What it adds:
 
 - the built-in `salesforce()` extension
-- `test`, `expect`, and `createSalesforceRunner(page)` exports
+- `checkmate`, `test`, `expect`, `createSalesforceAi(page)`, and `createSalesforceRunner(page)` exports
 - the `login_to_salesforce_org` tool backed by the Salesforce CLI
 
 Prerequisites:
@@ -290,11 +353,10 @@ sf org login web --alias my-checkmate-org --set-default
 import { test } from '@xoxoai/checkmate/salesforce'
 
 test('create and configure itinerary', async ({ ai }) => {
-	await test.step('Login to Salesforce', async () => {
-		await ai.run({
-			action: 'Login to Salesforce org and open Test QA Application',
-			expect: 'Test QA homepage is displayed',
-		})
+	await ai.step({
+		name: 'Login to Salesforce',
+		action: 'Login to Salesforce org and open Test QA Application',
+		expect: 'Test QA homepage is displayed',
 	})
 })
 ```
@@ -418,14 +480,16 @@ npx playwright show-report test-reports/html
 **Test Layer**
 
 - Playwright Test framework manages test execution, reporting, and fixtures
-- Tests written in natural language via `ai.run()` fixtures
+- Tests written in natural language via the `ai.step()` fixture
 
 **Core Engine**
 
 - **createRunner**: Public composition entry point for building runners from extensions
 - **CheckmateRunner**: Runtime instance returned by `createRunner`
-- **AiClient**: Manages model interactions, retries, and tool-calling requests
-- **Response Processor**: Handles tool responses, append-only history, and retries through the step loop
+- **AiClient**: Stateless provider adapter that sends one request and returns the completion, with retries
+- **StepExecution**: Owns one step's message history, loop detector, and evidence, and iterates turns until the step terminates
+- **TurnProcessor**: Parses one model turn, dispatches its tool calls, and answers with a `TurnOutcome`
+- **StepEvidence**: Accumulates turns, tool calls, transcript, and usage into the `StepReport`
 - **ExtensionHost**: Registers tools, instructions, step context builders, and post-tool hooks from extensions
 - **Tool Registry**: Owns Zod-defined tool declarations and explicit tool resolution
 

@@ -1,7 +1,6 @@
 import { Mock } from 'vitest'
 import { ChatCompletionMessageParam, ChatCompletionContentPartText } from 'openai/resources/chat/completions'
-import { AiClient } from '../ai/client'
-import { ResolveStepResult } from '../runtime/types'
+import { AiSendOptions } from '../ai/client'
 import { LoopDetectedError } from '../tools/loop-detector'
 
 export interface MockBrowserContext {
@@ -59,16 +58,6 @@ export interface MockToolRegistry {
 	getTools: Mock
 }
 
-export interface MockOpenAIClient extends Partial<AiClient> {
-	getMessages: Mock<() => ChatCompletionMessageParam[]>
-	replaceHistory: Mock<(history: ChatCompletionMessageParam[]) => void>
-	countHistoryTokens?: Mock<() => number>
-	getRuntimeConfig?: Mock
-	getToolRegistry?: Mock
-	initialize?: Mock
-	sendMessage?: Mock
-}
-
 export interface HttpError extends Error {
 	status?: number
 	statusCode?: number
@@ -109,8 +98,6 @@ export type PrivateAccess<T> = {
 	[K in keyof T]: T[K]
 } & Record<string, unknown>
 
-export type MockResolveStepResult = Mock<ResolveStepResult>
-
 export type CaughtLoopError = LoopDetectedError & {
 	status: string
 	loopResult: {
@@ -136,15 +123,12 @@ export interface ScreenshotMessageContent {
 }
 
 export interface AiClientTestable {
-	executeWithRetry: <T>(operation: () => Promise<T>) => Promise<T>
+	executeWithRetry: <T>(
+		messages: ChatCompletionMessageParam[],
+		options: AiSendOptions,
+		operation: () => Promise<T>
+	) => Promise<T>
 	calculateBackoff: (attempt: number) => number
-	sleep: (ms: number) => Promise<void>
+	sleep: Mock<(ms: number) => Promise<void>>
 	getStatus: (error: unknown) => number | null
-	messages: ChatCompletionMessageParam[]
-}
-
-export interface MockResponseProcessor {
-	instance: MockResponseProcessor | null
-	handleResponse: Mock
-	resetStepTokens: Mock
 }

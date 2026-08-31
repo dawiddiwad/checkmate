@@ -2,12 +2,7 @@ import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 import { RuntimeConfig } from '../config/runtime-config.js'
 import { AgentTool, getToolName } from './types.js'
 
-export type ToolResponse = {
-	name?: string
-	response: string
-	snapshot?: string | null
-	status: 'success' | 'error'
-}
+export type { ToolResponse } from './types.js'
 
 export class ToolRegistry {
 	private readonly tools: AgentTool[] = []

@@ -11,7 +11,8 @@ AI test automation that actually works. Write tests in plain English, without lo
 ##
 
 ```typescript
-await ai.run({
+await ai.step({
+	name: 'search for playwright',
 	action: `
 		Navigate to google.com
 		Type 'playwright test automation' in the search bar
@@ -81,46 +82,60 @@ npm run show:report
 
 ## Writing Tests
 
-**_checkmate_** tests are written using natural language by specifying `action` and `expect`:
+**_checkmate_** tests are written using natural language by specifying `action` and `expect`.
+
+Add the `ai` fixture to a fixtures file the team already owns, so existing custom fixtures keep working:
 
 ```typescript
-import { test } from '@xoxoai/checkmate/playwright'
+// fixtures.ts
+import { mergeTests } from '@playwright/test'
+import { checkmate } from '@xoxoai/checkmate/playwright'
+import { test as baseTest } from './my-existing-fixtures'
+
+export const test = mergeTests(baseTest, checkmate)
+```
+
+Then write steps:
+
+```typescript
+import { test } from './fixtures'
 
 test.describe('multi-step : full AI mode', async () => {
 	test('purchase flow', async ({ ai }) => {
-		await test.step('Open Shop', async () => {
-			await ai.run({
-				action: `
-				Navigate to https://my-shop.com`,
-				expect: `
-				My Shop home page is loaded`,
-			})
+		await ai.step({
+			name: 'Open Shop',
+			action: `
+			Navigate to https://my-shop.com`,
+			expect: `
+			My Shop home page is loaded`,
 		})
 
-		await test.step('Select product', async () => {
-			await ai.run({
-				action: `
-				Click 'Shop Now' on 'Men's Outerwear' category
-				Click on the first Shell product in the list`,
-				expect: `
-				Product detail with title and price.`,
-			})
+		await ai.step({
+			name: 'Select product',
+			action: `
+			Click 'Shop Now' on 'Men's Outerwear' category
+			Click on the first Shell product in the list`,
+			expect: `
+			Product detail with title and price.`,
 		})
 
-		await test.step('Cart and checkout', async () => {
-			await ai.run({
-				action: `
-				Click 'Add to Cart'
-				Click 'Checkout' in the 'Added to cart' dialog`,
-				expect: `
-				Checkout with Order Summary and totals`,
-			})
+		await ai.step({
+			name: 'Cart and checkout',
+			action: `
+			Click 'Add to Cart'
+			Click 'Checkout' in the 'Added to cart' dialog`,
+			expect: `
+			Checkout with Order Summary and totals`,
 		})
 	})
 })
 ```
 
 That's it. No page objects, no selectors. No locators. Peace on Earth.
+
+Every `ai.step` creates its own Playwright step, labelled `ai: <name>`, and attaches a
+`checkmate-step.json` report carrying the assertion, the layer that produced it, the tool calls,
+the turn count, and the cost. A failing step fails the test with that reason.
 
 Tests are orchestrated by [playwright](https://playwright.dev/docs/test-configuration) [config](playwright.config.ts).
 
@@ -133,20 +148,26 @@ import { createRunner } from '@xoxoai/checkmate/core'
 import { web } from '@xoxoai/checkmate/playwright'
 import { notion, database, api } from 'my-custom-extensions'
 
-const ai = createRunner({
+const runner = createRunner({
 	extensions: [web({ page }), notion(), database(), api()],
 })
 
-await ai.run({
+const report = await runner.run({
 	action: 'Open the pricing page',
 	expect: 'Pricing details are visible',
 })
+
+console.log(report.outcome, report.category, report.reason, report.usage.costUsd)
 ```
+
+`createRunner()` is the Playwright-free entry point: it resolves a `StepReport` instead of
+asserting, so it can be driven from a plain script. Inside a Playwright test, use `ai.step`,
+which runs the same loop and turns the report into a test result.
 
 ### Entry Points:
 
 `@xoxoai/checkmate/core`: compose runner, tools, and extensions.  
-`@xoxoai/checkmate/playwright`: Web extension with Playwright `test` and `expect`; browser tools operate on the active tab and automatically switch to tabs/popups opened by actions.  
+`@xoxoai/checkmate/playwright`: Web extension with the mergeable `checkmate` test object, a bundled `test`, and `expect`; browser tools operate on the active tab and automatically switch to tabs/popups opened by actions.  
 `@xoxoai/checkmate/salesforce`: Salesforce extensions with the same `ai` fixture shape.
 
 See [guide](docs/GUIDE.md#best-practices) for tips on writing effective tests.
@@ -226,7 +247,7 @@ await searchBox.fill('playwright test automation')
 await searchBox.press('Enter')
 
 // ai-driven actions and assertions:
-await ai.run({
+await ai.step({
 	action: 'Click on the link that leads to playwright.dev',
 	expect: 'The playwright.dev homepage is displayed',
 })

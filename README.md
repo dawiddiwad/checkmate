@@ -1,8 +1,15 @@
 # **_checkmate_**
 
-AI test automation that actually works. Write tests in plain English, without locators, and with less code.
+A nondeterministic test step for your Playwright suite, for the coverage gap a deterministic
+test can't economically fill: areas the app changes faster than tests can be updated, locators
+that are genuinely dynamic, and flows too combinatorial to encode by hand. In those areas the
+real alternative isn't a good deterministic test — it's no test at all. `ai.step` trades
+authoring cost for run cost: near-free to write from a ticket, no browser session, at the price
+of a per-run model cost and a nondeterministic result. It composes into a suite you already have
+via `mergeTests()` — it does not replace `@playwright/test`, and it is not the right tool for
+the parts of your app a locator and an assertion already cover well.
 
-![playwright](https://img.shields.io/badge/Playwright-1.60.0-blue.svg)
+![playwright](https://img.shields.io/badge/Playwright-%E2%89%A51.59-blue.svg)
 ![typescript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)
 ![nodejs](https://img.shields.io/badge/Node.js-LTS-green.svg)
 ![openai](https://img.shields.io/badge/OpenAI-API-yellow.svg)
@@ -24,11 +31,12 @@ await ai.step({
 
 ##
 
-✅ **Zero Locators** - Write tests in plain English  
+✅ **For the coverage gap, not the whole suite** - a step for areas too unstable to encode deterministically, not a locator replacement  
+✅ **Zero Locators** - Write the step in plain English  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box, including active tab/popup tracking  
-✅ **Cost Optimized** - Built-in token management and budgeting  
-✅ **Playwright Test** - Native reports, traces and debugging  
+✅ **Bounded and explained** - a turn cap and step timer guarantee termination; every step ends in a stated category and reason  
+✅ **Playwright Test** - Native reports, traces, retries, and `mergeTests()` composition  
 ✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
 
 <img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
@@ -70,7 +78,13 @@ export default defineConfig<CheckmateOptions>({
 })
 ```
 
-### 3. Scaffold Test Examples
+### 3. Wire it in
+
+Adding to a suite you already have: `npx checkmate init` writes the `mergeTests` fixtures file
+and an agent instruction file, and prints the config block above to paste into
+`playwright.config.ts`.
+
+Starting from nothing: scaffold runnable examples instead.
 
 ```bash
 npx checkmate create-examples
@@ -87,6 +101,28 @@ npm run test:web:example
 ```bash
 npm run show:report
 ```
+
+## When NOT to use `ai.step`
+
+The main risk with this package is over-application: reaching for `ai.step` where
+`page.getByRole(...)` and `expect(...)` would have worked. Every extra `ai.step` costs real
+turns, real tokens, and real seconds, and trades a deterministic check for a model's judgment.
+
+Do not use `ai.step` when:
+
+- The outcome is checkable with an ordinary locator and assertion. If you can name the element
+  and the state you're asserting, write it deterministically instead.
+- The step is "click this button" or "fill this field" and the target is unambiguous.
+- You are asserting exact text, a count, a URL, or a value already available through the DOM.
+  A locator-based assertion is cheaper, faster, and does not depend on a model's interpretation.
+
+Use `ai.step` when the check genuinely cannot be expressed deterministically: visual or layout
+judgment, a flow whose selectors are unstable or unknown ahead of time, or a multi-page path
+where writing out every intermediate locator would be brittle and disproportionate to what's
+being verified. Prefer mixing both in one test over choosing one exclusively — deterministic
+steps for the parts you can name, `ai.step` for the parts you can't. `npx checkmate init`
+installs an agent instruction file with this same guidance, so an agent authoring specs against
+your suite reaches for `ai.step` the same way.
 
 ## Writing Tests
 
@@ -266,6 +302,7 @@ await ai.step({
 
 - [**_checkmate_** guide](docs/GUIDE.md)
 - [**_checkmate_** extensions](docs/EXTENSIONS.md)
+- [**_checkmate_** benchmark](docs/BENCHMARK.md) - method and published cost comparison against an MCP-driven agent
 - [**playwright** official website](https://playwright.dev/)
 
 ## Contributing

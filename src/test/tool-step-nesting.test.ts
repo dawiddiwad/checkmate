@@ -12,6 +12,7 @@ vi.mock('@playwright/test', () => ({
 			playwrightTest.stepNames.push(name)
 			return body()
 		},
+		info: () => ({}),
 	},
 }))
 

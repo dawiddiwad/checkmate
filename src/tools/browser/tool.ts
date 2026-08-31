@@ -474,17 +474,34 @@ export class BrowserToolRuntime {
  *
  * The turn number comes from the dispatch context rather than a counter kept here, so the tree
  * and the `toolCalls` array in the report agree on what turn it was.
+ *
+ * `test.step()` throws when there is no active Playwright Test worker (`test.step() can only be
+ * called from a test`), which is exactly the state `scripts/benchmark.ts` runs in — it drives
+ * `web()` directly from a plain script, never through `npx playwright test`. The wrapper is
+ * skipped there instead of failing every tool call; inside a real test it behaves exactly as
+ * before.
  */
 function withTurnStep(tool: AgentTool): AgentTool {
 	return {
 		...tool,
 		execute: (args: unknown, context: AgentToolContext): Promise<AgentToolResult> =>
-			test.step(turnStepTitle(context.turn, tool.definition.name), () => tool.execute(args, context)),
+			isInsideTestWorker()
+				? test.step(turnStepTitle(context.turn, tool.definition.name), () => tool.execute(args, context))
+				: Promise.resolve(tool.execute(args, context)),
 	}
 }
 
 function turnStepTitle(turn: number | undefined, toolName: string): string {
 	return turn === undefined ? toolName : `turn ${turn} · ${toolName}`
+}
+
+function isInsideTestWorker(): boolean {
+	try {
+		test.info()
+		return true
+	} catch {
+		return false
+	}
 }
 
 export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {

@@ -22,6 +22,7 @@
 	"files": [
 		"bin",
 		"dist",
+		"docs/BENCHMARK.md",
 		"docs/EXTENSIONS.md",
 		"docs/GUIDE.md",
 		"docs/ROADMAP.md",

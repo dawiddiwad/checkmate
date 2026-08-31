@@ -428,7 +428,7 @@ _Costs vary based on model, screenshot size and count, and page complexity_
 
 What it adds:
 
-- browser tools for navigation and interaction on the active tab/page
+- 12 browser tools for navigation and interaction on the active tab/page
 - automatic active-tab switching when an action opens a new tab or popup
 - tab tools to list, select, and close tabs/popups during OAuth, payment, or "open in new tab" flows
 - one-shot JavaScript dialog handling for alert, confirm, and prompt dialogs

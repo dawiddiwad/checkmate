@@ -14,14 +14,12 @@
 			"@xoxoai/checkmate/playwright": ["./src/playwright.ts"],
 			"@xoxoai/checkmate/salesforce": ["./src/salesforce.ts"]
 		},
-		"outDir": "./dist",
-		"rootDir": "./src",
 		"declaration": true,
 		"declarationMap": true,
 		"sourceMap": true,
 		"noEmit": true,
 		"noImplicitAny": true
 	},
-	"include": ["src/**/*"],
+	"include": ["src/**/*", "scripts/**/*"],
 	"exclude": ["node_modules", "dist", "test-results", "test-reports", "package"]
 }

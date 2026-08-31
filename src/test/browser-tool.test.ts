@@ -21,13 +21,19 @@ vi.mock('../../src/logging', () => ({
 	},
 }))
 
-const playwrightTest = vi.hoisted(() => ({ stepNames: [] as string[] }))
+const playwrightTest = vi.hoisted(() => ({ stepNames: [] as string[], insideTest: true }))
 
 vi.mock('@playwright/test', () => ({
 	test: {
 		step: async (name: string, body: () => Promise<unknown>) => {
 			playwrightTest.stepNames.push(name)
 			return body()
+		},
+		info: () => {
+			if (!playwrightTest.insideTest) {
+				throw new Error('test.info() can only be called from a test')
+			}
+			return {}
 		},
 	},
 }))
@@ -125,6 +131,7 @@ describe('Browser tools', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		playwrightTest.stepNames.length = 0
+		playwrightTest.insideTest = true
 		mockContext = createMockContext()
 		mockPage = createMockPage(mockContext)
 
@@ -143,6 +150,18 @@ describe('Browser tools', () => {
 		)
 
 		expect(playwrightTest.stepNames).toEqual([`turn 4 · ${BrowserTool.TOOL_NAVIGATE}`])
+	})
+
+	it('skips the test.step wrapper outside a Playwright test worker, e.g. scripts/benchmark.ts', async () => {
+		playwrightTest.insideTest = false
+
+		const result = await getTool(BrowserTool.TOOL_NAVIGATE).execute(
+			{ url: 'https://example.com', goal: 'test' },
+			{ ...context, turn: 4 }
+		)
+
+		expect(playwrightTest.stepNames).toEqual([])
+		expect(result).toEqual({ response: 'Navigated to: https://example.com', snapshot: 'mocked snapshot content' })
 	})
 
 	it('creates twelve browser tool definitions', () => {

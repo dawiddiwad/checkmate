@@ -17,3 +17,7 @@ __pycache__/
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
+
+# benchmark.ts output (regenerated per run; published results go in docs/BENCHMARK.md)
+scripts/benchmark-results.json
+scripts/benchmark-results.md

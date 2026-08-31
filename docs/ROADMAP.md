@@ -1,7 +1,27 @@
 # Roadmap
 
-## Current State:
+## Current State (0.5.0):
 
+- ✅ `ai.step({ action, expect })` is the only way to run a step. It always creates its own
+  `test.step`, always attaches `checkmate-step.json`, and always ends in a stated `category` and
+  `reason` — including when it terminates early on a turn cap, step timeout, or loop detection.
+- ✅ `@xoxoai/checkmate/core` never imports `@playwright/test`. `createRunner().run(step)`
+  resolves a `StepReport` and is drivable from a plain script (`scripts/benchmark.ts`).
+- ✅ Configuration is flat `checkmate*` option fixtures in `playwright.config.ts`, resolved per
+  project and overridable per test. Removed 0.4.x environment variables fail loudly at startup
+  instead of being silently ignored.
+- ✅ Every step is bounded: a turn cap and a self-clamping step timer terminate before Playwright's
+  own test timeout can, so evidence still attaches even when a step doesn't converge.
+- ✅ Tiered evidence (`checkmateEvidence`), capture-time secret redaction, per-step attachment
+  names, and a readable step tree — one `ai:` row per step with its turns collapsed underneath.
+- ✅ A retry that disagrees with itself is reported: a step that failed `app` on one attempt and
+  passed on the next is marked `assertionUnstable`, with no reporter required.
+- ✅ `npx checkmate init` writes the `mergeTests` fixtures file and an agent instruction file, and
+  prints the `playwright.config.ts` block to paste. `create-examples` remains for greenfield use.
+- ✅ A reproducible, vendored context-pruning benchmark (`scripts/benchmark.ts`,
+  `docs/BENCHMARK.md`) that varies only the tool-surface/context-policy variable the cost claim
+  is about. The real, money-spending run and its published table are a release-time decision, not
+  yet made — see `docs/BENCHMARK.md#result`.
 - ✅ Extension-composed runtime via `createRunner({ extensions })`
 - ✅ Clear top-level module boundaries: `runtime`, `ai`, `tools`, `integrations`, `config`, `logging`
 - ✅ Explicit tool registration and dispatch
@@ -18,6 +38,8 @@ Focus: Stability, extension points, and better contributor ergonomics.
 - ✅ Better public examples for programmatic runner usage
 - ✅ Publishable npm package layout with dedicated `core`, `playwright`, and `salesforce` entry points
 - ✅ Visual interactions (click, drag, etc.) in the Playwright extension
+- [ ] A published, real benchmark result (`docs/BENCHMARK.md`), across the flow set and more than
+      one model tier, run and recorded at release
 - [ ] Snapshot filtering tuning hooks beyond top-percent selection
 - [ ] Better reporting around filtered snapshot size and selected branches
 
@@ -29,6 +51,9 @@ Focus: Product usability and broader workflow support.
 - [ ] Flow-level execution mode for multi-step business journeys
 - ✅ Richer debugging output for model/tool reasoning failures
 - [ ] Better parallel execution support across large suites
+- [ ] A Playwright reporter for run-level auditing, e.g. sweeping for passes that did no
+      meaningful tool work — not required for anything shipped today, since `assertionUnstable`
+      and the per-step evidence already work without one
 
 ## Long Term
 

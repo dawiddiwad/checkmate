@@ -28,6 +28,7 @@
 		"playwright.config.ts",
 		"README.md",
 		"test/examples",
+		"templates",
 		"LICENSE"
 	],
 	"bin": {

@@ -30,6 +30,45 @@ describe('runCli', () => {
 		await expect(readFile(path.join(projectDir, 'playwright.config.ts'), 'utf8')).resolves.toContain('defineConfig')
 	})
 
+	it('routes the init command, printing what it wrote and the config block to paste', async () => {
+		const projectDir = await createTempProject()
+
+		const stdout = createMemoryWriter()
+		const stderr = createMemoryWriter()
+		const exitCode = await runCli(['init'], {
+			stdout,
+			stderr,
+			getCwd: () => projectDir,
+		})
+
+		expect(exitCode).toBe(0)
+		expect(stderr.output).toBe('')
+		expect(stdout.output).toContain('checkmate.fixtures.ts')
+		expect(stdout.output).toContain('AGENTS.md')
+		expect(stdout.output).toContain('Add to playwright.config.ts:')
+		expect(stdout.output).toContain("checkmateModel: 'gpt-5-mini'")
+		expect(stdout.output).toContain('Then import `test` from ./checkmate.fixtures in your specs.')
+		await expect(readFile(path.join(projectDir, 'checkmate.fixtures.ts'), 'utf8')).resolves.toContain('mergeTests')
+	})
+
+	it('routes --target through to init', async () => {
+		const projectDir = await createTempProject()
+
+		const stdout = createMemoryWriter()
+		const stderr = createMemoryWriter()
+		const exitCode = await runCli(['init', '--target', 'CLAUDE.md'], {
+			stdout,
+			stderr,
+			getCwd: () => projectDir,
+		})
+
+		expect(exitCode).toBe(0)
+		expect(stderr.output).toBe('')
+		await expect(readFile(path.join(projectDir, 'CLAUDE.md'), 'utf8')).resolves.toContain(
+			'<!-- checkmate:instructions:start -->'
+		)
+	})
+
 	it('prints usage for unknown commands', async () => {
 		const stdout = createMemoryWriter()
 		const stderr = createMemoryWriter()
@@ -44,6 +83,22 @@ describe('runCli', () => {
 		expect(stdout.output).toBe('')
 		expect(stderr.output).toContain("Unknown command 'wat'.")
 		expect(stderr.output).toContain('Usage: checkmate <command>')
+	})
+
+	it('lists both commands in --help usage', async () => {
+		const stdout = createMemoryWriter()
+		const stderr = createMemoryWriter()
+
+		const exitCode = await runCli(['--help'], {
+			stdout,
+			stderr,
+			getCwd: () => process.cwd(),
+		})
+
+		expect(exitCode).toBe(0)
+		expect(stdout.output).toContain('init')
+		expect(stdout.output).toContain('create-examples')
+		expect(stdout.output.indexOf('init')).toBeLessThan(stdout.output.indexOf('create-examples'))
 	})
 })
 

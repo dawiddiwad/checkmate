@@ -11,7 +11,9 @@ import { LoopDetector } from '../tools/loop-detector.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { ExtensionHost } from './extension.js'
 import { StepEvidence, StepTermination } from './step-evidence.js'
+import { StepDeadline } from './step-deadline.js'
 import { ContextMessage, Step, StepReport, TerminationReason } from './types.js'
+import type { RunStepOptions } from './runner.js'
 
 export type StepExecutionDependencies = {
 	config: ResolvedConfig
@@ -38,11 +40,15 @@ export class StepExecution {
 		this.tokenTracker = tokenTracker
 	}
 
-	async run(step: Step): Promise<StepReport> {
+	async run(step: Step, options: RunStepOptions = {}): Promise<StepReport> {
 		logger.info(`step started:\n${JSON.stringify(step, null, 2).replaceAll('  ', '').trim()}`)
 
 		const model = this.config.model
 		const evidence = new StepEvidence({ step, model })
+		const deadline = new StepDeadline({
+			stepTimeout: this.config.stepTimeout,
+			testTimeoutRemaining: options.testTimeoutRemaining,
+		})
 		const turnProcessor = new TurnProcessor({
 			config: this.config,
 			toolRegistry: this.toolRegistry,
@@ -60,11 +66,24 @@ export class StepExecution {
 		this.appendContext(await this.extensionHost.buildInitialMessages(step))
 
 		let turns = 0
+		try {
 			for (;;) {
+				if (turns >= this.config.turnCap) {
+					return this.finish(evidence, { outcome: 'failed', reason: 'turn-cap-exceeded', turns })
+				}
+
+				const deadlineReason = deadline.poll()
+				if (deadlineReason) {
+					return this.finish(evidence, { outcome: 'failed', reason: deadlineReason, turns })
+				}
+
 				turns++
 
 				try {
-					const { response, assistantMessages } = await this.aiClient.send(this.messages, { step })
+					const { response, assistantMessages } = await this.aiClient.send(this.messages, {
+						step,
+						signal: deadline.signal,
+					})
 					this.messages.push(...assistantMessages)
 					this.tokenTracker.log(response, this.aiClient.countHistoryTokens(this.messages), model)
 					evidence.recordUsage(response.usage)
@@ -99,6 +118,11 @@ export class StepExecution {
 						})
 					)
 				} catch (error) {
+					const deadlineReason = deadline.poll()
+					if (deadlineReason) {
+						return this.finish(evidence, { outcome: 'failed', reason: deadlineReason, turns })
+					}
+
 					return this.finish(evidence, {
 						outcome: 'failed',
 						reason: infraReason(error),
@@ -107,6 +131,9 @@ export class StepExecution {
 					})
 				}
 			}
+		} finally {
+			deadline.dispose()
+		}
 	}
 
 	private finish(evidence: StepEvidence, termination: StepTermination): StepReport {

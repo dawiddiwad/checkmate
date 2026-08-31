@@ -17,6 +17,7 @@ export type AiClientDependencies = {
 
 export type AiSendOptions = {
 	step?: Step
+	signal?: AbortSignal
 }
 
 export type AiResponse = {
@@ -43,7 +44,7 @@ export class AiClient {
 			const tools = await this.toolRegistry.getTools()
 
 			try {
-				return await this.complete(messages, tools, this.sendsTemperature)
+				return await this.complete(messages, tools, this.sendsTemperature, options.signal)
 			} catch (error: unknown) {
 				if (!this.sendsTemperature || !this.rejectsTemperature(error)) {
 					throw error
@@ -54,7 +55,7 @@ export class AiClient {
 						'continuing on the provider default for the rest of this run'
 				)
 				this.sendsTemperature = false
-				return await this.complete(messages, tools, false)
+				return await this.complete(messages, tools, false, options.signal)
 			}
 		})
 	}
@@ -67,9 +68,11 @@ export class AiClient {
 	private async complete(
 		messages: ChatCompletionMessageParam[],
 		tools: Awaited<ReturnType<ToolRegistry['getTools']>>,
-		withTemperature: boolean
+		withTemperature: boolean,
+		signal?: AbortSignal
 	): Promise<AiResponse> {
-		const response = await this.openai().chat.completions.create({
+		const response = await this.openai().chat.completions.create(
+			{
 				model: this.config.model,
 				messages,
 				tools,
@@ -78,7 +81,9 @@ export class AiClient {
 				...(withTemperature ? { temperature: this.temperature } : {}),
 				reasoning_effort: this.config.reasoningEffort,
 				n: 1,
-		})
+			},
+			{ signal }
+		)
 
 		return { response, assistantMessages: this.retainAssistantMessages(response) }
 	}

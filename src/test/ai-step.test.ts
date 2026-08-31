@@ -5,6 +5,7 @@ import {
 	runAiStep,
 	stepLabel,
 	STEP_REPORT_ATTACHMENT,
+	testTimeoutRemaining,
 } from '../playwright/ai-step'
 import { CheckmateRunner } from '../runtime/runner'
 import { StepReport } from '../runtime/types'
@@ -12,6 +13,7 @@ import { StepReport } from '../runtime/types'
 const playwright = vi.hoisted(() => ({
 	stepNames: [] as string[],
 	attachments: [] as Array<{ name: string; body: string; contentType: string }>,
+	testInfo: { timeout: 30_000, duration: 0 },
 }))
 
 vi.mock('@playwright/test', () => ({
@@ -21,6 +23,7 @@ vi.mock('@playwright/test', () => ({
 			await body()
 		},
 		info: () => ({
+			...playwright.testInfo,
 			attach: async (name: string, options: { body: string; contentType: string }) => {
 				playwright.attachments.push({ name, body: options.body, contentType: options.contentType })
 			},
@@ -53,6 +56,17 @@ describe('ai.step', () => {
 	beforeEach(() => {
 		playwright.stepNames.length = 0
 		playwright.attachments.length = 0
+		playwright.testInfo = { timeout: 30_000, duration: 0 }
+	})
+
+	it('reports the test timeout remaining, minus time already spent', () => {
+		playwright.testInfo = { timeout: 30_000, duration: 5_000 }
+		expect(testTimeoutRemaining()).toBe(25_000)
+	})
+
+	it('treats a disabled test timeout (0) as unbounded rather than already exhausted', () => {
+		playwright.testInfo = { timeout: 0, duration: 5_000 }
+		expect(testTimeoutRemaining()).toBeUndefined()
 	})
 
 	it('labels the step with its name', () => {
@@ -83,12 +97,12 @@ describe('ai.step', () => {
 		expect(JSON.parse(playwright.attachments[0].body)).toEqual(stepReport)
 	})
 
-	it('attaches the report before failing the step', async () => {
+	it('attaches a bounded report before failing the step', async () => {
 		const stepReport = report({
 			outcome: 'failed',
 			category: 'model',
-			reason: 'loop-detected',
-			actual: 'the model repeated the same tool calls',
+			reason: 'turn-cap-exceeded',
+			actual: 'the model did not reach an assertion before the turn cap',
 		})
 
 		await expect(
@@ -96,7 +110,7 @@ describe('ai.step', () => {
 		).rejects.toThrow(CheckmateStepError)
 
 		expect(playwright.attachments).toHaveLength(1)
-		expect(JSON.parse(playwright.attachments[0].body).reason).toBe('loop-detected')
+		expect(JSON.parse(playwright.attachments[0].body).reason).toBe('turn-cap-exceeded')
 	})
 
 	it('carries the report on the thrown error', async () => {

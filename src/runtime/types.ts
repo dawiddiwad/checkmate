@@ -92,7 +92,15 @@ export interface StepAssertion {
  * ```
  */
 export type TerminationReason =
-	'met-expectation' | 'failed-expectation' | 'loop-detected' | 'tool-error' | 'provider-error' | 'budget-exceeded'
+	| 'met-expectation'
+	| 'failed-expectation'
+	| 'loop-detected'
+	| 'turn-cap-exceeded'
+	| 'step-timeout'
+	| 'test-budget-exhausted'
+	| 'tool-error'
+	| 'provider-error'
+	| 'budget-exceeded'
 
 /**
  * Which layer produced the step outcome.

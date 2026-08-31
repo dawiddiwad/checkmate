@@ -94,6 +94,9 @@ the reason is the specific event:
 | `app`    | `met-expectation`       | The model observed the app and judged the expectation met.                         |
 | `app`    | `failed-expectation`    | The model observed the app and judged the expectation unmet.                       |
 | `model`  | `loop-detected`         | The same tool call repeated — the model is stuck, or the UI state is unreachable.  |
+| `model`  | `turn-cap-exceeded`     | The model used its configured turns without asserting either way.                  |
+| `model`  | `step-timeout`          | The configured wall-clock budget for this step expired.                            |
+| `infra`  | `test-budget-exhausted` | The enclosing Playwright test ran out of time before the step's configured budget. |
 | `infra`  | `tool-error`            | A tool threw unrecoverably, or the model named a tool that does not exist.         |
 | `infra`  | `provider-error`        | The model provider failed after retries, or returned an unusable response.         |
 | `infra`  | `budget-exceeded`       | A token or cost budget was crossed.                                                |
@@ -176,6 +179,11 @@ as the model allows — including through loop-detection recovery, which no long
 models accept only their own default and answer any other value with a 400 — OpenAI's `gpt-5` family
 among them. Checkmate detects that response, drops the parameter, and continues on the provider
 default for the rest of the run, so setting `checkmateTemperature` against those models has no effect.
+
+Each step stops at `checkmateTurnCap` or `checkmateStepTimeout`. Inside Playwright, the step timeout is
+clamped to the test's remaining time minus 10 seconds, preserving time to attach `checkmate-step.json`.
+The configured timeout reports `model` / `step-timeout`; a clamp reports `infra` /
+`test-budget-exhausted`.
 
 An option value that cannot be used fails the test that set it, with every problem listed at once,
 rather than falling back to a default.

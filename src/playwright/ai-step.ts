@@ -28,7 +28,7 @@ export class CheckmateStepError extends Error {
 
 export async function runAiStep(runner: CheckmateRunner, step: Step): Promise<void> {
 	await test.step(stepLabel(step), async () => {
-		const report = await runner.run(step)
+		const report = await runner.run(step, { testTimeoutRemaining: testTimeoutRemaining() })
 		await test.info().attach(STEP_REPORT_ATTACHMENT, {
 			body: JSON.stringify(report, null, 2),
 			contentType: 'application/json',
@@ -38,6 +38,15 @@ export async function runAiStep(runner: CheckmateRunner, step: Step): Promise<vo
 			throw new CheckmateStepError(report)
 		}
 	})
+}
+
+export function testTimeoutRemaining(): number | undefined {
+	const testInfo = test.info()
+	if (testInfo.timeout === 0) {
+		return undefined
+	}
+
+	return Math.max(0, testInfo.timeout - testInfo.duration)
 }
 
 export function stepLabel(step: Step): string {

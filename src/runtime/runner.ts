@@ -36,6 +36,16 @@ export type CheckmateRunnerOptions = {
 	config?: ResolvedConfig
 }
 
+export type RunStepOptions = {
+	/**
+	 * Time left in the enclosing test, in milliseconds.
+	 *
+	 * Playwright callers provide this so the step can reserve time to attach its report before
+	 * the enclosing test timeout aborts the worker.
+	 */
+	testTimeoutRemaining?: number
+}
+
 /**
  * Public runtime entry point for executing natural-language steps with Checkmate.
  *
@@ -105,14 +115,14 @@ export class CheckmateRunner {
 	 * })
 	 * ```
 	 */
-	async run(step: Step): Promise<StepReport> {
+	async run(step: Step, options: RunStepOptions = {}): Promise<StepReport> {
 		return new StepExecution({
 			config: this.config,
 			aiClient: this.aiClient,
 			toolRegistry: this.toolRegistry,
 			extensionHost: this.extensionHost,
 			tokenTracker: this.tokenTracker,
-		}).run(step)
+		}).run(step, options)
 	}
 }
 

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest'
 import { chromium, Browser, Page } from 'playwright'
-import { TransientStateTracker } from '../tools/browser/transient-state-tracker'
+import { DialogHandlingIntent, TransientStateTracker } from '../tools/browser/transient-state-tracker'
 
 describe('TransientStateTracker', () => {
 	let browser: Browser
@@ -78,6 +78,59 @@ describe('TransientStateTracker', () => {
 			expect(timelineStr, 'Timeline should contain the success message text').toContain(
 				'Changed: Styled content here [~style=color: blue; font-size: 20px]'
 			)
+		})
+	})
+
+	describe('Dialog handling', () => {
+		function trackerWithIntent(intent: DialogHandlingIntent | null): TransientStateTracker {
+			let pendingIntent = intent
+			return new TransientStateTracker(page, {
+				consumeDialogHandlingIntent: () => {
+					const consumedIntent = pendingIntent
+					pendingIntent = null
+					return consumedIntent
+				},
+			})
+		}
+
+		test('dismisses unarmed confirm dialogs', async () => {
+			const tracker = new TransientStateTracker(page)
+			await tracker.start()
+
+			const result = await page.evaluate(() => confirm('Delete item?'))
+
+			await tracker.stop()
+			expect(result).toBe(false)
+		})
+
+		test('accepts armed confirm dialogs', async () => {
+			const tracker = trackerWithIntent({ action: 'accept' })
+			await tracker.start()
+
+			const result = await page.evaluate(() => confirm('Delete item?'))
+
+			await tracker.stop()
+			expect(result).toBe(true)
+		})
+
+		test('accepts armed prompt dialogs with text', async () => {
+			const tracker = trackerWithIntent({ action: 'accept', promptText: 'Alice' })
+			await tracker.start()
+
+			const result = await page.evaluate(() => prompt('Name?', 'default'))
+
+			await tracker.stop()
+			expect(result).toBe('Alice')
+		})
+
+		test('dismisses armed prompt dialogs', async () => {
+			const tracker = trackerWithIntent({ action: 'dismiss' })
+			await tracker.start()
+
+			const result = await page.evaluate(() => prompt('Name?', 'default'))
+
+			await tracker.stop()
+			expect(result).toBe(null)
 		})
 	})
 

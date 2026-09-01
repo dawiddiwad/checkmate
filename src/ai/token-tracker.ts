@@ -1,7 +1,14 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { logger } from '../logging/index.js'
 import { TokenPricing } from './token-pricing.js'
+
+export class BudgetExceededError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'BudgetExceededError'
+	}
+}
 
 export class TokenTracker {
 	private _inputTokensUsedForTest = 0
@@ -13,7 +20,7 @@ export class TokenTracker {
 	private _outputTokensUsedForTest = 0
 	private _outputTokensUsedForStep = 0
 
-	constructor(private config = new RuntimeConfig()) {}
+	constructor(private readonly config: ResolvedConfig) {}
 
 	private get inputTokensUsedForTest(): number {
 		return this._inputTokensUsedForTest
@@ -70,19 +77,19 @@ export class TokenTracker {
 	}
 
 	private checkBudget() {
-		const budgetUSD = this.config.getTokenBudgetUSD()
-		const budgetTokens = this.config.getTokenBudgetCount()
+		const budgetUSD = this.config.budgetUsd
+		const budgetTokens = this.config.budgetTokens
 
 		if (budgetUSD) {
 			const totalCostUSD = TokenPricing.totalPriceUSD(
-				this.config.getModel(),
+				this.config.model,
 				this.inputTokensUsedForTest,
 				this.outputTokensUsedForTest,
 				this.cachedInputTokensUsedForTest
 			)
 
 			if (totalCostUSD > budgetUSD) {
-				throw new Error(
+				throw new BudgetExceededError(
 					`OpenAI API budget of ${budgetUSD}$ per test exceeded. Total cost was: ${totalCostUSD}$`
 				)
 			}
@@ -91,7 +98,7 @@ export class TokenTracker {
 		if (budgetTokens) {
 			const totalTokens = this.inputTokensUsedForTest + this.outputTokensUsedForTest
 			if (totalTokens > budgetTokens) {
-				throw new Error(
+				throw new BudgetExceededError(
 					`OpenAI API budget of ${budgetTokens} tokens per test exceeded. Total tokens used: ${totalTokens}`
 				)
 			}

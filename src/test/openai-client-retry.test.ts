@@ -1,16 +1,9 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { AiClient } from '../ai/client'
-import { RuntimeConfig } from '../config/runtime-config'
+import { logger } from '../logging'
 import { ToolRegistry } from '../tools/registry'
-import { LoopDetectedError } from '../tools/loop-detector'
-import {
-	MockConfigurationManager,
-	MockToolRegistry,
-	AiClientTestable,
-	createHttpError,
-	MockResponseProcessor,
-	ScreenshotMessageContent,
-} from './test-types'
+import { MockToolRegistry, MutableConfig, AiClientTestable, createHttpError, HttpError, testConfig } from './test-types'
 
 vi.mock('../../src/logging', () => ({
 	logger: {
@@ -20,21 +13,6 @@ vi.mock('../../src/logging', () => ({
 		debug: vi.fn(),
 	},
 }))
-
-vi.mock('../../src/ai/response-processor', () => {
-	class MockResponseProcessorClass {
-		static instance: MockResponseProcessorClass | null = null
-		handleResponse = vi.fn()
-		resetStepTokens = vi.fn()
-		constructor() {
-			MockResponseProcessorClass.instance = this
-		}
-	}
-	return {
-		ResponseProcessor: MockResponseProcessorClass,
-		getResponseProcessorMock: () => MockResponseProcessorClass.instance,
-	}
-})
 
 vi.mock('openai', () => {
 	const createMock = vi.fn()
@@ -47,373 +25,228 @@ vi.mock('openai', () => {
 	}
 })
 
+function testable(client: AiClient): AiClientTestable {
+	return client as unknown as AiClientTestable
+}
+
 describe('AiClient - Retry Logic', () => {
 	let openAIClient: AiClient
-	let mockConfig: MockConfigurationManager
+	let mockConfig: MutableConfig
 	let mockToolRegistry: MockToolRegistry
 	let mockOperation: Mock<() => Promise<unknown>>
+	let messages: ChatCompletionMessageParam[]
 
 	beforeEach(() => {
-		mockConfig = {
-			getApiKey: vi.fn().mockReturnValue('test-api-key'),
-			getBaseURL: vi.fn().mockReturnValue(undefined),
-			getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-			getTimeout: vi.fn().mockReturnValue(60000),
-			getMaxRetries: vi.fn().mockReturnValue(3),
-			getLogLevel: vi.fn().mockReturnValue('off'),
-			getTemperature: vi.fn().mockReturnValue(1),
-		} as MockConfigurationManager
+		mockConfig = testConfig({
+			checkmateModel: 'gpt-4o-mini',
+			checkmateMaxRetries: 3,
+			checkmateReasoningEffort: 'low',
+		})
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
 		openAIClient = new AiClient({
-			runtimeConfig: mockConfig as unknown as RuntimeConfig,
+			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
-			extensionHost: {} as never,
 		})
 
-		vi.spyOn(openAIClient as unknown as AiClientTestable, 'sleep').mockResolvedValue(undefined)
+		vi.spyOn(testable(openAIClient), 'sleep').mockResolvedValue(undefined)
 
 		mockOperation = vi.fn<() => Promise<unknown>>()
+		messages = []
 	})
+
+	function run() {
+		return testable(openAIClient).executeWithRetry(messages, {}, mockOperation)
+	}
 
 	describe('isRetryable status codes', () => {
 		const retryableStatuses = [408, 409, 429, 500, 502, 503, 504]
 
 		retryableStatuses.forEach((status) => {
 			it(`should retry on status code ${status}`, async () => {
-				const error = createHttpError('Test error', status)
+				mockOperation
+					.mockRejectedValueOnce(createHttpError('Test error', status))
+					.mockResolvedValueOnce('success')
 
-				mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
-
-				const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-
-				expect(result).toBe('success')
+				expect(await run()).toBe('success')
 				expect(mockOperation).toHaveBeenCalledTimes(2)
 			})
-		})
-
-		it('should retry on LoopDetectedError status', async () => {
-			const loopError = new LoopDetectedError({
-				loopDetected: true,
-				patternLength: 1,
-				repetitions: 5,
-				pattern: ['test()'],
-			})
-
-			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
-
-			const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-
-			expect(result).toBe('success')
-			expect(mockOperation).toHaveBeenCalledTimes(2)
 		})
 	})
 
 	describe('non-retryable status codes', () => {
-		it('should not retry on status code 400', async () => {
-			const error = createHttpError('Bad request', 400)
+		it.each([400, 401, 404])('should not retry on status code %i', async (status) => {
+			mockOperation.mockRejectedValueOnce(createHttpError('Bad request', status))
 
-			mockOperation.mockRejectedValueOnce(error)
-
-			await expect(
-				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow()
-			expect(mockOperation).toHaveBeenCalledTimes(1)
-		})
-
-		it('should not retry on status code 401', async () => {
-			const error = createHttpError('Unauthorized', 401)
-
-			mockOperation.mockRejectedValueOnce(error)
-
-			await expect(
-				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow()
-			expect(mockOperation).toHaveBeenCalledTimes(1)
-		})
-
-		it('should not retry on status code 404', async () => {
-			const error = createHttpError('Not found', 404)
-
-			mockOperation.mockRejectedValueOnce(error)
-
-			await expect(
-				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow()
+			await expect(run()).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
 
 		it('should not retry when error has no status', async () => {
-			const error = new Error('Generic error without status')
+			mockOperation.mockRejectedValueOnce(new Error('Generic error without status'))
 
-			mockOperation.mockRejectedValueOnce(error)
-
-			await expect(
-				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow()
+			await expect(run()).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
 	})
 
 	describe('max retries enforcement', () => {
 		it('should respect max retries limit', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(3)
+			mockConfig.maxRetries = 3
+			mockOperation.mockRejectedValue(createHttpError('Persistent error', 500))
 
-			const error = createHttpError('Persistent error', 500)
-
-			mockOperation.mockRejectedValue(error)
-
-			await expect(
-				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow()
-
+			await expect(run()).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(4)
 		})
 
 		it('should work with zero max retries', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(0)
+			mockConfig.maxRetries = 0
+			mockOperation.mockRejectedValue(createHttpError('Error', 500))
 
-			const error = createHttpError('Error', 500)
-
-			mockOperation.mockRejectedValue(error)
-
-			await expect(
-				(openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-			).rejects.toThrow()
-
+			await expect(run()).rejects.toThrow()
 			expect(mockOperation).toHaveBeenCalledTimes(1)
 		})
 
 		it('should succeed before max retries if operation succeeds', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(5)
-
+			mockConfig.maxRetries = 5
 			const error = createHttpError('Temporary error', 503)
-
 			mockOperation.mockRejectedValueOnce(error).mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-
-			expect(result).toBe('success')
+			expect(await run()).toBe('success')
 			expect(mockOperation).toHaveBeenCalledTimes(3)
 		})
 
 		it('should throw unexpected error when max retries is negative', async () => {
-			vi.mocked(mockConfig.getMaxRetries).mockReturnValue(-1)
+			mockConfig.maxRetries = -1
+			mockOperation.mockRejectedValue(createHttpError('Error', 500))
 
-			const error = createHttpError('Error', 500)
-
-			mockOperation.mockRejectedValue(error)
-
-			await expect((openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)).rejects.toThrow(
-				'Unexpected error in retry loop'
-			)
+			await expect(run()).rejects.toThrow('Unexpected error in retry loop')
 		})
 	})
 
 	describe('backoff calculation', () => {
 		it('should use 1 second delay for first retry', () => {
-			const delay = (openAIClient as unknown as AiClientTestable).calculateBackoff(0)
-			expect(delay).toBe(1000)
+			expect(testable(openAIClient).calculateBackoff(0)).toBe(1000)
 		})
 
 		it('should use 10 second delay for second retry', () => {
-			const delay = (openAIClient as unknown as AiClientTestable).calculateBackoff(1)
-			expect(delay).toBe(10000)
+			expect(testable(openAIClient).calculateBackoff(1)).toBe(10000)
 		})
 
 		it('should use 60 second delay for third retry and beyond', () => {
-			expect((openAIClient as unknown as AiClientTestable).calculateBackoff(2)).toBe(60000)
-			expect((openAIClient as unknown as AiClientTestable).calculateBackoff(3)).toBe(60000)
-			expect((openAIClient as unknown as AiClientTestable).calculateBackoff(10)).toBe(60000)
+			expect(testable(openAIClient).calculateBackoff(2)).toBe(60000)
+			expect(testable(openAIClient).calculateBackoff(3)).toBe(60000)
+			expect(testable(openAIClient).calculateBackoff(10)).toBe(60000)
 		})
 	})
 
 	describe('Retry-After header handling', () => {
 		it('should respect Retry-After header when present', async () => {
 			const error = createHttpError('Rate limited', 429)
-			error.headers = {
-				get: vi.fn().mockReturnValue('5'),
-			}
-
+			error.headers = { get: vi.fn().mockReturnValue('5') }
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
+			const sleepSpy = vi.mocked(testable(openAIClient).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
+			await run()
 
 			expect(sleepSpy).toHaveBeenCalledWith(5000)
 		})
 
 		it('should handle Retry-After as object property', async () => {
 			const error = createHttpError('Rate limited', 429)
-			error.headers = {
-				'retry-after': '10',
-			}
-
+			error.headers = { 'retry-after': '10' }
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
+			const sleepSpy = vi.mocked(testable(openAIClient).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
+			await run()
 
 			expect(sleepSpy).toHaveBeenCalledWith(10000)
 		})
 
 		it('should fall back to backoff when Retry-After is invalid', async () => {
 			const error = createHttpError('Server error', 503)
-			error.headers = {
-				get: vi.fn().mockReturnValue('invalid'),
-			}
-
+			error.headers = { get: vi.fn().mockReturnValue('invalid') }
 			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
 
-			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
+			const sleepSpy = vi.mocked(testable(openAIClient).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
+			await run()
 
 			expect(sleepSpy).toHaveBeenCalledWith(1000)
 		})
 
 		it('should fall back to backoff when headers are missing', async () => {
-			const error = createHttpError('Server error', 500)
+			mockOperation.mockRejectedValueOnce(createHttpError('Server error', 500)).mockResolvedValueOnce('success')
 
-			mockOperation.mockRejectedValueOnce(error).mockResolvedValueOnce('success')
-
-			const sleepSpy = vi.mocked((openAIClient as unknown as AiClientTestable).sleep)
+			const sleepSpy = vi.mocked(testable(openAIClient).sleep)
 			sleepSpy.mockClear()
 
-			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
+			await run()
 
 			expect(sleepSpy).toHaveBeenCalledWith(1000)
 		})
 	})
 
-	describe('LoopDetectedError handling', () => {
-		it('should adjust temperature on LoopDetectedError', async () => {
-			const loopError = new LoopDetectedError({
-				loopDetected: true,
-				patternLength: 2,
-				repetitions: 5,
-				pattern: ['tool1()', 'tool2()'],
-			})
-
-			const initialTemp = openAIClient.temperature
-
-			const mockRandom = vi.spyOn(Math, 'random').mockReturnValue(0.5)
-
-			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
-
-			await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-
-			expect(openAIClient.temperature).toBe(0.5)
-			expect(openAIClient.temperature).not.toBe(initialTemp)
-
-			mockRandom.mockRestore()
-		})
-
-		it('should retry after adjusting temperature for loop', async () => {
-			const loopError = new LoopDetectedError({
-				loopDetected: true,
-				patternLength: 1,
-				repetitions: 5,
-				pattern: ['repeating_tool()'],
-			})
-
-			mockOperation.mockRejectedValueOnce(loopError).mockResolvedValueOnce('success')
-
-			const result = await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-
-			expect(result).toBe('success')
-			expect(mockOperation).toHaveBeenCalledTimes(2)
-		})
-	})
-
 	describe('error enhancement', () => {
-		it('should enhance error with status and message', async () => {
+		it('should enhance error with status, message, and cause', async () => {
 			const error = createHttpError('Original error message', 500)
-
 			mockOperation.mockRejectedValue(error)
 
-			try {
-				await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-				expect.fail('Should have thrown error')
-			} catch (e) {
-				const caughtError = e as Error
-				expect(caughtError.message).toContain('OpenAI API error [500]')
-				expect(caughtError.message).toContain('Original error message')
-			}
+			await expect(run()).rejects.toThrow(/OpenAI API error \[500\][\s\S]*Original error message/)
+			await expect(run()).rejects.toHaveProperty('cause', error)
 		})
 
 		it('should handle errors without status', async () => {
-			const error = new Error('Generic error')
+			mockOperation.mockRejectedValue(new Error('Generic error'))
 
-			mockOperation.mockRejectedValue(error)
-
-			try {
-				await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-				expect.fail('Should have thrown error')
-			} catch (e) {
-				const caughtError = e as Error
-				expect(caughtError.message).toContain('OpenAI API error [unknown]')
-				expect(caughtError.message).toContain('Generic error')
-			}
+			await expect(run()).rejects.toThrow(/OpenAI API error \[unknown\][\s\S]*Generic error/)
 		})
 
 		it('should handle errors with statusCode property', async () => {
 			const error = createHttpError('Error with statusCode')
 			error.statusCode = 503
-
 			mockOperation.mockRejectedValue(error)
 
-			try {
-				await (openAIClient as unknown as AiClientTestable).executeWithRetry(mockOperation)
-				expect.fail('Should have thrown error')
-			} catch (e) {
-				const caughtError = e as Error
-				expect(caughtError.message).toContain('OpenAI API error [503]')
-			}
+			await expect(run()).rejects.toThrow(/OpenAI API error \[503\]/)
 		})
 	})
 
 	describe('getStatus helper', () => {
 		it('should extract status from error.status', () => {
-			const error = { status: 429 }
-			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(429)
+			expect(testable(openAIClient).getStatus({ status: 429 })).toBe(429)
 		})
 
 		it('should extract status from error.statusCode', () => {
-			const error = { statusCode: 500 }
-			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(500)
+			expect(testable(openAIClient).getStatus({ statusCode: 500 })).toBe(500)
 		})
 
 		it('should extract status from error.code', () => {
-			const error = { code: 408 }
-			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(408)
+			expect(testable(openAIClient).getStatus({ code: 408 })).toBe(408)
 		})
 
 		it('should return null when no status is present', () => {
-			const error = { message: 'Error without status' }
-			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBeNull()
+			expect(testable(openAIClient).getStatus({ message: 'Error without status' })).toBeNull()
 		})
 
 		it('should prioritize status over statusCode and code', () => {
-			const error = { status: 429, statusCode: 500, code: 503 }
-			expect((openAIClient as unknown as AiClientTestable).getStatus(error)).toBe(429)
+			expect(testable(openAIClient).getStatus({ status: 429, statusCode: 500, code: 503 })).toBe(429)
 		})
 	})
 
 	describe('sleep helper', () => {
 		it('should sleep for specified milliseconds', async () => {
-			vi.mocked((openAIClient as unknown as AiClientTestable).sleep).mockRestore()
+			vi.mocked(testable(openAIClient).sleep).mockRestore()
 
 			const start = Date.now()
-			await (openAIClient as unknown as AiClientTestable).sleep(100)
+			await testable(openAIClient).sleep(100)
 			const elapsed = Date.now() - start
 
 			expect(elapsed).toBeGreaterThanOrEqual(90)
@@ -422,9 +255,9 @@ describe('AiClient - Retry Logic', () => {
 	})
 })
 
-describe('AiClient - message flow', () => {
+describe('AiClient - send', () => {
 	let openAIClient: AiClient
-	let mockConfig: MockConfigurationManager
+	let mockConfig: MutableConfig
 	let mockToolRegistry: MockToolRegistry
 	let createMock: Mock
 
@@ -434,120 +267,60 @@ describe('AiClient - message flow', () => {
 		const openaiModule = (await import('openai')) as unknown as { getCreateMock: () => Mock }
 		createMock = openaiModule.getCreateMock()
 
-		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
-			getResponseProcessorMock: () => MockResponseProcessor
-		}
-		rpModule.getResponseProcessorMock()
-
-		mockConfig = {
-			getApiKey: vi.fn().mockReturnValue('test-api-key'),
-			getBaseURL: vi.fn().mockReturnValue(undefined),
-			getModel: vi.fn().mockReturnValue('gpt-4o-mini'),
-			getTimeout: vi.fn().mockReturnValue(60000),
-			getMaxRetries: vi.fn().mockReturnValue(0),
-			getLogLevel: vi.fn().mockReturnValue('off'),
-			getToolChoice: vi.fn().mockReturnValue('auto'),
-			getTemperature: vi.fn().mockReturnValue(0.2),
-			getReasoningEffort: vi.fn().mockReturnValue(undefined),
-		} as MockConfigurationManager
+		mockConfig = testConfig({
+			checkmateModel: 'gpt-4o-mini',
+			checkmateMaxRetries: 0,
+			checkmateToolChoice: 'auto',
+		})
 
 		mockToolRegistry = {
 			getTools: vi.fn().mockResolvedValue([]),
 		} as MockToolRegistry
 
 		openAIClient = new AiClient({
-			runtimeConfig: mockConfig as unknown as RuntimeConfig,
+			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
-			extensionHost: {} as never,
 		})
 	})
 
-	it('sends a user string, appends assistant message, and calls response processor', async () => {
+	it('sends the caller-owned message array and returns the assistant messages to retain', async () => {
 		const assistantMessage = { role: 'assistant', content: 'ack' }
 		createMock.mockResolvedValueOnce({
 			choices: [{ message: assistantMessage }],
 			usage: { prompt_tokens: 1, completion_tokens: 1 },
 		})
 
-		const step = { action: 'do', expect: 'done' }
-		const statusCb = vi.fn()
-
-		await openAIClient.initialize(step, statusCb)
-		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
-			getResponseProcessorMock: () => MockResponseProcessor
-		}
-		const rpInstance = rpModule.getResponseProcessorMock()
-		rpInstance.handleResponse.mockClear()
-		await openAIClient.sendMessage('hello')
+		const messages: ChatCompletionMessageParam[] = [{ role: 'user', content: 'hello' }]
+		const { response, assistantMessages } = await openAIClient.send(messages, {
+			step: { action: 'do', expect: 'done' },
+		})
 
 		expect(createMock).toHaveBeenCalledTimes(1)
 		expect(createMock.mock.calls[0][0]).toEqual(
 			expect.objectContaining({
+				model: 'gpt-4o-mini',
+				messages,
 				parallel_tool_calls: false,
+				temperature: 0,
+				tool_choice: 'auto',
 			})
 		)
-		const messages = openAIClient.getMessages()
-		expect(messages[0]).toEqual({ role: 'user', content: 'hello' })
-		expect(messages[messages.length - 1]).toEqual(assistantMessage)
-		expect(rpInstance.handleResponse).toHaveBeenCalledTimes(1)
+		expect(response.choices[0].message).toEqual(assistantMessage)
+		expect(assistantMessages).toEqual([assistantMessage])
 	})
 
-	it('accepts message arrays and skips pushing when choice message is absent', async () => {
+	it('returns no assistant messages when the choice has none', async () => {
 		createMock.mockResolvedValueOnce({
 			choices: [{ message: null as unknown as Record<string, unknown> }],
 			usage: { prompt_tokens: 1, completion_tokens: 1 },
 		})
 
-		const step = { action: 'array', expect: 'done' }
-		const statusCb = vi.fn()
+		const { assistantMessages } = await openAIClient.send([{ role: 'user', content: 'first' }])
 
-		await openAIClient.initialize(step, statusCb)
-		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
-			getResponseProcessorMock: () => MockResponseProcessor
-		}
-		const rpInstance = rpModule.getResponseProcessorMock()
-		rpInstance.handleResponse.mockClear()
-
-		await openAIClient.sendMessage([
-			{ role: 'user', content: 'first' },
-			{ role: 'assistant', content: 'prior' },
-		])
-
-		const messages = openAIClient.getMessages()
-		expect(messages[0]).toEqual({ role: 'user', content: 'first' })
-		expect(messages[1]).toEqual({ role: 'assistant', content: 'prior' })
-		expect(messages[messages.length - 1]).toEqual({ role: 'assistant', content: 'prior' })
-
-		expect(createMock).toHaveBeenCalledTimes(1)
-		expect(rpInstance.handleResponse).toHaveBeenCalledTimes(1)
+		expect(assistantMessages).toEqual([])
 	})
 
-	it('sends a tool response with retry wrapper and stores assistant reply', async () => {
-		const assistantReply = { role: 'assistant', content: 'next' }
-		createMock.mockResolvedValueOnce({
-			choices: [{ message: assistantReply }],
-			usage: { prompt_tokens: 1, completion_tokens: 1 },
-		})
-
-		const step = { action: 'do', expect: 'done' }
-		const statusCb = vi.fn()
-
-		await openAIClient.initialize(step, statusCb)
-		await openAIClient.addToolResponse('t1', 'result')
-		const response = await openAIClient.sendToolResponseWithRetry()
-
-		expect(response).toBeDefined()
-		expect(createMock).toHaveBeenCalledTimes(1)
-		expect(createMock.mock.calls[0][0]).toEqual(
-			expect.objectContaining({
-				parallel_tool_calls: false,
-			})
-		)
-		const messages = openAIClient.getMessages()
-		expect(messages[messages.length - 1]).toEqual(assistantReply)
-	})
-
-	it('stores assistant messages without reasoning payloads', async () => {
+	it('retains assistant messages without reasoning payloads', async () => {
 		createMock.mockResolvedValueOnce({
 			choices: [
 				{
@@ -569,79 +342,151 @@ describe('AiClient - message flow', () => {
 			usage: { prompt_tokens: 1, completion_tokens: 1 },
 		})
 
-		const step = { action: 'do', expect: 'done' }
-		const statusCb = vi.fn()
+		const { assistantMessages } = await openAIClient.send([{ role: 'user', content: 'hello' }])
 
-		await openAIClient.initialize(step, statusCb)
-		const rpModule = (await import('../../src/ai/response-processor')) as unknown as {
-			getResponseProcessorMock: () => MockResponseProcessor
-		}
-		rpModule.getResponseProcessorMock().handleResponse.mockClear()
-
-		await openAIClient.sendMessage('hello')
-
-		const lastMessage = openAIClient.getMessages().at(-1) as unknown as Record<string, unknown>
-		expect(lastMessage).toMatchObject({ role: 'assistant', content: null })
-		expect(lastMessage).not.toHaveProperty('reasoning')
-		expect(lastMessage).not.toHaveProperty('reasoning_details')
+		expect(assistantMessages[0]).toMatchObject({ role: 'assistant', content: null })
+		expect(assistantMessages[0]).not.toHaveProperty('reasoning')
+		expect(assistantMessages[0]).not.toHaveProperty('reasoning_details')
 	})
 
-	it('skips appending when tool response choice has no message', async () => {
-		createMock.mockResolvedValueOnce({
-			choices: [{ message: null as unknown as Record<string, unknown> }],
+	it('includes request and recent message context in final API errors', async () => {
+		mockConfig.maxRetries = 0
+		mockConfig.toolChoice = 'required'
+		mockConfig.reasoningEffort = 'low'
+		const error = createHttpError('provider failed', 500)
+		;(error as unknown as Record<string, unknown>).body = { error: { message: 'bad model response' } }
+		createMock.mockRejectedValue(error)
+
+		await expect(
+			openAIClient.send([{ role: 'user', content: 'click submit' }], {
+				step: { action: 'submit form', expect: 'success page' },
+			})
+		).rejects.toThrow(
+			/model: gpt-4o-mini[\s\S]*tool_choice: required[\s\S]*reasoning_effort: low[\s\S]*temperature: 0[\s\S]*step_action: submit form[\s\S]*step_expect: success page[\s\S]*user: click submit[\s\S]*bad model response/
+		)
+	})
+
+	it('appends a corrective message and retries recoverable 400 tool errors', async () => {
+		mockConfig.maxRetries = 1
+		const base64 = 'A'.repeat(220)
+		const error = createHttpError('tool call rejected', 400)
+		;(error as unknown as Record<string, unknown>).body = {
+			error: 'invalid tool arguments',
+			api_key: 'sk-secret123',
+			image: `data:image/png;base64,${base64}`,
+		}
+		createMock.mockRejectedValueOnce(error).mockResolvedValueOnce({
+			choices: [{ message: { role: 'assistant', content: 'ok' } }],
 			usage: { prompt_tokens: 1, completion_tokens: 1 },
 		})
 
-		const step = { action: 'do', expect: 'done' }
-		const statusCb = vi.fn()
+		const messages: ChatCompletionMessageParam[] = [
+			{ role: 'user', content: 'before image' },
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'see screenshot' },
+					{ type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } },
+				],
+			},
+		]
 
-		await openAIClient.initialize(step, statusCb)
-		await openAIClient.addToolResponse('t1', 'result')
-		const before = openAIClient.getMessages().length
-		await openAIClient.sendToolResponseWithRetry()
+		vi.spyOn(testable(openAIClient), 'sleep').mockResolvedValue(undefined)
+		await openAIClient.send(messages, { step: { action: 'use upload tool', expect: 'file uploaded' } })
 
-		const afterMessages = openAIClient.getMessages()
-		expect(afterMessages.length).toBe(before)
-		expect(createMock).toHaveBeenCalledTimes(1)
-	})
+		expect(createMock).toHaveBeenCalledTimes(2)
+		expect(messages.at(-1)).toEqual({
+			role: 'user',
+			content: expect.stringContaining('you did not call a tool or called it incorrectly'),
+		})
 
-	it('adds current snapshot message with expected content shape', async () => {
-		const step = { action: 'shot', expect: 'done' }
-		const statusCb = vi.fn()
-		await openAIClient.initialize(step, statusCb)
-
-		await openAIClient.addCurrentSnapshotMessage('page snapshot:\n{button Submit}')
-
-		const last = openAIClient.getMessages().at(-1) as ScreenshotMessageContent
-		expect(last.role).toBe('user')
-		expect(Array.isArray(last.content)).toBe(true)
-		expect((last.content[0] as { type: 'text'; text: string }).text).toContain('this is a current page snapshot')
-	})
-
-	it('adds screenshot message with expected content shape', async () => {
-		const step = { action: 'shot', expect: 'done' }
-		const statusCb = vi.fn()
-		await openAIClient.initialize(step, statusCb)
-
-		await openAIClient.addCurrentScreenshotMessage('YmFzZTY0', 'image/png')
-
-		const last = openAIClient.getMessages().at(-1) as ScreenshotMessageContent
-		expect(last.role).toBe('user')
-		expect(Array.isArray(last.content)).toBe(true)
-		expect((last.content[0] as { type: 'text'; text: string }).text).toBe(
-			'this is a current screenshot of the page'
-		)
-		const imageContent = last.content[1] as { type: 'image_url'; image_url: { url: string } }
-		expect(imageContent.image_url.url).toContain('data:image/png;base64,YmFzZTY0')
+		const warnings = vi
+			.mocked(logger.warn)
+			.mock.calls.map((call) => String(call[0]))
+			.join('\n')
+		expect(warnings).toContain('tool call error detected [400]')
+		expect(warnings).toContain('step_action: use upload tool')
+		expect(warnings).toContain('step_expect: file uploaded')
+		expect(warnings).toContain('before image')
+		expect(warnings).toContain('[image omitted]')
+		expect(warnings).not.toContain('sk-secret123')
+		expect(warnings).not.toContain(base64)
 	})
 
 	it('counts string and array history when estimating tokens', () => {
-		;(openAIClient as unknown as AiClientTestable).messages = [
+		const tokens = openAIClient.countHistoryTokens([
 			{ role: 'user', content: 'abcd' },
 			{ role: 'assistant', content: [{ type: 'text', text: 'ignored' }] },
-		]
+		])
 
-		const tokens = openAIClient.countHistoryTokens()
 		expect(tokens).toBe(3)
+	})
+})
+
+describe('AiClient - temperature pinning', () => {
+	let openAIClient: AiClient
+	let createMock: Mock
+
+	function completion() {
+		return { choices: [{ message: { role: 'assistant', content: 'ack' } }], usage: {} }
+	}
+
+	function temperatureRejection(): HttpError & { param?: string } {
+		const error = createHttpError(
+			"Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) is supported.",
+			400
+		) as HttpError & { param?: string }
+		error.param = 'temperature'
+		return error
+	}
+
+	beforeEach(async () => {
+		vi.clearAllMocks()
+
+		const openaiModule = (await import('openai')) as unknown as { getCreateMock: () => Mock }
+		createMock = openaiModule.getCreateMock()
+
+		openAIClient = new AiClient({
+			config: testConfig({ checkmateModel: 'gpt-5-mini', checkmateMaxRetries: 0 }),
+			toolRegistry: { getTools: vi.fn().mockResolvedValue([]) } as unknown as ToolRegistry,
+		})
+	})
+
+	it('pins the temperature when the model accepts it', async () => {
+		createMock.mockResolvedValueOnce(completion())
+
+		await openAIClient.send([{ role: 'user', content: 'hello' }])
+
+		expect(createMock.mock.calls[0][0]).toEqual(expect.objectContaining({ temperature: 0 }))
+	})
+
+	it('retries without the temperature when the model rejects the pinned value', async () => {
+		createMock.mockRejectedValueOnce(temperatureRejection()).mockResolvedValueOnce(completion())
+
+		await openAIClient.send([{ role: 'user', content: 'hello' }])
+
+		expect(createMock).toHaveBeenCalledTimes(2)
+		expect(createMock.mock.calls[0][0]).toEqual(expect.objectContaining({ temperature: 0 }))
+		expect(createMock.mock.calls[1][0]).not.toHaveProperty('temperature')
+	})
+
+	it('stops sending the temperature for the rest of the run once it has been rejected', async () => {
+		createMock
+			.mockRejectedValueOnce(temperatureRejection())
+			.mockResolvedValueOnce(completion())
+			.mockResolvedValueOnce(completion())
+
+		await openAIClient.send([{ role: 'user', content: 'first' }])
+		await openAIClient.send([{ role: 'user', content: 'second' }])
+
+		expect(createMock).toHaveBeenCalledTimes(3)
+		expect(createMock.mock.calls[2][0]).not.toHaveProperty('temperature')
+	})
+
+	it('leaves any other 400 to the caller', async () => {
+		createMock.mockRejectedValue(createHttpError('Invalid schema for function', 400))
+
+		await expect(openAIClient.send([{ role: 'user', content: 'hello' }])).rejects.toThrow()
+		expect(createMock).toHaveBeenCalledTimes(1)
 	})
 })

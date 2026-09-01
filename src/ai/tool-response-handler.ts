@@ -1,65 +1,80 @@
-import { Step, ResolveStepResult } from '../runtime/types.js'
-import { ToolResponse } from '../tools/registry.js'
-import { ToolCall } from '../tools/types.js'
-import { AiClient } from './client.js'
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { ResolvedConfig } from '../config/resolved-config.js'
+import { logger } from '../logging/index.js'
+import { scrub } from '../redaction/scrub.js'
+import { ToolCall, ToolExecution, ToolResponse } from '../tools/types.js'
 import { MessageHistory } from './message-history.js'
-import { ResponseProcessor } from './response-processor.js'
-import { ExtensionHost } from '../runtime/extension.js'
 
 export class ToolResponseHandler {
 	constructor(
-		private readonly aiClient: AiClient,
-		private readonly messageHistory: MessageHistory,
-		private readonly responseProcessor: ResponseProcessor,
-		private readonly extensionHost: ExtensionHost
+		private readonly config: ResolvedConfig,
+		private readonly messageHistory: MessageHistory
 	) {}
 
-	async handle(
-		toolCallId: string,
-		toolCall: ToolCall,
-		toolResponse: ToolResponse,
-		step: Step,
-		resolveStepResult: ResolveStepResult
-	): Promise<void> {
-		await this.handleMultiple([{ toolCallId, toolCall, toolResponse }], step, resolveStepResult)
+	build(toolResults: ToolExecution[]): ChatCompletionMessageParam[] {
+		if (toolResults.length === 0) {
+			return []
+		}
+
+		const messages: ChatCompletionMessageParam[] = []
+
+		for (const { toolCallId, toolCall, toolResponse } of toolResults) {
+			this.logModelBoundToolResponse(toolCallId, toolCall, toolResponse)
+			if (toolResponse.status === 'error') {
+				this.logErrorResponse(toolCallId, toolCall, toolResponse)
+			}
+			messages.push({ role: 'tool', tool_call_id: toolCallId, content: toolResponse.response })
+		}
+
+		const executionSummary = buildToolExecutionSummary(toolResults)
+		if (executionSummary) {
+			messages.push(this.messageHistory.createToolExecutionSummaryMessage(executionSummary))
+		}
+
+		return messages
 	}
 
-	async handleMultiple(
-		toolResponses: Array<{ toolCallId: string; toolCall: ToolCall; toolResponse: ToolResponse }>,
-		step: Step,
-		resolveStepResult: ResolveStepResult
-	): Promise<void> {
-		if (toolResponses.length === 0) {
+	private logModelBoundToolResponse(toolCallId: string, toolCall: ToolCall, toolResponse: ToolResponse): void {
+		if (!this.isDebugMode()) {
 			return
 		}
 
-		this.messageHistory.removeEphemeralStateMessages(this.aiClient)
+		logger.debug(
+			[
+				'tool response returned to model:',
+				`tool_call_id: ${toolCallId}`,
+				`tool: ${toolCall.name}`,
+				`status: ${toolResponse.status}`,
+				`arguments: ${safePreview(JSON.stringify(toolCall.arguments ?? {}), 1_000)}`,
+				`response: ${safePreview(toolResponse.response, 2_000)}`,
+				`snapshot: ${formatSnapshotMetadata(toolResponse.snapshot)}`,
+			].join('\n')
+		)
+	}
 
-		for (const { toolCallId, toolResponse } of toolResponses) {
-			await this.aiClient.addToolResponse(toolCallId, toolResponse.response)
-		}
+	private logErrorResponse(toolCallId: string, toolCall: ToolCall, toolResponse: ToolResponse): void {
+		const responseLine = this.isDebugMode()
+			? 'response: logged at debug level'
+			: `response: ${safePreview(toolResponse.response, 2_000)}`
 
-		const executionSummary = buildToolExecutionSummary(toolResponses)
-		if (executionSummary) {
-			await this.aiClient.addToolExecutionSummaryMessage(executionSummary)
-		}
+		logger.warn(
+			[
+				'tool response error:',
+				`tool_call_id: ${toolCallId}`,
+				`tool: ${toolCall.name}`,
+				`arguments: ${safePreview(JSON.stringify(toolCall.arguments ?? {}), 1_000)}`,
+				responseLine,
+			].join('\n')
+		)
+	}
 
-		await this.extensionHost.handleToolResponses({
-			aiClient: this.aiClient,
-			step,
-			resolveStepResult,
-			toolResponses,
-		})
-
-		const nextResponse = await this.aiClient.sendToolResponseWithRetry()
-		await this.responseProcessor.handleResponse(nextResponse, step, resolveStepResult)
+	private isDebugMode(): boolean {
+		return this.config.logLevel === 'debug'
 	}
 }
 
-function buildToolExecutionSummary(
-	toolResponses: Array<{ toolCallId: string; toolCall: ToolCall; toolResponse: ToolResponse }>
-): string {
-	const summaryLines = toolResponses.map(({ toolCall, toolResponse }) =>
+function buildToolExecutionSummary(toolResults: ToolExecution[]): string {
+	const summaryLines = toolResults.map(({ toolCall, toolResponse }) =>
 		formatToolExecutionSummary(toolCall, toolResponse)
 	)
 	return summaryLines.join('\n')
@@ -72,6 +87,18 @@ function formatToolExecutionSummary(toolCall: ToolCall, toolResponse: ToolRespon
 	}
 
 	return `- successfully executed: ${toolCall.name} ${serializedArguments}`
+}
+
+function formatSnapshotMetadata(snapshot: string | null | undefined): string {
+	if (!snapshot) {
+		return 'none'
+	}
+
+	return `present (${snapshot.length} chars, content logged by SnapshotService)`
+}
+
+function safePreview(value: string, maxLength: number): string {
+	return truncateText(scrub(value), maxLength)
 }
 
 function truncateText(value: string, maxLength: number): string {

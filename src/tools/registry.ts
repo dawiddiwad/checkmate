@@ -1,19 +1,14 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
 import { AgentTool, getToolName } from './types.js'
 
-export type ToolResponse = {
-	name?: string
-	response: string
-	snapshot?: string | null
-	status: 'success' | 'error'
-}
+export type { ToolResponse } from './types.js'
 
 export class ToolRegistry {
 	private readonly tools: AgentTool[] = []
 	private readonly toolsByName = new Map<string, AgentTool>()
 
-	constructor(private readonly runtimeConfig: RuntimeConfig) {}
+	constructor(private readonly config: ResolvedConfig) {}
 
 	register(tool: AgentTool | AgentTool[]): void {
 		const tools = Array.isArray(tool) ? tool : [tool]
@@ -29,16 +24,20 @@ export class ToolRegistry {
 		}
 	}
 
-	getRuntimeConfig(): RuntimeConfig {
-		return this.runtimeConfig
+	getConfig(): ResolvedConfig {
+		return this.config
 	}
 
 	resolve(toolName: string): AgentTool | undefined {
 		return this.toolsByName.get(toolName)
 	}
 
+	getRegisteredToolNames(): string[] {
+		return this.tools.map((tool) => getToolName(tool))
+	}
+
 	async getTools(): Promise<ChatCompletionFunctionTool[]> {
-		const allowedNames = this.runtimeConfig.getAllowedFunctionNames()
+		const allowedNames = this.config.allowedTools
 		const definitions = this.tools.map((tool) => this.toOpenAiTool(tool))
 
 		if (allowedNames.length === 0) {

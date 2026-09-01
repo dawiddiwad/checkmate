@@ -6,6 +6,9 @@ export default defineConfig({
 		globals: true,
 		environment: 'node',
 		include: ['src/test/**/*.test.ts'],
+		env: {
+			CHECKMATE_OPENAI_API_KEY: 'test-api-key',
+		},
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json', 'html'],

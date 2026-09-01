@@ -1,40 +1,9 @@
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { RuntimeConfig } from '../config/runtime-config.js'
-import { ToolRegistry, ToolResponse } from '../tools/registry.js'
-import { AgentTool, ToolCall } from '../tools/types.js'
-import { ResolveStepResult, Step } from './types.js'
-import type { AiClient } from '../ai/client.js'
+import { ResolvedConfig } from '../config/resolved-config.js'
+import { ToolRegistry } from '../tools/registry.js'
+import { AgentTool, ToolExecution } from '../tools/types.js'
+import { ContextMessage, Step } from './types.js'
 
-/**
- * One tool execution observed during the runner loop.
- *
- * Extensions receive these objects in post-tool hooks.
- *
- * @example
- * ```ts
- * const execution: ToolExecution = {
- *   toolCallId: 'call_1',
- *   toolCall: { name: 'browser_navigate', arguments: { url: 'https://example.com' } },
- *   toolResponse: { response: 'Navigated to example.com', status: 'success' },
- * }
- * ```
- */
-export type ToolExecution = {
-	/**
-	 * Provider-issued id for the tool call.
-	 */
-	toolCallId: string
-
-	/**
-	 * Normalized tool call request.
-	 */
-	toolCall: ToolCall
-
-	/**
-	 * Normalized tool response returned by Checkmate.
-	 */
-	toolResponse: ToolResponse
-}
+export type { ToolExecution } from '../tools/types.js'
 
 /**
  * Builds additional initial messages for a step.
@@ -44,7 +13,7 @@ export type ToolExecution = {
  * @example
  * ```ts
  * const buildInitialMessages: ExtensionInitialMessagesBuilder = async ({ step }) => [
- *   { role: 'user', content: `Current business area: checkout for ${step.action}` },
+ *   { message: { role: 'user', content: `Current business area: checkout for ${step.action}` } },
  * ]
  * ```
  */
@@ -53,44 +22,42 @@ export type ExtensionInitialMessagesBuilder = (context: {
 	 * Step being executed.
 	 */
 	step: Step
-}) => Promise<ChatCompletionMessageParam[]> | ChatCompletionMessageParam[]
+}) => Promise<ContextMessage[]> | ContextMessage[]
 
 /**
  * Runs after one or more tools finish.
  *
- * Use this to append fresh snapshots, screenshots, or any other ephemeral follow-up context.
+ * Return fresh snapshots, screenshots, or any other follow-up context. Mark page state
+ * as `ephemeral` so it is replaced before the next turn instead of accumulating.
  *
  * @example
  * ```ts
- * const handleToolResponses: ExtensionToolResponsesHook = async ({ aiClient, toolResponses }) => {
+ * const handleToolResponses: ExtensionToolResponsesHook = async ({ toolResponses }) => {
  *   const snapshot = toolResponses.at(-1)?.toolResponse.snapshot
- *   if (snapshot) {
- *     await aiClient.addCurrentSnapshotMessage(snapshot)
+ *   if (!snapshot) {
+ *     return []
  *   }
+ *
+ *   return [{ message: { role: 'user', content: snapshot }, ephemeral: true }]
  * }
  * ```
  */
 export type ExtensionToolResponsesHook = (context: {
-	/**
-	 * Active AI client for the current step.
-	 */
-	aiClient: AiClient
-
 	/**
 	 * Step being executed.
 	 */
 	step: Step
 
 	/**
-	 * Callback used to finish the step.
+	 * Model turn that just finished, starting at `1`.
 	 */
-	resolveStepResult: ResolveStepResult
+	turn: number
 
 	/**
 	 * Tool executions that just completed.
 	 */
 	toolResponses: ToolExecution[]
-}) => Promise<void> | void
+}) => Promise<ContextMessage[]> | ContextMessage[]
 
 /**
  * Cleans up resources created by an extension.
@@ -119,9 +86,9 @@ export type ExtensionTeardown = () => Promise<void> | void
  */
 export type ExtensionSetupApi = {
 	/**
-	 * Runtime config used by the current runner.
+	 * Resolved `checkmate*` configuration for the current runner.
 	 */
-	runtimeConfig: RuntimeConfig
+	config: ResolvedConfig
 
 	/**
 	 * Registers one or more tools.
@@ -300,12 +267,12 @@ export class ExtensionHost {
 	private readonly capabilities = new Map<string, unknown>()
 
 	constructor(
-		private readonly runtimeConfig: RuntimeConfig,
+		private readonly config: ResolvedConfig,
 		private readonly toolRegistry: ToolRegistry,
 		extensions: CheckmateExtension[]
 	) {
 		const api: ExtensionSetupApi = {
-			runtimeConfig,
+			config,
 			addTool: (tool) => this.toolRegistry.register(tool),
 			addInstruction: (instruction) => {
 				if (instruction.trim().length > 0) {
@@ -342,8 +309,8 @@ export class ExtensionHost {
 		return [...this.instructions]
 	}
 
-	async buildInitialMessages(step: Step): Promise<ChatCompletionMessageParam[]> {
-		const messages: ChatCompletionMessageParam[] = []
+	async buildInitialMessages(step: Step): Promise<ContextMessage[]> {
+		const messages: ContextMessage[] = []
 
 		for (const buildInitialMessages of this.initialMessagesBuilders) {
 			messages.push(...(await buildInitialMessages({ step })))
@@ -353,14 +320,17 @@ export class ExtensionHost {
 	}
 
 	async handleToolResponses(context: {
-		aiClient: AiClient
 		step: Step
-		resolveStepResult: ResolveStepResult
+		turn: number
 		toolResponses: ToolExecution[]
-	}): Promise<void> {
+	}): Promise<ContextMessage[]> {
+		const messages: ContextMessage[] = []
+
 		for (const handleToolResponses of this.toolResponsesHooks) {
-			await handleToolResponses(context)
+			messages.push(...(await handleToolResponses(context)))
 		}
+
+		return messages
 	}
 
 	async teardown(): Promise<void> {
@@ -400,8 +370,8 @@ function mergeExtensionDefinition(base: ExtensionDefinition, override: Extension
 		tools: [...asArray(base.tools), ...asArray(override.tools)],
 		instructions: [...(base.instructions ?? []), ...(override.instructions ?? [])],
 		setup: chainSync(base.setup, override.setup),
-		buildInitialMessages: combineInitialMessages(base.buildInitialMessages, override.buildInitialMessages),
-		handleToolResponses: chainAsync(base.handleToolResponses, override.handleToolResponses),
+		buildInitialMessages: combineContext(base.buildInitialMessages, override.buildInitialMessages),
+		handleToolResponses: combineContext(base.handleToolResponses, override.handleToolResponses),
 		teardown: chainAsync(base.teardown, override.teardown),
 	}
 }
@@ -450,10 +420,10 @@ function chainAsync<T extends (...args: never[]) => unknown>(
 	}
 }
 
-function combineInitialMessages(
-	first?: ExtensionInitialMessagesBuilder,
-	second?: ExtensionInitialMessagesBuilder
-): ExtensionInitialMessagesBuilder | undefined {
+function combineContext<TContext>(
+	first?: (context: TContext) => Promise<ContextMessage[]> | ContextMessage[],
+	second?: (context: TContext) => Promise<ContextMessage[]> | ContextMessage[]
+): ((context: TContext) => Promise<ContextMessage[]> | ContextMessage[]) | undefined {
 	if (!first) {
 		return second
 	}

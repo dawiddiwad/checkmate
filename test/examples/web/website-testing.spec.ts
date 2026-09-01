@@ -10,50 +10,58 @@
  *   - Ollama: search for "qwen3" and open the qwen3-vl model page.
  *   - HuggingFace: search for "Qwen3-VL-4B" and open the model page.
  *   - Mojeek: search Playwright docs and open the Planner Agent page.
- *   - NYPL: check availability for "The Catcher in the Rye" - with and without fuzzy search.
- *
- * - Multi-step (polymer-shop):
- *   - Full AI mode: all steps executed via `ai.run`.
- *   - Hybrid mode: mix of `ai.run` steps and direct Playwright commands.
+ *   - NYPL: check availability for "The Catcher in the Rye" - with and without snapshot filtering.
  *
  * @note
- * All tests use the `ai` fixture and call `ai.run({ action, expect })`
+ * Checkmate is configured through `checkmate*` options in `playwright.config.ts`.
+ * `test.use({ ... })` overrides them per file or per describe block, one key at a time.
+ *
+ * - Multi-step (polymer-shop):
+ *   - Full AI mode: all steps executed via `ai.step`.
+ *   - Hybrid mode: mix of `ai.step` steps and direct Playwright commands.
+ *
+ * @note
+ * All tests use the `ai` fixture and call `ai.step({ action, expect })`
  * to describe actions and assert visible outcomes.
  */
 import { test } from '@xoxoai/checkmate/playwright'
 
 test.describe('single-step : quick examples', async () => {
 	test('browsing ollama models', async ({ ai }) => {
-		await test.step('Navigate to ollama.com and search for model details', async () => {
-			await ai.run({
-				action: `
-                Navigate to https://ollama.com
-                Type 'qwen3-vl' into the 'Search models' search bar
-                Click on 'qwen3-vl' link from the results,
-                Click on 'qwen3-vl:235b' link from the models list,`,
-				expect: `
-				qwen3-vl:235b model page is displayed with model details,
-                describing its features and capabilities.`,
-			})
+		await ai.step({
+			name: 'Search for qwen3-vl model on Ollama',
+			action: `
+			Navigate to https://ollama.com
+			Type 'qwen3-vl' into the 'Search models' search bar
+			Click on 'qwen3-vl' link from the results,
+			Click on 'qwen3-vl:235b' link from the models list,`,
+			expect: `
+			qwen3-vl:235b model page is displayed with model details,
+			describing its features and capabilities,
+			single browser tab is opened.`,
 		})
 	})
 
 	test('browsing huggingface models', async ({ ai }) => {
 		await test.step('Navigate to huggingface.co', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Navigate to the https://huggingface.co website.
 				Type 'Qwen3-VL-4B' in the search bar.
 				Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.`,
 				expect: `
-				Qwen3-VL-4B-Instruct model page is displayed with model details`,
+				Qwen3-VL-4B-Instruct model page is displayed with model details,
+				and the search API call returned a successful status,
+				and the model's security scan API response body confirms the scan
+				completed with no files flagged for issues (this is not shown anywhere
+				in the page UI, so it can only be confirmed by inspecting the response body).`,
 			})
 		})
 	})
 
 	test('searching with mojeek', async ({ ai }) => {
 		await test.step('Search for Playwright docs using mojeek.com', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
                 Test: Mojeek Search
                 Navigate to the Mojeek search engine at https://www.mojeek.com/.
@@ -70,7 +78,7 @@ test.describe('single-step : quick examples', async () => {
 
 	test('searching new york public library', async ({ ai }) => {
 		await test.step('the catcher in the rye availability', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
                 Navigate to https://www.nypl.org. 
                 Search for 'The Catcher in the Rye'.`,
@@ -80,25 +88,39 @@ test.describe('single-step : quick examples', async () => {
 		})
 	})
 
-	test('searching new york public library - fuzzy search enabled', async ({ ai }) => {
-		await test.step('the catcher in the rye availability', async () => {
-			await ai.run({
-				action: `
-                Navigate to https://www.nypl.org. 
-                Search for 'The Catcher in the Rye'.`,
-				expect: `
-				'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+	test.describe('snapshot filtering', () => {
+		// Semantic snapshot filtering is off by default; this block turns it on for its tests only.
+		test.use({ checkmateSnapshotFilter: true, checkmateSnapshotTopPercent: 10 })
 
-				search: ['search', 'the catcher in the rye', 'shelf'],
-				topPercent: 10, // aggressive snapshot filtering (top 10% of elements on page)
+		test('searching new york public library - snapshot filtering enabled', async ({ ai }) => {
+			await test.step('the catcher in the rye availability', async () => {
+				await ai.step({
+					action: `
+					Navigate to https://www.nypl.org.
+					Search for 'The Catcher in the Rye'.`,
+					expect: `
+					'The Catcher in the Rye' physical branch's bookshelf availability information is displayed.`,
+
+					search: ['search', 'the catcher in the rye', 'shelf'],
+					topPercent: 10, // this step overrides the project's checkmateSnapshotTopPercent
+				})
 			})
 		})
 	})
 })
 
 test.describe('multi-step : Polymer Shop : full AI mode', async () => {
+	// A longer flow gets a stronger model and more headroom. Playwright resolves each option
+	// key on its own, so the project's other `checkmate*` values stay in force here.
+	// In a suite pinned to one provider the model is just a literal, e.g. `checkmateModel: 'gpt-5'`.
+	test.use({
+		checkmateModel: process.env.CHECKMATE_MODEL ?? 'gpt-5-mini',
+		checkmateTurnCap: 25,
+		checkmateStepTimeout: 180_000,
+	})
+
 	test.beforeEach(async ({ ai }) => {
-		await ai.run({
+		await ai.step({
 			action: `Navigate to https://shop.polymer-project.org/`,
 			expect: `Polymer Shop home page is loaded`,
 		})
@@ -106,7 +128,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 
 	test('successful end-to-end purchase flow', async ({ ai }) => {
 		await test.step('Navigate to shop and select product', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click "Shop Now" on "Men's Outerwear" category
 				Click on the first product: "Men's Tech Shell Full-Zip"`,
@@ -115,7 +137,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Add product to cart and proceed to checkout', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click "Add to Cart"
 				Click "Checkout" in the "Added to cart" dialog`,
@@ -124,7 +146,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Fill checkout details and place order', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Fill in the required fields in one go:
 				- Email: 'test@example.com'
@@ -145,7 +167,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Finish and return to home', async () => {
-			await ai.run({
+			await ai.step({
 				action: `Finish and return to home`,
 				expect: `User is returned to the home page`,
 			})
@@ -154,7 +176,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 
 	test('cart management - adding multiple items & verifying total', async ({ ai }) => {
 		await test.step('Add items from different categories', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Go to 'Ladies Outerwear' and add an item to the cart.
 				Press page up to return to the top.
@@ -164,7 +186,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Verify cart total', async () => {
-			await ai.run({
+			await ai.step({
 				action: `Click the Cart icon in the header.`,
 				expect: `The 'Your Cart' page shows both items and the 'Total' matches the sum of individual prices.`,
 			})
@@ -173,7 +195,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 
 	test('cart management - updating quantity and removing items', async ({ ai }) => {
 		await test.step('Add item and update quantity', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Go to 'Men's Outerwear' and add an item to cart, then click "View Cart".
 				Select "2" from the "Quantity" dropdown for the item.`,
@@ -182,7 +204,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Remove item from cart', async () => {
-			await ai.run({
+			await ai.step({
 				action: `Click the 'Delete' (trash icon) button for the item.`,
 				expect: `The item is removed, cart shows 'Your cart is empty', and header counter is '0'.`,
 			})
@@ -191,7 +213,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 
 	test('category navigation & product display consistency', async ({ ai }) => {
 		await test.step('Navigate between categories', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Click "Ladies T-Shirts" in the top navigation menu.
 				Click "Men's Outerwear" in the top navigation menu.`,
@@ -200,7 +222,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Return to home via SHOP logo', async () => {
-			await ai.run({
+			await ai.step({
 				action: `Click "SHOP" logo in the header.`,
 				expect: `User is returned to the home page.`,
 			})
@@ -209,7 +231,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 
 	test('checkout form validation (error handling)', async ({ ai }) => {
 		await test.step('Submit empty checkout form', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Add any item to cart and proceed to "Checkout".
 				Click "Place Order" without filling any fields.`,
@@ -218,7 +240,7 @@ test.describe('multi-step : Polymer Shop : full AI mode', async () => {
 		})
 
 		await test.step('Verify persistent errors for invalid input', async () => {
-			await ai.run({
+			await ai.step({
 				action: `Type 'invalid-email' in the Email field and click "Place Order".`,
 				expect: `"Invalid Email" error message is still displayed.`,
 			})
@@ -235,7 +257,7 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 		await test.step('Navigate to shop and select product', async () => {
 			await page.getByRole('link', { name: "Men's Outerwear Shop Now" }).click()
 			await page.getByRole('link', { name: "Men's Tech Shell Full-Zip Men" }).click()
-			await ai.run({
+			await ai.step({
 				action: ``,
 				expect: `Product detail page is displayed with title, price, and selectors`,
 			})
@@ -244,14 +266,14 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 		await test.step('Add product to cart and proceed to checkout', async () => {
 			await page.getByRole('button', { name: 'Add this item to cart' }).click()
 			await page.getByRole('link', { name: 'Checkout' }).click()
-			await ai.run({
+			await ai.step({
 				action: ``,
 				expect: `Checkout page loads showing the 'Order Summary' with correct total`,
 			})
 		})
 
 		await test.step('Fill checkout details and place order', async () => {
-			await ai.run({
+			await ai.step({
 				action: `
 				Fill in the required fields in one go:
 				- Email: 'test@example.com'
@@ -272,7 +294,7 @@ test.describe('multi-step : Polymer Shop : hybrid mode', async () => {
 		})
 
 		await test.step('Finish and return to home', async () => {
-			await ai.run({
+			await ai.step({
 				action: `Finish and return to home`,
 				expect: `User is returned to the home page`,
 			})

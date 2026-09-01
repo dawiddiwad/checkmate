@@ -4,7 +4,17 @@ test-reports
 .DS_Store
 .env
 .playwright-mcp
+.sf
 TODO
 coverage
 dist
 **.tgz
+# sssf runtime
+adws/adw_data/sessions/
+adws/adw_data/sssf.db*
+__pycache__/
+*.pyc
+.playwright-cli
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks

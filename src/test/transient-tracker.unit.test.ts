@@ -31,15 +31,16 @@ const makeConsoleMessage = (text: string, type: string = 'log'): ConsoleMessage 
 	}) as unknown as ConsoleMessage
 
 const makeDialog = (message: string, kind: string = 'alert') => {
+	const accept = vi.fn(async () => undefined)
 	const dismiss = vi.fn(async () => undefined)
 	const dialog: Dialog = {
 		message: () => message,
 		type: () => kind,
 		dismiss,
-		accept: dismiss,
+		accept,
 		defaultValue: () => '',
-	} as unknown as Dialog & { dismiss: ReturnType<typeof vi.fn> }
-	return { dialog, dismiss }
+	} as unknown as Dialog
+	return { dialog, accept, dismiss }
 }
 
 describe('TransientStateTracker (unit)', () => {
@@ -82,16 +83,87 @@ describe('TransientStateTracker (unit)', () => {
 		expect(timeline.some((e) => e.includes('Console Error: Boom error'))).toBe(true)
 	})
 
-	test('records dialogs and dismisses them', async () => {
+	test('records dialogs and dismisses them when unarmed', async () => {
 		const tracker = new TransientStateTracker(asPage())
 		await tracker.start()
 
-		const { dialog, dismiss } = makeDialog('Heads up')
+		const { dialog, accept, dismiss } = makeDialog('Heads up')
 		page.emit('dialog', dialog)
 
 		const timeline = await tracker.stop()
 		expect(timeline.some((e) => e.includes('Dialog appeared: "Heads up"'))).toBe(true)
 		expect(dismiss).toHaveBeenCalledTimes(1)
+		expect(accept).not.toHaveBeenCalled()
+	})
+
+	test('accepts dialog with armed response', async () => {
+		const tracker = new TransientStateTracker(asPage(), {
+			consumeDialogHandlingIntent: () => ({ action: 'accept' }),
+		})
+		await tracker.start()
+
+		const { dialog, accept, dismiss } = makeDialog('Delete item?', 'confirm')
+		page.emit('dialog', dialog)
+
+		const timeline = await tracker.stop()
+		expect(timeline.some((e) => e.includes('accepted by armed dialog response'))).toBe(true)
+		expect(accept).toHaveBeenCalledTimes(1)
+		expect(dismiss).not.toHaveBeenCalled()
+	})
+
+	test('dismisses dialog with armed response', async () => {
+		const tracker = new TransientStateTracker(asPage(), {
+			consumeDialogHandlingIntent: () => ({ action: 'dismiss' }),
+		})
+		await tracker.start()
+
+		const { dialog, accept, dismiss } = makeDialog('Delete item?', 'confirm')
+		page.emit('dialog', dialog)
+
+		const timeline = await tracker.stop()
+		expect(timeline.some((e) => e.includes('dismissed by armed dialog response'))).toBe(true)
+		expect(dismiss).toHaveBeenCalledTimes(1)
+		expect(accept).not.toHaveBeenCalled()
+	})
+
+	test('accepts prompt with armed prompt text', async () => {
+		const tracker = new TransientStateTracker(asPage(), {
+			consumeDialogHandlingIntent: () => ({ action: 'accept', promptText: 'Alice' }),
+		})
+		await tracker.start()
+
+		const { dialog, accept, dismiss } = makeDialog('Name?', 'prompt')
+		page.emit('dialog', dialog)
+
+		await tracker.stop()
+		expect(accept).toHaveBeenCalledWith('Alice')
+		expect(dismiss).not.toHaveBeenCalled()
+	})
+
+	test('consumes dialog intent once per dialog', async () => {
+		let intent = true
+		const tracker = new TransientStateTracker(asPage(), {
+			consumeDialogHandlingIntent: () => {
+				if (!intent) return null
+				intent = false
+				return { action: 'accept' }
+			},
+		})
+		await tracker.start()
+
+		const first = makeDialog('First')
+		const second = makeDialog('Second')
+		page.emit('dialog', first.dialog)
+		page.emit('dialog', second.dialog)
+
+		const timeline = await tracker.stop()
+		expect(first.accept).toHaveBeenCalledTimes(1)
+		expect(first.dismiss).not.toHaveBeenCalled()
+		expect(second.accept).not.toHaveBeenCalled()
+		expect(second.dismiss).toHaveBeenCalledTimes(1)
+		expect(
+			timeline.some((e) => e.includes('Dialog appeared: "Second"') && e.includes('automatically dismissed'))
+		).toBe(true)
 	})
 
 	test('stops tracking on main-frame navigation', async () => {

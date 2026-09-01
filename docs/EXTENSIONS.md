@@ -16,7 +16,7 @@ Use it when you want to:
 The runner owns:
 
 - the model loop with retries
-- pass/fail resolution
+- step termination and the resulting `StepReport`
 - tool dispatch
 
 Extensions add domain-specific skills such as:
@@ -97,9 +97,23 @@ Extensions can do more than register tools.
 - `tools`: register one or more tools
 - `instructions`: append system-level guidance for the model
 - `setup(api)`: register capabilities, tools, hooks, or teardown logic
-- `buildInitialMessages(context)`: add step-specific context before the first model call
-- `handleToolResponses(context)`: append fresh context after tools run
+- `buildInitialMessages(context)`: return step-specific context before the first model call
+- `handleToolResponses(context)`: return fresh context after tools run
 - `teardown()`: clean up extension-owned resources
+
+Both context hooks return `ContextMessage[]`. A `ContextMessage` wraps one model message and
+declares whether it is page state:
+
+```typescript
+type ContextMessage = {
+	message: ChatCompletionMessageParam
+	ephemeral?: boolean // replaced before the next turn, like snapshots and screenshots
+}
+```
+
+Mark snapshots, screenshots, and anything else that describes _current_ state as `ephemeral`, so
+it is dropped before the next turn instead of accumulating in the message history. Durable facts
+should be left unmarked.
 
 Example:
 
@@ -111,10 +125,36 @@ export const releaseGuard = defineExtension({
 	instructions: ['Prefer visible release labels over inferred version numbers.'],
 	buildInitialMessages: async ({ step }) => [
 		{
-			role: 'user',
-			content: `Current release check target: ${step.expect}`,
+			message: {
+				role: 'user',
+				content: `Current release check target: ${step.expect}`,
+			},
 		},
 	],
+})
+```
+
+A post-tool hook receives the step, the turn number, and the tool executions that just finished.
+It is never handed a client, and it never mutates the message history:
+
+```typescript
+import { defineExtension } from '@xoxoai/checkmate/core'
+
+export const freshState = defineExtension({
+	name: 'fresh-state',
+	handleToolResponses: async ({ step, turn, toolResponses }) => {
+		const snapshot = toolResponses.at(-1)?.toolResponse.snapshot
+		if (!snapshot) {
+			return []
+		}
+
+		return [
+			{
+				message: { role: 'user', content: `state after turn ${turn} of "${step.action}":\n${snapshot}` },
+				ephemeral: true,
+			},
+		]
+	},
 })
 ```
 
@@ -150,14 +190,14 @@ import { PlaywrightCapability } from '@xoxoai/checkmate/playwright'
 export const auditTrail = defineExtension({
 	name: 'audit-trail',
 	setup(api) {
-		const page = api.getCapability<Page>(PlaywrightCapability.PAGE)
+		const activePage = api.getCapability<() => Page>(PlaywrightCapability.ACTIVE_PAGE)
 
-		api.addInstruction(`Current page starts at: ${page.url()}`)
+		api.addInstruction(`Current page starts at: ${activePage().url()}`)
 	},
 })
 ```
 
-Prefer capabilities when one extension depends on another extension's runtime objects.
+Prefer capabilities when one extension depends on another extension's runtime objects. In the Playwright web extension, `PlaywrightCapability.PAGE` is the original fixture page; use `PlaywrightCapability.ACTIVE_PAGE` or `PlaywrightCapability.BROWSER_RUNTIME` when you need the current active tab after browser tools have opened or switched tabs.
 
 ## Extending Built-In Extensions
 
@@ -214,6 +254,7 @@ Keep extensions readable and honest.
 - Prefer capabilities over direct imports between unrelated extensions.
 - Keep instructions concrete and short.
 - Add initial or post-tool context only when the model truly needs it.
+- Mark current-state context `ephemeral` so it does not accumulate across turns.
 - Return clear tool responses that help the model decide the next step.
 
 ## Recommended Progression

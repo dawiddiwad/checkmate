@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { createStepResultTools, StepResultTool } from '../tools/step/result-tool'
-import { AgentTool, AgentToolContext } from '../tools/types'
+import { AgentTool, AgentToolContext, AgentToolResponse } from '../tools/types'
 
 describe('Step result tools', () => {
 	let tools: AgentTool[]
@@ -19,7 +19,6 @@ describe('Step result tools', () => {
 		tools = createStepResultTools()
 		context = {
 			step: { action: 'act', expect: 'done' },
-			resolveStepResult: vi.fn(),
 		}
 	})
 
@@ -31,32 +30,28 @@ describe('Step result tools', () => {
 		])
 	})
 
-	it('passes a step through execution context', async () => {
-		await getTool(StepResultTool.TOOL_PASS_TEST_STEP).execute({ actualResult: 'Test passed successfully' }, context)
+	it('returns a passing assertion', async () => {
+		const result = (await getTool(StepResultTool.TOOL_PASS_TEST_STEP).execute(
+			{ actualResult: 'Test passed successfully' },
+			context
+		)) as AgentToolResponse
 
-		expect(context.resolveStepResult).toHaveBeenCalledWith({
-			passed: true,
-			actual: 'Test passed successfully',
-		})
+		expect(result.assertion).toEqual({ passed: true, actual: 'Test passed successfully' })
 	})
 
-	it('fails a step through execution context', async () => {
-		await getTool(StepResultTool.TOOL_FAIL_TEST_STEP).execute(
+	it('returns a failing assertion', async () => {
+		const result = (await getTool(StepResultTool.TOOL_FAIL_TEST_STEP).execute(
 			{ actualResult: 'Expected button, found none' },
 			context
-		)
+		)) as AgentToolResponse
 
-		expect(context.resolveStepResult).toHaveBeenCalledWith({
-			passed: false,
-			actual: 'Expected button, found none',
-		})
+		expect(result.assertion).toEqual({ passed: false, actual: 'Expected button, found none' })
 	})
 
 	it('validates arguments with zod before executing', async () => {
 		const result = await getTool(StepResultTool.TOOL_PASS_TEST_STEP).execute({}, context)
 
 		expect(result).toContain("Invalid args for 'pass_test_step'")
-		expect(context.resolveStepResult).not.toHaveBeenCalled()
 	})
 
 	it('exports stable tool name constants', () => {

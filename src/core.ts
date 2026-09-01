@@ -1,5 +1,13 @@
 export { CheckmateRunner, createRunner } from './runtime/runner.js'
 export type { CheckmateRunnerOptions } from './runtime/runner.js'
+export { CHECKMATE_DEFAULTS, CheckmateConfigError, resolveConfig } from './config/resolved-config.js'
+export type {
+	CheckmateOptions,
+	EvidenceLevel,
+	ReasoningEffort,
+	ResolvedConfig,
+	ToolChoice,
+} from './config/resolved-config.js'
 export { defineExtension } from './runtime/extension.js'
 export type {
 	CheckmateExtension,
@@ -19,5 +27,16 @@ export type {
 	AgentToolResponse,
 	AgentToolResult,
 	ToolCall,
+	ToolResponse,
 } from './tools/tool-contract.js'
-export type { Step, StepResult, ResolveStepResult } from './runtime/types.js'
+export type {
+	ContextMessage,
+	Step,
+	StepAssertion,
+	StepCategory,
+	StepReport,
+	StepToolCall,
+	StepUsage,
+	TerminationReason,
+	TranscriptEntry,
+} from './runtime/types.js'

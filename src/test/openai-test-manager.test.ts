@@ -1,28 +1,17 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { CheckmateRunner } from '../core'
-import { Step, ResolveStepResult } from '../runtime/types'
+import { Step } from '../runtime/types'
 import { Page } from '@playwright/test'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { createPlaywrightRunner } from '../playwright'
+import { testConfig } from './test-types'
 
-interface TestableTestManager {
+interface TestableRunner {
 	aiClient: {
-		initialize: Mock
-		sendMessage: Mock
+		send: Mock
+		countHistoryTokens: Mock
 	}
 }
-
-vi.mock('../../src/config/runtime-config', () => ({
-	RuntimeConfig: class {
-		getLogLevel = vi.fn().mockReturnValue('off')
-		getApiKey = vi.fn().mockReturnValue('test-key')
-		getBaseURL = vi.fn().mockReturnValue(undefined)
-		getModel = vi.fn().mockReturnValue('gpt-4o-mini')
-		getTimeout = vi.fn().mockReturnValue(60000)
-		getMaxRetries = vi.fn().mockReturnValue(3)
-		getTemperature = vi.fn().mockReturnValue(1)
-	},
-}))
 
 vi.mock('../../src/logging/logger', () => ({
 	CheckmateLogger: {
@@ -35,61 +24,42 @@ vi.mock('../../src/logging/logger', () => ({
 	},
 }))
 
-vi.mock('../../src/tools/step/result-tool', () => ({
-	createStepResultTools: vi.fn(() => []),
-}))
-
 vi.mock('../../src/tools/browser/tool', () => ({
 	BrowserTool: {
 		TOOL_SNAPSHOT: 'browser_snapshot',
 	},
 	BrowserToolRuntime: class {
-		constructor() {}
+		constructor(private readonly page: Page) {}
+		getActivePage() {
+			return this.page
+		}
+		ensureActivePage() {
+			return this.page
+		}
+		getBrowserContext() {
+			return this.page.context?.() ?? {}
+		}
+		dispose() {}
 	},
 	createBrowserTools: vi.fn(() => []),
-}))
-
-vi.mock('../../src/tools/salesforce/login-tool', () => ({
-	createSalesforceTools: vi.fn(() => []),
 }))
 
 vi.mock('../../src/tools/registry', () => ({
 	ToolRegistry: class {
 		register = vi.fn()
 		getTools = vi.fn().mockResolvedValue([])
+		resolve = vi.fn().mockReturnValue(undefined)
+		getRegisteredToolNames = vi.fn().mockReturnValue([])
+		getConfig = vi.fn()
 	},
 }))
 
 vi.mock('../../src/ai/client', () => ({
 	AiClient: class {
-		initialize = vi.fn().mockResolvedValue(undefined)
-		sendMessage = vi.fn().mockResolvedValue(undefined)
-		page = {} as Page
+		send = vi.fn()
+		countHistoryTokens = vi.fn().mockReturnValue(0)
 	},
 }))
-
-vi.mock('../../src/ai/message-history', () => {
-	class MockHistoryManager {
-		createSnapshotMessage = vi.fn().mockReturnValue({
-			role: 'user',
-			content: [{ type: 'text', text: 'snapshot prompt' }],
-		})
-		buildInitialMessages = vi.fn().mockReturnValue([
-			{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
-			{ role: 'user', content: [{ type: 'text', text: 'step prompt' }] },
-			{ role: 'user', content: [{ type: 'text', text: 'snapshot prompt' }] },
-		] as ChatCompletionMessageParam[])
-		static instance: MockHistoryManager | null = null
-		constructor() {
-			MockHistoryManager.instance = this
-		}
-	}
-
-	return {
-		MessageHistory: MockHistoryManager,
-		getBuildInitialMessagesMock: () => MockHistoryManager.instance?.buildInitialMessages,
-	}
-})
 
 vi.mock('../../src/tools/browser/snapshot-service', () => ({
 	SnapshotService: class {
@@ -102,117 +72,112 @@ vi.mock('../../src/ai/prompts', () => ({
 	STEP_START_USER_PROMPT: vi.fn((step) => `Execute: ${step.action}`),
 }))
 
+function assertionResponse(name: string, passed: boolean, actual: string) {
+	return {
+		response: {
+			choices: [
+				{
+					index: 0,
+					finish_reason: 'tool_calls',
+					message: {
+						role: 'assistant',
+						content: null as string | null,
+						tool_calls: [
+							{
+								id: 'call_1',
+								type: 'function',
+								function: { name, arguments: JSON.stringify({ actual }) },
+							},
+						],
+					},
+				},
+			],
+			usage: { prompt_tokens: 5, completion_tokens: 2 },
+		},
+		assistantMessages: [{ role: 'assistant', content: null as string | null }],
+		assertion: { passed, actual },
+	}
+}
+
 describe('CheckmateRunner', () => {
-	let testManager: CheckmateRunner
+	let runner: CheckmateRunner
 	let mockPage: Page
+	let mockStep: Step
 
 	beforeEach(() => {
+		vi.clearAllMocks()
 		mockPage = {} as Page
-		testManager = createPlaywrightRunner(mockPage)
+		runner = createPlaywrightRunner(mockPage, testConfig({ checkmateModel: 'gpt-4o-mini' }))
+		mockStep = {
+			action: 'Click the submit button',
+			expect: 'Button should be clicked',
+		}
 	})
 
+	function aiClient() {
+		return (runner as unknown as TestableRunner).aiClient
+	}
+
 	describe('constructor', () => {
-		it('should create test manager instance', () => {
-			expect(testManager).toBeDefined()
+		it('should create a runner instance', () => {
+			expect(runner).toBeDefined()
 		})
 	})
 
 	describe('teardown', () => {
 		it('should complete teardown without error', async () => {
-			await expect(testManager.teardown()).resolves.toBeUndefined()
+			await expect(runner.teardown()).resolves.toBeUndefined()
 		})
 	})
 
 	describe('run', () => {
-		let mockStep: Step
+		it('sends the initial messages before the first model request', async () => {
+			aiClient().send.mockRejectedValue(new Error('stop here'))
 
-		beforeEach(() => {
-			mockStep = {
-				action: 'Click the submit button',
-				expect: 'Button should be clicked',
-			}
+			await runner.run(mockStep)
 
-			testManager = createPlaywrightRunner(mockPage)
-		})
-
-		it('should successfully run when step passes', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
-				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
-				return Promise.resolve()
-			})
-
-			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
-			expect(mockClient.initialize).toHaveBeenCalled()
-			expect(mockClient.sendMessage).toHaveBeenCalled()
-		})
-
-		it('should throw error when step fails', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
-				setTimeout(() => callback({ passed: false, actual: 'Button not found' }), 0)
-				return Promise.resolve()
-			})
-
-			await expect(testManager.run(mockStep)).rejects.toThrow()
-		})
-
-		it('should include step action in error message when failing', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
-				setTimeout(() => callback({ passed: false, actual: 'Failed' }), 0)
-				return Promise.resolve()
-			})
-
-			try {
-				await testManager.run(mockStep)
-				expect.fail('Should have thrown error')
-			} catch (error) {
-				expect((error as Error).message).toContain('Click the submit button')
-			}
-		})
-
-		it('should wrap errors from OpenAI client', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
-			mockClient.initialize.mockRejectedValue(new Error('API Error'))
-
-			try {
-				await testManager.run(mockStep)
-				expect.fail('Should have thrown error')
-			} catch (error) {
-				const wrappedError = error as Error & { cause?: Error }
-				expect(wrappedError.message).toContain('Failed to execute action')
-				expect(wrappedError.message).toContain('Click the submit button')
-				expect(wrappedError.cause?.message).toContain('API Error')
-			}
-		})
-
-		it('should handle sendMessage errors', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
-			mockClient.initialize.mockResolvedValue(undefined)
-			mockClient.sendMessage.mockRejectedValue(new Error('Send failed'))
-			try {
-				await testManager.run(mockStep)
-				expect.fail('Should have thrown error')
-			} catch (error) {
-				expect((error as Error).message).toContain('Failed to execute action')
-			}
-		})
-
-		it('should build initial messages and send them before the first model request', async () => {
-			const mockClient = (testManager as unknown as TestableTestManager).aiClient
-			mockClient.initialize.mockImplementation((step: Step, callback: ResolveStepResult) => {
-				setTimeout(() => callback({ passed: true, actual: 'Success' }), 0)
-				return Promise.resolve()
-			})
-
-			await expect(testManager.run(mockStep)).resolves.toBeUndefined()
-
-			expect(mockClient.sendMessage).toHaveBeenCalledWith([
+			const [messages] = aiClient().send.mock.calls[0] as [ChatCompletionMessageParam[]]
+			expect(messages).toEqual([
 				{ role: 'system', content: [{ type: 'text', text: 'system prompt' }] },
-				{ role: 'user', content: [{ type: 'text', text: 'step prompt' }] },
-				{ role: 'user', content: [{ type: 'text', text: 'snapshot prompt' }] },
+				{ role: 'user', content: [{ type: 'text', text: 'Execute: Click the submit button' }] },
+				{
+					role: 'user',
+					content: [{ type: 'text', text: 'this is a current page snapshot:\nmocked snapshot' }],
+				},
 			])
+		})
+
+		it('reports a client failure as an infra provider error instead of throwing', async () => {
+			aiClient().send.mockRejectedValue(new Error('API Error'))
+
+			const report = await runner.run(mockStep)
+
+			expect(report).toMatchObject({
+				action: 'Click the submit button',
+				outcome: 'failed',
+				category: 'infra',
+				reason: 'provider-error',
+			})
+			expect(report.actual).toContain('API Error')
+		})
+
+		it('resolves the assertion produced by the result tool', async () => {
+			const registry = (runner as unknown as { toolRegistry: { resolve: Mock } }).toolRegistry
+			registry.resolve.mockReturnValue({
+				definition: { name: 'pass_test_step', description: '', parameters: {}, strict: true },
+				execute: vi.fn(() => ({ response: 'Success', assertion: { passed: true, actual: 'Success' } })),
+			})
+			aiClient().send.mockResolvedValue(assertionResponse('pass_test_step', true, 'Success'))
+
+			const report = await runner.run(mockStep)
+
+			expect(report).toMatchObject({
+				outcome: 'passed',
+				category: 'app',
+				reason: 'met-expectation',
+				actual: 'Success',
+				turns: 1,
+			})
 		})
 	})
 })

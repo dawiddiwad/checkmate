@@ -6,7 +6,11 @@ import { reconstructTree } from './tree-reconstructor.js'
 const DEFAULT_SCORE_THRESHOLD = 0.3
 const DEFAULT_TOP_PERCENT = 10
 
-export async function filterSnapshot(json: JsonValue, step?: Step): Promise<JsonValue> {
+export async function filterSnapshot(
+	json: JsonValue,
+	step?: Step,
+	defaultTopPercent: number = DEFAULT_TOP_PERCENT
+): Promise<JsonValue> {
 	if (!step) {
 		logger.debug('filterSnapshot: No step provided, returning original snapshot')
 		return json
@@ -28,7 +32,7 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 		return json
 	}
 
-	const topPercent = resolveTopPercent(step)
+	const topPercent = resolveTopPercent(step, defaultTopPercent)
 	const selectedByPrimaryRule = filterTopPercent(scoredElements, topPercent / 100)
 	logger.debug(`filterSnapshot: Filtered to ${selectedByPrimaryRule.length} elements from top ${topPercent}%`)
 
@@ -53,13 +57,13 @@ export async function filterSnapshot(json: JsonValue, step?: Step): Promise<Json
 	return filtered
 }
 
-function resolveTopPercent(step: Step): number {
+function resolveTopPercent(step: Step, defaultTopPercent: number): number {
 	const candidate = step.topPercent
 	if (typeof candidate === 'number' && candidate > 0 && candidate <= 100) {
 		return candidate
 	}
 
-	return DEFAULT_TOP_PERCENT
+	return defaultTopPercent
 }
 
 function resolveSearchQuery(step: Step): string {

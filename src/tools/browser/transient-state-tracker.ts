@@ -3,6 +3,16 @@ import { logger } from '../../logging/index.js'
 
 type Clock = () => number
 
+export type DialogHandlingIntent = {
+	action: 'accept' | 'dismiss'
+	promptText?: string
+}
+
+type TransientStateTrackerOptions = {
+	clock?: Clock
+	consumeDialogHandlingIntent?: () => DialogHandlingIntent | null
+}
+
 const TIMELINE_HEADER = 'Timeline of events after last function call:'
 const MUTATION_LOG_PREFIX = '__CHECKMATE_MUTATION__'
 const MUTATION_OBSERVER_KEY = '__checkmate_mutation_observer'
@@ -76,7 +86,8 @@ class PageEventManager {
 		private readonly timeline: TimelineRecorder,
 		private readonly isTracking: () => boolean,
 		private readonly onMainFrameNavigation: () => void,
-		private readonly mutationLogPrefix: string
+		private readonly mutationLogPrefix: string,
+		private readonly consumeDialogHandlingIntent: () => DialogHandlingIntent | null
 	) {}
 
 	attach(): void {
@@ -93,6 +104,24 @@ class PageEventManager {
 
 	private handleDialog = (dialog: Dialog): void => {
 		if (!this.isTracking()) {
+			return
+		}
+
+		const intent = this.consumeDialogHandlingIntent()
+		if (intent?.action === 'accept') {
+			this.timeline.record(
+				`Dialog appeared: "${dialog.message()}" (Type: ${dialog.type()}) and accepted by armed dialog response.`
+			)
+			const accept = intent.promptText === undefined ? dialog.accept() : dialog.accept(intent.promptText)
+			accept.catch(() => {})
+			return
+		}
+
+		if (intent?.action === 'dismiss') {
+			this.timeline.record(
+				`Dialog appeared: "${dialog.message()}" (Type: ${dialog.type()}) and dismissed by armed dialog response.`
+			)
+			dialog.dismiss().catch(() => {})
 			return
 		}
 
@@ -269,8 +298,12 @@ export class TransientStateTracker {
 
 	constructor(
 		private readonly page: Page,
-		clock: Clock = () => Date.now()
+		options: TransientStateTrackerOptions | Clock = {}
 	) {
+		const normalizedOptions = typeof options === 'function' ? { clock: options } : options
+		const clock = normalizedOptions.clock ?? (() => Date.now())
+		const consumeDialogHandlingIntent = normalizedOptions.consumeDialogHandlingIntent ?? (() => null)
+
 		this.timeline = new TimelineRecorder(clock)
 		this.mutationObserver = new MutationObserverController(page)
 		this.eventManager = new PageEventManager(
@@ -282,7 +315,8 @@ export class TransientStateTracker {
 					void this.stop()
 				}
 			},
-			MUTATION_LOG_PREFIX
+			MUTATION_LOG_PREFIX,
+			consumeDialogHandlingIntent
 		)
 	}
 

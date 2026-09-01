@@ -14,9 +14,10 @@ adws/adw_data/sessions/
 adws/adw_data/sssf.db*
 __pycache__/
 *.pyc
+.playwright-cli
 
 # Riptide artifacts (cloud-synced)
-.humanlayer/tasks/
+.humanlayer/tasks
 
 # benchmark.ts output (regenerated per run; published results go in docs/BENCHMARK.md)
 scripts/benchmark-results.json

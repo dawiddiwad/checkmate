@@ -22,16 +22,18 @@ await ai.step({
 })
 ```
 
-It fills test coverage gaps where deterministic assertions aren't economical, UI that is not known upfront, dynamic locators and complex flows. It trades authoring cost for run cost, composing into your existing suite with a guaranteed `StepReport` and evidence attached to your test results designed as easily consumable contracts for agents, enabling integration into agentic harnesses and software factories.
+It is an auditable, bounded agentic test harness for coverage gaps where deterministic automation is disproportionately expensive, where strict assertions aren't feasible, UI that is not known upfront, dynamic locators or a complex, context dependent flows.
+
+It trades authoring cost for run cost, composing into your existing suite with a guaranteed `StepReport` and evidence attached to your test results designed as easily consumable contracts for agents, enabling integration into other harnesses and software factories.
 
 ##
 
-✅ **Zero Locators** - Write the step in plain English  
+✅ **Flexible** - Write the step in plain English  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
+✅ **Explained** - Every step is auditable within a stated category and reason  
+✅ **Playwright Native** - Reports, traces, retries, and `mergeTests()` composition  
 ✅ **Web & Salesforce** - Basic support out of the box, including active tab/popup tracking  
-✅ **Explained** - Every step ends in a stated category and reason
-✅ **Playwright Test** - Native reports, traces, retries, and `mergeTests()` composition  
-✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
+✅ **Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
 
 <img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
 

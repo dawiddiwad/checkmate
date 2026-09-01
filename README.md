@@ -302,6 +302,7 @@ await ai.step({
 - [**_checkmate_** guide](docs/GUIDE.md)
 - [**_checkmate_** extensions](docs/EXTENSIONS.md)
 - [**_checkmate_** benchmark](docs/BENCHMARK.md)
+- [**_checkmate_** development](docs/DEVELOPMENT.md)
 - [**playwright** official website](https://playwright.dev/)
 
 ## Contributing
@@ -313,11 +314,15 @@ I'd love your help! Key areas:
 - Context and prompt engineering improvements
 - Error handling and recovery
 
-See [roadmap](docs/ROADMAP.md) for future plans and development
+See [roadmap](docs/ROADMAP.md)
+
+The repository also carries two dev-only tools used to build **_checkmate_** itself: an
+[sssf](.claude/skills/sssf) AI agent pipeline factory for plan/build/test/review loops, and a
+[HumanLayer](https://humanlayer.dev) workspace config for isolated per-task worktrees. Neither ships in the published package - see [development](docs/DEVELOPMENT.md) if you want to use them, or if you're simply interested in how ai-driven development works.
 
 ## License
 
-MIT [license](LICENSE)
+See [license](LICENSE)
 
 ## Why I build this?
 

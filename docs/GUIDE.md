@@ -135,7 +135,7 @@ config.
 ## Configuration Reference
 
 Checkmate is configured in [Playwright's](https://playwright.dev/docs/test-configuration) standard
-[config](playwright.config.ts) as flat `checkmate*` options, set per project and overridable per test.
+[config](../playwright.config.ts) as flat `checkmate*` options, set per project and overridable per test.
 Only the provider secrets stay in the environment.
 
 ```ts
@@ -425,7 +425,7 @@ Unarmed JavaScript dialogs are dismissed automatically. If a flow needs OK/Cance
 `browser_network_requests` lists the fetch/XHR calls the browser made during the last browser action, so an `expect` can assert on backend behavior instead of DOM state alone. The buffer resets at the start of every browser action, so the list always describes the action immediately before it.
 
 ```typescript
-await ai.run({
+await ai.step({
 	action: `Click "Place Order"`,
 	expect: `Order confirmation is displayed and the checkout API call returned a successful status`,
 })
@@ -444,7 +444,7 @@ Images, fonts, stylesheets, and other static resources are hidden by default. Th
 To assert on a specific response payload, the agent can follow up with `browser_network_request`, passing the number shown by `browser_network_requests` and the `part` to read (`detail` for headers and timing, `request-body`, or `response-body`):
 
 ```typescript
-await ai.run({
+await ai.step({
 	action: `Click "Place Order"`,
 	expect: `Order confirmation is displayed, the checkout API call returned a successful status,
 	and the response body includes an order id.`,
@@ -586,11 +586,15 @@ npx playwright show-report test-reports/html
 ├── runtime/
 │   ├── CheckmateRunner
 │   ├── StepExecution
+│   ├── StepEvidence
+│   ├── StepDeadline
 │   └── ExtensionHost
 │
 ├── ai/
 │   ├── AiClient
-│   ├── ResponseProcessor
+│   ├── TurnProcessor
+│   ├── MessageHandler
+│   ├── ToolResponseHandler
 │   ├── MessageHistory
 │   └── TokenTracker
 │

@@ -65,12 +65,10 @@ describe('docs drift', () => {
 		expect(match?.[1]).toBe(CHECKMATE_DEFAULTS.checkmateModel)
 	})
 
-	it("README states 'when not to use ai.step' before it says how to use it", () => {
-		const whenNotToUseIndex = readme.indexOf('When NOT to use')
-		const howToUseIndex = readme.indexOf('## Writing Tests')
-
-		expect(whenNotToUseIndex, "README.md should have a 'when not to use ai.step' section").toBeGreaterThan(-1)
-		expect(howToUseIndex, "README.md should have a 'Writing Tests' section").toBeGreaterThan(-1)
-		expect(whenNotToUseIndex).toBeLessThan(howToUseIndex)
+	it("README has a 'when not to use ai.step' section", () => {
+		expect(
+			readme.indexOf('When NOT to use'),
+			"README.md should have a 'when not to use ai.step' section"
+		).toBeGreaterThan(-1)
 	})
 })

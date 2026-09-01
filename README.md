@@ -25,7 +25,7 @@ await ai.step({
 It fills test coverage gaps where deterministic assertions aren't economical, UI that is not known upfront, dynamic locators and complex flows. It trades authoring cost for run cost, composing into your existing suite with a guaranteed `StepReport` and evidence attached to your test results designed as easily consumable contracts for agents, enabling integration into agentic harnesses and software factories.
 
 ##
- 
+
 ✅ **Zero Locators** - Write the step in plain English  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box, including active tab/popup tracking  
@@ -67,7 +67,7 @@ export default defineConfig<CheckmateOptions>({
 	use: {
 		checkmateModel: 'gpt-5.4-mini',
 		checkmateLogLevel: 'info',
-		checkmateBudgetUsd: 0.50,
+		checkmateBudgetUsd: 0.5,
 		// other checkmate options
 	},
 })

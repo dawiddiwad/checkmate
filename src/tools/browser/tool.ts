@@ -499,10 +499,9 @@ export class BrowserToolRuntime {
  * and the `toolCalls` array in the report agree on what turn it was.
  *
  * `test.step()` throws when there is no active Playwright Test worker (`test.step() can only be
- * called from a test`), which is exactly the state `scripts/benchmark.ts` runs in — it drives
- * `web()` directly from a plain script, never through `npx playwright test`. The wrapper is
- * skipped there instead of failing every tool call; inside a real test it behaves exactly as
- * before.
+ * called from a test`), which happens whenever `web()` is driven directly from a plain script
+ * rather than through `npx playwright test`. The wrapper is skipped there instead of failing
+ * every tool call; inside a real test it behaves exactly as before.
  */
 function withTurnStep(tool: AgentTool): AgentTool {
 	return {

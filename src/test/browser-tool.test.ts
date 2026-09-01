@@ -133,7 +133,7 @@ describe('Browser tools', () => {
 		expect(playwrightTest.stepNames).toEqual([`turn 4 · ${BrowserTool.TOOL_NAVIGATE}`])
 	})
 
-	it('skips the test.step wrapper outside a Playwright test worker, e.g. scripts/benchmark.ts', async () => {
+	it('skips the test.step wrapper outside a Playwright test worker, e.g. a plain script driving web() directly', async () => {
 		playwrightTest.insideTest = false
 
 		const result = await getTool(BrowserTool.TOOL_NAVIGATE).execute(

@@ -216,37 +216,6 @@ The configured timeout reports `model` / `step-timeout`; a clamp reports `infra`
 An option value that cannot be used fails the test that set it, with every problem listed at once,
 rather than falling back to a default.
 
-### Migrating from 0.4.x
-
-The environment variables that configured Checkmate were removed in 0.5.0 and are **not** read as a
-fallback. A stale one is an error at startup rather than something quietly ignored, because the hazard
-is the quiet break — an `OPENAI_MODEL` that stops applying, first noticed on the invoice:
-
-```text
-✗ OPENAI_MODEL is set but no longer read (removed in 0.5.0).
-  Move it to playwright.config.ts:  use: { checkmateModel: 'gpt-4.1-mini' }
-  Set CHECKMATE_ALLOW_LEGACY_ENV=1 to suppress this check.
-```
-
-| Removed variable                        | Replacement                                                          |
-| --------------------------------------- | -------------------------------------------------------------------- |
-| `OPENAI_MODEL`                          | `checkmateModel`                                                     |
-| `OPENAI_BASE_URL`                       | `checkmateOpenaiBaseUrl`                                             |
-| `OPENAI_TEMPERATURE`                    | `checkmateTemperature`                                               |
-| `OPENAI_REASONING_EFFORT`               | `checkmateReasoningEffort`                                           |
-| `OPENAI_TOOL_CHOICE`                    | `checkmateToolChoice`                                                |
-| `OPENAI_ALLOWED_TOOLS`                  | `checkmateAllowedTools`                                              |
-| `OPENAI_RETRY_MAX_ATTEMPTS`             | `checkmateMaxRetries`                                                |
-| `OPENAI_TIMEOUT_SECONDS`                | `checkmateRequestTimeout` (milliseconds)                             |
-| `OPENAI_API_RATE_LIMIT_DELAY_SECONDS`   | `checkmateRateLimitDelay` (milliseconds)                             |
-| `OPENAI_API_TOKEN_BUDGET_USD`           | `checkmateBudgetUsd`                                                 |
-| `OPENAI_API_TOKEN_BUDGET_COUNT`         | `checkmateBudgetTokens`                                              |
-| `OPENAI_LOOP_MAX_REPETITIONS`           | `checkmateLoopMaxRepetitions`                                        |
-| `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` | `checkmateScreenshots`                                               |
-| `CHECKMATE_SNAPSHOT_FILTERING`          | `checkmateSnapshotFilter`                                            |
-| `CHECKMATE_LOG_LEVEL`                   | `checkmateLogLevel`                                                  |
-| `OPENAI_API_KEY`                        | renamed to `CHECKMATE_OPENAI_API_KEY`; still an environment variable |
-
 ## Writing Effective Tests
 
 ### Best Practices

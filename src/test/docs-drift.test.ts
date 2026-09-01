@@ -8,9 +8,9 @@ function readRepoFile(relativePath: string): string {
 	return readFileSync(fileURLToPath(new URL(`../../${relativePath}`, import.meta.url)), 'utf-8')
 }
 
-// Every `checkmate*` option that replaced a 0.4.x environment variable. A stale reference to one
-// of these names, outside a migration note that says so, is exactly the drift research §5
-// catalogued: a doc claiming a contract the runtime no longer has.
+// Every `checkmate*` option that replaced a 0.4.x environment variable. There's no migration
+// guide for these anymore (0.5.0 has no legacy-env layer to point a stale variable at), so a
+// reference to one of these names anywhere in the docs is stale by definition.
 const REMOVED_ENV_VARS = [
 	'OPENAI_MODEL',
 	'OPENAI_BASE_URL',
@@ -39,35 +39,15 @@ describe('docs drift', () => {
 		}
 	})
 
-	it('GUIDE.md only references a removed environment variable inside its migration section', () => {
-		const migrationHeadingIndex = guide.indexOf('## Migrating from 0.4.x')
-		expect(migrationHeadingIndex).toBeGreaterThan(-1)
-
+	it('GUIDE.md never references a removed environment variable', () => {
 		for (const name of REMOVED_ENV_VARS) {
-			const firstOccurrence = guide.indexOf(name)
-			if (firstOccurrence === -1) {
-				continue
-			}
-			expect(
-				firstOccurrence,
-				`docs/GUIDE.md references removed variable ${name} outside its migration section`
-			).toBeGreaterThan(migrationHeadingIndex)
+			expect(guide, `docs/GUIDE.md should not reference removed variable ${name}`).not.toContain(name)
 		}
 	})
 
-	it('.env.example only references a removed environment variable inside its migration section', () => {
-		const migrationHeadingIndex = envExample.indexOf('MIGRATION FROM 0.4.x')
-		expect(migrationHeadingIndex).toBeGreaterThan(-1)
-
+	it('.env.example never references a removed environment variable', () => {
 		for (const name of REMOVED_ENV_VARS) {
-			const firstOccurrence = envExample.indexOf(name)
-			if (firstOccurrence === -1) {
-				continue
-			}
-			expect(
-				firstOccurrence,
-				`.env.example references removed variable ${name} outside its migration section`
-			).toBeGreaterThan(migrationHeadingIndex)
+			expect(envExample, `.env.example should not reference removed variable ${name}`).not.toContain(name)
 		}
 	})
 

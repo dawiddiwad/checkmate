@@ -1,5 +1,4 @@
 import { LogLevel } from '../logging/logger.js'
-import { assertNoLegacyEnv } from './legacy-env-guard.js'
 
 /**
  * Provider reasoning effort, for models that support extended thinking.
@@ -599,9 +598,6 @@ export class CheckmateConfigError extends Error {
 /**
  * Collapses `checkmate*` options onto the package defaults and validates the result.
  *
- * Every path that builds configuration goes through here, so this is also where a removed
- * environment variable is rejected.
- *
  * @param overrides - Option values from `playwright.config.ts`, `test.use()`, or a script.
  *
  * @example
@@ -610,8 +606,6 @@ export class CheckmateConfigError extends Error {
  * ```
  */
 export function resolveConfig(overrides: Partial<CheckmateOptions> = {}): ResolvedConfig {
-	assertNoLegacyEnv()
-
 	const options = pick(overrides)
 	const problems = validate(options)
 	if (problems.length > 0) {

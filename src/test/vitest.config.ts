@@ -8,7 +8,6 @@ export default defineConfig({
 		include: ['src/test/**/*.test.ts'],
 		env: {
 			CHECKMATE_OPENAI_API_KEY: 'test-api-key',
-			CHECKMATE_ALLOW_LEGACY_ENV: '1',
 		},
 		coverage: {
 			provider: 'v8',

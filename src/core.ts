@@ -8,7 +8,6 @@ export type {
 	ResolvedConfig,
 	ToolChoice,
 } from './config/resolved-config.js'
-export { assertNoLegacyEnv, LegacyEnvironmentError } from './config/legacy-env-guard.js'
 export { defineExtension } from './runtime/extension.js'
 export type {
 	CheckmateExtension,

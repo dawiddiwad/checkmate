@@ -9,6 +9,12 @@ of a per-run model cost and a nondeterministic result. It composes into a suite 
 via `mergeTests()` — it does not replace `@playwright/test`, and it is not the right tool for
 the parts of your app a locator and an assertion already cover well.
 
+If you already have a coding agent that can drive a browser by hand, `ai.step` isn't trying to
+beat it on cost — a capable agent with good tools drives a browser about as well as anything
+does. What it adds is a fixed shape: a `StepReport` your CI can assert on, a turn cap and step
+timer that guarantee an answer instead of a stuck session, and evidence attached right next to
+the rest of your test run instead of a transcript you go dig up later.
+
 ![playwright](https://img.shields.io/badge/Playwright-%E2%89%A51.59-blue.svg)
 ![typescript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)
 ![nodejs](https://img.shields.io/badge/Node.js-LTS-green.svg)
@@ -302,7 +308,7 @@ await ai.step({
 
 - [**_checkmate_** guide](docs/GUIDE.md)
 - [**_checkmate_** extensions](docs/EXTENSIONS.md)
-- [**_checkmate_** benchmark](docs/BENCHMARK.md) - method and published cost comparison against an MCP-driven agent
+- [**_checkmate_** benchmark](docs/BENCHMARK.md) - cost comparison against an MCP-style tool surface and a coding agent
 - [**playwright** official website](https://playwright.dev/)
 
 ## Contributing

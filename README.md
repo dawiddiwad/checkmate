@@ -29,7 +29,7 @@ It fills test coverage gaps where deterministic assertions aren't economical, UI
 ✅ **Zero Locators** - Write the step in plain English  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box, including active tab/popup tracking  
-✅ **Bounded and explained** - a turn cap and step timer guarantee termination; every step ends in a stated category and reason  
+✅ **Explained** - Every step ends in a stated category and reason
 ✅ **Playwright Test** - Native reports, traces, retries, and `mergeTests()` composition  
 ✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
 

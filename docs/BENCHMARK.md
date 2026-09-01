@@ -117,11 +117,11 @@ and every entry in `MODEL_TIERS`, including `gpt-5-mini`. The Mojeek search flow
 Salesforce example were excluded from this check by request; the multi-step Polymer Shop flows
 don't fit the benchmark's one-`ai.step`-per-flow shape and would need harness changes to include:
 
-| Flow | Model | checkmate cost | mcp-baseline cost | Ratio |
-| --- | --- | --- | --- | --- |
-| ollama-model-search | gpt-oss-20b (groq) | $0.0010 | $0.0040 | 4.00x |
-| huggingface-model-search | gpt-oss-20b (groq) | $0.0020 | $0.0120 | 6.00x |
-| nypl-catcher-in-the-rye | gpt-oss-20b (groq) | $0.0020 | $0.0100 | 5.00x |
+| Flow                     | Model              | checkmate cost | mcp-baseline cost | Ratio |
+| ------------------------ | ------------------ | -------------- | ----------------- | ----- |
+| ollama-model-search      | gpt-oss-20b (groq) | $0.0010        | $0.0040           | 4.00x |
+| huggingface-model-search | gpt-oss-20b (groq) | $0.0020        | $0.0120           | 6.00x |
+| nypl-catcher-in-the-rye  | gpt-oss-20b (groq) | $0.0020        | $0.0100           | 5.00x |
 
 All six runs passed (`outcome: 'passed'`, `category: 'app'`, `reason: 'met-expectation'`).
 `checkmate` took 4-5 turns across all three flows; `mcp-baseline` took 6-11 turns, and its

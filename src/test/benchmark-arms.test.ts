@@ -53,6 +53,7 @@ vi.mock('../tools/browser/tool', () => ({
 		navigateToUrl(url: string) {
 			return navigateMock(url)
 		}
+		dispose() {}
 	},
 	createBrowserTools: vi.fn(() => [
 		{

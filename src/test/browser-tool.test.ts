@@ -2,8 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Page } from '@playwright/test'
 import { BrowserTool, BrowserToolRuntime, createBrowserTools } from '../tools/browser/tool'
 import { AgentTool, AgentToolContext } from '../tools/types'
-import { MockBrowserContext, MockPage, MockLocator } from './test-types'
-import { testConfig } from './test-types'
+import {
+	MockBrowserContext,
+	MockPage,
+	MockLocator,
+	createMockBrowserContext,
+	createMockNetworkRequest,
+	createMockNetworkResponse,
+	testConfig,
+} from './test-types'
 
 const trackerMocks = vi.hoisted(() => ({
 	startMock: vi.fn().mockResolvedValue(undefined),
@@ -72,32 +79,6 @@ describe('Browser tools', () => {
 		return tool
 	}
 
-	function createMockContext(): MockBrowserContext {
-		const handlers: Array<(page: MockPage) => void> = []
-		const pages: MockPage[] = []
-		const context = {
-			pages: vi.fn(() => pages),
-			on: vi.fn((_event: string, handler: (page: MockPage) => void) => {
-				handlers.push(handler)
-				return context
-			}),
-			off: vi.fn((_event: string, handler: (page: MockPage) => void) => {
-				const index = handlers.indexOf(handler)
-				if (index >= 0) {
-					handlers.splice(index, 1)
-				}
-				return context
-			}),
-			emitPage: (page: MockPage) => {
-				pages.push(page)
-				for (const handler of handlers) {
-					handler(page)
-				}
-			},
-		} as MockBrowserContext
-		return context
-	}
-
 	function createMockPage(context: MockBrowserContext, url = 'https://example.com', title = 'Example'): MockPage {
 		const page = {
 			goto: vi.fn().mockResolvedValue(undefined),
@@ -132,7 +113,7 @@ describe('Browser tools', () => {
 		vi.clearAllMocks()
 		playwrightTest.stepNames.length = 0
 		playwrightTest.insideTest = true
-		mockContext = createMockContext()
+		mockContext = createMockBrowserContext()
 		mockPage = createMockPage(mockContext)
 
 		runtime = new BrowserToolRuntime(mockPage as unknown as Page, testConfig())
@@ -164,8 +145,8 @@ describe('Browser tools', () => {
 		expect(result).toEqual({ response: 'Navigated to: https://example.com', snapshot: 'mocked snapshot content' })
 	})
 
-	it('creates twelve browser tool definitions', () => {
-		expect(tools).toHaveLength(12)
+	it('creates fourteen browser tool definitions', () => {
+		expect(tools).toHaveLength(14)
 		expect(tools.map((tool) => tool.definition.name)).toEqual([
 			BrowserTool.TOOL_NAVIGATE,
 			BrowserTool.TOOL_CLICK_OR_HOVER,
@@ -179,6 +160,8 @@ describe('Browser tools', () => {
 			BrowserTool.TOOL_LIST_TABS,
 			BrowserTool.TOOL_SELECT_TAB,
 			BrowserTool.TOOL_CLOSE_TAB,
+			BrowserTool.TOOL_NETWORK_REQUESTS,
+			BrowserTool.TOOL_NETWORK_REQUEST,
 		])
 	})
 
@@ -560,5 +543,186 @@ describe('Browser tools', () => {
 	it('does not close the last remaining tab', async () => {
 		const result = await getTool(BrowserTool.TOOL_CLOSE_TAB).execute({ pageId: null, goal: 'close' }, context)
 		expect(result).toBe('Cannot close the last open browser tab.')
+	})
+
+	it('lists the API calls captured since the last browser action', async () => {
+		const checkout = createMockNetworkRequest('POST', 'https://example.com/api/checkout')
+		mockPage.click.mockImplementation(async () => {
+			mockContext.emitRequest(checkout)
+			mockContext.emitResponse(createMockNetworkResponse(checkout, 200, 'OK'))
+		})
+
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Place Order', hover: false, goal: 'place order' },
+			context
+		)
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: false, goal: 'verify checkout api' },
+			context
+		)
+
+		expect(result).toContain('Network requests since the last browser action')
+		expect(result).toContain('1. [POST] https://example.com/api/checkout => [200] OK')
+	})
+
+	it('reports failed requests and requests still in flight', async () => {
+		const pending = createMockNetworkRequest('GET', 'https://example.com/api/profile')
+		const failed = createMockNetworkRequest(
+			'POST',
+			'https://example.com/api/track',
+			'fetch',
+			'net::ERR_CONNECTION_REFUSED'
+		)
+		mockPage.click.mockImplementation(async () => {
+			mockContext.emitRequest(pending)
+			mockContext.emitRequest(failed)
+			mockContext.emitRequestFailed(failed)
+		})
+
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Place Order', hover: false, goal: 'place order' },
+			context
+		)
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: false, goal: 'verify checkout api' },
+			context
+		)
+
+		expect(result).toContain('1. [GET] https://example.com/api/profile => [PENDING]')
+		expect(result).toContain('2. [POST] https://example.com/api/track => [FAILED] net::ERR_CONNECTION_REFUSED')
+	})
+
+	it('reports no API calls when nothing was captured', async () => {
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: false, goal: 'verify checkout api' },
+			context
+		)
+
+		expect(result).toBe('No API calls were made since the last browser action.')
+	})
+
+	it('drops requests captured before the last browser action', async () => {
+		const beforeClick = createMockNetworkRequest('GET', 'https://example.com/api/cart')
+		mockContext.emitRequest(beforeClick)
+		mockContext.emitResponse(createMockNetworkResponse(beforeClick, 200, 'OK'))
+
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Place Order', hover: false, goal: 'place order' },
+			context
+		)
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: false, goal: 'verify checkout api' },
+			context
+		)
+
+		expect(result).toBe('No API calls were made since the last browser action.')
+	})
+
+	it('hides static resources unless static is true', async () => {
+		const api = createMockNetworkRequest('GET', 'https://example.com/api/cart')
+		const stylesheet = createMockNetworkRequest('GET', 'https://example.com/app.css', 'stylesheet')
+		mockPage.click.mockImplementation(async () => {
+			mockContext.emitRequest(api)
+			mockContext.emitResponse(createMockNetworkResponse(api, 200, 'OK'))
+			mockContext.emitRequest(stylesheet)
+			mockContext.emitResponse(createMockNetworkResponse(stylesheet, 200, 'OK'))
+		})
+
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Place Order', hover: false, goal: 'place order' },
+			context
+		)
+		const apiOnly = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: false, goal: 'verify api calls' },
+			context
+		)
+		const everything = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: true, goal: 'verify all requests' },
+			context
+		)
+
+		expect(apiOnly).toContain('1. [GET] https://example.com/api/cart')
+		expect(apiOnly).not.toContain('app.css')
+		expect(everything).toContain('1. [GET] https://example.com/api/cart')
+		expect(everything).toContain('2. [GET] https://example.com/app.css')
+	})
+
+	it('validates network request arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute({ goal: 'verify api calls' }, context)
+		expect(result).toContain("Invalid args for 'browser_network_requests'")
+	})
+
+	it('stops recording network requests after dispose', async () => {
+		runtime.dispose()
+
+		const api = createMockNetworkRequest('GET', 'https://example.com/api/cart')
+		mockContext.emitRequest(api)
+
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUESTS).execute(
+			{ static: false, goal: 'verify api calls' },
+			context
+		)
+
+		expect(result).toBe('No API calls were made since the last browser action.')
+	})
+
+	it('inspects a captured network request by sequence', async () => {
+		const checkout = createMockNetworkRequest('POST', 'https://example.com/api/checkout', 'fetch', null, {
+			headers: { 'content-type': 'application/json' },
+			postData: '{"item":"widget"}',
+		})
+		mockPage.click.mockImplementation(async () => {
+			mockContext.emitRequest(checkout)
+			mockContext.emitResponse(
+				createMockNetworkResponse(checkout, 200, 'OK', {
+					headers: { 'content-type': 'application/json' },
+					text: '{"orderId":"ORD-8231"}',
+				})
+			)
+		})
+
+		await getTool(BrowserTool.TOOL_CLICK_OR_HOVER).execute(
+			{ ref: 'e123', name: 'Place Order', hover: false, goal: 'place order' },
+			context
+		)
+
+		const detail = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, part: 'detail', goal: 'inspect checkout call' },
+			context
+		)
+		expect(detail).toContain('1. [POST] https://example.com/api/checkout => [200] OK')
+		expect(detail).toContain('request headers: content-type: application/json')
+		expect(detail).toContain('response headers: content-type: application/json')
+
+		const responseBody = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, part: 'response-body', goal: 'read order id' },
+			context
+		)
+		expect(responseBody).toContain('response body (application/json):')
+		expect(responseBody).toContain('{"orderId":"ORD-8231"}')
+
+		const requestBody = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, part: 'request-body', goal: 'read post data' },
+			context
+		)
+		expect(requestBody).toContain('request body:')
+		expect(requestBody).toContain('{"item":"widget"}')
+	})
+
+	it('returns an error string for an unknown sequence instead of throwing', async () => {
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 99, part: 'detail', goal: 'inspect missing request' },
+			context
+		)
+
+		expect(result).toContain("'99'")
+	})
+
+	it('validates network request detail arguments with zod', async () => {
+		const result = await getTool(BrowserTool.TOOL_NETWORK_REQUEST).execute(
+			{ sequence: 1, goal: 'inspect' },
+			context
+		)
+		expect(result).toContain("Invalid args for 'browser_network_request'")
 	})
 })

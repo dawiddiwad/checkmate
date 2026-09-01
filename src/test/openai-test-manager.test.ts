@@ -39,6 +39,7 @@ vi.mock('../../src/tools/browser/tool', () => ({
 		getBrowserContext() {
 			return this.page.context?.() ?? {}
 		}
+		dispose() {}
 	},
 	createBrowserTools: vi.fn(() => []),
 }))

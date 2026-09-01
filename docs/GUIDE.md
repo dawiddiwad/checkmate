@@ -428,10 +428,11 @@ _Costs vary based on model, screenshot size and count, and page complexity_
 
 What it adds:
 
-- 12 browser tools for navigation and interaction on the active tab/page
+- 14 browser tools for navigation and interaction on the active tab/page
 - automatic active-tab switching when an action opens a new tab or popup
 - tab tools to list, select, and close tabs/popups during OAuth, payment, or "open in new tab" flows
 - one-shot JavaScript dialog handling for alert, confirm, and prompt dialogs
+- network request visibility for API assertions on the calls an action triggered
 - initial page snapshots and optional screenshots
 - `checkmate`, `test`, `expect`, `web()`, `createAi(page)`, and `createPlaywrightRunner(page)` exports
 
@@ -449,6 +450,46 @@ test('search flow', async ({ ai }) => {
 All browser tools operate on the active tab/page. New tabs and popups opened by an action become active automatically. If a flow must return to an earlier page or close an OAuth/payment popup, the agent can use `browser_list_tabs`, `browser_select_tab`, and `browser_close_tab`.
 
 Unarmed JavaScript dialogs are dismissed automatically. If a flow needs OK/Cancel or prompt input, describe it in the step, for example: "accept the Delete confirmation" or "enter 'Alice' in the prompt". The agent will arm the dialog response before clicking the control that opens it.
+
+### Network assertions
+
+`browser_network_requests` lists the fetch/XHR calls the browser made during the last browser action, so an `expect` can assert on backend behavior instead of DOM state alone. The buffer resets at the start of every browser action, so the list always describes the action immediately before it.
+
+```typescript
+await ai.run({
+	action: `Click "Place Order"`,
+	expect: `Order confirmation is displayed and the checkout API call returned a successful status`,
+})
+```
+
+Output looks like this:
+
+```text
+Network requests since the last browser action (call again after the next action; numbers shown here become stale once you do):
+1. [POST] https://shop.example.com/api/checkout => [200] OK (231ms)
+2. [GET] https://shop.example.com/api/cart => [500] Internal Server Error (87ms)
+```
+
+Images, fonts, stylesheets, and other static resources are hidden by default. The agent can pass `static: true` to see them.
+
+To assert on a specific response payload, the agent can follow up with `browser_network_request`, passing the number shown by `browser_network_requests` and the `part` to read (`detail` for headers and timing, `request-body`, or `response-body`):
+
+```typescript
+await ai.run({
+	action: `Click "Place Order"`,
+	expect: `Order confirmation is displayed, the checkout API call returned a successful status,
+	and the response body includes an order id.`,
+})
+```
+
+`browser_network_request` with `part: 'response-body'` for the checkout call returns:
+
+```text
+1. [POST] https://shop.example.com/api/checkout response body (application/json):
+{"orderId":"ORD-8231","total":129.99,"status":"confirmed"}
+```
+
+Numbers only stay valid for the buffer's current contents - they go stale as soon as the next browser action resets it.
 
 ## Salesforce Extension
 
@@ -520,6 +561,7 @@ npx playwright show-report test-reports/html
 - Make the step action more direct and mention the expected interaction target
 - If you restrict tools with `checkmateAllowedTools` and need JavaScript dialog control, include `browser_set_dialog_response` with the browser action tools.
 - If a restricted-tool test needs tab or popup control, include `browser_list_tabs`, `browser_select_tab`, and `browser_close_tab`.
+- If a restricted-tool test asserts on backend calls, include `browser_network_requests`, and `browser_network_request` if the test needs to inspect a specific request's headers or body.
 
 ### Tests loop during step execution
 

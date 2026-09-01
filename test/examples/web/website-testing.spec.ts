@@ -50,7 +50,11 @@ test.describe('single-step : quick examples', async () => {
 				Type 'Qwen3-VL-4B' in the search bar.
 				Click on the 'Qwen/Qwen3-VL-4B-Instruct' link from the search results.`,
 				expect: `
-				Qwen3-VL-4B-Instruct model page is displayed with model details`,
+				Qwen3-VL-4B-Instruct model page is displayed with model details,
+				and the search API call returned a successful status,
+				and the model's security scan API response body confirms the scan
+				completed with no files flagged for issues (this is not shown anywhere
+				in the page UI, so it can only be confirmed by inspecting the response body).`,
 			})
 		})
 	})

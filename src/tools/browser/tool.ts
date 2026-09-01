@@ -5,6 +5,7 @@ import { logger } from '../../logging/index.js'
 import { Step } from '../../runtime/types.js'
 import { defineAgentTool } from '../define-agent-tool.js'
 import { AgentTool, AgentToolContext, AgentToolResponse, AgentToolResult } from '../types.js'
+import { NetworkRequestRecorder } from './network-request-recorder.js'
 import { SnapshotService } from './snapshot-service.js'
 import { DialogHandlingIntent, TransientStateTracker } from './transient-state-tracker.js'
 
@@ -29,6 +30,8 @@ export const BrowserTool = {
 	TOOL_LIST_TABS: 'browser_list_tabs',
 	TOOL_SELECT_TAB: 'browser_select_tab',
 	TOOL_CLOSE_TAB: 'browser_close_tab',
+	TOOL_NETWORK_REQUESTS: 'browser_network_requests',
+	TOOL_NETWORK_REQUEST: 'browser_network_request',
 } as const
 
 const browserInputElementSchema = z
@@ -58,6 +61,7 @@ export class BrowserToolRuntime {
 	private readonly pageIds = new Map<Page, string>()
 	private readonly pagesById = new Map<string, Page>()
 	private pendingDialogHandlingIntent: DialogHandlingIntent | null = null
+	private readonly networkRecorder: NetworkRequestRecorder
 
 	constructor(
 		page: Page,
@@ -65,6 +69,8 @@ export class BrowserToolRuntime {
 	) {
 		this.browserContext = page.context()
 		this.activePage = page
+		this.networkRecorder = new NetworkRequestRecorder(this.browserContext)
+		this.networkRecorder.attach()
 		this.registerExistingPages()
 		this.setActivePage(page)
 		this.browserContext.on('page', (newPage) => {
@@ -87,6 +93,22 @@ export class BrowserToolRuntime {
 
 	getBrowserContext(): BrowserContext {
 		return this.browserContext
+	}
+
+	listNetworkRequests(includeStatic: boolean): string {
+		return this.networkRecorder.format({ includeStatic }) || 'No API calls were made since the last browser action.'
+	}
+
+	async inspectNetworkRequest(sequence: number, part: 'detail' | 'request-body' | 'response-body'): Promise<string> {
+		if (part === 'detail') {
+			return this.networkRecorder.detail(sequence)
+		}
+
+		return this.networkRecorder.body(sequence, part === 'request-body' ? 'request' : 'response')
+	}
+
+	dispose(): void {
+		this.networkRecorder.detach()
 	}
 
 	async listPages(): Promise<string> {
@@ -441,6 +463,7 @@ export class BrowserToolRuntime {
 	): Promise<AgentToolResponse | string> {
 		const page = await this.ensureActivePage()
 		const knownPages = new Set(this.browserContext.pages())
+		this.networkRecorder.reset()
 		const tracker = new TransientStateTracker(page, {
 			consumeDialogHandlingIntent: () => this.consumePendingDialogHandlingIntent(),
 		})
@@ -649,6 +672,37 @@ export function createBrowserTools(runtime: BrowserToolRuntime): AgentTool[] {
 				})
 				.strict(),
 			handler: ({ pageId }, context) => runtime.closePage(pageId, context.step),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_NETWORK_REQUESTS,
+			description:
+				"List the API calls (fetch/XHR) the browser made during the last browser action only - call this again after each new action to see its calls. Set 'static' to true to also include images, fonts, and other non-API resources.",
+			schema: z
+				.object({
+					static: z
+						.boolean()
+						.describe('If true, also include non-API resource types like images, fonts, and stylesheets'),
+					goal: z.string().describe('The goal or purpose of listing network requests'),
+				})
+				.strict(),
+			handler: ({ static: includeStatic }) => runtime.listNetworkRequests(includeStatic),
+		}),
+		defineAgentTool({
+			name: BrowserTool.TOOL_NETWORK_REQUEST,
+			description:
+				'Inspect one network request from the most recent browser_network_requests result, using its number. Only valid until the next browser action resets the list.',
+			schema: z
+				.object({
+					sequence: z
+						.number()
+						.describe('The number of the request from browser_network_requests, example: 1'),
+					part: z
+						.enum(['detail', 'request-body', 'response-body'])
+						.describe("What to return: 'detail' for headers and timing, or the request/response body"),
+					goal: z.string().describe('The goal or purpose of inspecting this network request'),
+				})
+				.strict(),
+			handler: ({ sequence, part }) => runtime.inspectNetworkRequest(sequence, part),
 		}),
 	].map(withTurnStep)
 }

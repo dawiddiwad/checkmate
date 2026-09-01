@@ -1,19 +1,6 @@
 # **_checkmate_**
 
-A nondeterministic test step for your Playwright suite, for the coverage gap a deterministic
-test can't economically fill: areas the app changes faster than tests can be updated, locators
-that are genuinely dynamic, and flows too combinatorial to encode by hand. In those areas the
-real alternative isn't a good deterministic test — it's no test at all. `ai.step` trades
-authoring cost for run cost: near-free to write from a ticket, no browser session, at the price
-of a per-run model cost and a nondeterministic result. It composes into a suite you already have
-via `mergeTests()` — it does not replace `@playwright/test`, and it is not the right tool for
-the parts of your app a locator and an assertion already cover well.
-
-If you already have a coding agent that can drive a browser by hand, `ai.step` isn't trying to
-beat it on cost — a capable agent with good tools drives a browser about as well as anything
-does. What it adds is a fixed shape: a `StepReport` your CI can assert on, a turn cap and step
-timer that guarantee an answer instead of a stuck session, and evidence attached right next to
-the rest of your test run instead of a transcript you go dig up later.
+AI test automation that actually works. Write tests in plain English, without locators, and with less code.
 
 ![playwright](https://img.shields.io/badge/Playwright-%E2%89%A51.59-blue.svg)
 ![typescript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)
@@ -35,9 +22,10 @@ await ai.step({
 })
 ```
 
-##
+It fills test coverage gaps where deterministic assertions aren't economical, UI that is not known upfront, dynamic locators and complex flows. It trades authoring cost for run cost, composing into your existing suite with a guaranteed `StepReport` and evidence attached to your test results designed as easily consumable contracts for agents, enabling integration into agentic harnesses and software factories.
 
-✅ **For the coverage gap, not the whole suite** - a step for areas too unstable to encode deterministically, not a locator replacement  
+##
+ 
 ✅ **Zero Locators** - Write the step in plain English  
 ✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
 ✅ **Web & Salesforce** - Basic support out of the box, including active tab/popup tracking  
@@ -61,7 +49,7 @@ npm install -D dotenv @playwright/test @xoxoai/checkmate
 npx playwright install
 ```
 
-### 2. Configure the provider key and the `checkmate*` options
+### 2. Configure the provider key and the `checkmate` options
 
 _the key is the only thing that lives in `.env`:_
 
@@ -77,9 +65,10 @@ import type { CheckmateOptions } from '@xoxoai/checkmate/playwright'
 
 export default defineConfig<CheckmateOptions>({
 	use: {
-		checkmateModel: 'openai/gpt-oss-20b',
-		checkmateOpenaiBaseUrl: 'https://api.groq.com/openai/v1', // optional, for OpenAI-compatible providers
-		checkmateTurnCap: 20,
+		checkmateModel: 'gpt-5.4-mini',
+		checkmateLogLevel: 'info',
+		checkmateBudgetUsd: 0.50,
+		// other checkmate options
 	},
 })
 ```
@@ -107,28 +96,6 @@ npm run test:web:example
 ```bash
 npm run show:report
 ```
-
-## When NOT to use `ai.step`
-
-The main risk with this package is over-application: reaching for `ai.step` where
-`page.getByRole(...)` and `expect(...)` would have worked. Every extra `ai.step` costs real
-turns, real tokens, and real seconds, and trades a deterministic check for a model's judgment.
-
-Do not use `ai.step` when:
-
-- The outcome is checkable with an ordinary locator and assertion. If you can name the element
-  and the state you're asserting, write it deterministically instead.
-- The step is "click this button" or "fill this field" and the target is unambiguous.
-- You are asserting exact text, a count, a URL, or a value already available through the DOM.
-  A locator-based assertion is cheaper, faster, and does not depend on a model's interpretation.
-
-Use `ai.step` when the check genuinely cannot be expressed deterministically: visual or layout
-judgment, a flow whose selectors are unstable or unknown ahead of time, or a multi-page path
-where writing out every intermediate locator would be brittle and disproportionate to what's
-being verified. Prefer mixing both in one test over choosing one exclusively — deterministic
-steps for the parts you can name, `ai.step` for the parts you can't. `npx checkmate init`
-installs an agent instruction file with this same guidance, so an agent authoring specs against
-your suite reaches for `ai.step` the same way.
 
 ## Writing Tests
 
@@ -236,6 +203,30 @@ Estimates for [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/mod
 
 See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring options.
 
+## When NOT to use `ai.step`
+
+The main risk with this package is over-application: reaching for `ai.step` where
+`page.getByRole(...)` and `expect(...)` would have worked. Every extra `ai.step` costs real
+turns, real tokens, and real seconds, and trades a deterministic check for a model's judgment.
+
+**For the coverage gap, not the whole suite** - a step for areas too unstable to encode deterministically, not a locator replacement for everything.
+
+Do not use `ai.step` when:
+
+- The outcome is checkable with an ordinary locator and assertion. If you can name the element
+  and the state you're asserting, write it deterministically instead.
+- The step is "click this button" or "fill this field" and the target is unambiguous.
+- You are asserting exact text, a count, a URL, or a value already available through the DOM.
+  A locator-based assertion is cheaper, faster, and does not depend on a model's interpretation.
+
+Use `ai.step` when the check genuinely cannot be expressed deterministically: visual or layout
+judgment, a flow whose selectors are unstable or unknown ahead of time, or a multi-page path
+where writing out every intermediate locator would be brittle and disproportionate to what's
+being verified. Prefer mixing both in one test over choosing one exclusively — deterministic
+steps for the parts you can name, `ai.step` for the parts you can't. `npx checkmate init`
+installs an agent instruction file with this same guidance, so an agent authoring specs against
+your suite reaches for `ai.step` the same way.
+
 ## Common Issues
 
 **AI makes incorrect decisions**
@@ -308,7 +299,7 @@ await ai.step({
 
 - [**_checkmate_** guide](docs/GUIDE.md)
 - [**_checkmate_** extensions](docs/EXTENSIONS.md)
-- [**_checkmate_** benchmark](docs/BENCHMARK.md) - cost comparison against an MCP-style tool surface and a coding agent
+- [**_checkmate_** benchmark](docs/BENCHMARK.md)
 - [**playwright** official website](https://playwright.dev/)
 
 ## Contributing

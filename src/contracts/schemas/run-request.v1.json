@@ -1,0 +1,60 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://checkmate.dev/schemas/run-request.v1.json",
+	"title": "Checkmate run request version 1",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["schemaVersion", "scenario"],
+	"properties": {
+		"schemaVersion": { "const": 1 },
+		"scenario": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id", "driver", "steps"],
+			"properties": {
+				"id": { "$ref": "#/$defs/id" },
+				"name": { "type": "string", "minLength": 1 },
+				"driver": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["id", "target"],
+					"properties": {
+						"id": { "$ref": "#/$defs/id" },
+						"target": { "type": "object" }
+					}
+				},
+				"policy": { "$ref": "#/$defs/id" },
+				"limits": {
+					"type": "object",
+					"additionalProperties": false,
+					"minProperties": 1,
+					"properties": {
+						"timeoutMs": { "type": "integer", "minimum": 1 },
+						"budgetTokens": { "type": "integer", "minimum": 1 }
+					}
+				},
+				"steps": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["id", "action", "expect"],
+						"properties": {
+							"id": { "$ref": "#/$defs/id" },
+							"action": { "type": "string", "minLength": 1 },
+							"expect": { "type": "string", "minLength": 1 }
+						}
+					}
+				}
+			}
+		}
+	},
+	"$defs": {
+		"id": {
+			"type": "string",
+			"minLength": 1,
+			"pattern": "^(?!.*[\\u0000-\\u001f]).*$"
+		}
+	}
+}

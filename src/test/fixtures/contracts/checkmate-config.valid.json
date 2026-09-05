@@ -1,0 +1,54 @@
+{
+	"schemaVersion": 1,
+	"outputDirectory": ".checkmate/runs",
+	"defaultPolicy": "ci",
+	"secretBindings": {
+		"openai-api-key": {
+			"source": "environment",
+			"name": "CHECKMATE_OPENAI_API_KEY"
+		}
+	},
+	"policies": {
+		"ci": {
+			"modelEgress": {
+				"provider": {
+					"id": "openai",
+					"model": "gpt-5-mini",
+					"apiKeyBinding": "openai-api-key",
+					"temperature": 0
+				},
+				"textRedaction": "on",
+				"allowOpaque": false,
+				"maxStepBytes": 1048576,
+				"maxMessageBytes": 262144
+			},
+			"bounds": {
+				"scenarioTimeoutMs": 180000,
+				"stepTimeoutMs": 120000,
+				"turnsPerStep": 20,
+				"requestTimeoutMs": 60000,
+				"maxRetries": 3,
+				"loopMaxRepetitions": 5,
+				"cleanupTimeoutMs": 10000,
+				"budgetTokens": 200000
+			},
+			"evidence": {
+				"retention": "retain-on-failure",
+				"redaction": "on",
+				"allowOpaque": false
+			},
+			"drivers": {
+				"web": {
+					"settings": { "headless": true },
+					"tools": { "allowed": ["*"] }
+				}
+			}
+		}
+	},
+	"drivers": {
+		"web": {
+			"package": "@xoxoai/checkmate/driver-web",
+			"secrets": {}
+		}
+	}
+}

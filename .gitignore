@@ -8,6 +8,7 @@ test-reports
 TODO
 coverage
 dist
+/schemas/
 **.tgz
 # sssf runtime
 adws/adw_data/sessions/
@@ -15,6 +16,7 @@ adws/adw_data/sssf.db*
 __pycache__/
 *.pyc
 .playwright-cli
+.pi-meetings
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/

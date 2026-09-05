@@ -1,0 +1,56 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://checkmate.dev/schemas/driver-descriptor.v1.json",
+	"title": "Checkmate driver descriptor version 1",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schemaVersion",
+		"id",
+		"driverContractVersion",
+		"targetSchema",
+		"settingsSchema",
+		"requiredSecretSlots",
+		"tools",
+		"evidenceKinds"
+	],
+	"properties": {
+		"schemaVersion": { "const": 1 },
+		"id": { "$ref": "#/$defs/id" },
+		"driverContractVersion": { "const": 1 },
+		"targetSchema": { "type": "object" },
+		"settingsSchema": { "type": "object" },
+		"requiredSecretSlots": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": { "$ref": "#/$defs/id" }
+		},
+		"tools": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["name"],
+				"properties": { "name": { "$ref": "#/$defs/id" } }
+			}
+		},
+		"evidenceKinds": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["kind", "mediaType", "content"],
+				"properties": {
+					"kind": { "$ref": "#/$defs/id" },
+					"mediaType": { "type": "string", "minLength": 1 },
+					"content": { "enum": ["text", "opaque"] }
+				}
+			}
+		}
+	},
+	"$defs": {
+		"id": { "type": "string", "minLength": 1 }
+	}
+}

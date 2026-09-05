@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 1,
+	"scenario": {
+		"id": "checkout-promo",
+		"name": "A shopper applies a valid promotion",
+		"driver": {
+			"id": "web",
+			"target": { "baseUrl": "https://staging.example.test" }
+		},
+		"policy": "ci",
+		"limits": { "timeoutMs": 180000, "budgetTokens": 200000 },
+		"steps": [
+			{
+				"id": "open-cart",
+				"action": "Open the cart containing the seeded item",
+				"expect": "The cart shows one item with a subtotal of $40"
+			},
+			{
+				"id": "apply-promo",
+				"action": "Apply promotion code SPRING25",
+				"expect": "The order total is reduced by 25%"
+			}
+		]
+	}
+}

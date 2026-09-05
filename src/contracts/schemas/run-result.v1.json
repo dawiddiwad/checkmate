@@ -1,0 +1,312 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://checkmate.dev/schemas/run-result.v1.json",
+	"title": "Checkmate run result version 1",
+	"oneOf": [
+		{ "$ref": "#/$defs/executionResult" },
+		{ "$ref": "#/$defs/invalidResult" },
+		{ "$ref": "#/$defs/containmentResult" }
+	],
+	"$defs": {
+		"diagnostic": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["code", "path", "message"],
+			"properties": {
+				"code": { "type": "string", "minLength": 1 },
+				"path": { "type": "string", "pattern": "^(?:/(?:[^~/]|~[01])*)*$" },
+				"message": { "type": "string", "minLength": 1 }
+			}
+		},
+		"effectiveLimits": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"scenarioTimeoutMs",
+				"stepTimeoutMs",
+				"turnsPerStep",
+				"requestTimeoutMs",
+				"maxRetries",
+				"loopMaxRepetitions",
+				"cleanupTimeoutMs"
+			],
+			"properties": {
+				"scenarioTimeoutMs": { "type": "integer", "minimum": 1 },
+				"stepTimeoutMs": { "type": "integer", "minimum": 1 },
+				"turnsPerStep": { "type": "integer", "minimum": 1 },
+				"requestTimeoutMs": { "type": "integer", "minimum": 1 },
+				"maxRetries": { "type": "integer", "minimum": 0 },
+				"loopMaxRepetitions": { "type": "integer", "minimum": 1 },
+				"cleanupTimeoutMs": { "type": "integer", "minimum": 1 },
+				"budgetTokens": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"usage": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["promptTokens", "cachedPromptTokens", "completionTokens", "totalTokens"],
+			"properties": {
+				"promptTokens": { "type": "integer", "minimum": 0 },
+				"cachedPromptTokens": { "type": "integer", "minimum": 0 },
+				"completionTokens": { "type": "integer", "minimum": 0 },
+				"totalTokens": { "type": "integer", "minimum": 0 }
+			}
+		},
+		"stepReason": {
+			"enum": [
+				"met-expectation",
+				"failed-expectation",
+				"loop-detected",
+				"turn-cap-exceeded",
+				"step-timeout",
+				"scenario-timeout",
+				"tool-error",
+				"provider-error",
+				"token-budget-exceeded",
+				"interrupted"
+			]
+		},
+		"runReason": {
+			"enum": [
+				"scenario-complete",
+				"failed-expectation",
+				"loop-detected",
+				"turn-cap-exceeded",
+				"step-timeout",
+				"scenario-timeout",
+				"tool-error",
+				"provider-error",
+				"token-budget-exceeded",
+				"interrupted",
+				"driver-load-failed",
+				"driver-start-failed",
+				"driver-teardown-failed",
+				"evidence-write-failed",
+				"result-write-failed",
+				"internal-error"
+			]
+		},
+		"toolCall": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["turn", "driverId", "name", "arguments", "status"],
+			"properties": {
+				"turn": { "type": "integer", "minimum": 1 },
+				"driverId": { "type": "string", "minLength": 1 },
+				"name": { "type": "string", "minLength": 1 },
+				"arguments": true,
+				"status": { "enum": ["ok", "error"] }
+			}
+		},
+		"executedStep": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id", "status", "category", "reason", "turns", "durationMs", "usage", "toolCalls"],
+			"properties": {
+				"id": { "type": "string", "minLength": 1 },
+				"status": { "enum": ["passed", "failed"] },
+				"category": { "enum": ["app", "model", "infra"] },
+				"reason": { "$ref": "#/$defs/stepReason" },
+				"actual": { "type": "string" },
+				"turns": { "type": "integer", "minimum": 0 },
+				"durationMs": { "type": "number", "minimum": 0 },
+				"usage": { "$ref": "#/$defs/usage" },
+				"toolCalls": { "type": "array", "items": { "$ref": "#/$defs/toolCall" } }
+			}
+		},
+		"notRunAfterFailure": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id", "status", "reason", "blockedBy"],
+			"properties": {
+				"id": { "type": "string", "minLength": 1 },
+				"status": { "const": "not-run" },
+				"reason": { "const": "prior-step-failed" },
+				"blockedBy": { "type": "string", "minLength": 1 }
+			}
+		},
+		"notRunAtStart": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id", "status", "reason"],
+			"properties": {
+				"id": { "type": "string", "minLength": 1 },
+				"status": { "const": "not-run" },
+				"reason": { "const": "scenario-not-started" }
+			}
+		},
+		"stepResult": {
+			"oneOf": [
+				{ "$ref": "#/$defs/executedStep" },
+				{ "$ref": "#/$defs/notRunAfterFailure" },
+				{ "$ref": "#/$defs/notRunAtStart" }
+			]
+		},
+		"evidenceReference": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "mediaType", "path", "producer"],
+			"properties": {
+				"kind": { "type": "string", "minLength": 1 },
+				"mediaType": { "type": "string", "minLength": 1 },
+				"path": { "type": "string", "minLength": 1 },
+				"producer": { "type": "string", "minLength": 1 },
+				"stepId": { "type": "string", "minLength": 1 }
+			}
+		},
+		"executionResult": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"kind",
+				"schemaVersion",
+				"runId",
+				"scenarioId",
+				"status",
+				"category",
+				"reason",
+				"targetMutation",
+				"startedAt",
+				"durationMs",
+				"driver",
+				"policy",
+				"usage",
+				"steps",
+				"evidence",
+				"diagnostics"
+			],
+			"properties": {
+				"kind": { "const": "run-result" },
+				"schemaVersion": { "const": 1 },
+				"runId": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+				"scenarioId": { "type": "string", "minLength": 1 },
+				"status": { "enum": ["passed", "failed", "interrupted"] },
+				"category": { "enum": ["passed", "app", "model", "infra"] },
+				"reason": { "$ref": "#/$defs/runReason" },
+				"targetMutation": { "enum": ["not-attempted", "possibly-mutated"] },
+				"startedAt": { "type": "string", "format": "date-time" },
+				"durationMs": { "type": "number", "minimum": 0 },
+				"driver": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["id", "contractVersion"],
+					"properties": {
+						"id": { "type": "string", "minLength": 1 },
+						"contractVersion": { "const": 1 }
+					}
+				},
+				"policy": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["id", "effectiveLimits"],
+					"properties": {
+						"id": { "type": "string", "minLength": 1 },
+						"effectiveLimits": { "$ref": "#/$defs/effectiveLimits" }
+					}
+				},
+				"usage": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["promptTokens", "cachedPromptTokens", "completionTokens", "totalTokens", "state"],
+					"properties": {
+						"promptTokens": { "type": "integer", "minimum": 0 },
+						"cachedPromptTokens": { "type": "integer", "minimum": 0 },
+						"completionTokens": { "type": "integer", "minimum": 0 },
+						"totalTokens": { "type": "integer", "minimum": 0 },
+						"state": { "enum": ["complete", "partial", "unavailable"] }
+					}
+				},
+				"steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stepResult" } },
+				"evidence": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["state", "references"],
+					"properties": {
+						"state": { "enum": ["complete", "partial"] },
+						"references": { "type": "array", "items": { "$ref": "#/$defs/evidenceReference" } }
+					}
+				},
+				"diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+			}
+		},
+		"invalidResult": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "schemaVersion", "status", "category", "reason", "targetMutation", "diagnostics"],
+			"properties": {
+				"kind": { "const": "run-result" },
+				"schemaVersion": { "const": 1 },
+				"status": { "const": "invalid" },
+				"category": { "const": "invalid" },
+				"reason": { "const": "invalid-invocation" },
+				"targetMutation": { "const": "not-attempted" },
+				"diagnostics": {
+					"type": "array",
+					"minItems": 1,
+					"items": { "$ref": "#/$defs/diagnostic" }
+				}
+			}
+		},
+		"containmentResult": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"kind",
+				"schemaVersion",
+				"source",
+				"status",
+				"category",
+				"reason",
+				"executionState",
+				"durability",
+				"scenarioId",
+				"declaredStepIds",
+				"targetMutation",
+				"startedAt",
+				"durationMs",
+				"containment",
+				"diagnostics"
+			],
+			"properties": {
+				"kind": { "const": "run-result" },
+				"schemaVersion": { "const": 1 },
+				"source": { "const": "parent" },
+				"status": { "const": "contained" },
+				"category": { "const": "infra" },
+				"reason": { "const": "parent-containment" },
+				"executionState": { "const": "unavailable" },
+				"durability": { "const": "uncommitted" },
+				"runId": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+				"scenarioId": { "type": "string", "minLength": 1 },
+				"declaredStepIds": {
+					"type": "array",
+					"items": { "type": "string", "minLength": 1 }
+				},
+				"targetMutation": { "enum": ["not-attempted", "possibly-mutated"] },
+				"startedAt": { "type": "string", "format": "date-time" },
+				"durationMs": { "type": "number", "minimum": 0 },
+				"containment": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["phase", "trigger"],
+					"properties": {
+						"phase": { "enum": ["start", "run", "cleanup", "terminal"] },
+						"trigger": {
+							"enum": [
+								"start-frame-too-large",
+								"run-deadline-expired",
+								"cleanup-deadline-expired",
+								"worker-result-unavailable"
+							]
+						}
+					}
+				},
+				"diagnostics": {
+					"type": "array",
+					"minItems": 1,
+					"items": { "$ref": "#/$defs/diagnostic" }
+				}
+			}
+		}
+	}
+}

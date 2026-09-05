@@ -1,0 +1,18 @@
+{
+	"schemaVersion": 1,
+	"id": "web",
+	"driverContractVersion": 1,
+	"targetSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["baseUrl"],
+		"properties": { "baseUrl": { "type": "string", "format": "uri" } }
+	},
+	"settingsSchema": { "type": "object" },
+	"requiredSecretSlots": [],
+	"tools": [{ "name": "browser_navigate" }, { "name": "browser_snapshot" }],
+	"evidenceKinds": [
+		{ "kind": "aria-snapshot", "mediaType": "application/yaml", "content": "text" },
+		{ "kind": "screenshot", "mediaType": "image/png", "content": "opaque" }
+	]
+}

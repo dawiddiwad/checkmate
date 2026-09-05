@@ -1,0 +1,21 @@
+{
+	"kind": "validation-result",
+	"schemaVersion": 1,
+	"status": "valid",
+	"scenarioId": "checkout-promo",
+	"policy": {
+		"id": "ci",
+		"effectiveLimits": {
+			"scenarioTimeoutMs": 180000,
+			"stepTimeoutMs": 120000,
+			"turnsPerStep": 20,
+			"requestTimeoutMs": 60000,
+			"maxRetries": 3,
+			"loopMaxRepetitions": 5,
+			"cleanupTimeoutMs": 10000,
+			"budgetTokens": 200000
+		}
+	},
+	"driver": { "id": "web", "contractVersion": 1 },
+	"diagnostics": []
+}

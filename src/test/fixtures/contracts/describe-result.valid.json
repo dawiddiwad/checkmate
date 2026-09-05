@@ -1,0 +1,234 @@
+{
+	"kind": "describe-result",
+	"schemaVersion": 1,
+	"status": "available",
+	"contracts": [
+		{
+			"id": "checkmate-config",
+			"schemaVersion": 1,
+			"schemaPath": "./schemas/checkmate-config.v1.json"
+		},
+		{
+			"id": "run-request",
+			"schemaVersion": 1,
+			"schemaPath": "./schemas/run-request.v1.json"
+		},
+		{
+			"id": "run-result",
+			"schemaVersion": 1,
+			"schemaPath": "./schemas/run-result.v1.json"
+		},
+		{
+			"id": "validation-result",
+			"schemaVersion": 1,
+			"schemaPath": "./schemas/validation-result.v1.json"
+		},
+		{
+			"id": "describe-result",
+			"schemaVersion": 1,
+			"schemaPath": "./schemas/describe-result.v1.json"
+		},
+		{
+			"id": "driver-descriptor",
+			"schemaVersion": 1,
+			"schemaPath": "./schemas/driver-descriptor.v1.json"
+		}
+	],
+	"environment": {
+		"defaultPolicy": "ci",
+		"policies": [
+			{
+				"id": "ci",
+				"limits": {
+					"scenarioTimeoutMs": 180000,
+					"stepTimeoutMs": 120000,
+					"turnsPerStep": 20,
+					"requestTimeoutMs": 60000,
+					"maxRetries": 3,
+					"loopMaxRepetitions": 5,
+					"cleanupTimeoutMs": 10000,
+					"budgetTokens": 200000
+				},
+				"evidence": {
+					"retention": "retain-on-failure",
+					"redaction": "on",
+					"allowOpaque": false
+				},
+				"drivers": [{ "id": "web", "allowedTools": "*" }],
+				"requiredSecretBindings": ["openai-api-key"]
+			}
+		],
+		"drivers": [
+			{
+				"id": "web",
+				"contractVersion": 1,
+				"targetSchema": { "type": "object" },
+				"settingsSchema": { "type": "object" },
+				"requiredSecretSlots": [],
+				"tools": [{ "name": "browser_navigate" }],
+				"evidenceKinds": [{ "kind": "aria-snapshot", "mediaType": "application/yaml", "content": "text" }]
+			}
+		]
+	},
+	"onboarding": {
+		"workflow": ["describe", "author-request", "validate", "run", "route-result"],
+		"commands": {
+			"validate": "checkmate validate <request.json>",
+			"runFile": "checkmate run <request.json>",
+			"runStdin": "checkmate run -"
+		},
+		"routing": [
+			{
+				"reason": "scenario-complete",
+				"category": "passed",
+				"exitCode": 0,
+				"retry": "never",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "continue"
+			},
+			{
+				"reason": "failed-expectation",
+				"category": "app",
+				"exitCode": 1,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "inspect-evidence-and-verify-sut-or-expectation"
+			},
+			{
+				"reason": "loop-detected",
+				"category": "model",
+				"exitCode": 2,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-model-policy-or-egress"
+			},
+			{
+				"reason": "turn-cap-exceeded",
+				"category": "model",
+				"exitCode": 2,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-model-policy-or-egress"
+			},
+			{
+				"reason": "step-timeout",
+				"category": "model",
+				"exitCode": 2,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-model-policy-or-egress"
+			},
+			{
+				"reason": "scenario-timeout",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "tool-error",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "provider-error",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "token-budget-exceeded",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "interrupted",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "driver-load-failed",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "driver-start-failed",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "driver-teardown-failed",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "evidence-write-failed",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-output-and-inspect-target"
+			},
+			{
+				"reason": "result-write-failed",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-output-and-inspect-target"
+			},
+			{
+				"reason": "internal-error",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			},
+			{
+				"reason": "invalid-invocation",
+				"category": "invalid",
+				"exitCode": 4,
+				"retry": "repair-then-new-run",
+				"mutation": "not-attempted",
+				"nextAction": "repair-request-or-configuration"
+			},
+			{
+				"reason": "parent-containment",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "read-result-target-mutation",
+				"nextAction": "repair-environment-and-inspect-target"
+			}
+		],
+		"evidence": {
+			"pathBase": "invocation-root",
+			"followReferencesOnly": true,
+			"retentionIsPolicyDependent": true,
+			"inspectCompletenessState": true
+		}
+	},
+	"diagnostics": []
+}

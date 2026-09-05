@@ -22,6 +22,7 @@
 	"files": [
 		"bin",
 		"dist",
+		"schemas",
 		"docs/BENCHMARK.md",
 		"docs/EXTENSIONS.md",
 		"docs/GUIDE.md",
@@ -57,15 +58,19 @@
 		"./salesforce": {
 			"types": "./dist/salesforce.d.ts",
 			"default": "./dist/salesforce.js"
-		}
+		},
+		"./schemas/*": "./schemas/*"
 	},
 	"scripts": {
 		"checkmate:install": "npm install && npx playwright install",
-		"build": "npm run validation:check && npm run build:dist",
+		"build": "npm run validation:check && npm run build:package",
 		"build:dist": "tsc -p tsconfig.build.json",
-		"clean": "rm -rf dist",
-		"prepack": "npm run clean && npm run build",
-		"validation:check": "npm run compile:check && npm run lint:check && npm run format:fix && npm run test:unit:run",
+		"build:package": "npm run clean && npm run build:dist && node scripts/copy-package-assets.mjs",
+		"clean": "rm -rf dist schemas",
+		"prepack": "npm run build:package",
+		"phase:verify": "node test/package/lifecycle.mjs",
+		"test:package:active": "node test/package/active-exports.mjs",
+		"validation:check": "npm run compile:check && npm run lint:check && npm run format:check && npm run test:unit:run",
 		"compile:check": "npx tsc --noEmit",
 		"lint:check": "eslint .",
 		"lint:fix": "eslint . --fix",
@@ -84,6 +89,8 @@
 	"license": "MIT",
 	"dependencies": {
 		"@huggingface/transformers": "^4.0.1",
+		"ajv": "^8.17.1",
+		"ajv-formats": "^3.0.1",
 		"openai": "^6.34.0",
 		"sharp": "^0.35.2",
 		"string-similarity": "^4.0.4",

@@ -40,6 +40,57 @@ describe('contract schemas', () => {
 		expect(validateRequest(request).ok).toBe(false)
 		expect(request).toEqual(before)
 	})
+
+	it.each([
+		[
+			'scenario id',
+			(request: Record<string, unknown>): void => {
+				;(request.scenario as Record<string, unknown>).id = 'x'.repeat(129)
+			},
+		],
+		[
+			'scenario name',
+			(request: Record<string, unknown>): void => {
+				;(request.scenario as Record<string, unknown>).name = 'x'.repeat(257)
+			},
+		],
+		[
+			'driver id controls',
+			(request: Record<string, unknown>): void => {
+				;((request.scenario as Record<string, unknown>).driver as Record<string, unknown>).id = 'web\nother'
+			},
+		],
+		[
+			'step id controls',
+			(request: Record<string, unknown>): void => {
+				;((request.scenario as Record<string, unknown>).steps as Array<Record<string, unknown>>)[0].id =
+					'step\u0000other'
+			},
+		],
+	] as const)('enforces request %s bounds', (_name, mutate) => {
+		const request = readFixture('run-request.valid.json')
+		mutate(request)
+		expect(validateRequest(request).ok).toBe(false)
+	})
+
+	it.each(['/tmp/runs', '../runs', 'runs/../../outside', '.', 'runs//nested'])(
+		'enforces contained outputDirectory syntax for %s',
+		(outputDirectory) => {
+			const manifest = readFixture('checkmate-config.valid.json')
+			manifest.outputDirectory = outputDirectory
+			expect(validateManifest(manifest).ok).toBe(false)
+		}
+	)
+
+	it('enforces manifest and descriptor identifier bounds', () => {
+		const manifest = readFixture('checkmate-config.valid.json')
+		manifest.defaultPolicy = 'x'.repeat(129)
+		const descriptor = readFixture('driver-descriptor.valid.json')
+		descriptor.id = 'web\nother'
+
+		expect(validateManifest(manifest).ok).toBe(false)
+		expect(validateDescriptor(descriptor).ok).toBe(false)
+	})
 })
 
 function readFixture(fileName: string): Record<string, unknown> {

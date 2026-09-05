@@ -34,6 +34,7 @@ const ajv = new Ajv2020Constructor({
 	coerceTypes: false,
 	removeAdditional: false,
 	useDefaults: false,
+	ownProperties: true,
 })
 
 addFormats(ajv)

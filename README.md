@@ -37,6 +37,25 @@ It trades authoring cost for run cost, composing into your existing suite with a
 
 <img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
 
+## Agent-facing static workflow
+
+The next agent-first interface is available additively while the Playwright workflow remains in
+place for this transitional release. Put the operator-owned policies, logical secret bindings,
+and approved driver packages in `checkmate.config.json` at the invocation root, then use:
+
+```bash
+checkmate describe
+checkmate validate request.json
+cat request.json | checkmate validate -
+```
+
+`describe` reads the manifest and static driver descriptors. `validate` additionally checks the
+request, selected policy, tightening-only limits, target/settings schemas, and required secret
+availability. Neither command imports executable driver code, starts a session, or creates a run
+directory. Both emit one versioned JSON document on stdout; diagnostics use stderr. Success exits
+`0`, invalid input or unavailable configuration exits `4`, and unexpected operational failure
+exits `3`. Use `--config <path>` for an explicit manifest without changing the invocation root.
+
 ## Get Started in 5 Minutes
 
 ### Prerequisites

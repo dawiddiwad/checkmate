@@ -59,6 +59,7 @@
 			"types": "./dist/salesforce.d.ts",
 			"default": "./dist/salesforce.js"
 		},
+		"./driver-web/checkmate-driver.json": "./dist/drivers/web/checkmate-driver.json",
 		"./schemas/*": "./schemas/*"
 	},
 	"scripts": {

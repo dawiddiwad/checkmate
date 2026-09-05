@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
@@ -51,6 +51,18 @@ for (const [fileName, sample] of Object.entries(samples)) {
 	const validate = ajv.compile(schema)
 	assert.equal(validate(sample), true, fileName + ': ' + JSON.stringify(validate.errors))
 }
+
+const descriptorPath = require.resolve('@xoxoai/checkmate/driver-web/checkmate-driver.json')
+const descriptor = JSON.parse(await readFile(descriptorPath, 'utf8'))
+const descriptorSchema = JSON.parse(
+  await readFile(require.resolve('@xoxoai/checkmate/schemas/driver-descriptor.v1.json'), 'utf8')
+)
+const descriptorAjv = new Ajv2020({ allErrors: true, strict: true })
+addFormats(descriptorAjv)
+const validateDescriptor = descriptorAjv.compile(descriptorSchema)
+assert.equal(validateDescriptor(descriptor), true, JSON.stringify(validateDescriptor.errors))
+assert.equal(descriptor.id, 'web')
+assert.equal(descriptor.tools.length, 14)
 `
 
 try {
@@ -68,6 +80,112 @@ try {
 	await writeFile(resolve(installation, 'samples.json'), JSON.stringify(samples))
 	await writeFile(resolve(installation, 'probe.mjs'), probeSource)
 	execFileSync(process.execPath, ['probe.mjs'], { cwd: installation, stdio: 'inherit' })
+
+	await writeFile(resolve(installation, 'checkmate.config.json'), JSON.stringify(samples['checkmate-config.v1.json']))
+	await writeFile(resolve(installation, 'request.json'), JSON.stringify(samples['run-request.v1.json']))
+	const binary = resolve(installation, 'node_modules/@xoxoai/checkmate/bin/checkmate.js')
+	const describe = JSON.parse(
+		execFileSync(process.execPath, [binary, 'describe'], { cwd: installation, encoding: 'utf8' })
+	)
+	assert.equal(describe.status, 'available')
+	assert.equal(describe.environment.drivers[0].id, 'web')
+	const validation = JSON.parse(
+		execFileSync(process.execPath, [binary, 'validate', 'request.json'], {
+			cwd: installation,
+			encoding: 'utf8',
+			env: { ...process.env, CHECKMATE_OPENAI_API_KEY: 'package-probe-key' },
+		})
+	)
+	assert.equal(validation.status, 'valid')
+
+	const throwingPackage = resolve(installation, 'node_modules/@checkmate-test/throwing-driver')
+	await mkdir(throwingPackage, { recursive: true })
+	await writeFile(
+		resolve(throwingPackage, 'package.json'),
+		JSON.stringify({
+			name: '@checkmate-test/throwing-driver',
+			version: '1.0.0',
+			type: 'module',
+			exports: { '.': './index.js', './checkmate-driver.json': './checkmate-driver.json' },
+		})
+	)
+	await writeFile(resolve(throwingPackage, 'index.js'), "throw new Error('executable driver was imported')\n")
+	await writeFile(
+		resolve(throwingPackage, 'checkmate-driver.json'),
+		JSON.stringify({
+			schemaVersion: 1,
+			id: 'fixture',
+			driverContractVersion: 1,
+			targetSchema: {
+				type: 'object',
+				additionalProperties: false,
+				required: ['endpoint'],
+				properties: { endpoint: { type: 'string', format: 'uri' } },
+			},
+			settingsSchema: {
+				type: 'object',
+				additionalProperties: false,
+				required: ['readOnly'],
+				properties: { readOnly: { type: 'boolean' } },
+			},
+			requiredSecretSlots: [],
+			tools: [{ name: 'fixture_read' }],
+			evidenceKinds: [],
+		})
+	)
+	const throwingManifest = {
+		schemaVersion: 1,
+		defaultPolicy: 'ci',
+		secretBindings: {
+			'provider-key': { source: 'environment', name: 'CHECKMATE_PACKAGE_PROBE_KEY' },
+		},
+		policies: {
+			ci: {
+				modelEgress: {
+					provider: { id: 'openai', model: 'fixture-model', apiKeyBinding: 'provider-key' },
+					textRedaction: 'on',
+					allowOpaque: false,
+					maxStepBytes: 1048576,
+					maxMessageBytes: 262144,
+				},
+				bounds: {
+					scenarioTimeoutMs: 180000,
+					stepTimeoutMs: 120000,
+					turnsPerStep: 20,
+					requestTimeoutMs: 60000,
+					maxRetries: 3,
+					loopMaxRepetitions: 5,
+					cleanupTimeoutMs: 10000,
+				},
+				evidence: { retention: 'retain-on-failure', redaction: 'on', allowOpaque: false },
+				drivers: { fixture: { settings: { readOnly: true }, tools: { allowed: ['*'] } } },
+			},
+		},
+		drivers: { fixture: { package: '@checkmate-test/throwing-driver', secrets: {} } },
+	}
+	const throwingRequest = {
+		schemaVersion: 1,
+		scenario: {
+			id: 'installed-static-probe',
+			driver: { id: 'fixture', target: { endpoint: 'https://example.test' } },
+			steps: [{ id: 'probe', action: 'Inspect the fixture', expect: 'The fixture is available' }],
+		},
+	}
+	await writeFile(resolve(installation, 'checkmate.config.json'), JSON.stringify(throwingManifest))
+	await writeFile(resolve(installation, 'request.json'), JSON.stringify(throwingRequest))
+	const staticEnvironment = JSON.parse(
+		execFileSync(process.execPath, [binary, 'describe'], { cwd: installation, encoding: 'utf8' })
+	)
+	assert.equal(staticEnvironment.status, 'available')
+	assert.equal(staticEnvironment.environment.drivers[0].id, 'fixture')
+	const staticValidation = JSON.parse(
+		execFileSync(process.execPath, [binary, 'validate', 'request.json'], {
+			cwd: installation,
+			encoding: 'utf8',
+			env: { ...process.env, CHECKMATE_PACKAGE_PROBE_KEY: 'package-probe-key' },
+		})
+	)
+	assert.equal(staticValidation.status, 'valid')
 } finally {
 	await rm(installation, { recursive: true, force: true })
 }

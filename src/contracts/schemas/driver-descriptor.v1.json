@@ -44,13 +44,23 @@
 				"required": ["kind", "mediaType", "content"],
 				"properties": {
 					"kind": { "$ref": "#/$defs/id" },
-					"mediaType": { "type": "string", "minLength": 1 },
+					"mediaType": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 256,
+						"pattern": "^(?!.*[\\u0000-\\u001f]).*$"
+					},
 					"content": { "enum": ["text", "opaque"] }
 				}
 			}
 		}
 	},
 	"$defs": {
-		"id": { "type": "string", "minLength": 1 }
+		"id": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 128,
+			"pattern": "^(?!.*[\\u0000-\\u001f]).*$"
+		}
 	}
 }

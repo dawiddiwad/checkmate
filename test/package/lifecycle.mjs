@@ -69,6 +69,7 @@ async function expectedPackageFiles() {
 		'schemas/run-request.v1.json',
 		'schemas/run-result.v1.json',
 		'schemas/validation-result.v1.json',
+		'dist/drivers/web/checkmate-driver.json',
 		'templates/checkmate-agent.md',
 		'test/examples/salesforce/trial-dev-org.spec.ts',
 		'test/examples/web/website-testing.spec.ts',
@@ -153,6 +154,9 @@ async function verifyCopiedAssets(root) {
 		const destination = await readFile(resolve(root, 'schemas', fileName))
 		assert.deepEqual(destination, source, `${fileName} was not copied byte-for-byte`)
 	}
+	const descriptorSource = await readFile(resolve(root, 'src/drivers/web/checkmate-driver.json'))
+	const descriptorDestination = await readFile(resolve(root, 'dist/drivers/web/checkmate-driver.json'))
+	assert.deepEqual(descriptorDestination, descriptorSource, 'web descriptor was not copied byte-for-byte')
 }
 
 function shellQuote(value) {

@@ -99,6 +99,30 @@ describe('static environment preparation', () => {
 		expect(result).toMatchObject({ ok: false, diagnostics: [{ code: 'driver.missing-secret-slot' }] })
 	})
 
+	it('rejects duplicate static descriptor tool names before executable loading', async () => {
+		const root = await environment()
+		const descriptor = JSON.parse(
+			await readFile(
+				new URL('../fixtures/drivers/throwing-driver/checkmate-driver.json', import.meta.url),
+				'utf8'
+			)
+		)
+		descriptor.tools.push({ ...descriptor.tools[0] })
+		const descriptorPath = resolve(root, 'duplicate-descriptor.json')
+		await writeFile(descriptorPath, JSON.stringify(descriptor))
+
+		const result = await prepareRun(fixtureRequest, {
+			cwd: root,
+			readEnvironment: () => 'available',
+			resolveDescriptorPath: () => ({ ok: true, value: descriptorPath }),
+		})
+
+		expect(result).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'schema.uniqueItems', path: '/drivers/fixture/tools' }],
+		})
+	})
+
 	it('accepts hostile names only when every referenced record owns them', async () => {
 		const root = await environment()
 		const policy = structuredClone(fixtureManifest.policies.ci)

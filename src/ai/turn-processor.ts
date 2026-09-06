@@ -1,7 +1,9 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { ResolvedConfig } from '../config/resolved-config.js'
 import { StepEvidence } from '../runtime/step-evidence.js'
+import type { StepControl } from '../runtime/scenario-control.js'
 import { Step, TurnOutcome } from '../runtime/types.js'
+import type { RuntimeLogger } from '../logging/types.js'
 import { ToolDispatcher, ToolDispatchError } from '../tools/dispatcher.js'
 import { LoopDetectedError, LoopDetector } from '../tools/loop-detector.js'
 import { ToolRegistry } from '../tools/registry.js'
@@ -15,31 +17,34 @@ export type TurnProcessorDependencies = {
 	config: ResolvedConfig
 	toolRegistry: ToolRegistry
 	loopDetector: LoopDetector
-	evidence: StepEvidence
+	evidence: Pick<StepEvidence, 'recordAssistantMessage' | 'recordToolCall'>
+	logger: RuntimeLogger
 }
 
 export type Turn = {
 	response: ChatCompletion
 	step: Step
 	turn: number
+	control?: StepControl
 }
 
 export class TurnProcessor {
 	private readonly toolDispatcher: ToolDispatcher
 	private readonly toolResponseHandler: ToolResponseHandler
-	private readonly messageHandler = new MessageHandler()
+	private readonly messageHandler: MessageHandler
 	private readonly rateLimitPolicy: RateLimitPolicy
-	private readonly evidence: StepEvidence
+	private readonly evidence: Pick<StepEvidence, 'recordAssistantMessage' | 'recordToolCall'>
 
-	constructor({ config, toolRegistry, loopDetector, evidence }: TurnProcessorDependencies) {
-		this.toolDispatcher = new ToolDispatcher(toolRegistry, loopDetector)
-		this.toolResponseHandler = new ToolResponseHandler(config, new MessageHistory())
-		this.rateLimitPolicy = new RateLimitPolicy(config)
+	constructor({ config, toolRegistry, loopDetector, evidence, logger: runtimeLogger }: TurnProcessorDependencies) {
+		this.toolDispatcher = new ToolDispatcher(toolRegistry, loopDetector, runtimeLogger)
+		this.toolResponseHandler = new ToolResponseHandler(config, new MessageHistory(), runtimeLogger)
+		this.messageHandler = new MessageHandler(runtimeLogger)
+		this.rateLimitPolicy = new RateLimitPolicy(config, runtimeLogger)
 		this.evidence = evidence
 	}
 
-	async process({ response, step, turn }: Turn): Promise<TurnOutcome> {
-		await this.rateLimitPolicy.wait()
+	async process({ response, step, turn, control }: Turn): Promise<TurnOutcome> {
+		await this.rateLimitPolicy.wait(control?.signal)
 
 		if (!response.choices || response.choices.length === 0) {
 			throw new Error(`No choices found in response:\n${JSON.stringify(response, null, 2)}`)
@@ -70,8 +75,9 @@ export class TurnProcessor {
 
 			let toolResponse: ToolResponse
 			try {
+				const context = control ? { step, turn, signal: control.signal, control } : { step, turn }
 				toolResponse =
-					(await this.toolDispatcher.dispatch(parsedToolCall, { step, turn })) ??
+					(await this.toolDispatcher.dispatch(parsedToolCall, context)) ??
 					noOutputResponse(parsedToolCall.name)
 			} catch (error) {
 				if (error instanceof LoopDetectedError) {

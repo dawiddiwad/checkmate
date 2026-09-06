@@ -45,13 +45,13 @@ vi.mock('@playwright/test', () => ({
 	},
 }))
 
-vi.mock('../../src/tools/browser/snapshot-service', () => ({
+vi.mock('../../src/drivers/web/tools/snapshot-service', () => ({
 	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot content')
 	},
 }))
 
-vi.mock('../tools/browser/transient-state-tracker', () => ({
+vi.mock('../drivers/web/tools/transient-state-tracker', () => ({
 	TransientStateTracker: class {
 		start = trackerMocks.startMock
 		stop = trackerMocks.stopMock

@@ -1,4 +1,5 @@
 import { Step, StepAssertion } from '../runtime/types.js'
+import type { StepControl } from '../runtime/scenario-control.js'
 
 /**
  * Normalized tool call emitted by the model.
@@ -129,6 +130,10 @@ export type AgentToolContext = {
 	 * and the report's `toolCalls` array agree on what turn it was.
 	 */
 	turn?: number
+
+	signal?: AbortSignal
+
+	control?: StepControl
 }
 
 /**
@@ -147,6 +152,7 @@ export type AgentToolContext = {
  * ```
  */
 export type AgentTool = {
+	driverId?: string
 	/**
 	 * Tool definition exposed to the model.
 	 */

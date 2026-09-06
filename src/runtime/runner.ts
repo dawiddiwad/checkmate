@@ -1,12 +1,22 @@
 import { ResolvedConfig, resolveConfig } from '../config/resolved-config.js'
-import { Step, StepReport } from './types.js'
+import type { DriverDescriptorV1, ModelEgressPolicyV1 } from '../contracts/types.js'
+import type { DriverSession, StepIntent } from '../driver.js'
+import { validateDriverSession } from '../drivers/loader.js'
+import { adaptDriverTool } from './driver-session.js'
+import type { StepControl } from './scenario-control.js'
+import { Step, type InternalStepReport, StepReport } from './types.js'
 import { createStepResultTools } from '../tools/step/result-tool.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { AiClient } from '../ai/client.js'
 import { TokenTracker } from '../ai/token-tracker.js'
+import { ScenarioUsageTracker } from './usage-tracker.js'
 import { StepExecution } from './step-execution.js'
 import { CheckmateExtension, ExtensionHost } from './extension.js'
-import { setLogLevel } from '../logging/index.js'
+import { logger, setLogLevel } from '../logging/index.js'
+import { createInvocationLogger } from '../logging/invocation-logger.js'
+import { silentLogger, type RuntimeLogger } from '../logging/types.js'
+import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
+import { LegacyExtensionSession } from './legacy-extension-session.js'
 
 /**
  * Options for creating a Checkmate runner.
@@ -34,6 +44,27 @@ export type CheckmateRunnerOptions = {
 	 * fixture. A script that drives the runner directly builds one with `resolveConfig()`.
 	 */
 	config?: ResolvedConfig
+}
+
+export type DriverCheckmateRunnerOptions = {
+	driverId: string
+	descriptor: DriverDescriptorV1
+	session: DriverSession
+	allowedTools: '*' | readonly string[]
+	modelEgress: ModelEgressPolicyV1
+	limits: {
+		turnsPerStep: number
+		stepTimeoutMs: number
+		requestTimeoutMs: number
+		maxRetries: number
+		loopMaxRepetitions: number
+		budgetTokens?: number
+	}
+	apiKey: string
+	exactSecrets?: Iterable<string>
+	logger?: RuntimeLogger
+	usageTracker?: ScenarioUsageTracker
+	aiClient?: AiClient
 }
 
 export type RunStepOptions = {
@@ -65,9 +96,15 @@ export type RunStepOptions = {
 export class CheckmateRunner {
 	private readonly config: ResolvedConfig
 	private readonly toolRegistry: ToolRegistry
-	private readonly tokenTracker: TokenTracker
+	private readonly tokenTracker: TokenTracker | undefined
 	private readonly aiClient: AiClient
-	private readonly extensionHost: ExtensionHost
+	private readonly extensionHost: ExtensionHost | undefined
+	private readonly legacySession: LegacyExtensionSession | undefined
+	private readonly driverSession: DriverSession | undefined
+	private readonly usageTracker: ScenarioUsageTracker | undefined
+	private readonly driverId: string | undefined
+	private readonly diagnosticSanitizer: DiagnosticSanitizer | undefined
+	private readonly runtimeLogger: RuntimeLogger | undefined
 
 	/**
 	 * Creates a new runner composed from extensions.
@@ -79,14 +116,53 @@ export class CheckmateRunner {
 	 * })
 	 * ```
 	 */
-	constructor(options: CheckmateRunnerOptions = {}) {
+	constructor(options?: CheckmateRunnerOptions)
+	constructor(options: DriverCheckmateRunnerOptions)
+	constructor(options: CheckmateRunnerOptions | DriverCheckmateRunnerOptions = {}) {
+		if (isDriverOptions(options)) {
+			const exactSecrets = [options.apiKey, ...(options.exactSecrets ?? [])]
+			this.diagnosticSanitizer = new DiagnosticSanitizer(exactSecrets)
+			this.runtimeLogger = createInvocationLogger(options.logger ?? silentLogger, this.diagnosticSanitizer)
+			this.config = driverRuntimeConfig(options)
+			this.driverSession = options.session
+			this.driverId = options.driverId
+			this.usageTracker = options.usageTracker ?? new ScenarioUsageTracker(options.limits.budgetTokens)
+			this.toolRegistry = new ToolRegistry({ allowedTools: options.allowedTools })
+			this.toolRegistry.register(createStepResultTools())
+			const tools = validateDriverSession(options.session, options.descriptor, options.allowedTools)
+			this.toolRegistry.register(tools.map((tool) => adaptDriverTool(options.driverId, tool)))
+			this.tokenTracker = undefined
+			this.extensionHost = undefined
+			this.legacySession = undefined
+			this.aiClient =
+				options.aiClient ??
+				new AiClient({
+					config: this.config,
+					toolRegistry: this.toolRegistry,
+					apiKey: options.apiKey,
+					modelEgress: options.modelEgress,
+					exactSecrets,
+					logger: this.runtimeLogger,
+				})
+			return
+		}
+
 		this.config = options.config ?? resolveConfig()
 		setLogLevel(this.config.logLevel)
 		this.toolRegistry = new ToolRegistry(this.config)
 		this.toolRegistry.register(createStepResultTools())
 		this.tokenTracker = new TokenTracker(this.config)
 		this.extensionHost = new ExtensionHost(this.config, this.toolRegistry, options.extensions ?? [])
-		this.aiClient = new AiClient({ config: this.config, toolRegistry: this.toolRegistry })
+		this.aiClient = new AiClient({ config: this.config, toolRegistry: this.toolRegistry, logger })
+		this.legacySession = new LegacyExtensionSession({
+			config: this.config,
+			aiClient: this.aiClient,
+			toolRegistry: this.toolRegistry,
+			extensionHost: this.extensionHost,
+			tokenTracker: this.tokenTracker,
+		})
+		this.diagnosticSanitizer = undefined
+		this.runtimeLogger = undefined
 	}
 
 	/**
@@ -98,7 +174,9 @@ export class CheckmateRunner {
 	 * ```
 	 */
 	async teardown(): Promise<void> {
-		await this.extensionHost.teardown()
+		// Driver sessions are borrowed until Phase 5 gives the scenario lifecycle one cleanup owner.
+		if (this.driverSession) return
+		await this.extensionHost!.teardown()
 	}
 
 	/**
@@ -115,14 +193,27 @@ export class CheckmateRunner {
 	 * })
 	 * ```
 	 */
-	async run(step: Step, options: RunStepOptions = {}): Promise<StepReport> {
-		return new StepExecution({
-			config: this.config,
-			aiClient: this.aiClient,
-			toolRegistry: this.toolRegistry,
-			extensionHost: this.extensionHost,
-			tokenTracker: this.tokenTracker,
-		}).run(step, options)
+	async run(step: Step, options?: RunStepOptions): Promise<StepReport>
+	async run(step: StepIntent, control: StepControl): Promise<InternalStepReport>
+	async run(
+		step: Step | StepIntent,
+		options: RunStepOptions | StepControl = {}
+	): Promise<StepReport | InternalStepReport> {
+		if (this.driverSession) {
+			if (!isStepControl(options)) throw new Error('Driver-backed runner requires StepControl')
+			return new StepExecution({
+				config: this.config,
+				aiClient: this.aiClient,
+				toolRegistry: this.toolRegistry,
+				driverSession: this.driverSession,
+				usageTracker: this.usageTracker!,
+				driverId: this.driverId!,
+				redact: this.config.redact,
+				diagnosticSanitizer: this.diagnosticSanitizer!,
+				logger: this.runtimeLogger!,
+			}).run(step as StepIntent, options)
+		}
+		return this.legacySession!.run(step as Step, options as RunStepOptions)
 	}
 }
 
@@ -143,4 +234,40 @@ export class CheckmateRunner {
  */
 export function createRunner(options: CheckmateRunnerOptions = {}): CheckmateRunner {
 	return new CheckmateRunner(options)
+}
+
+export function createDriverRunner(options: DriverCheckmateRunnerOptions): CheckmateRunner {
+	return new CheckmateRunner(options)
+}
+
+function isDriverOptions(
+	options: CheckmateRunnerOptions | DriverCheckmateRunnerOptions
+): options is DriverCheckmateRunnerOptions {
+	return 'session' in options
+}
+
+function isStepControl(options: RunStepOptions | StepControl): options is StepControl {
+	return 'signal' in options && 'poll' in options
+}
+
+function driverRuntimeConfig(options: DriverCheckmateRunnerOptions): ResolvedConfig {
+	return resolveConfig({
+		checkmateModel: options.modelEgress.provider.model,
+		checkmateOpenaiBaseUrl: options.modelEgress.provider.baseUrl,
+		checkmateReasoningEffort: options.modelEgress.provider.reasoningEffort,
+		checkmateTemperature: options.modelEgress.provider.temperature ?? 0,
+		checkmateTurnCap: options.limits.turnsPerStep,
+		checkmateStepTimeout: options.limits.stepTimeoutMs,
+		checkmateBudgetUsd: undefined,
+		checkmateBudgetTokens: undefined,
+		checkmateEvidence: 'off',
+		checkmateRedact: options.modelEgress.textRedaction === 'on',
+		checkmateToolChoice: 'required',
+		checkmateAllowedTools: [],
+		checkmateMaxRetries: options.limits.maxRetries,
+		checkmateRequestTimeout: options.limits.requestTimeoutMs,
+		checkmateLoopMaxRepetitions: options.limits.loopMaxRepetitions,
+		checkmateRateLimitDelay: 0,
+		checkmateLogLevel: 'off',
+	})
 }

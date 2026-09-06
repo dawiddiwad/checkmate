@@ -1,4 +1,4 @@
-import { logger } from '../logging/index.js'
+import type { RuntimeLogger } from '../logging/types.js'
 import { scrub } from '../redaction/scrub.js'
 import { LoopDetector } from './loop-detector.js'
 import { ToolRegistry } from './registry.js'
@@ -7,7 +7,8 @@ import { AgentToolContext, AgentToolResponse, AgentToolResult, ToolCall, ToolRes
 export class ToolDispatcher {
 	constructor(
 		private readonly toolRegistry: ToolRegistry,
-		private readonly loopDetector: LoopDetector
+		private readonly loopDetector: LoopDetector,
+		private readonly runtimeLogger: RuntimeLogger
 	) {}
 
 	getToolRegistry(): ToolRegistry {
@@ -16,7 +17,9 @@ export class ToolDispatcher {
 
 	async dispatch(toolCall: ToolCall, context: AgentToolContext): Promise<ToolResponse | null> {
 		this.loopDetector.recordToolCall(toolCall)
-		logger.info(`executing tool: ${toolCall.name}:\n${JSON.stringify(toolCall.arguments ?? {}, null, 2)}`)
+		this.runtimeLogger.info(
+			`executing tool: ${toolCall.name}:\n${JSON.stringify(toolCall.arguments ?? {}, null, 2)}`
+		)
 
 		const tool = this.toolRegistry.resolve(toolCall.name)
 		if (!tool) {
@@ -45,8 +48,8 @@ export class ToolDispatcher {
 		}
 
 		const response = this.normalizeToolResponse(toolCall.name, result)
-		if (response === null && this.toolRegistry.getConfig().logLevel === 'debug') {
-			logger.debug(
+		if (response === null && this.isDebugMode()) {
+			this.runtimeLogger.debug(
 				[
 					'tool completed without model response:',
 					`tool: ${toolCall.name}`,
@@ -58,8 +61,16 @@ export class ToolDispatcher {
 	}
 
 	private formatAllowedToolNames(): string {
-		const allowedNames = this.toolRegistry.getConfig().allowedTools
-		return allowedNames.length > 0 ? allowedNames.join(', ') : '(all registered tools allowed)'
+		const allowedNames = this.toolRegistry.getAllowedToolNames()
+		return allowedNames === '*' ? '(all registered tools allowed)' : allowedNames.join(', ') || '(none)'
+	}
+
+	private isDebugMode(): boolean {
+		try {
+			return this.toolRegistry.getConfig().logLevel === 'debug'
+		} catch {
+			return false
+		}
 	}
 
 	private normalizeToolResponse(toolName: string, result: AgentToolResult): ToolResponse | null {

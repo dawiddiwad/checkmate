@@ -18,7 +18,7 @@ describe('MessageHandler diagnostics', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		handler = new MessageHandler()
+		handler = new MessageHandler(logger)
 	})
 
 	it('throws enriched diagnostics for unexpected finish reasons', () => {

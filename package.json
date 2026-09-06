@@ -59,6 +59,14 @@
 			"types": "./dist/salesforce.d.ts",
 			"default": "./dist/salesforce.js"
 		},
+		"./driver": {
+			"types": "./dist/driver.d.ts",
+			"default": "./dist/driver.js"
+		},
+		"./driver-web": {
+			"types": "./dist/drivers/web/index.d.ts",
+			"default": "./dist/drivers/web/index.js"
+		},
 		"./driver-web/checkmate-driver.json": "./dist/drivers/web/checkmate-driver.json",
 		"./schemas/*": "./schemas/*"
 	},
@@ -93,6 +101,7 @@
 		"ajv": "^8.17.1",
 		"ajv-formats": "^3.0.1",
 		"openai": "^6.34.0",
+		"playwright": "^1.59.1",
 		"sharp": "^0.35.2",
 		"string-similarity": "^4.0.4",
 		"strip-ansi": "^7.2.0",

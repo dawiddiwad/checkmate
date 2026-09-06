@@ -16,7 +16,7 @@ vi.mock('../../src/logging', () => ({
 }))
 
 function createHandler(logLevel: LogLevel = 'off'): ToolResponseHandler {
-	return new ToolResponseHandler(testConfig({ checkmateLogLevel: logLevel }), new MessageHistory())
+	return new ToolResponseHandler(testConfig({ checkmateLogLevel: logLevel }), new MessageHistory(), logger)
 }
 
 function execution(toolCallId: string, name: string, args: unknown, toolResponse: ToolResponse): ToolExecution {

@@ -1,6 +1,6 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { ResolvedConfig } from '../config/resolved-config.js'
-import { logger } from '../logging/index.js'
+import type { RuntimeLogger } from '../logging/types.js'
 import { scrub } from '../redaction/scrub.js'
 import { ToolCall, ToolExecution, ToolResponse } from '../tools/types.js'
 import { MessageHistory } from './message-history.js'
@@ -8,7 +8,8 @@ import { MessageHistory } from './message-history.js'
 export class ToolResponseHandler {
 	constructor(
 		private readonly config: ResolvedConfig,
-		private readonly messageHistory: MessageHistory
+		private readonly messageHistory: MessageHistory,
+		private readonly runtimeLogger: RuntimeLogger
 	) {}
 
 	build(toolResults: ToolExecution[]): ChatCompletionMessageParam[] {
@@ -39,7 +40,7 @@ export class ToolResponseHandler {
 			return
 		}
 
-		logger.debug(
+		this.runtimeLogger.debug(
 			[
 				'tool response returned to model:',
 				`tool_call_id: ${toolCallId}`,
@@ -57,7 +58,7 @@ export class ToolResponseHandler {
 			? 'response: logged at debug level'
 			: `response: ${safePreview(toolResponse.response, 2_000)}`
 
-		logger.warn(
+		this.runtimeLogger.warn(
 			[
 				'tool response error:',
 				`tool_call_id: ${toolCallId}`,

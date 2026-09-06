@@ -50,6 +50,7 @@ describe('AiClient - Retry Logic', () => {
 		openAIClient = new AiClient({
 			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
+			logger,
 		})
 
 		vi.spyOn(testable(openAIClient), 'sleep').mockResolvedValue(undefined)
@@ -280,6 +281,7 @@ describe('AiClient - send', () => {
 		openAIClient = new AiClient({
 			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
+			logger,
 		})
 	})
 
@@ -449,6 +451,7 @@ describe('AiClient - temperature pinning', () => {
 		openAIClient = new AiClient({
 			config: testConfig({ checkmateModel: 'gpt-5-mini', checkmateMaxRetries: 0 }),
 			toolRegistry: { getTools: vi.fn().mockResolvedValue([]) } as unknown as ToolRegistry,
+			logger,
 		})
 	})
 

@@ -44,7 +44,7 @@ describe('ToolDispatcher diagnostics', () => {
 	it('includes requested, arguments, registered, and allowed tool names for invalid tools', async () => {
 		const registry = new ToolRegistry(createConfig(['allowed_tool']))
 		registry.register(createTool('registered_tool', () => 'ok'))
-		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger)
 
 		await expect(
 			dispatcher.dispatch(
@@ -62,7 +62,7 @@ describe('ToolDispatcher diagnostics', () => {
 				throw cause
 			})
 		)
-		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger)
 
 		let caught: unknown
 		try {
@@ -85,7 +85,7 @@ describe('ToolDispatcher diagnostics', () => {
 			createTool('string_error_tool', () => 'Error: bad result'),
 			createTool('object_error_tool', () => ({ response: 'bad object', status: 'error' })),
 		])
-		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger)
 		const context = { step: { action: 'run', expect: 'done' } }
 
 		await expect(dispatcher.dispatch({ name: 'string_error_tool' }, context)).resolves.toMatchObject({
@@ -102,7 +102,7 @@ describe('ToolDispatcher diagnostics', () => {
 	it('logs tools completed without model responses in debug mode', async () => {
 		const registry = new ToolRegistry(createConfig([], 'debug'))
 		registry.register(createTool('pass_test_step', () => undefined))
-		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger)
 		const context = { step: { action: 'run', expect: 'done' } }
 
 		await expect(
@@ -119,7 +119,7 @@ describe('ToolDispatcher diagnostics', () => {
 	it('does not log tools completed without model responses outside debug mode', async () => {
 		const registry = new ToolRegistry(createConfig())
 		registry.register(createTool('pass_test_step', () => undefined))
-		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10))
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger)
 		const context = { step: { action: 'run', expect: 'done' } }
 
 		await expect(

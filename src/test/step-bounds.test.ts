@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AiClient } from '../ai/client'
 import { TokenTracker } from '../ai/token-tracker'
 import { ExtensionHost } from '../runtime/extension'
-import { StepExecution } from '../runtime/step-execution'
+import { LegacyExtensionSession } from '../runtime/legacy-extension-session'
 import { ToolRegistry } from '../tools/registry'
 import { testConfig } from './test-types'
 
@@ -16,7 +16,7 @@ describe('step bounds', () => {
 			},
 			assistantMessages: [],
 		})
-		const execution = new StepExecution({
+		const execution = new LegacyExtensionSession({
 			config,
 			aiClient: { send, countHistoryTokens: () => 0 } as unknown as AiClient,
 			toolRegistry: new ToolRegistry(config),
@@ -40,7 +40,7 @@ describe('step bounds', () => {
 		const config = testConfig({ checkmateStepTimeout: 1_000 })
 		const send = vi.fn()
 		const registry = new ToolRegistry(config)
-		const execution = new StepExecution({
+		const execution = new LegacyExtensionSession({
 			config,
 			aiClient: { send, countHistoryTokens: () => 0 } as unknown as AiClient,
 			toolRegistry: registry,

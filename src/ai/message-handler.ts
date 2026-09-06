@@ -1,15 +1,17 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { logger } from '../logging/index.js'
+import type { RuntimeLogger } from '../logging/types.js'
 import { Step, TurnOutcome } from '../runtime/types.js'
 import { StepResultTool } from '../tools/step/result-tool.js'
 
 export class MessageHandler {
+	constructor(private readonly runtimeLogger: RuntimeLogger) {}
+
 	handle(choice: ChatCompletion.Choice, step: Step): TurnOutcome {
 		const { message } = choice
 
 		if (choice.finish_reason === 'stop' || message.content) {
-			logger.warn(`model response without tool call:\n${formatChoiceDetails(choice, step)}`)
-			logger.warn(
+			this.runtimeLogger.warn(`model response without tool call:\n${formatChoiceDetails(choice, step)}`)
+			this.runtimeLogger.warn(
 				`warning: model responded with text but no tool call. Prompting to use ${StepResultTool.TOOL_PASS_TEST_STEP} or ${StepResultTool.TOOL_FAIL_TEST_STEP}.`
 			)
 

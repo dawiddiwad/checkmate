@@ -2,17 +2,23 @@ import OpenAI from 'openai'
 import {
 	ChatCompletion,
 	ChatCompletionAssistantMessageParam,
+	ChatCompletionCreateParamsNonStreaming,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
 import { readApiKey, ResolvedConfig } from '../config/resolved-config.js'
-import { logger } from '../logging/index.js'
-import { CheckmateLogger } from '../logging/logger.js'
+import { prepareModelRequest } from '../config/model-egress.js'
+import type { ModelEgressPolicyV1 } from '../contracts/types.js'
+import type { RuntimeLogger } from '../logging/types.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { Step } from '../runtime/types.js'
 
 export type AiClientDependencies = {
 	config: ResolvedConfig
 	toolRegistry: ToolRegistry
+	apiKey?: string
+	modelEgress?: ModelEgressPolicyV1
+	exactSecrets?: Iterable<string>
+	logger: RuntimeLogger
 }
 
 export type AiSendOptions = {
@@ -29,13 +35,28 @@ export class AiClient {
 	private client: OpenAI | null = null
 	private readonly config: ResolvedConfig
 	private readonly toolRegistry: ToolRegistry
+	private readonly apiKey: string | undefined
+	private readonly modelEgress: ModelEgressPolicyV1 | undefined
+	private readonly exactSecrets: readonly string[]
+	private readonly runtimeLogger: RuntimeLogger
 	private readonly retryableStatus: (number | string)[] = [408, 409, 429, 500, 502, 503, 504]
 	private sendsTemperature = true
 	readonly temperature: number
 
-	constructor({ config, toolRegistry }: AiClientDependencies) {
+	constructor({
+		config,
+		toolRegistry,
+		apiKey,
+		modelEgress,
+		exactSecrets = [],
+		logger: runtimeLogger,
+	}: AiClientDependencies) {
 		this.config = config
 		this.toolRegistry = toolRegistry
+		this.apiKey = apiKey
+		this.modelEgress = modelEgress
+		this.exactSecrets = [...exactSecrets]
+		this.runtimeLogger = runtimeLogger
 		this.temperature = config.temperature
 	}
 
@@ -50,7 +71,7 @@ export class AiClient {
 					throw error
 				}
 
-				logger.warn(
+				this.runtimeLogger.warn(
 					`${this.config.model} does not accept temperature ${this.temperature}; ` +
 						'continuing on the provider default for the rest of this run'
 				)
@@ -71,19 +92,20 @@ export class AiClient {
 		withTemperature: boolean,
 		signal?: AbortSignal
 	): Promise<AiResponse> {
-		const response = await this.openai().chat.completions.create(
-			{
-				model: this.config.model,
-				messages,
-				tools,
-				tool_choice: this.config.toolChoice,
-				parallel_tool_calls: false,
-				...(withTemperature ? { temperature: this.temperature } : {}),
-				reasoning_effort: this.config.reasoningEffort,
-				n: 1,
-			},
-			{ signal }
-		)
+		const request: ChatCompletionCreateParamsNonStreaming = {
+			model: this.config.model,
+			messages,
+			tools,
+			tool_choice: this.config.toolChoice,
+			parallel_tool_calls: false,
+			...(withTemperature ? { temperature: this.temperature } : {}),
+			reasoning_effort: this.config.reasoningEffort,
+			n: 1,
+		}
+		const providerRequest = this.modelEgress
+			? prepareModelRequest(request, this.modelEgress, this.exactSecrets)
+			: request
+		const response = await this.openai().chat.completions.create(providerRequest, { signal })
 
 		return { response, assistantMessages: this.retainAssistantMessages(response) }
 	}
@@ -111,12 +133,12 @@ export class AiClient {
 	private openai(): OpenAI {
 		if (!this.client) {
 			this.client = new OpenAI({
-				apiKey: readApiKey(),
+				apiKey: this.apiKey ?? readApiKey(),
 				baseURL: this.config.baseUrl,
 				timeout: this.config.requestTimeout,
 				maxRetries: 0,
 				logLevel: this.config.logLevel,
-				logger: CheckmateLogger.create('ai_client', this.config.logLevel),
+				logger: this.runtimeLogger,
 			})
 		}
 
@@ -184,11 +206,12 @@ export class AiClient {
 
 				const retryAfter = this.getRetryAfterSeconds(error)
 				const delay = retryAfter ? retryAfter * 1000 : this.calculateBackoff(attempt)
-				logger.warn(
+				this.runtimeLogger.warn(
 					`status: ${this.getStatus(error)} retry attempt: ${attempt + 1}/${maxRetries} starting in: ${delay}ms ...`
 				)
-				logger.debug(`retryable error details:\n${this.formatError(error)}`)
-				await this.sleep(delay)
+				this.runtimeLogger.debug(`retryable error details:\n${this.formatError(error)}`)
+				if (options.signal) await this.sleep(delay, options.signal)
+				else await this.sleep(delay)
 			}
 		}
 
@@ -238,8 +261,20 @@ export class AiClient {
 		return delays[Math.min(attempt, delays.length - 1)]
 	}
 
-	private sleep(ms: number): Promise<void> {
-		return new Promise((resolve) => setTimeout(resolve, ms))
+	private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+		if (!signal) return new Promise((resolve) => setTimeout(resolve, ms))
+		if (signal.aborted) return Promise.reject(signal.reason)
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				signal.removeEventListener('abort', onAbort)
+				resolve()
+			}, ms)
+			const onAbort = () => {
+				clearTimeout(timer)
+				reject(signal.reason)
+			}
+			signal.addEventListener('abort', onAbort, { once: true })
+		})
 	}
 
 	private enhanceError(error: unknown, messages: ChatCompletionMessageParam[], options: AiSendOptions): Error {
@@ -267,7 +302,7 @@ export class AiClient {
 	): error is Error {
 		const errorAsString = this.formatError(error).toLowerCase()
 		if (this.getStatus(error) === 400 && errorAsString.includes('tool')) {
-			logger.warn(
+			this.runtimeLogger.warn(
 				`tool call error detected [400]\n${this.formatStepContext(options.step)}\nprovider_error:\n${this.formatError(error)}\nrecent_messages:\n${this.formatRecentMessages(messages)}`
 			)
 			messages.push({

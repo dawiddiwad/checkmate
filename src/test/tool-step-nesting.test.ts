@@ -20,13 +20,13 @@ vi.mock('../../src/logging', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-vi.mock('../../src/tools/browser/snapshot-service', () => ({
+vi.mock('../../src/drivers/web/tools/snapshot-service', () => ({
 	SnapshotService: class {
 		get = vi.fn().mockResolvedValue('mocked snapshot content')
 	},
 }))
 
-vi.mock('../tools/browser/transient-state-tracker', () => ({
+vi.mock('../drivers/web/tools/transient-state-tracker', () => ({
 	TransientStateTracker: class {
 		start = vi.fn().mockResolvedValue(undefined)
 		stop = vi.fn().mockResolvedValue([])

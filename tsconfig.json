@@ -12,7 +12,9 @@
 			"@xoxoai/checkmate": ["./src/index.ts"],
 			"@xoxoai/checkmate/core": ["./src/core.ts"],
 			"@xoxoai/checkmate/playwright": ["./src/playwright.ts"],
-			"@xoxoai/checkmate/salesforce": ["./src/salesforce.ts"]
+			"@xoxoai/checkmate/salesforce": ["./src/salesforce.ts"],
+			"@xoxoai/checkmate/driver": ["./src/driver.ts"],
+			"@xoxoai/checkmate/driver-web": ["./src/drivers/web/index.ts"]
 		},
 		"outDir": "./dist",
 		"rootDir": "./src",

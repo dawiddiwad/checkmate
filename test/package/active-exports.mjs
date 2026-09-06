@@ -34,11 +34,16 @@ const core = await import('@xoxoai/checkmate')
 const coreSubpath = await import('@xoxoai/checkmate/core')
 const playwright = await import('@xoxoai/checkmate/playwright')
 const salesforce = await import('@xoxoai/checkmate/salesforce')
+const driver = await import('@xoxoai/checkmate/driver')
+const driverWeb = await import('@xoxoai/checkmate/driver-web')
 
 assert.equal(typeof core.createRunner, 'function')
 assert.equal(core.createRunner, coreSubpath.createRunner)
 assert.equal(typeof playwright.createAi, 'function')
 assert.equal(typeof salesforce.createSalesforceRunner, 'function')
+assert.equal(typeof driver.defineDriverTool, 'function')
+assert.equal(driverWeb.checkmateDriver.id, 'web')
+assert.equal(driverWeb.checkmateDriver.driverContractVersion, 1)
 
 const require = createRequire(import.meta.url)
 const samples = JSON.parse(await readFile(new URL('./samples.json', import.meta.url), 'utf8'))
@@ -72,6 +77,24 @@ try {
 		stdio: 'pipe',
 		env: { ...process.env, npm_config_cache: resolve(installation, '.npm-cache') },
 	})
+	await writeFile(
+		resolve(installation, 'block-playwright-loader.mjs'),
+		`export async function resolve(specifier, context, nextResolve) {\n` +
+			`  if (specifier === 'playwright' || specifier === '@playwright/test') throw new Error('browser dependency loaded')\n` +
+			`  return nextResolve(specifier, context)\n` +
+			`}\n`
+	)
+	await writeFile(
+		resolve(installation, 'browser-free-probe.mjs'),
+		`const root = await import('@xoxoai/checkmate')\n` +
+			`const driver = await import('@xoxoai/checkmate/driver')\n` +
+			`if (typeof root.createRunner !== 'function' || typeof driver.defineDriverTool !== 'function') process.exitCode = 1\n`
+	)
+	execFileSync(
+		process.execPath,
+		['--no-warnings', '--experimental-loader', './block-playwright-loader.mjs', 'browser-free-probe.mjs'],
+		{ cwd: installation, stdio: 'inherit' }
+	)
 
 	const samples = {}
 	for (const [schema, fixture] of Object.entries(schemaFixtures)) {

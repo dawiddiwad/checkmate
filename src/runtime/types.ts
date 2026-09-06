@@ -1,4 +1,6 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import type { Diagnostic, Usage } from '../contracts/types.js'
+import type { StepIntent } from '../driver.js'
 import type { ToolExecution } from '../tools/types.js'
 
 /**
@@ -101,6 +103,40 @@ export type TerminationReason =
 	| 'tool-error'
 	| 'provider-error'
 	| 'budget-exceeded'
+
+export type InternalTerminationReason =
+	| 'met-expectation'
+	| 'failed-expectation'
+	| 'loop-detected'
+	| 'turn-cap-exceeded'
+	| 'step-timeout'
+	| 'scenario-timeout'
+	| 'tool-error'
+	| 'provider-error'
+	| 'token-budget-exceeded'
+	| 'interrupted'
+
+export type InternalStepToolCall = {
+	turn: number
+	driverId: string
+	name: string
+	arguments: unknown
+	status: 'ok' | 'error'
+}
+
+export type InternalStepReport = {
+	step: StepIntent
+	outcome: 'passed' | 'failed'
+	category: StepCategory
+	reason: InternalTerminationReason
+	actual?: string
+	turns: number
+	durationMs: number
+	usage: Usage
+	toolCalls: InternalStepToolCall[]
+	transcript: TranscriptEntry[]
+	diagnostics: Diagnostic[]
+}
 
 /**
  * Which layer produced the step outcome.

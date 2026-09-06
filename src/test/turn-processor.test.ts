@@ -6,6 +6,7 @@ import { StepEvidence } from '../runtime/step-evidence'
 import { Step } from '../runtime/types'
 import { LoopDetectedError, LoopDetector } from '../tools/loop-detector'
 import { ToolRegistry } from '../tools/registry'
+import { logger } from '../logging'
 
 interface TestableTurnProcessor {
 	toolDispatcher: { dispatch: Mock }
@@ -72,6 +73,7 @@ describe('TurnProcessor', () => {
 			toolRegistry: {} as ToolRegistry,
 			loopDetector: new LoopDetector(5),
 			evidence,
+			logger,
 		})
 	})
 

@@ -17,11 +17,12 @@ export class TerminalFinalizer {
 		assertExecutionResult(prepared.result)
 		try {
 			const committed: CommittedResult = await this.store.writeResult(prepared)
-			return { committed: true, ...committed }
+			return { committed: true, ...committed, result: parseExecutionResult(committed.bytes) }
 		} catch (error) {
 			const failure = resultWriteFailure(prepared, this.failureDiagnostic(error))
 			assertExecutionResult(failure)
-			return { committed: false, result: failure, bytes: serializeJson(failure) }
+			const bytes = serializeJson(failure)
+			return { committed: false, result: parseExecutionResult(bytes), bytes }
 		}
 	}
 
@@ -37,6 +38,12 @@ export class TerminalFinalizer {
 			message: this.store.sanitizeDiagnosticText(`Could not commit result.json: ${detail}.${durability}`.trim()),
 		}
 	}
+}
+
+function parseExecutionResult(bytes: string): ExecutionResultV1 {
+	const result = JSON.parse(bytes) as ExecutionResultV1
+	assertExecutionResult(result)
+	return result
 }
 
 function resultWriteFailure(prepared: PreparedTerminalResult, diagnostic: Diagnostic): ExecutionResultV1 {

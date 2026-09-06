@@ -50,7 +50,7 @@ export type HarnessEvidenceCandidate = Readonly<{
 }>
 
 export type DriverEvidenceCandidate = Readonly<{
-	stepId: string
+	stepId?: string
 	kind: string
 	mediaType: string
 	content: string | Uint8Array
@@ -78,7 +78,7 @@ export type CommittedResult = Readonly<{
 }>
 
 type BufferedCandidate = {
-	stepId: string
+	stepId?: string
 	kind: string
 	mediaType: string
 	producer: 'harness' | string
@@ -150,6 +150,10 @@ export class EvidenceStore {
 		return this.bufferedBytes
 	}
 
+	markPartial(): void {
+		this.evidencePartial = true
+	}
+
 	async writeInvocation(request: RunRequestV1): Promise<void> {
 		if (this.lifecycle !== 'allocated') throw new Error('Invocation metadata has already been written')
 		const requestStepIds = request.scenario.steps.map((step) => step.id)
@@ -159,6 +163,8 @@ export class EvidenceStore {
 		) {
 			throw new Error('Invocation steps do not match the evidence store')
 		}
+		this.scenarioId = request.scenario.id
+		this.lifecycle = 'active'
 		const path = resolveInside(this.identity.runDirectory, 'invocation.json')
 		const payload = this.redactor.redactInvocation({
 			layoutVersion: 1,
@@ -167,8 +173,6 @@ export class EvidenceStore {
 			request,
 		})
 		await this.writeFile(path, serializeJson(payload))
-		this.scenarioId = request.scenario.id
-		this.lifecycle = 'active'
 	}
 
 	captureHarnessStep(candidate: HarnessEvidenceCandidate): void {
@@ -234,17 +238,25 @@ export class EvidenceStore {
 				`Driver evidence '${candidate.kind}' has an invalid media type`
 			)
 		}
-		const ordinal = this.stepOrdinal(candidate.stepId)
 		const fileOrdinal = ++this.driverCandidateOrdinal
-		const path = resolveInside(
-			this.identity.runDirectory,
-			'evidence',
-			'driver',
-			safeSlug(this.driverDescriptor.id),
-			'steps',
-			stepDirectoryName(ordinal, candidate.stepId),
-			`${String(fileOrdinal).padStart(3, '0')}-${safeSlug(candidate.kind)}.${extensionFor(candidate.mediaType)}`
-		)
+		const filename = `${String(fileOrdinal).padStart(3, '0')}-${safeSlug(candidate.kind)}.${extensionFor(candidate.mediaType)}`
+		const path = candidate.stepId
+			? resolveInside(
+					this.identity.runDirectory,
+					'evidence',
+					'driver',
+					safeSlug(this.driverDescriptor.id),
+					'steps',
+					stepDirectoryName(this.stepOrdinal(candidate.stepId), candidate.stepId),
+					filename
+				)
+			: resolveInside(
+					this.identity.runDirectory,
+					'evidence',
+					'driver',
+					safeSlug(this.driverDescriptor.id),
+					filename
+				)
 		this.capture({ ...candidate, producer: this.driverDescriptor.id, contentType: declaration.content, path })
 	}
 
@@ -254,6 +266,26 @@ export class EvidenceStore {
 		if (this.finalizedSteps.has(stepId)) throw new Error(`Evidence for step '${stepId}' has already been finalized`)
 		this.finalizedSteps.add(stepId)
 		const candidates = this.pending.filter((candidate) => candidate.stepId === stepId)
+		return this.finalizeCandidates(candidates, outcome)
+	}
+
+	async finalizeScenario(outcome: StepOutcome): Promise<FinalizedStepEvidence> {
+		this.assertActive()
+		return this.finalizeCandidates([...this.pending], outcome)
+	}
+
+	recordCaptureFailure(artifact: string, error: unknown): Diagnostic {
+		this.assertActive()
+		this.evidencePartial = true
+		const diagnostic = this.writeDiagnostic('evidence.capture-failed', artifact, error)
+		this.recordPersistenceDiagnostic(diagnostic)
+		return diagnostic
+	}
+
+	private async finalizeCandidates(
+		candidates: readonly BufferedCandidate[],
+		outcome: StepOutcome
+	): Promise<FinalizedStepEvidence> {
 		const newReferences: EvidenceReference[] = []
 		const diagnostics: Diagnostic[] = []
 
@@ -267,7 +299,7 @@ export class EvidenceStore {
 					mediaType: candidate.mediaType,
 					path: toInvocationRelative(this.invocationRoot, candidate.path),
 					producer: candidate.producer,
-					stepId,
+					...(candidate.stepId === undefined ? {} : { stepId: candidate.stepId }),
 				}
 				this.references.push(reference)
 				newReferences.push({ ...reference })
@@ -346,7 +378,7 @@ export class EvidenceStore {
 	}
 
 	private capture(input: {
-		stepId: string
+		stepId?: string
 		kind: string
 		mediaType: string
 		content: string | Uint8Array
@@ -354,7 +386,7 @@ export class EvidenceStore {
 		contentType: EvidenceContent
 		path: string
 	}): void {
-		if (this.finalizedSteps.has(input.stepId)) {
+		if (input.stepId !== undefined && this.finalizedSteps.has(input.stepId)) {
 			throw new EvidenceCaptureError(
 				'evidence.step-finalized',
 				`Evidence for step '${input.stepId}' is already finalized`

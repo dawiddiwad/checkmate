@@ -50,7 +50,7 @@ export class StepExecution {
 			diagnosticSanitizer,
 			logger,
 		} = this.dependencies
-		const evidence = new InternalStepEvidence(step, driverId, redact, diagnosticSanitizer)
+		const evidence = new InternalStepEvidence(step, driverId, redact, diagnosticSanitizer, control.now)
 		const checkpoint = usageTracker.beginStep()
 		const messages: ChatCompletionMessageParam[] = []
 		const ephemeralMessages = new Set<ChatCompletionMessageParam>()

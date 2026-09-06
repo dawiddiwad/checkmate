@@ -63,7 +63,8 @@
 				"tool-error",
 				"provider-error",
 				"token-budget-exceeded",
-				"interrupted"
+				"interrupted",
+				"internal-error"
 			]
 		},
 		"runReason": {

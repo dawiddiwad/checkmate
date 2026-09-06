@@ -222,6 +222,46 @@ describe('driver-backed step execution', () => {
 		}
 	)
 
+	it('uses the invocation clock for a real initial-context driver deadline', async () => {
+		let time = 0
+		const buildInitialContext = vi.fn(async () => {
+			time = 101
+			return []
+		})
+		const session: DriverSession = {
+			tools: [
+				defineDriverTool({
+					name: 'fixture_action',
+					description: 'act',
+					schema: z.object({}),
+					handler: () => 'ok',
+				}),
+			],
+			instructions: [],
+			buildInitialContext,
+			handleToolResponses: async () => [],
+			close: async () => undefined,
+		}
+		const send = vi.fn()
+		const runner = runnerWith(session, send)
+		const scenario = new ScenarioControl({ timeoutMs: 1_000, now: () => time })
+
+		const report = await runner.run(
+			{ id: 'custom-clock', action: 'act', expect: 'done' },
+			scenario.createStepControl(100)
+		)
+
+		expect(report).toMatchObject({
+			outcome: 'failed',
+			category: 'model',
+			reason: 'step-timeout',
+			durationMs: 101,
+		})
+		expect(buildInitialContext).toHaveBeenCalledOnce()
+		expect(send).not.toHaveBeenCalled()
+		scenario.dispose()
+	})
+
 	it.each([
 		['partial', { prompt_tokens: 2, total_tokens: 2 }],
 		['malformed', { prompt_tokens: 2, completion_tokens: -1, total_tokens: 1 }],
@@ -251,6 +291,7 @@ describe('driver-backed step execution', () => {
 		const control: StepControl = {
 			signal: controller.signal,
 			deadline: Date.now() + 1_000,
+			now: Date.now,
 			poll: () => (fulfilled ? { expired: true, reason } : { expired: false }),
 			dispose: vi.fn(),
 		}

@@ -7,6 +7,19 @@ describe('run result contract', () => {
 		expect(validateRunResult(readExecutionFixture()).ok).toBe(true)
 	})
 
+	it('accepts an executed infrastructure step for an unexpected internal error', () => {
+		const result = readExecutionFixture()
+		result.status = 'failed'
+		result.category = 'infra'
+		result.reason = 'internal-error'
+		const step = (result.steps as Array<Record<string, unknown>>)[0]
+		step.status = 'failed'
+		step.category = 'infra'
+		step.reason = 'internal-error'
+
+		expect(validateRunResult(result).ok).toBe(true)
+	})
+
 	it('accepts an invalid invocation without execution claims', () => {
 		expect(
 			validateRunResult({

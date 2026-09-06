@@ -102,6 +102,7 @@ export type StepReason =
 	| 'provider-error'
 	| 'token-budget-exceeded'
 	| 'interrupted'
+	| 'internal-error'
 
 export type RunReason =
 	| 'scenario-complete'
@@ -111,7 +112,6 @@ export type RunReason =
 	| 'driver-teardown-failed'
 	| 'evidence-write-failed'
 	| 'result-write-failed'
-	| 'internal-error'
 
 export type StepToolCall = {
 	turn: number

@@ -69,6 +69,7 @@ export function awaitStepDriverBoundary<T>(
 		operation,
 		signal: control.signal,
 		deadline: control.deadline,
+		now: control.now,
 		reason: () => {
 			const state = control.poll()
 			return state.expired ? state.reason : 'step-timeout'

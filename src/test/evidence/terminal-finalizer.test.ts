@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { validateRunResult } from '../../contracts/validator.js'
+import { serializeJson } from '../../contracts/serialize.js'
 import { writeAtomicFile } from '../../evidence/atomic-file.js'
 import { TerminalFinalizer } from '../../evidence/terminal-finalizer.js'
 import { createStore, executionResult, request, temporaryRoot } from './helpers.js'
@@ -131,6 +132,31 @@ describe('terminal result finalization', () => {
 			await store.writeInvocation(request)
 			const invalid = executionResult({ runId: 'invalid' })
 			await expect(new TerminalFinalizer(store).finalize(invalid)).rejects.toThrow('Invalid execution result')
+		} finally {
+			await temporary.cleanup()
+		}
+	})
+
+	it('returns the API object parsed from the finalized byte sequence', async () => {
+		const temporary = await temporaryRoot()
+		try {
+			const store = await createStore(temporary.root)
+			await store.writeInvocation(request)
+			const candidate = executionResult({
+				runId: store.runIdentity.runId,
+				startedAt: store.runIdentity.startedAt,
+			})
+			const byteResult = { ...candidate, durationMs: 321 }
+			vi.spyOn(store, 'prepareResult').mockReturnValue({
+				result: candidate,
+				bytes: serializeJson(byteResult),
+			})
+
+			const terminal = await new TerminalFinalizer(store).finalize(candidate)
+
+			expect(terminal.result).not.toBe(candidate)
+			expect(terminal.result.durationMs).toBe(321)
+			expect(terminal.bytes).toBe(serializeJson(terminal.result))
 		} finally {
 			await temporary.cleanup()
 		}

@@ -5,6 +5,7 @@ export type ControlPoll = { expired: false } | { expired: true; reason: ControlE
 export type StepControl = Readonly<{
 	signal: AbortSignal
 	deadline: number
+	now(): number
 	poll(): ControlPoll
 	dispose(): void
 }>
@@ -19,9 +20,12 @@ export type ScenarioControlOptions = Readonly<{
 
 export class ScenarioControl {
 	readonly signal: AbortSignal
+	readonly interruptionSignal: AbortSignal
 	readonly deadline: number
 	private readonly controller = new AbortController()
+	private readonly interruptionController = new AbortController()
 	private readonly now: () => number
+	private readonly setTimer: typeof setTimeout
 	private readonly clearTimer: typeof clearTimeout
 	private readonly timer: ReturnType<typeof setTimeout>
 	private readonly externalSignal?: AbortSignal
@@ -32,21 +36,20 @@ export class ScenarioControl {
 			throw new Error('Scenario timeout must be a non-negative finite number')
 		}
 		this.now = options.now ?? Date.now
+		this.setTimer = options.setTimer ?? setTimeout
 		this.clearTimer = options.clearTimer ?? clearTimeout
 		this.deadline = this.now() + options.timeoutMs
 		this.signal = this.controller.signal
+		this.interruptionSignal = this.interruptionController.signal
 		this.externalSignal = options.signal
-		if (options.signal?.aborted) this.controller.abort('interrupted')
+		if (options.signal?.aborted) this.handleExternalAbort()
 		else options.signal?.addEventListener('abort', this.handleExternalAbort, { once: true })
-		this.timer = (options.setTimer ?? setTimeout)(
-			() => this.controller.abort('scenario-timeout'),
-			options.timeoutMs
-		)
+		this.timer = this.setTimer(() => this.controller.abort('scenario-timeout'), options.timeoutMs)
 	}
 
 	poll(): ControlPoll {
-		if (this.externalSignal?.aborted || this.signal.reason === 'interrupted') {
-			this.controller.abort('interrupted')
+		if (this.externalSignal?.aborted || this.interruptionSignal.aborted) {
+			this.handleExternalAbort()
 			return { expired: true, reason: 'interrupted' }
 		}
 		if (this.signal.reason === 'scenario-timeout' || this.now() >= this.deadline) {
@@ -69,12 +72,13 @@ export class ScenarioControl {
 		const onScenarioAbort = () => controller.abort(this.signal.reason ?? 'scenario-timeout')
 		if (this.signal.aborted) onScenarioAbort()
 		else this.signal.addEventListener('abort', onScenarioAbort, { once: true })
-		const timer = setTimeout(() => controller.abort(owner), Math.max(0, deadline - now))
+		const timer = this.setTimer(() => controller.abort(owner), Math.max(0, deadline - now))
 		let disposed = false
 
 		return {
 			signal: controller.signal,
 			deadline,
+			now: this.now,
 			poll: () => {
 				const scenario = this.poll()
 				if (scenario.expired) return scenario
@@ -88,7 +92,7 @@ export class ScenarioControl {
 			dispose: () => {
 				if (disposed) return
 				disposed = true
-				clearTimeout(timer)
+				this.clearTimer(timer)
 				this.signal.removeEventListener('abort', onScenarioAbort)
 			},
 		}
@@ -102,6 +106,7 @@ export class ScenarioControl {
 	}
 
 	private readonly handleExternalAbort = (): void => {
+		this.interruptionController.abort('interrupted')
 		this.controller.abort('interrupted')
 	}
 }

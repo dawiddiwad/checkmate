@@ -24,6 +24,7 @@ const CATEGORY_BY_REASON: Record<InternalTerminationReason, StepCategory> = {
 	'provider-error': 'infra',
 	'token-budget-exceeded': 'infra',
 	interrupted: 'infra',
+	'internal-error': 'infra',
 }
 
 export type InternalStepTermination = Readonly<{

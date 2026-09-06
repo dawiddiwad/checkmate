@@ -59,6 +59,7 @@ export type PreparedRun = Readonly<{
 	policy: ResolvedPolicy
 	modelEgress: ModelEgressPolicyV1
 	effectiveLimits: EffectiveLimits
+	secretBindings: Readonly<Record<string, { source: 'environment'; name: string }>>
 	driver: Readonly<{
 		id: string
 		packageName: string
@@ -168,6 +169,11 @@ export async function prepareRunSource(
 		policy: resolvedPolicy(policySelection.id, policySelection.policy, effective.limits),
 		modelEgress: resolveModelEgress(policySelection.policy),
 		effectiveLimits: { ...effective.limits },
+		secretBindings: Object.fromEntries(
+			[...requiredBindings]
+				.sort(compareUtf16)
+				.map((binding) => [binding, { ...ownValue(manifest.secretBindings, binding)! }])
+		),
 		driver: {
 			id: driverId,
 			packageName: driverSelection.registration.package,

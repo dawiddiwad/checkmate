@@ -115,6 +115,7 @@ export type InternalTerminationReason =
 	| 'provider-error'
 	| 'token-budget-exceeded'
 	| 'interrupted'
+	| 'internal-error'
 
 export type InternalStepToolCall = {
 	turn: number

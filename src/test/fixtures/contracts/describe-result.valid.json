@@ -215,6 +215,14 @@
 				"nextAction": "repair-request-or-configuration"
 			},
 			{
+				"reason": "pre-execution-error",
+				"category": "infra",
+				"exitCode": 3,
+				"retry": "repair-then-new-run",
+				"mutation": "not-attempted",
+				"nextAction": "repair-environment-and-start-new-run"
+			},
+			{
 				"reason": "parent-containment",
 				"category": "infra",
 				"exitCode": 3,

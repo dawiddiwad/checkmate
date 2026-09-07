@@ -23,7 +23,7 @@ describe('describe discovery contract', () => {
 		).toBe(false)
 	})
 
-	it('requires all eighteen unique exact routing tuples', () => {
+	it('requires all nineteen unique exact routing tuples', () => {
 		const result = describeFixture()
 		expect(result.onboarding.routing).toEqual(PUBLIC_ROUTE_RULES_V1)
 
@@ -38,7 +38,7 @@ describe('describe discovery contract', () => {
 				...result,
 				onboarding: {
 					...result.onboarding,
-					routing: [...result.onboarding.routing.slice(0, 17), result.onboarding.routing[0]],
+					routing: [...result.onboarding.routing.slice(0, 18), result.onboarding.routing[0]],
 				},
 			}).ok
 		).toBe(false)

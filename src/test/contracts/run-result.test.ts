@@ -34,6 +34,14 @@ describe('run result contract', () => {
 		).toBe(true)
 	})
 
+	it('accepts a strict parent pre-execution operational failure without execution claims', () => {
+		const result = preExecutionOperationalResult()
+		expect(validateRunResult(result).ok).toBe(true)
+		for (const field of ['runId', 'scenarioId', 'steps', 'usage', 'evidence']) {
+			expect(validateRunResult({ ...result, [field]: field === 'steps' ? [] : 'unexpected' }).ok).toBe(false)
+		}
+	})
+
 	it('accepts parent containment without semantic execution state', () => {
 		expect(validateRunResult(containmentResult()).ok).toBe(true)
 	})
@@ -83,5 +91,18 @@ function containmentResult(): Record<string, unknown> {
 		durationMs: 180000,
 		containment: { phase: 'run', trigger: 'run-deadline-expired' },
 		diagnostics: [{ code: 'parent.timeout', path: '', message: 'The worker exceeded its run deadline' }],
+	}
+}
+
+function preExecutionOperationalResult(): Record<string, unknown> {
+	return {
+		kind: 'run-result',
+		schemaVersion: 1,
+		source: 'parent',
+		status: 'error',
+		category: 'infra',
+		reason: 'pre-execution-error',
+		targetMutation: 'not-attempted',
+		diagnostics: [{ code: 'run.preparation-failed', path: '', message: 'Preparation failed' }],
 	}
 }

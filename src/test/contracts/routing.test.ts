@@ -54,14 +54,22 @@ const expectedRules: RouteRuleV1[] = [
 		mutation: 'not-attempted',
 		nextAction: 'repair-request-or-configuration',
 	},
+	{
+		reason: 'pre-execution-error',
+		category: 'infra',
+		exitCode: 3,
+		retry: 'repair-then-new-run',
+		mutation: 'not-attempted',
+		nextAction: 'repair-environment-and-start-new-run',
+	},
 	...environmentRules(['parent-containment']),
 ]
 
 describe('agent result routing', () => {
 	it('pins every complete public routing tuple', () => {
 		expect(PUBLIC_ROUTE_RULES_V1).toEqual(expectedRules)
-		expect(PUBLIC_ROUTE_RULES_V1).toHaveLength(18)
-		expect(new Set(PUBLIC_ROUTE_RULES_V1.map((rule) => rule.reason)).size).toBe(18)
+		expect(PUBLIC_ROUTE_RULES_V1).toHaveLength(19)
+		expect(new Set(PUBLIC_ROUTE_RULES_V1.map((rule) => rule.reason)).size).toBe(19)
 	})
 
 	it('never authorizes an automatic whole-scenario retry', () => {

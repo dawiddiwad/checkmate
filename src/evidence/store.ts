@@ -15,9 +15,11 @@ import { parseDocument, stringify as stringifyYaml } from 'yaml'
 import { AtomicWriteError, writeAtomicFile } from './atomic-file.js'
 import {
 	ensurePrivateDirectory,
+	driverEvidenceDirectory,
+	evidenceExtension,
+	harnessEvidencePath,
 	resolveInside,
 	safeSlug,
-	stepDirectoryName,
 	toInvocationRelative,
 	type RunIdentity,
 } from './layout.js'
@@ -192,32 +194,12 @@ export class EvidenceStore {
 		}
 		const ordinal = this.stepOrdinal(candidate.stepId)
 		let path: string
-		if (candidate.kind === 'transcript') {
-			if (candidate.turn !== undefined)
-				throw new EvidenceCaptureError('evidence.invalid-turn', 'A transcript has no turn number')
-			path = resolveInside(
-				this.identity.runDirectory,
-				'evidence',
-				'harness',
-				'steps',
-				stepDirectoryName(ordinal, candidate.stepId),
-				'transcript.md'
-			)
-		} else {
-			if (!Number.isSafeInteger(candidate.turn) || candidate.turn! < 1) {
-				throw new EvidenceCaptureError(
-					'evidence.invalid-turn',
-					'A turn snapshot requires a positive turn number'
-				)
-			}
-			path = resolveInside(
-				this.identity.runDirectory,
-				'evidence',
-				'harness',
-				'steps',
-				stepDirectoryName(ordinal, candidate.stepId),
-				'turns',
-				`${String(candidate.turn).padStart(3, '0')}.yml`
+		try {
+			path = harnessEvidencePath(this.identity, ordinal, candidate.stepId, candidate.kind, candidate.turn)
+		} catch (error) {
+			throw new EvidenceCaptureError(
+				'evidence.invalid-turn',
+				error instanceof Error ? error.message : String(error)
 			)
 		}
 		this.capture({ ...candidate, producer: 'harness', contentType: declaration.content, path })
@@ -239,24 +221,16 @@ export class EvidenceStore {
 			)
 		}
 		const fileOrdinal = ++this.driverCandidateOrdinal
-		const filename = `${String(fileOrdinal).padStart(3, '0')}-${safeSlug(candidate.kind)}.${extensionFor(candidate.mediaType)}`
-		const path = candidate.stepId
-			? resolveInside(
-					this.identity.runDirectory,
-					'evidence',
-					'driver',
-					safeSlug(this.driverDescriptor.id),
-					'steps',
-					stepDirectoryName(this.stepOrdinal(candidate.stepId), candidate.stepId),
-					filename
+		const filename = `${String(fileOrdinal).padStart(3, '0')}-${safeSlug(candidate.kind)}.${evidenceExtension(candidate.mediaType)}`
+		const directory = candidate.stepId
+			? driverEvidenceDirectory(
+					this.identity,
+					this.driverDescriptor.id,
+					this.stepOrdinal(candidate.stepId),
+					candidate.stepId
 				)
-			: resolveInside(
-					this.identity.runDirectory,
-					'evidence',
-					'driver',
-					safeSlug(this.driverDescriptor.id),
-					filename
-				)
+			: driverEvidenceDirectory(this.identity, this.driverDescriptor.id)
+		const path = resolveInside(directory, filename)
 		this.capture({ ...candidate, producer: this.driverDescriptor.id, contentType: declaration.content, path })
 	}
 
@@ -555,23 +529,4 @@ function mergeDiagnostics(left: readonly Diagnostic[], right: readonly Diagnosti
 		merged.push({ ...diagnostic })
 	}
 	return merged
-}
-
-function extensionFor(mediaType: string): string {
-	switch (mediaType) {
-		case 'application/json':
-			return 'json'
-		case 'application/yaml':
-			return 'yml'
-		case 'image/jpeg':
-			return 'jpg'
-		case 'image/png':
-			return 'png'
-		case 'text/markdown':
-			return 'md'
-		case 'text/plain':
-			return 'txt'
-		default:
-			return 'bin'
-	}
 }

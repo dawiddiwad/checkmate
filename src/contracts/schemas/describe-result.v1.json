@@ -301,6 +301,14 @@
 					"nextAction": "repair-request-or-configuration"
 				},
 				{
+					"reason": "pre-execution-error",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "not-attempted",
+					"nextAction": "repair-environment-and-start-new-run"
+				},
+				{
 					"reason": "parent-containment",
 					"category": "infra",
 					"exitCode": 3,
@@ -340,8 +348,8 @@
 				},
 				"routing": {
 					"type": "array",
-					"minItems": 18,
-					"maxItems": 18,
+					"minItems": 19,
+					"maxItems": 19,
 					"uniqueItems": true,
 					"items": { "$ref": "#/$defs/routeRule" }
 				},

@@ -130,6 +130,60 @@ export function stepDirectoryName(ordinal: number, stepId: string): string {
 	return `${String(ordinal).padStart(3, '0')}-${safeSlug(stepId)}`
 }
 
+export function harnessEvidencePath(
+	identity: RunIdentity,
+	ordinal: number,
+	stepId: string,
+	kind: 'transcript' | 'turn-snapshot',
+	turn?: number
+): string {
+	const directory = resolveInside(
+		identity.runDirectory,
+		'evidence',
+		'harness',
+		'steps',
+		stepDirectoryName(ordinal, stepId)
+	)
+	if (kind === 'transcript') {
+		if (turn !== undefined) throw new Error('A transcript has no turn number')
+		return resolveInside(directory, 'transcript.md')
+	}
+	if (!Number.isSafeInteger(turn) || turn! < 1) throw new Error('A turn snapshot requires a positive turn number')
+	return resolveInside(directory, 'turns', `${String(turn).padStart(3, '0')}.yml`)
+}
+
+export function driverEvidenceDirectory(
+	identity: RunIdentity,
+	driverId: string,
+	ordinal?: number,
+	stepId?: string
+): string {
+	const directory = resolveInside(identity.runDirectory, 'evidence', 'driver', safeSlug(driverId))
+	if (ordinal === undefined && stepId === undefined) return directory
+	if (ordinal === undefined || stepId === undefined)
+		throw new Error('Driver step evidence needs an ordinal and step ID')
+	return resolveInside(directory, 'steps', stepDirectoryName(ordinal, stepId))
+}
+
+export function evidenceExtension(mediaType: string): string {
+	switch (mediaType) {
+		case 'application/json':
+			return 'json'
+		case 'application/yaml':
+			return 'yml'
+		case 'image/jpeg':
+			return 'jpg'
+		case 'image/png':
+			return 'png'
+		case 'text/markdown':
+			return 'md'
+		case 'text/plain':
+			return 'txt'
+		default:
+			return 'bin'
+	}
+}
+
 function assertSafeSegment(segment: string): void {
 	if (!segment || segment === '.' || segment === '..' || segment.includes('/') || segment.includes('\\')) {
 		throw new Error(`Unsafe evidence path segment '${segment}'`)

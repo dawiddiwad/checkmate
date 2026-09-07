@@ -103,6 +103,15 @@ try {
 	await writeFile(resolve(installation, 'samples.json'), JSON.stringify(samples))
 	await writeFile(resolve(installation, 'probe.mjs'), probeSource)
 	execFileSync(process.execPath, ['probe.mjs'], { cwd: installation, stdio: 'inherit' })
+	for (const document of [
+		'README.md',
+		'docs/CLI.md',
+		'docs/CONFIGURATION.md',
+		'docs/DRIVERS.md',
+		'docs/EVIDENCE.md',
+	]) {
+		await readFile(resolve(installation, 'node_modules/@xoxoai/checkmate', document), 'utf8')
+	}
 
 	await writeFile(resolve(installation, 'checkmate.config.json'), JSON.stringify(samples['checkmate-config.v1.json']))
 	await writeFile(resolve(installation, 'request.json'), JSON.stringify(samples['run-request.v1.json']))

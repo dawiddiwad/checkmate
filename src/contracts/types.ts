@@ -174,6 +174,17 @@ export type InvalidInvocationResultV1 = {
 	diagnostics: Diagnostic[]
 }
 
+export type PreExecutionOperationalResultV1 = {
+	kind: 'run-result'
+	schemaVersion: 1
+	source: 'parent'
+	status: 'error'
+	category: 'infra'
+	reason: 'pre-execution-error'
+	targetMutation: 'not-attempted'
+	diagnostics: [Diagnostic, ...Diagnostic[]]
+}
+
 export type ContainmentResultV1 = {
 	kind: 'run-result'
 	schemaVersion: 1
@@ -197,7 +208,8 @@ export type ContainmentResultV1 = {
 	diagnostics: [Diagnostic, ...Diagnostic[]]
 }
 
-export type RunResultV1 = ExecutionResultV1 | InvalidInvocationResultV1 | ContainmentResultV1
+export type RunResultV1 =
+	ExecutionResultV1 | InvalidInvocationResultV1 | PreExecutionOperationalResultV1 | ContainmentResultV1
 
 export type ValidationResultV1 =
 	| {
@@ -252,7 +264,7 @@ export type DescribedDriverV1 = {
 	evidenceKinds: Array<{ kind: string; mediaType: string; content: 'text' | 'opaque' }>
 }
 
-export type RouteReason = RunReason | 'invalid-invocation' | 'parent-containment'
+export type RouteReason = RunReason | 'invalid-invocation' | 'pre-execution-error' | 'parent-containment'
 
 export type RouteRuleV1 = {
 	reason: RouteReason
@@ -265,6 +277,7 @@ export type RouteRuleV1 = {
 		| 'repair-request-or-configuration'
 		| 'inspect-evidence-and-verify-sut-or-expectation'
 		| 'repair-model-policy-or-egress'
+		| 'repair-environment-and-start-new-run'
 		| 'repair-environment-and-inspect-target'
 		| 'repair-output-and-inspect-target'
 }
@@ -367,6 +380,14 @@ export const PUBLIC_ROUTE_RULES_V1: readonly RouteRuleV1[] = [
 		retry: 'repair-then-new-run',
 		mutation: 'not-attempted',
 		nextAction: 'repair-request-or-configuration',
+	},
+	{
+		reason: 'pre-execution-error',
+		category: 'infra',
+		exitCode: 3,
+		retry: 'repair-then-new-run',
+		mutation: 'not-attempted',
+		nextAction: 'repair-environment-and-start-new-run',
 	},
 	{
 		reason: 'parent-containment',

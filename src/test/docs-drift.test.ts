@@ -65,10 +65,9 @@ describe('docs drift', () => {
 		expect(match?.[1]).toBe(CHECKMATE_DEFAULTS.checkmateModel)
 	})
 
-	it("README has a 'when not to use ai.step' section", () => {
-		expect(
-			readme.indexOf('When NOT to use'),
-			"README.md should have a 'when not to use ai.step' section"
-		).toBeGreaterThan(-1)
+	it('README leads with the canonical agent-facing CLI workflow', () => {
+		expect(readme).toContain('checkmate validate request.json')
+		expect(readme).toContain('checkmate run request.json')
+		expect(readme).not.toContain('ai.step')
 	})
 })

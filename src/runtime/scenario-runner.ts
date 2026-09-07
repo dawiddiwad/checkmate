@@ -32,6 +32,7 @@ export type RunScenarioOptions = Readonly<{
 	sanitizer: DiagnosticSanitizer
 	createRunner?: ScenarioRunnerFactory
 	now?: () => number
+	onCleanupStarted?: () => void
 }>
 
 export async function runScenario(options: RunScenarioOptions): Promise<void> {
@@ -148,7 +149,10 @@ export async function runScenario(options: RunScenarioOptions): Promise<void> {
 	} finally {
 		attribution.endStep()
 		latchInterruption(options)
-		if (session) await cleanup(runner, session, options, now)
+		if (session) {
+			options.onCleanupStarted?.()
+			await cleanup(runner, session, options, now)
+		}
 		latchInterruption(options)
 	}
 }

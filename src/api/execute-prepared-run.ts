@@ -25,6 +25,7 @@ export type ExecutePreparedRunOptions = Readonly<{
 	setTimer?: typeof setTimeout
 	clearTimer?: typeof clearTimeout
 	createStore?: (options: ConstructorParameters<typeof EvidenceStore>[0]) => EvidenceStore
+	onCleanupStarted?: () => void
 }>
 
 export async function executePreparedRun(
@@ -105,6 +106,7 @@ export async function executePreparedRun(
 					sanitizer,
 					createRunner: options.createRunner,
 					now,
+					onCleanupStarted: options.onCleanupStarted,
 				})
 			}
 		}

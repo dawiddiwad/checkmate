@@ -40,6 +40,7 @@ try {
 
 	const tarball = resolve(packDirectory, packResult.filename)
 	run('npm', ['run', 'test:package:active', '--', tarball], { stdio: 'inherit' })
+	run('npm', ['run', 'test:acceptance:agent', '--', tarball], { stdio: 'inherit' })
 } finally {
 	await rm(packDirectory, { recursive: true, force: true })
 }
@@ -58,6 +59,10 @@ async function expectedPackageFiles() {
 		'README.md',
 		'bin/checkmate.js',
 		'docs/BENCHMARK.md',
+		'docs/CLI.md',
+		'docs/CONFIGURATION.md',
+		'docs/DRIVERS.md',
+		'docs/EVIDENCE.md',
 		'docs/EXTENSIONS.md',
 		'docs/GUIDE.md',
 		'docs/ROADMAP.md',

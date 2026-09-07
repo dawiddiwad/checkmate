@@ -3,8 +3,9 @@
 This page is for working on the **Checkmate** repo itself, not for consumer of the
 `@xoxoai/checkmate` package. It covers two dev-only tools stamped into this repo to make that
 work faster and more fun :)
+
 - **Super Simple Software Factory** hands-off end-to-end agentic workflows
-- **HumanLayer** CRISPY, RPI, PRD and frelance workflows
+- **HumanLayer** CRISPY, RPI, PRD and freelance workflows
 
 Neither ships in the published package, and neither is required to invoke `checkmate run`
 or embed the TypeScript API.

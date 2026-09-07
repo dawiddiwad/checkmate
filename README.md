@@ -1,5 +1,7 @@
 ### _agentic test harness for running acceptance scenarios_
+
 #
+
 Policies define the bounds of execution, while scenarios describe the intent to verify through a domain driver.
 
 Think of it like QA contracts for software factories. It aims to patch the gap between fully coded tests and freelance agent testing.

@@ -1,6 +1,6 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.6.0",
+	"version": "0.5.0",
 	"description": "Agent-first test automation harness with versioned requests, bounded execution, and durable evidence",
 	"homepage": "https://github.com/dawiddiwad/checkmate",
 	"repository": {
@@ -79,28 +79,28 @@
 	"author": "Dawid Dobrowolski SoftQA",
 	"license": "MIT",
 	"dependencies": {
-		"@huggingface/transformers": "^4.0.1",
-		"ajv": "^8.17.1",
+		"@huggingface/transformers": "^4.2.0",
+		"ajv": "^8.20.0",
 		"ajv-formats": "^3.0.1",
-		"openai": "^6.34.0",
-		"playwright": "^1.59.1",
-		"sharp": "^0.35.2",
-		"yaml": "^2.8.3",
-		"zod": "^4.3.6"
+		"openai": "^7.10.0",
+		"playwright": "^1.63.0",
+		"sharp": "^0.35.4",
+		"yaml": "^2.9.0",
+		"zod": "^4.5.4"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@types/node": "^26.0.0",
-		"@vitest/coverage-v8": "^4.1.4",
-		"@vitest/ui": "^4.1.2",
-		"dotenv": "^17.4.1",
-		"eslint": "^10.2.0",
+		"@types/node": "^26.5.0",
+		"@vitest/coverage-v8": "^5.0.0",
+		"@vitest/ui": "^5.0.0",
+		"dotenv": "^17.4.2",
+		"eslint": "^10.10.0",
 		"eslint-config-prettier": "^10.1.8",
-		"prettier": "^3.8.3",
-		"tsx": "^4.21.0",
-		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.58.2",
-		"vitest": "^4.1.2"
+		"prettier": "^3.9.6",
+		"tsx": "^4.23.13",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.70.0",
+		"vitest": "^5.0.0"
 	},
 	"directories": {
 		"doc": "docs",

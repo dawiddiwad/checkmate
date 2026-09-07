@@ -78,7 +78,7 @@ try {
 	const installedPackage = JSON.parse(
 		await readFile(resolve(installation, 'node_modules/@xoxoai/checkmate/package.json'), 'utf8')
 	)
-	assert.equal(installedPackage.version, '0.6.0')
+	assert.equal(installedPackage.version, '0.5.0')
 	assert.deepEqual(Object.keys(installedPackage.exports).sort(), [
 		'.',
 		'./driver',

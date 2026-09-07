@@ -17,6 +17,7 @@ __pycache__/
 *.pyc
 .playwright-cli
 .pi-meetings
+app-docs
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/

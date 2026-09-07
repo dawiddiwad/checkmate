@@ -1,5 +1,5 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { ResolvedConfig } from '../config/resolved-config.js'
+import { RuntimeConfig } from '../runtime/config.js'
 import type { RuntimeLogger } from '../logging/types.js'
 import { scrub } from '../redaction/scrub.js'
 import { ToolCall, ToolExecution, ToolResponse } from '../tools/types.js'
@@ -7,7 +7,7 @@ import { MessageHistory } from './message-history.js'
 
 export class ToolResponseHandler {
 	constructor(
-		private readonly config: ResolvedConfig,
+		private readonly config: RuntimeConfig,
 		private readonly messageHistory: MessageHistory,
 		private readonly runtimeLogger: RuntimeLogger
 	) {}

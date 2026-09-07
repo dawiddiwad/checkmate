@@ -2,25 +2,17 @@ import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { TurnProcessor } from '../ai/turn-processor'
 import { testConfig } from './test-types'
-import { StepEvidence } from '../runtime/step-evidence'
-import { Step } from '../runtime/types'
+import { InternalStepEvidence } from '../runtime/internal-step-evidence'
+import type { StepIntent } from '../driver'
+import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer'
 import { LoopDetectedError, LoopDetector } from '../tools/loop-detector'
 import { ToolRegistry } from '../tools/registry'
-import { logger } from '../logging'
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
 interface TestableTurnProcessor {
 	toolDispatcher: { dispatch: Mock }
 	rateLimitPolicy: { wait: Mock }
 }
-
-vi.mock('../../src/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	},
-}))
 
 vi.mock('../../src/tools/dispatcher', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../tools/dispatcher')>()
@@ -61,13 +53,13 @@ function toolCallChoice(toolCalls: unknown[], index = 0): ChatCompletion['choice
 
 describe('TurnProcessor', () => {
 	let turnProcessor: TurnProcessor
-	let evidence: StepEvidence
-	let step: Step
+	let evidence: InternalStepEvidence
+	let step: StepIntent
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		step = { action: 'test action', expect: 'test expectation' }
-		evidence = new StepEvidence({ step, model: 'gpt-4o-mini' })
+		step = { id: 'step', action: 'test action', expect: 'test expectation' }
+		evidence = new InternalStepEvidence(step, 'fixture', true, new DiagnosticSanitizer([]))
 		turnProcessor = new TurnProcessor({
 			config: testConfig(),
 			toolRegistry: {} as ToolRegistry,
@@ -189,9 +181,12 @@ describe('TurnProcessor', () => {
 			turn: 3,
 		})
 
-		const report = evidence.buildReport({ outcome: 'failed', reason: 'failed-expectation', turns: 3 })
+		const report = evidence.buildReport(
+			{ outcome: 'failed', reason: 'failed-expectation', turns: 3 },
+			{ promptTokens: 0, cachedPromptTokens: 0, completionTokens: 0, totalTokens: 0 }
+		)
 		expect(report.toolCalls).toEqual([
-			{ turn: 3, name: 'browser_click', arguments: { ref: 'e1' }, status: 'error' },
+			{ turn: 3, driverId: 'fixture', name: 'browser_click', arguments: { ref: 'e1' }, status: 'error' },
 		])
 	})
 

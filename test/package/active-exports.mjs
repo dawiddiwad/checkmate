@@ -31,16 +31,14 @@ import Ajv2020 from 'ajv/dist/2020.js'
 import addFormats from 'ajv-formats'
 
 const core = await import('@xoxoai/checkmate')
-const coreSubpath = await import('@xoxoai/checkmate/core')
-const playwright = await import('@xoxoai/checkmate/playwright')
-const salesforce = await import('@xoxoai/checkmate/salesforce')
+for (const subpath of ['core', 'playwright', 'salesforce']) {
+  await assert.rejects(import('@xoxoai/checkmate/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' })
+}
 const driver = await import('@xoxoai/checkmate/driver')
 const driverWeb = await import('@xoxoai/checkmate/driver-web')
 
-assert.equal(typeof core.createRunner, 'function')
-assert.equal(core.createRunner, coreSubpath.createRunner)
-assert.equal(typeof playwright.createAi, 'function')
-assert.equal(typeof salesforce.createSalesforceRunner, 'function')
+assert.deepEqual(Object.keys(core).sort(), ['CheckmateOperationalError', 'describe', 'run', 'validate'])
+for (const operation of ['run', 'validate', 'describe']) assert.equal(typeof core[operation], 'function')
 assert.equal(typeof driver.defineDriverTool, 'function')
 assert.equal(driverWeb.checkmateDriver.id, 'web')
 assert.equal(driverWeb.checkmateDriver.driverContractVersion, 1)
@@ -77,6 +75,17 @@ try {
 		stdio: 'pipe',
 		env: { ...process.env, npm_config_cache: resolve(installation, '.npm-cache') },
 	})
+	const installedPackage = JSON.parse(
+		await readFile(resolve(installation, 'node_modules/@xoxoai/checkmate/package.json'), 'utf8')
+	)
+	assert.equal(installedPackage.version, '0.6.0')
+	assert.deepEqual(Object.keys(installedPackage.exports).sort(), [
+		'.',
+		'./driver',
+		'./driver-web',
+		'./driver-web/checkmate-driver.json',
+		'./schemas/*',
+	])
 	await writeFile(
 		resolve(installation, 'block-playwright-loader.mjs'),
 		`export async function resolve(specifier, context, nextResolve) {\n` +
@@ -88,7 +97,7 @@ try {
 		resolve(installation, 'browser-free-probe.mjs'),
 		`const root = await import('@xoxoai/checkmate')\n` +
 			`const driver = await import('@xoxoai/checkmate/driver')\n` +
-			`if (typeof root.createRunner !== 'function' || typeof driver.defineDriverTool !== 'function') process.exitCode = 1\n`
+			`if (typeof root.run !== 'function' || typeof driver.defineDriverTool !== 'function') process.exitCode = 1\n`
 	)
 	execFileSync(
 		process.execPath,

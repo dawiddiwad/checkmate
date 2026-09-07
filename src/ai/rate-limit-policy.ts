@@ -1,9 +1,9 @@
-import { ResolvedConfig } from '../config/resolved-config.js'
+import { RuntimeConfig } from '../runtime/config.js'
 import type { RuntimeLogger } from '../logging/types.js'
 
 export class RateLimitPolicy {
 	constructor(
-		private readonly config: ResolvedConfig,
+		private readonly config: RuntimeConfig,
 		private readonly runtimeLogger: RuntimeLogger
 	) {}
 

@@ -4,8 +4,6 @@ import type { DescribeResultV1, Diagnostic, ValidationResultV1 } from '../contra
 import { serializeJson } from '../contracts/serialize.js'
 import { normalizeSingleLine } from '../config/ingestion.js'
 import { scrub } from '../redaction/scrub.js'
-import { createExamples } from './create-examples.js'
-import { type InitResult, runInit } from './init.js'
 import {
 	describeStaticEnvironment,
 	describeError,
@@ -53,25 +51,8 @@ export async function runCli(argv: string[], dependencies: CliDependencies = def
 	if (command === 'validate') return runValidate(rest, dependencies)
 	if (command === 'run') return runScenario(rest, dependencies)
 
-	if (command !== 'init' && command !== 'create-examples') {
-		dependencies.stderr.write(`Unknown command '${command}'.\n\n${buildUsage()}\n`)
-		return 1
-	}
-
-	try {
-		if (command === 'init') {
-			const result = await runInit({ cwd: dependencies.getCwd(), target: parseTarget(rest) })
-			dependencies.stdout.write(`${formatInitResult(result)}\n`)
-			return 0
-		}
-
-		const result = await createExamples({ cwd: dependencies.getCwd() })
-		dependencies.stdout.write(`${formatCreateExamplesResult(result)}\n`)
-		return 0
-	} catch (error) {
-		dependencies.stderr.write(`${formatError(error)}\n`)
-		return 1
-	}
+	dependencies.stderr.write(`Unknown command '${stderrField(scrub(command))}'.\n\n${buildUsage()}\n`)
+	return 1
 }
 
 async function runScenario(args: string[], dependencies: CliDependencies): Promise<number> {
@@ -197,14 +178,6 @@ function argumentError(message: string): { ok: false; diagnostic: Diagnostic } {
 	return { ok: false, diagnostic: { code: 'invocation.invalid-arguments', path: '', message } }
 }
 
-function parseTarget(args: string[]): string | undefined {
-	const flagIndex = args.indexOf('--target')
-	if (flagIndex === -1) return undefined
-	const value = args[flagIndex + 1]
-	if (!value) throw new Error('--target requires a path, e.g. --target .cursor/rules/checkmate.md')
-	return value
-}
-
 function buildUsage(): string {
 	return [
 		'Usage: checkmate <command>',
@@ -213,64 +186,11 @@ function buildUsage(): string {
 		'  describe          Describe contracts, policies, and registered drivers as JSON',
 		'  validate <file|-> Validate a file or stdin request without starting a driver',
 		'  run <file|->      Execute a file or stdin scenario in an isolated worker',
-		'  init              Write the mergeTests fixtures file and the agent instruction file',
-		'  create-examples   Scaffold Playwright config, example tests, and package scripts',
 		'',
 		'Options:',
 		'  --config <path>   Use an explicit manifest path for describe, validate, or run',
 		'  --version         Print the installed Checkmate version',
-		'  --target <path>   Where init writes the agent instruction section (default: AGENTS.md)',
 	].join('\n')
-}
-
-function formatInitResult(result: InitResult): string {
-	const fixturesLabel = result.fixturesFile.action === 'created' ? 'wrote  ' : 'skipped'
-	const lines = [
-		`✓ ${fixturesLabel}  ${result.fixturesFile.path}`,
-		`✓ updated  ${result.instructions.target}  (${instructionsLabel(result.instructions.action)})`,
-	]
-	if (result.instructions.detected.length > 0) {
-		lines.push(
-			`           also detected: ${result.instructions.detected.join(', ')} — pass --target to install there instead`
-		)
-	}
-	lines.push(
-		'',
-		'Add to playwright.config.ts:',
-		'',
-		`  ${result.configBlock}`,
-		'',
-		`Then import \`test\` from ./${result.fixturesFile.path.replace(/\.ts$/, '')} in your specs.`
-	)
-	return lines.join('\n')
-}
-
-function instructionsLabel(action: 'created' | 'replaced' | 'appended'): string {
-	if (action === 'created') return 'Checkmate section created'
-	if (action === 'replaced') return 'Checkmate section replaced'
-	return 'Checkmate section added'
-}
-
-function formatCreateExamplesResult(result: Awaited<ReturnType<typeof createExamples>>): string {
-	const lines = ['Scaffolded Checkmate examples.']
-	pushSection(lines, 'Created files', result.createdFiles)
-	pushSection(lines, 'Skipped existing files', result.skippedFiles)
-	pushSection(lines, 'Added scripts', result.addedScripts)
-	pushSection(lines, 'Skipped existing scripts', result.skippedScripts)
-	pushSection(lines, 'Added devDependencies', result.addedDevDependencies)
-	pushSection(lines, 'Skipped existing dependencies', result.skippedDevDependencies)
-	lines.push('', 'Next steps:', '1. npm install', '2. npx playwright install', '3. npm run test:web:example')
-	return lines.join('\n')
-}
-
-function pushSection(lines: string[], title: string, entries: string[]): void {
-	if (entries.length === 0) return
-	lines.push('', `${title}:`)
-	for (const entry of entries) lines.push(`- ${entry}`)
-}
-
-function formatError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error)
 }
 
 function stderrField(value: string): string {

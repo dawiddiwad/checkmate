@@ -1,22 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessageHistory } from '../ai/message-history'
 import { ToolResponseHandler } from '../ai/tool-response-handler'
-import { LogLevel } from '../logging/logger'
-import { logger } from '../logging'
+import type { RuntimeConfig } from '../runtime/config'
+type LogLevel = RuntimeConfig['logLevel']
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 import { ToolExecution, ToolResponse } from '../tools/types'
 import { testConfig } from './test-types'
 
-vi.mock('../../src/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	},
-}))
-
 function createHandler(logLevel: LogLevel = 'off'): ToolResponseHandler {
-	return new ToolResponseHandler(testConfig({ checkmateLogLevel: logLevel }), new MessageHistory(), logger)
+	return new ToolResponseHandler(testConfig({ logLevel: logLevel }), new MessageHistory(), logger)
 }
 
 function execution(toolCallId: string, name: string, args: unknown, toolResponse: ToolResponse): ToolExecution {

@@ -1,16 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatCompletion } from 'openai/resources/chat/completions'
 import { MessageHandler } from '../ai/message-handler'
-import { logger } from '../logging'
-
-vi.mock('../../src/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	},
-}))
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
 describe('MessageHandler diagnostics', () => {
 	const step = { action: 'click submit', expect: 'form submitted' }

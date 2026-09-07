@@ -5,7 +5,7 @@ import {
 	ChatCompletionCreateParamsNonStreaming,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
-import { readApiKey, ResolvedConfig } from '../config/resolved-config.js'
+import { RuntimeConfig } from '../runtime/config.js'
 import { prepareModelRequest } from '../config/model-egress.js'
 import type { ModelEgressPolicyV1 } from '../contracts/types.js'
 import type { RuntimeLogger } from '../logging/types.js'
@@ -13,9 +13,9 @@ import { ToolRegistry } from '../tools/registry.js'
 import { Step } from '../runtime/types.js'
 
 export type AiClientDependencies = {
-	config: ResolvedConfig
+	config: RuntimeConfig
 	toolRegistry: ToolRegistry
-	apiKey?: string
+	apiKey: string
 	modelEgress?: ModelEgressPolicyV1
 	exactSecrets?: Iterable<string>
 	logger: RuntimeLogger
@@ -33,7 +33,7 @@ export type AiResponse = {
 
 export class AiClient {
 	private client: OpenAI | null = null
-	private readonly config: ResolvedConfig
+	private readonly config: RuntimeConfig
 	private readonly toolRegistry: ToolRegistry
 	private readonly apiKey: string | undefined
 	private readonly modelEgress: ModelEgressPolicyV1 | undefined
@@ -115,7 +115,7 @@ export class AiClient {
 	 *
 	 * Some models — OpenAI's `gpt-5` family and its reasoning models among them — accept only
 	 * their own default temperature and answer any other value with a 400. Detecting that from
-	 * the response is what keeps `checkmateTemperature` working against any OpenAI-compatible
+	 * the response is what keeps the policy temperature working against any OpenAI-compatible
 	 * endpoint; a hard-coded list of model families would go stale the week after it was written.
 	 */
 	private rejectsTemperature(error: unknown): boolean {
@@ -133,7 +133,7 @@ export class AiClient {
 	private openai(): OpenAI {
 		if (!this.client) {
 			this.client = new OpenAI({
-				apiKey: this.apiKey ?? readApiKey(),
+				apiKey: this.apiKey,
 				baseURL: this.config.baseUrl,
 				timeout: this.config.requestTimeout,
 				maxRetries: 0,

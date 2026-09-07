@@ -5,7 +5,7 @@ import type {
 } from 'openai/resources/chat/completions'
 import { AiClient } from '../../ai/client'
 import { ModelEgressError, prepareModelRequest } from '../../config/model-egress'
-import { resolveConfig } from '../../config/resolved-config'
+import { testConfig } from '../test-types'
 import type { ModelEgressPolicyV1 } from '../../contracts/types'
 import { ToolRegistry } from '../../tools/registry'
 import { silentLogger } from '../../logging/types'
@@ -39,7 +39,7 @@ describe('provider egress', () => {
 		})
 		const registry = new ToolRegistry({ allowedTools: '*' })
 		const client = new AiClient({
-			config: resolveConfig({ checkmateModel: 'fixture', checkmateMaxRetries: 0 }),
+			config: testConfig({ model: 'fixture', maxRetries: 0 }),
 			toolRegistry: registry,
 			apiKey: 'exact-secret',
 			modelEgress: policy,
@@ -113,7 +113,7 @@ describe('provider egress', () => {
 			execute: () => 'ok',
 		})
 		const client = new AiClient({
-			config: resolveConfig({ checkmateModel: 'fixture', checkmateMaxRetries: 0 }),
+			config: testConfig({ model: 'fixture', maxRetries: 0 }),
 			toolRegistry: registry,
 			apiKey: 'fixture-key',
 			modelEgress: { ...policy, maxMessageBytes: 1_024, maxStepBytes: 300 },

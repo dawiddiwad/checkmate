@@ -31,8 +31,5 @@ jobs:
       - name: Install Chromium
         run: npx playwright install chromium
 
-      - name: Verify packed candidate
-        run: npm run phase:verify
-
-      - name: Run live Ollama CLI acceptance
-        run: npm run test:e2e:ollama
+      - name: Verify packed candidate including live Ollama acceptance
+        run: npm run phase:verify -- --live

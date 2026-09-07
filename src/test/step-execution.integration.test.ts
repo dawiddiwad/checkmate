@@ -1,99 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { Page } from '@playwright/test'
-import { CheckmateRunner } from '../core'
-import { Step } from '../runtime/types'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { StepIntent } from '../driver'
+import type { CheckmateRunner } from '../runtime/runner'
+import { ScenarioControl } from '../runtime/scenario-control'
+import { runnerFixture, emptySession } from './runtime/runner-fixture'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { createPlaywrightRunner } from '../playwright'
-import { testConfig } from './test-types'
-
 const createMock = vi.fn()
 const browserCallMock = vi.fn()
-
-vi.mock('openai', () => {
-	return {
-		default: class MockOpenAI {
-			chat = { completions: { create: createMock } }
-			constructor() {}
-		},
-	}
-})
-
-vi.mock('../logging', () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	},
-	setLogLevel: vi.fn(),
-}))
-
-vi.mock('../tools/salesforce/login-tool', () => ({
-	createSalesforceTools: vi.fn(() => []),
-}))
-
-vi.mock('../tools/browser/tool', () => ({
-	BrowserTool: {
-		TOOL_NAVIGATE: 'browser_navigate',
-		TOOL_TYPE_OR_SELECT: 'browser_type',
-	},
-	BrowserToolRuntime: class {
-		constructor(private readonly page: Page) {}
-		getActivePage() {
-			return this.page
-		}
-		ensureActivePage() {
-			return this.page
-		}
-		getBrowserContext() {
-			return this.page.context?.() ?? {}
-		}
-	},
-	createBrowserTools: vi.fn(() => [
-		{
-			definition: {
-				name: 'browser_navigate',
-				description: 'Navigate to a url',
-				parameters: {
-					type: 'object',
-					properties: {
-						url: { type: 'string' },
-						goal: { type: 'string' },
-					},
-					required: ['url'],
-					additionalProperties: false,
-				},
-				strict: true,
-			},
-			execute: vi.fn((args) => browserCallMock({ name: 'browser_navigate', arguments: args })),
-		},
-		{
-			definition: {
-				name: 'browser_type',
-				description: 'Type text into a field',
-				parameters: {
-					type: 'object',
-					properties: {
-						ref: { type: 'string' },
-						text: { type: 'string' },
-						goal: { type: 'string' },
-					},
-					required: ['ref', 'text'],
-					additionalProperties: false,
-				},
-				strict: true,
-			},
-			execute: vi.fn((args) => browserCallMock({ name: 'browser_type', arguments: args })),
-		},
-	]),
-}))
-
-vi.mock('../tools/browser/snapshot-service', () => ({
-	SnapshotService: class {
-		get = vi.fn().mockResolvedValue('mocked snapshot')
+vi.mock('openai', () => ({
+	default: class {
+		chat = { completions: { create: createMock } }
 	},
 }))
-
 function toolCallResponse(id: string, name: string, args: Record<string, unknown>) {
 	return {
 		choices: [
@@ -107,29 +24,36 @@ function toolCallResponse(id: string, name: string, args: Record<string, unknown
 				},
 			},
 		],
-		usage: { prompt_tokens: 10, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 4 } },
+		usage: {
+			prompt_tokens: 10,
+			completion_tokens: 5,
+			total_tokens: 15,
+			prompt_tokens_details: { cached_tokens: 4 },
+		},
 	}
 }
 
 describe('Simple step execution integration', () => {
 	let runner: CheckmateRunner
-	let page: Page
+	let scenario: ScenarioControl
+	afterEach(() => scenario.dispose())
 
 	beforeEach(() => {
 		vi.clearAllMocks()
 		browserCallMock.mockReturnValue('nav-ok')
-		page = {} as Page
-		runner = createPlaywrightRunner(
-			page,
-			testConfig({
-				checkmateModel: 'gpt-4o-mini',
-				checkmateMaxRetries: 0,
-				checkmateToolChoice: 'auto',
-				checkmateRequestTimeout: 5_000,
-				checkmateLoopMaxRepetitions: 3,
-				checkmateSnapshotFilter: true,
-			})
-		)
+		scenario = new ScenarioControl({ timeoutMs: 30_000 })
+		const session = emptySession()
+		session.tools = ['browser_navigate', 'browser_type'].map((name) => ({
+			definition: { name, description: name, parameters: { type: 'object' }, strict: false },
+			execute: async (args) => browserCallMock({ name, arguments: args }),
+		}))
+		session.buildInitialContext = async () => [
+			{ content: 'this is a current page snapshot:\nmocked snapshot', ephemeral: true },
+		]
+		session.handleToolResponses = async () => [
+			{ content: 'this is a current page snapshot:\nupdated snapshot', ephemeral: true },
+		]
+		runner = runnerFixture(session)
 	})
 
 	it('runs a step and resolves a passing report', async () => {
@@ -139,19 +63,16 @@ describe('Simple step execution integration', () => {
 			)
 			.mockResolvedValueOnce(toolCallResponse('tool-2', 'pass_test_step', { actualResult: 'page opened' }))
 
-		const step: Step = {
-			name: 'open the homepage',
+		const step: StepIntent = {
+			id: 'open the homepage',
 			action: 'Navigate to example.com',
 			expect: 'Example homepage is shown',
 		}
 
-		const report = await runner.run(step)
+		const report = await runner.run(step, scenario.createStepControl(5000))
 
 		expect(report).toMatchObject({
-			schemaVersion: 1,
-			name: 'open the homepage',
-			action: 'Navigate to example.com',
-			expect: 'Example homepage is shown',
+			step: { id: 'open the homepage', action: 'Navigate to example.com', expect: 'Example homepage is shown' },
 			outcome: 'passed',
 			category: 'app',
 			reason: 'met-expectation',
@@ -161,11 +82,18 @@ describe('Simple step execution integration', () => {
 		expect(report.toolCalls).toEqual([
 			{
 				turn: 1,
+				driverId: 'fixture',
 				name: 'browser_navigate',
 				arguments: { url: 'https://example.com', goal: 'open home' },
 				status: 'ok',
 			},
-			{ turn: 2, name: 'pass_test_step', arguments: { actualResult: 'page opened' }, status: 'ok' },
+			{
+				turn: 2,
+				driverId: 'harness',
+				name: 'pass_test_step',
+				arguments: { actualResult: 'page opened' },
+				status: 'ok',
+			},
 		])
 		expect(report.usage).toMatchObject({ promptTokens: 20, cachedPromptTokens: 8, completionTokens: 10 })
 		expect(createMock).toHaveBeenCalledTimes(2)
@@ -180,7 +108,10 @@ describe('Simple step execution integration', () => {
 			toolCallResponse('tool-1', 'fail_test_step', { actualResult: 'the homepage never loaded' })
 		)
 
-		const report = await runner.run({ action: 'Navigate to example.com', expect: 'Example homepage is shown' })
+		const report = await runner.run(
+			{ id: 'step', action: 'Navigate to example.com', expect: 'Example homepage is shown' },
+			scenario.createStepControl(5000)
+		)
 
 		expect(report).toMatchObject({
 			outcome: 'failed',
@@ -201,7 +132,10 @@ describe('Simple step execution integration', () => {
 			)
 			.mockResolvedValueOnce(toolCallResponse('pass-1', 'pass_test_step', { actualResult: 'completed' }))
 
-		const report = await runner.run({ action: 'Navigate then type hello', expect: 'Input is filled' })
+		const report = await runner.run(
+			{ id: 'step', action: 'Navigate then type hello', expect: 'Input is filled' },
+			scenario.createStepControl(5000)
+		)
 
 		expect(report.outcome).toBe('passed')
 		expect(report.turns).toBe(3)
@@ -239,8 +173,14 @@ describe('Simple step execution integration', () => {
 				toolCallResponse('pass-step2', 'pass_test_step', { actualResult: 'login form filled' })
 			)
 
-		const first = await runner.run({ action: 'Open home page', expect: 'Home is visible' })
-		const second = await runner.run({ action: 'Open login and enter email', expect: 'Email filled' })
+		const first = await runner.run(
+			{ id: 'step', action: 'Open home page', expect: 'Home is visible' },
+			scenario.createStepControl(5000)
+		)
+		const second = await runner.run(
+			{ id: 'step', action: 'Open login and enter email', expect: 'Email filled' },
+			scenario.createStepControl(5000)
+		)
 
 		expect(first.outcome).toBe('passed')
 		expect(second.outcome).toBe('passed')
@@ -258,7 +198,10 @@ describe('Simple step execution integration', () => {
 			)
 			.mockResolvedValueOnce(toolCallResponse('pass-1', 'pass_test_step', { actualResult: 'done' }))
 
-		await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+		await runner.run(
+			{ id: 'step', action: 'Open home page', expect: 'Home is visible' },
+			scenario.createStepControl(5000)
+		)
 
 		const secondRequest = createMock.mock.calls[1][0] as { messages: ChatCompletionMessageParam[] }
 		const snapshots = secondRequest.messages.filter((message) =>
@@ -278,11 +221,14 @@ describe('Simple step execution integration', () => {
 						message: { role: 'assistant', content: 'Here is your summary' },
 					},
 				],
-				usage: { prompt_tokens: 8, completion_tokens: 3 },
+				usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
 			})
 			.mockResolvedValueOnce(toolCallResponse('pass-1', 'pass_test_step', { actualResult: 'status ok' }))
 
-		const report = await runner.run({ action: 'Report current status', expect: 'Status is reported' })
+		const report = await runner.run(
+			{ id: 'step', action: 'Report current status', expect: 'Status is reported' },
+			scenario.createStepControl(5000)
+		)
 
 		expect(report).toMatchObject({ outcome: 'passed', actual: 'status ok', turns: 2 })
 		expect(createMock).toHaveBeenCalledTimes(2)
@@ -303,7 +249,10 @@ describe('Simple step execution integration', () => {
 	it('converts a provider failure into an infra report so the evidence survives', async () => {
 		createMock.mockRejectedValue(Object.assign(new Error('provider exploded'), { status: 401 }))
 
-		const report = await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+		const report = await runner.run(
+			{ id: 'step', action: 'Open home page', expect: 'Home is visible' },
+			scenario.createStepControl(5000)
+		)
 
 		expect(report).toMatchObject({ outcome: 'failed', category: 'infra', reason: 'provider-error', turns: 1 })
 		expect(report.actual).toContain('provider exploded')
@@ -312,7 +261,10 @@ describe('Simple step execution integration', () => {
 	it('converts an unknown tool call into an infra tool-error report', async () => {
 		createMock.mockResolvedValueOnce(toolCallResponse('call-1', 'not_a_tool', {}))
 
-		const report = await runner.run({ action: 'Open home page', expect: 'Home is visible' })
+		const report = await runner.run(
+			{ id: 'step', action: 'Open home page', expect: 'Home is visible' },
+			scenario.createStepControl(5000)
+		)
 
 		expect(report).toMatchObject({ outcome: 'failed', category: 'infra', reason: 'tool-error' })
 		expect(report.actual).toContain('not_a_tool')

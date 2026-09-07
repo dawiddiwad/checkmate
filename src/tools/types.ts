@@ -125,9 +125,6 @@ export type AgentToolContext = {
 
 	/**
 	 * Model turn the tool is being dispatched on, starting at `1`, when known.
-	 *
-	 * The browser runtime uses this to label each dispatched call's `test.step` so the tree
-	 * and the report's `toolCalls` array agree on what turn it was.
 	 */
 	turn?: number
 
@@ -137,9 +134,9 @@ export type AgentToolContext = {
 }
 
 /**
- * Tool contract used by the runner loop.
+ * Internal tool contract used by the runner loop, including assertion-bearing tools.
  *
- * Most users should create tools with `defineTool()` instead of building this object manually.
+ * Driver authors use DriverTool and defineDriverTool from '@xoxoai/checkmate/driver'.
  *
  * @example
  * ```ts
@@ -207,7 +204,7 @@ export type ToolResponse = {
 /**
  * One tool execution observed during the runner loop.
  *
- * Extensions receive these objects in post-tool hooks.
+ * Driver hooks receive the public DriverToolExecution shape instead.
  *
  * @example
  * ```ts

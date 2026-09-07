@@ -1,4 +1,4 @@
-import { runCli, type CliDependencies } from '../../cli.js'
+import { runCli, type CliDependencies } from '../../cli/main.js'
 
 const FAILING_INPUT: AsyncIterable<Uint8Array> = {
 	[Symbol.asyncIterator]() {

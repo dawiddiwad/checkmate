@@ -1,6 +1,6 @@
 import { ChatCompletion } from 'openai/resources/chat/completions'
-import { ResolvedConfig } from '../config/resolved-config.js'
-import { StepEvidence } from '../runtime/step-evidence.js'
+import { RuntimeConfig } from '../runtime/config.js'
+import { InternalStepEvidence } from '../runtime/internal-step-evidence.js'
 import type { StepControl } from '../runtime/scenario-control.js'
 import { Step, TurnOutcome } from '../runtime/types.js'
 import type { RuntimeLogger } from '../logging/types.js'
@@ -14,10 +14,10 @@ import { RateLimitPolicy } from './rate-limit-policy.js'
 import { ToolResponseHandler } from './tool-response-handler.js'
 
 export type TurnProcessorDependencies = {
-	config: ResolvedConfig
+	config: RuntimeConfig
 	toolRegistry: ToolRegistry
 	loopDetector: LoopDetector
-	evidence: Pick<StepEvidence, 'recordAssistantMessage' | 'recordToolCall'>
+	evidence: Pick<InternalStepEvidence, 'recordAssistantMessage' | 'recordToolCall'>
 	logger: RuntimeLogger
 }
 
@@ -33,10 +33,10 @@ export class TurnProcessor {
 	private readonly toolResponseHandler: ToolResponseHandler
 	private readonly messageHandler: MessageHandler
 	private readonly rateLimitPolicy: RateLimitPolicy
-	private readonly evidence: Pick<StepEvidence, 'recordAssistantMessage' | 'recordToolCall'>
+	private readonly evidence: Pick<InternalStepEvidence, 'recordAssistantMessage' | 'recordToolCall'>
 
 	constructor({ config, toolRegistry, loopDetector, evidence, logger: runtimeLogger }: TurnProcessorDependencies) {
-		this.toolDispatcher = new ToolDispatcher(toolRegistry, loopDetector, runtimeLogger)
+		this.toolDispatcher = new ToolDispatcher(toolRegistry, loopDetector, runtimeLogger, config.logLevel === 'debug')
 		this.toolResponseHandler = new ToolResponseHandler(config, new MessageHistory(), runtimeLogger)
 		this.messageHandler = new MessageHandler(runtimeLogger)
 		this.rateLimitPolicy = new RateLimitPolicy(config, runtimeLogger)

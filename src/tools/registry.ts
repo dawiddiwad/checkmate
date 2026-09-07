@@ -1,5 +1,4 @@
 import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
-import { ResolvedConfig } from '../config/resolved-config.js'
 import { StepResultTool } from './step/result-tool.js'
 import { AgentTool, getToolName } from './types.js'
 
@@ -8,18 +7,10 @@ export type { ToolResponse } from './types.js'
 export class ToolRegistry {
 	private readonly tools: AgentTool[] = []
 	private readonly toolsByName = new Map<string, AgentTool>()
-	private readonly config: ResolvedConfig | undefined
 	private readonly allowedNames: '*' | readonly string[]
 
-	constructor(config: ResolvedConfig)
-	constructor(options: { allowedTools: '*' | readonly string[] })
-	constructor(input: ResolvedConfig | { allowedTools: '*' | readonly string[] }) {
-		if ('model' in input) {
-			this.config = input
-			this.allowedNames = input.allowedTools.length === 0 ? '*' : [...input.allowedTools]
-		} else {
-			this.allowedNames = input.allowedTools === '*' ? '*' : [...input.allowedTools]
-		}
+	constructor(input: { allowedTools: '*' | readonly string[] }) {
+		this.allowedNames = input.allowedTools === '*' ? '*' : [...input.allowedTools]
 	}
 
 	register(tool: AgentTool | AgentTool[]): void {
@@ -34,11 +25,6 @@ export class ToolRegistry {
 			this.tools.push(registeredTool)
 			this.toolsByName.set(toolName, registeredTool)
 		}
-	}
-
-	getConfig(): ResolvedConfig {
-		if (!this.config) throw new Error('Legacy resolved config is not available on this tool registry')
-		return this.config
 	}
 
 	resolve(toolName: string): AgentTool | undefined {

@@ -1,18 +1,9 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { AiClient } from '../ai/client'
-import { logger } from '../logging'
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 import { ToolRegistry } from '../tools/registry'
 import { MockToolRegistry, MutableConfig, AiClientTestable, createHttpError, HttpError, testConfig } from './test-types'
-
-vi.mock('../../src/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	},
-}))
 
 vi.mock('openai', () => {
 	const createMock = vi.fn()
@@ -38,9 +29,9 @@ describe('AiClient - Retry Logic', () => {
 
 	beforeEach(() => {
 		mockConfig = testConfig({
-			checkmateModel: 'gpt-4o-mini',
-			checkmateMaxRetries: 3,
-			checkmateReasoningEffort: 'low',
+			model: 'gpt-4o-mini',
+			maxRetries: 3,
+			reasoningEffort: 'low',
 		})
 
 		mockToolRegistry = {
@@ -48,6 +39,7 @@ describe('AiClient - Retry Logic', () => {
 		} as MockToolRegistry
 
 		openAIClient = new AiClient({
+			apiKey: 'test-api-key',
 			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
 			logger,
@@ -269,9 +261,9 @@ describe('AiClient - send', () => {
 		createMock = openaiModule.getCreateMock()
 
 		mockConfig = testConfig({
-			checkmateModel: 'gpt-4o-mini',
-			checkmateMaxRetries: 0,
-			checkmateToolChoice: 'auto',
+			model: 'gpt-4o-mini',
+			maxRetries: 0,
+			toolChoice: 'auto',
 		})
 
 		mockToolRegistry = {
@@ -279,6 +271,7 @@ describe('AiClient - send', () => {
 		} as MockToolRegistry
 
 		openAIClient = new AiClient({
+			apiKey: 'test-api-key',
 			config: mockConfig,
 			toolRegistry: mockToolRegistry as unknown as ToolRegistry,
 			logger,
@@ -449,7 +442,8 @@ describe('AiClient - temperature pinning', () => {
 		createMock = openaiModule.getCreateMock()
 
 		openAIClient = new AiClient({
-			config: testConfig({ checkmateModel: 'gpt-5-mini', checkmateMaxRetries: 0 }),
+			apiKey: 'test-api-key',
+			config: testConfig({ model: 'gpt-5-mini', maxRetries: 0 }),
 			toolRegistry: { getTools: vi.fn().mockResolvedValue([]) } as unknown as ToolRegistry,
 			logger,
 		})

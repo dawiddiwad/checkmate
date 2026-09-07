@@ -10,20 +10,8 @@ type ToolConfig<TSchema extends z.ZodType> = {
 }
 
 /**
- * Creates a typed Checkmate tool from a Zod schema and handler.
- *
- * @example
- * ```ts
- * import { defineAgentTool } from '@xoxoai/checkmate/core'
- * import { z } from 'zod/v4'
- *
- * const apiHealthTool = defineAgentTool({
- *   name: 'check_api_health',
- *   description: 'Check whether the API is healthy',
- *   schema: z.object({ url: z.string() }).strict(),
- *   handler: async ({ url }) => `API health is good for ${url}`,
- * })
- * ```
+ * Creates an internal runner tool, which may return a step assertion.
+ * Driver authors use defineDriverTool from '@xoxoai/checkmate/driver' instead.
  */
 export function defineAgentTool<TSchema extends z.ZodType>(toolConfig: ToolConfig<TSchema>): AgentTool {
 	const jsonSchema = z.toJSONSchema(toolConfig.schema) as Record<string, unknown>
@@ -50,19 +38,6 @@ export function defineAgentTool<TSchema extends z.ZodType>(toolConfig: ToolConfi
 }
 
 /**
- * Preferred alias for `defineAgentTool()`.
- *
- * @example
- * ```ts
- * import { defineTool } from '@xoxoai/checkmate/core'
- * import { z } from 'zod/v4'
- *
- * const tool = defineTool({
- *   name: 'check_api_health',
- *   description: 'Check whether the API is healthy',
- *   schema: z.object({ url: z.string() }).strict(),
- *   handler: async ({ url }) => `API health is good for ${url}`,
- * })
- * ```
+ * Internal shorthand for defineAgentTool; not part of the public driver API.
  */
 export const defineTool = defineAgentTool

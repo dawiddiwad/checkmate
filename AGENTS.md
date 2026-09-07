@@ -24,9 +24,14 @@ This codebase is for humans first, and must be:
 
 ## Read First
 
-- `.agents/coding-standards.md`
-- `.agents/architecture.md`
-- `.agents/skills.md`
+- `.agents/wiki/coding-standards.md`
+- `.agents/wiki/architecture.md`
+- `.agents/wiki/development-procedures.md`
+
+## Task-Specific Skills
+
+- `.agents/skills/update-documentation/SKILL.md` for public API, configuration, behavior, and workflow documentation.
+- `.agents/skills/update-model-policy/SKILL.md` for policy-owned model selection, provider requests, egress controls, and token accounting.
 
 ## Non-Negotiables
 
@@ -35,4 +40,4 @@ This codebase is for humans first, and must be:
 - Do not add abstractions unless they remove real complexity.
 - If behavior changes, update tests.
 - If public API, config, or workflow changes, update documentation.
-- If model pricing or model defaults change, update pricing references.
+- Keep model selection and egress policy-owned. Checkmate reports raw token usage, not model pricing or USD budgets.

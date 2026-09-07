@@ -8,7 +8,8 @@ export class ToolDispatcher {
 	constructor(
 		private readonly toolRegistry: ToolRegistry,
 		private readonly loopDetector: LoopDetector,
-		private readonly runtimeLogger: RuntimeLogger
+		private readonly runtimeLogger: RuntimeLogger,
+		private readonly debug = false
 	) {}
 
 	getToolRegistry(): ToolRegistry {
@@ -48,7 +49,7 @@ export class ToolDispatcher {
 		}
 
 		const response = this.normalizeToolResponse(toolCall.name, result)
-		if (response === null && this.isDebugMode()) {
+		if (response === null && this.debug) {
 			this.runtimeLogger.debug(
 				[
 					'tool completed without model response:',
@@ -63,14 +64,6 @@ export class ToolDispatcher {
 	private formatAllowedToolNames(): string {
 		const allowedNames = this.toolRegistry.getAllowedToolNames()
 		return allowedNames === '*' ? '(all registered tools allowed)' : allowedNames.join(', ') || '(none)'
-	}
-
-	private isDebugMode(): boolean {
-		try {
-			return this.toolRegistry.getConfig().logLevel === 'debug'
-		} catch {
-			return false
-		}
 	}
 
 	private normalizeToolResponse(toolName: string, result: AgentToolResult): ToolResponse | null {

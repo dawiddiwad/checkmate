@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { LoopDetector, LoopDetectedError } from '../tools/loop-detector'
-import { resolveConfig } from '../config/resolved-config'
+import { testConfig } from './test-types'
 import { ToolCall } from '../tools/tool-contract'
 
 /**
- * Integration tests for LoopDetector and the resolved `checkmateLoopMaxRepetitions` option.
+ * Integration tests for LoopDetector and the resolved `loopMaxRepetitions` option.
  */
 describe('Loop Detection Integration Tests', () => {
 	let loopDetector: LoopDetector
 
 	function detectorFor(maxRepetitions: number): LoopDetector {
-		return new LoopDetector(resolveConfig({ checkmateLoopMaxRepetitions: maxRepetitions }).loopMaxRepetitions)
+		return new LoopDetector(testConfig({ loopMaxRepetitions: maxRepetitions }).loopMaxRepetitions)
 	}
 
 	it('uses the resolved max repetitions option', () => {

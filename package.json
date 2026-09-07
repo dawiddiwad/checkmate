@@ -1,7 +1,7 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.5.0",
-	"description": "AI‑driven e2e test automation framework built on Playwright Test and OpenAI API",
+	"version": "0.6.0",
+	"description": "Agent-first test automation harness with versioned requests, bounded execution, and durable evidence",
 	"homepage": "https://github.com/dawiddiwad/checkmate",
 	"repository": {
 		"type": "git",
@@ -10,31 +10,22 @@
 	"keywords": [
 		"test-automation",
 		"e2e-testing",
-		"playwright",
-		"openai",
 		"ai-testing",
-		"low-code",
-		"salesforce",
-		"gemini",
-		"claude",
-		"groq"
+		"agents",
+		"test-harness",
+		"cli",
+		"playwright"
 	],
 	"files": [
 		"bin",
 		"dist",
 		"schemas",
-		"docs/BENCHMARK.md",
 		"docs/CLI.md",
 		"docs/CONFIGURATION.md",
 		"docs/DRIVERS.md",
 		"docs/EVIDENCE.md",
-		"docs/EXTENSIONS.md",
-		"docs/GUIDE.md",
-		"docs/ROADMAP.md",
-		"playwright.config.ts",
+		"docs/img/onboarding.gif",
 		"README.md",
-		"test/examples",
-		"templates",
 		"LICENSE"
 	],
 	"bin": {
@@ -43,25 +34,13 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"main": "dist/core.js",
-	"types": "dist/core.d.ts",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/core.d.ts",
-			"default": "./dist/core.js"
-		},
-		"./core": {
-			"types": "./dist/core.d.ts",
-			"default": "./dist/core.js"
-		},
-		"./playwright": {
-			"types": "./dist/playwright.d.ts",
-			"default": "./dist/playwright.js"
-		},
-		"./salesforce": {
-			"types": "./dist/salesforce.d.ts",
-			"default": "./dist/salesforce.js"
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
 		},
 		"./driver": {
 			"types": "./dist/driver.d.ts",
@@ -95,10 +74,7 @@
 		"test:unit:ui": "vitest --ui --config src/test/vitest.config.ts",
 		"test:unit:coverage": "vitest --coverage --config src/test/vitest.config.ts",
 		"test:unit:run": "vitest run --config src/test/vitest.config.ts",
-		"test:web": "npm run build:dist && npx playwright test --project=web",
-		"test:salesforce": "npm run build:dist && npx playwright test --project=salesforce",
-		"test:web:example": "npm run build:dist && npx playwright test --project=web --grep=ollama",
-		"show:report": "npx playwright show-report test-reports/html"
+		"test:package:final": "node test/package/final-surface.mjs"
 	},
 	"author": "Dawid Dobrowolski SoftQA",
 	"license": "MIT",
@@ -109,20 +85,12 @@
 		"openai": "^6.34.0",
 		"playwright": "^1.59.1",
 		"sharp": "^0.35.2",
-		"string-similarity": "^4.0.4",
-		"strip-ansi": "^7.2.0",
-		"winston": "^3.19.0",
 		"yaml": "^2.8.3",
 		"zod": "^4.3.6"
 	},
-	"peerDependencies": {
-		"@playwright/test": "^1.59.1"
-	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@playwright/test": "^1.59.1",
 		"@types/node": "^26.0.0",
-		"@types/string-similarity": "^4.0.2",
 		"@vitest/coverage-v8": "^4.1.4",
 		"@vitest/ui": "^4.1.2",
 		"dotenv": "^17.4.1",

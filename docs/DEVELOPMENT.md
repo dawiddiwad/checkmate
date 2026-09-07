@@ -1,15 +1,21 @@
-# Developing **_checkmate_**
+# Developing **Checkmate**
 
-This page is for people working on the **_checkmate_** repo itself, not for consumers of the
+This page is for working on the **Checkmate** repo itself, not for consumer of the
 `@xoxoai/checkmate` package. It covers two dev-only tools stamped into this repo to make that
-work faster: the **sssf** agent pipeline factory and a **HumanLayer** workspace integration.
-Neither ships in the published package, and neither is required to use `ai.step` in your own
-suite.
+work faster and more fun :)
+- **Super Simple Software Factory** hands-off end-to-end agentic workflows
+- **HumanLayer** CRISPY, RPI, PRD and frelance workflows
 
-## Table of Contents
+Neither ships in the published package, and neither is required to invoke `checkmate run`
+or embed the TypeScript API.
 
-- [sssf — the agent pipeline factory](#sssf--the-agent-pipeline-factory)
-- [HumanLayer — isolated task workspaces](#humanlayer--isolated-task-workspaces)
+## Package Verification
+
+`npm run phase:verify` checks compilation, lint, formatting, deterministic tests, clean build lifecycle, exact tarball contents, installed exports, and CLI acceptance. Tests use two workers to avoid CPU contention pushing spawned CLI cases beyond their test deadlines; harness deadlines are unchanged.
+
+`npm run phase:verify -- --live` adds live Ollama acceptance to that gate. CI uses this command on Linux and macOS so the exact tarball checked by the package allowlist, export probes, and deterministic CLI acceptance is also used for live acceptance before it is deleted.
+
+`npm run test:package:final -- <candidate.tgz> --live` runs the installed export and deterministic CLI probes, then the live Ollama workflow against the same candidate. The live harness loads the invocation-root `.env` and requires non-empty `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL`. Missing values fail the explicitly selected live check; they are never printed. `npm run test:e2e:ollama` builds its own candidate when none is supplied. Run release checks on both Linux and macOS; Windows is outside the v1 contract.
 
 ## sssf — the agent pipeline factory
 
@@ -76,7 +82,7 @@ extending `adw_modules/` - ask Claude Code to use the `sssf` skill (`/sssf insta
 this scaffolding got here in the first place); it routes you to the right cookbook under
 `.claude/skills/sssf/cookbooks/`.
 
-## HumanLayer — isolated task workspaces
+## HumanLayer — CRISPY, RPI, PRD and freeform workflows
 
 [`.humanlayer/workspace.json`](../.humanlayer/workspace.json) configures
 [HumanLayer](https://humanlayer.dev)'s workspace tooling to spin up a disposable git worktree

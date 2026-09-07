@@ -3,25 +3,10 @@ import { ToolDispatcher } from '../tools/dispatcher'
 import { LoopDetector } from '../tools/loop-detector'
 import { ToolRegistry } from '../tools/registry'
 import { AgentTool } from '../tools/types'
-import { LogLevel } from '../logging/logger'
-import { logger } from '../logging'
-import { testConfig } from './test-types'
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
-vi.mock('../../src/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-		debug: vi.fn(),
-	},
-}))
-
-function createConfig(allowedNames: string[] = [], logLevel: LogLevel = 'off') {
-	return testConfig({
-		checkmateAllowedTools: allowedNames,
-		checkmateLoopMaxRepetitions: 10,
-		checkmateLogLevel: logLevel,
-	})
+function createConfig(allowedNames: string[] = []) {
+	return { allowedTools: allowedNames.length ? allowedNames : ('*' as const) }
 }
 
 function createTool(name: string, execute: AgentTool['execute']): AgentTool {
@@ -100,9 +85,9 @@ describe('ToolDispatcher diagnostics', () => {
 	})
 
 	it('logs tools completed without model responses in debug mode', async () => {
-		const registry = new ToolRegistry(createConfig([], 'debug'))
+		const registry = new ToolRegistry(createConfig())
 		registry.register(createTool('pass_test_step', () => undefined))
-		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger)
+		const dispatcher = new ToolDispatcher(registry, new LoopDetector(10), logger, true)
 		const context = { step: { action: 'run', expect: 'done' } }
 
 		await expect(

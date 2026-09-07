@@ -7,7 +7,15 @@ playwright-report
 
 # sssf software factory (stamped, not project source)
 adws
+.agents
 .claude
+.humanlayer
 app_docs
 specs
 .pi-meetings
+
+# Local harness and tool output
+.checkmate
+.playwright-cli
+.playwright-mcp
+.sf

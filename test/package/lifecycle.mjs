@@ -7,6 +7,11 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+assert(
+	process.argv.length <= 3 && (!process.argv[2] || process.argv[2] === '--live'),
+	'usage: npm run phase:verify -- [--live]'
+)
+const live = process.argv[2] === '--live'
 const packageJson = JSON.parse(await readFile(resolve(repositoryRoot, 'package.json'), 'utf8'))
 const schemaFiles = [
 	'checkmate-config.v1.json',
@@ -39,8 +44,7 @@ try {
 	assert.deepEqual(actualFiles, expectedFiles)
 
 	const tarball = resolve(packDirectory, packResult.filename)
-	run('npm', ['run', 'test:package:active', '--', tarball], { stdio: 'inherit' })
-	run('npm', ['run', 'test:acceptance:agent', '--', tarball], { stdio: 'inherit' })
+	run('npm', ['run', 'test:package:final', '--', tarball, ...(live ? ['--live'] : [])], { stdio: 'inherit' })
 } finally {
 	await rm(packDirectory, { recursive: true, force: true })
 }
@@ -58,16 +62,12 @@ async function expectedPackageFiles() {
 		'LICENSE',
 		'README.md',
 		'bin/checkmate.js',
-		'docs/BENCHMARK.md',
 		'docs/CLI.md',
 		'docs/CONFIGURATION.md',
 		'docs/DRIVERS.md',
 		'docs/EVIDENCE.md',
-		'docs/EXTENSIONS.md',
-		'docs/GUIDE.md',
-		'docs/ROADMAP.md',
+		'docs/img/onboarding.gif',
 		'package.json',
-		'playwright.config.ts',
 		'schemas/checkmate-config.v1.json',
 		'schemas/describe-result.v1.json',
 		'schemas/driver-descriptor.v1.json',
@@ -75,9 +75,6 @@ async function expectedPackageFiles() {
 		'schemas/run-result.v1.json',
 		'schemas/validation-result.v1.json',
 		'dist/drivers/web/checkmate-driver.json',
-		'templates/checkmate-agent.md',
-		'test/examples/salesforce/trial-dev-org.spec.ts',
-		'test/examples/web/website-testing.spec.ts',
 	]
 
 	for (const source of await typescriptSources(resolve(repositoryRoot, 'src'))) {

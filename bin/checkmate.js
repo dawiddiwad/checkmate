@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { runCli } from '../dist/cli.js'
+import { runCli } from '../dist/cli/main.js'
 
 runCli(process.argv.slice(2)).then(
 	(code) => {

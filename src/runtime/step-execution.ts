@@ -3,7 +3,7 @@ import type { AiClient } from '../ai/client.js'
 import { MessageHistory } from '../ai/message-history.js'
 import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts.js'
 import { TurnProcessor } from '../ai/turn-processor.js'
-import type { ResolvedConfig } from '../config/resolved-config.js'
+import type { RuntimeConfig } from './config.js'
 import type { DriverSession, StepIntent } from '../driver.js'
 import type { RuntimeLogger } from '../logging/types.js'
 import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
@@ -23,7 +23,7 @@ import {
 } from './usage-tracker.js'
 
 export type StepExecutionDependencies = {
-	config: ResolvedConfig
+	config: RuntimeConfig
 	aiClient: AiClient
 	toolRegistry: ToolRegistry
 	driverSession: DriverSession

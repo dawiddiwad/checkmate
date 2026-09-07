@@ -1,7 +1,7 @@
 import { Mock, vi } from 'vitest'
 import { ChatCompletionMessageParam, ChatCompletionContentPartText } from 'openai/resources/chat/completions'
 import { AiSendOptions } from '../ai/client'
-import { CheckmateOptions, ResolvedConfig, resolveConfig } from '../config/resolved-config'
+import type { RuntimeConfig } from '../runtime/config'
 import { LoopDetectedError } from '../tools/loop-detector'
 
 export interface MockNetworkRequest {
@@ -132,13 +132,25 @@ export interface MockKeyboard {
 	press: Mock
 }
 
-export type MutableConfig = { -readonly [K in keyof ResolvedConfig]: ResolvedConfig[K] }
+export type MutableConfig = { -readonly [K in keyof RuntimeConfig]: RuntimeConfig[K] }
 
 /**
  * A resolved config a test can keep mutating after handing it to a collaborator.
  */
-export function testConfig(overrides: Partial<CheckmateOptions> = {}): MutableConfig {
-	return { ...resolveConfig(overrides) }
+export function testConfig(overrides: Partial<RuntimeConfig> = {}): MutableConfig {
+	return {
+		model: 'fixture-model',
+		temperature: 0,
+		turnCap: 20,
+		requestTimeout: 60_000,
+		maxRetries: 3,
+		loopMaxRepetitions: 5,
+		redact: true,
+		toolChoice: 'required',
+		rateLimitDelay: 0,
+		logLevel: 'off',
+		...overrides,
+	}
 }
 
 export interface MockToolRegistry {

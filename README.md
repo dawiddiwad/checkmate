@@ -1,12 +1,9 @@
-### _agentic test harness for running acceptance scenarios_
+## _Checkmate_ ⋅ _test harness for running acceptance scenarios_
 
-#
+Think of it like QA contracts for software factories. Policies define the bounds of execution, while scenarios describe the intent to verify through a domain driver. It aims to patch the gap between fully coded tests and freelance agent testing.
 
-Policies define the bounds of execution, while scenarios describe the intent to verify through a domain driver.
-
-Think of it like QA contracts for software factories. It aims to patch the gap between fully coded tests and freelance agent testing.
-
-<img src="docs/img/onboarding.gif" alt="onboarding" width="100%"/>
+<!-- <img src="https://raw.github.com/dawiddiwad/checkmate/main/docs/img/onboarding.gif" alt="onboarding" width="50%" centered/> -->
+<img src="docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
 
 ## Install
 
@@ -140,13 +137,13 @@ checkmate --version
 
 `describe` returns the drivers, policies, and contract versions available in the current environment.
 
-## Documentation
+## Docs
 
-- [CLI](docs/CLI.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Evidence](docs/EVIDENCE.md)
-- [Drivers](docs/DRIVERS.md)
-- [Development :)](docs/DEVELOPMENT.md)
+[Configuration](docs/CONFIGURATION.md)  
+[Evidence](docs/EVIDENCE.md)  
+[Drivers](docs/DRIVERS.md)  
+[CLI](docs/CLI.md)  
+[Dev :)](docs/DEVELOPMENT.md)
 
 ## License
 

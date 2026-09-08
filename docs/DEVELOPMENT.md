@@ -1,7 +1,6 @@
-# Developing Checkmate
+# Developing Checkmate ❤️
 
-The optional **super simple software factory** and **HumanLayer** tools help agent workflows and keep tasks in separate worktrees.
-Neither is needed to use the published package.
+Super Simple Software Factory and HumanLayer tools are optional !!!!
 
 ## Run the checks
 

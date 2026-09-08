@@ -41,6 +41,7 @@ try {
 	const packResult = JSON.parse(packOutput)[0]
 	const actualFiles = packResult.files.map((file) => file.path).sort()
 	const expectedFiles = await expectedPackageFiles()
+	assert(!actualFiles.includes('docs/img/onboarding.gif'))
 	assert.deepEqual(actualFiles, expectedFiles)
 
 	const tarball = resolve(packDirectory, packResult.filename)
@@ -66,7 +67,6 @@ async function expectedPackageFiles() {
 		'docs/CONFIGURATION.md',
 		'docs/DRIVERS.md',
 		'docs/EVIDENCE.md',
-		'docs/img/onboarding.gif',
 		'package.json',
 		'schemas/checkmate-config.v1.json',
 		'schemas/describe-result.v1.json',

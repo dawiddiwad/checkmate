@@ -1,0 +1,72 @@
+{
+	"kind": "run-result",
+	"schemaVersion": 1,
+	"runId": "0123456789abcdef",
+	"scenarioId": "checkout-promo",
+	"status": "passed",
+	"category": "passed",
+	"reason": "scenario-complete",
+	"targetMutation": "possibly-mutated",
+	"startedAt": "2026-09-04T12:00:00.000Z",
+	"durationMs": 4200,
+	"driver": { "id": "web", "contractVersion": 1 },
+	"policy": {
+		"id": "ci",
+		"effectiveLimits": {
+			"scenarioTimeoutMs": 180000,
+			"stepTimeoutMs": 120000,
+			"turnsPerStep": 20,
+			"requestTimeoutMs": 60000,
+			"maxRetries": 3,
+			"loopMaxRepetitions": 5,
+			"cleanupTimeoutMs": 10000,
+			"budgetTokens": 200000
+		}
+	},
+	"usage": {
+		"promptTokens": 1200,
+		"cachedPromptTokens": 400,
+		"completionTokens": 100,
+		"totalTokens": 1300,
+		"state": "complete"
+	},
+	"steps": [
+		{
+			"id": "open-cart",
+			"status": "passed",
+			"category": "app",
+			"reason": "met-expectation",
+			"actual": "The cart shows one item with a $40 subtotal",
+			"turns": 2,
+			"durationMs": 4200,
+			"usage": {
+				"promptTokens": 1200,
+				"cachedPromptTokens": 400,
+				"completionTokens": 100,
+				"totalTokens": 1300
+			},
+			"toolCalls": [
+				{
+					"turn": 1,
+					"driverId": "web",
+					"name": "browser_navigate",
+					"arguments": { "url": "https://staging.example.test/cart" },
+					"status": "ok"
+				}
+			]
+		}
+	],
+	"evidence": {
+		"state": "complete",
+		"references": [
+			{
+				"kind": "transcript",
+				"mediaType": "text/markdown",
+				"path": ".checkmate/runs/example/evidence/harness/steps/001-open-cart/transcript.md",
+				"producer": "harness",
+				"stepId": "open-cart"
+			}
+		]
+	},
+	"diagnostics": []
+}

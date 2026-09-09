@@ -37,4 +37,4 @@ Write code like Linus Torvalds.
 - Every behavior change should be covered by tests.
 - Update existing tests when semantics change.
 - Update docs when changing public API, config, examples, or architecture.
-- Update pricing docs when model pricing or defaults change.
+- Keep model policy, provider behavior, token accounting, tests, and configuration docs aligned. Do not add implicit model defaults or USD pricing.

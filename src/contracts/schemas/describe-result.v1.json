@@ -1,0 +1,414 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://checkmate.dev/schemas/describe-result.v1.json",
+	"title": "Checkmate description result version 1",
+	"oneOf": [{ "$ref": "#/$defs/available" }, { "$ref": "#/$defs/unavailable" }],
+	"$defs": {
+		"diagnostic": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["code", "path", "message"],
+			"properties": {
+				"code": { "type": "string", "minLength": 1 },
+				"path": { "type": "string", "pattern": "^(?:/(?:[^~/]|~[01])*)*$" },
+				"message": { "type": "string", "minLength": 1 }
+			}
+		},
+		"effectiveLimits": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"scenarioTimeoutMs",
+				"stepTimeoutMs",
+				"turnsPerStep",
+				"requestTimeoutMs",
+				"maxRetries",
+				"loopMaxRepetitions",
+				"cleanupTimeoutMs"
+			],
+			"properties": {
+				"scenarioTimeoutMs": { "type": "integer", "minimum": 1 },
+				"stepTimeoutMs": { "type": "integer", "minimum": 1 },
+				"turnsPerStep": { "type": "integer", "minimum": 1 },
+				"requestTimeoutMs": { "type": "integer", "minimum": 1 },
+				"maxRetries": { "type": "integer", "minimum": 0 },
+				"loopMaxRepetitions": { "type": "integer", "minimum": 1 },
+				"cleanupTimeoutMs": { "type": "integer", "minimum": 1 },
+				"budgetTokens": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"contractReference": {
+			"enum": [
+				{
+					"id": "checkmate-config",
+					"schemaVersion": 1,
+					"schemaPath": "./schemas/checkmate-config.v1.json"
+				},
+				{
+					"id": "run-request",
+					"schemaVersion": 1,
+					"schemaPath": "./schemas/run-request.v1.json"
+				},
+				{
+					"id": "run-result",
+					"schemaVersion": 1,
+					"schemaPath": "./schemas/run-result.v1.json"
+				},
+				{
+					"id": "validation-result",
+					"schemaVersion": 1,
+					"schemaPath": "./schemas/validation-result.v1.json"
+				},
+				{
+					"id": "describe-result",
+					"schemaVersion": 1,
+					"schemaPath": "./schemas/describe-result.v1.json"
+				},
+				{
+					"id": "driver-descriptor",
+					"schemaVersion": 1,
+					"schemaPath": "./schemas/driver-descriptor.v1.json"
+				}
+			]
+		},
+		"describedPolicy": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id", "limits", "evidence", "drivers", "requiredSecretBindings"],
+			"properties": {
+				"id": { "type": "string", "minLength": 1 },
+				"limits": { "$ref": "#/$defs/effectiveLimits" },
+				"evidence": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["retention", "redaction", "allowOpaque"],
+					"properties": {
+						"retention": { "enum": ["on", "retain-on-failure", "off"] },
+						"redaction": { "enum": ["on", "off"] },
+						"allowOpaque": { "type": "boolean" }
+					}
+				},
+				"drivers": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["id", "allowedTools"],
+						"properties": {
+							"id": { "type": "string", "minLength": 1 },
+							"allowedTools": {
+								"oneOf": [
+									{ "const": "*" },
+									{
+										"type": "array",
+										"uniqueItems": true,
+										"items": { "type": "string", "minLength": 1 }
+									}
+								]
+							}
+						}
+					}
+				},
+				"requiredSecretBindings": {
+					"type": "array",
+					"uniqueItems": true,
+					"items": { "type": "string", "minLength": 1 }
+				}
+			}
+		},
+		"describedDriver": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"id",
+				"contractVersion",
+				"targetSchema",
+				"settingsSchema",
+				"requiredSecretSlots",
+				"tools",
+				"evidenceKinds"
+			],
+			"properties": {
+				"id": { "type": "string", "minLength": 1 },
+				"contractVersion": { "const": 1 },
+				"targetSchema": { "type": "object" },
+				"settingsSchema": { "type": "object" },
+				"requiredSecretSlots": {
+					"type": "array",
+					"uniqueItems": true,
+					"items": { "type": "string", "minLength": 1 }
+				},
+				"tools": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["name"],
+						"properties": { "name": { "type": "string", "minLength": 1 } }
+					}
+				},
+				"evidenceKinds": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["kind", "mediaType", "content"],
+						"properties": {
+							"kind": { "type": "string", "minLength": 1 },
+							"mediaType": { "type": "string", "minLength": 1 },
+							"content": { "enum": ["text", "opaque"] }
+						}
+					}
+				}
+			}
+		},
+		"routeRule": {
+			"enum": [
+				{
+					"reason": "scenario-complete",
+					"category": "passed",
+					"exitCode": 0,
+					"retry": "never",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "continue"
+				},
+				{
+					"reason": "failed-expectation",
+					"category": "app",
+					"exitCode": 1,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "inspect-evidence-and-verify-sut-or-expectation"
+				},
+				{
+					"reason": "loop-detected",
+					"category": "model",
+					"exitCode": 2,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-model-policy-or-egress"
+				},
+				{
+					"reason": "turn-cap-exceeded",
+					"category": "model",
+					"exitCode": 2,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-model-policy-or-egress"
+				},
+				{
+					"reason": "step-timeout",
+					"category": "model",
+					"exitCode": 2,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-model-policy-or-egress"
+				},
+				{
+					"reason": "scenario-timeout",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "tool-error",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "provider-error",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "token-budget-exceeded",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "interrupted",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "driver-load-failed",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "driver-start-failed",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "driver-teardown-failed",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "evidence-write-failed",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-output-and-inspect-target"
+				},
+				{
+					"reason": "result-write-failed",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-output-and-inspect-target"
+				},
+				{
+					"reason": "internal-error",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				},
+				{
+					"reason": "invalid-invocation",
+					"category": "invalid",
+					"exitCode": 4,
+					"retry": "repair-then-new-run",
+					"mutation": "not-attempted",
+					"nextAction": "repair-request-or-configuration"
+				},
+				{
+					"reason": "pre-execution-error",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "not-attempted",
+					"nextAction": "repair-environment-and-start-new-run"
+				},
+				{
+					"reason": "parent-containment",
+					"category": "infra",
+					"exitCode": 3,
+					"retry": "repair-then-new-run",
+					"mutation": "read-result-target-mutation",
+					"nextAction": "repair-environment-and-inspect-target"
+				}
+			]
+		},
+		"onboarding": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["workflow", "commands", "routing", "evidence"],
+			"properties": {
+				"workflow": {
+					"type": "array",
+					"minItems": 5,
+					"maxItems": 5,
+					"prefixItems": [
+						{ "const": "describe" },
+						{ "const": "author-request" },
+						{ "const": "validate" },
+						{ "const": "run" },
+						{ "const": "route-result" }
+					],
+					"items": false
+				},
+				"commands": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["validate", "runFile", "runStdin"],
+					"properties": {
+						"validate": { "const": "checkmate validate <request.json>" },
+						"runFile": { "const": "checkmate run <request.json>" },
+						"runStdin": { "const": "checkmate run -" }
+					}
+				},
+				"routing": {
+					"type": "array",
+					"minItems": 19,
+					"maxItems": 19,
+					"uniqueItems": true,
+					"items": { "$ref": "#/$defs/routeRule" }
+				},
+				"evidence": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["pathBase", "followReferencesOnly", "retentionIsPolicyDependent", "inspectCompletenessState"],
+					"properties": {
+						"pathBase": { "const": "invocation-root" },
+						"followReferencesOnly": { "const": true },
+						"retentionIsPolicyDependent": { "const": true },
+						"inspectCompletenessState": { "const": true }
+					}
+				}
+			}
+		},
+		"available": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "schemaVersion", "status", "contracts", "environment", "onboarding", "diagnostics"],
+			"properties": {
+				"kind": { "const": "describe-result" },
+				"schemaVersion": { "const": 1 },
+				"status": { "const": "available" },
+				"contracts": {
+					"type": "array",
+					"minItems": 6,
+					"maxItems": 6,
+					"uniqueItems": true,
+					"items": { "$ref": "#/$defs/contractReference" }
+				},
+				"environment": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["defaultPolicy", "policies", "drivers"],
+					"properties": {
+						"defaultPolicy": { "type": "string", "minLength": 1 },
+						"policies": { "type": "array", "items": { "$ref": "#/$defs/describedPolicy" } },
+						"drivers": { "type": "array", "items": { "$ref": "#/$defs/describedDriver" } }
+					}
+				},
+				"onboarding": { "$ref": "#/$defs/onboarding" },
+				"diagnostics": { "type": "array", "maxItems": 0 }
+			}
+		},
+		"unavailable": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "schemaVersion", "status", "diagnostics"],
+			"properties": {
+				"kind": { "const": "describe-result" },
+				"schemaVersion": { "const": 1 },
+				"status": { "enum": ["invalid", "error"] },
+				"diagnostics": {
+					"type": "array",
+					"minItems": 1,
+					"items": { "$ref": "#/$defs/diagnostic" }
+				}
+			}
+		}
+	}
+}

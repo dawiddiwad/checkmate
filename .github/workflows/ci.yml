@@ -4,19 +4,17 @@ on:
   pull_request:
 
 jobs:
-  run-tests:
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
-    timeout-minutes: 10
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
       OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-      OPENAI_TEMPERATURE: ${{ secrets.OPENAI_TEMPERATURE }}
-      OPENAI_API_TOKEN_BUDGET_USD: ${{ secrets.OPENAI_API_TOKEN_BUDGET_USD }}
-      OPENAI_API_TOKEN_BUDGET_COUNT: ${{ secrets.OPENAI_API_TOKEN_BUDGET_COUNT }}
-      CHECKMATE_LOG_LEVEL: ${{ secrets.CHECKMATE_LOG_LEVEL }}
 
     steps:
       - uses: actions/checkout@v6
@@ -30,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install chromium
 
-      - name: Run example e2e tests
-        run: npm run test:web:example
+      - name: Verify packed candidate including live Ollama acceptance
+        run: npm run phase:verify -- --live

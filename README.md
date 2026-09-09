@@ -1,256 +1,290 @@
-# **_checkmate_**
+#### □ □ ■ □
 
-AI test automation that actually works. Write tests in plain English, without locators, and with less code.
+## _Checkmate - a harness for agentic acceptance_
 
-![playwright](https://img.shields.io/badge/Playwright-1.60.0-blue.svg)
-![typescript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)
-![nodejs](https://img.shields.io/badge/Node.js-LTS-green.svg)
-![openai](https://img.shields.io/badge/OpenAI-API-yellow.svg)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<img src="https://raw.github.com/dawiddiwad/checkmate/main/docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
 
-##
+#
 
-```typescript
-await ai.run({
-	action: `
-		Navigate to google.com
-		Type 'playwright test automation' in the search bar
-		Press Enter key`,
-	expect: `
-		Search results contain the playwright.dev link`,
-})
-```
+Think of it like QA contracts for software factories: policies define the bounds of execution, where scenarios describe the intent to verify through a domain driver. It aims to patch the gap between fully coded tests and freelance agent testing.
 
-##
-
-✅ **Zero Locators** - Write tests in plain English  
-✅ **Any Provider** - Gemini, Claude, Groq, GPT, xAI, or local models  
-✅ **Web & Salesforce** - Basic support out of the box  
-✅ **Cost Optimized** - Built-in token management and budgeting  
-✅ **Playwright Test** - Native reports, traces and debugging  
-✅ **Fully Customizable** - Build your own [extensions](docs/EXTENSIONS.md) and tools
-
-<img src="docs/img/gpt-oss-20b-e2e-checkout.gif" alt="example-e2e-test" width="100%"/>
-
-## Get Started in 5 Minutes
-
-### Prerequisites
-
-- Node.js [LTS](https://nodejs.org/en/download)
-- OpenAI [API key](https://platform.openai.com/api-keys) or compatible provider [Groq](https://console.groq.com/keys) [Gemini](https://aistudio.google.com/app/api-keys) [xAI](https://x.ai/api) etc.
-
-### 1. Install
+## Install
 
 ```bash
-npm install -D dotenv @playwright/test @xoxoai/checkmate
-npx playwright install
+npm install @xoxoai/checkmate
 ```
 
-### 2. Configure `.env`
+## Usage
 
-_using [OpenAI API](https://platform.openai.com/settings/organization/api-keys) key and default settings:_
+#### Scenario is a JSON document:
+
+```json
+{
+	"schemaVersion": 1,
+	"scenario": {
+		"id": "checkout spring promo",
+		"driver": {
+			"id": "web",
+			"target": {
+				"baseUrl": "https://staging.example.test"
+			}
+		},
+		"policy": "ci",
+		"steps": [
+			{
+				"id": "start checkout",
+				"action": "Add a product to the cart",
+				"expect": "The checkout page is displayed"
+			},
+			{
+				"id": "apply promo",
+				"action": "Apply promotion code SPRING25",
+				"expect": "The order total is reduced by 25%"
+			},
+			{
+				"id": "verify total",
+				"action": "Proceed to the payment step",
+				"expect": "The order total reflects the applied promotion"
+			}
+		]
+	}
+}
+```
+
+#### Run:
 
 ```bash
-OPENAI_API_KEY=#your_api_key_here
+checkmate run scenario.json
 ```
 
-_for other providers, set the base url and model:_
+Checkmate writes one JSON result to stdout. Outcomes distinguish application, model, infrastructure, and invalid-invocation failures.
 
-```bash
-OPENAI_BASE_URL=https://api.groq.com/openai/v1
-OPENAI_MODEL=openai/gpt-oss-20b
+<details>
+<summary>Example Results</summary>
+
+A successful run of the scenario above:
+
+```json
+{
+	"kind": "run-result",
+	"schemaVersion": 1,
+	"runId": "0123456789abcdef",
+	"scenarioId": "checkout spring promo",
+	"status": "passed",
+	"category": "passed",
+	"reason": "scenario-complete",
+	"targetMutation": "possibly-mutated",
+	"startedAt": "2026-09-04T12:00:00.000Z",
+	"durationMs": 12600,
+	"driver": { "id": "web", "contractVersion": 1 },
+	"policy": {
+		"id": "ci",
+		"effectiveLimits": {
+			"scenarioTimeoutMs": 180000,
+			"stepTimeoutMs": 120000,
+			"turnsPerStep": 20,
+			"requestTimeoutMs": 60000,
+			"maxRetries": 3,
+			"loopMaxRepetitions": 5,
+			"cleanupTimeoutMs": 10000,
+			"budgetTokens": 200000
+		}
+	},
+	"usage": {
+		"promptTokens": 3600,
+		"cachedPromptTokens": 1200,
+		"completionTokens": 300,
+		"totalTokens": 3900,
+		"state": "complete"
+	},
+	"steps": [
+		{
+			"id": "start checkout",
+			"status": "passed",
+			"category": "app",
+			"reason": "met-expectation",
+			"actual": "The checkout page displays one product with a $40 order total.",
+			"turns": 3,
+			"durationMs": 4000,
+			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
+			"toolCalls": [
+				{
+					"turn": 1,
+					"driverId": "web",
+					"name": "browser_click_or_hover",
+					"arguments": { "ref": "e12", "name": "Add to cart", "hover": false, "goal": "Add a product to the cart" },
+					"status": "ok"
+				},
+				{
+					"turn": 2,
+					"driverId": "web",
+					"name": "browser_click_or_hover",
+					"arguments": { "ref": "e18", "name": "Checkout", "hover": false, "goal": "Open the checkout page" },
+					"status": "ok"
+				}
+			]
+		},
+		{
+			"id": "apply promo",
+			"status": "passed",
+			"category": "app",
+			"reason": "met-expectation",
+			"actual": "SPRING25 is applied and the order total is reduced from $40 to $30.",
+			"turns": 3,
+			"durationMs": 4000,
+			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
+			"toolCalls": [
+				{
+					"turn": 1,
+					"driverId": "web",
+					"name": "browser_type_or_select",
+					"arguments": {
+						"elements": [
+							{ "ref": "e24", "name": "Promotion code", "text": "SPRING25", "clear": true, "select": false }
+						],
+						"goal": "Enter the promotion code"
+					},
+					"status": "ok"
+				},
+				{
+					"turn": 2,
+					"driverId": "web",
+					"name": "browser_click_or_hover",
+					"arguments": { "ref": "e25", "name": "Apply", "hover": false, "goal": "Apply the promotion code" },
+					"status": "ok"
+				}
+			]
+		},
+		{
+			"id": "verify total",
+			"status": "passed",
+			"category": "app",
+			"reason": "met-expectation",
+			"actual": "The payment step displays the discounted order total of $30.",
+			"turns": 2,
+			"durationMs": 4000,
+			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
+			"toolCalls": [
+				{
+					"turn": 1,
+					"driverId": "web",
+					"name": "browser_click_or_hover",
+					"arguments": {
+						"ref": "e30",
+						"name": "Continue to payment",
+						"hover": false,
+						"goal": "Verify the discounted total at the payment step"
+					},
+					"status": "ok"
+				}
+			]
+		}
+	],
+	"evidence": { "state": "complete", "references": [] },
+	"diagnostics": []
+}
 ```
 
-### 3. Scaffold Test Examples
+</details>
 
-```bash
-npx checkmate create-examples
+## Configuration
+
+Execution is configured through `checkmate.config.json`.
+
+Policies keep execution settings outside test intent. For example, a policy can define limits, evidence retention, and allowed driver tools:
+
+<details>
+<summary>Example Configuration</summary>
+
+```json
+{
+	"schemaVersion": 1,
+	"outputDirectory": ".checkmate/runs",
+	"defaultPolicy": "ci",
+	"secretBindings": {
+		"openai-api-key": {
+			"source": "environment",
+			"name": "CHECKMATE_OPENAI_API_KEY"
+		}
+	},
+	"policies": {
+		"ci": {
+			"modelEgress": {
+				"provider": {
+					"id": "openai",
+					"model": "gpt-5-mini",
+					"apiKeyBinding": "openai-api-key"
+				},
+				"textRedaction": "on",
+				"allowOpaque": false,
+				"maxStepBytes": 1048576,
+				"maxMessageBytes": 262144
+			},
+			"bounds": {
+				"scenarioTimeoutMs": 180000,
+				"stepTimeoutMs": 120000,
+				"turnsPerStep": 20,
+				"requestTimeoutMs": 60000,
+				"maxRetries": 3,
+				"loopMaxRepetitions": 5,
+				"cleanupTimeoutMs": 10000,
+				"budgetTokens": 200000
+			},
+			"evidence": {
+				"retention": "retain-on-failure",
+				"redaction": "on",
+				"allowOpaque": false
+			},
+			"drivers": {
+				"web": {
+					"settings": {
+						"headless": true,
+						"snapshotFilter": false
+					},
+					"tools": { "allowed": ["*"] }
+				}
+			}
+		}
+	},
+	"drivers": {
+		"web": {
+			"package": "@xoxoai/checkmate/driver-web",
+			"secrets": {}
+		}
+	}
+}
 ```
 
-### 4. Run Tests
+</details>
 
-```bash
-npm run test:web:example
+## Drivers
+
+#### Checkmate is designed around domain-specific drivers.
+
+A driver defines how the model interacts with a particular system while the harness keeps scenario execution, policies, results, and evidence consistent.
+
+The included `web` driver is a simple reference implementation. Other domains can be integrated through the same public driver contract.
+
+## Commands
+
+```text
+checkmate run <request.json|->
+checkmate validate <request.json>
+checkmate describe
+checkmate --help
+checkmate --version
 ```
 
-### 5. View Report
+`describe` returns the drivers, policies, and contract versions available in the current environment.
 
-```bash
-npm run show:report
-```
+## Docs
 
-## Writing Tests
-
-**_checkmate_** tests are written using natural language by specifying `action` and `expect`:
-
-```typescript
-import { test } from '@xoxoai/checkmate/playwright'
-
-test.describe('multi-step : full AI mode', async () => {
-	test('purchase flow', async ({ ai }) => {
-		await test.step('Open Shop', async () => {
-			await ai.run({
-				action: `
-				Navigate to https://my-shop.com`,
-				expect: `
-				My Shop home page is loaded`,
-			})
-		})
-
-		await test.step('Select product', async () => {
-			await ai.run({
-				action: `
-				Click 'Shop Now' on 'Men's Outerwear' category
-				Click on the first Shell product in the list`,
-				expect: `
-				Product detail with title and price.`,
-			})
-		})
-
-		await test.step('Cart and checkout', async () => {
-			await ai.run({
-				action: `
-				Click 'Add to Cart'
-				Click 'Checkout' in the 'Added to cart' dialog`,
-				expect: `
-				Checkout with Order Summary and totals`,
-			})
-		})
-	})
-})
-```
-
-That's it. No page objects, no selectors. No locators. Peace on Earth.
-
-Tests are orchestrated by [playwright](https://playwright.dev/docs/test-configuration) [config](playwright.config.ts).
-
-### API
-
-Compose your own **_checkmate_** using [extensions](docs/EXTENSIONS.md):
-
-```typescript
-import { createRunner } from '@xoxoai/checkmate/core'
-import { web } from '@xoxoai/checkmate/playwright'
-import { notion, database, api } from 'my-custom-extensions'
-
-const ai = createRunner({
-	extensions: [web({ page }), notion(), database(), api()],
-})
-
-await ai.run({
-	action: 'Open the pricing page',
-	expect: 'Pricing details are visible',
-})
-```
-
-### Entry Points:
-
-`@xoxoai/checkmate/core`: compose runner, tools, and extensions.  
-`@xoxoai/checkmate/playwright`: Web extension with Playwright `test` and `expect`.  
-`@xoxoai/checkmate/salesforce`: Salesforce extensions with the same `ai` fixture shape.
-
-See [guide](docs/GUIDE.md#best-practices) for tips on writing effective tests.
-
-## Costs
-
-They depend on the model, provider, test complexity, and number of steps.
-
-Estimates for [gpt-oss-20b hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b):
-
-- Simple test (~5 steps): ~$0.001 - $0.01
-- Complex test (~20 steps): ~$0.01 - $0.05
-- Full E2E suite (~50 complex tests): ~$1.00 - $2.00
-
-**_checkmate_** includes built-in token usage [monitoring](docs/GUIDE.md#cost-management).
-
-See [guide](docs/GUIDE.md#cost-management) for cost control and monitoring options.
-
-## Common Issues
-
-**AI makes incorrect decisions**
-
-- Provide precise descriptions in `action` and focused assertions in `expect`
-- Reference specific element and roles, for example: text, label, button, list, etc.
-- Break complex workflows into single-action steps and use a step-by-step approach
-
-**Tests loop during step execution**
-
-- Increase `OPENAI_TEMPERATURE` to encourage exploration
-- Use a reasoning model if possible to improve accuracy
-
-**High token costs**
-
-- Enable [snapshot filtering](docs/GUIDE.md#using-snapshot-filtering-for-token-optimization) with `CHECKMATE_SNAPSHOT_FILTERING=true` auto-filter elements
-- Adjust reasoning effort: `OPENAI_REASONING_EFFORT`
-- Consider disabling `OPENAI_INCLUDE_SCREENSHOT_IN_SNAPSHOT` if visuals are not needed
-- Use a cheaper model, lower-end models often perform well: `gpt-5.4-nano` or `gpt-oss-20b`
-
-See [guide](docs/GUIDE.md#openai-api-settings) for detailed configuration options and tips.
-
-## FAQ
-
-**Which models work best?**  
-You can use any model that was trained for tool use.
-
-Here are the best picks based on extensive testing:
-
-- Highly recommended: [`gpt-oss-20b` hosted on groq.com](https://console.groq.com/docs/model/openai/gpt-oss-20b). Groq's infrastructure is optimized for minimal latency and fast inference, making it ideal for E2E test automation.
-- Google's `gemini-2.5-flash` offers an excellent balance of cost and performance if you prefer major cloud providers.
-- OpenAI's `gpt-5-mini`, `gpt-5.4-nano` and xAI's `grok-4-1-fast-reasoning` also work well and keep costs relatively low.
-
-**Can I use local models?**  
-Yes - **_checkmate_** works with any OpenAI‑compatible API, including local models via LM Studio, Ollama, or llama.cpp. I recommend [qwen3.5-4b](https://huggingface.co/Qwen/Qwen3.5-4B). It is fast (≈100 tokens/sec on an RTX 3060 Ti; ≈40 tokens/sec on Apple M3) and performs surprisingly well for E2E testing.
-
-**Does it work with CI/CD?**  
-Absolutely. Use **_checkmate_** as part of your existing [Playwright Test suites in any CI/CD pipeline](https://playwright.dev/docs/best-practices#run-tests-on-ci). You can mix AI‑driven steps and traditional tests as needed.
-
-**Is this production-ready?**  
-It depends. If you can accept some non‑deterministic behavior and leverage LLMs' randomness to help address the [pesticide paradox](https://medium.com/@suwekasansiluni/the-pesticide-paradox-what-farming-teaches-us-about-software-testing-ab5d625d4de1), **_checkmate_** can be production-ready. In many cases, the maintenance savings, faster development, and benefits of non‑linear execution outweigh occasional hiccups.
-
-If you require 100% deterministic tests at all times, traditional Playwright remains the better choice.
-
-**Best part?**  
-You can mix both approaches within the same test suite, combining AI‑driven and traditional tests as needed:
-
-```typescript
-// traditional playwright actions:
-await page.goto('https://www.google.com')
-const searchBox = page.getByRole('combobox', { name: 'Search', exact: true })
-await searchBox.fill('playwright test automation')
-await searchBox.press('Enter')
-
-// ai-driven actions and assertions:
-await ai.run({
-	action: 'Click on the link that leads to playwright.dev',
-	expect: 'The playwright.dev homepage is displayed',
-})
-```
-
-## Documentation
-
-- [**_checkmate_** guide](docs/GUIDE.md)
-- [**_checkmate_** extensions](docs/EXTENSIONS.md)
-- [**playwright** official website](https://playwright.dev/)
-
-## Contributing
-
-I'd love your help! Key areas:
-
-- Additional tool integrations (API testing, Salesforce, etc.)
-- Further cost optimization techniques
-- Context and prompt engineering improvements
-- Error handling and recovery
-
-See [roadmap](docs/ROADMAP.md) for future plans and development
+[Configuration](docs/CONFIGURATION.md)  
+[Evidence](docs/EVIDENCE.md)  
+[Drivers](docs/DRIVERS.md)  
+[CLI](docs/CLI.md)  
+[Dev :)](docs/DEVELOPMENT.md)
 
 ## License
 
-MIT [license](LICENSE)
-
-## Why I build this?
-
-Test automation shouldn't require a PhD in XPath. This project explores how AI can make it accessible to anyone.
-
-Less coding, more testing.
-
-Built with ❤️ by [Dawid Dobrowolski](https://github.com/dawiddiwad)
+[MIT](LICENSE)

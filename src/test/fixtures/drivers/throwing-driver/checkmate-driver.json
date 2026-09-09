@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "fixture",
+	"driverContractVersion": 1,
+	"targetSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["endpoint"],
+		"properties": { "endpoint": { "type": "string", "format": "uri" } }
+	},
+	"settingsSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["readOnly"],
+		"properties": { "readOnly": { "type": "boolean" } }
+	},
+	"requiredSecretSlots": ["session"],
+	"tools": [{ "name": "fixture_read" }],
+	"evidenceKinds": [{ "kind": "fixture-log", "mediaType": "text/plain", "content": "text" }]
+}

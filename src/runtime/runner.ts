@@ -1,116 +1,100 @@
-import { RuntimeConfig } from '../config/runtime-config.js'
-import { Step } from './types.js'
+import type { DriverDescriptorV1, ModelEgressPolicyV1 } from '../contracts/types.js'
+import type { DriverSession, StepIntent } from '../driver.js'
+import { validateDriverSession } from '../drivers/loader.js'
+import { adaptDriverTool } from './driver-session.js'
+import type { StepControl } from './scenario-control.js'
+import type { InternalStepReport } from './types.js'
+import type { RuntimeConfig } from './config.js'
 import { createStepResultTools } from '../tools/step/result-tool.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { AiClient } from '../ai/client.js'
+import { ScenarioUsageTracker } from './usage-tracker.js'
 import { StepExecution } from './step-execution.js'
-import { CheckmateExtension, ExtensionHost } from './extension.js'
+import { createInvocationLogger } from '../logging/invocation-logger.js'
+import { silentLogger, type RuntimeLogger } from '../logging/types.js'
+import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
 
-/**
- * Options for creating a Checkmate runner.
- *
- * @example
- * ```ts
- * import { createRunner } from '@xoxoai/checkmate/core'
- * import { web } from '@xoxoai/checkmate/playwright'
- *
- * const ai = createRunner({
- *   extensions: [web({ page })],
- * })
- * ```
- */
-export type CheckmateRunnerOptions = {
-	/**
-	 * Extensions to compose into the runner.
-	 */
-	extensions?: CheckmateExtension[]
-
-	/**
-	 * Advanced: provide a custom runtime config instance.
-	 */
-	runtimeConfig?: RuntimeConfig
+export type DriverCheckmateRunnerOptions = {
+	driverId: string
+	descriptor: DriverDescriptorV1
+	session: DriverSession
+	allowedTools: '*' | readonly string[]
+	modelEgress: ModelEgressPolicyV1
+	limits: {
+		turnsPerStep: number
+		stepTimeoutMs: number
+		requestTimeoutMs: number
+		maxRetries: number
+		loopMaxRepetitions: number
+		budgetTokens?: number
+	}
+	apiKey: string
+	exactSecrets?: Iterable<string>
+	logger?: RuntimeLogger
+	usageTracker?: ScenarioUsageTracker
+	aiClient?: AiClient
 }
 
-/**
- * Public runtime entry point for executing natural-language steps with Checkmate.
- *
- * @example
- * ```ts
- * const runner = new CheckmateRunner()
- * await runner.run({
- *   action: 'Open the pricing page',
- *   expect: 'Pricing details are visible',
- * })
- * ```
- */
 export class CheckmateRunner {
+	private readonly config: RuntimeConfig
+	private readonly toolRegistry: ToolRegistry
 	private readonly aiClient: AiClient
-	private readonly extensionHost: ExtensionHost
+	private readonly usageTracker: ScenarioUsageTracker
+	private readonly diagnosticSanitizer: DiagnosticSanitizer
+	private readonly runtimeLogger: RuntimeLogger
 
-	/**
-	 * Creates a new runner composed from extensions.
-	 *
-	 * @example
-	 * ```ts
-	 * const ai = new CheckmateRunner({
-	 *   extensions: [web({ page })],
-	 * })
-	 * ```
-	 */
-	constructor(options: CheckmateRunnerOptions = {}) {
-		const runtimeConfig = options.runtimeConfig ?? new RuntimeConfig()
-		const toolRegistry = new ToolRegistry(runtimeConfig)
-		toolRegistry.register(createStepResultTools())
-		this.extensionHost = new ExtensionHost(runtimeConfig, toolRegistry, options.extensions ?? [])
-		this.aiClient = new AiClient({ runtimeConfig, toolRegistry, extensionHost: this.extensionHost })
+	constructor(private readonly options: DriverCheckmateRunnerOptions) {
+		const exactSecrets = [options.apiKey, ...(options.exactSecrets ?? [])]
+		this.diagnosticSanitizer = new DiagnosticSanitizer(exactSecrets)
+		this.runtimeLogger = createInvocationLogger(options.logger ?? silentLogger, this.diagnosticSanitizer)
+		this.config = {
+			model: options.modelEgress.provider.model,
+			baseUrl: options.modelEgress.provider.baseUrl,
+			reasoningEffort: options.modelEgress.provider.reasoningEffort,
+			temperature: options.modelEgress.provider.temperature ?? 0,
+			turnCap: options.limits.turnsPerStep,
+			redact: options.modelEgress.textRedaction === 'on',
+			toolChoice: 'required',
+			maxRetries: options.limits.maxRetries,
+			requestTimeout: options.limits.requestTimeoutMs,
+			loopMaxRepetitions: options.limits.loopMaxRepetitions,
+			rateLimitDelay: 0,
+			logLevel: 'off',
+		}
+		this.usageTracker = options.usageTracker ?? new ScenarioUsageTracker(options.limits.budgetTokens)
+		this.toolRegistry = new ToolRegistry({ allowedTools: options.allowedTools })
+		this.toolRegistry.register(createStepResultTools())
+		const tools = validateDriverSession(options.session, options.descriptor, options.allowedTools)
+		this.toolRegistry.register(tools.map((tool) => adaptDriverTool(options.driverId, tool)))
+		this.aiClient =
+			options.aiClient ??
+			new AiClient({
+				config: this.config,
+				toolRegistry: this.toolRegistry,
+				apiKey: options.apiKey,
+				modelEgress: options.modelEgress,
+				exactSecrets,
+				logger: this.runtimeLogger,
+			})
 	}
 
-	/**
-	 * Releases any runner-owned resources.
-	 *
-	 * @example
-	 * ```ts
-	 * await ai.teardown()
-	 * ```
-	 */
-	async teardown(): Promise<void> {
-		await this.extensionHost.teardown()
-	}
+	async teardown(): Promise<void> {}
 
-	/**
-	 * Executes one natural-language test step.
-	 *
-	 * @param step - The step definition to execute.
-	 *
-	 * @example
-	 * ```ts
-	 * await runner.run({
-	 *   action: 'Search for qwen3-vl',
-	 *   expect: 'The qwen3-vl model page is displayed',
-	 *   topPercent: 10,
-	 * })
-	 * ```
-	 */
-	async run(step: Step): Promise<void> {
-		await new StepExecution(this.aiClient, this.extensionHost).run(step)
+	async run(step: StepIntent, control: StepControl): Promise<InternalStepReport> {
+		return new StepExecution({
+			config: this.config,
+			aiClient: this.aiClient,
+			toolRegistry: this.toolRegistry,
+			driverSession: this.options.session,
+			usageTracker: this.usageTracker,
+			driverId: this.options.driverId,
+			redact: this.config.redact,
+			diagnosticSanitizer: this.diagnosticSanitizer,
+			logger: this.runtimeLogger,
+		}).run(step, control)
 	}
 }
 
-/**
- * Creates a runner from the provided extensions.
- *
- * This is the main programmatic entry point from `@xoxoai/checkmate/core`.
- *
- * @example
- * ```ts
- * import { createRunner } from '@xoxoai/checkmate/core'
- * import { web } from '@xoxoai/checkmate/playwright'
- *
- * const ai = createRunner({
- *   extensions: [web({ page })],
- * })
- * ```
- */
-export function createRunner(options: CheckmateRunnerOptions = {}): CheckmateRunner {
+export function createDriverRunner(options: DriverCheckmateRunnerOptions): CheckmateRunner {
 	return new CheckmateRunner(options)
 }

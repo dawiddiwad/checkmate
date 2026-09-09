@@ -1,0 +1,44 @@
+{
+	"schemaVersion": 1,
+	"id": "web",
+	"driverContractVersion": 1,
+	"targetSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["baseUrl"],
+		"properties": {
+			"baseUrl": { "type": "string", "format": "uri" }
+		}
+	},
+	"settingsSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"headless": { "type": "boolean" },
+			"snapshotFilter": { "type": "boolean" },
+			"snapshotTopPercent": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
+			"screenshotsInModelContext": { "type": "boolean" }
+		}
+	},
+	"requiredSecretSlots": [],
+	"tools": [
+		{ "name": "browser_navigate" },
+		{ "name": "browser_click_or_hover" },
+		{ "name": "browser_set_dialog_response" },
+		{ "name": "browser_drag" },
+		{ "name": "browser_upload" },
+		{ "name": "browser_type_or_select" },
+		{ "name": "browser_press_key" },
+		{ "name": "browser_snapshot" },
+		{ "name": "browser_wait" },
+		{ "name": "browser_list_tabs" },
+		{ "name": "browser_select_tab" },
+		{ "name": "browser_close_tab" },
+		{ "name": "browser_network_requests" },
+		{ "name": "browser_network_request" }
+	],
+	"evidenceKinds": [
+		{ "kind": "aria-snapshot", "mediaType": "application/yaml", "content": "text" },
+		{ "kind": "screenshot", "mediaType": "image/png", "content": "opaque" }
+	]
+}

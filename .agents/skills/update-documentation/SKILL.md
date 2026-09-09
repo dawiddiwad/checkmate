@@ -1,89 +1,35 @@
 ---
 name: 'update-documentation'
-description: 'Update documentation related to a code change'
-argument-hint: 'Describe the code change and which docs to update'
+description: 'Align Checkmate documentation and examples with changes to versioned contracts, drivers, configuration, evidence, or CLI/API workflows.'
 ---
 
-## Purpose
+## Source Of Truth
 
-Use this skill when behavior, public API, configuration, examples, architecture, or workflow changes.
+Checkmate exposes a manifest-driven `describe -> validate -> run -> route-result` workflow. Read the changed implementation and its tests before updating prose.
 
-Documentation must describe the code as it exists now.
-Do not leave stale examples, stale names, or stale behavior notes behind.
+- `src/contracts/schemas/` contains the authoritative hand-authored JSON Schemas; `src/contracts/types.ts` mirrors the wire contracts.
+- `src/index.ts` and `src/api/index.ts` define the root embedding API. `src/driver.ts` defines the public driver API. `src/runtime/types.ts` contains internal reports, not the public result contract.
+- `package.json`, `scripts/copy-package-assets.mjs`, and `test/package/` define shipped exports and assets. Do not document blocked deep imports or removed framework entry points.
 
-## Check
+## Route The Documentation Change
 
-- `README.md`
-- `docs/GUIDE.md`
-- `docs/ROADMAP.md`
-- public API exports in `src/index.ts`
-- public runtime types in `src/runtime/types.ts`
-- changed modules related to the feature
+- `README.md`: product overview and introductory examples; preserve user-selected structure and unrelated edits.
+- `docs/CLI.md`: commands, stdout envelopes, exit routing, signals, and parent/worker containment.
+- `docs/CONFIGURATION.md` and `.env.example`: manifest ownership, policy limits, secret bindings, and explicit test-only environment loading.
+- `docs/DRIVERS.md`: static descriptors, driver registration, session lifecycle, tools, and evidence capabilities.
+- `docs/EVIDENCE.md`: retention, content redaction, mandatory diagnostic sanitization, durability, and invocation-relative references.
+- `docs/DEVELOPMENT.md`: build, package gates, and local/live verification.
+- `.agents/wiki/architecture.md` and `.agents/wiki/development-procedures.md`: runtime ownership and maintenance guidance.
 
-## What To Update
+Removed fixture guides, extension docs, scaffolding, and pricing tables are not documentation targets. Do not recreate them as compatibility guidance.
 
-1. Public API docs
+## Check Observable Behavior
 
-- names
-- examples
-- arguments
-- behavior
-- return values if user-facing
+- Keep execution, invalid invocation, pre-execution operational failure, and CLI-only containment distinct. Do not promise semantic steps or durable evidence in parent-authored outcomes.
+- Preserve ordered steps, first-failure stopping, complete step enumeration, and cleanup/durability precedence. No result authorizes automatic whole-scenario retry.
+- Describe the CLI worker as lifetime containment, not a sandbox. In-process cancellation is cooperative; Linux and macOS are the supported v1 platforms.
+- Keep provider settings policy-owned and distinguish model-egress controls from evidence redaction. Structural metadata is not redacted; diagnostic content is sanitized even with evidence redaction off.
+- Validate changed JSON examples against shipped schemas and preparation rules. Use deterministic fixtures under `src/test/fixtures/` where appropriate; do not pass off abbreviated fragments as complete runnable configuration.
+- Check local documentation links and explicitly include referenced published assets in the package allowlist and its tests.
 
-2. Configuration docs
-
-- env vars
-- defaults
-- valid ranges
-- feature flags
-- behavior changes caused by config
-
-3. Behavioral docs
-
-- step semantics
-- filtering behavior
-- tool behavior
-- runtime flow
-- cost and performance notes if affected
-
-4. Architecture docs
-
-- folder and module ownership
-- moved or renamed modules
-- new extension points
-- removed concepts
-
-5. Examples
-
-- README snippets
-- GUIDE examples
-- fixture usage
-- programmatic API usage
-
-## Rules
-
-- Prefer concrete statements over vague summaries.
-- Keep examples minimal and correct.
-- If a name changed in code, change it everywhere in docs.
-- If behavior changed, update both prose and examples.
-- If a feature was removed, remove or rewrite the docs. Do not leave historical leftovers.
-- If a public step option or config key changed, document the value format and give one example.
-
-## High-Risk Areas
-
-Always double-check these:
-
-- copied examples
-- config tables
-- architecture sections
-- cost guidance
-- model recommendations
-- feature behavior that recently changed
-
-## Done Criteria
-
-- docs match the current code
-- examples use current names and APIs
-- config docs match runtime defaults and accepted values
-- no stale terminology remains for the changed feature
-- README and GUIDE tell the same story
+Run relevant tests and `npm run phase:verify`. For release verification, `npm run phase:verify -- --live` runs package and live acceptance against the same tarball. Report unavailable checks rather than claiming they passed.

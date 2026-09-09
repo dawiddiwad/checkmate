@@ -1,0 +1,86 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://checkmate.dev/schemas/validation-result.v1.json",
+	"title": "Checkmate validation result version 1",
+	"oneOf": [{ "$ref": "#/$defs/valid" }, { "$ref": "#/$defs/notValid" }],
+	"$defs": {
+		"diagnostic": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["code", "path", "message"],
+			"properties": {
+				"code": { "type": "string", "minLength": 1 },
+				"path": { "type": "string", "pattern": "^(?:/(?:[^~/]|~[01])*)*$" },
+				"message": { "type": "string", "minLength": 1 }
+			}
+		},
+		"effectiveLimits": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"scenarioTimeoutMs",
+				"stepTimeoutMs",
+				"turnsPerStep",
+				"requestTimeoutMs",
+				"maxRetries",
+				"loopMaxRepetitions",
+				"cleanupTimeoutMs"
+			],
+			"properties": {
+				"scenarioTimeoutMs": { "type": "integer", "minimum": 1 },
+				"stepTimeoutMs": { "type": "integer", "minimum": 1 },
+				"turnsPerStep": { "type": "integer", "minimum": 1 },
+				"requestTimeoutMs": { "type": "integer", "minimum": 1 },
+				"maxRetries": { "type": "integer", "minimum": 0 },
+				"loopMaxRepetitions": { "type": "integer", "minimum": 1 },
+				"cleanupTimeoutMs": { "type": "integer", "minimum": 1 },
+				"budgetTokens": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"valid": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "schemaVersion", "status", "scenarioId", "policy", "driver", "diagnostics"],
+			"properties": {
+				"kind": { "const": "validation-result" },
+				"schemaVersion": { "const": 1 },
+				"status": { "const": "valid" },
+				"scenarioId": { "type": "string", "minLength": 1 },
+				"policy": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["id", "effectiveLimits"],
+					"properties": {
+						"id": { "type": "string", "minLength": 1 },
+						"effectiveLimits": { "$ref": "#/$defs/effectiveLimits" }
+					}
+				},
+				"driver": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["id", "contractVersion"],
+					"properties": {
+						"id": { "type": "string", "minLength": 1 },
+						"contractVersion": { "const": 1 }
+					}
+				},
+				"diagnostics": { "type": "array", "maxItems": 0 }
+			}
+		},
+		"notValid": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "schemaVersion", "status", "diagnostics"],
+			"properties": {
+				"kind": { "const": "validation-result" },
+				"schemaVersion": { "const": 1 },
+				"status": { "enum": ["invalid", "error"] },
+				"diagnostics": {
+					"type": "array",
+					"minItems": 1,
+					"items": { "$ref": "#/$defs/diagnostic" }
+				}
+			}
+		}
+	}
+}

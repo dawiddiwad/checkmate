@@ -1,58 +1,243 @@
-import { expect } from '@playwright/test'
-import { logger } from '../logging/index.js'
-import { Step, StepResult, StepResultPromise, ResolveStepResult } from './types.js'
-import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts.js'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import type { AiClient } from '../ai/client.js'
 import { MessageHistory } from '../ai/message-history.js'
-import { AiClient } from '../ai/client.js'
-import { ExtensionHost } from './extension.js'
+import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts.js'
+import { TurnProcessor } from '../ai/turn-processor.js'
+import type { RuntimeConfig } from './config.js'
+import type { DriverSession, StepIntent } from '../driver.js'
+import type { RuntimeLogger } from '../logging/types.js'
+import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
+import { ToolDispatchError } from '../tools/dispatcher.js'
+import { LoopDetector } from '../tools/loop-detector.js'
+import type { ToolRegistry } from '../tools/registry.js'
+import { DriverBoundaryError } from './driver-boundary.js'
+import { buildInitialDriverContext, buildPostToolDriverContext, isEphemeralDriverMessage } from './driver-session.js'
+import { InternalStepEvidence, type InternalStepTermination } from './internal-step-evidence.js'
+import type { StepControl } from './scenario-control.js'
+import type { InternalStepReport, InternalTerminationReason } from './types.js'
+import {
+	ProviderUsageInvalidError,
+	ProviderUsageUnavailableError,
+	ScenarioUsageTracker,
+	TokenBudgetExceededError,
+} from './usage-tracker.js'
 
+export type StepExecutionDependencies = {
+	config: RuntimeConfig
+	aiClient: AiClient
+	toolRegistry: ToolRegistry
+	driverSession: DriverSession
+	usageTracker: ScenarioUsageTracker
+	driverId: string
+	redact: boolean
+	diagnosticSanitizer: DiagnosticSanitizer
+	logger: RuntimeLogger
+}
+
+/** Authoritative driver-backed model/tool loop. */
 export class StepExecution {
-	private stepResult: StepResult = { passed: false, actual: '' }
-	private resolveStepResult!: ResolveStepResult
-	private readonly stepResultPromise: StepResultPromise
+	constructor(private readonly dependencies: StepExecutionDependencies) {}
 
-	constructor(
-		private readonly aiClient: AiClient,
-		private readonly extensionHost: ExtensionHost
-	) {
-		this.stepResultPromise = new Promise<StepResult>((resolve) => {
-			this.resolveStepResult = resolve
+	async run(step: StepIntent, control: StepControl): Promise<InternalStepReport> {
+		const {
+			config,
+			aiClient,
+			toolRegistry,
+			driverSession,
+			usageTracker,
+			driverId,
+			redact,
+			diagnosticSanitizer,
+			logger,
+		} = this.dependencies
+		const evidence = new InternalStepEvidence(step, driverId, redact, diagnosticSanitizer, control.now)
+		const checkpoint = usageTracker.beginStep()
+		const messages: ChatCompletionMessageParam[] = []
+		const ephemeralMessages = new Set<ChatCompletionMessageParam>()
+		const turnProcessor = new TurnProcessor({
+			config,
+			toolRegistry,
+			loopDetector: new LoopDetector(config.loopMaxRepetitions),
+			evidence,
+			logger,
+		})
+		messages.push(
+			...new MessageHistory().buildInitialMessages({
+				systemPrompt: STEP_SYSTEM_PROMPT([...driverSession.instructions]),
+				userPrompt: STEP_START_USER_PROMPT(step),
+			})
+		)
+		logger.info(`step started: ${step.id}`)
+
+		let turns = 0
+		try {
+			try {
+				appendDriverContext(
+					messages,
+					ephemeralMessages,
+					await buildInitialDriverContext(driverSession, step, control)
+				)
+			} catch (error) {
+				return finish(
+					evidence,
+					usageTracker,
+					checkpoint,
+					failureFrom(error, control, turns, diagnosticSanitizer),
+					logger
+				)
+			}
+
+			for (;;) {
+				if (turns >= config.turnCap) {
+					return finish(
+						evidence,
+						usageTracker,
+						checkpoint,
+						{ outcome: 'failed', reason: 'turn-cap-exceeded', turns },
+						logger
+					)
+				}
+				const expired = control.poll()
+				if (expired.expired) {
+					return finish(
+						evidence,
+						usageTracker,
+						checkpoint,
+						{ outcome: 'failed', reason: expired.reason, turns },
+						logger
+					)
+				}
+
+				turns++
+				try {
+					const { response, assistantMessages } = await aiClient.send(messages, {
+						step,
+						signal: control.signal,
+					})
+					usageTracker.record(response.usage)
+					assertControlLive(control, 'provider-response')
+					messages.push(...assistantMessages)
+					const outcome = await turnProcessor.process({ response, step, turn: turns, control })
+					assertControlLive(control, 'turn-processing')
+
+					if (outcome.kind === 'assertion') {
+						return finish(
+							evidence,
+							usageTracker,
+							checkpoint,
+							{
+								outcome: outcome.passed ? 'passed' : 'failed',
+								reason: outcome.passed ? 'met-expectation' : 'failed-expectation',
+								actual: outcome.actual,
+								turns,
+							},
+							logger
+						)
+					}
+					if (outcome.kind === 'stuck') {
+						return finish(
+							evidence,
+							usageTracker,
+							checkpoint,
+							{
+								outcome: 'failed',
+								reason: 'loop-detected',
+								actual: 'the model repeated the same tool calls without reaching a result',
+								turns,
+							},
+							logger
+						)
+					}
+
+					dropEphemeralMessages(messages, ephemeralMessages)
+					messages.push(...outcome.messages)
+					appendDriverContext(
+						messages,
+						ephemeralMessages,
+						await buildPostToolDriverContext(driverSession, step, turns, outcome.toolResults, control)
+					)
+				} catch (error) {
+					return finish(
+						evidence,
+						usageTracker,
+						checkpoint,
+						failureFrom(error, control, turns, diagnosticSanitizer),
+						logger
+					)
+				}
+			}
+		} finally {
+			control.dispose()
+		}
+	}
+}
+
+function finish(
+	evidence: InternalStepEvidence,
+	usageTracker: ScenarioUsageTracker,
+	checkpoint: ReturnType<ScenarioUsageTracker['beginStep']>,
+	termination: InternalStepTermination,
+	logger: RuntimeLogger
+): InternalStepReport {
+	if (termination.reason === 'step-timeout' || termination.reason === 'scenario-timeout') {
+		evidence.recordDiagnostic({
+			code: 'expired-boundary',
+			path: '',
+			message: termination.actual ?? `Step execution expired with ${termination.reason}`,
 		})
 	}
+	const report = evidence.buildReport(termination, usageTracker.stepUsage(checkpoint))
+	logger.info(`step finished: ${report.step.id} ${report.outcome} (${report.category} / ${report.reason})`)
+	return report
+}
 
-	async run(step: Step): Promise<void> {
-		this.logStepStart(step)
-
-		try {
-			await this.aiClient.initialize(step, this.resolveStepResult)
-			const initialMessages = new MessageHistory().buildInitialMessages({
-				systemPrompt: STEP_SYSTEM_PROMPT(this.extensionHost.getInstructions()),
-				userPrompt: STEP_START_USER_PROMPT(step),
-				contextMessages: await this.extensionHost.buildInitialMessages(step),
-			})
-			await this.aiClient.sendMessage(initialMessages)
-			this.stepResult = await this.stepResultPromise
-			this.assertStepResult(step)
-		} catch (error) {
-			throw new Error(`\nFailed to execute action:\n${step.action}`, { cause: error })
-		}
-
-		this.logStepFinish()
+function appendDriverContext(
+	messages: ChatCompletionMessageParam[],
+	ephemeralMessages: Set<ChatCompletionMessageParam>,
+	context: ChatCompletionMessageParam[]
+): void {
+	for (const message of context) {
+		messages.push(message)
+		if (isEphemeralDriverMessage(message)) ephemeralMessages.add(message)
 	}
+}
 
-	private logStepStart(step: Step): void {
-		logger.info(`step started:\n${JSON.stringify(step, null, 2).replaceAll('  ', '').trim()}`)
-	}
+function dropEphemeralMessages(
+	messages: ChatCompletionMessageParam[],
+	ephemeralMessages: Set<ChatCompletionMessageParam>
+): void {
+	if (ephemeralMessages.size === 0) return
+	const retained = messages.filter((message) => !ephemeralMessages.has(message))
+	messages.length = 0
+	messages.push(...retained)
+	ephemeralMessages.clear()
+}
 
-	private logStepFinish(): void {
-		logger.info('step finished')
-	}
+function assertControlLive(control: StepControl, operation: string): void {
+	const expired = control.poll()
+	if (expired.expired) throw new DriverBoundaryError(operation, expired.reason)
+}
 
-	private assertStepResult(step: Step): void {
-		expect(this.stepResult.passed, this.assertionMessage(step)).toBeTruthy()
+function failureFrom(
+	error: unknown,
+	control: StepControl,
+	turns: number,
+	sanitizer: DiagnosticSanitizer
+): InternalStepTermination {
+	const actual = sanitizer.error(error)
+	const expired = control.poll()
+	if (expired.expired) return { outcome: 'failed', reason: expired.reason, actual, turns }
+	if (error instanceof DriverBoundaryError) return { outcome: 'failed', reason: error.reason, actual, turns }
+	if (error instanceof TokenBudgetExceededError) {
+		return { outcome: 'failed', reason: 'token-budget-exceeded', actual, turns }
 	}
+	if (error instanceof ProviderUsageUnavailableError || error instanceof ProviderUsageInvalidError) {
+		return { outcome: 'failed', reason: 'provider-error', actual, turns }
+	}
+	if (error instanceof ToolDispatchError) return { outcome: 'failed', reason: 'tool-error', actual, turns }
+	return { outcome: 'failed', reason: driverInfraReason(error), actual, turns }
+}
 
-	private assertionMessage(step: Step): string {
-		return this.stepResult.passed ? step.expect : `\nExpected: ${step.expect}\nActual: ${this.stepResult.actual}`
-	}
+function driverInfraReason(error: unknown): InternalTerminationReason {
+	return error instanceof ToolDispatchError ? 'tool-error' : 'provider-error'
 }

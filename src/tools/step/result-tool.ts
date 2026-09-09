@@ -19,17 +19,19 @@ export function createStepResultTools(): AgentTool[] {
 			name: StepResultTool.TOOL_FAIL_TEST_STEP,
 			description: 'Fail the test step with the actual result',
 			schema: stepResultSchema,
-			handler: ({ actualResult }, context) => {
-				context.resolveStepResult({ passed: false, actual: actualResult })
-			},
+			handler: ({ actualResult }) => ({
+				response: actualResult,
+				assertion: { passed: false, actual: actualResult },
+			}),
 		}),
 		defineAgentTool({
 			name: StepResultTool.TOOL_PASS_TEST_STEP,
 			description: 'Pass the test step with the actual result',
 			schema: stepResultSchema,
-			handler: ({ actualResult }, context) => {
-				context.resolveStepResult({ passed: true, actual: actualResult })
-			},
+			handler: ({ actualResult }) => ({
+				response: actualResult,
+				assertion: { passed: true, actual: actualResult },
+			}),
 		}),
 	]
 }

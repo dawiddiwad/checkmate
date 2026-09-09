@@ -1,85 +1,54 @@
-/**
- * A single natural-language test step executed by Checkmate.
- *
- * `action` should describe what the agent needs to do.
- * `expect` should describe the expected result after the action finishes.
- * `search` can bias snapshot filtering toward specific keywords.
- * `topPercent` controls how much of the scored page snapshot is kept.
- *
- * @example
- * ```ts
- * const step: Step = {
- *   action: "Open the pricing page and click the Pro plan",
- *   expect: "The checkout page for the Pro plan is displayed",
- *   topPercent: 15,
- * }
- * ```
- */
-export interface Step {
-	/**
-	 * What the agent should do in the browser.
-	 */
-	action: string
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import type { Diagnostic, Usage } from '../contracts/types.js'
+import type { StepIntent } from '../driver.js'
+import type { ToolExecution } from '../tools/types.js'
 
-	/**
-	 * What should be true after the action is complete.
-	 */
-	expect: string
+export type Step = Pick<StepIntent, 'action' | 'expect'>
 
-	/**
-	 * Optional keyword hints for snapshot filtering.
-	 *
-	 * When provided, these terms are prioritized over semantic `action + expect` matching.
-	 */
-	search?: string[]
+export type StepAssertion = { passed: boolean; actual: string }
 
-	/**
-	 * Optional percentage of the highest-scoring snapshot elements to keep.
-	 *
-	 * This value is expressed as a real percent from `1` to `100`.
-	 * For example, `10` keeps the top 10% of scored elements.
-	 *
-	 * @example
-	 * ```ts
-	 * topPercent: 20
-	 * ```
-	 */
-	topPercent?: number
+export type InternalTerminationReason =
+	| 'met-expectation'
+	| 'failed-expectation'
+	| 'loop-detected'
+	| 'turn-cap-exceeded'
+	| 'step-timeout'
+	| 'scenario-timeout'
+	| 'tool-error'
+	| 'provider-error'
+	| 'token-budget-exceeded'
+	| 'interrupted'
+	| 'internal-error'
+
+export type InternalStepToolCall = {
+	turn: number
+	driverId: string
+	name: string
+	arguments: unknown
+	status: 'ok' | 'error'
 }
 
-/**
- * Final result returned by a step execution.
- *
- * @example
- * ```ts
- * const result: StepResult = {
- *   passed: true,
- *   actual: 'Checkout page is visible',
- * }
- * ```
- */
-export interface StepResult {
-	/**
-	 * Whether the step passed.
-	 */
-	passed: boolean
-
-	/**
-	 * The observed result collected during execution.
-	 */
-	actual: string
+export type InternalStepReport = {
+	step: StepIntent
+	outcome: 'passed' | 'failed'
+	category: StepCategory
+	reason: InternalTerminationReason
+	actual?: string
+	turns: number
+	durationMs: number
+	usage: Usage
+	toolCalls: InternalStepToolCall[]
+	transcript: TranscriptEntry[]
+	diagnostics: Diagnostic[]
 }
 
-export type StepResultPromise = Promise<StepResult>
+export type StepCategory = 'app' | 'model' | 'infra'
 
-/**
- * Callback used internally to resolve a running step result.
- *
- * @example
- * ```ts
- * const resolve: ResolveStepResult = (result) => {
- *   console.log(result.actual)
- * }
- * ```
- */
-export type ResolveStepResult = (result: StepResult) => void
+export type TranscriptEntry = { turn: number; role: 'assistant' | 'tool'; content: string }
+
+export type ContextMessage = { message: ChatCompletionMessageParam; ephemeral?: boolean }
+
+export type TurnOutcome =
+	| { kind: 'continue'; toolResults: ToolExecution[]; messages: ChatCompletionMessageParam[] }
+	| { kind: 'assertion'; passed: boolean; actual: string }
+	| { kind: 'stuck'; reason: 'loop-detected' }

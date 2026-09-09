@@ -5,7 +5,11 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'node',
+		maxWorkers: 2,
 		include: ['src/test/**/*.test.ts'],
+		env: {
+			CHECKMATE_OPENAI_API_KEY: 'test-api-key',
+		},
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json', 'html'],

@@ -2,7 +2,7 @@
 
 ## _Checkmate - a harness for agentic acceptance_
 
-<img src="https://raw.github.com/dawiddiwad/checkmate/main/docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
+<img src="docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
 
 #
 

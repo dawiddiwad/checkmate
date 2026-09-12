@@ -13,6 +13,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const tarball = resolve(process.cwd(), tarballArgument)
 const fixtureDirectory = resolve(repositoryRoot, 'src/test/fixtures/contracts')
 const installation = await mkdtemp(resolve(tmpdir(), 'checkmate-package-'))
+const repositoryPackage = JSON.parse(await readFile(resolve(repositoryRoot, 'package.json'), 'utf8'))
 
 const schemaFixtures = {
 	'checkmate-config.v1.json': 'checkmate-config.valid.json',
@@ -78,7 +79,7 @@ try {
 	const installedPackage = JSON.parse(
 		await readFile(resolve(installation, 'node_modules/@xoxoai/checkmate/package.json'), 'utf8')
 	)
-	assert.equal(installedPackage.version, '0.5.0')
+	assert.equal(installedPackage.version, repositoryPackage.version)
 	assert.deepEqual(Object.keys(installedPackage.exports).sort(), [
 		'.',
 		'./driver',

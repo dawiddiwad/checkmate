@@ -12,7 +12,7 @@ adws
 .humanlayer
 app_docs
 specs
-.pi-meetings
+.pi-*
 
 # Local harness and tool output
 .checkmate

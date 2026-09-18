@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CheckmateDriverV1, DriverSession } from '../../driver.js'
+import type { CheckmateDriverV1, DriverSession, DriverStartInput } from '../../driver.js'
 import { DiagnosticSanitizer } from '../../redaction/diagnostic-sanitizer.js'
 import { silentLogger } from '../../logging/types.js'
 import { ScenarioControl } from '../../runtime/scenario-control.js'
@@ -10,6 +10,60 @@ import type { InternalStepReport } from '../../runtime/types.js'
 import { createStore, descriptor, request, temporaryRoot } from '../evidence/helpers.js'
 
 describe('scenario runner', () => {
+	it.each(['*', ['browser_extract']] as const)(
+		'supplies frozen tool permissions and invocation sanitization for %s',
+		async (allowedTools) => {
+			const temporary = await temporaryRoot()
+			const control = new ScenarioControl({ timeoutMs: 2000 })
+			try {
+				const store = await createStore(temporary.root)
+				const plan = prepared(temporary.root)
+				const start = vi.fn<(input: DriverStartInput) => Promise<DriverSession>>(async () =>
+					fixtureSession(async () => {})
+				)
+				await runScenario({
+					driver: { id: 'fixture', driverContractVersion: 1, start },
+					prepared: {
+						...plan,
+						driver: {
+							...plan.driver,
+							allowedTools,
+							descriptor: {
+								...descriptor,
+								driverContractVersion: 1,
+								tools: [{ name: 'browser_extract' }, { name: 'browser_diagnostics' }],
+							},
+						},
+					},
+					state: scenarioState(store),
+					control,
+					store,
+					usageTracker: new ScenarioUsageTracker(),
+					secretValues: secretValues(),
+					apiKey: 'provider-secret',
+					exactSecrets: ['provider-secret'],
+					logger: silentLogger,
+					sanitizer: new DiagnosticSanitizer(['provider-secret']),
+					createRunner: () => ({
+						run: async (step) => report(step.id, 'met-expectation'),
+						teardown: async () => {},
+					}),
+				})
+				const input = start.mock.calls[0][0]
+				expect(input.allowlistedTools).toEqual(
+					allowedTools === '*' ? ['browser_extract', 'browser_diagnostics'] : ['browser_extract']
+				)
+				expect(Object.isFrozen(input.allowlistedTools)).toBe(true)
+				expect(input.diagnostics.sanitizeText('provider-secret Bearer credential-token')).not.toMatch(
+					/provider-secret|credential-token/
+				)
+			} finally {
+				control.dispose()
+				await temporary.cleanup()
+			}
+		}
+	)
+
 	it('uses one session, stops on the first failure, and attempts both cleanup callbacks', async () => {
 		const temporary = await temporaryRoot()
 		try {
@@ -46,6 +100,8 @@ describe('scenario runner', () => {
 			})
 
 			expect(driver.start).toHaveBeenCalledOnce()
+			expect(vi.mocked(driver.start).mock.calls[0][0]).toHaveProperty('allowlistedTools')
+			expect(vi.mocked(driver.start).mock.calls[0][0]).toHaveProperty('diagnostics')
 			expect(run).toHaveBeenCalledOnce()
 			expect(teardown).toHaveBeenCalledOnce()
 			expect(close).toHaveBeenCalledOnce()

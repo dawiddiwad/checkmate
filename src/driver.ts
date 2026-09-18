@@ -29,6 +29,8 @@ export type DriverStartInput = Readonly<{
 	evidence: DriverEvidenceSink
 	logger: DriverLogger
 	signal: AbortSignal
+	allowlistedTools: readonly string[]
+	diagnostics: Readonly<{ sanitizeText(value: string): string }>
 }>
 
 export type DriverStepContext = Readonly<{
@@ -40,6 +42,7 @@ export type DriverToolContext = Readonly<{
 	step: StepIntent
 	turn: number
 	signal: AbortSignal
+	generateStructured(request: DriverStructuredGenerationRequest): Promise<DriverStructuredGenerationResult>
 }>
 
 export type DriverToolResult = string | void | { response: string; status?: 'success' | 'error' }
@@ -95,6 +98,29 @@ export type CheckmateDriverV1 = Readonly<{
 	id: string
 	driverContractVersion: 1
 	start(input: DriverStartInput): Promise<DriverSession>
+}>
+
+export type DriverGenerationMessage = Readonly<{
+	role: 'system' | 'user' | 'assistant'
+	content: readonly (
+		Readonly<{ type: 'text'; text: string }> | Readonly<{ type: 'image'; mediaType: string; data: string }>
+	)[]
+}>
+
+export type DriverStructuredGenerationRequest = Readonly<{
+	messages: readonly DriverGenerationMessage[]
+	schemaName: string
+	schema: Record<string, unknown>
+}>
+
+export type DriverStructuredGenerationResult = Readonly<{
+	value: unknown
+	usage?: Readonly<{
+		inputTokens: number
+		outputTokens: number
+		totalTokens: number
+		cachedInputTokens?: number
+	}>
 }>
 
 export function defineDriverTool<TSchema extends z.ZodType>(input: {

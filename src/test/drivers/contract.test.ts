@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod/v4'
 import type { DriverDescriptorV1 } from '../../contracts/types'
-import { defineDriverTool, type DriverSession } from '../../driver'
+import { defineDriverTool, type DriverSession, type DriverToolContext } from '../../driver'
 import { DriverContractError, validateDriverSession } from '../../drivers/loader'
 
 const descriptor = {
@@ -35,6 +35,32 @@ function session(names: string[]): DriverSession {
 }
 
 describe('driver contract validation', () => {
+	it('exposes structured generation through the tool helper and preserves exact parity', async () => {
+		const generateStructured = vi.fn().mockResolvedValue({ value: 'ready' })
+		const generationTool = defineDriverTool({
+			name: 'fixture_read',
+			description: 'read',
+			schema: z.object({}).strict(),
+			handler: async (_args, context) => {
+				const typed: DriverToolContext = context
+				return JSON.stringify(await typed.generateStructured({ messages: [], schemaName: 'fact', schema: {} }))
+			},
+		})
+		const context: DriverToolContext = {
+			step: { id: 'step', action: 'read', expect: 'ready' },
+			turn: 1,
+			signal: new AbortController().signal,
+			generateStructured,
+		}
+		await generationTool.execute({}, context)
+		expect(generateStructured).toHaveBeenCalledOnce()
+		const generationSession = { ...session([]), tools: [generationTool, tool('fixture_write')] }
+		expect(validateDriverSession(generationSession, descriptor, ['fixture_read'])).toEqual([generationTool])
+		expect(() =>
+			validateDriverSession({ ...generationSession, tools: [generationTool] }, descriptor, ['fixture_read'])
+		).toThrow('missing runtime tools')
+	})
+
 	it('requires exact descriptor parity before applying the policy allowlist', () => {
 		const selected = validateDriverSession(session(['fixture_read', 'fixture_write']), descriptor, ['fixture_read'])
 		expect(selected.map((entry) => entry.definition.name)).toEqual(['fixture_read'])
@@ -73,6 +99,7 @@ describe('driver contract validation', () => {
 				step: { id: 'step', action: 'read', expect: 'value' },
 				turn: 1,
 				signal: new AbortController().signal,
+				generateStructured: vi.fn(),
 			}
 		)
 		expect(result).toBe('ok')

@@ -1,0 +1,9 @@
+{
+	"name": "@checkmate-test/generation-driver",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		".": "./index.js",
+		"./checkmate-driver.json": "./checkmate-driver.json"
+	}
+}

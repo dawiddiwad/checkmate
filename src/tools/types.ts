@@ -1,5 +1,6 @@
 import { Step, StepAssertion } from '../runtime/types.js'
 import type { StepControl } from '../runtime/scenario-control.js'
+import type { StructuredGenerationGateway } from '../runtime/structured-generation.js'
 
 /**
  * Normalized tool call emitted by the model.
@@ -7,8 +8,8 @@ import type { StepControl } from '../runtime/scenario-control.js'
  * @example
  * ```ts
  * const call: ToolCall = {
- *   name: 'browser_click_or_hover',
- *   arguments: { ref: 'e123', hover: false },
+ *   name: 'browser_extract',
+ *   arguments: { instruction: 'Read the page title' },
  * }
  * ```
  */
@@ -54,7 +55,7 @@ export type AgentToolDefinition = {
 	parameters: Record<string, unknown>
 
 	/**
-	 * Whether the tool arguments should be validated strictly.
+	 * Whether the provider should generate arguments under strict JSON Schema.
 	 */
 	strict: boolean
 }
@@ -131,6 +132,7 @@ export type AgentToolContext = {
 	signal?: AbortSignal
 
 	control?: StepControl
+	generation?: StructuredGenerationGateway
 }
 
 /**

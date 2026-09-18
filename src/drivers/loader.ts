@@ -51,6 +51,9 @@ export async function loadValidatedDriver(input: {
 			`Runtime driver id '${driver.id}' does not match descriptor id '${input.descriptor.id}'`
 		)
 	}
+	if (driver.driverContractVersion !== 1) {
+		throw new DriverLoadError('Unsupported runtime driver contract version')
+	}
 	if (driver.driverContractVersion !== input.descriptor.driverContractVersion) {
 		throw new DriverLoadError(
 			`Runtime driver contract version '${driver.driverContractVersion}' does not match descriptor version '${input.descriptor.driverContractVersion}'`

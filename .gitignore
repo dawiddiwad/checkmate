@@ -3,7 +3,6 @@ test-results
 test-reports
 .DS_Store
 .env
-.playwright-mcp
 .sf
 TODO
 coverage
@@ -15,7 +14,6 @@ adws/adw_data/sessions/
 adws/adw_data/sssf.db*
 __pycache__/
 *.pyc
-.playwright-cli
 .pi-meetings
 app-docs
 

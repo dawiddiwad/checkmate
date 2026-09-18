@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
-import { clearInterval, setInterval, setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
 import { config as loadEnvironment } from 'dotenv'
 import Ajv2020 from 'ajv/dist/2020.js'
 import addFormats from 'ajv-formats'
+import { runTracked, assertProcessesExited } from './browser-processes.mjs'
+import { browserAudit } from './browser-audit.mjs'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 loadEnvironment({ path: resolve(repositoryRoot, '.env'), quiet: true })
@@ -22,6 +24,16 @@ for (const name of required) {
 
 const installation = await mkdtemp(resolve(tmpdir(), 'checkmate-ollama-cli-'))
 const packageDirectory = await mkdtemp(resolve(tmpdir(), 'checkmate-ollama-package-'))
+let submitted = false
+const form = createServer((request, response) => {
+	if (request.url === '/saved?name=cobalt%20heron') submitted = true
+	response.writeHead(200, { 'content-type': 'text/html' })
+	response.end(
+		`<html><body><h1>Form ready</h1><form onsubmit="event.preventDefault(); const name = document.querySelector('input').value; document.querySelector('h1').textContent = 'Saved ' + name; fetch('/saved?name=' + encodeURIComponent(name))"><label>Name<input></label><button>Save</button></form></body></html>`
+	)
+})
+await new Promise((accept) => form.listen(0, '127.0.0.1', accept))
+const baseUrl = `http://127.0.0.1:${form.address().port}`
 
 try {
 	const tarball = process.argv[2]
@@ -33,17 +45,32 @@ try {
 		['install', '--ignore-scripts', '--no-package-lock', '--no-audit', '--no-fund', tarball],
 		installation
 	)
-	await run(resolve(installation, 'node_modules/.bin/playwright'), ['install', 'chromium'], installation)
 	await writeFile(resolve(installation, 'checkmate.config.json'), JSON.stringify(manifest()))
 	await writeFile(resolve(installation, 'request.json'), JSON.stringify(request()))
 
 	const binary = resolve(installation, 'node_modules/@xoxoai/checkmate/bin/checkmate.js')
+	const audit = await browserAudit(installation)
 	const execution = await runTracked(process.execPath, [binary, 'run', 'request.json'], installation, {
 		...process.env,
+		...audit.env,
 		OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 	})
-	assert.equal(execution.code, 0, 'live Ollama scenario did not pass')
 	const result = JSON.parse(execution.stdout)
+	await assertProcessesExited(execution.browserPids)
+	await audit.verify()
+	if (execution.code !== 0) {
+		const { DiagnosticSanitizer } = await import('../../dist/redaction/diagnostic-sanitizer.js')
+		const sanitizer = new DiagnosticSanitizer(required.map((name) => process.env[name]))
+		throw new Error(
+			sanitizer.text(
+				JSON.stringify({
+					reason: result.reason,
+					diagnostics: result.diagnostics,
+					steps: result.steps?.map(({ reason, actual, toolCalls }) => ({ reason, actual, toolCalls })),
+				})
+			)
+		)
+	}
 	const schema = JSON.parse(
 		await readFile(resolve(installation, 'node_modules/@xoxoai/checkmate/schemas/run-result.v1.json'), 'utf8')
 	)
@@ -54,11 +81,38 @@ try {
 	assert.equal(result.status, 'passed')
 	assert.equal(result.category, 'passed')
 	assert.equal(result.scenarioId, 'ollama-qwen3-vl')
+	assert(submitted, 'Live model did not submit the real form with the expected input')
+	assert.equal(result.steps.length, 3)
+	for (const name of [
+		'browser_navigate',
+		'browser_observe',
+		'browser_act',
+		'browser_extract',
+		'browser_diagnostics',
+	]) {
+		assert(
+			result.steps.flatMap((step) => step.toolCalls).some((call) => call.name === name),
+			`Live workflow did not exercise ${name}`
+		)
+	}
+	const directories = await readdir(resolve(installation, '.checkmate/runs'))
+	const directory = directories.find((entry) => entry.endsWith(`-${result.runId}`))
+	assert(directory)
+	assert.equal(
+		await readFile(resolve(installation, '.checkmate/runs', directory, 'result.json'), 'utf8'),
+		execution.stdout
+	)
 	assert(result.evidence.references.length > 0)
-	for (const reference of result.evidence.references) await access(resolve(installation, reference.path))
+	assert.equal(result.driver.contractVersion, 1)
+	assert(result.steps.every((step) => step.toolCalls.some((call) => call.name === 'browser_extract')))
+	for (const reference of result.evidence.references) {
+		assert.equal(reference.kind, 'transcript')
+		await access(resolve(installation, reference.path))
+	}
 	assert(execution.browserPids.size > 0, 'live acceptance did not observe the built-in web driver browser process')
-	await assertProcessesExited(execution.browserPids)
 } finally {
+	form.closeAllConnections()
+	await new Promise((accept) => form.close(accept))
 	await Promise.all([
 		rm(installation, { recursive: true, force: true }),
 		rm(packageDirectory, { recursive: true, force: true }),
@@ -111,9 +165,6 @@ function manifest() {
 					web: {
 						settings: {
 							headless: true,
-							snapshotFilter: false,
-							snapshotTopPercent: 10,
-							screenshotsInModelContext: false,
 						},
 						tools: { allowed: ['*'] },
 					},
@@ -129,19 +180,23 @@ function request() {
 		schemaVersion: 1,
 		scenario: {
 			id: 'ollama-qwen3-vl',
-			name: 'Find the qwen3-vl 235b model on Ollama',
-			driver: { id: 'web', target: { baseUrl: 'https://ollama.com' } },
+			name: 'Submit a form then inspect the qwen3-vl 235b model on Ollama',
+			driver: { id: 'web', target: { baseUrl } },
 			policy: 'live',
 			steps: [
-				{ id: 'search', action: 'Search for qwen3-vl', expect: 'Search results include qwen3-vl' },
 				{
-					id: 'open-model',
-					action: 'Open the qwen3-vl model page',
-					expect: 'The qwen3-vl model page is visible',
+					id: 'submit-form',
+					action: 'Use browser_observe to discover the form controls. Fill Name with cobalt heron and click Save using separate browser_act calls. Extract the resulting heading and read browser_diagnostics before issuing a verdict.',
+					expect: 'The page heading says Saved cobalt heron',
 				},
 				{
-					id: 'open-235b',
-					action: 'Open the qwen3-vl:235b variant',
+					id: 'persisted-form',
+					action: 'Without navigating or modifying the page, extract the heading again',
+					expect: 'The page still says Saved cobalt heron',
+				},
+				{
+					id: 'inspect-235b',
+					action: 'Navigate to https://ollama.com/library/qwen3-vl:235b and extract the model name and variant',
 					expect: 'The qwen3-vl:235b details are visible',
 				},
 			],
@@ -162,67 +217,4 @@ function run(command, args, cwd, env = process.env) {
 			else reject(new Error(`${command} exited with ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`))
 		})
 	})
-}
-
-function runTracked(command, args, cwd, env) {
-	return new Promise((accept, reject) => {
-		const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
-		const browserPids = new Set()
-		let stdout = ''
-		let stderr = ''
-		let sampling
-		const sample = async () => {
-			if (sampling) return sampling
-			sampling = sampleBrowserDescendants(child.pid, browserPids).finally(() => (sampling = undefined))
-			return sampling
-		}
-		const interval = setInterval(() => void sample(), 100)
-		child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk))
-		child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk))
-		child.once('error', reject)
-		child.once('close', async (code) => {
-			clearInterval(interval)
-			await sampling
-			if (code === 0) accept({ code, stdout, stderr, browserPids })
-			else reject(new Error(`${command} exited with ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`))
-		})
-	})
-}
-
-async function sampleBrowserDescendants(rootPid, browserPids) {
-	if (!rootPid) return
-	const listing = await run('ps', ['-axo', 'pid=,ppid=,command='], process.cwd())
-	const processes = listing.stdout
-		.split('\n')
-		.map((line) => /^(\s*\d+)\s+(\d+)\s+(.+)$/.exec(line))
-		.filter(Boolean)
-		.map((match) => ({ pid: Number(match[1]), parent: Number(match[2]), command: match[3] }))
-	const descendants = new Set([rootPid])
-	for (;;) {
-		const before = descendants.size
-		for (const entry of processes) if (descendants.has(entry.parent)) descendants.add(entry.pid)
-		if (descendants.size === before) break
-	}
-	for (const entry of processes) {
-		if (descendants.has(entry.pid) && /chrom(?:e|ium)|headless_shell/i.test(entry.command))
-			browserPids.add(entry.pid)
-	}
-}
-
-async function assertProcessesExited(pids) {
-	for (let attempt = 0; attempt < 100; attempt++) {
-		if ([...pids].every((pid) => !processExists(pid))) return
-		await new Promise((resolveDelay) => setTimeout(resolveDelay, 50))
-	}
-	throw new Error('built-in web driver left a browser process running after worker exit')
-}
-
-function processExists(pid) {
-	try {
-		process.kill(pid, 0)
-		return true
-	} catch (error) {
-		if (error && error.code === 'ESRCH') return false
-		throw error
-	}
 }

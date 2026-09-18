@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { AiClient } from '../ai/client'
+import { generationRequest, structuredResponse } from './fixtures/structured-generation'
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 import { ToolRegistry } from '../tools/registry'
 import { MockToolRegistry, MutableConfig, AiClientTestable, createHttpError, HttpError, testConfig } from './test-types'
@@ -278,6 +279,31 @@ describe('AiClient - send', () => {
 		})
 	})
 
+	it('retries structured transport without adding tool repair messages', async () => {
+		mockConfig.maxRetries = 2
+		vi.spyOn(testable(openAIClient), 'sleep').mockResolvedValue(undefined)
+		createMock.mockRejectedValueOnce(createHttpError('temporary', 503)).mockResolvedValueOnce(structuredResponse())
+		await openAIClient.sendStructured(generationRequest)
+		expect(createMock).toHaveBeenCalledTimes(2)
+		expect(createMock.mock.calls[0][0]).toEqual(createMock.mock.calls[1][0])
+		expect(mockToolRegistry.getTools).not.toHaveBeenCalled()
+		createMock.mockClear().mockRejectedValue(createHttpError('tool schema rejected', 400))
+		await expect(openAIClient.sendStructured(generationRequest)).rejects.toThrow('tool schema rejected')
+		expect(createMock).toHaveBeenCalledOnce()
+		expect(createMock.mock.calls[0][0].messages).toHaveLength(1)
+	})
+
+	it('aborts structured retry backoff before another provider request', async () => {
+		mockConfig.maxRetries = 2
+		const controller = new AbortController()
+		createMock.mockRejectedValue(createHttpError('retry later', 429))
+		const pending = openAIClient.sendStructured(generationRequest, { signal: controller.signal })
+		await vi.waitFor(() => expect(createMock).toHaveBeenCalledOnce())
+		controller.abort(new Error('cancelled'))
+		await expect(pending).rejects.toThrow('cancelled')
+		expect(createMock).toHaveBeenCalledOnce()
+	})
+
 	it('sends the caller-owned message array and returns the assistant messages to retain', async () => {
 		const assistantMessage = { role: 'assistant', content: 'ack' }
 		createMock.mockResolvedValueOnce({
@@ -447,6 +473,18 @@ describe('AiClient - temperature pinning', () => {
 			toolRegistry: { getTools: vi.fn().mockResolvedValue([]) } as unknown as ToolRegistry,
 			logger,
 		})
+	})
+
+	it('shares structured temperature fallback with subsequent outer requests', async () => {
+		createMock
+			.mockRejectedValueOnce(temperatureRejection())
+			.mockResolvedValueOnce(structuredResponse())
+			.mockResolvedValueOnce(completion())
+		await openAIClient.sendStructured(generationRequest)
+		await openAIClient.send([{ role: 'user', content: 'continue' }])
+		expect(createMock.mock.calls[0][0]).toHaveProperty('temperature', 0)
+		expect(createMock.mock.calls[1][0]).not.toHaveProperty('temperature')
+		expect(createMock.mock.calls[2][0]).not.toHaveProperty('temperature')
 	})
 
 	it('pins the temperature when the model accepts it', async () => {

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod/v4'
 import type { ChatCompletion, ChatCompletionAssistantMessageParam } from 'openai/resources/chat/completions'
 import type { DriverDescriptorV1, ModelEgressPolicyV1 } from '../../contracts/types'
-import { defineDriverTool, type DriverSession } from '../../driver'
+import { defineDriverTool, type DriverSession, type DriverToolContext } from '../../driver'
+import { generationRequest, generationSession, structuredResponse } from '../fixtures/structured-generation'
+import { ScenarioUsageTracker } from '../../runtime/usage-tracker'
 import { createDriverRunner } from '../../runtime/runner'
 import { ScenarioControl } from '../../runtime/scenario-control'
 import type { RuntimeLogger } from '../../logging/types'
@@ -67,6 +69,8 @@ function runnerWith(
 		logger?: RuntimeLogger
 		exactSecrets?: string[]
 		textRedaction?: 'on' | 'off'
+		sendStructured?: ReturnType<typeof vi.fn>
+		usageTracker?: ScenarioUsageTracker
 	} = {}
 ) {
 	return createDriverRunner({
@@ -86,12 +90,166 @@ function runnerWith(
 		apiKey: 'fixture-key',
 		exactSecrets: options.exactSecrets,
 		logger: options.logger,
-		aiClient: { send } as never,
+		aiClient: { send, sendStructured: options.sendStructured } as never,
+		usageTracker: options.usageTracker,
 	})
 }
 
 describe('driver-backed step execution', () => {
 	afterEach(() => vi.useRealTimers())
+
+	it('attributes combined outer and nested usage to each ordered step and revokes old callbacks', async () => {
+		const callbacks: DriverToolContext['generateStructured'][] = []
+		const session = generationSession(async (context) => {
+			callbacks.push(context.generateStructured)
+			await context.generateStructured(generationRequest)
+			return JSON.stringify((await context.generateStructured(generationRequest)).value)
+		})
+		const send = vi.fn()
+		for (let index = 0; index < 2; index++) {
+			send.mockResolvedValueOnce(response('fixture_action', {})).mockResolvedValueOnce(
+				response('pass_test_step', { actualResult: 'ready' })
+			)
+		}
+		const sendStructured = vi.fn().mockResolvedValue(structuredResponse())
+		const usageTracker = new ScenarioUsageTracker()
+		const runner = runnerWith(session, send, { sendStructured, usageTracker })
+		const scenario = new ScenarioControl({ timeoutMs: 5000 })
+		for (const id of ['first', 'second']) {
+			const report = await runner.run(
+				{ id, action: 'inspect', expect: 'ready' },
+				scenario.createStepControl(1000)
+			)
+			expect(report).toMatchObject({ outcome: 'passed', usage: { totalTokens: 20, cachedPromptTokens: 6 } })
+			await expect(callbacks[0](generationRequest)).rejects.toThrow('scope ended')
+		}
+		expect(usageTracker.usage()).toMatchObject({ totalTokens: 40, cachedPromptTokens: 12 })
+		expect(sendStructured).toHaveBeenCalledTimes(4)
+		scenario.dispose()
+	})
+
+	it.each(['budget', 'provider', 'output', 'usage', 'browser'] as const)(
+		'preserves the authoritative %s failure through swallowed errors',
+		async (mode) => {
+			const sendStructured = vi.fn().mockResolvedValue(structuredResponse())
+			if (mode === 'provider') sendStructured.mockRejectedValue(new Error('provider rejected request'))
+			if (mode === 'output') sendStructured.mockResolvedValue(structuredResponse('invalid'))
+			if (mode === 'usage') sendStructured.mockResolvedValue({ ...structuredResponse(), usage: undefined })
+			const session = generationSession(async ({ generateStructured }) => {
+				if (mode === 'browser') throw new Error('ordinary browser failure')
+				await generateStructured(generationRequest).catch((): void => undefined)
+				await generateStructured(generationRequest).catch((): void => undefined)
+				return 'swallowed failure'
+			})
+			const send = vi
+				.fn()
+				.mockResolvedValueOnce(response('fixture_action', {}))
+				.mockResolvedValueOnce(response('pass_test_step', { actualResult: 'must not pass' }))
+			const runner = runnerWith(session, send, {
+				sendStructured,
+				budgetTokens: mode === 'budget' ? 5 : 100,
+			})
+			const scenario = new ScenarioControl({ timeoutMs: 5000 })
+			const report = await runner.run(
+				{ id: 'failure', action: 'inspect', expect: 'ready' },
+				scenario.createStepControl(1000)
+			)
+			expect(report).toMatchObject({
+				outcome: 'failed',
+				reason:
+					mode === 'budget' ? 'token-budget-exceeded' : mode === 'browser' ? 'tool-error' : 'provider-error',
+			})
+			expect(send).toHaveBeenCalledOnce()
+			expect(sendStructured).toHaveBeenCalledTimes(mode === 'browser' ? 0 : 1)
+			if (mode === 'budget' || mode === 'output') expect(report.usage.totalTokens).toBe(10)
+			scenario.dispose()
+		}
+	)
+
+	it('preserves a nested budget failure when the driver throws a different error', async () => {
+		const session = generationSession(async ({ generateStructured }) => {
+			try {
+				await generateStructured(generationRequest)
+			} catch {
+				throw new Error('RPC replaced the original failure')
+			}
+			return 'unreachable'
+		})
+		const send = vi.fn().mockResolvedValue(response('fixture_action', {}))
+		const runner = runnerWith(session, send, {
+			budgetTokens: 5,
+			sendStructured: vi.fn().mockResolvedValue(structuredResponse()),
+		})
+		const scenario = new ScenarioControl({ timeoutMs: 5000 })
+		const report = await runner.run(
+			{ id: 'replace', action: 'inspect', expect: 'ready' },
+			scenario.createStepControl(1000)
+		)
+		expect(report).toMatchObject({ reason: 'token-budget-exceeded', usage: { totalTokens: 10 } })
+		expect(send).toHaveBeenCalledOnce()
+		scenario.dispose()
+	})
+
+	it('fails and aborts generation that a driver starts without awaiting', async () => {
+		let settle!: (value: ReturnType<typeof structuredResponse>) => void
+		const sendStructured = vi.fn(
+			(_request, options) =>
+				new Promise((resolve) => {
+					settle = resolve
+					expect(options.signal.aborted).toBe(false)
+				})
+		)
+		const session = generationSession(async ({ generateStructured }) => {
+			void generateStructured(generationRequest)
+			return 'premature success'
+		})
+		const send = vi.fn().mockResolvedValue(response('fixture_action', {}))
+		const usageTracker = new ScenarioUsageTracker()
+		const runner = runnerWith(session, send, { sendStructured, usageTracker })
+		const scenario = new ScenarioControl({ timeoutMs: 5000 })
+		const report = await runner.run(
+			{ id: 'unawaited', action: 'inspect', expect: 'ready' },
+			scenario.createStepControl(1000)
+		)
+		expect(report).toMatchObject({ reason: 'provider-error', usage: { totalTokens: 3 } })
+		expect(sendStructured.mock.calls[0][1].signal.aborted).toBe(true)
+		settle(structuredResponse())
+		await Promise.resolve()
+		expect(usageTracker.usage().totalTokens).toBe(3)
+		expect(send).toHaveBeenCalledOnce()
+		scenario.dispose()
+	})
+
+	it('ends pending nested work at the tool deadline without late usage mutation', async () => {
+		vi.useFakeTimers()
+		let settle!: (value: ReturnType<typeof structuredResponse>) => void
+		const sendStructured = vi.fn(
+			() =>
+				new Promise((resolve) => {
+					settle = resolve
+				})
+		)
+		const session = generationSession(async ({ generateStructured }) =>
+			JSON.stringify(await generateStructured(generationRequest))
+		)
+		const usageTracker = new ScenarioUsageTracker()
+		const runner = runnerWith(session, vi.fn().mockResolvedValue(response('fixture_action', {})), {
+			sendStructured,
+			usageTracker,
+		})
+		const scenario = new ScenarioControl({ timeoutMs: 5000 })
+		const pending = runner.run(
+			{ id: 'timeout', action: 'inspect', expect: 'ready' },
+			scenario.createStepControl(1000)
+		)
+		await vi.advanceTimersByTimeAsync(1000)
+		const report = await pending
+		expect(report).toMatchObject({ reason: 'step-timeout', usage: { totalTokens: 3 } })
+		settle(structuredResponse())
+		await vi.advanceTimersByTimeAsync(0)
+		expect(usageTracker.usage().totalTokens).toBe(3)
+		scenario.dispose()
+	})
 
 	it('keeps a returned driver error model-visible and lets a private result tool finish', async () => {
 		const execute = vi.fn(() => ({ response: 'target rejected the action', status: 'error' as const }))

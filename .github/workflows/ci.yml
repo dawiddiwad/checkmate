@@ -22,14 +22,17 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: current
+          node-version: 22.18.0
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Chromium
-        run: npx playwright install chromium
+      - name: Provision Chrome for Testing
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
 
       - name: Verify packed candidate including live Ollama acceptance
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: npm run phase:verify -- --live

@@ -9,6 +9,7 @@ import { testConfig } from '../test-types'
 import type { ModelEgressPolicyV1 } from '../../contracts/types'
 import { ToolRegistry } from '../../tools/registry'
 import { silentLogger } from '../../logging/types'
+import { generationRequest } from '../fixtures/structured-generation'
 
 const createCompletion = vi.fn()
 
@@ -28,6 +29,86 @@ const policy: ModelEgressPolicyV1 = {
 
 describe('provider egress', () => {
 	beforeEach(() => vi.clearAllMocks())
+
+	function structuredClient(overrides: Partial<ModelEgressPolicyV1> = {}) {
+		return new AiClient({
+			config: testConfig({ model: 'policy-model', maxRetries: 0 }),
+			toolRegistry: new ToolRegistry({ allowedTools: '*' }),
+			apiKey: 'exact-secret',
+			exactSecrets: ['exact-secret'],
+			modelEgress: { ...policy, ...overrides },
+			logger: silentLogger,
+		})
+	}
+
+	it('redacts nested messages and schema annotations in the actual forced-schema request', async () => {
+		createCompletion.mockResolvedValue({ choices: [] })
+		const request = {
+			...generationRequest,
+			messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'exact-secret' }] }],
+			schema: {
+				...generationRequest.schema,
+				description: 'exact-secret',
+				properties: { fact: { type: 'string', title: 'exact-secret', examples: ['exact-secret'] } },
+			},
+		}
+		await structuredClient().sendStructured(request)
+		const sent = createCompletion.mock.calls[0][0]
+		expect(sent).toMatchObject({
+			model: 'policy-model',
+			response_format: { type: 'json_schema', json_schema: { strict: true, name: 'fixture_fact' } },
+		})
+		expect(JSON.stringify(sent)).not.toContain('exact-secret')
+		expect(JSON.stringify(sent)).toContain('[secret omitted]')
+		expect(sent).not.toHaveProperty('tools')
+		expect(sent).not.toHaveProperty('tool_choice')
+		expect(request.schema.description).toBe('exact-secret')
+	})
+
+	it.each([
+		{ type: 'string', enum: ['exact-secret'] },
+		{ type: 'object', properties: { 'exact-secret': { type: 'string' } } },
+		{ type: 'object', required: ['exact-secret'] },
+		{ type: 'string', pattern: 'exact-secret' },
+		{ const: { description: 'exact-secret' } },
+	])('rejects redaction conflicts in schema constraints or keys', async (schema) => {
+		await expect(structuredClient().sendStructured({ ...generationRequest, schema })).rejects.toThrow(
+			'schema semantics'
+		)
+		expect(createCompletion).not.toHaveBeenCalled()
+	})
+
+	it('includes schema-only bytes in the complete request limit', async () => {
+		await expect(
+			structuredClient().sendStructured({
+				...generationRequest,
+				schema: { type: 'string', description: 'large schema annotation '.repeat(200) },
+			})
+		).rejects.toThrow('JSON request')
+		expect(createCompletion).not.toHaveBeenCalled()
+	})
+
+	it('gates nested image input and explicitly rejects unsupported non-user images', async () => {
+		const messages = [
+			{ role: 'user' as const, content: [{ type: 'image' as const, mediaType: 'image/png', data: 'YWJj' }] },
+		]
+		await expect(structuredClient().sendStructured({ ...generationRequest, messages })).rejects.toThrow(
+			'Opaque image'
+		)
+		expect(createCompletion).not.toHaveBeenCalled()
+		createCompletion.mockResolvedValue({ choices: [] })
+		await structuredClient({ allowOpaque: true }).sendStructured({ ...generationRequest, messages })
+		expect(createCompletion.mock.calls[0][0].messages[0].content[0]).toEqual({
+			type: 'image_url',
+			image_url: { url: 'data:image/png;base64,YWJj' },
+		})
+		await expect(
+			structuredClient({ allowOpaque: true }).sendStructured({
+				...generationRequest,
+				messages: [{ ...messages[0], role: 'assistant' }],
+			})
+		).rejects.toThrow('only in user')
+	})
 
 	it('applies controls to the exact fake-provider input', async () => {
 		createCompletion.mockResolvedValueOnce({

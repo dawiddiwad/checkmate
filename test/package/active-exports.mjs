@@ -41,6 +41,7 @@ const driverWeb = await import('@xoxoai/checkmate/driver-web')
 assert.deepEqual(Object.keys(core).sort(), ['CheckmateOperationalError', 'describe', 'run', 'validate'])
 for (const operation of ['run', 'validate', 'describe']) assert.equal(typeof core[operation], 'function')
 assert.equal(typeof driver.defineDriverTool, 'function')
+assert.deepEqual(Object.keys(driver), ['defineDriverTool'])
 assert.equal(driverWeb.checkmateDriver.id, 'web')
 assert.equal(driverWeb.checkmateDriver.driverContractVersion, 1)
 
@@ -54,6 +55,15 @@ for (const [fileName, sample] of Object.entries(samples)) {
 	const schema = JSON.parse(await readFile(path, 'utf8'))
 	const validate = ajv.compile(schema)
 	assert.equal(validate(sample), true, fileName + ': ' + JSON.stringify(validate.errors))
+	if (['driver-descriptor.v1.json', 'run-result.v1.json', 'validation-result.v1.json', 'describe-result.v1.json'].includes(fileName)) {
+		for (const version of [0, 2, 3, '1']) {
+			const candidate = structuredClone(sample)
+			if (fileName === 'driver-descriptor.v1.json') candidate.driverContractVersion = version
+			else if (fileName === 'describe-result.v1.json') candidate.environment.drivers[0].contractVersion = version
+			else candidate.driver.contractVersion = version
+			assert.equal(validate(candidate), false, fileName + ': driver version ' + version)
+		}
+	}
 }
 
 const descriptorPath = require.resolve('@xoxoai/checkmate/driver-web/checkmate-driver.json')
@@ -66,7 +76,10 @@ addFormats(descriptorAjv)
 const validateDescriptor = descriptorAjv.compile(descriptorSchema)
 assert.equal(validateDescriptor(descriptor), true, JSON.stringify(validateDescriptor.errors))
 assert.equal(descriptor.id, 'web')
-assert.equal(descriptor.tools.length, 14)
+assert.equal(descriptor.driverContractVersion, 1)
+assert.deepEqual(descriptor.tools.map(tool => tool.name), ['browser_navigate', 'browser_observe', 'browser_act', 'browser_extract', 'browser_diagnostics'])
+assert.deepEqual(descriptor.evidenceKinds, [])
+assert.deepEqual(Object.keys(descriptor.settingsSchema.properties), ['headless'])
 `
 
 try {
@@ -88,9 +101,9 @@ try {
 		'./schemas/*',
 	])
 	await writeFile(
-		resolve(installation, 'block-playwright-loader.mjs'),
+		resolve(installation, 'block-browser-loader.mjs'),
 		`export async function resolve(specifier, context, nextResolve) {\n` +
-			`  if (specifier === 'playwright' || specifier === '@playwright/test') throw new Error('browser dependency loaded')\n` +
+			`  if (specifier === '@browserbasehq/stagehand' || specifier === 'playwright') throw new Error('browser dependency loaded')\n` +
 			`  return nextResolve(specifier, context)\n` +
 			`}\n`
 	)
@@ -102,7 +115,7 @@ try {
 	)
 	execFileSync(
 		process.execPath,
-		['--no-warnings', '--experimental-loader', './block-playwright-loader.mjs', 'browser-free-probe.mjs'],
+		['--no-warnings', '--experimental-loader', './block-browser-loader.mjs', 'browser-free-probe.mjs'],
 		{ cwd: installation, stdio: 'inherit' }
 	)
 
@@ -127,18 +140,67 @@ try {
 	await writeFile(resolve(installation, 'request.json'), JSON.stringify(samples['run-request.v1.json']))
 	const binary = resolve(installation, 'node_modules/@xoxoai/checkmate/bin/checkmate.js')
 	const describe = JSON.parse(
-		execFileSync(process.execPath, [binary, 'describe'], { cwd: installation, encoding: 'utf8' })
+		execFileSync(
+			process.execPath,
+			['--no-warnings', '--experimental-loader', './block-browser-loader.mjs', binary, 'describe'],
+			{ cwd: installation, encoding: 'utf8' }
+		)
 	)
 	assert.equal(describe.status, 'available')
 	assert.equal(describe.environment.drivers[0].id, 'web')
 	const validation = JSON.parse(
-		execFileSync(process.execPath, [binary, 'validate', 'request.json'], {
-			cwd: installation,
-			encoding: 'utf8',
-			env: { ...process.env, CHECKMATE_OPENAI_API_KEY: 'package-probe-key' },
-		})
+		execFileSync(
+			process.execPath,
+			[
+				'--no-warnings',
+				'--experimental-loader',
+				'./block-browser-loader.mjs',
+				binary,
+				'validate',
+				'request.json',
+			],
+			{
+				cwd: installation,
+				encoding: 'utf8',
+				env: { ...process.env, CHECKMATE_OPENAI_API_KEY: 'package-probe-key' },
+			}
+		)
 	)
 	assert.equal(validation.status, 'valid')
+	await writeFile(
+		resolve(installation, 'removed-web-probe.mjs'),
+		`
+import assert from 'node:assert/strict'
+import { readFile, writeFile } from 'node:fs/promises'
+import { validate } from '@xoxoai/checkmate'
+const manifest = JSON.parse(await readFile('checkmate.config.json', 'utf8'))
+const request = JSON.parse(await readFile('request.json', 'utf8'))
+for (const name of ['browser_click_or_hover', 'browser_set_dialog_response', 'browser_drag', 'browser_upload', 'browser_type_or_select', 'browser_press_key', 'browser_snapshot', 'browser_wait', 'browser_list_tabs', 'browser_select_tab', 'browser_close_tab', 'browser_network_requests', 'browser_network_request']) {
+  const candidate = structuredClone(manifest)
+  candidate.policies.ci.drivers.web.tools.allowed = [name]
+  await writeFile('checkmate.config.json', JSON.stringify(candidate))
+  const result = await validate(request)
+  assert.equal(result.status, 'invalid', name)
+  assert(result.diagnostics.some(diagnostic => diagnostic.code === 'policy.unknown-tool'), name)
+}
+for (const [name, value] of Object.entries({ snapshotFilter: true, snapshotTopPercent: 10, screenshotsInModelContext: true })) {
+  const candidate = structuredClone(manifest)
+  candidate.policies.ci.drivers.web.settings[name] = value
+  await writeFile('checkmate.config.json', JSON.stringify(candidate))
+  assert.equal((await validate(request)).status, 'invalid', name)
+}
+await writeFile('checkmate.config.json', JSON.stringify(manifest))
+`
+	)
+	execFileSync(
+		process.execPath,
+		['--no-warnings', '--experimental-loader', './block-browser-loader.mjs', 'removed-web-probe.mjs'],
+		{
+			cwd: installation,
+			stdio: 'inherit',
+			env: { ...process.env, CHECKMATE_OPENAI_API_KEY: 'package-probe-key' },
+		}
+	)
 
 	const throwingPackage = resolve(installation, 'node_modules/@checkmate-test/throwing-driver')
 	await mkdir(throwingPackage, { recursive: true })

@@ -42,16 +42,26 @@ export async function runScenario(options: RunScenarioOptions): Promise<void> {
 	const now = options.now ?? Date.now
 
 	try {
-		session = await scenarioBoundary('driver-start', options.control, now, (signal) =>
-			options.driver.start({
+		session = await scenarioBoundary('driver-start', options.control, now, (signal) => {
+			const input = {
 				target: structuredClone(options.prepared.driver.target),
 				settings: structuredClone(options.prepared.driver.settings),
 				secrets: driverSecretReader(options.prepared.driver.secretBindings, options.secretValues),
 				evidence: createDriverEvidenceSink(options.store, attribution, options.logger),
 				logger: options.logger,
 				signal,
+			}
+			const allowed = options.prepared.driver.allowedTools
+			return options.driver.start({
+				...input,
+				allowlistedTools: Object.freeze(
+					options.prepared.driver.descriptor.tools
+						.map((tool) => tool.name)
+						.filter((name) => allowed.includes('*') || allowed.includes(name))
+				),
+				diagnostics: Object.freeze({ sanitizeText: (value: string) => options.sanitizer.text(value) }),
 			})
-		)
+		})
 		try {
 			runner = (options.createRunner ?? createDriverRunner)({
 				driverId: options.prepared.driver.id,

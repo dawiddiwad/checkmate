@@ -1,170 +1,146 @@
-import type { Browser, BrowserContext, Page } from 'playwright'
-import type {
-	DriverContextMessage,
-	DriverEvidenceSink,
-	DriverLogger,
-	DriverSession,
-	DriverTool,
-	DriverToolResult,
-	StepIntent,
-} from '../../driver.js'
-import { BrowserScreenshotService } from './tools/screenshot-service.js'
-import { BrowserToolRuntime, createBrowserTools } from './tools/tool.js'
-import { SnapshotService } from './tools/snapshot-service.js'
-import type { AgentToolResult } from '../../tools/types.js'
+import type { Stagehand, StagehandBrowser } from '@browserbasehq/stagehand'
+import { z } from 'zod/v4'
+import type { DriverSession } from '../../driver.js'
+import type { TelemetryReceiver } from './telemetry-receiver.js'
+import { GenerationAdapter } from './tools/generation-adapter.js'
+import { createBrowserTools } from './tools/tool.js'
 
-export type WebDriverTarget = { baseUrl: string }
+export const webTarget = (input: unknown) => z.object({ baseUrl: z.url() }).strict().parse(input)
+export const webSettings = (input: unknown) =>
+	z
+		.object({ headless: z.boolean().default(true) })
+		.strict()
+		.parse(input)
+export type WebDriverTarget = ReturnType<typeof webTarget>
+export type WebDriverSettings = ReturnType<typeof webSettings>
 
-export type WebDriverSettings = {
-	headless: boolean
-	snapshotFilter: boolean
-	snapshotTopPercent: number
-	screenshotsInModelContext: boolean
-}
-
-type WebResources = {
-	browser: Browser
-	context: BrowserContext
-	page: Page
-}
-
-const WEB_INSTRUCTIONS = [
-	'Browser tools operate on the active browser tab/page. Tabs and popups opened by browser actions become active automatically.',
-	"Use 'browser_list_tabs', 'browser_select_tab', and 'browser_close_tab' to inspect, switch, or close browser tabs and popups.",
-	"If you cannot find elements, call 'browser_snapshot' to fetch the latest full snapshot of the active page.",
-	"For JavaScript alert, confirm, or prompt dialogs, call 'browser_set_dialog_response' immediately before the browser action that opens the dialog when the step needs OK, Cancel, or prompt text. Unarmed dialogs are dismissed automatically.",
-	"To verify backend behavior, call 'browser_network_requests' after a browser action to see the API calls that action triggered. Each call only covers the browser action immediately before it. Use 'browser_network_request' with a request's number to inspect its headers or read its request/response body.",
-]
-
-export async function createWebDriverSession(
-	resources: WebResources,
-	settings: WebDriverSettings,
-	evidence: DriverEvidenceSink | undefined,
-	logger: DriverLogger
-): Promise<DriverSession> {
-	const toolSettings = {
-		snapshotFilter: settings.snapshotFilter,
-		snapshotTopPercent: settings.snapshotTopPercent,
+export class WebResources {
+	browser?: StagehandBrowser
+	stagehand?: Stagehand
+	receiver?: TelemetryReceiver
+	readonly generation = new GenerationAdapter()
+	private closing = false
+	private closePromise?: Promise<void>
+	private browserClose?: Promise<void>
+	private readonly force = new AbortController()
+	private readonly onAbort = () => {
+		void this.close(AbortSignal.abort()).catch(() => {})
 	}
-	const runtime = new BrowserToolRuntime(resources.page, toolSettings, logger)
-	let stagedSnapshot: string | null = null
-	let closed = false
-	const tools = createBrowserTools(runtime).map<DriverTool>((tool) => ({
-		definition: { ...tool.definition, parameters: structuredClone(tool.definition.parameters) },
-		execute: async (args, context) => {
-			const result = await tool.execute(args, {
-				step: context.step,
-				turn: context.turn,
-				signal: context.signal,
-			})
-			return adaptToolResult(result, (snapshot) => {
-				stagedSnapshot = snapshot
-			})
-		},
-	}))
 
+	constructor(private readonly signal: AbortSignal) {
+		signal.addEventListener('abort', this.onAbort, { once: true })
+	}
+
+	async acquire<T extends { close(): Promise<void> }>(promise: Promise<T>, assign: (value: T) => void): Promise<T> {
+		const value = await promise
+		if (this.closing || this.signal.aborted) {
+			await value.close()
+			throw new Error('Browser startup ended')
+		}
+		assign(value)
+		return value
+	}
+
+	assertLive(): void {
+		this.signal.throwIfAborted()
+		if (this.closing) throw new Error('Browser session closed')
+		this.receiver?.assertLive()
+	}
+
+	close(signal: AbortSignal): Promise<void> {
+		const force = () => {
+			this.force.abort()
+			void this.closeBrowser().catch(() => {})
+			void this.receiver?.close().catch(() => {})
+		}
+		if (signal.aborted) force()
+		else signal.addEventListener('abort', force, { once: true })
+		if (!this.closePromise) {
+			this.closing = true
+			this.generation.close()
+			this.signal.removeEventListener('abort', this.onAbort)
+			this.closePromise = this.closeResources()
+		}
+		void this.closePromise.finally(() => signal.removeEventListener('abort', force)).catch(() => {})
+		return this.closePromise
+	}
+
+	private closeBrowser(): Promise<void> {
+		return (this.browserClose ??= Promise.resolve().then(() => this.browser?.close()))
+	}
+
+	private async closeResources(): Promise<void> {
+		const failures: unknown[] = []
+		try {
+			await untilAborted(
+				Promise.resolve().then(() => this.stagehand?.close()),
+				this.force.signal
+			)
+		} catch (error) {
+			failures.push(error)
+		}
+		try {
+			await this.closeBrowser()
+		} catch (error) {
+			failures.push(error)
+		}
+		try {
+			await this.receiver?.close()
+		} catch (error) {
+			failures.push(error)
+		}
+		if (failures.length) throw new AggregateError(failures, 'Web driver cleanup failed')
+	}
+}
+
+export function createWebDriverSession(resources: WebResources): DriverSession {
 	return {
-		tools,
-		instructions: WEB_INSTRUCTIONS,
-		buildInitialContext: async ({ step, signal }) => {
-			signal.throwIfAborted()
-			const snapshot = await snapshotFor(runtime, toolSettings, step, logger)
-			if (snapshot && evidence) {
-				await evidence.capture({
-					kind: 'aria-snapshot',
-					mediaType: 'application/yaml',
-					content: snapshot,
-					stepId: step.id,
-				})
-			}
-			return snapshot ? [snapshotMessage(snapshot)] : []
-		},
-		handleToolResponses: async ({ step, signal }) => {
-			signal.throwIfAborted()
-			const messages: DriverContextMessage[] = []
-			if (stagedSnapshot) {
-				if (evidence) {
-					await evidence.capture({
-						kind: 'aria-snapshot',
-						mediaType: 'application/yaml',
-						content: stagedSnapshot,
-						stepId: step.id,
-					})
+		instructions: [
+			'Use browser_observe when the next browser action is unclear.',
+			'Use browser_act directly only when the intended action is unambiguous.',
+			'Use browser_extract to inspect page facts needed for the expectation before issuing a pass or fail verdict.',
+			'Do not pass or fail until the expectation is verified from a tool result. Navigation and action success alone are not verification. No automatic page snapshots or screenshots are supplied.',
+			'Browser diagnostics are partial debugging context, not proof of page state or absence of errors.',
+		],
+		tools: createBrowserTools(resources.stagehand!, resources.receiver!).map((tool) => ({
+			definition: tool.definition,
+			execute: async (args, context) => {
+				resources.assertLive()
+				const onAbort = () => {
+					void resources.close(AbortSignal.abort()).catch(() => {})
 				}
-				messages.push(snapshotMessage(stagedSnapshot))
-				stagedSnapshot = null
-			}
-			if (settings.screenshotsInModelContext) {
-				const screenshot = await new BrowserScreenshotService(
-					await runtime.ensureActivePage()
-				).getCompressedScreenshot()
-				messages.push({
-					content: [
-						{ type: 'text', text: 'this is a current screenshot of the page' },
-						{ type: 'image', mediaType: screenshot.mimeType ?? 'image/png', data: screenshot.data },
-					],
-					ephemeral: true,
-				})
-			}
-			return messages
-		},
-		close: async () => {
-			if (closed) return
-			closed = true
-			const failures: unknown[] = []
-			try {
-				runtime.dispose()
-			} catch (error) {
-				failures.push(error)
-			}
-			for (const close of [() => resources.context.close(), () => resources.browser.close()]) {
+				context.signal.addEventListener('abort', onAbort, { once: true })
 				try {
-					await close()
-				} catch (error) {
-					failures.push(error)
+					return await resources.generation.run(context, async () => {
+						const result = await tool.execute(args, context)
+						resources.assertLive()
+						return result
+					})
+				} finally {
+					context.signal.removeEventListener('abort', onAbort)
 				}
-			}
-			if (failures.length > 0) throw new AggregateError(failures, 'Web driver cleanup failed')
+			},
+		})),
+		buildInitialContext: async () => {
+			resources.assertLive()
+			return []
 		},
+		handleToolResponses: async () => {
+			resources.assertLive()
+			return []
+		},
+		close: ({ signal }) => resources.close(signal),
 	}
 }
 
-export function webTarget(input: unknown): WebDriverTarget {
-	if (!input || typeof input !== 'object' || typeof (input as { baseUrl?: unknown }).baseUrl !== 'string') {
-		throw new Error('Web driver target requires baseUrl')
-	}
-	return { baseUrl: (input as { baseUrl: string }).baseUrl }
-}
-
-export function webSettings(input: unknown): WebDriverSettings {
-	const value = input && typeof input === 'object' ? (input as Partial<WebDriverSettings>) : {}
-	return {
-		headless: value.headless ?? true,
-		snapshotFilter: value.snapshotFilter ?? false,
-		snapshotTopPercent: value.snapshotTopPercent ?? 10,
-		screenshotsInModelContext: value.screenshotsInModelContext ?? false,
-	}
-}
-
-export async function rollbackWebResources(resources: Partial<WebResources>): Promise<void> {
-	await Promise.allSettled([resources.context?.close(), resources.browser?.close()])
-}
-
-function adaptToolResult(result: AgentToolResult, stage: (snapshot: string) => void): DriverToolResult {
-	if (!result || typeof result === 'string') return result
-	if (result.snapshot) stage(result.snapshot)
-	return { response: result.response, status: result.status ?? 'success' }
-}
-
-async function snapshotFor(
-	runtime: BrowserToolRuntime,
-	settings: Pick<WebDriverSettings, 'snapshotFilter' | 'snapshotTopPercent'>,
-	step: StepIntent,
-	logger: DriverLogger
-): Promise<string | null> {
-	return new SnapshotService(await runtime.ensureActivePage(), settings, logger, step).get()
-}
-
-function snapshotMessage(snapshot: string): DriverContextMessage {
-	return { content: `this is a current page snapshot:\n${snapshot}`, ephemeral: true }
+function untilAborted(operation: Promise<void>, signal: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const abort = () => resolve()
+		if (signal.aborted) abort()
+		else signal.addEventListener('abort', abort, { once: true })
+		operation
+			.then(resolve, reject)
+			.finally(() => signal.removeEventListener('abort', abort))
+			.catch(() => {})
+	})
 }

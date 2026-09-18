@@ -19,6 +19,26 @@ const contracts = [
 ] as const
 
 describe('contract schemas', () => {
+	it.each([0, 1, 2, 3, '1'])('accepts only numeric driver contract version 1 (received %s)', (version) => {
+		const descriptor = readFixture('driver-descriptor.valid.json')
+		descriptor.driverContractVersion = version
+		const result = readFixture('run-result.valid.json')
+		;(result.driver as Record<string, unknown>).contractVersion = version
+		const validation = readFixture('validation-result.valid.json')
+		;(validation.driver as Record<string, unknown>).contractVersion = version
+		const description = readFixture('describe-result.valid.json')
+		const environment = description.environment as { drivers: Array<{ contractVersion: unknown }> }
+		environment.drivers[0].contractVersion = version
+		for (const actual of [
+			validateDescriptor(descriptor),
+			validateRunResult(result),
+			validateValidationResult(validation),
+			validateDescribeResult(description),
+		]) {
+			expect(actual.ok).toBe(version === 1)
+		}
+	})
+
 	it.each(contracts)('accepts the %s fixture', (fileName, validate) => {
 		const fixture = readFixture(fileName)
 		expect(validate(fixture).ok).toBe(true)

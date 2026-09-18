@@ -1,6 +1,6 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.5.11",
+	"version": "0.6.0",
 	"description": "Agent-first test automation harness with versioned requests, bounded execution, and durable evidence",
 	"homepage": "https://github.com/dawiddiwad/checkmate",
 	"repository": {
@@ -14,7 +14,7 @@
 		"agents",
 		"test-harness",
 		"cli",
-		"playwright"
+		"stagehand"
 	],
 	"files": [
 		"bin",
@@ -53,7 +53,6 @@
 		"./schemas/*": "./schemas/*"
 	},
 	"scripts": {
-		"checkmate:install": "npm install && npx playwright install",
 		"build": "npm run validation:check && npm run build:package",
 		"build:dist": "tsc -p tsconfig.build.json",
 		"build:package": "npm run clean && npm run build:dist && node scripts/copy-package-assets.mjs",
@@ -75,15 +74,16 @@
 		"test:unit:run": "vitest run --config src/test/vitest.config.ts",
 		"test:package:final": "node test/package/final-surface.mjs"
 	},
+	"engines": {
+		"node": ">=22.18.0"
+	},
 	"author": "Dawid Dobrowolski SoftQA",
 	"license": "MIT",
 	"dependencies": {
-		"@huggingface/transformers": "^4.2.0",
+		"@browserbasehq/stagehand": "4.1.0",
 		"ajv": "^8.20.0",
 		"ajv-formats": "^3.0.1",
 		"openai": "^7.10.0",
-		"playwright": "^1.63.0",
-		"sharp": "^0.35.4",
 		"yaml": "^2.9.0",
 		"zod": "^4.5.4"
 	},

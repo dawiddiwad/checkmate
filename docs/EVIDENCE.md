@@ -22,6 +22,10 @@ Transcripts, snapshots, screenshots, and driver-specific artifacts remain outsid
 
 ## Retention
 
+The Stagehand web driver declares no evidence kinds and supplies no automatic snapshots, screenshots, or page context. Its explicit navigation, extraction, and diagnostic results can appear only in harness transcripts, under normal truncation, redaction, and retention. Internal nested-generation prompts are not separate durable artifacts.
+
+Allowed `browser_diagnostics` reads contain normalized events sanitized before buffering, even when model and evidence redaction are off. There are no raw trace files. Without tool permission, the authenticated local receiver discards bounded requests without parsing; with permission, uninspected events are erased on session close. Stagehand still creates internal traces and sends transient local bytes in both modes. Diagnostic delivery is asynchronous and incomplete: a read in a later step may contain an earlier event, and an empty read does not prove the absence of errors.
+
 | Policy              | Passed step                    | Failed step                    |
 | ------------------- | ------------------------------ | ------------------------------ |
 | `on`                | Retain selected heavy evidence | Retain selected heavy evidence |

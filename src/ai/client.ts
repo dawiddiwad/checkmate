@@ -11,6 +11,7 @@ import type { ModelEgressPolicyV1 } from '../contracts/types.js'
 import type { RuntimeLogger } from '../logging/types.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { Step } from '../runtime/types.js'
+import type { DriverStructuredGenerationRequest } from '../driver.js'
 
 export type AiClientDependencies = {
 	config: RuntimeConfig
@@ -63,22 +64,72 @@ export class AiClient {
 	async send(messages: ChatCompletionMessageParam[], options: AiSendOptions = {}): Promise<AiResponse> {
 		return this.executeWithRetry(messages, options, async () => {
 			const tools = await this.toolRegistry.getTools()
+			return this.withTemperatureFallback((withTemperature) =>
+				this.complete(messages, tools, withTemperature, options.signal)
+			)
+		})
+	}
 
-			try {
-				return await this.complete(messages, tools, this.sendsTemperature, options.signal)
-			} catch (error: unknown) {
-				if (!this.sendsTemperature || !this.rejectsTemperature(error)) {
-					throw error
+	async sendStructured(
+		input: DriverStructuredGenerationRequest,
+		options: AiSendOptions = {}
+	): Promise<ChatCompletion> {
+		const messages: ChatCompletionMessageParam[] = input.messages.map((message) => {
+			if (message.role !== 'user') {
+				if (message.content.some((part) => part.type !== 'text')) {
+					throw new Error('Structured generation supports images only in user messages')
 				}
-
-				this.runtimeLogger.warn(
-					`${this.config.model} does not accept temperature ${this.temperature}; ` +
-						'continuing on the provider default for the rest of this run'
-				)
-				this.sendsTemperature = false
-				return await this.complete(messages, tools, false, options.signal)
+				return {
+					role: message.role,
+					content: message.content.map((part) => (part as { text: string }).text).join('\n'),
+				}
+			}
+			return {
+				role: 'user',
+				content: message.content.map((part) =>
+					part.type === 'text'
+						? { type: 'text', text: part.text }
+						: { type: 'image_url', image_url: { url: `data:${part.mediaType};base64,${part.data}` } }
+				),
 			}
 		})
+		return this.executeWithRetry(
+			messages,
+			options,
+			() =>
+				this.withTemperatureFallback(async (withTemperature) => {
+					const request: ChatCompletionCreateParamsNonStreaming = {
+						model: this.config.model,
+						messages,
+						response_format: {
+							type: 'json_schema',
+							json_schema: { name: input.schemaName, schema: input.schema, strict: true },
+						},
+						...(withTemperature ? { temperature: this.temperature } : {}),
+						reasoning_effort: this.config.reasoningEffort,
+						n: 1,
+					}
+					const prepared = this.modelEgress
+						? prepareModelRequest(request, this.modelEgress, this.exactSecrets)
+						: request
+					options.signal?.throwIfAborted()
+					return this.openai().chat.completions.create(prepared, { signal: options.signal })
+				}),
+			false
+		)
+	}
+
+	private async withTemperatureFallback<T>(operation: (withTemperature: boolean) => Promise<T>): Promise<T> {
+		try {
+			return await operation(this.sendsTemperature)
+		} catch (error) {
+			if (!this.sendsTemperature || !this.rejectsTemperature(error)) throw error
+			this.runtimeLogger.warn(
+				`${this.config.model} does not accept temperature ${this.temperature}; continuing on the provider default for the rest of this run`
+			)
+			this.sendsTemperature = false
+			return operation(false)
+		}
 	}
 
 	countHistoryTokens(messages: ChatCompletionMessageParam[]): number {
@@ -105,6 +156,7 @@ export class AiClient {
 		const providerRequest = this.modelEgress
 			? prepareModelRequest(request, this.modelEgress, this.exactSecrets)
 			: request
+		signal?.throwIfAborted()
 		const response = await this.openai().chat.completions.create(providerRequest, { signal })
 
 		return { response, assistantMessages: this.retainAssistantMessages(response) }
@@ -186,19 +238,21 @@ export class AiClient {
 	private async executeWithRetry<T>(
 		messages: ChatCompletionMessageParam[],
 		options: AiSendOptions,
-		operation: () => Promise<T>
+		operation: () => Promise<T>,
+		repairToolCalls = true
 	): Promise<T> {
 		const maxRetries = this.config.maxRetries
 		let lastError: Error | null = null
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			options.signal?.throwIfAborted()
 			try {
 				return await operation()
 			} catch (error: unknown) {
 				lastError = error instanceof Error ? error : new Error(String(error))
 
 				if (
-					(!this.isRetryable(error) && !this.isToolError(error, messages, options)) ||
+					(!this.isRetryable(error) && !(repairToolCalls && this.isToolError(error, messages, options))) ||
 					attempt === maxRetries
 				) {
 					throw this.enhanceError(error, messages, options)

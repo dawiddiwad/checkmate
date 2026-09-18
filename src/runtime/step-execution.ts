@@ -5,6 +5,7 @@ import { STEP_START_USER_PROMPT, STEP_SYSTEM_PROMPT } from '../ai/prompts.js'
 import { TurnProcessor } from '../ai/turn-processor.js'
 import type { RuntimeConfig } from './config.js'
 import type { DriverSession, StepIntent } from '../driver.js'
+import { StructuredGenerationError, StructuredGenerationGateway } from './structured-generation.js'
 import type { RuntimeLogger } from '../logging/types.js'
 import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
 import { ToolDispatchError } from '../tools/dispatcher.js'
@@ -52,6 +53,7 @@ export class StepExecution {
 		} = this.dependencies
 		const evidence = new InternalStepEvidence(step, driverId, redact, diagnosticSanitizer, control.now)
 		const checkpoint = usageTracker.beginStep()
+		const generation = new StructuredGenerationGateway(aiClient, usageTracker, step, control)
 		const messages: ChatCompletionMessageParam[] = []
 		const ephemeralMessages = new Set<ChatCompletionMessageParam>()
 		const turnProcessor = new TurnProcessor({
@@ -117,7 +119,7 @@ export class StepExecution {
 					usageTracker.record(response.usage)
 					assertControlLive(control, 'provider-response')
 					messages.push(...assistantMessages)
-					const outcome = await turnProcessor.process({ response, step, turn: turns, control })
+					const outcome = await turnProcessor.process({ response, step, turn: turns, control, generation })
 					assertControlLive(control, 'turn-processing')
 
 					if (outcome.kind === 'assertion') {
@@ -161,7 +163,7 @@ export class StepExecution {
 						evidence,
 						usageTracker,
 						checkpoint,
-						failureFrom(error, control, turns, diagnosticSanitizer),
+						failureFrom(generation.failure ?? error, control, turns, diagnosticSanitizer),
 						logger
 					)
 				}
@@ -228,6 +230,7 @@ function failureFrom(
 	const expired = control.poll()
 	if (expired.expired) return { outcome: 'failed', reason: expired.reason, actual, turns }
 	if (error instanceof DriverBoundaryError) return { outcome: 'failed', reason: error.reason, actual, turns }
+	if (error instanceof StructuredGenerationError) return { outcome: 'failed', reason: error.reason, actual, turns }
 	if (error instanceof TokenBudgetExceededError) {
 		return { outcome: 'failed', reason: 'token-budget-exceeded', actual, turns }
 	}

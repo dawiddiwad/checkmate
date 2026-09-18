@@ -1,0 +1,10 @@
+{
+	"schemaVersion": 1,
+	"id": "fixture",
+	"driverContractVersion": 1,
+	"targetSchema": { "type": "object", "additionalProperties": false },
+	"settingsSchema": { "type": "object", "additionalProperties": false },
+	"requiredSecretSlots": [],
+	"tools": [{ "name": "fixture_generate" }],
+	"evidenceKinds": []
+}

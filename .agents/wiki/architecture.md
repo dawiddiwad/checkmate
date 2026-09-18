@@ -4,7 +4,7 @@
 
 - `src/index.ts` exports `run`, `validate`, `describe`, `CheckmateOperationalError`, and versioned contract types.
 - `src/driver.ts` exports provider-neutral driver contracts and `defineDriverTool`.
-- `src/drivers/web/index.ts` exports the built-in web driver. Only this driver loads Playwright.
+- `src/drivers/web/index.ts` exports the built-in web driver. Only selected web execution loads Stagehand.
 - `bin/checkmate.js` invokes `src/cli/main.ts` after compilation.
 - Six hand-authored schemas in `src/contracts/schemas` are copied to package-root `schemas`; the web descriptor is copied beside its compiled driver.
 
@@ -21,7 +21,7 @@ The CLI worker never repeats preparation or identity allocation. The parent alon
 - `src/runtime/` owns scenario sequencing, deadline controls, bounded driver awaits, internal step reports, and raw token usage.
 - `src/ai/` owns provider requests, turn processing, message history, and request retry behavior.
 - `src/tools/` owns the private registry, dispatcher, and assertion-bearing result tools.
-- `src/drivers/web/` owns browser lifecycle, fourteen browser tools, snapshots, screenshots, and network/transient-state recording.
+- `src/drivers/web/` owns a local Stagehand browser, navigation/extraction/diagnostic tools, the scoped generation adapter, and an authenticated loopback telemetry receiver.
 - `src/config/` owns the sole manifest configuration boundary, package resolution, policy tightening, and invocation-local secret readers.
 - `src/evidence/` owns buffering, retention, atomic commitment, and terminal result persistence.
 - `src/logging/` and `src/redaction/` provide invocation-local sanitized diagnostics and policy-controlled content redaction.
@@ -32,9 +32,11 @@ One trusted driver session serves all ordered steps in a scenario. Its tools mus
 
 Execution stops at the first failure and reports every declared step. Cleanup failures can change the top-level route without rewriting completed steps. No whole-scenario retry, target rollback, resume, cost estimate, or suite scheduling is provided.
 
-## Snapshot Filtering
+## Web Inspection And Diagnostics
 
-`src/drivers/web/tools/snapshot-filter/` filters the browser snapshot. Each public step contains only its ID, action, and expectation; requests do not configure search or filtering. The manifest policy owns `snapshotFilter` and `snapshotTopPercent`. The web driver derives its query from action and expectation. Browser service tests live in `src/test/drivers/web/`.
+The web driver exposes exactly `browser_navigate`, `browser_observe`, `browser_act`, `browser_extract`, and `browser_diagnostics`, accepts only `headless` in settings, and supplies no automatic context or driver evidence. Observation, action, and extraction use the structured gateway with policy-selected inference and shared raw-token accounting, including metadata requests. Operations are serialized and self-healing is disabled at SDK initialization. Action failure is recoverable unless a gateway failure is latched; action success is not a harness verdict. Instructions require explicit page-fact verification. Old low-level browser tools, snapshots, screenshots, network recording, and snapshot filtering are removed.
+
+Core supplies only frozen effective tool permissions and invocation-bound diagnostic sanitization. The driver starts an authenticated loopback receiver before Stagehand and directs all SDK traces there. Allowed inspection retains bounded normalized/sanitized events; otherwise it drains/discards without parsing. Core starts no server and parses no OTLP. Explicit reads enter ordinary transcripts, are always partial, and do not establish absence of errors. No raw trace files or external fallback destinations exist. Close revokes generation and disposes SDK, browser, receiver sockets, and buffered events; aborts force browser/receiver closure independently of stalled SDK shutdown.
 
 ## Configuration And Evidence
 

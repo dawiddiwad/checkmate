@@ -18,8 +18,6 @@ export default [
 			'.humanlayer/**',
 			'.checkmate/**',
 			'.pi-meetings/**',
-			'.playwright-cli/**',
-			'.playwright-mcp/**',
 			'.sf/**',
 		],
 	},

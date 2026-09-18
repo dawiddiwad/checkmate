@@ -3,10 +3,57 @@ import { driverPolicyDiagnostics, resolveEffectiveLimits } from '../../config/po
 import type { DriverDescriptorV1 } from '../../contracts/types.js'
 import { fixtureManifest } from '../fixtures/static-environment.js'
 import descriptorJson from '../fixtures/drivers/throwing-driver/checkmate-driver.json'
+import webDescriptor from '../../drivers/web/checkmate-driver.json'
 
 const descriptor = descriptorJson as DriverDescriptorV1
 
 describe('policy resolution', () => {
+	it('accepts the five-tool web surface and rejects every removed tool and setting', () => {
+		const check = (allowedTools: string[], settings = {}) =>
+			driverPolicyDiagnostics({
+				policyId: 'ci',
+				driverId: 'web',
+				settings,
+				allowedTools,
+				descriptor: webDescriptor as DriverDescriptorV1,
+				registration: { package: '@xoxoai/checkmate/driver-web', secrets: {} },
+			})
+		expect(check(['*'])).toEqual([])
+		expect(webDescriptor.tools.map((tool) => tool.name)).toEqual([
+			'browser_navigate',
+			'browser_observe',
+			'browser_act',
+			'browser_extract',
+			'browser_diagnostics',
+		])
+		expect(check(webDescriptor.tools.map((tool) => tool.name))).toEqual([])
+		expect(check(['browser_navigate', 'browser_observe', 'browser_act', 'browser_extract'])).toEqual([])
+		for (const name of [
+			'browser_click_or_hover',
+			'browser_set_dialog_response',
+			'browser_drag',
+			'browser_upload',
+			'browser_type_or_select',
+			'browser_press_key',
+			'browser_snapshot',
+			'browser_wait',
+			'browser_list_tabs',
+			'browser_select_tab',
+			'browser_close_tab',
+			'browser_network_requests',
+			'browser_network_request',
+		]) {
+			expect(check([name])).toEqual([expect.objectContaining({ code: 'policy.unknown-tool' })])
+		}
+		for (const [name, value] of Object.entries({
+			snapshotFilter: true,
+			snapshotTopPercent: 10,
+			screenshotsInModelContext: true,
+		})) {
+			expect(check(['*'], { [name]: value }).length).toBeGreaterThan(0)
+		}
+	})
+
 	it('materializes every bound and permits only tightening request limits', () => {
 		const policy = fixtureManifest.policies.ci
 		const tightened = resolveEffectiveLimits(policy, { timeoutMs: 90_000, budgetTokens: 100_000 })

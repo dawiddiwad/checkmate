@@ -12,13 +12,29 @@ export function adaptDriverTool(driverId: string, tool: DriverTool): AgentTool {
 			if (!context.control || context.turn === undefined || !context.signal) {
 				throw new Error(`Driver tool '${tool.definition.name}' requires an active step control`)
 			}
-			return awaitStepDriverBoundary(`tool:${tool.definition.name}`, context.control, (signal) =>
-				tool.execute(args, {
-					step: toStepIntent(context.step),
-					turn: context.turn!,
-					signal,
-				})
-			)
+			const generation = context.generation
+			if (!generation) throw new Error('Driver tool requires a generation gateway')
+			const scope = generation.openScope()
+			try {
+				const result = await awaitStepDriverBoundary(
+					`tool:${tool.definition.name}`,
+					context.control,
+					(signal) =>
+						tool.execute(args, {
+							step: toStepIntent(context.step),
+							turn: context.turn!,
+							signal,
+							generateStructured: scope.generateStructured,
+						})
+				)
+				scope.assertComplete()
+				return result
+			} catch (error) {
+				generation.assertLive()
+				throw error
+			} finally {
+				scope.close()
+			}
 		},
 	}
 }

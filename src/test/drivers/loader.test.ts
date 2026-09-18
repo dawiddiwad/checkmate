@@ -24,7 +24,7 @@ afterEach(async () => {
 })
 
 describe('runtime driver loading', () => {
-	it('accepts only the named export matching static descriptor identity', async () => {
+	it('accepts the named version 1 export matching static descriptor identity', async () => {
 		const start = vi.fn()
 		const importModule = vi.fn(async () => ({
 			checkmateDriver: { id: 'fixture', driverContractVersion: 1, start },
@@ -44,7 +44,9 @@ describe('runtime driver loading', () => {
 	it.each([
 		[{}, /must export a 'checkmateDriver'/],
 		[{ checkmateDriver: { id: 'other', driverContractVersion: 1, start: vi.fn() } }, /does not match descriptor/],
-		[{ checkmateDriver: { id: 'fixture', driverContractVersion: 2, start: vi.fn() } }, /contract version/],
+		[{ checkmateDriver: { id: 'fixture', driverContractVersion: 2, start: vi.fn() } }, /Unsupported/],
+		[{ checkmateDriver: { id: 'fixture', driverContractVersion: 3, start: vi.fn() } }, /Unsupported/],
+		[{ checkmateDriver: { id: 'fixture', driverContractVersion: '1', start: vi.fn() } }, /Unsupported/],
 	] as const)('rejects executable modules that disagree with static metadata', async (module, message) => {
 		await expect(
 			loadValidatedDriver({
@@ -106,6 +108,7 @@ describe('runtime driver loading', () => {
 			packageName: '@fixture/driver',
 			descriptor: installedDescriptor,
 		})
+		expect(driver.driverContractVersion).toBe(1)
 		const session = await driver.start({
 			target: {},
 			settings: {},
@@ -113,6 +116,8 @@ describe('runtime driver loading', () => {
 			evidence: { capture: async () => ({ status: 'discarded' }) },
 			logger: silentLogger,
 			signal: new AbortController().signal,
+			allowlistedTools: ['fixture_action'],
+			diagnostics: { sanitizeText: (value) => value },
 		})
 
 		expect(validateDriverSession(session, installedDescriptor, '*').map((tool) => tool.definition.name)).toEqual([

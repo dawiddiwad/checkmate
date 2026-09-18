@@ -2,6 +2,7 @@ import { ChatCompletion } from 'openai/resources/chat/completions'
 import { RuntimeConfig } from '../runtime/config.js'
 import { InternalStepEvidence } from '../runtime/internal-step-evidence.js'
 import type { StepControl } from '../runtime/scenario-control.js'
+import type { StructuredGenerationGateway } from '../runtime/structured-generation.js'
 import { Step, TurnOutcome } from '../runtime/types.js'
 import type { RuntimeLogger } from '../logging/types.js'
 import { ToolDispatcher, ToolDispatchError } from '../tools/dispatcher.js'
@@ -26,6 +27,7 @@ export type Turn = {
 	step: Step
 	turn: number
 	control?: StepControl
+	generation?: StructuredGenerationGateway
 }
 
 export class TurnProcessor {
@@ -43,7 +45,7 @@ export class TurnProcessor {
 		this.evidence = evidence
 	}
 
-	async process({ response, step, turn, control }: Turn): Promise<TurnOutcome> {
+	async process({ response, step, turn, control, generation }: Turn): Promise<TurnOutcome> {
 		await this.rateLimitPolicy.wait(control?.signal)
 
 		if (!response.choices || response.choices.length === 0) {
@@ -75,7 +77,7 @@ export class TurnProcessor {
 
 			let toolResponse: ToolResponse
 			try {
-				const context = control ? { step, turn, signal: control.signal, control } : { step, turn }
+				const context = control ? { step, turn, signal: control.signal, control, generation } : { step, turn }
 				toolResponse =
 					(await this.toolDispatcher.dispatch(parsedToolCall, context)) ??
 					noOutputResponse(parsedToolCall.name)

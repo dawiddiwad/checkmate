@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import process from 'node:process'
+import { URL } from 'node:url'
 
 const tarballArgument = process.argv[2]
 assert(tarballArgument, 'usage: npm run test:acceptance:agent -- <candidate.tgz>')
 const tarball = resolve(process.cwd(), tarballArgument)
 const installation = await mkdtemp(resolve(tmpdir(), 'checkmate-agent-workflow-'))
 const server = createServer(providerResponse)
+let nestedRequests = 0
 
 try {
 	await new Promise((accept, reject) => {
@@ -108,6 +110,8 @@ try {
 	assert.equal(containment.status, 'contained')
 	assert.equal(containment.reason, 'parent-containment')
 	assert.equal('steps' in containment, false)
+
+	await verifyGenerationDriver(binary)
 } finally {
 	await new Promise((accept) => server.close(accept))
 	await rm(installation, { recursive: true, force: true })
@@ -117,6 +121,39 @@ function providerResponse(requestMessage, response) {
 	let body = ''
 	requestMessage.setEncoding('utf8').on('data', (chunk) => (body += chunk))
 	requestMessage.on('end', () => {
+		const request = JSON.parse(body)
+		if (request.response_format) {
+			nestedRequests++
+			assert.equal(request.model, 'fixture')
+			assert.equal(request.response_format.type, 'json_schema')
+			assert.equal(request.response_format.json_schema.strict, true)
+			assert.equal(request.response_format.json_schema.name, 'fixture_fact')
+			assert.equal('tools' in request, false)
+			assert.equal('tool_choice' in request, false)
+			assert(!body.includes('provider-secret'))
+			assert(body.includes('[secret omitted]'))
+			const result = completion()
+			result.choices[0].message.content = JSON.stringify({ fact: 'ready' })
+			result.usage = {
+				prompt_tokens: 5,
+				completion_tokens: 2,
+				total_tokens: 7,
+				prompt_tokens_details: { cached_tokens: 3 },
+			}
+			response.writeHead(200, { 'content-type': 'application/json' })
+			response.end(JSON.stringify(result))
+			return
+		}
+		if (body.includes('execute nested')) {
+			const tool = request.messages.some((message) => message.role === 'tool')
+				? 'pass_test_step'
+				: 'fixture_generate'
+			const result = completion(tool)
+			if (tool === 'fixture_generate') result.choices[0].message.tool_calls[0].function.arguments = '{}'
+			response.writeHead(200, { 'content-type': 'application/json' })
+			response.end(JSON.stringify(result))
+			return
+		}
 		const mode = body.includes('execute app')
 			? 'app'
 			: body.includes('execute model')
@@ -133,6 +170,98 @@ function providerResponse(requestMessage, response) {
 		response.writeHead(200, { 'content-type': 'application/json' })
 		response.end(JSON.stringify(completion(tool)))
 	})
+}
+
+async function verifyGenerationDriver(binary) {
+	const directory = resolve(installation, 'node_modules/@checkmate-test/generation-driver')
+	await cp(new URL('../../src/test/fixtures/drivers/generation-driver', import.meta.url), directory, {
+		recursive: true,
+	})
+	const manifestPath = resolve(installation, 'checkmate.config.json')
+	const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+	manifest.drivers.fixture = { package: '@checkmate-test/generation-driver', secrets: {} }
+	manifest.policies.ci.bounds.turnsPerStep = 3
+	await writeFile(manifestPath, JSON.stringify(manifest))
+	const nested = request('nested')
+	nested.scenario.driver.target = {}
+	nested.scenario.steps.push({ id: 'second', action: 'execute nested again', expect: 'ready' })
+	await writeFile(resolve(installation, 'request.json'), JSON.stringify(nested))
+	for (const args of [['describe'], ['validate', 'request.json']]) {
+		const result = await runProcess(process.execPath, [binary, ...args], installation, {
+			...executionEnvironment(),
+			CHECKMATE_ASSERT_STATIC: '1',
+		})
+		assert.equal(result.code, 0, result.stderr)
+		const document = oneDocument(result.stdout)
+		assert.equal(
+			args[0] === 'describe' ? document.environment.drivers[0].contractVersion : document.driver.contractVersion,
+			1
+		)
+	}
+	await writeFile(
+		resolve(installation, 'api-probe.mjs'),
+		`import { run } from '@xoxoai/checkmate'
+import { readFile } from 'node:fs/promises'
+import process from 'node:process'
+const result = await run(JSON.parse(await readFile('request.json', 'utf8')))
+process.stdout.write(JSON.stringify(result, null, 2) + '\\n')
+`
+	)
+	for (const args of [[binary, 'run', 'request.json'], ['api-probe.mjs']]) {
+		nestedRequests = 0
+		const execution = await runProcess(process.execPath, args, installation, executionEnvironment())
+		assert.equal(execution.code, 0, execution.stderr)
+		const result = oneDocument(execution.stdout)
+		assert.equal(result.status, 'passed', execution.stdout)
+		assert.equal(result.driver.contractVersion, 1)
+		assert.equal(nestedRequests, 4)
+		assert.deepEqual(
+			result.steps.map((step) => step.usage.totalTokens),
+			[20, 20]
+		)
+		assert.deepEqual(
+			result.steps.map((step) => step.usage.cachedPromptTokens),
+			[6, 6]
+		)
+		assert.equal(result.usage.totalTokens, 40)
+		assert.equal(result.usage.cachedPromptTokens, 12)
+		assert.equal(result.usage.state, 'complete')
+		assert.equal(
+			await readFile(
+				resolve(
+					installation,
+					'.checkmate/runs',
+					await runDirectoryFor(installation, result.runId),
+					'result.json'
+				),
+				'utf8'
+			),
+			execution.stdout
+		)
+	}
+	nested.scenario.limits = { budgetTokens: 8 }
+	await writeFile(resolve(installation, 'request.json'), JSON.stringify(nested))
+	nestedRequests = 0
+	const execution = await runProcess(
+		process.execPath,
+		[binary, 'run', 'request.json'],
+		installation,
+		executionEnvironment()
+	)
+	assert.equal(execution.code, 3, execution.stderr)
+	const result = oneDocument(execution.stdout)
+	assert.equal(result.reason, 'token-budget-exceeded')
+	assert.equal(result.steps[1].status, 'not-run')
+	assert.equal(result.steps[0].usage.totalTokens, 10)
+	assert.equal(result.usage.totalTokens, 10)
+	assert.equal(nestedRequests, 1)
+	assert.equal(
+		await readFile(
+			resolve(installation, '.checkmate/runs', await runDirectoryFor(installation, result.runId), 'result.json'),
+			'utf8'
+		),
+		execution.stdout
+	)
 }
 
 function completion(tool) {

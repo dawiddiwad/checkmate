@@ -3,6 +3,7 @@ import { driverPolicyDiagnostics, resolveEffectiveLimits } from '../../config/po
 import type { DriverDescriptorV1 } from '../../contracts/types.js'
 import { fixtureManifest } from '../fixtures/static-environment.js'
 import descriptorJson from '../fixtures/drivers/throwing-driver/checkmate-driver.json'
+import webDescriptorJson from '../../drivers/web/checkmate-driver.json'
 
 const descriptor = descriptorJson as DriverDescriptorV1
 
@@ -57,6 +58,29 @@ describe('policy resolution', () => {
 			'driver.missing-secret-slot',
 			'driver.unknown-secret-slot',
 		])
+	})
+
+	it('validates built-in web logging settings', () => {
+		const registration = { package: '@xoxoai/checkmate/driver-web', secrets: {} }
+		const valid = driverPolicyDiagnostics({
+			policyId: 'ci',
+			driverId: 'web',
+			settings: { logLevel: 'debug', logsAsEvidence: true },
+			allowedTools: ['*'],
+			descriptor: webDescriptorJson as DriverDescriptorV1,
+			registration,
+		})
+		const invalid = driverPolicyDiagnostics({
+			policyId: 'ci',
+			driverId: 'web',
+			settings: { logLevel: 'trace', logsAsEvidence: 'yes' },
+			allowedTools: ['*'],
+			descriptor: webDescriptorJson as DriverDescriptorV1,
+			registration,
+		})
+
+		expect(valid).toEqual([])
+		expect(invalid.map(({ code }) => code)).toEqual(['schema.enum', 'schema.type'])
 	})
 
 	it('does not satisfy hostile required secret slots through Object.prototype', () => {

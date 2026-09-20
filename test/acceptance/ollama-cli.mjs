@@ -114,6 +114,8 @@ function manifest() {
 							snapshotFilter: false,
 							snapshotTopPercent: 10,
 							screenshotsInModelContext: false,
+							logLevel: 'info',
+							logsAsEvidence: false,
 						},
 						tools: { allowed: ['*'] },
 					},
@@ -178,7 +180,10 @@ function runTracked(command, args, cwd, env) {
 		}
 		const interval = setInterval(() => void sample(), 100)
 		child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk))
-		child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk))
+		child.stderr.setEncoding('utf8').on('data', (chunk) => {
+			stderr += chunk
+			process.stderr.write(chunk)
+		})
 		child.once('error', reject)
 		child.once('close', async (code) => {
 			clearInterval(interval)

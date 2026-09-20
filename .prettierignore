@@ -5,8 +5,6 @@ test-results
 node_modules
 playwright-report
 
-# sssf software factory (stamped, not project source)
-adws
 .agents
 .claude
 .humanlayer

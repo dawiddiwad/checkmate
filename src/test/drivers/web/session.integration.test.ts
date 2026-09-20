@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatCompletion, ChatCompletionAssistantMessageParam } from 'openai/resources/chat/completions'
 import type { DriverDescriptorV1, ModelEgressPolicyV1 } from '../../../contracts/types'
-import { checkmateDriver } from '../../../drivers/web'
+import { checkmateDriver, webSettings } from '../../../drivers/web'
 import { silentLogger } from '../../../logging/types'
 import { createDriverRunner } from '../../../runtime/runner'
 import { ScenarioControl } from '../../../runtime/scenario-control'
@@ -15,6 +15,14 @@ afterEach(async () => {
 })
 
 describe('web driver session', () => {
+	it('resolves logging settings with quiet, non-persistent defaults', () => {
+		expect(webSettings({})).toMatchObject({ logLevel: 'off', logsAsEvidence: false })
+		expect(webSettings({ logLevel: 'debug', logsAsEvidence: true })).toMatchObject({
+			logLevel: 'debug',
+			logsAsEvidence: true,
+		})
+	})
+
 	it('owns one browser session and preserves navigation, input, click, context, and verdict behavior', async () => {
 		const server = createServer((_request, response) => {
 			response.setHeader('content-type', 'text/html')

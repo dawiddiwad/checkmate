@@ -1,6 +1,6 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.5.11",
+	"version": "0.6.0",
 	"description": "Agent-first test automation harness with versioned requests, bounded execution, and durable evidence",
 	"homepage": "https://github.com/dawiddiwad/checkmate",
 	"repository": {

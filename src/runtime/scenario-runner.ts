@@ -1,6 +1,7 @@
 import type { Diagnostic, ExecutedStepResult } from '../contracts/types.js'
 import type { CheckmateDriverV1, DriverEvidenceSink, DriverSecretReader, DriverSession, StepIntent } from '../driver.js'
 import { EvidenceCaptureError, type EvidenceStore } from '../evidence/store.js'
+import type { LogLevel } from '../logging/level-logger.js'
 import type { RuntimeLogger } from '../logging/types.js'
 import type { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
 import { createDriverRunner, type DriverCheckmateRunnerOptions } from './runner.js'
@@ -29,6 +30,7 @@ export type RunScenarioOptions = Readonly<{
 	apiKey: string
 	exactSecrets: readonly string[]
 	logger: RuntimeLogger
+	logLevel?: LogLevel
 	sanitizer: DiagnosticSanitizer
 	createRunner?: ScenarioRunnerFactory
 	now?: () => number
@@ -63,6 +65,7 @@ export async function runScenario(options: RunScenarioOptions): Promise<void> {
 				apiKey: options.apiKey,
 				exactSecrets: options.exactSecrets,
 				logger: options.logger,
+				logLevel: options.logLevel ?? 'off',
 				usageTracker: options.usageTracker,
 			})
 		} catch (error) {

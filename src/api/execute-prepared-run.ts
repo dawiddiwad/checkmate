@@ -4,6 +4,7 @@ import { EvidenceStore } from '../evidence/store.js'
 import { TerminalFinalizer } from '../evidence/terminal-finalizer.js'
 import type { RunIdentity } from '../evidence/layout.js'
 import { createInvocationLogger } from '../logging/invocation-logger.js'
+import { createLevelLogger, type LogLevel } from '../logging/level-logger.js'
 import { silentLogger, type RuntimeLogger } from '../logging/types.js'
 import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
 import { awaitDriverBoundary, DriverBoundaryError } from '../runtime/driver-boundary.js'
@@ -55,7 +56,11 @@ export async function executePreparedRun(
 		const resolvedSecrets = resolveSecrets(prepared, options.readEnvironment)
 		const exactSecrets = [...resolvedSecrets.values.values()]
 		const sanitizer = new DiagnosticSanitizer(exactSecrets)
-		const logger = createInvocationLogger(options.logger ?? silentLogger, sanitizer)
+		const logging = driverLogging(prepared.driver.settings)
+		const levelLogger = createLevelLogger(options.logger ?? silentLogger, logging.level, {
+			collect: logging.asEvidence,
+		})
+		const logger = createInvocationLogger(levelLogger.logger, sanitizer)
 		store = (options.createStore ?? ((storeOptions) => new EvidenceStore(storeOptions)))({
 			invocationRoot: prepared.invocationRoot,
 			identity,
@@ -103,6 +108,7 @@ export async function executePreparedRun(
 					apiKey: resolvedSecrets.values.get(prepared.modelEgress.provider.apiKeyBinding)!,
 					exactSecrets,
 					logger,
+					logLevel: logging.level,
 					sanitizer,
 					createRunner: options.createRunner,
 					now,
@@ -111,6 +117,14 @@ export async function executePreparedRun(
 			}
 		}
 
+		const logTranscript = levelLogger.transcript()
+		if (logging.asEvidence && logTranscript) {
+			try {
+				store.captureDriver({ kind: 'web-driver-log', mediaType: 'text/plain', content: logTranscript })
+			} catch (error) {
+				store.recordCaptureFailure('web-driver-log', error)
+			}
+		}
 		await store.finalizeScenario(state.hasFailure ? 'failed' : 'passed')
 		const candidate = state.buildCandidateResult({
 			usage: usageTracker.usage(),
@@ -170,6 +184,17 @@ async function loadDriver(
 		})
 		state.markNotStarted()
 		return undefined
+	}
+}
+
+function driverLogging(settings: Readonly<Record<string, unknown>>): { level: LogLevel; asEvidence: boolean } {
+	const level = settings.logLevel
+	return {
+		level:
+			level === 'debug' || level === 'info' || level === 'warn' || level === 'error' || level === 'off'
+				? level
+				: 'off',
+		asEvidence: settings.logsAsEvidence === true,
 	}
 }
 

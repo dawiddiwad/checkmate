@@ -12,11 +12,14 @@ import { BrowserScreenshotService } from './tools/screenshot-service.js'
 import { BrowserToolRuntime, createBrowserTools } from './tools/tool.js'
 import { SnapshotService } from './tools/snapshot-service.js'
 import type { AgentToolResult } from '../../tools/types.js'
+import type { LogLevel } from '../../logging/level-logger.js'
 
 export type WebDriverTarget = { baseUrl: string }
 
 export type WebDriverSettings = {
 	headless: boolean
+	logLevel: LogLevel
+	logsAsEvidence: boolean
 	snapshotFilter: boolean
 	snapshotTopPercent: number
 	screenshotsInModelContext: boolean
@@ -140,6 +143,8 @@ export function webSettings(input: unknown): WebDriverSettings {
 	const value = input && typeof input === 'object' ? (input as Partial<WebDriverSettings>) : {}
 	return {
 		headless: value.headless ?? true,
+		logLevel: value.logLevel ?? 'off',
+		logsAsEvidence: value.logsAsEvidence ?? false,
 		snapshotFilter: value.snapshotFilter ?? false,
 		snapshotTopPercent: value.snapshotTopPercent ?? 10,
 		screenshotsInModelContext: value.screenshotsInModelContext ?? false,

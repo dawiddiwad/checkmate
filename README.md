@@ -239,6 +239,8 @@ Policies keep execution settings outside test intent. For example, a policy can 
 				"web": {
 					"settings": {
 						"headless": true,
+						"logLevel": "off",
+						"logsAsEvidence": false,
 						"snapshotFilter": false
 					},
 					"tools": { "allowed": ["*"] }
@@ -283,7 +285,7 @@ checkmate --version
 [Evidence](docs/EVIDENCE.md)  
 [Drivers](docs/DRIVERS.md)  
 [CLI](docs/CLI.md)  
-[Dev :)](docs/DEVELOPMENT.md)
+[Dev](docs/DEVELOPMENT.md)
 
 ## License
 

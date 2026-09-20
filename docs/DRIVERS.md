@@ -68,8 +68,12 @@ Drivers submit evidence by declared kind and media type, never by path. The sink
 `@xoxoai/checkmate/driver-web` owns Playwright browser, context, pages, snapshots, screenshots, tab/popup state, dialogs, transient DOM state, network recording, and fourteen browser tools. It accepts target `{ "baseUrl": "https://..." }` and these optional policy settings:
 
 - `headless`
+- `logLevel`: `debug`, `info`, `warn`, `error`, or `off` (default)
+- `logsAsEvidence`: persist selected logs as `web-driver-log` evidence (default `false`)
 - `snapshotFilter`
 - `snapshotTopPercent` in `(0, 100]`
 - `screenshotsInModelContext`
+
+The selected `logLevel` applies to web-driver, model/tool-loop, retry, and OpenAI SDK logs. The CLI writes enabled logs to stderr as sanitized `worker.log.<level>` diagnostics. With `logsAsEvidence: true`, the same enabled, sanitized messages are collected into one scenario-level `text/plain` artifact. Evidence retention and redaction policy still apply; no empty artifact is created when no messages are emitted.
 
 Importing the root contract or driver-authoring entry does not load Playwright. Only selecting and executing the web driver imports the browser runtime.

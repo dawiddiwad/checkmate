@@ -72,6 +72,20 @@ The root `drivers` entry approves a package and maps its descriptor-declared sec
 
 `["*"]` exposes every descriptor-declared tool. An explicit list exposes only those names. Unknown names, undeclared secret slots, missing slot bindings, unknown drivers, and drivers not enabled by the selected policy are invalid before executable import.
 
+The built-in web driver accepts `logLevel` (`debug`, `info`, `warn`, `error`, or `off`) and `logsAsEvidence` in its policy-owned settings. Both default to disabled behavior: `logLevel: "off"` and `logsAsEvidence: false`. For example:
+
+```json
+{
+	"settings": {
+		"headless": true,
+		"logLevel": "debug",
+		"logsAsEvidence": true
+	}
+}
+```
+
+Enabled logs are sanitized and written by the CLI to stderr. When evidence logging is enabled, the same selected messages are also subject to the policy's evidence retention and redaction settings.
+
 ## Secret Handling
 
 Preflight reads a binding only long enough to verify that its environment value is a non-empty string. It does not return, retain, serialize, log, persist, derive from, or send that value over IPC. The worker resolves values independently for execution. Secret values never enter the prepared plan, request, result, checkpoint, evidence reference, or `describe` output.

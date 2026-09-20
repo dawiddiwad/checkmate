@@ -1,3 +1,5 @@
+import type { LogLevel } from '../logging/level-logger.js'
+
 export type RuntimeConfig = Readonly<{
 	model: string
 	baseUrl?: string
@@ -10,5 +12,5 @@ export type RuntimeConfig = Readonly<{
 	redact: boolean
 	toolChoice: 'required' | 'auto'
 	rateLimitDelay: number
-	logLevel: 'debug' | 'info' | 'warn' | 'error' | 'off'
+	logLevel: LogLevel
 }>

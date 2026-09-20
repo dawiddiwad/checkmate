@@ -53,7 +53,7 @@ A worker-finalized interrupted result accepted in time exits `3`. A second signa
 ## Output Discipline
 
 - Worker stdout and stderr bytes are counted, drained, and discarded.
-- Worker logger diagnostics are exact-secret and pattern sanitized before IPC.
+- Worker logger diagnostics enabled by the selected driver's `logLevel` are exact-secret and pattern sanitized before IPC.
 - The parent pattern-sanitizes diagnostic messages again before stderr.
 - Diagnostic `code` and RFC 6901 `path` fields remain structural and are not rewritten.
 - Terminal result bytes are never reserialized or modified by the parent.

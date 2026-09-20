@@ -103,7 +103,7 @@ async function writeManifest(root: string, baseUrl: string): Promise<void> {
 					budgetTokens: 100,
 				},
 				evidence: { retention: 'retain-on-failure', redaction: 'on', allowOpaque: false },
-				drivers: { fixture: { settings: {}, tools: { allowed: ['*'] } } },
+				drivers: { fixture: { settings: { logLevel: 'debug' }, tools: { allowed: ['*'] } } },
 			},
 		},
 		drivers: { fixture: { package: '@checkmate-test/cli-driver', secrets: { session: 'driver-key' } } },
@@ -138,10 +138,17 @@ async function writeDriver(root: string): Promise<void> {
 					marker: { type: 'string' },
 				},
 			},
-			settingsSchema: { type: 'object', additionalProperties: false },
+			settingsSchema: {
+				type: 'object',
+				additionalProperties: false,
+				properties: {
+					logLevel: { enum: ['debug', 'info', 'warn', 'error', 'off'] },
+					logsAsEvidence: { type: 'boolean' },
+				},
+			},
 			requiredSecretSlots: ['session'],
 			tools: [],
-			evidenceKinds: [],
+			evidenceKinds: [{ kind: 'web-driver-log', mediaType: 'text/plain', content: 'text' }],
 		})
 	)
 	await writeFile(

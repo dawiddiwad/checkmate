@@ -18,7 +18,9 @@ The 16-character lowercase hexadecimal `runId` is generated from eight random by
 
 The final envelope always carries compact routing and diagnosis data: top-level status/category/reason, target mutation state, timing, driver and policy identity, effective limits, aggregate tokens, every step state, compact tool-call summaries, evidence completeness, references, and diagnostics.
 
-Transcripts, snapshots, screenshots, and driver-specific artifacts remain outside the envelope. Follow only `evidence.references`; never infer filenames or promote `checkpoint.json` to a result.
+Transcripts, snapshots, screenshots, logs, and driver-specific artifacts remain outside the envelope. Follow only `evidence.references`; never infer filenames or promote `checkpoint.json` to a result.
+
+The built-in web driver's `logsAsEvidence: true` setting collects messages selected by its `logLevel` into one scenario-level `web-driver-log` artifact with media type `text/plain`. The transcript is capped at 1 MiB and ends with `[log truncated]` when the cap is reached. It is omitted when logging is off or no messages are emitted. A contained or forcibly terminated worker may be unable to flush it.
 
 ## Retention
 
@@ -38,7 +40,7 @@ With `redaction: "on"`, Checkmate applies exact resolved-secret replacement, cre
 
 Structural metadata is copied exactly and must not contain confidential values: IDs, status/category/reason values, diagnostic codes and paths, timestamps, effective limits, usage, evidence kinds/media types/producers/paths, and driver/tool identities.
 
-With `redaction: "off"`, raw harness-owned content and accepted evidence bytes are preserved by explicit operator choice. The API result, `result.json`, terminal IPC, and CLI stdout may therefore contain raw values. Out-of-band diagnostics remain sanitized and raw worker streams remain discarded under both settings.
+With `redaction: "off"`, raw harness-owned content and accepted evidence bytes are preserved by explicit operator choice. The API result, `result.json`, terminal IPC, and CLI stdout may therefore contain raw values. Out-of-band diagnostics remain sanitized and raw worker streams remain discarded under both settings. `web-driver-log` evidence is collected after mandatory diagnostic sanitization even when evidence redaction is off.
 
 ## Capture Limits
 

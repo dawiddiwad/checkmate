@@ -11,6 +11,7 @@ import { AiClient } from '../ai/client.js'
 import { ScenarioUsageTracker } from './usage-tracker.js'
 import { StepExecution } from './step-execution.js'
 import { createInvocationLogger } from '../logging/invocation-logger.js'
+import type { LogLevel } from '../logging/level-logger.js'
 import { silentLogger, type RuntimeLogger } from '../logging/types.js'
 import { DiagnosticSanitizer } from '../redaction/diagnostic-sanitizer.js'
 
@@ -31,6 +32,7 @@ export type DriverCheckmateRunnerOptions = {
 	apiKey: string
 	exactSecrets?: Iterable<string>
 	logger?: RuntimeLogger
+	logLevel?: LogLevel
 	usageTracker?: ScenarioUsageTracker
 	aiClient?: AiClient
 }
@@ -59,7 +61,7 @@ export class CheckmateRunner {
 			requestTimeout: options.limits.requestTimeoutMs,
 			loopMaxRepetitions: options.limits.loopMaxRepetitions,
 			rateLimitDelay: 0,
-			logLevel: 'off',
+			logLevel: options.logLevel ?? 'off',
 		}
 		this.usageTracker = options.usageTracker ?? new ScenarioUsageTracker(options.limits.budgetTokens)
 		this.toolRegistry = new ToolRegistry({ allowedTools: options.allowedTools })

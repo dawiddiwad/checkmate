@@ -34,6 +34,36 @@ describe('CLI stdout isolation', () => {
 		expect(execution.stderr).not.toContain('raw stderr')
 	})
 
+	it('stores selected logs as sanitized driver evidence', async () => {
+		environment = await createCliTestEnvironment()
+		const configPath = resolve(environment.root, 'checkmate.config.json')
+		const manifest = JSON.parse(await readFile(configPath, 'utf8')) as {
+			policies: {
+				ci: {
+					evidence: { retention: 'on' | 'retain-on-failure' | 'off' }
+					drivers: { fixture: { settings: { logLevel: string; logsAsEvidence?: boolean } } }
+				}
+			}
+		}
+		manifest.policies.ci.evidence.retention = 'on'
+		manifest.policies.ci.drivers.fixture.settings.logsAsEvidence = true
+		await writeFile(configPath, `${JSON.stringify(manifest, null, 2)}\n`)
+		await writeFile(resolve(environment.root, 'request.json'), JSON.stringify(environment.request('noisy')))
+
+		const execution = await spawnNoisy(environment.root)
+		const result = JSON.parse(execution.stdout) as {
+			evidence: { references: Array<{ kind: string; path: string; stepId?: string }> }
+		}
+		const reference = result.evidence.references.find(({ kind }) => kind === 'web-driver-log')
+
+		expect(execution.exitCode).toBe(0)
+		expect(reference).toBeDefined()
+		expect(reference).not.toHaveProperty('stepId')
+		const transcript = await readFile(resolve(environment.root, reference!.path), 'utf8')
+		expect(transcript).toContain('[warn] logger [secret omitted]')
+		expect(transcript).not.toContain('driver-secret')
+	})
+
 	it('preserves redaction-off result bytes while diagnostic channels stay sanitized', async () => {
 		environment = await createCliTestEnvironment()
 		const configPath = resolve(environment.root, 'checkmate.config.json')

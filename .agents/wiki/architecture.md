@@ -24,7 +24,7 @@ The CLI worker never repeats preparation or identity allocation. The parent alon
 - `src/drivers/web/` owns browser lifecycle, fourteen browser tools, snapshots, screenshots, and network/transient-state recording.
 - `src/config/` owns the sole manifest configuration boundary, package resolution, policy tightening, and invocation-local secret readers.
 - `src/evidence/` owns buffering, retention, atomic commitment, and terminal result persistence.
-- `src/logging/` and `src/redaction/` provide invocation-local sanitized diagnostics and policy-controlled content redaction.
+- `src/logging/` and `src/redaction/` provide invocation-local level filtering, sanitized diagnostics, bounded optional log transcripts, and policy-controlled content redaction.
 
 ## Driver Contract
 
@@ -40,7 +40,7 @@ Execution stops at the first failure and reports every declared step. Cleanup fa
 
 `checkmate.config.json` is the sole non-secret configuration source. An explicit config path does not change the invocation root. Policies own model selection, egress controls, driver settings, tools, bounds, and evidence behavior; requests can select a policy and tighten scenario timeout or token budget. There are no implicit model defaults or USD budgets.
 
-Model-egress redaction and evidence redaction are separate policies. Evidence redaction transforms content-bearing fields, not structural metadata. With evidence redaction off, finalized content may remain raw in durable results, API returns, and byte-identical CLI stdout. Diagnostic sanitization remains mandatory. The terminal finalizer alone commits the final result; checkpoints are partial and never terminal or resumable.
+Model-egress redaction and evidence redaction are separate policies. Evidence redaction transforms content-bearing fields, not structural metadata. With evidence redaction off, finalized content may remain raw in durable results, API returns, and byte-identical CLI stdout. Diagnostic sanitization remains mandatory. Driver settings may select diagnostic verbosity and request a bounded scenario-level log transcript only when the descriptor declares that evidence kind; evidence retention and redaction remain policy-owned. The terminal finalizer alone commits the final result; checkpoints are partial and never terminal or resumable.
 
 ## Trust Boundary
 

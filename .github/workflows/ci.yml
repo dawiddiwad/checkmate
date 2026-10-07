@@ -2,9 +2,14 @@ name: CI
 
 on:
   pull_request:
-  pull_request_target:
-    types: [closed]
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'Resume the release for this merged PR number (leave empty for a new patch)'
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -43,13 +48,55 @@ jobs:
       - name: Verify packed candidate including live Ollama acceptance
         run: npm run phase:verify -- --live
 
-  publish:
+  release-source:
     if: >-
-      (github.event_name == 'pull_request_target' &&
-       github.event.pull_request.merged == true &&
-       github.event.pull_request.base.ref == github.event.repository.default_branch) ||
-      (github.event_name == 'workflow_dispatch' &&
-       github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      source: ${{ steps.source.outputs.source }}
+    steps:
+      - name: Identify the merged PR or manual release
+        id: source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const branch = context.payload.repository.default_branch
+            let pull
+            if (context.eventName === 'workflow_dispatch') {
+              const input = context.payload.inputs?.pull_request?.trim()
+              if (!input) {
+                core.setOutput('source', `workflow-dispatch-${context.runId}`)
+                return
+              }
+              if (!/^[1-9][0-9]*$/.test(input)) throw new Error('Enter a positive PR number.')
+              const { data } = await github.rest.pulls.get({
+                ...context.repo,
+                pull_number: Number(input),
+              })
+              if (!data.merged || data.base.ref !== branch) {
+                throw new Error('The selected PR must be merged into the default branch.')
+              }
+              pull = data
+            } else {
+              const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+                ...context.repo,
+                commit_sha: context.sha,
+              })
+              pull = pulls.find(pull =>
+                pull.merged_at && pull.base.ref === branch && pull.merge_commit_sha === context.sha
+              )
+              if (!pull) return
+            }
+            core.setOutput('source', `pull-request-${pull.number}`)
+
+  publish:
+    needs: release-source
+    if: needs.release-source.outputs.source != ''
     concurrency:
       group: npm-release
       cancel-in-progress: false
@@ -61,7 +108,7 @@ jobs:
       id-token: write
     env:
       RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
-      RELEASE_SOURCE: ${{ github.event_name == 'pull_request_target' && format('pull-request-{0}', github.event.pull_request.number) || format('workflow-dispatch-{0}', github.run_id) }}
+      RELEASE_SOURCE: ${{ needs.release-source.outputs.source }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
       OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
@@ -76,6 +123,17 @@ jobs:
         with:
           node-version: current
           cache: npm
+
+      - name: Check publishing environment
+        run: |
+          node --version
+          npm --version
+          node --input-type=module <<'NODE'
+          import process from 'node:process'
+          for (const name of ['ACTIONS_ID_TOKEN_REQUEST_URL', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) {
+            if (!process.env[name]) throw new Error(`GitHub OIDC is unavailable: ${name} is missing.`)
+          }
+          NODE
 
       - name: Prepare a patch version or resume this release
         id: version
@@ -136,4 +194,4 @@ jobs:
 
       - name: Publish to npm with trusted publishing
         if: steps.registry.outputs.published != 'true'
-        run: npm publish --access public
+        run: npm publish --access public --loglevel verbose

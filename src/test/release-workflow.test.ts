@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { runInNewContext } from 'node:vm'
 import { parse } from 'yaml'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const workflow = parse(readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8'))
 const versionScript = workflow.jobs.publish.steps.find((step: { id?: string }) => step.id === 'version').run
@@ -13,34 +13,133 @@ const registryScript = workflow.jobs.publish.steps.find((step: { id?: string }) 
 
 describe('Publish triggers', () => {
 	it.each([
-		{ event: 'pull_request_target', merged: true, branch: 'main', publish: true },
-		{ event: 'pull_request_target', merged: false, branch: 'main', publish: false },
-		{ event: 'pull_request_target', merged: true, branch: 'develop', publish: false },
-		{ event: 'pull_request', merged: true, branch: 'main', publish: false },
-		{ event: 'workflow_dispatch', merged: false, branch: 'main', publish: true },
-		{ event: 'workflow_dispatch', merged: false, branch: 'develop', publish: false },
-	])('publishes=$publish for $event on $branch with merged=$merged', ({ event, merged, branch, publish }) => {
+		{ event: 'push', branch: 'main', release: true },
+		{ event: 'push', branch: 'develop', release: false },
+		{ event: 'pull_request_target', branch: 'main', release: false },
+		{ event: 'pull_request', branch: 'main', release: false },
+		{ event: 'workflow_dispatch', branch: 'main', release: true },
+		{ event: 'workflow_dispatch', branch: 'develop', release: false },
+	])('identifies releases=$release for $event on $branch', ({ event, branch, release }) => {
 		const github = {
 			event_name: event,
 			ref: `refs/heads/${branch}`,
-			event: {
-				repository: { default_branch: 'main' },
-				pull_request: { merged, base: { ref: branch } },
-			},
+			event: { repository: { default_branch: 'main' } },
 		}
 		expect(
-			runInNewContext(workflow.jobs.publish.if, {
+			runInNewContext(workflow.jobs['release-source'].if, {
 				github,
 				format: (pattern: string, value: string) => pattern.replace('{0}', value),
 			})
-		).toBe(publish)
+		).toBe(release)
 	})
 
-	it('handles only closed PRs with the privileged trigger and checks out the default branch', () => {
-		expect(workflow.on.pull_request_target.types).toEqual(['closed'])
+	it('checks out the default branch and does not register pull_request_target', () => {
+		expect(workflow.on.pull_request_target).toBeUndefined()
+		expect(workflow.on.push.branches).toEqual(['main'])
 		expect(workflow.jobs.publish.steps[0].with.ref).toBe('${{ env.RELEASE_BRANCH }}')
 		expect(workflow.jobs.publish.env.RELEASE_BRANCH).toBe('${{ github.event.repository.default_branch }}')
 	})
+})
+
+function releaseSourceFixture() {
+	const pull = {
+		number: 60,
+		merged: true,
+		merged_at: '2026-10-07T17:40:00Z',
+		merge_commit_sha: 'merged-commit',
+		base: { ref: 'main' },
+	}
+	const context = {
+		eventName: 'push',
+		sha: 'merged-commit',
+		runId: 123,
+		repo: { owner: 'owner', repo: 'checkmate' },
+		payload: { repository: { default_branch: 'main' }, inputs: { pull_request: '' } },
+	}
+	const paginate = vi.fn(async () => [pull])
+	const get = vi.fn(async () => ({ data: pull }))
+	const setOutput = vi.fn()
+	const run = () =>
+		runInNewContext(`(async () => { ${workflow.jobs['release-source'].steps[0].with.script} })()`, {
+			context,
+			github: { paginate, rest: { repos: { listPullRequestsAssociatedWithCommit: vi.fn() }, pulls: { get } } },
+			core: { setOutput },
+		})
+	return { pull, context, paginate, get, setOutput, run }
+}
+
+describe('Release source', () => {
+	it('identifies the PR introduced by the pushed merge commit', async () => {
+		const fixture = releaseSourceFixture()
+		await fixture.run()
+		expect(fixture.paginate).toHaveBeenCalledWith(expect.any(Function), {
+			owner: 'owner',
+			repo: 'checkmate',
+			commit_sha: 'merged-commit',
+		})
+		expect(fixture.setOutput).toHaveBeenCalledWith('source', 'pull-request-60')
+	})
+
+	it.each(['direct-push', 'unmerged', 'other-branch', 'different-commit'])(
+		'does not release a %s',
+		async (reason) => {
+			const fixture = releaseSourceFixture()
+			if (reason === 'direct-push') fixture.paginate.mockResolvedValue([])
+			if (reason === 'unmerged') fixture.pull.merged_at = ''
+			if (reason === 'other-branch') fixture.pull.base.ref = 'develop'
+			if (reason === 'different-commit') fixture.pull.merge_commit_sha = 'older-merge'
+			await fixture.run()
+			expect(fixture.setOutput).not.toHaveBeenCalled()
+		}
+	)
+
+	it('identifies a fresh manual release', async () => {
+		const fixture = releaseSourceFixture()
+		fixture.context.eventName = 'workflow_dispatch'
+		await fixture.run()
+		expect(fixture.setOutput).toHaveBeenCalledWith('source', 'workflow-dispatch-123')
+		expect(fixture.paginate).not.toHaveBeenCalled()
+	})
+
+	it('resumes a manually selected merged PR using the original release marker', async () => {
+		const fixture = releaseSourceFixture()
+		fixture.context.eventName = 'workflow_dispatch'
+		fixture.context.payload.inputs.pull_request = ' 60 '
+		await fixture.run()
+		expect(fixture.get).toHaveBeenCalledWith({ owner: 'owner', repo: 'checkmate', pull_number: 60 })
+		expect(fixture.setOutput).toHaveBeenCalledWith('source', 'pull-request-60')
+	})
+
+	it.each(['invalid-number', 'unmerged', 'other-branch'])('rejects manual recovery for %s', async (reason) => {
+		const fixture = releaseSourceFixture()
+		fixture.context.eventName = 'workflow_dispatch'
+		fixture.context.payload.inputs.pull_request = reason === 'invalid-number' ? '60; echo bad' : '60'
+		if (reason === 'unmerged') fixture.pull.merged = false
+		if (reason === 'other-branch') fixture.pull.base.ref = 'develop'
+		await expect(fixture.run()).rejects.toThrow()
+		expect(fixture.setOutput).not.toHaveBeenCalled()
+	})
+})
+
+describe('Publishing environment', () => {
+	it.each(['ACTIONS_ID_TOKEN_REQUEST_URL', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN'])(
+		'fails before preparing a version when %s is unavailable',
+		(missing) => {
+			const step = workflow.jobs.publish.steps.find(
+				(step: { name?: string }) => step.name === 'Check publishing environment'
+			)
+			const script = step.run.split("node --input-type=module <<'NODE'\n")[1].split('\nNODE')[0]
+			const env = {
+				...process.env,
+				ACTIONS_ID_TOKEN_REQUEST_URL: 'https://example.com/oidc',
+				ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'test-token',
+				[missing]: '',
+			}
+			expect(() => execFileSync('node', ['--input-type=module', '-e', script], { env, stdio: 'pipe' })).toThrow(
+				`GitHub OIDC is unavailable: ${missing} is missing.`
+			)
+		}
+	)
 })
 
 function inReleaseRepository(run: (directory: string, output: string) => void) {

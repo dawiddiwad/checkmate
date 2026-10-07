@@ -142,6 +142,68 @@ describe('Publishing environment', () => {
 	)
 })
 
+function githubReleaseFixture() {
+	const script = workflow.jobs.publish.steps.find(
+		(step: { name?: string }) => step.name === 'Create the GitHub release'
+	).with.script
+	const getRef = vi.fn(async () => ({ data: { ref: 'refs/tags/v0.6.1' } }))
+	const getReleaseByTag = vi.fn().mockRejectedValue({ status: 404 })
+	const createRelease = vi.fn().mockResolvedValue({ data: { id: 1 } })
+	const run = () =>
+		runInNewContext(`(async () => { ${script} })()`, {
+			context: { repo: { owner: 'owner', repo: 'checkmate' } },
+			process: { env: { RELEASE_VERSION: '0.6.1', RELEASE_PACKAGE: '@xoxoai/checkmate' } },
+			github: { rest: { git: { getRef }, repos: { getReleaseByTag, createRelease } } },
+			core: { info: vi.fn() },
+		})
+	return { getRef, getReleaseByTag, createRelease, run }
+}
+
+describe('GitHub releases', () => {
+	it('creates a release for the existing version tag with generated notes and an npm link', async () => {
+		const fixture = githubReleaseFixture()
+		await fixture.run()
+		expect(fixture.getRef).toHaveBeenCalledWith({ owner: 'owner', repo: 'checkmate', ref: 'tags/v0.6.1' })
+		expect(fixture.createRelease).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'checkmate',
+			tag_name: 'v0.6.1',
+			name: 'v0.6.1',
+			body: 'Published to npm: [@xoxoai/checkmate@0.6.1](https://www.npmjs.com/package/@xoxoai/checkmate/v/0.6.1)',
+			generate_release_notes: true,
+			make_latest: 'legacy',
+		})
+	})
+
+	it('preserves an existing release when retried', async () => {
+		const fixture = githubReleaseFixture()
+		fixture.getReleaseByTag.mockResolvedValue({ data: { id: 1 } })
+		await fixture.run()
+		expect(fixture.createRelease).not.toHaveBeenCalled()
+	})
+
+	it('propagates lookup errors instead of treating them as missing releases', async () => {
+		const fixture = githubReleaseFixture()
+		const error = { status: 403 }
+		fixture.getReleaseByTag.mockRejectedValue(error)
+		await expect(fixture.run()).rejects.toBe(error)
+		expect(fixture.createRelease).not.toHaveBeenCalled()
+	})
+
+	it('refuses to create a release if the version tag is missing', async () => {
+		const fixture = githubReleaseFixture()
+		fixture.getRef.mockRejectedValue(new Error('Missing tag'))
+		await expect(fixture.run()).rejects.toThrow('Missing tag')
+		expect(fixture.createRelease).not.toHaveBeenCalled()
+	})
+
+	it('reports creation failures so a rerun can retry after npm has published', async () => {
+		const fixture = githubReleaseFixture()
+		fixture.createRelease.mockRejectedValue(new Error('GitHub unavailable'))
+		await expect(fixture.run()).rejects.toThrow('GitHub unavailable')
+	})
+})
+
 function inReleaseRepository(run: (directory: string, output: string) => void) {
 	const directory = mkdtempSync(join(tmpdir(), 'checkmate-release-'))
 	const output = join(directory, 'github-output')

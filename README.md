@@ -2,6 +2,8 @@
 
 ## _Checkmate - a harness for agentic acceptance_
 
+[![npm version](https://img.shields.io/npm/v/%40xoxoai%2Fcheckmate)](https://www.npmjs.com/package/@xoxoai/checkmate)
+
 <img src="docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
 
 #

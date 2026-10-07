@@ -195,3 +195,30 @@ jobs:
       - name: Publish to npm with trusted publishing
         if: steps.registry.outputs.published != 'true'
         run: npm publish --access public --loglevel verbose
+
+      - name: Create the GitHub release
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_PACKAGE: ${{ steps.version.outputs.package }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const version = process.env.RELEASE_VERSION
+            const packageName = process.env.RELEASE_PACKAGE
+            const tag = `v${version}`
+            await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })
+            try {
+              await github.rest.repos.getReleaseByTag({ ...context.repo, tag })
+              core.info(`Release ${tag} already exists.`)
+              return
+            } catch (error) {
+              if (error.status !== 404) throw error
+            }
+            await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: tag,
+              name: tag,
+              body: `Published to npm: [${packageName}@${version}](https://www.npmjs.com/package/${packageName}/v/${version})`,
+              generate_release_notes: true,
+              make_latest: 'legacy',
+            })

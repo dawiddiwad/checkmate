@@ -2,9 +2,16 @@ name: CI
 
 on:
   pull_request:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   candidate:
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -18,6 +25,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Use Node.js
         uses: actions/setup-node@v6
@@ -33,3 +42,98 @@ jobs:
 
       - name: Verify packed candidate including live Ollama acceptance
         run: npm run phase:verify -- --live
+
+  publish:
+    if: >-
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == github.event.repository.default_branch) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    concurrency:
+      group: npm-release
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_SOURCE: ${{ github.event_name == 'pull_request_target' && format('pull-request-{0}', github.event.pull_request.number) || format('workflow-dispatch-{0}', github.run_id) }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: current
+          cache: npm
+
+      - name: Prepare a patch version or resume this release
+        id: version
+        run: |
+          release_commit=$(git log --format=%H --grep="^Release-Source: $RELEASE_SOURCE$" -1)
+          if [ -n "$release_commit" ]; then
+            git checkout --detach "$release_commit"
+            echo "resume=true" >> "$GITHUB_OUTPUT"
+          else
+            npm version patch --no-git-tag-version
+            echo "resume=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "package=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether this version is already published
+        id: registry
+        env:
+          RELEASE_PACKAGE: ${{ steps.version.outputs.package }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_RESUME: ${{ steps.version.outputs.resume }}
+        run: |
+          npm view "$RELEASE_PACKAGE" versions --json > "$RUNNER_TEMP/npm-versions.json"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs'
+          import process from 'node:process'
+          const versions = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-versions.json`, 'utf8'))
+          const published = [versions].flat().includes(process.env.RELEASE_VERSION)
+          if (published && process.env.RELEASE_RESUME !== 'true') {
+            throw new Error('The next patch is already on npm. Synchronize the repository version before releasing.')
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`)
+          NODE
+
+      - name: Install dependencies and update the lockfile
+        if: steps.registry.outputs.published != 'true'
+        run: npm install
+
+      - name: Install Chromium
+        if: steps.registry.outputs.published != 'true'
+        run: npx playwright install chromium
+
+      - name: Verify the release including live Ollama acceptance
+        if: steps.registry.outputs.published != 'true'
+        run: npm run phase:verify -- --live
+
+      - name: Commit and tag the verified version
+        if: steps.registry.outputs.published != 'true' && steps.version.outputs.resume != 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          git commit -m "Release v$RELEASE_VERSION" -m "Release-Source: $RELEASE_SOURCE"
+          git tag "v$RELEASE_VERSION"
+          git push --atomic origin "HEAD:refs/heads/$RELEASE_BRANCH" "refs/tags/v$RELEASE_VERSION"
+
+      - name: Publish to npm with trusted publishing
+        if: steps.registry.outputs.published != 'true'
+        run: npm publish --access public

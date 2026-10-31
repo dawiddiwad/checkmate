@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, relative, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { parsePackResult } from './pack-result.mjs'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 assert(
@@ -28,6 +29,7 @@ assert(!packageJson.scripts['build:package'].includes('phase:verify'))
 assert(!packageJson.scripts['build:package'].includes('test:'))
 
 await verifyNormalPrepack()
+run(process.execPath, ['--test', 'test/package/pack-result.test.mjs'])
 
 for (const script of ['compile:check', 'lint:check', 'format:check', 'test:unit:run', 'build:package']) {
 	run('npm', ['run', script])
@@ -38,7 +40,7 @@ await verifyCopiedAssets(repositoryRoot)
 const packDirectory = await mkdtemp(resolve(tmpdir(), 'checkmate-pack-'))
 try {
 	const packOutput = run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', packDirectory])
-	const packResult = JSON.parse(packOutput)[0]
+	const packResult = parsePackResult(packOutput, packageJson.name)
 	const actualFiles = packResult.files.map((file) => file.path).sort()
 	const expectedFiles = await expectedPackageFiles()
 	assert(!actualFiles.includes('docs/img/onboarding.gif'))

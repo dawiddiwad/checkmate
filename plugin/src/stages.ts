@@ -317,7 +317,10 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 	const evidenceRoot = await confined(directory, 'evidence')
 	const recordedEvidence = []
 	for (const entry of observation.evidence) {
-		requireCondition(entry.path.startsWith('evidence/'), 'Evidence must be in the evidence directory')
+		requireCondition(
+			entry.path.startsWith('evidence/'),
+			`Evidence path must be relative to the output directory and start with evidence/: ${entry.path}`
+		)
 		const path = await confined(evidenceRoot, entry.path.slice('evidence/'.length))
 		requireCondition((await stat(path)).isFile(), 'Evidence must be a file')
 		recordedEvidence.push({ ...entry, sha256: digest(await readFile(path)) })

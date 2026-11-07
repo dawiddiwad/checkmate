@@ -288,7 +288,8 @@
 					},
 					"path": {
 						"type": "string",
-						"minLength": 1
+						"minLength": 1,
+						"description": "Relative to the output directory. For example: evidence/T1.txt."
 					}
 				},
 				"required": ["id", "kind", "path"],

@@ -12,7 +12,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/re
 3. Run only selected ready tests. Run prerequisite tests first. A failed prerequisite prevents dependent test actions.
 4. Use the target's tools directly. Do not generate maintained automation. Do not modify the application.
 5. Compare each observation with the plan's exact expected result. Copy that expected result and oracle kind into the observation document.
-6. Save evidence beneath `outputDirectory/evidence/`. Record each file's ID, kind, and path. The finalizer records the SHA-256 digest of each file. A pass or failure needs actual evidence.
+6. Save evidence files in `<outputDirectory>/evidence/`. Record each file's ID, kind, and path. Write the path relative to the output directory. For `outputDirectory: runs/run-1`, save `runs/run-1/evidence/T1.txt` and record `"path": "evidence/T1.txt"`. The finalizer records the SHA-256 digest of each file. A pass or failure needs actual evidence.
 7. Record an observed mismatch as `failed` with a `defect` finding. Use `error` for a tool or access failure. Use `potential_issue` for an inference. Do not call a tool error a product defect.
 8. Record new ambiguity as an open gap. Stop further actions if `onNewBlocker` is `return_to_caller`. Otherwise continue only independent tests. Record blocked dependent tests.
 9. Include each selected test exactly once. Give each blocked, not-run, or erroneous test a reason. You can omit an unselected test. The finalizer records it as `not_run`.

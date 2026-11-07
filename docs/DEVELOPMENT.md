@@ -1,24 +1,33 @@
-# Dev Guide
+# Development
 
-## [HumanLayer](https://humanlayer.dev) gives each task its own agentic workspace
+Use the existing checkout. Cloud tasks already have an isolated workspace. Create a worktree only when the caller requests one.
 
-It supports CRISPY, RPI, PRD, and freeform workflows where humans and agents follow a structured, interactive, and guided process.
+Use Node.js 24 or later. Install pinned dependencies with `npm ci`. Use a separate feature branch for changes.
 
-When you start a task, the [workspace config](../.humanlayer/workspace.json):
+```sh
+npm run phase:verify
+npm run test:live
+```
 
-1. Creates a separate git worktree and branch for the task.
-2. Runs `npm install`.
-3. Copies local environment and agent settings into the worktree, without committing them.
+`phase:verify` checks types, lint, formatting, contracts, launcher failures, browser/API integration, and the installed npm package. It does not need a Claude credential.
 
-This lets you work on several tasks without their edits colliding. Change the paths,
-setup command, or copied files in the config above.
+The browser test requires a Chromium executable. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is not `/usr/bin/chromium`. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable cache directory.
 
-<summary>Preview</summary>
-<img src="img/hl-task.png" alt="HumanLayer task workspace" width="100%"/>
-<img src="img/hl-review.png" alt="HumanLayer review" width="100%"/>
+`test:live` requires an authenticated Claude Code CLI. Set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. The test fails when authentication is unavailable. It does not silently skip.
 
-## Wiki
+The live test uses an isolated local fixture and permits Read, Write, Edit, and Bash in that temporary workspace. It checks setup, planning gaps, default blocking, explicit partial execution, revision, defect detection, retest, and a skill invoked within one session. It records stage durations and saves artifacts in the printed temporary directory. It does not change product code or send fixture data to a production service.
 
-- [Architecture](../.agents/wiki/architecture.md)
-- [Standards](../.agents/wiki/coding-standards.md)
-- [Procedures](../.agents/wiki/development-procedures.md)
+The normal CI job runs on Ubuntu with Node.js 24. The live job runs only when selected in a manual workflow dispatch. Configure a repository secret for Claude authentication before that run. Do not expose secrets to untrusted pull requests.
+
+## Contracts
+
+Edit the schemas in `contracts/`. Regenerate the exported types:
+
+```sh
+node scripts/generate-types.mjs
+node scripts/generate-types.mjs --check
+```
+
+Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success results.
+
+The plugin uses the installed Claude Code CLI. Do not add a custom model loop or an Agent SDK runner. Keep model selection, authentication, and native permissions with the host.

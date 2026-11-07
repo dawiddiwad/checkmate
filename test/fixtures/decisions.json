@@ -1,0 +1,20 @@
+[
+	{
+		"id": "D1",
+		"gapId": "G1",
+		"kind": "clarify",
+		"actor": "factory-agent",
+		"rationale": "Product acceptance decision supplied by dispatcher.",
+		"value": "Promotion replaces loyalty. Apply 10 percent to the undiscounted 100 PLN subtotal; expected total is 90 PLN.",
+		"source": "caller://acceptance-decisions/checkout#promotion"
+	},
+	{
+		"id": "D2",
+		"gapId": "G2",
+		"kind": "defer",
+		"actor": "factory-agent",
+		"rationale": "Refund policy is outside this delivery; preserve the uncovered requirement.",
+		"value": "Do not execute refund checks in this scope.",
+		"source": null
+	}
+]

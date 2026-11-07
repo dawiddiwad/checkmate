@@ -1,59 +1,66 @@
-# CLI Reference
+# CLI
 
-The Checkmate CLI is non-interactive. Machine-readable commands write exactly one complete JSON document to stdout. Diagnostics and discarded-worker-stream notices use stderr.
+Run commands from the caller's workspace. Use `--workspace <path>` to select another directory. Paths in JSON remain relative to that workspace.
 
-## Commands
+| Command                                  | Input                               | Effect                                                                  |
+| ---------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------- |
+| `validate file.json`                     | A request, profile, plan, or result | Check the contract. Plan checks include relationships.                  |
+| `setup request.json candidate.json`      | Setup request and profile           | Save a new profile, or accept an identical existing profile.            |
+| `save-plan request.json candidate.json`  | Plan or revise request and plan     | Check scope and decisions. Publish an immutable revision.               |
+| `gate request.json`                      | Execute request                     | Check digests, gaps, capabilities, operations, and prerequisites.       |
+| `begin request.json`                     | Execute request                     | Apply the gate. Reserve the output directory with an invocation record. |
+| `finalize request.json observation.json` | Execute request and observations    | Check evidence. Calculate coverage. Publish the result and reports.     |
+| `report request.json`                    | Report request                      | Generate views from a pinned result.                                    |
+| `delegate request.json`                  | Any stage request                   | Run one fresh Claude session, or render a report directly.              |
 
-```text
-checkmate run <request.json|-> [--config <path>]
-checkmate validate <request.json|-> [--config <path>]
-checkmate describe [--config <path>]
-checkmate --help
-checkmate --version
+The plugin can also call these commands through `node <plugin>/bin/checkmate.js`.
+
+Use `--allow <rule>` for each Claude tool permission in a delegated stage. The launcher does not add a permission bypass. It preserves host configuration and authentication. Repository hooks and instructions can run under normal Claude configuration. Use a trusted workspace.
+
+Use `--timeout <seconds>` for delegated setup, planning, or revision. The default is 300 seconds. Execution uses `timeoutSeconds` from its request. The maximum is 3600 seconds.
+
+## Responses
+
+Stage responses contain `contractVersion`, `requestId`, `operation`, `status`, `artifact`, and `reasons`.
+
+- `completed`: the stage produced a checked artifact, or the gate accepted the request.
+- `needs_decision`: access, readiness, or a caller decision is missing.
+- `invalid_request`: the input violates a contract or relationship.
+- `interrupted`: the worker exceeded its deadline or received a stop signal.
+- `operational_error`: the worker or finalizer could not complete the stage.
+
+Exit 0 means that a valid stage response was produced. This includes `needs_decision` and completed results with defects. Exit 1 means invalid input, interruption, or an operational error. Inspect the payload.
+
+Malformed input can have no valid request identity. Its error response contains only `status` and `reasons`.
+
+## Delegated stages
+
+The launcher uses an argument array. It loads the plugin with `--plugin-dir`. It requires Claude's JSON `structured_output` and validates the candidate locally. It does not accept prose as a result.
+
+Each invocation starts a fresh session. All required context must be in the request and saved inputs. Model selection remains a host setting.
+
+For execution, the parent applies the gate before it starts Claude. It records `startedAt` and a unique `browserSession` in `invocation.json`. The worker uses those values. The parent checks the candidate before finalization.
+
+A stopped or failed worker does not produce a completed result. If no checked observation is available, the finalizer records selected tests as errors with unknown observations. It keeps omitted tests visible. Do not infer that no target action occurred. An invalid candidate cannot be published as a result. `launcher-error.json` records the failure when applicable. The parent attempts to close only the reserved browser session. Use a browser idle timeout as an additional cleanup measure.
+
+Linux process groups are tested. The launcher rejects Windows. macOS process groups use the same code but are not in the measured support baseline.
+
+## Setup request example
+
+Save this file in the caller's workspace. Replace the URL and allowed operations for your target.
+
+```json
+{
+	"contractVersion": "toolkit-1",
+	"requestId": "setup-local",
+	"operation": "setup",
+	"caller": "developer",
+	"profilePath": ".checkmate/profile.json",
+	"targetId": "local-app",
+	"baseUrl": "http://127.0.0.1:3000",
+	"capabilities": ["browser", "http"],
+	"allowedOperations": ["read_catalog"]
+}
 ```
 
-`-` reads the request from stdin. Request file paths and explicit config paths are resolved from the current working directory. Without `--config`, Checkmate reads exactly `$PWD/checkmate.config.json`; it does not walk parent directories.
-
-## Run
-
-`run` performs bounded preparation in the CLI parent. Invalid input returns an `InvalidInvocationResultV1`. An operational preparation failure or identity-allocation failure returns a parent-authored `PreExecutionOperationalResultV1` with `infra / pre-execution-error`, exit `3`, `targetMutation: "not-attempted"`, and no scenario, step, usage, or evidence claims. A valid request reserves one run directory and starts a child worker. The worker executes only the prepared plan; it does not reread configuration, reprobe preflight secrets, or allocate another identity.
-
-The parent is the sole stdout writer. It accepts worker output only after validating the complete IPC frame, digest, deterministic bytes, `RunResultV1` schema, immutable prepared identity, policy, limits, step grammar, usage, and committed evidence references. Successful committed output is byte-identical to the run's `result.json`.
-
-If no authoritative worker result is accepted before the applicable cutoff, the parent emits `ContainmentResultV1`. Containment has no semantic `steps`, usage, evidence-completeness claim, or committed result reference.
-
-## Validate
-
-`validate` performs the same static preparation as `run`, including secret availability, but stops before identity allocation, executable import, driver startup, target mutation, or output creation.
-
-## Describe
-
-`describe` returns schema references, policy metadata, registered static driver descriptors, logical secret requirements, and reason-specific routing guidance. It neither imports drivers nor probes secret values.
-
-## Exit Codes
-
-| Code | Route                                                                                 |
-| ---: | ------------------------------------------------------------------------------------- |
-|  `0` | Passed run, valid request, or available description                                   |
-|  `1` | Application expectation failure                                                       |
-|  `2` | Model failure                                                                         |
-|  `3` | Infrastructure failure, interruption, containment, or unexpected static-command error |
-|  `4` | Invalid invocation or unavailable requested configuration                             |
-
-Exit codes provide coarse shell routing. The stdout document remains the detailed contract.
-
-## Signals And Cutoffs
-
-Scenario timing starts when the parent forks the worker, so driver import and startup consume the scenario limit. Normal `cleanup-started` disarms the scenario timer and starts one fresh cleanup cutoff. A scenario timeout or first `SIGINT`/`SIGTERM` sends one cooperative abort and immediately starts one cleanup/termination bound; a later cleanup notification cannot extend it.
-
-The parent compares its monotonic clock with the absolute active deadline before every state transition and after asynchronous terminal reconciliation. After an external signal it accepts only `interrupted`, `driver-teardown-failed`, or `result-write-failed`. After a run deadline it accepts only `scenario-timeout`, `driver-teardown-failed`, or `result-write-failed`. Unrelated pass, application, and model results cannot override a latched stop cause.
-
-A worker-finalized interrupted result accepted in time exits `3`. A second signal after an external stop forces the first signal's native route: `130` for `SIGINT` or `143` for `SIGTERM`, with no fabricated stdout envelope.
-
-## Output Discipline
-
-- Worker stdout and stderr bytes are counted, drained, and discarded.
-- Worker logger diagnostics enabled by the selected driver's `logLevel` are exact-secret and pattern sanitized before IPC.
-- The parent pattern-sanitizes diagnostic messages again before stderr.
-- Diagnostic `code` and RFC 6901 `path` fields remain structural and are not rewritten.
-- Terminal result bytes are never reserialized or modified by the parent.
+In Claude Code, invoke `/checkmate:setup` with this request file. Then create a plan request with the returned profile reference. Use `contracts/plan-request.schema.json` for its fields.

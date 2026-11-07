@@ -1,293 +1,74 @@
-#### □ □ ■ □
+# Checkmate
 
-## _Checkmate - a harness for agentic acceptance_
+Checkmate is a testing toolkit for Claude Code. It supplies workflows, contracts, execution checks, and evidence reports. Claude Code supplies the agent loop, model, tools, and permissions.
 
-[![npm version](https://img.shields.io/npm/v/%40xoxoai%2Fcheckmate)](https://www.npmjs.com/package/@xoxoai/checkmate)
-
-<img src="docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
-
-#
-
-Think of it like QA contracts for software factories: policies define the bounds of execution, where scenarios describe the intent to verify through a domain driver. It aims to patch the gap between fully coded tests and freelance agent testing.
+Use Checkmate to test requirements, changes, or a scoped exploratory objective. Source code is optional. Start with a running application and access to its tools.
 
 ## Install
 
-```bash
-npm install @xoxoai/checkmate
-```
-
-## Usage
-
-#### Scenario is a JSON document:
-
-```json
-{
-	"schemaVersion": 1,
-	"scenario": {
-		"id": "checkout spring promo",
-		"driver": {
-			"id": "web",
-			"target": {
-				"baseUrl": "https://staging.example.test"
-			}
-		},
-		"policy": "ci",
-		"steps": [
-			{
-				"id": "start checkout",
-				"action": "Add a product to the cart",
-				"expect": "The checkout page is displayed"
-			},
-			{
-				"id": "apply promo",
-				"action": "Apply promotion code SPRING25",
-				"expect": "The order total is reduced by 25%"
-			},
-			{
-				"id": "verify total",
-				"action": "Proceed to the payment step",
-				"expect": "The order total reflects the applied promotion"
-			}
-		]
-	}
-}
-```
-
-#### Run:
-
-```bash
-checkmate run scenario.json
-```
-
-Checkmate writes one JSON result to stdout. Outcomes distinguish application, model, infrastructure, and invalid-invocation failures.
-
-<details>
-<summary>Example Results</summary>
-
-A successful run of the scenario above:
-
-```json
-{
-	"kind": "run-result",
-	"schemaVersion": 1,
-	"runId": "0123456789abcdef",
-	"scenarioId": "checkout spring promo",
-	"status": "passed",
-	"category": "passed",
-	"reason": "scenario-complete",
-	"targetMutation": "possibly-mutated",
-	"startedAt": "2026-09-04T12:00:00.000Z",
-	"durationMs": 12600,
-	"driver": { "id": "web", "contractVersion": 1 },
-	"policy": {
-		"id": "ci",
-		"effectiveLimits": {
-			"scenarioTimeoutMs": 180000,
-			"stepTimeoutMs": 120000,
-			"turnsPerStep": 20,
-			"requestTimeoutMs": 60000,
-			"maxRetries": 3,
-			"loopMaxRepetitions": 5,
-			"cleanupTimeoutMs": 10000,
-			"budgetTokens": 200000
-		}
-	},
-	"usage": {
-		"promptTokens": 3600,
-		"cachedPromptTokens": 1200,
-		"completionTokens": 300,
-		"totalTokens": 3900,
-		"state": "complete"
-	},
-	"steps": [
-		{
-			"id": "start checkout",
-			"status": "passed",
-			"category": "app",
-			"reason": "met-expectation",
-			"actual": "The checkout page displays one product with a $40 order total.",
-			"turns": 3,
-			"durationMs": 4000,
-			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
-			"toolCalls": [
-				{
-					"turn": 1,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": { "ref": "e12", "name": "Add to cart", "hover": false, "goal": "Add a product to the cart" },
-					"status": "ok"
-				},
-				{
-					"turn": 2,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": { "ref": "e18", "name": "Checkout", "hover": false, "goal": "Open the checkout page" },
-					"status": "ok"
-				}
-			]
-		},
-		{
-			"id": "apply promo",
-			"status": "passed",
-			"category": "app",
-			"reason": "met-expectation",
-			"actual": "SPRING25 is applied and the order total is reduced from $40 to $30.",
-			"turns": 3,
-			"durationMs": 4000,
-			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
-			"toolCalls": [
-				{
-					"turn": 1,
-					"driverId": "web",
-					"name": "browser_type_or_select",
-					"arguments": {
-						"elements": [
-							{ "ref": "e24", "name": "Promotion code", "text": "SPRING25", "clear": true, "select": false }
-						],
-						"goal": "Enter the promotion code"
-					},
-					"status": "ok"
-				},
-				{
-					"turn": 2,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": { "ref": "e25", "name": "Apply", "hover": false, "goal": "Apply the promotion code" },
-					"status": "ok"
-				}
-			]
-		},
-		{
-			"id": "verify total",
-			"status": "passed",
-			"category": "app",
-			"reason": "met-expectation",
-			"actual": "The payment step displays the discounted order total of $30.",
-			"turns": 2,
-			"durationMs": 4000,
-			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
-			"toolCalls": [
-				{
-					"turn": 1,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": {
-						"ref": "e30",
-						"name": "Continue to payment",
-						"hover": false,
-						"goal": "Verify the discounted total at the payment step"
-					},
-					"status": "ok"
-				}
-			]
-		}
-	],
-	"evidence": { "state": "complete", "references": [] },
-	"diagnostics": []
-}
-```
-
-</details>
-
-## Configuration
-
-Execution is configured through `checkmate.config.json`.
-
-Policies keep execution settings outside test intent. For example, a policy can define limits, evidence retention, and allowed driver tools:
-
-<details>
-<summary>Example Configuration</summary>
-
-```json
-{
-	"schemaVersion": 1,
-	"outputDirectory": ".checkmate/runs",
-	"defaultPolicy": "ci",
-	"secretBindings": {
-		"openai-api-key": {
-			"source": "environment",
-			"name": "CHECKMATE_OPENAI_API_KEY"
-		}
-	},
-	"policies": {
-		"ci": {
-			"modelEgress": {
-				"provider": {
-					"id": "openai",
-					"model": "gpt-5-mini",
-					"apiKeyBinding": "openai-api-key"
-				},
-				"textRedaction": "on",
-				"allowOpaque": false,
-				"maxStepBytes": 1048576,
-				"maxMessageBytes": 262144
-			},
-			"bounds": {
-				"scenarioTimeoutMs": 180000,
-				"stepTimeoutMs": 120000,
-				"turnsPerStep": 20,
-				"requestTimeoutMs": 60000,
-				"maxRetries": 3,
-				"loopMaxRepetitions": 5,
-				"cleanupTimeoutMs": 10000,
-				"budgetTokens": 200000
-			},
-			"evidence": {
-				"retention": "retain-on-failure",
-				"redaction": "on",
-				"allowOpaque": false
-			},
-			"drivers": {
-				"web": {
-					"settings": {
-						"headless": true,
-						"logLevel": "off",
-						"logsAsEvidence": false,
-						"snapshotFilter": false
-					},
-					"tools": { "allowed": ["*"] }
-				}
-			}
-		}
-	},
-	"drivers": {
-		"web": {
-			"package": "@xoxoai/checkmate/driver-web",
-			"secrets": {}
-		}
-	}
-}
-```
-
-</details>
-
-## Drivers
-
-#### Checkmate is designed around domain-specific drivers.
-
-A driver defines how the model interacts with a particular system while the harness keeps scenario execution, policies, results, and evidence consistent.
-
-The included `web` driver is a simple reference implementation. Other domains can be integrated through the same public driver contract.
-
-## Commands
+Use Node.js 24 or later. The repository is a Claude plugin marketplace:
 
 ```text
-checkmate run <request.json|->
-checkmate validate <request.json>
-checkmate describe
-checkmate --help
-checkmate --version
+/plugin marketplace add dawiddiwad/checkmate
+/plugin install checkmate@checkmate
 ```
 
-`describe` returns the drivers, policies, and contract versions available in the current environment.
+Install the plugin's Node.js dependencies before the first stage. For local development or PR review, clone this repository and run:
 
-## Docs
+```sh
+npm ci
+claude --plugin-dir /absolute/path/to/checkmate
+```
 
-[Configuration](docs/CONFIGURATION.md)  
-[Evidence](docs/EVIDENCE.md)  
-[Drivers](docs/DRIVERS.md)  
-[CLI](docs/CLI.md)  
-[Dev](docs/DEVELOPMENT.md)
+For a production-only install in the plugin directory, use `npm ci --omit=dev`. Install Claude Code and Playwright CLI on the host separately. The tested versions are Claude Code `2.1.319` and Playwright CLI `0.1.23`.
+
+The plugin has five skills:
+
+- `/checkmate:setup`: check tools and save a target profile.
+- `/checkmate:plan`: create tests and identify gaps.
+- `/checkmate:revise`: apply caller decisions to a new plan revision.
+- `/checkmate:execute`: run selected tests and save evidence.
+- `/checkmate:report`: generate Markdown and HTML reports.
+
+Give each skill an explicit request file. Use the schemas in [contracts](contracts) and the [CLI guide](docs/CLI.md).
+
+## Workflow
+
+1. Set up the target profile. Record tools, versions, access references, and permitted operations.
+2. Plan tests. Preserve each requirement and its source. Record unknown expected behavior as a blocking gap.
+3. Ask the dispatching agent to clarify, accept an assumption, or defer coverage. Use a person when the agent lacks authority.
+4. Revise the plan. Keep the prior revision unchanged.
+5. Execute selected tests. The default policy blocks execution while an open blocking gap remains.
+6. Read the result and its evidence. The caller decides whether to fix the application or release it.
+7. Retest in a new run after a fix. Preserve earlier results and omitted coverage.
+
+A completed run can contain defects. Complete coverage can contain failed tests. A process exit code is not a release decision.
+
+## Run a delegated stage
+
+```sh
+node /absolute/path/to/checkmate/bin/checkmate.js delegate requests/plan.json --workspace /path/to/project \
+  --allow Read --allow Write --allow 'Bash(node *)'
+```
+
+The launcher starts one fresh Claude Code session. Select tool rules for the requested stage. A browser stage also needs permission for the applicable Playwright commands. Do not grant blanket permissions in an untrusted workspace.
+
+Use a normal Claude login, `CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_API_KEY`. Keep credentials in the host's secret store. Checkmate does not extract tokens or implement authentication.
+
+## Read more
+
+- [Contracts and configuration](docs/CONFIGURATION.md)
+- [CLI and stage responses](docs/CLI.md)
+- [Evidence and reports](docs/EVIDENCE.md)
+- [Development and tests](docs/DEVELOPMENT.md)
+- [Browser recipe](references/browser.md)
+- [HTTP recipe](references/http.md)
+
+## Scope
+
+The scripts enforce Checkmate contract checks. They cannot restrict an agent that has arbitrary shell access. Tool permissions belong to the host. A valid file does not prove that an observation is accurate.
+
+Checkmate does not fix product code, provision environments, generate maintained test suites, or publish releases. It does not enforce model token budgets or sanitize arbitrary screenshots.
 
 ## License
 

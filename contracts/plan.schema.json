@@ -1,0 +1,337 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"contractVersion": {
+			"const": "toolkit-1"
+		},
+		"planId": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"revision": {
+			"type": "integer",
+			"minimum": 1
+		},
+		"previousRevision": {
+			"anyOf": [
+				{
+					"type": "integer",
+					"minimum": 1
+				},
+				{
+					"type": "null"
+				}
+			]
+		},
+		"target": {
+			"type": "object",
+			"properties": {
+				"path": {
+					"type": "string",
+					"minLength": 1
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				}
+			},
+			"required": ["path", "sha256"],
+			"additionalProperties": false
+		},
+		"targetId": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"requirements": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"text": {
+						"type": "string",
+						"minLength": 1
+					},
+					"source": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["id", "text", "source"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"tests": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"requirementIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"capability": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"operations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"readiness": {
+						"enum": ["ready", "blocked", "deferred"]
+					},
+					"gapIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"dependsOn": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"preconditions": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"action": {
+						"type": "string",
+						"minLength": 1
+					},
+					"expected": {
+						"anyOf": [
+							{
+								"type": "string",
+								"minLength": 1
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"oracleKind": {
+						"enum": ["deterministic", "agent_observation"]
+					}
+				},
+				"required": [
+					"id",
+					"requirementIds",
+					"capability",
+					"operations",
+					"readiness",
+					"gapIds",
+					"dependsOn",
+					"preconditions",
+					"action",
+					"expected",
+					"oracleKind"
+				],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"gaps": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"severity": {
+						"enum": ["blocking", "non_blocking"]
+					},
+					"status": {
+						"enum": ["open", "resolved", "deferred"]
+					},
+					"requirementIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"testIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"question": {
+						"type": "string",
+						"minLength": 1
+					},
+					"consequence": {
+						"type": "string",
+						"minLength": 1
+					},
+					"decisionId": {
+						"anyOf": [
+							{
+								"type": "string",
+								"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": ["id", "severity", "status", "requirementIds", "testIds", "question", "consequence", "decisionId"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"assumptions": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"decisionId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"text": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["decisionId", "text"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"decisions": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"gapId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"kind": {
+						"enum": ["clarify", "accept_assumption", "defer"]
+					},
+					"actor": {
+						"type": "string",
+						"minLength": 1
+					},
+					"rationale": {
+						"type": "string",
+						"minLength": 1
+					},
+					"value": {
+						"type": "string",
+						"minLength": 1
+					},
+					"source": {
+						"anyOf": [
+							{
+								"type": "string",
+								"minLength": 1
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": ["id", "gapId", "kind", "actor", "rationale", "value", "source"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"coverage": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"requirementId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"testIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"status": {
+						"enum": ["planned", "blocked", "deferred"]
+					}
+				},
+				"required": ["requirementId", "testIds", "status"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		}
+	},
+	"required": [
+		"contractVersion",
+		"planId",
+		"revision",
+		"previousRevision",
+		"target",
+		"targetId",
+		"requirements",
+		"tests",
+		"gaps",
+		"assumptions",
+		"decisions",
+		"coverage"
+	],
+	"additionalProperties": false
+}

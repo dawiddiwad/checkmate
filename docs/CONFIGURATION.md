@@ -1,105 +1,57 @@
-# Configuration Reference
+# Contracts and configuration
 
-`checkmate.config.json` is the sole operator-controlled configuration source. It separates approved package registration and logical secret bindings from policy-owned execution behavior.
+The JSON Schemas in `contracts/` are authoritative. The package exports matching TypeScript types. Use `contractVersion: "toolkit-1"`.
 
-## Lookup
+## Files
 
-- Default: `$PWD/checkmate.config.json`
-- Explicit: `--config <path>`, resolved from `$PWD`
-- Invocation root: always `$PWD`, even when the config file is elsewhere
-- No ancestor search, package metadata fallback, TypeScript config, or low-level environment override layer
+The caller selects file paths in each request. A typical workspace contains:
 
-Relative output paths and driver package resolution remain anchored to the invocation root.
-
-## Manifest Sections
-
-| Field             | Purpose                                                        |
-| ----------------- | -------------------------------------------------------------- |
-| `schemaVersion`   | Must be `1`                                                    |
-| `outputDirectory` | Relative run root; defaults to `.checkmate/runs`               |
-| `defaultPolicy`   | Policy selected when a request omits `scenario.policy`         |
-| `secretBindings`  | Logical names mapped to environment variable names             |
-| `policies`        | Model egress, bounds, evidence, and enabled-driver settings    |
-| `drivers`         | Stable driver IDs mapped to approved packages and secret slots |
-
-Unknown fields are rejected. Validation does not coerce, strip, default inside input documents, or clamp values.
-
-## Model Egress
-
-Each policy owns:
-
-| Field                      | Meaning                                                 |
-| -------------------------- | ------------------------------------------------------- |
-| `provider.id`              | `openai` in v1                                          |
-| `provider.model`           | Provider model identifier                               |
-| `provider.baseUrl`         | Optional OpenAI-compatible endpoint                     |
-| `provider.apiKeyBinding`   | Logical binding, never a secret value                   |
-| `provider.temperature`     | Optional non-negative number                            |
-| `provider.reasoningEffort` | Optional `low`, `medium`, or `high`                     |
-| `textRedaction`            | `on` or `off` for provider-bound text                   |
-| `allowOpaque`              | Whether provider-bound opaque/image context is allowed  |
-| `maxStepBytes`             | Maximum complete provider request bytes for a step      |
-| `maxMessageBytes`          | Maximum serialized bytes for one provider-bound message |
-
-The complete-request limit covers messages, tools, and JSON framing, not HTTP headers. Requests cannot override any model-egress field.
-
-## Bounds
-
-| Field                |           Valid value | Scope                                                |
-| -------------------- | --------------------: | ---------------------------------------------------- |
-| `scenarioTimeoutMs`  |          Integer >= 1 | Entire worker scenario, including import and startup |
-| `stepTimeoutMs`      |          Integer >= 1 | One model/tool step                                  |
-| `turnsPerStep`       |          Integer >= 1 | Model turns per step                                 |
-| `requestTimeoutMs`   |          Integer >= 1 | One provider request                                 |
-| `maxRetries`         |          Integer >= 0 | Provider-level retries                               |
-| `loopMaxRepetitions` |          Integer >= 1 | Repeated tool-call pattern bound                     |
-| `cleanupTimeoutMs`   |          Integer >= 1 | Shared runner/session cleanup deadline               |
-| `budgetTokens`       | Optional integer >= 1 | Cumulative scenario token ceiling                    |
-
-A request may only tighten `scenarioTimeoutMs` through `limits.timeoutMs`, and may tighten or introduce `limits.budgetTokens`. Attempts to raise a policy ceiling are invalid. V1 has no USD budget, cost calculation, or pricing table.
-
-## Evidence Policy
-
-- `retention`: `on`, `retain-on-failure`, or `off`
-- `redaction`: `on` or `off`
-- `allowOpaque`: explicit permission for binary evidence that cannot be text-redacted
-
-Requests cannot weaken these settings.
-
-## Driver Policy
-
-The root `drivers` entry approves a package and maps its descriptor-declared secret slots to logical bindings. `policies.<id>.drivers.<driverId>` enables that registered driver, supplies settings validated against its static descriptor, and provides `tools.allowed`.
-
-`["*"]` exposes every descriptor-declared tool. An explicit list exposes only those names. Unknown names, undeclared secret slots, missing slot bindings, unknown drivers, and drivers not enabled by the selected policy are invalid before executable import.
-
-The built-in web driver accepts `logLevel` (`debug`, `info`, `warn`, `error`, or `off`) and `logsAsEvidence` in its policy-owned settings. Both default to disabled behavior: `logLevel: "off"` and `logsAsEvidence: false`. For example:
-
-```json
-{
-	"settings": {
-		"headless": true,
-		"logLevel": "debug",
-		"logsAsEvidence": true
-	}
-}
+```text
+.checkmate/profile.json
+.checkmate/plans/checkout/v1.json
+.checkmate/plans/checkout/v1.md
+.checkmate/requests/execute.json
+.checkmate/runs/run-1/invocation.json
+.checkmate/runs/run-1/evidence/
+.checkmate/runs/run-1/result.json
+.checkmate/runs/run-1/report.md
+.checkmate/runs/run-1/report.html
 ```
 
-Enabled logs are sanitized and written by the CLI to stderr. When evidence logging is enabled, the same selected messages are also subject to the policy's evidence retention and redaction settings.
+The launcher uses `.checkmate/candidates/` for temporary candidates. The run registry uses `.checkmate/run-ids/` to prevent duplicate run IDs across output directories. Ignore run data, candidates, and browser authentication state in Git. Plans can be committed. Do not put credentials in these files.
 
-## Secret Handling
+References contain a relative `path` and the SHA-256 digest of the exact saved bytes. A changed byte requires a new reference. A digest detects change. It does not authenticate the caller.
 
-Preflight reads a binding only long enough to verify that its environment value is a non-empty string. It does not return, retain, serialize, log, persist, derive from, or send that value over IPC. The worker resolves values independently for execution. Secret values never enter the prepared plan, request, result, checkpoint, evidence reference, or `describe` output.
+## Target profile
 
-JavaScript heap erasure is not guaranteed. Registered executable code remains trusted and can access the host environment outside Checkmate's reader.
+A profile records target identity, revision, URL, capabilities, actual tool versions, credential references, permitted operations, startup ownership, and cleanup guidance.
 
-## Fixed Ingestion Limits
+Use one tooling entry per capability. The `browser` capability uses Playwright CLI. The `http` capability can use Node.js fetch.
 
-Checkmate applies fixed parent-side limits before expensive validation, executable import, identity allocation, secret resolution, or worker creation:
+`authentication.references` contains environment variable names or browser-state references. It never contains credential values. The host resolves them at runtime.
 
-- 256 KiB each for request, manifest, and descriptor documents
-- Parsed depth 64 and 10,000 aggregate values
-- 100 scenario steps
-- 128 characters for IDs, 256 for scenario names
-- 16 KiB UTF-8 each for action and expectation text
-- 100 diagnostics and 64 KiB of serialized diagnostics
-- 1 MiB serialized worker start frame
+The caller normally owns application startup. A configured startup command is guidance for an authorized host. The deterministic scripts do not start it.
+
+## Plans and decisions
+
+Each requirement has an ID, text, and source. Each test maps to requirements and specifies a capability, permitted operations, prerequisites, action, expected result, and oracle kind.
+
+Use `deterministic` for a direct assertion. Use `agent_observation` when an agent interprets the evidence. Record that distinction in the result.
+
+A gap can be blocking or non-blocking. An unknown expected result is blocking. A gap with empty requirement and test lists affects the whole plan.
+
+The caller can clarify, accept an assumption, or defer coverage. Each decision needs an actor and rationale. Clarification needs a source. An accepted assumption remains visible in the plan.
+
+Revision preserves the requirement inventory and its provenance. It changes only affected test details and gap dispositions. Use a new plan for a different scope. An immutable write refuses a path collision. A revise request must reference the latest saved revision.
+
+## Execution
+
+Selection is explicit and non-empty. The default `partialExecution` is `wait_for_resolution`. Any open blocking gap prevents execution.
+
+`ready_only` permits an explicit selection of ready tests. It does not make a blocked test ready. Include prerequisite tests in the same selection. Prior results do not satisfy prerequisites automatically.
+
+Every result lists every planned test once. Omitted and deferred tests remain visible. Coverage is relative to the full declared requirement inventory.
+
+Use `onNewBlocker: return_to_caller` to stop after a new blocker. Use `continue_independent` to permit unrelated tests. These action-order rules depend on the host workflow; the finalizer cannot observe arbitrary external tool calls.
+
+A retest uses a new run ID and build identity. It references the prior result with `retestOf`. A narrow retest retains uncovered requirements.

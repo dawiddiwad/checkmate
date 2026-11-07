@@ -18,3 +18,9 @@ app-docs
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
+
+# Local run state
+.checkmate/runs/
+.checkmate/candidates/
+.checkmate/run-ids/
+.playwright/

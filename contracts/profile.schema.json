@@ -1,0 +1,134 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"contractVersion": {
+			"const": "toolkit-1"
+		},
+		"targetId": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"revision": {
+			"type": "integer",
+			"minimum": 1
+		},
+		"baseUrl": {
+			"type": "string",
+			"format": "uri"
+		},
+		"environment": {
+			"type": "string",
+			"minLength": 1
+		},
+		"capabilities": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"tooling": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"capability": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"executable": {
+						"type": "string",
+						"minLength": 1
+					},
+					"version": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["capability", "executable", "version"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"authentication": {
+			"type": "object",
+			"properties": {
+				"kind": {
+					"enum": ["none", "environment", "browser_session"]
+				},
+				"references": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				}
+			},
+			"required": ["kind", "references"],
+			"additionalProperties": false
+		},
+		"allowedOperations": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"startup": {
+			"type": "object",
+			"properties": {
+				"owner": {
+					"enum": ["caller", "checkmate"]
+				},
+				"command": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"minItems": 1,
+							"uniqueItems": true
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"required": ["owner", "command"],
+			"additionalProperties": false
+		},
+		"cleanup": {
+			"type": "string",
+			"minLength": 1
+		},
+		"readyForLiveExecution": {
+			"type": "boolean"
+		}
+	},
+	"required": [
+		"contractVersion",
+		"targetId",
+		"revision",
+		"baseUrl",
+		"environment",
+		"capabilities",
+		"tooling",
+		"authentication",
+		"allowedOperations",
+		"startup",
+		"cleanup",
+		"readyForLiveExecution"
+	],
+	"additionalProperties": false
+}

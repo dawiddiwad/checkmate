@@ -1,34 +1,24 @@
 import js from '@eslint/js'
-import tseslint from 'typescript-eslint'
 
 export default [
-	{
-		ignores: [
-			'dist/**',
-			'coverage/**',
-			'test-reports/**',
-			'test-results/**',
-			'node_modules/**',
-			'package/**',
-			'src/test/create-examples.test.ts',
-			'bin/checkmate.js',
-			'.agents/**',
-			'.claude/**',
-			'.humanlayer/**',
-			'.checkmate/**',
-			'.pi-meetings/**',
-			'.playwright-cli/**',
-			'.playwright-mcp/**',
-			'.sf/**',
-		],
-	},
+	{ ignores: ['node_modules/**', 'dist/**', '**/*.d.ts'] },
 	js.configs.recommended,
-	...tseslint.configs.recommended,
+	{ rules: { 'no-empty': ['error', { allowEmptyCatch: true }] } },
 	{
-		files: ['**/*.ts'],
 		languageOptions: {
-			ecmaVersion: 2022,
-			sourceType: 'module',
+			globals: Object.fromEntries(
+				[
+					'process',
+					'console',
+					'Buffer',
+					'URL',
+					'fetch',
+					'AbortSignal',
+					'setTimeout',
+					'clearTimeout',
+					'structuredClone',
+				].map((name) => [name, 'readonly'])
+			),
 		},
 	},
 ]

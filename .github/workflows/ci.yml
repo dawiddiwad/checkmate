@@ -1,224 +1,43 @@
-name: CI
-
+name: Verify
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
-      pull_request:
-        description: 'Resume the release for this merged PR number (leave empty for a new patch)'
-        type: string
-        required: false
-
+      live:
+        description: Run authenticated Claude acceptance
+        type: boolean
+        default: false
 permissions:
   contents: read
-
 jobs:
-  candidate:
-    if: github.event_name == 'pull_request'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+  verify:
+    runs-on: ubuntu-latest
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
-      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-
+      CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          persist-credentials: false
-
-      - name: Use Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: current
+          node-version: '24'
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Chromium
-        run: npx playwright install chromium
-
-      - name: Verify packed candidate including live Ollama acceptance
-        run: npm run phase:verify -- --live
-
-  release-source:
-    if: >-
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      - run: npm ci
+      - run: npm run phase:verify
+  live:
+    if: github.event_name == 'workflow_dispatch' && inputs.live
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      source: ${{ steps.source.outputs.source }}
-    steps:
-      - name: Identify the merged PR or manual release
-        id: source
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const branch = context.payload.repository.default_branch
-            let pull
-            if (context.eventName === 'workflow_dispatch') {
-              const input = context.payload.inputs?.pull_request?.trim()
-              if (!input) {
-                core.setOutput('source', `workflow-dispatch-${context.runId}`)
-                return
-              }
-              if (!/^[1-9][0-9]*$/.test(input)) throw new Error('Enter a positive PR number.')
-              const { data } = await github.rest.pulls.get({
-                ...context.repo,
-                pull_number: Number(input),
-              })
-              if (!data.merged || data.base.ref !== branch) {
-                throw new Error('The selected PR must be merged into the default branch.')
-              }
-              pull = data
-            } else {
-              const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
-                ...context.repo,
-                commit_sha: context.sha,
-              })
-              pull = pulls.find(pull =>
-                pull.merged_at && pull.base.ref === branch && pull.merge_commit_sha === context.sha
-              )
-              if (!pull) return
-            }
-            core.setOutput('source', `pull-request-${pull.number}`)
-
-  publish:
-    needs: release-source
-    if: needs.release-source.outputs.source != ''
-    concurrency:
-      group: npm-release
-      cancel-in-progress: false
-      queue: max
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
-      id-token: write
+    timeout-minutes: 35
     env:
-      RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
-      RELEASE_SOURCE: ${{ needs.release-source.outputs.source }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
-      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+      CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          ref: ${{ env.RELEASE_BRANCH }}
-          fetch-depth: 0
-
-      - name: Use Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: current
+          node-version: '24'
           cache: npm
-
-      - name: Check publishing environment
-        run: |
-          node --version
-          npm --version
-          node --input-type=module <<'NODE'
-          import process from 'node:process'
-          for (const name of ['ACTIONS_ID_TOKEN_REQUEST_URL', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) {
-            if (!process.env[name]) throw new Error(`GitHub OIDC is unavailable: ${name} is missing.`)
-          }
-          NODE
-
-      - name: Prepare a patch version or resume this release
-        id: version
-        run: |
-          release_commit=$(git log --format=%H --grep="^Release-Source: $RELEASE_SOURCE$" -1)
-          if [ -n "$release_commit" ]; then
-            git checkout --detach "$release_commit"
-            echo "resume=true" >> "$GITHUB_OUTPUT"
-          else
-            npm version patch --no-git-tag-version
-            echo "resume=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-          echo "package=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
-
-      - name: Check whether this version is already published
-        id: registry
+      - run: npm ci
+      - run: npm run test:live
         env:
-          RELEASE_PACKAGE: ${{ steps.version.outputs.package }}
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_RESUME: ${{ steps.version.outputs.resume }}
-        run: |
-          npm view "$RELEASE_PACKAGE" versions --json > "$RUNNER_TEMP/npm-versions.json"
-          node --input-type=module <<'NODE'
-          import { appendFileSync, readFileSync } from 'node:fs'
-          import process from 'node:process'
-          const versions = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-versions.json`, 'utf8'))
-          const published = [versions].flat().includes(process.env.RELEASE_VERSION)
-          if (published && process.env.RELEASE_RESUME !== 'true') {
-            throw new Error('The next patch is already on npm. Synchronize the repository version before releasing.')
-          }
-          appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`)
-          NODE
-
-      - name: Install dependencies and update the lockfile
-        if: steps.registry.outputs.published != 'true'
-        run: npm install
-
-      - name: Install Chromium
-        if: steps.registry.outputs.published != 'true'
-        run: npx playwright install chromium
-
-      - name: Verify the release including live Ollama acceptance
-        if: steps.registry.outputs.published != 'true'
-        run: npm run phase:verify -- --live
-
-      - name: Commit and tag the verified version
-        if: steps.registry.outputs.published != 'true' && steps.version.outputs.resume != 'true'
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json
-          git commit -m "Release v$RELEASE_VERSION" -m "Release-Source: $RELEASE_SOURCE"
-          git tag "v$RELEASE_VERSION"
-          git push --atomic origin "HEAD:refs/heads/$RELEASE_BRANCH" "refs/tags/v$RELEASE_VERSION"
-
-      - name: Publish to npm with trusted publishing
-        if: steps.registry.outputs.published != 'true'
-        run: npm publish --access public --loglevel verbose
-
-      - name: Create the GitHub release
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_PACKAGE: ${{ steps.version.outputs.package }}
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const version = process.env.RELEASE_VERSION
-            const packageName = process.env.RELEASE_PACKAGE
-            const tag = `v${version}`
-            await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })
-            try {
-              await github.rest.repos.getReleaseByTag({ ...context.repo, tag })
-              core.info(`Release ${tag} already exists.`)
-              return
-            } catch (error) {
-              if (error.status !== 404) throw error
-            }
-            await github.rest.repos.createRelease({
-              ...context.repo,
-              tag_name: tag,
-              name: tag,
-              body: `Published to npm: [${packageName}@${version}](https://www.npmjs.com/package/${packageName}/v/${version})`,
-              generate_release_notes: true,
-              make_latest: 'legacy',
-            })
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

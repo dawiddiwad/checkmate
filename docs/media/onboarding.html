@@ -37,8 +37,8 @@
 <section class="scene" data-start="0" data-length="5">
 	<div id="board" style="position: absolute; left: 150px; top: 216px; width: 400px; height: 400px; display: grid; grid-template-columns: repeat(6, 1fr)"></div>
 	<div style="position: absolute; left: 46px; top: 728px">
-		<div style="font-size: 76px; font-weight: 500; letter-spacing: -1.5px" data-in="1.6">Checkmate</div>
-		<div class="dim" style="font-size: 27px; line-height: 40px; margin-top: 18px" data-in="2.2">QA workflows<br />for Claude</div>
+		<div style="font-size: 76px; font-weight: 500; letter-spacing: -1.5px; color: #eaedf2" data-in="1.6">Checkmate</div>
+		<div style="font-size: 27px; line-height: 40px; margin-top: 18px; color: rgb(165, 169, 179)" data-in="2.2">QA workflows<br />for running acceptance scenarios</div>
 	</div>
 </section>
 
@@ -84,202 +84,201 @@
 	</div>
 </section>
 
-<!-- 3 · the contract around the agent -->
-<section class="scene" data-start="18" data-length="11">
+<!-- 3 · requirements in, questions out: the plan marks what it cannot assert -->
+<section class="scene" data-start="18" data-length="12">
 	<div class="cam">
-		<h1>Put the agent inside a<br /><span class="blue">checked contract</span>.</h1>
-		<div class="grow" data-grow="6.0">
-			<div style="padding-top: 48px"></div>
-			<div class="label">in</div>
-			<div class="sub" style="margin-top: 12px">requirements, in words</div>
-			<div style="padding-top: 6px"></div>
+		<h1>Requirements in.<br /><span class="blue">Questions</span> out.</h1>
+		<div class="label" style="margin: 44px 0 14px" data-in="0.3">plan-request.json</div>
+		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.4"><span class="mono faint" style="font-size: 18px; width: 34px">R1</span><span class="say" style="font-size: 21px">A standard order totals 400 PLN.</span></div>
+		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.8"><span class="mono faint" style="font-size: 18px; width: 34px">R2</span><span class="say" style="font-size: 21px">A 40% promotion applies at checkout.</span></div>
+		<div class="card row" style="height: 64px" data-in="1.2"><span class="mono faint" style="font-size: 18px; width: 34px">R3</span><span class="say" style="font-size: 21px">Refunds follow the eligibility rules.</span></div>
+		<div class="mono blue" style="text-align: center; font-size: 20px; margin: 22px 0" data-in="2.0">↓ /checkmate:plan</div>
+		<div class="label" style="margin-bottom: 14px" data-in="2.6">plans/checkout/v1.json</div>
+		<div class="card row" style="height: 64px; margin-bottom: 10px; justify-content: space-between" data-in="2.8"><span class="mono" style="font-size: 19px">T1 standard checkout</span><span class="mono ok" style="font-size: 18px">ready</span></div>
+		<div class="card row" style="height: 64px; margin-bottom: 10px; justify-content: space-between" data-in="3.2" data-hl="4.4-6.4"><span class="mono" style="font-size: 19px">T2 promotion + loyalty</span><span class="mono warn" style="font-size: 18px">blocked</span></div>
+		<div class="card row" style="height: 64px; justify-content: space-between" data-in="3.6" data-hl="6.4-8.4"><span class="mono" style="font-size: 19px">T3 refund eligibility</span><span class="mono warn" style="font-size: 18px">blocked</span></div>
+		<div style="height: 22px"></div>
+		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px; margin-bottom: 10px" data-in="5.0">
+			<div class="mono warn" style="font-size: 16px">G1 · blocking · T2</div>
+			<div class="say" style="margin-top: 6px">Does the promotion stack with loyalty?</div>
 		</div>
-		<div style="height: 48px"></div>
-		<div class="card" style="padding: 52px 30px; position: relative" data-in="1.4" data-frame>
-			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
-				<div class="chip" style="padding: 15px 0" data-in="1.6">plan</div>
-				<div class="chip" style="padding: 15px 0" data-in="1.75">gaps</div>
-				<div class="chip" style="padding: 15px 0" data-in="1.9">decisions</div>
-				<div class="chip" style="padding: 15px 0" data-in="2.05">revisions</div>
-			</div>
-			<div class="inner" style="margin: 34px 0; padding: 58px 0; text-align: center" data-in="0.4">
-				<div style="font-size: 30px">Claude Code</div>
-				<div class="mono dim" style="font-size: 20px; margin-top: 10px">testing your app</div>
-			</div>
-			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
-				<div class="chip" style="padding: 15px 0" data-in="2.2">evidence</div>
-				<div class="chip" style="padding: 15px 0" data-in="2.35">digests</div>
-				<div class="chip" style="padding: 15px 0" data-in="2.5">coverage</div>
-				<div class="chip" style="padding: 15px 0" data-in="2.65">reports</div>
-			</div>
+		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px" data-in="7.0">
+			<div class="mono warn" style="font-size: 16px">G2 · blocking · T3</div>
+			<div class="say" style="margin-top: 6px">Which orders can be refunded, and by whom?</div>
 		</div>
-		<div style="margin-top: 56px">
-			<div class="label" data-in="8.0">out</div>
-			<div class="sub blue" style="margin-top: 12px" data-in="8.0">one checked result</div>
-			<div class="say dim" style="margin-top: 14px; font-size: 23px; line-height: 35px" data-in="8.6">Everything the agent is <span style="color: var(--text)">not allowed to decide</span> comes back as a question.</div>
-		</div>
+		<div class="say dim" style="margin-top: 30px" data-in="9.0">An unknown expected result is a blocking gap. Planning takes <span style="color: var(--text)">no test action</span>.</div>
 	</div>
 </section>
 
-<!-- 4 · one cycle: the list collapses, the highlight walks down, the tests report -->
-<section class="scene" data-start="29" data-length="12">
+<!-- 4 · the caller decides: the highlight picks a decision, the plan gets a new revision -->
+<section class="scene" data-start="30" data-length="11">
 	<div class="cam">
-		<h1><span class="blue">How</span> one cycle works.</h1>
-		<div style="height: 44px"></div>
-		<div class="steps">
-			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="0.3"><div class="mono" style="font-size: 22px; font-weight: 500">1 · Setup</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">check tools, save a target profile</div></div></div>
-			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="0.8"><div class="mono" style="font-size: 22px; font-weight: 500">2 · Plan</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">tests, expected results, open gaps</div></div></div>
-			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="1.3"><div class="mono" style="font-size: 22px; font-weight: 500">3 · Revise</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">apply the caller's decisions</div></div></div>
-			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="1.8" data-hl="5.0-8.5"><div class="mono" style="font-size: 22px; font-weight: 500">4 · Execute</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">run selected tests, save evidence</div></div></div>
-			<div class="card" style="padding: 20px 24px" data-in="2.3" data-hl="8.5-99"><div class="mono" style="font-size: 22px; font-weight: 500">5 · Report</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">Markdown and HTML from the result</div></div></div>
+		<h1>The caller <span class="blue">decides</span>.</h1>
+		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px; margin-top: 44px" data-in="0.3">
+			<div class="mono warn" style="font-size: 16px">G1 · blocking</div>
+			<div class="say" style="margin-top: 6px">Does the promotion stack with loyalty?</div>
 		</div>
-		<div class="grow" data-grow="5.0">
-			<div class="say dim" style="font-size: 21px; line-height: 32px; padding-top: 34px">Tests run in plan order. A failed prerequisite blocks its dependents — every planned test is still reported.</div>
-			<div style="height: 16px"></div>
-			<div class="card stripe" style="border-left-color: var(--green); padding: 20px 22px; margin-bottom: 12px" data-in="5.6">
-				<div class="say"><span class="mono faint">T1</span> Complete a standard checkout</div>
-				<div class="mono" style="font-size: 17px; margin-top: 4px"><span class="ok">passed</span> <span class="faint">evidence/T1.txt</span></div>
+		<div class="label" style="text-align: center; margin: 30px 0 14px" data-in="0.9">decision</div>
+		<div class="card stripe row" style="border-left-color: var(--blue); height: 64px; margin-bottom: 10px" data-in="1.0" data-hl="1.6-2.2,3.4-99"><span class="mono blue" style="font-size: 19px; width: 96px">clarify</span><span class="say" style="font-size: 20px">state the expected result</span></div>
+		<div class="card stripe row" style="border-left-color: var(--amber); height: 64px; margin-bottom: 10px" data-in="1.2" data-hl="2.2-2.8"><span class="mono warn" style="font-size: 19px; width: 96px">accept</span><span class="say" style="font-size: 20px">record a visible assumption</span></div>
+		<div class="card stripe row" style="border-left-color: #5fd3c8; height: 64px" data-in="1.4" data-hl="2.8-3.4"><span class="mono teal" style="font-size: 19px; width: 96px">defer</span><span class="say" style="font-size: 20px">keep the coverage open</span></div>
+		<div class="grow" data-grow="3.8">
+			<div style="padding-top: 22px"></div>
+			<div class="card" style="background: var(--blue-bg); border-color: #2c4a8c; padding: 20px 24px">
+				<div class="mono blue" style="font-size: 16px">D1 · clarify · G1</div>
+				<div class="say" style="margin-top: 8px">Promotion replaces loyalty.<br />Expected total: 240 PLN.</div>
+				<div class="mono faint" style="font-size: 15px; margin-top: 10px">actor and source recorded</div>
 			</div>
-			<div class="card stripe" style="border-left-color: #f0735a; padding: 20px 22px; margin-bottom: 12px" data-in="6.6">
-				<div class="say"><span class="mono faint">T2</span> Apply the promotion with loyalty</div>
-				<div class="mono" style="font-size: 17px; margin-top: 4px"><span class="bad">failed</span> <span class="faint">defect F1 · 220 ≠ 240 PLN</span></div>
-			</div>
-			<div class="card stripe" style="border-left-color: var(--faint); padding: 20px 22px" data-in="7.6">
-				<div class="say dim"><span class="mono faint">T3</span> Check refund eligibility</div>
-				<div class="mono" style="font-size: 17px; margin-top: 4px"><span class="dim">not_run</span> <span class="faint">deferred by the caller</span></div>
-			</div>
+			<div class="card row" style="height: 60px; margin-top: 10px" data-in="5.4"><span class="mono teal" style="font-size: 17px; width: 160px">D2 · defer</span><span class="say dim" style="font-size: 19px">refunds stay uncovered</span></div>
 		</div>
-		<div class="line" style="margin-top: 40px; font-size: 18px" data-in="9.2">run result — <span class="dim">completion</span> completed · <span class="dim">coverage</span> <span class="warn">partial</span></div>
+		<div class="mono" style="font-size: 19px; margin-top: 34px; display: flex; align-items: center; gap: 16px">
+			<div class="card" style="padding: 14px 18px" data-in="6.6" data-dim="7.6">v1.json<div class="faint" style="font-size: 14px; margin-top: 4px">kept unchanged</div></div>
+			<div class="faint" data-in="7.2">→</div>
+			<div class="card blue" style="padding: 14px 18px; background: var(--blue-bg); border-color: #2c4a8c; flex: 1" data-in="7.4">v2.json<div style="font-size: 14px; margin-top: 4px; opacity: 0.8">T2 ready · T3 deferred</div></div>
+		</div>
+		<div class="say dim" style="margin-top: 30px" data-in="8.6">Generated text never authorizes a decision. Each decision names <span style="color: var(--text)">its actor</span>.</div>
 	</div>
 </section>
 
-<!-- 5 · one JSON result, with highlight bands -->
+<!-- 5 · test with real tools: the commands run, then expected meets observed -->
 <section class="scene" data-start="41" data-length="11">
 	<div class="cam">
-		<h1>Exactly one versioned<br /><span class="blue">JSON result</span> per<br />run.</h1>
-		<div class="card" style="margin-top: 44px; padding: 30px 0" data-in="0.3">
-			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.5">{</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.65">  "contractVersion": "toolkit-1",</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.8">  "runId": "run-2",</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.95" data-band="2.4">  "completion": "completed",</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.1" data-band="2.4">  "tests": [ … ],</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.25" data-band="2.4">  "coverage": { "status": "partial" },</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.4" data-band="5.0" data-band-color="amber">  "findings": [ { "type": "defect" } ],</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.55">  "evidence": [ … ], "finishedAt": "…"</div>
-			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.7">}</div>
+		<h1>Test with <span class="blue">real tools</span>.</h1>
+		<div class="card" style="margin-top: 44px; padding: 22px 24px" data-in="0.3">
+			<div class="label">browser · playwright-cli</div>
+			<div style="margin-top: 14px">
+				<div class="line dim" style="font-size: 17px" data-in="0.6">open http://127.0.0.1:4173</div>
+				<div class="line dim" style="font-size: 17px" data-in="1.0">click "Complete checkout"</div>
+				<div class="line" style="font-size: 17px" data-in="1.4">→ Order confirmed: 400 PLN  <span class="ok">T1 passed</span></div>
+			</div>
 		</div>
-		<div style="margin-top: 46px" data-in="3.0">
-			<div class="label blue" style="color: var(--blue)">route on these</div>
-			<div class="say" style="margin-top: 10px">Completion, outcomes, and coverage are separate fields. The caller branches on them, not on prose.</div>
+		<div class="card" style="margin-top: 12px; padding: 22px 24px" data-in="2.0">
+			<div class="label">http · node fetch</div>
+			<div style="margin-top: 14px">
+				<div class="line dim" style="font-size: 17px" data-in="2.3">GET /quote?promotion=true&amp;loyalty=true</div>
+				<div class="line" style="font-size: 17px" data-in="2.8">→ 200 { "totalPLN": 220 }</div>
+			</div>
 		</div>
-		<div style="margin-top: 40px" data-in="5.0">
-			<div class="label warn" style="color: var(--amber)">a failure has a finding</div>
-			<div class="say" style="margin-top: 10px">A failed check needs a defect and its evidence. A tool failure is an error instead.</div>
+		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px">
+			<div class="card" style="padding: 22px 24px" data-in="3.8">
+				<div class="label">expected</div>
+				<div style="font-size: 76px; font-weight: 500; letter-spacing: -2px; margin-top: 8px">240</div>
+				<div class="mono dim" style="font-size: 16px">PLN · from plan v2</div>
+			</div>
+			<div class="card" style="padding: 22px 24px" data-in="4.6" style="border-color: #5a2a33">
+				<div class="label">observed</div>
+				<div class="bad" style="font-size: 76px; font-weight: 500; letter-spacing: -2px; margin-top: 8px">220</div>
+				<div class="mono dim" style="font-size: 16px">PLN · T2 failed</div>
+			</div>
 		</div>
-		<div class="mono dim" style="margin-top: 40px; font-size: 18px; line-height: 29px" data-in="7.0">result.json, report.md, and report.html are <span style="color: var(--text)">the same record</span>.</div>
+		<div class="card" style="margin-top: 12px; padding: 22px 24px" data-in="6.0">
+			<div class="label">saved in runs/run-1/evidence/</div>
+			<div style="margin-top: 14px">
+				<div class="line" style="font-size: 17px" data-in="6.3"><span class="ok">✓</span> T1.txt  <span class="dim">Order confirmed: 400 PLN</span></div>
+				<div class="line" style="font-size: 17px" data-in="6.7"><span class="ok">✓</span> T2.txt  <span class="dim">HTTP 200; totalPLN = 220</span></div>
+			</div>
+		</div>
+		<div class="say dim" style="margin-top: 30px" data-in="7.8">Each verdict copies the plan's expected result and <span style="color: var(--text)">cites what the run saw</span>.</div>
 	</div>
 </section>
 
-<!-- 6 · outcomes as fields -->
+<!-- 6 · a failure is a finding: the defect builds line by line, errors stay separate -->
 <section class="scene" data-start="52" data-length="10">
 	<div class="cam">
-		<h1><span class="blue">Which</span> outcome<br />was it?</h1>
-		<div style="height: 52px"></div>
-		<div class="card stripe row" style="border-left-color: var(--green); height: 112px; margin-bottom: 14px" data-in="0.5">
-			<div class="mono ok" style="font-size: 34px; width: 30px">✓</div>
-			<div><div class="mono" style="font-size: 21px">passed</div><div class="ok" style="font-size: 19px; margin-top: 4px">Matches the expected result.</div></div>
-		</div>
-		<div class="card stripe row" style="border-left-color: #f0735a; height: 112px; margin-bottom: 14px" data-in="1.0">
-			<div class="mono bad" style="font-size: 34px; width: 30px">×</div>
-			<div><div class="mono" style="font-size: 21px">failed</div><div class="bad" style="font-size: 19px; margin-top: 4px">A defect finding — read the evidence.</div></div>
-		</div>
-		<div class="card stripe row" style="border-left-color: var(--amber); height: 112px; margin-bottom: 14px" data-in="1.5">
-			<div class="mono warn" style="font-size: 34px; width: 30px">!</div>
-			<div><div class="mono" style="font-size: 21px">error</div><div class="warn" style="font-size: 19px; margin-top: 4px">A tool or access failure, not a defect.</div></div>
-		</div>
-		<div class="card stripe row" style="border-left-color: #5fd3c8; height: 112px; margin-bottom: 14px" data-in="2.0">
-			<div class="mono teal" style="font-size: 34px; width: 30px">‖</div>
-			<div><div class="mono" style="font-size: 21px">blocked</div><div class="teal" style="font-size: 19px; margin-top: 4px">A prerequisite or an open gap stopped it.</div></div>
-		</div>
-		<div class="card stripe row" style="border-left-color: var(--faint); height: 112px" data-in="2.5">
-			<div class="mono faint" style="font-size: 34px; width: 30px">–</div>
-			<div><div class="mono" style="font-size: 21px">not_run</div><div class="dim" style="font-size: 19px; margin-top: 4px">Not selected, or deferred by the caller.</div></div>
-		</div>
-		<div style="margin-top: 50px" data-in="6.0">
-			<div class="sub" style="font-size: 30px">The outcome is <span class="blue">a field</span>, not a sentence.</div>
-			<div class="say dim" style="margin-top: 12px; font-size: 20px">Which is what lets an agent act on it without guessing.</div>
-		</div>
-	</div>
-</section>
-
-<!-- 7 · a tool built for an agent: the pulse walks down, the loop draws back -->
-<section class="scene" data-start="62" data-length="13">
-	<div class="cam">
-		<h1>A tool built for an <span class="blue">agent</span>.</h1>
-		<div class="mono blue" style="font-size: 16px; margin: 44px 0 14px" data-in="9.6">decides, revises, runs again</div>
-		<div style="position: relative">
-			<svg width="600" height="900" style="left: -26px; top: 0" data-draw="8.4">
-				<path d="M 16 840 L 16 30 L 30 30" fill="none" stroke="#3b5fc4" stroke-width="2" pathLength="1" />
-			</svg>
-			<div class="card say" style="text-align: center; padding: 22px 0" data-in="0.4" data-hl="1.2-2.0">Agent gets a requirement</div>
-			<div class="faint mono" style="text-align: center; font-size: 18px; margin: 6px 0" data-in="0.8">↓</div>
-			<div class="card say" style="text-align: center; padding: 22px 0" data-in="0.9" data-hl="2.0-2.8">Writes a plan request (JSON)</div>
-			<div class="faint mono" style="text-align: center; font-size: 18px; margin: 6px 0" data-in="1.3">↓</div>
-			<div class="card mono" style="text-align: center; padding: 24px 0; font-size: 21px" data-in="1.4" data-hl="2.8-3.6">/checkmate:plan</div>
-			<div class="faint mono" style="text-align: center; font-size: 18px; margin: 6px 0" data-in="1.8">↓</div>
-			<div class="card say" style="text-align: center; padding: 22px 0" data-in="1.9" data-hl="3.6-99">open gaps, as questions</div>
-			<div class="label" style="text-align: center; margin: 40px 0 18px" data-in="5.0">decision</div>
-			<div class="card stripe row" style="border-left-color: #f0735a; height: 66px; margin-bottom: 10px" data-in="5.5"><span class="mono bad" style="font-size: 20px; width: 92px">clarify</span><span class="say" style="font-size: 20px">state the expected result</span></div>
-			<div class="card stripe row" style="border-left-color: var(--amber); height: 66px; margin-bottom: 10px" data-in="6.1"><span class="mono warn" style="font-size: 20px; width: 92px">accept</span><span class="say" style="font-size: 20px">record an assumption</span></div>
-			<div class="card stripe row" style="border-left-color: #5fd3c8; height: 66px" data-in="6.7"><span class="mono teal" style="font-size: 20px; width: 92px">defer</span><span class="say" style="font-size: 20px">keep the coverage open</span></div>
-		</div>
-	</div>
-</section>
-
-<!-- 8 · a layer, not a migration target -->
-<section class="scene" data-start="75" data-length="10">
-	<div class="cam">
-		<h1><span class="blue">A layer</span>, not a migration<br />target.</h1>
-		<div class="label" style="text-align: center; margin: 120px 0 22px" data-in="3.0">adaptive · judgement-based</div>
-		<div style="display: flex; flex-direction: column; align-items: center; gap: 12px">
-			<div class="card say" style="width: 232px; text-align: center; padding: 16px 0; font-size: 20px" data-in="1.0">Agents + Tools</div>
-			<div class="card" style="width: 344px; text-align: center; padding: 12px 0; background: var(--blue-bg); border-color: #2c4a8c" data-in="0.4">
-				<div class="blue" style="font-size: 28px; font-weight: 500">Checkmate</div>
-				<div class="mono blue" style="font-size: 15px; margin-top: 4px; opacity: 0.8">QA workflows for Claude</div>
+		<h1>A failure is a<br /><span class="blue">finding</span>.</h1>
+		<div class="card stripe" style="border-left-color: #f0735a; margin-top: 44px; padding: 24px 26px" data-in="0.3">
+			<div class="mono bad" style="font-size: 17px">F1 · defect · T2 · R2</div>
+			<div class="sub" style="margin-top: 8px" data-in="0.6">Promotion stacks with loyalty</div>
+			<div class="line dim" style="font-size: 17px; margin-top: 14px" data-in="1.0">expected  240 PLN</div>
+			<div class="line" style="font-size: 17px" data-in="1.2">observed  <span class="bad">220 PLN</span></div>
+			<div class="label" style="margin-top: 22px" data-in="1.8">reproduction</div>
+			<div class="say" style="font-size: 20px; margin-top: 8px">
+				<div data-in="2.0">1. Add a 400 PLN item with 20 PLN loyalty.</div>
+				<div data-in="2.4">2. Apply the 40% promotion.</div>
+				<div data-in="2.8">3. Read the quote total.</div>
 			</div>
-			<div class="card say" style="width: 424px; text-align: center; padding: 16px 0; font-size: 20px" data-in="1.5">Scripted E2E tests</div>
-			<div class="card say" style="width: 504px; text-align: center; padding: 16px 0; font-size: 20px" data-in="2.0">API &amp; integration tests</div>
-			<div class="card say" style="width: 576px; text-align: center; padding: 16px 0; font-size: 20px" data-in="2.5">Unit tests</div>
+			<div class="line faint" style="font-size: 16px; margin-top: 18px" data-in="3.4">evidence/T2.txt  sha256 86f68eb0…</div>
 		</div>
-		<div class="label" style="text-align: center; margin-top: 22px" data-in="3.0">deterministic · fast · certain</div>
-		<div class="say" style="margin-top: 60px; font-size: 24px; line-height: 38px" data-in="4.5">It earns its place where the intent is stable but the implementation keeps moving.</div>
+		<div class="label" style="margin: 34px 0 14px" data-in="5.0">not a defect</div>
+		<div class="card stripe row" style="border-left-color: var(--amber); height: 72px; margin-bottom: 10px" data-in="5.2"><span class="mono warn" style="font-size: 18px; width: 190px">error</span><span class="say" style="font-size: 19px">a timeout or a denied tool</span></div>
+		<div class="card stripe row" style="border-left-color: #5fd3c8; height: 72px" data-in="5.8"><span class="mono teal" style="font-size: 18px; width: 190px">potential_issue</span><span class="say" style="font-size: 19px">an inference, not an observation</span></div>
+		<div class="say dim" style="margin-top: 30px" data-in="7.2">A pass or a failure without saved evidence <span style="color: var(--text)">does not save</span>.</div>
 	</div>
 </section>
 
-<!-- 9 · every run gets its own directory -->
-<section class="scene" data-start="85" data-length="9">
+<!-- 7 · one JSON result, three separate answers: bands and rows light together -->
+<section class="scene" data-start="62" data-length="11">
 	<div class="cam">
-		<h1>Every run gets its<br /><span class="blue">own directory</span>.</h1>
-		<div class="card" style="margin-top: 44px; padding: 26px 26px" data-in="0.3">
-			<div class="line" data-in="0.4">runs/&lt;runId&gt;/</div>
-			<div class="line" data-in="0.8">├─ invocation.json</div>
-			<div class="line faint" style="font-size: 15px" data-in="0.8">│    request, start time, browser session</div>
-			<div class="line" data-in="1.2">├─ evidence/…</div>
-			<div class="line faint" style="font-size: 15px" data-in="1.2">│    what the agent saw: text, HTTP, screenshots</div>
-			<div class="line" data-in="1.6">├─ report.md · report.html</div>
-			<div class="line faint" style="font-size: 15px" data-in="1.6">│    views rendered from the result</div>
-			<div class="line blue" data-in="2.0">└─ result.json</div>
-			<div class="line faint" style="font-size: 15px" data-in="2.0">     the record, with every evidence digest</div>
+		<h1>One JSON result.<br />Three <span class="blue">separate answers</span>.</h1>
+		<div class="card" style="margin-top: 44px; padding: 26px 0" data-in="0.3">
+			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.5">{</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.65">  "runId": "run-1",</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.8" data-band="2.4">  "completion": "completed",</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.95" data-band="3.8">  "tests": [ passed, failed, not_run ],</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.1" data-band="5.2" data-band-color="amber">  "coverage": { "status": "partial" },</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.25">  "findings": [ … ], "evidence": [ … ]</div>
+			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.4">}</div>
 		</div>
-		<div class="label" style="margin: 40px 0 18px" data-in="3.2">written once</div>
+		<div style="margin-top: 26px">
+			<div class="card row" style="height: 84px; margin-bottom: 10px; justify-content: space-between" data-in="2.4" data-hl="2.4-3.8"><span><span class="mono" style="font-size: 19px">completion</span><div class="dim" style="font-size: 17px; margin-top: 2px">Did the run finish?</div></span><span class="mono ok" style="font-size: 18px">completed</span></div>
+			<div class="card row" style="height: 84px; margin-bottom: 10px; justify-content: space-between" data-in="3.8" data-hl="3.8-5.2"><span><span class="mono" style="font-size: 19px">outcomes</span><div class="dim" style="font-size: 17px; margin-top: 2px">What passed or failed?</div></span><span class="mono bad" style="font-size: 18px">1 failed</span></div>
+			<div class="card row" style="height: 84px; justify-content: space-between" data-in="5.2" data-hl="5.2-6.8"><span><span class="mono" style="font-size: 19px">coverage</span><div class="dim" style="font-size: 17px; margin-top: 2px">What is still untested?</div></span><span class="mono warn" style="font-size: 18px">R3 uncovered</span></div>
+		</div>
+		<div class="say dim" style="margin-top: 30px" data-in="7.4">A completed run can hold a defect. <span style="color: var(--text)">An exit code is not a release decision.</span></div>
+	</div>
+</section>
+
+<!-- 8 · fix the app, retest in a new run: the first run dims but stays -->
+<section class="scene" data-start="73" data-length="11">
+	<div class="cam">
+		<h1>Fix the app.<br /><span class="blue">Retest</span> in a new run.</h1>
+		<div class="card" style="margin-top: 44px; padding: 22px 24px" data-in="0.3" data-dim="5.6">
+			<div class="line" data-in="0.4">runs/run-1/  <span class="faint">build 1</span></div>
+			<div class="line dim" style="font-size: 17px" data-in="0.7">├─ evidence/T2.txt</div>
+			<div class="line dim" style="font-size: 17px" data-in="0.9">└─ result.json   <span class="bad">T2 failed · 220 PLN</span></div>
+		</div>
+		<div class="mono faint" style="text-align: center; font-size: 19px; margin: 24px 0" data-in="2.0">↓ caller fixes the app</div>
+		<div class="card" style="padding: 22px 24px; background: var(--blue-bg); border-color: #2c4a8c" data-in="3.2">
+			<div class="line" data-in="3.3">runs/run-2/  <span class="faint">build 2 · retestOf run-1</span></div>
+			<div class="line dim" style="font-size: 17px" data-in="3.7">├─ evidence/T2.txt</div>
+			<div class="line dim" style="font-size: 17px" data-in="4.1">└─ result.json   <span class="ok">T2 passed · 240 PLN</span></div>
+		</div>
+		<div class="label" style="margin: 36px 0 16px" data-in="5.6">written once</div>
 		<div class="mono" style="font-size: 18px">
-			<div class="card" style="width: 290px; margin-left: 72px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="3.6">write temp</div>
-			<div class="card" style="width: 290px; margin: 10px 0 0 108px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="4.0">sync</div>
-			<div class="card" style="width: 290px; margin: 10px 0 0 144px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="4.4">link</div>
-			<div class="card" style="width: 290px; margin: 10px 0 0 180px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="4.8">sync directory</div>
-			<div class="card blue" style="width: 290px; margin: 10px 0 0 216px; padding: 11px 0; text-align: center; border-radius: 20px; background: var(--blue-bg); border-color: #2c4a8c" data-in="5.2">publish</div>
+			<div class="card" style="width: 300px; margin-left: 60px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="5.8">write a temporary file</div>
+			<div class="card" style="width: 300px; margin: 10px 0 0 110px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="6.2">sync</div>
+			<div class="card" style="width: 300px; margin: 10px 0 0 160px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="6.6">link to its final name</div>
+			<div class="card blue" style="width: 300px; margin: 10px 0 0 210px; padding: 11px 0; text-align: center; border-radius: 20px; background: var(--blue-bg); border-color: #2c4a8c" data-in="7.0">never overwrite</div>
 		</div>
-		<div class="say" style="margin-top: 44px; font-size: 21px" data-in="6.4">Credentials never enter the record. A retest is a new run — earlier results stay byte-exact.</div>
+		<div class="say dim" style="margin-top: 34px" data-in="8.2">Refund checks stay deferred, so coverage stays <span class="warn">partial</span>.</div>
+	</div>
+</section>
+
+<!-- 9 · who owns what: three owners, the middle one is the layer -->
+<section class="scene" data-start="84" data-length="10">
+	<div class="cam">
+		<h1>Who <span class="blue">owns</span> what.</h1>
+		<div class="card" style="margin-top: 50px; padding: 26px 28px" data-in="0.4">
+			<div class="mono" style="font-size: 24px">Claude Code</div>
+			<div class="say dim" style="margin-top: 8px">Model, tools, authentication, and permissions.</div>
+		</div>
+		<div class="card" style="margin-top: 14px; padding: 26px 28px; background: var(--blue-bg); border-color: #2c4a8c" data-in="1.4">
+			<div class="mono blue" style="font-size: 24px">Checkmate</div>
+			<div class="say dim" style="margin-top: 8px">Workflows, contracts, checks, evidence, and reports.</div>
+		</div>
+		<div class="card" style="margin-top: 14px; padding: 26px 28px" data-in="2.4">
+			<div class="mono" style="font-size: 24px">Caller</div>
+			<div class="say dim" style="margin-top: 8px">Scope, decisions, fixes, and the release.</div>
+		</div>
+		<div class="label" style="text-align: center; margin: 52px 0 18px" data-in="4.0">adaptive · judgement-based</div>
+		<div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
+			<div class="card blue" style="width: 300px; text-align: center; padding: 14px 0; font-size: 21px; background: var(--blue-bg); border-color: #2c4a8c" data-in="4.2">Checkmate</div>
+			<div class="card say" style="width: 420px; text-align: center; padding: 14px 0; font-size: 19px" data-in="4.6">Scripted E2E tests</div>
+			<div class="card say" style="width: 500px; text-align: center; padding: 14px 0; font-size: 19px" data-in="5.0">API &amp; integration tests</div>
+			<div class="card say" style="width: 580px; text-align: center; padding: 14px 0; font-size: 19px" data-in="5.4">Unit tests</div>
+		</div>
+		<div class="label" style="text-align: center; margin-top: 18px" data-in="5.8">deterministic · fast · certain</div>
+		<div class="say dim" style="margin-top: 30px; text-align: center" data-in="7.0">A layer on top, not a migration target.</div>
 	</div>
 </section>
 
@@ -331,19 +330,18 @@
 		for (const element of document.querySelectorAll('[data-grow], [data-shrink]')) element.dataset.height = element.offsetHeight
 	}
 
-	// The checkerboard: cells fade in along the diagonal. The centre cell glows, then turns blue.
+	// The checkerboard builds bright along the diagonal with the target cell dark.
+	// When the blue square lights, the rest of the board dims to its final shade.
 	function renderBoard(time) {
+		const build = { light: [41, 43, 49], dark: [24, 27, 34], target: [18, 23, 31] }
+		const rest = { light: [26, 29, 34], dark: [19, 22, 26], target: [89, 133, 240] }
+		const settle = ease(ramp(time, 2.2, 0.4))
 		for (const cell of board.children) {
 			const i = Number(cell.dataset.cell), row = Math.floor(i / 6), column = i % 6
-			const base = (row + column) % 2 ? [19, 22, 26] : [26, 29, 34]
-			const shown = ease(ramp(time, 0.2 + (row + column) * 0.055, 0.3))
-			let rgb = base.map((value, k) => 15 + (value - [15, 18, 23][k]) * shown + ([15, 18, 23][k] - 15))
-			if (i === 15) {
-				const glow = ramp(time, 0.9, 0.4) * (1 - ramp(time, 2.2, 0.3))
-				rgb = rgb.map((value, k) => value + ([22, 31, 46][k] - value) * glow * 0.8)
-				const blue = ease(ramp(time, 2.2, 0.35))
-				rgb = rgb.map((value, k) => value + ([91, 138, 253][k] - value) * blue)
-			}
+			const kind = i === 15 ? 'target' : (row + column) % 2 ? 'dark' : 'light'
+			const shown = ease(ramp(time, 0.2 + (row + column) * 0.045, 0.25))
+			const final = build[kind].map((value, k) => value + (rest[kind][k] - value) * settle)
+			const rgb = final.map((value, k) => [15, 18, 23][k] + (value - [15, 18, 23][k]) * shown)
 			cell.style.background = `rgb(${rgb.map(Math.round).join(',')})`
 		}
 	}
@@ -370,11 +368,14 @@
 		}
 		for (const element of scene.querySelectorAll('[data-dim]')) {
 			const k = ramp(time, Number(element.dataset.dim), 0.5)
-			element.style.opacity = 1 - 0.55 * k
+			const shown = element.dataset.in ? ramp(time, Number(element.dataset.in), 0.35) : 1
+			element.style.opacity = shown * (1 - 0.55 * k)
 		}
 		for (const element of scene.querySelectorAll('[data-hl]')) {
-			const [from, to] = element.dataset.hl.split('-').map(Number)
-			const k = ramp(time, from, 0.25) * (1 - ramp(time, to, 0.25))
+			const k = Math.max(...element.dataset.hl.split(',').map((range) => {
+				const [from, to] = range.split('-').map(Number)
+				return ramp(time, from, 0.25) * (1 - ramp(time, to, 0.25))
+			}))
 			element.style.background = mix(color.card, color.chip, k)
 			element.style.borderColor = mix(color.line, color.blueLine, k)
 			element.style.color = mix(color.text, color.blue, k)

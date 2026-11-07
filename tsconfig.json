@@ -12,5 +12,5 @@
 		"esModuleInterop": true,
 		"types": ["node"]
 	},
-	"include": ["src/**/*.ts", "bin/**/*.ts", "scripts/**/*.ts"]
+	"include": ["plugin/src/**/*.ts", "plugin/bin/**/*.ts", "scripts/**/*.ts"]
 }

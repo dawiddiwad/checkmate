@@ -225,7 +225,6 @@ export type Observation = {
 		id: string
 		kind: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
 		path: string
-		sha256: string
 	}>
 	cleanup: {
 		status: 'completed' | 'failed' | 'not_applicable'

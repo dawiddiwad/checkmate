@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { symlink, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { sandbox, prepare, revised, executeRequest, observation } from './support.js'
-import { savePlan, setup, gate, beginRun, finalize, reports } from '../src/stages.ts'
-import { planCheck, planCoverage } from '../src/contracts.ts'
-import { publish, readDocument, readReference } from '../src/files.ts'
+import { savePlan, setup, gate, beginRun, finalize, reports } from '../plugin/src/stages.ts'
+import { planCheck, planCoverage } from '../plugin/src/contracts.ts'
+import { publish, readDocument, readReference, digest } from '../plugin/src/files.ts'
 
 test('setup is repeatable and preserves local choices', async (t) => {
 	const workspace = await sandbox(t),
@@ -33,7 +33,7 @@ test('revision preserves decisions and rejects stale or conflicting writes', asy
 		p = await prepare(workspace)
 	const r = await revised(workspace, p)
 	assert.equal(r.plan.coverage[2].status, 'deferred')
-	await assert.rejects(savePlan(workspace, r.request, r.plan), /newer revision/)
+	await assert.rejects(savePlan(workspace, r.request, r.candidate), /newer revision/)
 	assert.equal((await readReference(workspace, p.base)).revision, 1)
 	const p2 = await prepare(await sandbox(t))
 	const changed = structuredClone(p2.plan)
@@ -55,6 +55,22 @@ test('dependencies and explicit oracles are validated', async (t) => {
 	invalid.tests[1].readiness = 'ready'
 	invalid.coverage = planCoverage(invalid)
 	assert.throws(() => planCheck(invalid), /expected result/)
+})
+test('save-plan calculates coverage and rejects candidate coverage', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace)
+	assert.deepEqual(p.plan.coverage, planCoverage(p.plan))
+	await assert.rejects(savePlan(workspace, p.planRequest, p.plan), /plan-candidate/)
+})
+test('finalize records the digest of each evidence file', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace),
+		r = await revised(workspace, p)
+	const request = executeRequest(p, r)
+	const saved = await finalize(workspace, request, await observation(workspace, request, r.plan))
+	const result = await readReference(workspace, saved.artifact)
+	for (const entry of result.evidence)
+		assert.equal(entry.sha256, digest(await readFile(join(workspace, request.outputDirectory, entry.path))))
 })
 test('result preserves omitted coverage and immutable retest history', async (t) => {
 	const workspace = await sandbox(t),
@@ -94,7 +110,6 @@ test('finalizer rejects fabricated scope, assertions, evidence, and operational 
 		(c) => (c.tests[0].expected = 'invented'),
 		(c) => (c.evidence[0].path = '../profile.json'),
 		(c) => (c.evidence[0].path = 'evidence/../invocation.json'),
-		(c) => (c.evidence[0].sha256 = '0'.repeat(64)),
 		(c) => (c.cleanup.status = 'failed'),
 		(c) => (c.tests[0].outcome = 'error'),
 		(c) => (c.findings = []),

@@ -4,7 +4,7 @@ description: Apply caller decisions to an immutable test plan. Preserve provenan
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `contracts/revise-request.schema.json` and `contracts/plan.schema.json` in the plugin.
+Read `contracts/revise-request.schema.json` and `contracts/plan.schema.json` in the plugin. The plan candidate uses the plan schema without `coverage`.
 
 1. Read the pinned base plan. Check its digest and revision.
 2. Apply only the decisions in the request. Each decision needs an actor and rationale. A clarification also needs a source.
@@ -12,7 +12,7 @@ Read `contracts/revise-request.schema.json` and `contracts/plan.schema.json` in 
 4. For `clarify`, resolve the gap and update the affected test's expected result, action, or preconditions as needed.
 5. For `accept_assumption`, resolve the gap. Add the exact decision value to `assumptions` with its decision ID.
 6. For `defer`, mark the gap and affected tests as deferred. Keep the coverage visible.
-7. Preserve prior decisions and assumptions. Append the caller's decisions in request order. Recalculate readiness and coverage. Do not change unrelated tests.
+7. Preserve prior decisions and assumptions. Append the caller's decisions in request order. Recalculate readiness. Do not write `coverage`. `save-plan` calculates it. Do not change unrelated tests.
 8. Increment the revision by one. Set `previousRevision` to the base revision.
 9. Publish with `checkmate save-plan`, unless the parent requested a candidate only.
 

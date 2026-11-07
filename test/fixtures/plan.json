@@ -85,23 +85,6 @@
 		}
 	],
 	"assumptions": [],
-	"coverage": [
-		{
-			"requirementId": "R1",
-			"testIds": ["T1"],
-			"status": "planned"
-		},
-		{
-			"requirementId": "R2",
-			"testIds": ["T2"],
-			"status": "blocked"
-		},
-		{
-			"requirementId": "R3",
-			"testIds": ["T3"],
-			"status": "blocked"
-		}
-	],
 	"target": {
 		"path": "profile.json",
 		"sha256": "0000000000000000000000000000000000000000000000000000000000000000"

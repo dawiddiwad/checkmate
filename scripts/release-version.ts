@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFile, writeFile, appendFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
-import { requireCondition } from '../src/files.ts'
+import { requireCondition } from '../plugin/src/files.ts'
 
 function parts(version: string): number[] {
 	requireCondition(/^\d+\.\d+\.\d+$/.test(version), 'Use a stable three-part release version')
@@ -24,7 +24,7 @@ export async function prepareVersion(directory: string): Promise<string> {
 	const read = async (path: string) => JSON.parse(await readFile(resolve(directory, path), 'utf8'))
 	const packageJson = await read('package.json')
 	const lock = await read('package-lock.json')
-	const plugin = await read('.claude-plugin/plugin.json')
+	const plugin = await read('plugin/.claude-plugin/plugin.json')
 	const marketplace = await read('.claude-plugin/marketplace.json')
 	const entry = marketplace.plugins.find((item: { name: string }) => item.name === 'checkmate')
 	requireCondition(packageJson.private === true, 'The project must remain private on npm')
@@ -41,7 +41,7 @@ export async function prepareVersion(directory: string): Promise<string> {
 	for (const [path, value] of [
 		['package.json', packageJson],
 		['package-lock.json', lock],
-		['.claude-plugin/plugin.json', plugin],
+		['plugin/.claude-plugin/plugin.json', plugin],
 		['.claude-plugin/marketplace.json', marketplace],
 	] as const) {
 		await writeFile(resolve(directory, path), JSON.stringify(value, null, '\t') + '\n')

@@ -289,13 +289,9 @@
 					"path": {
 						"type": "string",
 						"minLength": 1
-					},
-					"sha256": {
-						"type": "string",
-						"pattern": "^[a-f0-9]{64}$"
 					}
 				},
-				"required": ["id", "kind", "path", "sha256"],
+				"required": ["id", "kind", "path"],
 				"additionalProperties": false
 			},
 			"minItems": 0,

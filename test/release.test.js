@@ -17,8 +17,14 @@ test('first plugin release keeps 0.7.0; later merges get one patch', () => {
 test('release preparation updates all version files without touching npm', async (t) => {
 	const workspace = await sandbox(t)
 	execFileSync('git', ['init', '-q', workspace])
+	await mkdir(join(workspace, 'plugin/.claude-plugin'), { recursive: true })
 	await mkdir(join(workspace, '.claude-plugin'))
-	const paths = ['package.json', 'package-lock.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']
+	const paths = [
+		'package.json',
+		'package-lock.json',
+		'plugin/.claude-plugin/plugin.json',
+		'.claude-plugin/marketplace.json',
+	]
 	for (const path of paths) await writeFile(join(workspace, path), await readFile(join(root, path)))
 	execFileSync('git', ['add', '.'], { cwd: workspace })
 	execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'base'], {

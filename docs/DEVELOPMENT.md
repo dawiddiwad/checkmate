@@ -21,12 +21,15 @@ The normal CI job runs on Ubuntu with Node.js 24. The live job runs only when se
 
 ## Contracts
 
-Edit the schemas in `contracts/`. Regenerate the exported types:
+Edit the schemas in `plugin/contracts/`. Regenerate the types and validators:
 
 ```sh
-node scripts/generate-types.ts
-node scripts/generate-types.ts --check
+npm run generate
 ```
+
+`plugin/src/types.ts` contains the contract types. `plugin/src/validators.js` contains the validators. Ajv compiles each schema to standalone code, and esbuild bundles the Ajv runtime helpers into the same file. Do not edit the generated files. `npm run type:check` fails when a generated file differs from the schemas.
+
+The plan candidate validator uses the plan schema without `coverage`. The generator derives it. There is no separate schema file.
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success results.
 
@@ -34,11 +37,17 @@ The plugin uses the installed Claude Code CLI. Do not add a custom model loop or
 
 ## Native TypeScript
 
-Run `bin/checkmate.ts` with Node.js. The runtime uses erasable TypeScript syntax. It does not need a compiler at startup.
+Run `plugin/bin/checkmate.ts` with Node.js. The runtime uses erasable TypeScript syntax. It does not need a compiler at startup.
 
-`npm run type:check` checks types without emitting files. JSON Schemas define the contracts. `src/types.ts` contains the generated contract types.
+`npm run type:check` checks types without emitting files.
 
-The package is private. npm is used only to install dependencies and run development commands. Do not add npm build or publish jobs. The published npm package stays at `0.6.6`.
+## Plugin layout
+
+The marketplace source is `./plugin`. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tooling outside it.
+
+The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.js` copies `plugin/` to a temporary directory and runs the CLI there.
+
+The root package is private. npm is used only to install development dependencies and run development commands. Do not add npm build or publish jobs. The last npm package version is `0.6.7`.
 
 ## GitHub releases
 

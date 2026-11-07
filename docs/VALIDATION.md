@@ -4,6 +4,8 @@ Date: 7 November 2026. Repository and plugin version: `0.7.0`.
 
 The checks ran on Debian Linux with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chromium `156.0.8078.79`.
 
+After this record, the plugin moved to `plugin/`, the runtime npm dependencies were removed, and the commands started to calculate plan coverage and evidence digests. The live Claude checks below were not repeated after these changes.
+
 ## Automated checks
 
 - `npm run phase:verify`: passed. All 21 tests passed. No test was skipped.

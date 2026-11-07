@@ -2,9 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { validate, planCheck } from '../src/contracts.ts'
-import { readDocument, readReference, digest } from '../src/files.ts'
-import { gate, resultCoverage } from '../src/stages.ts'
+import { validate, planCheck } from '../plugin/src/contracts.ts'
+import { readDocument, readReference, digest } from '../plugin/src/files.ts'
+import { gate, resultCoverage } from '../plugin/src/stages.ts'
 import { root } from './support.js'
 
 test('documentation examples retain valid contracts, references, coverage, and evidence', async () => {

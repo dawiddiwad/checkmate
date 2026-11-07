@@ -11,7 +11,9 @@ export async function main(args: string[]) {
 	let request: Request | undefined
 	try {
 		if (args[0] === '--version') {
-			console.log(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version)
+			console.log(
+				JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version
+			)
 			return
 		}
 		if (!args.length || args[0] === '--help') {

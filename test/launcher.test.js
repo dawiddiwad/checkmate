@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFile, chmod, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { worker, delegate } from '../src/launcher.ts'
-import { sandbox, prepare, revised, executeRequest, write } from './support.js'
+import { worker, delegate } from '../plugin/src/launcher.ts'
+import { sandbox, prepare, revised, executeRequest, write, fixtureJson } from './support.js'
+import { readReference } from '../plugin/src/files.ts'
+import { planCoverage } from '../plugin/src/contracts.ts'
 
 async function executable(workspace, code) {
 	const path = join(workspace, 'fake-claude')
@@ -28,6 +30,30 @@ test('launcher rejects prose, missing output, denial, and wrong identity', async
 		`console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{contractVersion:'toolkit-1',requestId:'wrong',operation:'plan',status:'needs_decision',artifact:null,reasons:['Permission denied']}}))`
 	)
 	assert.equal((await delegate(workspace, 'request.json', { claude: path })).status, 'operational_error')
+})
+test('launcher reads the candidate it named and publishes the plan', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace)
+	const request = { ...p.planRequest, requestId: 'plan-2', outputPlanId: 'second', planDirectory: 'plans/second' }
+	await write(workspace, 'request.json', request)
+	const candidate = { ...(await fixtureJson('plan')), planId: 'second', target: p.target }
+	const response = { contractVersion: 'toolkit-1', requestId: 'plan-2', operation: 'plan', reasons: [] }
+	const path = await executable(
+		workspace,
+		`let prompt='';process.stdin.on('data',(b)=>prompt+=b).on('end',()=>{` +
+			`const file=prompt.match(/Write the candidate JSON to (\\S+)\\./)[1];` +
+			`require('node:fs').writeFileSync(file,${JSON.stringify(JSON.stringify(candidate))});` +
+			`console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{...${JSON.stringify(response)},status:process.env.WORKER_STATUS,artifact:null}}))})`
+	)
+	process.env.WORKER_STATUS = 'operational_error'
+	assert.equal((await delegate(workspace, 'request.json', { claude: path })).status, 'operational_error')
+	process.env.WORKER_STATUS = 'completed'
+	t.after(() => delete process.env.WORKER_STATUS)
+	const result = await delegate(workspace, 'request.json', { claude: path })
+	assert.equal(result.status, 'needs_decision')
+	assert.equal(result.artifact.path, 'plans/second/v1.json')
+	const saved = await readReference(workspace, result.artifact)
+	assert.deepEqual(saved.coverage, planCoverage(saved))
 })
 test('launcher deadline terminates the worker group and records no completed result', async (t) => {
 	const workspace = await sandbox(t),

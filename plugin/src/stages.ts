@@ -3,7 +3,7 @@ import { readdir, mkdir, stat, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { confined, digest, publish, readDocument, readReference, requireCondition, same } from './files.ts'
-import { validate, profileCheck, planCheck, index, references, requestCheck } from './contracts.ts'
+import { validate, profileCheck, planCheck, planCoverage, index, references, requestCheck } from './contracts.ts'
 import { renderPlan, renderResult } from './render.ts'
 
 export function response(
@@ -56,7 +56,9 @@ export async function savePlan(workspace: string, input: unknown, candidate: unk
 		request.operation === 'plan' || request.operation === 'revise',
 		'Expected a plan or revise request'
 	)
-	const plan = planCheck(candidate)
+	// The candidate omits coverage. Checkmate calculates it from the tests and gaps.
+	const draft = validate('plan-candidate', candidate)
+	const plan = planCheck({ ...draft, coverage: planCoverage(draft) })
 	const target = profileCheck(await readReference(workspace, plan.target))
 	requireCondition(plan.targetId === target.targetId, 'Plan target identity changed')
 	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {
@@ -297,12 +299,14 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 	const evidence = index(observation.evidence, 'id')
 	index(observation.findings, 'id')
 	index(observation.newGaps, 'id')
+	// The observation lists evidence paths. Checkmate records the digest of each file.
+	const evidenceRoot = await confined(directory, 'evidence')
+	const recordedEvidence = []
 	for (const entry of observation.evidence) {
 		requireCondition(entry.path.startsWith('evidence/'), 'Evidence must be in the evidence directory')
-		const evidenceRoot = await confined(directory, 'evidence')
 		const path = await confined(evidenceRoot, entry.path.slice('evidence/'.length))
 		requireCondition((await stat(path)).isFile(), 'Evidence must be a file')
-		requireCondition(digest(await readFile(path)) === entry.sha256, 'Evidence digest changed')
+		recordedEvidence.push({ ...entry, sha256: digest(await readFile(path)) })
 	}
 	for (const gap of observation.newGaps) {
 		requireCondition(
@@ -375,7 +379,12 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 				)
 		}
 	}
-	const result = { ...observation, finishedAt: new Date().toISOString(), coverage: resultCoverage(plan, observation) }
+	const result = {
+		...observation,
+		evidence: recordedEvidence,
+		finishedAt: new Date().toISOString(),
+		coverage: resultCoverage(plan, observation),
+	}
 	validate('result', result)
 	const artifact = await publish(workspace, join(request.outputDirectory, 'result.json'), result)
 	await reports(workspace, artifact)

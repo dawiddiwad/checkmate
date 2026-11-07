@@ -1,8 +1,8 @@
 # Evidence and reports
 
-Save evidence under the run's `evidence/` directory. Each entry has an ID, kind, relative path, and SHA-256 digest.
+Save evidence under the run's `evidence/` directory. In the observation, each entry has an ID, kind, and relative path.
 
-The finalizer checks file existence, path containment, symlink resolution, and the digest. A passed or failed assertion needs an observation and evidence. The expected result and assertion kind must match the plan.
+The finalizer checks file existence, path containment, and symlink resolution. It calculates the SHA-256 digest of each file and records it in the result. A later change to an evidence file does not match the result. A passed or failed assertion needs an observation and evidence. The expected result and assertion kind must match the plan.
 
 A failed assertion needs a defect finding. A defect identifies the tests, requirements, expected behavior, observed behavior, reproduction steps, and evidence. Use `potential_issue` for an inference. Keep requirement gaps separate.
 

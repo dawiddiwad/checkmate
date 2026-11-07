@@ -1,6 +1,6 @@
 # Contracts and configuration
 
-The JSON Schemas in `contracts/` are authoritative. The package exports matching TypeScript types. Use `contractVersion: "toolkit-1"`.
+The JSON Schemas in `plugin/contracts/` are authoritative. The package exports matching TypeScript types. Use `contractVersion: "toolkit-1"`.
 
 ## Files
 

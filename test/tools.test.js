@@ -2,12 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { writeFile, readFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './fixture.js'
 import { sandbox, prepare, revised, executeRequest, observation, root } from './support.js'
-import { finalize } from '../src/stages.ts'
-import { readReference, digest } from '../src/files.ts'
+import { finalize } from '../plugin/src/stages.ts'
+import { readReference } from '../plugin/src/files.ts'
 
 const exec = promisify(execFile)
 
@@ -49,7 +49,6 @@ test('real browser and API find the defect; caller fix passes a narrow retest', 
 	const candidate = await observation(workspace, request, r.plan, quote.totalPLN)
 	const evidencePath = join(workspace, request.outputDirectory, 'evidence/T1.txt')
 	await writeFile(evidencePath, confirmation)
-	candidate.evidence[0].sha256 = digest(await readFile(evidencePath))
 	candidate.cleanup.reason = 'The isolated Playwright CLI session was closed.'
 	await browser(['close'])
 	const failed = await finalize(workspace, request, candidate)

@@ -2,7 +2,7 @@ import tseslint from 'typescript-eslint'
 import js from '@eslint/js'
 
 export default [
-	{ ignores: ['node_modules/**', 'dist/**', '**/*.d.ts'] },
+	{ ignores: ['node_modules/**', 'dist/**', '**/*.d.ts', 'plugin/src/validators.js'] },
 	js.configs.recommended,
 	...tseslint.configs.recommended,
 	{ rules: { 'no-empty': ['error', { allowEmptyCatch: true }] } },

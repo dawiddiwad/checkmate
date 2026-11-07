@@ -10,16 +10,15 @@ import type {
 	Result,
 	Response,
 } from './types.ts'
-import { Ajv, type AnySchema, type ValidateFunction } from 'ajv'
-import addFormats from 'ajv-formats'
 import { readFileSync } from 'node:fs'
 import { requireCondition, same } from './files.ts'
+import * as validators from './validators.js'
 
-const ajv = new Ajv({ allErrors: true })
-addFormats.default(ajv)
+export type PlanCandidate = Omit<Plan, 'coverage'>
 export type Documents = {
 	profile: Profile
 	plan: Plan
+	'plan-candidate': PlanCandidate
 	'setup-request': SetupRequest
 	'plan-request': PlanRequest
 	'revise-request': ReviseRequest
@@ -29,8 +28,7 @@ export type Documents = {
 	result: Result
 	response: Response
 }
-const validators = new Map<string, ValidateFunction>()
-export function schema(name: string): AnySchema {
+export function schema(name: string): Record<string, unknown> {
 	requireCondition(
 		/^(profile|plan|result|observation|response|setup-request|plan-request|revise-request|execute-request|report-request)$/.test(
 			name
@@ -39,10 +37,11 @@ export function schema(name: string): AnySchema {
 	)
 	return JSON.parse(readFileSync(new URL(`../contracts/${name}.schema.json`, import.meta.url), 'utf8'))
 }
+// The validators are generated from the schemas by scripts/generate-validators.ts.
 export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
-	if (!validators.has(name)) validators.set(name, ajv.compile(schema(name)))
-	const check = validators.get(name)!
-	requireCondition(check(value), `Invalid ${name}: ${ajv.errorsText(check.errors, { dataVar: name })}`)
+	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
+	const errors = () => (check.errors ?? []).map((error) => `${name}${error.instancePath} ${error.message}`).join(', ')
+	requireCondition(check(value), `Invalid ${name}: ${errors()}`)
 	return value as Documents[K]
 }
 export function requestCheck(value: unknown) {
@@ -92,7 +91,7 @@ export function profileCheck(value: unknown): Profile {
 	)
 	return profile
 }
-export function planCoverage(plan: Plan): Plan['coverage'] {
+export function planCoverage(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>): Plan['coverage'] {
 	return plan.requirements.map((requirement) => {
 		const tests = plan.tests.filter((test) => test.requirementIds.includes(requirement.id))
 		const gaps = plan.gaps.filter(

@@ -10,25 +10,25 @@
 		"test": "node --test test/*.test.js",
 		"test:tools": "node --test test/tools.test.js",
 		"test:live": "node test/live.js && node test/live-session.js",
-		"type:check": "node scripts/generate-types.ts --check && tsc --noEmit",
-		"lint:check": "eslint src bin scripts test",
+		"type:check": "node scripts/generate-types.ts --check && node scripts/generate-validators.ts --check && tsc --noEmit",
+		"lint:check": "eslint plugin scripts test",
 		"format:check": "prettier . --check",
-		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.js"
-	},
-	"dependencies": {
-		"ajv": "8.20.0",
-		"ajv-formats": "3.0.1"
+		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.js",
+		"generate": "node scripts/generate-types.ts && node scripts/generate-validators.ts"
 	},
 	"devDependencies": {
 		"@anthropic-ai/claude-code": "2.1.319",
 		"@eslint/js": "10.0.1",
 		"@playwright/cli": "0.1.23",
 		"@types/node": "26.5.0",
+		"ajv": "8.20.0",
+		"ajv-formats": "3.0.1",
+		"esbuild": "0.28.2",
 		"eslint": "10.10.0",
+		"playwright-core": "1.65.0-alpha-2026-10-30",
 		"prettier": "3.9.6",
 		"typescript": "6.0.3",
-		"typescript-eslint": "8.70.0",
-		"playwright-core": "1.65.0-alpha-2026-10-30"
+		"typescript-eslint": "8.70.0"
 	},
 	"repository": {
 		"type": "git",

@@ -2,7 +2,8 @@
 
 JSON is authoritative. Use `contractVersion: "toolkit-1"`.
 Read the request schema and the output schema in `contracts/` before you write a candidate.
-Use the exact file bytes to calculate each SHA-256 digest.
+A request pins its inputs by path and SHA-256 digest. Use the exact file bytes to calculate a digest.
+Do not calculate plan coverage, result coverage, or evidence digests. The commands calculate them.
 Resolve relative paths from the caller's workspace. Resolve evidence paths from the run directory.
 
 In a skill, `checkmate <command>` means `node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" <command>`. There is no global npm command.

@@ -2,9 +2,8 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { publish, readDocument } from '../src/files.ts'
-import { planCoverage } from '../src/contracts.ts'
-import { setup, savePlan, beginRun } from '../src/stages.ts'
+import { publish, readDocument, readReference } from '../plugin/src/files.ts'
+import { setup, savePlan, beginRun } from '../plugin/src/stages.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
 export async function sandbox(t) {
@@ -50,7 +49,14 @@ export async function prepare(workspace, baseUrl = 'http://127.0.0.1:4173') {
 	const planRequest = await fixtureJson('plan-request')
 	planRequest.target = target
 	const saved = await savePlan(workspace, planRequest, plan)
-	return { profile, target, plan, planRequest, setupRequest, base: saved.artifact }
+	return {
+		profile,
+		target,
+		plan: await readReference(workspace, saved.artifact),
+		planRequest,
+		setupRequest,
+		base: saved.artifact,
+	}
 }
 export async function revised(workspace, prepared) {
 	const decisions = await fixtureJson('decisions')
@@ -64,6 +70,7 @@ export async function revised(workspace, prepared) {
 		decisions,
 	}
 	const plan = structuredClone(prepared.plan)
+	delete plan.coverage
 	plan.revision = 2
 	plan.previousRevision = 1
 	plan.decisions = decisions
@@ -74,9 +81,8 @@ export async function revised(workspace, prepared) {
 	plan.tests[1].readiness = 'ready'
 	plan.tests[1].expected = 'HTTP 200 and totalPLN equals 90, with the loyalty discount replaced.'
 	plan.tests[2].readiness = 'deferred'
-	plan.coverage = planCoverage(plan)
 	const saved = await savePlan(workspace, request, plan)
-	return { request, plan, reference: saved.artifact }
+	return { request, candidate: plan, plan: await readReference(workspace, saved.artifact), reference: saved.artifact }
 }
 export function executeRequest(prepared, revision, overrides = {}) {
 	return {
@@ -106,13 +112,8 @@ export async function observation(workspace, request, plan, total = 85) {
 		const failed = test.id === 'T2' && total !== 90
 		const observed = test.id === 'T1' ? 'Order confirmed: 100 PLN' : `HTTP 200; totalPLN = ${total}`
 		if (selected) {
-			const saved = await publish(workspace, `${request.outputDirectory}/evidence/${test.id}.txt`, observed)
-			evidence.push({
-				id: `E-${test.id}`,
-				kind: 'observation',
-				path: `evidence/${test.id}.txt`,
-				sha256: saved.sha256,
-			})
+			await publish(workspace, `${request.outputDirectory}/evidence/${test.id}.txt`, observed)
+			evidence.push({ id: `E-${test.id}`, kind: 'observation', path: `evidence/${test.id}.txt` })
 		}
 		tests.push({
 			testId: test.id,

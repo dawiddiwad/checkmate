@@ -8,23 +8,22 @@ Use Checkmate to test requirements, changes, or a scoped exploratory objective. 
 
 ## Install
 
-Use Node.js 24.12.0 or later. TypeScript runs directly. No build step is required. The repository is a Claude plugin marketplace:
+Use Node.js 24.12.0 or later. TypeScript runs directly. The plugin has no npm dependencies. No install or build step is required. The repository is a Claude plugin marketplace:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
 ```
 
-Install the plugin's Node.js dependencies before the first stage. For local development or PR review, clone this repository and run:
+The marketplace installs only the `plugin/` directory. For local development or PR review, clone this repository and load that directory:
 
 ```sh
-npm ci
-claude --plugin-dir /absolute/path/to/checkmate
+claude --plugin-dir /absolute/path/to/checkmate/plugin
 ```
 
-npm installs local dependencies. It does not distribute this plugin. The npm package stays at version `0.6.6`. New versions are GitHub releases.
+Run `npm ci` only to develop or test Checkmate. npm does not distribute this plugin. The last npm package version is `0.6.7`. New versions are GitHub releases.
 
-For a production-only install in the plugin directory, use `npm ci --omit=dev`. Install Claude Code and Playwright CLI on the host separately. The tested versions are Claude Code `2.1.319` and Playwright CLI `0.1.23`.
+Install Claude Code and Playwright CLI on the host separately. The tested versions are Claude Code `2.1.319` and Playwright CLI `0.1.23`.
 
 The plugin has five skills:
 
@@ -57,7 +56,7 @@ A completed run can contain defects. Complete coverage can contain failed tests.
 ## Run a delegated stage
 
 ```sh
-node /absolute/path/to/checkmate/bin/checkmate.ts delegate requests/plan.json --workspace /path/to/project \
+node /absolute/path/to/checkmate/plugin/bin/checkmate.ts delegate requests/plan.json --workspace /path/to/project \
   --allow Read --allow Write --allow 'Bash(node *)'
 ```
 

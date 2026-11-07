@@ -35,7 +35,9 @@ function type(schema: Schema): string {
 }
 let text = ''
 for (const name of names) {
-	const schema = JSON.parse(await readFile(new URL(`../contracts/${name}.schema.json`, import.meta.url), 'utf8'))
+	const schema = JSON.parse(
+		await readFile(new URL(`../plugin/contracts/${name}.schema.json`, import.meta.url), 'utf8')
+	)
 	text += `export type ${name
 		.split('-')
 		.map((word) => word[0].toUpperCase() + word.slice(1))
@@ -53,6 +55,6 @@ text = await format(text, {
 	printWidth: 120,
 	trailingComma: 'es5',
 })
-const path = new URL('../src/types.ts', import.meta.url)
+const path = new URL('../plugin/src/types.ts', import.meta.url)
 if (process.argv.includes('--check')) assert.equal(await readFile(path, 'utf8'), text)
 else await writeFile(path, text)

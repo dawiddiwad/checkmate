@@ -43,7 +43,7 @@ try {
 	const args = [
 		'-p',
 		'--plugin-dir',
-		root,
+		join(root, 'plugin'),
 		'--output-format',
 		'json',
 		'--json-schema',

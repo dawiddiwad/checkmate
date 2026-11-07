@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+	<meta charset="utf-8" />
+	<title>Checkmate overview</title>
+	<link
+		rel="stylesheet"
+		href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=block"
+	/>
+	<link rel="stylesheet" href="style.css" />
+	<style>
+		main {
+			width: 1600px;
+			height: 812px;
+			padding: 64px 72px;
+			display: flex;
+			flex-direction: column;
+			gap: 40px;
+		}
+		header {
+			display: flex;
+			align-items: flex-end;
+			gap: 28px;
+		}
+		.mark {
+			display: grid;
+			grid-template-columns: repeat(4, 18px);
+			grid-auto-rows: 18px;
+			gap: 8px;
+			margin-bottom: 18px;
+		}
+		.mark span {
+			background: #2a303b;
+		}
+		.mark span:nth-child(3) {
+			background: var(--blue);
+		}
+		.title {
+			font-size: 64px;
+			font-weight: 500;
+			letter-spacing: -1px;
+			line-height: 1;
+		}
+		.subtitle {
+			font-size: 26px;
+			color: var(--muted);
+			margin-bottom: 4px;
+		}
+		.steps {
+			display: grid;
+			grid-template-columns: repeat(5, 1fr);
+			gap: 14px;
+		}
+		.step {
+			padding: 22px 22px 24px;
+		}
+		.step b {
+			font: 500 20px var(--mono);
+		}
+		.step div {
+			font-size: 19px;
+			color: var(--muted);
+			margin-top: 10px;
+			line-height: 1.35;
+		}
+		.example {
+			padding: 26px 30px;
+		}
+		.values {
+			display: flex;
+			align-items: center;
+			gap: 18px;
+			margin-top: 20px;
+		}
+		.value {
+			padding: 18px 24px;
+			min-width: 230px;
+		}
+		.value .number {
+			font-size: 48px;
+			font-weight: 500;
+			letter-spacing: -1px;
+			margin-top: 6px;
+		}
+		.value .mono {
+			font-size: 15px;
+			margin-top: 4px;
+		}
+		.flow {
+			font: 17px var(--mono);
+			color: var(--faint);
+			text-align: center;
+			flex: 1;
+		}
+		.owners {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 14px;
+		}
+		.owner {
+			padding: 18px 24px;
+			display: flex;
+			justify-content: space-between;
+			align-items: baseline;
+		}
+		.owner b {
+			font: 500 20px var(--mono);
+		}
+		.owner span {
+			font: 16px var(--mono);
+			color: var(--muted);
+		}
+	</style>
+	<main>
+		<header>
+			<div>
+				<div class="mark"><span></span><span></span><span></span><span></span></div>
+				<div class="title">Checkmate</div>
+			</div>
+			<div class="subtitle">Testing workflows for Claude Code</div>
+		</header>
+
+		<div class="steps">
+			<div class="card step">
+				<b>1 · Setup</b>
+				<div>Check tools and access. Save a target profile.</div>
+			</div>
+			<div class="card step">
+				<b>2 · Plan</b>
+				<div>Map requirements to tests. Record open gaps.</div>
+			</div>
+			<div class="card step">
+				<b>3 · Revise</b>
+				<div>Apply the caller's decisions in a new revision.</div>
+			</div>
+			<div class="card step">
+				<b>4 · Execute</b>
+				<div>Run selected tests with real tools. Save evidence.</div>
+			</div>
+			<div class="card step">
+				<b>5 · Report</b>
+				<div>Generate Markdown and HTML from the JSON result.</div>
+			</div>
+		</div>
+
+		<div class="card example">
+			<div class="label">checkout example · one requirement, two runs</div>
+			<div class="values">
+				<div class="card value">
+					<div class="label">expected</div>
+					<div class="number">90 PLN</div>
+					<div class="mono dim">from the plan</div>
+				</div>
+				<div class="card value" style="border-color: #5a2a33">
+					<div class="label">run 1 observed</div>
+					<div class="number bad">85 PLN</div>
+					<div class="mono bad">failed · defect F1</div>
+				</div>
+				<div class="flow">caller fixes the app<br />→</div>
+				<div class="card value" style="border-color: #1f4a36">
+					<div class="label">run 2 observed</div>
+					<div class="number ok">90 PLN</div>
+					<div class="mono ok">passed · run 1 kept</div>
+				</div>
+				<div class="card value">
+					<div class="label">refund checks</div>
+					<div class="number warn">deferred</div>
+					<div class="mono dim">coverage: partial</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="owners">
+			<div class="card owner"><b>Claude Code</b><span>model, tools, permissions</span></div>
+			<div class="card accent owner">
+				<b style="color: var(--blue)">Checkmate</b><span>contracts, checks, evidence</span>
+			</div>
+			<div class="card owner"><b>Caller</b><span>decisions, fixes, release</span></div>
+		</div>
+	</main>
+</html>

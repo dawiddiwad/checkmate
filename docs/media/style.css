@@ -1,0 +1,90 @@
+/* Shared style for the onboarding animation and the infographic. */
+:root {
+	--bg: #0f1217;
+	--card: #12161d;
+	--card-strong: #161b24;
+	--line: #222833;
+	--text: #e8ebf0;
+	--muted: #9aa3b2;
+	--faint: #5d6675;
+	--blue: #5b7cfa;
+	--blue-bg: #141c33;
+	--blue-line: #2b3f80;
+	--green: #4fd18b;
+	--red: #ff6b7d;
+	--amber: #e7b452;
+	--sans: 'Space Grotesk', Inter, sans-serif;
+	--mono: 'JetBrains Mono', monospace;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--sans);
+}
+h1 {
+	font-size: 44px;
+	line-height: 1.15;
+	font-weight: 500;
+	letter-spacing: -0.5px;
+	margin: 0;
+}
+em {
+	font-style: normal;
+	color: var(--blue);
+}
+.mono {
+	font-family: var(--mono);
+}
+.label {
+	font: 14px var(--mono);
+	letter-spacing: 3px;
+	color: var(--faint);
+	text-transform: uppercase;
+}
+.card {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+}
+.card.accent {
+	background: var(--blue-bg);
+	border-color: var(--blue-line);
+}
+.chip {
+	font: 15px var(--mono);
+	color: var(--blue);
+	background: var(--blue-bg);
+	border: 1px solid var(--blue-line);
+	border-radius: 3px;
+	padding: 9px 0;
+	text-align: center;
+}
+.ok {
+	color: var(--green);
+}
+.bad {
+	color: var(--red);
+}
+.warn {
+	color: var(--amber);
+}
+.dim {
+	color: var(--muted);
+}
+.logo {
+	display: grid;
+	gap: 0;
+}
+.logo span {
+	background: #161a21;
+}
+.logo span:nth-child(odd) {
+	background: #1b2029;
+}
+.logo span.on {
+	background: var(--blue);
+}

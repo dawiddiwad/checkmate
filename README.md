@@ -1,120 +1,25 @@
-# Checkmate
+#### □ □ ■ □
 
-Checkmate is a testing toolkit for Claude Code. It supplies workflows, contracts, execution checks, and evidence reports. Claude Code supplies the agent loop, model, tools, and permissions.
+## _Checkmate - testing workflows for Claude Code_
 
-Use Checkmate to test requirements, changes, or a scoped exploratory objective. Source code is optional. Start with a running application and access to its tools.
+<img src="docs/img/onboarding.gif" alt="onboarding" width="50%"/>
 
-![Checkmate overview: setup, plan, revise, execute, and report. Claude Code owns tools and permissions. The caller owns decisions, fixes, and releases.](docs/img/checkmate-infographic.png)
+#
+
+Think of it like a QA contract for agent testing: Claude Code drives your running application with real tools, and Checkmate keeps the record strict. A plan maps each requirement to a test or an open question, the caller answers what is unclear, and every verdict needs saved evidence. It aims to patch the gap between fully coded tests and freelance agent testing.
 
 ## Install
-
-Use Node.js 24.12.0 or later. TypeScript runs directly. The plugin has no npm dependencies. No install or build step is required. The repository is a Claude plugin marketplace:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
 ```
 
-The marketplace installs only the `plugin/` directory. For local development or PR review, clone this repository and load that directory:
+Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build step. Browser tests use [Playwright CLI](plugin/references/browser.md).
 
-```sh
-claude --plugin-dir /absolute/path/to/checkmate/plugin
-```
+## Usage
 
-Run `npm ci` only to develop or test Checkmate. npm does not distribute this plugin. The last npm package version is `0.6.7`. New versions are GitHub releases.
-
-Install Claude Code and Playwright CLI on the host separately. The tested versions are Claude Code `2.1.319` and Playwright CLI `0.1.23`.
-
-The plugin has five skills:
-
-- `/checkmate:setup`: check tools and save a target profile.
-- `/checkmate:plan`: create tests and identify gaps.
-- `/checkmate:revise`: apply caller decisions to a new plan revision.
-- `/checkmate:execute`: run selected tests and save evidence.
-- `/checkmate:report`: generate Markdown and HTML reports.
-
-Give each skill an explicit request file. Use the schemas in [contracts](contracts) and the [CLI guide](docs/CLI.md).
-
-## See the workflow
-
-The animation shows an illustrative checkout example. It is not a recorded test session. Use the [static overview](docs/img/checkmate-infographic.png) or [poster](docs/img/onboarding-poster.png) to view a still image.
-
-<img src="docs/img/onboarding.gif" alt="Checkmate workflow: find missing rules, record caller decisions, detect an incorrect total, and retest after a fix." width="560">
-
-## Workflow
-
-1. Set up the target profile. Record tools, versions, access references, and permitted operations.
-2. Plan tests. Preserve each requirement and its source. Record unknown expected behavior as a blocking gap.
-3. Ask the dispatching agent to clarify, accept an assumption, or defer coverage. Use a person when the agent lacks authority.
-4. Revise the plan. Keep the prior revision unchanged.
-5. Execute selected tests. The default policy blocks execution while an open blocking gap remains.
-6. Read the result and its evidence. The caller decides whether to fix the application or release it.
-7. Retest in a new run after a fix. Preserve earlier results and omitted coverage.
-
-A completed run can contain defects. Complete coverage can contain failed tests. A process exit code is not a release decision.
-
-## Run a delegated stage
-
-```sh
-node /absolute/path/to/checkmate/plugin/bin/checkmate.ts delegate requests/plan.json --workspace /path/to/project \
-  --allow Read --allow Write --allow 'Bash(node *)'
-```
-
-The launcher starts one fresh Claude Code session. Select tool rules for the requested stage. A browser stage also needs permission for the applicable Playwright commands. Do not grant blanket permissions in an untrusted workspace.
-
-Use a normal Claude login, `CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_API_KEY`. Keep credentials in the host's secret store. Checkmate does not extract tokens or implement authentication.
-
-## Examples
-
-These documents describe an illustrative local checkout. They are not evidence from a live application. Expand a section to read the complete JSON document.
-
-File digests refer to the exact files in [docs/examples](docs/examples). A change to a referenced file requires a new digest.
-
-<details>
-<summary>Configuration: target profile</summary>
-
-The profile records the target, tool versions, access references, and permitted operations.
-
-```json
-{
-	"contractVersion": "toolkit-1",
-	"targetId": "checkout-local",
-	"revision": 1,
-	"baseUrl": "http://127.0.0.1:4173",
-	"environment": "local_fixture",
-	"capabilities": ["browser", "http"],
-	"tooling": [
-		{
-			"capability": "browser",
-			"executable": "playwright-cli",
-			"version": "0.1.23"
-		},
-		{
-			"capability": "http",
-			"executable": "node",
-			"version": "v24.22.1"
-		}
-	],
-	"authentication": {
-		"kind": "none",
-		"references": []
-	},
-	"allowedOperations": ["read_catalog", "create_fixture_order", "apply_fixture_discount"],
-	"startup": {
-		"owner": "caller",
-		"command": null
-	},
-	"cleanup": "Close the run browser session. The fixture stores no records.",
-	"readyForLiveExecution": true
-}
-```
-
-</details>
-
-<details>
-<summary>Input: planning request</summary>
-
-The request keeps each requirement and its source. Missing expected behavior must become a planning gap.
+#### A plan request is a JSON document:
 
 ```json
 {
@@ -152,6 +57,58 @@ The request keeps each requirement and its source. Missing expected behavior mus
 	],
 	"outputPlanId": "checkout",
 	"planDirectory": "plans/checkout"
+}
+```
+
+#### Run:
+
+```text
+/checkmate:plan plan-request.json
+```
+
+The request pins the target profile that `/checkmate:setup` saved. Checkmate saves `plans/checkout/v1.json` and returns a response. Unclear requirements come back as blocking gaps with `status: "needs_decision"`. The caller answers them with `/checkmate:revise`, then runs the plan with `/checkmate:execute`.
+
+<details>
+<summary>Example documents</summary>
+
+The documents describe an illustrative local checkout. They are not evidence from a live application. File digests refer to the exact files in [docs/examples](docs/examples).
+
+<details>
+<summary>Configuration: target profile</summary>
+
+The profile records the target, tool versions, access references, and permitted operations.
+
+```json
+{
+	"contractVersion": "toolkit-1",
+	"targetId": "checkout-local",
+	"revision": 1,
+	"baseUrl": "http://127.0.0.1:4173",
+	"environment": "local_fixture",
+	"capabilities": ["browser", "http"],
+	"tooling": [
+		{
+			"capability": "browser",
+			"executable": "playwright-cli",
+			"version": "0.1.23"
+		},
+		{
+			"capability": "http",
+			"executable": "node",
+			"version": "v24.22.1"
+		}
+	],
+	"authentication": {
+		"kind": "none",
+		"references": []
+	},
+	"allowedOperations": ["read_catalog", "create_fixture_order", "apply_fixture_discount"],
+	"startup": {
+		"owner": "caller",
+		"command": null
+	},
+	"cleanup": "Close the run browser session. The fixture stores no records.",
+	"readyForLiveExecution": true
 }
 ```
 
@@ -346,22 +303,47 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 
 </details>
 
-Read the [first plan](docs/examples/plans/checkout/v1.md), [revised plan](docs/examples/plans/checkout/v2.md), and [Markdown report](docs/examples/runs/run-1/report.md). Open the [HTML report](docs/examples/runs/run-1/report.html) locally. The [evidence directory](docs/examples/runs/run-1/evidence) contains the referenced files.
+Read the [first plan](docs/examples/plans/checkout/v1.md), [revised plan](docs/examples/plans/checkout/v2.md), and [Markdown report](docs/examples/runs/run-1/report.md).
 
-## Read more
+</details>
 
-- [Contracts and configuration](docs/CONFIGURATION.md)
-- [CLI and stage responses](docs/CLI.md)
-- [Evidence and reports](docs/EVIDENCE.md)
-- [Development and tests](docs/DEVELOPMENT.md)
-- [Browser recipe](references/browser.md)
-- [HTTP recipe](references/http.md)
+## How it works
 
-## Scope
+![Checkmate overview: five stages, a checkout example with a defect found and a passed retest, and who owns what.](docs/img/checkmate-infographic.png)
 
-The scripts enforce Checkmate contract checks. They cannot restrict an agent that has arbitrary shell access. Tool permissions belong to the host. A valid file does not prove that an observation is accurate.
+Each stage is a skill with an explicit request file:
 
-Checkmate does not fix product code, provision environments, generate maintained test suites, or publish releases. It does not enforce model token budgets or sanitize arbitrary screenshots.
+- `/checkmate:setup` checks tools and access, and saves a target profile.
+- `/checkmate:plan` maps requirements to tests and records open gaps.
+- `/checkmate:revise` applies the caller's decisions in a new plan revision.
+- `/checkmate:execute` runs selected tests and saves evidence.
+- `/checkmate:report` generates Markdown and HTML from the JSON result.
+
+Saved files are never overwritten. A retest is a new run. Completion, test outcomes, and coverage are separate fields, and a process exit code is not a release decision.
+
+Checkmate checks structure and relationships. It cannot prove that an observation is true. Claude Code owns the model, tools, and permissions.
+
+## Commands
+
+```text
+checkmate validate <file.json>
+checkmate setup <request.json> <profile.json>
+checkmate save-plan <request.json> <plan.json>
+checkmate gate <request.json>
+checkmate begin <request.json>
+checkmate finalize <request.json> <observation.json>
+checkmate report <request.json>
+checkmate delegate <request.json> [--allow <rule>] [--timeout <seconds>]
+```
+
+Run a command as `node plugin/bin/checkmate.ts <command>`. `delegate` runs one stage in a fresh Claude Code session.
+
+## Docs
+
+[Contracts and configuration](docs/CONFIGURATION.md)  
+[CLI](docs/CLI.md)  
+[Evidence](docs/EVIDENCE.md)  
+[Dev](docs/DEVELOPMENT.md)
 
 ## License
 

@@ -67,16 +67,18 @@ The GitHub Actions token needs write access to repository contents. Repository r
 
 ## Documentation media
 
-`docs/media/onboarding.html` defines the animation scenes. The animation is an illustrated workflow. It is not a live test recording.
+`docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. Both use `docs/media/style.css`. The animation is an illustrated workflow. It is not a live test recording.
 
-Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and poster:
+Keep the style: dark background, one blue accent word in each heading, monospace labels, and thin card borders.
+
+Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and the overview:
 
 ```sh
 node scripts/render-onboarding.ts
 ```
 
-Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. This command updates `docs/img/onboarding.gif` and `docs/img/onboarding-poster.png`. It does not build the plugin.
+Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The pages load Space Grotesk and JetBrains Mono from Google Fonts. This command updates `docs/img/onboarding.gif` and `docs/img/checkmate-infographic.png`. It does not build the plugin.
 
-`docs/img/checkmate-infographic.png` is the static overview. Keep its labels consistent with the workflow.
+Keep the labels in both images consistent with the workflow.
 
 The JSON examples contain file digests. Keep the referenced bytes unchanged, or regenerate all dependent references. The tests check the examples against the schemas and verify the evidence digests.

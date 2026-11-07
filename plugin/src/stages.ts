@@ -291,11 +291,25 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 		requireCondition(same(observation[key], request[key]), `Result changed ${key}`)
 	requireCondition(observation.startedAt === invocation.startedAt, 'Run start time changed')
 
-	const outcomes = index(observation.tests, 'testId')
-	requireCondition(
-		same([...outcomes.keys()].sort(), plan.tests.map((test) => test.id).sort()),
-		'Result must list each planned test once'
+	// The observation must list each selected test. Checkmate adds each omitted
+	// unselected test as not_run, so the result lists every planned test once.
+	const listed = index(observation.tests, 'testId')
+	references([...listed.keys()], index(plan.tests, 'id'), 'result test')
+	for (const id of request.selectedTestIds)
+		requireCondition(listed.has(id), `Selected test is missing from the observation: ${id}`)
+	const tests = plan.tests.map(
+		(test) =>
+			listed.get(test.id) ?? {
+				testId: test.id,
+				outcome: 'not_run' as const,
+				expected: test.expected,
+				observed: null,
+				assertionKind: null,
+				evidenceIds: [],
+				reason: 'Test was not selected.',
+			}
 	)
+	const outcomes = index(tests, 'testId')
 	const evidence = index(observation.evidence, 'id')
 	index(observation.findings, 'id')
 	index(observation.newGaps, 'id')
@@ -366,7 +380,7 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 	}
 	if (observation.completion === 'completed') {
 		requireCondition(
-			!observation.tests.some((test) => test.outcome === 'error') && observation.cleanup.status !== 'failed',
+			!tests.some((test) => test.outcome === 'error') && observation.cleanup.status !== 'failed',
 			'Operational failure cannot be completed'
 		)
 		for (const test of plan.tests.filter((test) => request.selectedTestIds.includes(test.id))) {
@@ -381,9 +395,10 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 	}
 	const result = {
 		...observation,
+		tests,
 		evidence: recordedEvidence,
 		finishedAt: new Date().toISOString(),
-		coverage: resultCoverage(plan, observation),
+		coverage: resultCoverage(plan, { ...observation, tests }),
 	}
 	validate('result', result)
 	const artifact = await publish(workspace, join(request.outputDirectory, 'result.json'), result)

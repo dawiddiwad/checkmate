@@ -50,7 +50,7 @@ Selection is explicit and non-empty. The default `partialExecution` is `wait_for
 
 `ready_only` permits an explicit selection of ready tests. It does not make a blocked test ready. Include prerequisite tests in the same selection. Prior results do not satisfy prerequisites automatically.
 
-Every result lists every planned test once. Omitted and deferred tests remain visible. Coverage is relative to the full declared requirement inventory.
+Every result lists every planned test once. An observation must list each selected test. The finalizer adds each omitted unselected test as `not_run`. Omitted and deferred tests remain visible. Coverage is relative to the full declared requirement inventory.
 
 Use `onNewBlocker: return_to_caller` to stop after a new blocker. Use `continue_independent` to permit unrelated tests. These action-order rules depend on the host workflow; the finalizer cannot observe arbitrary external tool calls.
 

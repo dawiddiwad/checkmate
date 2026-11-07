@@ -15,7 +15,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/re
 6. Save evidence beneath `outputDirectory/evidence/`. Record each file's ID, kind, and path. The finalizer records the SHA-256 digest of each file. A pass or failure needs actual evidence.
 7. Record an observed mismatch as `failed` with a `defect` finding. Use `error` for a tool or access failure. Use `potential_issue` for an inference. Do not call a tool error a product defect.
 8. Record new ambiguity as an open gap. Stop further actions if `onNewBlocker` is `return_to_caller`. Otherwise continue only independent tests. Record blocked dependent tests.
-9. Include every planned test exactly once. Use `not_run` for omitted or deferred tests. Give each blocked, omitted, or erroneous test a reason.
+9. Include each selected test exactly once. Give each blocked, not-run, or erroneous test a reason. You can omit an unselected test. The finalizer records it as `not_run`.
 10. Close only this run's browser session. Record cleanup status. A tool or cleanup error requires `completion: operational_error`. A deadline requires `completion: interrupted`.
 11. Write the observation document. Do not include `coverage` or `finishedAt`. The finalizer calculates coverage and records the finish time. Copy request identity, pinned references, selected IDs, build identity, and any `retestOf` reference exactly.
 12. Publish with `checkmate finalize`, unless the parent requested a candidate only. Return its response.

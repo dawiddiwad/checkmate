@@ -72,6 +72,24 @@ test('finalize records the digest of each evidence file', async (t) => {
 	for (const entry of result.evidence)
 		assert.equal(entry.sha256, digest(await readFile(join(workspace, request.outputDirectory, entry.path))))
 })
+test('finalize lists an omitted unselected test as not_run', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace),
+		r = await revised(workspace, p)
+	const request = executeRequest(p, r)
+	const candidate = await observation(workspace, request, r.plan)
+	candidate.tests = candidate.tests.filter((test) => request.selectedTestIds.includes(test.testId))
+	const saved = await finalize(workspace, request, candidate)
+	const result = await readReference(workspace, saved.artifact)
+	assert.deepEqual(
+		result.tests.map((test) => test.testId),
+		r.plan.tests.map((test) => test.id)
+	)
+	const omitted = result.tests.find((test) => !request.selectedTestIds.includes(test.testId))
+	assert.equal(omitted.outcome, 'not_run')
+	assert.equal(omitted.reason, 'Test was not selected.')
+	assert.equal(result.coverage.status, 'partial')
+})
 test('result preserves omitted coverage and immutable retest history', async (t) => {
 	const workspace = await sandbox(t),
 		p = await prepare(workspace),
@@ -105,7 +123,9 @@ test('finalizer rejects fabricated scope, assertions, evidence, and operational 
 		request = executeRequest(p, r)
 	const candidate = await observation(workspace, request, r.plan)
 	const mutations = [
-		(c) => c.tests.pop(),
+		(c) => c.tests.shift(),
+		(c) => c.tests.push({ ...c.tests[2], testId: 'unknown' }),
+		(c) => c.tests.push(c.tests[2]),
 		(c) => (c.tests[0].evidenceIds = []),
 		(c) => (c.tests[0].expected = 'invented'),
 		(c) => (c.evidence[0].path = '../profile.json'),

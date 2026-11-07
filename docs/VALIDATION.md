@@ -4,28 +4,36 @@ Date: 7 November 2026. Repository and plugin version: `0.7.0`.
 
 The checks ran on Debian Linux with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chromium `156.0.8078.79`.
 
-After this record, the plugin moved to `plugin/`, the runtime npm dependencies were removed, and the commands started to calculate plan coverage and evidence digests. The next section records the checks after these changes. The later sections record the earlier run.
+After this record, the plugin moved to `plugin/` and the runtime npm dependencies were removed. The commands now calculate plan coverage and evidence digests. `finalize` records an omitted unselected test as `not_run`. The live tests use Sonnet by default. The next section records the checks after these changes. The later sections record the earlier run.
 
 ## Checks after the plugin layout change
 
-Date: 7 November 2026. The checks ran in a Linux cloud container with Node.js `22.23.4`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chrome for Testing `153.0.8010.12`. Node.js `22.23.4` is older than the supported version. Hosted CI did not run these checks.
+Date: 7 November 2026. The checks ran in a Linux cloud container with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chrome for Testing `153.0.8010.12`. The live tests used `ANTHROPIC_MODEL=sonnet`, which selected `claude-sonnet-5-5`. Hosted CI did not run these checks.
 
 - Type generation, validator generation, strict TypeScript checks, lint, and formatting: passed.
-- `npm test`: 23 of 24 tests passed. The missing-authentication test failed because the container had a Claude login. This test checks the host configuration, not Checkmate.
+- `npm test`: 24 of 25 tests passed. The missing-authentication test failed because the container had a Claude login. This test checks the host configuration, not Checkmate.
 - `node test/plugin.js`: passed. The copied `plugin/` directory ran outside the repository without npm install.
 - Claude plugin and marketplace validation: passed. The validator reported a missing marketplace description.
 - `npm run test:live`: passed with an existing host login (`CHECKMATE_USE_HOST_LOGIN=1`). The delegated stages, the defect, the retest, same-session execution, and the permission denial gave the expected results.
 
 | Stage                | Seconds | Status           |
 | -------------------- | ------: | ---------------- |
-| Setup                |    26.6 | `completed`      |
-| Plan                 |    57.9 | `needs_decision` |
-| Ready-only execution |    44.6 | `completed`      |
-| Revise               |    16.8 | `completed`      |
-| Execute              |    38.3 | `completed`      |
-| Retest               |    25.0 | `completed`      |
+| Setup                |    19.3 | `completed`      |
+| Plan                 |    24.4 | `needs_decision` |
+| Ready-only execution |    29.0 | `completed`      |
+| Revise               |    13.4 | `completed`      |
+| Execute              |    29.0 | `completed`      |
+| Retest               |    17.7 | `completed`      |
 
 These values describe one run. They are not performance targets.
+
+Earlier live runs during these changes failed. Each failure came from a worker document that did not follow a skill:
+
+- A worker omitted an unselected test. `finalize` now records an omitted unselected test as `not_run`.
+- A worker recorded an evidence path relative to the workspace. The execute skill now gives the path format and an example.
+- On Node.js `22.23.4`, Sonnet correctly marked the target as not ready, because Checkmate requires Node.js 24.12.0 or later.
+
+The passing run does not prove that a worker always follows the skills. The finalizer rejects a document that does not satisfy the contracts.
 
 ## Automated checks
 

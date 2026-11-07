@@ -4,7 +4,28 @@ Date: 7 November 2026. Repository and plugin version: `0.7.0`.
 
 The checks ran on Debian Linux with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chromium `156.0.8078.79`.
 
-After this record, the plugin moved to `plugin/`, the runtime npm dependencies were removed, and the commands started to calculate plan coverage and evidence digests. The live Claude checks below were not repeated after these changes.
+After this record, the plugin moved to `plugin/`, the runtime npm dependencies were removed, and the commands started to calculate plan coverage and evidence digests. The next section records the checks after these changes. The later sections record the earlier run.
+
+## Checks after the plugin layout change
+
+Date: 7 November 2026. The checks ran in a Linux cloud container with Node.js `22.23.4`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chrome for Testing `153.0.8010.12`. Node.js `22.23.4` is older than the supported version. Hosted CI did not run these checks.
+
+- Type generation, validator generation, strict TypeScript checks, lint, and formatting: passed.
+- `npm test`: 23 of 24 tests passed. The missing-authentication test failed because the container had a Claude login. This test checks the host configuration, not Checkmate.
+- `node test/plugin.js`: passed. The copied `plugin/` directory ran outside the repository without npm install.
+- Claude plugin and marketplace validation: passed. The validator reported a missing marketplace description.
+- `npm run test:live`: passed with an existing host login (`CHECKMATE_USE_HOST_LOGIN=1`). The delegated stages, the defect, the retest, same-session execution, and the permission denial gave the expected results.
+
+| Stage                | Seconds | Status           |
+| -------------------- | ------: | ---------------- |
+| Setup                |    26.6 | `completed`      |
+| Plan                 |    57.9 | `needs_decision` |
+| Ready-only execution |    44.6 | `completed`      |
+| Revise               |    16.8 | `completed`      |
+| Execute              |    38.3 | `completed`      |
+| Retest               |    25.0 | `completed`      |
+
+These values describe one run. They are not performance targets.
 
 ## Automated checks
 

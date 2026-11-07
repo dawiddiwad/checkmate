@@ -10,7 +10,6 @@
 	<style>
 		main {
 			width: 1600px;
-			height: 812px;
 			padding: 64px 72px;
 			display: flex;
 			flex-direction: column;
@@ -35,13 +34,13 @@
 			background: var(--blue);
 		}
 		.title {
-			font-size: 64px;
+			font-size: 72px;
 			font-weight: 500;
 			letter-spacing: -1px;
 			line-height: 1;
 		}
 		.subtitle {
-			font-size: 26px;
+			font-size: 32px;
 			color: var(--muted);
 			margin-bottom: 4px;
 		}
@@ -54,10 +53,10 @@
 			padding: 22px 22px 24px;
 		}
 		.step b {
-			font: 500 20px var(--mono);
+			font: 500 24px var(--mono);
 		}
 		.step div {
-			font-size: 19px;
+			font-size: 22px;
 			color: var(--muted);
 			margin-top: 10px;
 			line-height: 1.35;
@@ -76,20 +75,23 @@
 			min-width: 230px;
 		}
 		.value .number {
-			font-size: 48px;
+			font-size: 52px;
 			font-weight: 500;
 			letter-spacing: -1px;
 			margin-top: 6px;
 		}
 		.value .mono {
-			font-size: 15px;
+			font-size: 19px;
 			margin-top: 4px;
 		}
 		.flow {
-			font: 17px var(--mono);
-			color: var(--faint);
+			font: 22px/1.5 var(--mono);
+			color: var(--muted);
 			text-align: center;
 			flex: 1;
+		}
+		.label {
+			font-size: 16px;
 		}
 		.owners {
 			display: grid;
@@ -102,11 +104,15 @@
 			justify-content: space-between;
 			align-items: baseline;
 		}
+		.owner {
+			flex-direction: column;
+			gap: 8px;
+		}
 		.owner b {
-			font: 500 20px var(--mono);
+			font: 500 25px var(--mono);
 		}
 		.owner span {
-			font: 16px var(--mono);
+			font: 20px var(--mono);
 			color: var(--muted);
 		}
 	</style>
@@ -116,7 +122,7 @@
 				<div class="mark"><span></span><span></span><span></span><span></span></div>
 				<div class="title">Checkmate</div>
 			</div>
-			<div class="subtitle">Testing workflows for Claude Code</div>
+			<div class="subtitle">QA workflows for Claude</div>
 		</header>
 
 		<div class="steps">
@@ -147,18 +153,18 @@
 			<div class="values">
 				<div class="card value">
 					<div class="label">expected</div>
-					<div class="number">90 PLN</div>
+					<div class="number">240 PLN</div>
 					<div class="mono dim">from the plan</div>
 				</div>
 				<div class="card value" style="border-color: #5a2a33">
 					<div class="label">run 1 observed</div>
-					<div class="number bad">85 PLN</div>
+					<div class="number bad">220 PLN</div>
 					<div class="mono bad">failed · defect F1</div>
 				</div>
 				<div class="flow">caller fixes the app<br />→</div>
 				<div class="card value" style="border-color: #1f4a36">
 					<div class="label">run 2 observed</div>
-					<div class="number ok">90 PLN</div>
+					<div class="number ok">240 PLN</div>
 					<div class="mono ok">passed · run 1 kept</div>
 				</div>
 				<div class="card value">

@@ -11,12 +11,12 @@
 	"requirements": [
 		{
 			"id": "R1",
-			"text": "A standard order for a 100 PLN item has a total of 100 PLN.",
+			"text": "A standard order for a 400 PLN item has a total of 400 PLN.",
 			"source": "caller://checkout-brief#standard"
 		},
 		{
 			"id": "R2",
-			"text": "A 10 percent promotion is applied during checkout; stacking behaviour is unspecified.",
+			"text": "A 40 percent promotion is applied during checkout; stacking behaviour is unspecified.",
 			"source": "caller://checkout-brief#promotion"
 		},
 		{
@@ -28,7 +28,7 @@
 	"sourceContext": [
 		{
 			"uri": "caller://checkout-brief",
-			"content": "Fixture checkout sells one item at 100 PLN. Promotion is 10 percent. Existing loyalty reduction can be 5 PLN. Confirm stacking and refund eligibility before asserting them."
+			"content": "Fixture checkout sells one item at 400 PLN. Promotion is 40 percent. Existing loyalty reduction can be 20 PLN. Confirm stacking and refund eligibility before asserting them."
 		}
 	],
 	"outputPlanId": "checkout",

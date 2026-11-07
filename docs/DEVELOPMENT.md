@@ -69,7 +69,7 @@ The GitHub Actions token needs write access to repository contents. Repository r
 
 `docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. Both use `docs/media/style.css`. The animation is an illustrated workflow. It is not a live test recording.
 
-Keep the style: dark background, one blue accent word in each heading, monospace labels, and thin card borders.
+Keep the style: dark background, one blue accent word in each heading, monospace labels, and thin card borders. The animation uses a small timeline in `onboarding.html`: elements fade in, grow, dim, and highlight at set times. Prettier does not format these pages, because their text keeps exact whitespace.
 
 Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and the overview:
 

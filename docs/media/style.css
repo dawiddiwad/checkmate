@@ -1,15 +1,15 @@
 /* Shared style for the onboarding animation and the infographic. */
 :root {
 	--bg: #0f1217;
-	--card: #12161d;
-	--card-strong: #161b24;
-	--line: #222833;
+	--card: #12171f;
+	--card-strong: #171b24;
+	--line: #1f2530;
 	--text: #e8ebf0;
 	--muted: #9aa3b2;
 	--faint: #5d6675;
-	--blue: #5b7cfa;
-	--blue-bg: #141c33;
-	--blue-line: #2b3f80;
+	--blue: #5b8afd;
+	--blue-bg: #161f2e;
+	--blue-line: #2c4a8c;
 	--green: #4fd18b;
 	--red: #ff6b7d;
 	--amber: #e7b452;

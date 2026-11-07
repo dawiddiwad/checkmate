@@ -5,7 +5,7 @@
 		"kind": "clarify",
 		"actor": "factory-agent",
 		"rationale": "Product acceptance decision supplied by dispatcher.",
-		"value": "Promotion replaces loyalty. Apply 10 percent to the undiscounted 100 PLN subtotal; expected total is 90 PLN.",
+		"value": "Promotion replaces loyalty. Apply 40 percent to the undiscounted 400 PLN subtotal; expected total is 240 PLN.",
 		"source": "caller://acceptance-decisions/checkout#promotion"
 	},
 	{

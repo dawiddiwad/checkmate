@@ -5,7 +5,7 @@
   "completion": "completed",
   "plan": {
     "path": "plans/checkout/v2.json",
-    "sha256": "ef15b530201bdc683341ecb0a704903d6e7eef2ab550f7df8fe3f98e7ad2c194"
+    "sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
   },
   "target": {
     "path": "profile.json",
@@ -21,8 +21,8 @@
     {
       "testId": "T1",
       "outcome": "passed",
-      "expected": "The order total is 100 PLN.",
-      "observed": "Order confirmed: 100 PLN",
+      "expected": "The order total is 400 PLN.",
+      "observed": "Order confirmed: 400 PLN",
       "assertionKind": "agent_observation",
       "evidenceIds": [
         "E-T1"
@@ -32,8 +32,8 @@
     {
       "testId": "T2",
       "outcome": "failed",
-      "expected": "HTTP 200 and totalPLN equals 90, with the loyalty discount replaced.",
-      "observed": "HTTP 200; totalPLN = 85",
+      "expected": "HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.",
+      "observed": "HTTP 200; totalPLN = 220",
       "assertionKind": "deterministic",
       "evidenceIds": [
         "E-T2"
@@ -62,11 +62,11 @@
         "R2"
       ],
       "title": "Promotion stacks with loyalty",
-      "expected": "90 PLN",
-      "observed": "85 PLN",
+      "expected": "240 PLN",
+      "observed": "220 PLN",
       "reproduction": [
-        "Create a 100 PLN cart with 5 PLN loyalty.",
-        "Apply a 10 percent promotion.",
+        "Create a 400 PLN cart with 20 PLN loyalty.",
+        "Apply a 40 percent promotion.",
         "Read the quote total."
       ],
       "evidenceIds": [
@@ -80,13 +80,13 @@
       "id": "E-T1",
       "kind": "observation",
       "path": "evidence/T1.txt",
-      "sha256": "fa3a45444d201a31e6e94f5e2f15120fd0518c893b533db779d6f17f4341ee60"
+      "sha256": "defae3129c5e2095b2a6580118f56b824b9002714c9577730592317d1b8b8179"
     },
     {
       "id": "E-T2",
       "kind": "observation",
       "path": "evidence/T2.txt",
-      "sha256": "a7605959105b8b69cfc226cfb2192dd2ec682fbba7ec47597796a09acd2315b3"
+      "sha256": "86f68eb060aca6d97061d59ce146a5dc2cd1f7a90c0ceaff465ff74ade9bd067"
     }
   ],
   "cleanup": {

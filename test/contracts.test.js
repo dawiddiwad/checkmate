@@ -107,7 +107,7 @@ test('result preserves omitted coverage and immutable retest history', async (t)
 		selectedTestIds: ['T2'],
 		retestOf: saved.artifact,
 	})
-	const passed = await finalize(workspace, retest, await observation(workspace, retest, r.plan, 90))
+	const passed = await finalize(workspace, retest, await observation(workspace, retest, r.plan, 240))
 	const result = await readReference(workspace, passed.artifact)
 	assert.equal(result.tests[0].outcome, 'not_run')
 	assert.equal(result.tests[1].outcome, 'passed')

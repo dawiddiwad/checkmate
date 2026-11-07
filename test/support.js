@@ -79,7 +79,7 @@ export async function revised(workspace, prepared) {
 	plan.gaps[1].status = 'deferred'
 	plan.gaps[1].decisionId = 'D2'
 	plan.tests[1].readiness = 'ready'
-	plan.tests[1].expected = 'HTTP 200 and totalPLN equals 90, with the loyalty discount replaced.'
+	plan.tests[1].expected = 'HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.'
 	plan.tests[2].readiness = 'deferred'
 	const saved = await savePlan(workspace, request, plan)
 	return { request, candidate: plan, plan: await readReference(workspace, saved.artifact), reference: saved.artifact }
@@ -102,15 +102,15 @@ export function executeRequest(prepared, revision, overrides = {}) {
 		...overrides,
 	}
 }
-export async function observation(workspace, request, plan, total = 85) {
+export async function observation(workspace, request, plan, total = 220) {
 	await beginRun(workspace, request)
 	const { value: invocation } = await readDocument(workspace, `${request.outputDirectory}/invocation.json`)
 	const evidence = []
 	const tests = []
 	for (const test of plan.tests) {
 		const selected = request.selectedTestIds.includes(test.id)
-		const failed = test.id === 'T2' && total !== 90
-		const observed = test.id === 'T1' ? 'Order confirmed: 100 PLN' : `HTTP 200; totalPLN = ${total}`
+		const failed = test.id === 'T2' && total !== 240
+		const observed = test.id === 'T1' ? 'Order confirmed: 400 PLN' : `HTTP 200; totalPLN = ${total}`
 		if (selected) {
 			await publish(workspace, `${request.outputDirectory}/evidence/${test.id}.txt`, observed)
 			evidence.push({ id: `E-${test.id}`, kind: 'observation', path: `evidence/${test.id}.txt` })
@@ -149,11 +149,11 @@ export async function observation(workspace, request, plan, total = 85) {
 						testIds: ['T2'],
 						requirementIds: ['R2'],
 						title: 'Promotion stacks with loyalty',
-						expected: '90 PLN',
+						expected: '240 PLN',
 						observed: `${total} PLN`,
 						reproduction: [
-							'Create a 100 PLN cart with 5 PLN loyalty.',
-							'Apply a 10 percent promotion.',
+							'Create a 400 PLN cart with 20 PLN loyalty.',
+							'Apply a 40 percent promotion.',
 							'Read the quote total.',
 						],
 						evidenceIds: ['E-T2'],

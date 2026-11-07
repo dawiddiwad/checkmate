@@ -1,6 +1,6 @@
 #### □ □ ■ □
 
-## _Checkmate - testing workflows for Claude Code_
+## _Checkmate - QA workflows for Claude_
 
 <img src="docs/img/onboarding.gif" alt="onboarding" width="50%"/>
 
@@ -35,12 +35,12 @@ Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build st
 	"requirements": [
 		{
 			"id": "R1",
-			"text": "A standard order for a 100 PLN item has a total of 100 PLN.",
+			"text": "A standard order for a 400 PLN item has a total of 400 PLN.",
 			"source": "caller://checkout-brief#standard"
 		},
 		{
 			"id": "R2",
-			"text": "A 10 percent promotion is applied during checkout; stacking behaviour is unspecified.",
+			"text": "A 40 percent promotion is applied during checkout; stacking behaviour is unspecified.",
 			"source": "caller://checkout-brief#promotion"
 		},
 		{
@@ -52,7 +52,7 @@ Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build st
 	"sourceContext": [
 		{
 			"uri": "caller://checkout-brief",
-			"content": "Fixture checkout sells one item at 100 PLN. Promotion is 10 percent. Existing loyalty reduction can be 5 PLN. Confirm stacking and refund eligibility before asserting them."
+			"content": "Fixture checkout sells one item at 400 PLN. Promotion is 40 percent. Existing loyalty reduction can be 20 PLN. Confirm stacking and refund eligibility before asserting them."
 		}
 	],
 	"outputPlanId": "checkout",
@@ -127,7 +127,7 @@ The caller clarifies the discount rule and defers refund coverage. The next plan
 	"operation": "revise",
 	"basePlan": {
 		"path": "plans/checkout/v1.json",
-		"sha256": "b03bbbf184594ed120e91b92efc45bd4382567e1d47a4fd03a907b266f9f27df"
+		"sha256": "df4e09ebcc886104a3ceb2760f7a251238f8ddceae71094c7d90c1c33955b32d"
 	},
 	"baseRevision": 1,
 	"decisions": [
@@ -137,7 +137,7 @@ The caller clarifies the discount rule and defers refund coverage. The next plan
 			"kind": "clarify",
 			"actor": "factory-agent",
 			"rationale": "Product acceptance decision supplied by dispatcher.",
-			"value": "Promotion replaces loyalty. Apply 10 percent to the undiscounted 100 PLN subtotal; expected total is 90 PLN.",
+			"value": "Promotion replaces loyalty. Apply 40 percent to the undiscounted 400 PLN subtotal; expected total is 240 PLN.",
 			"source": "caller://acceptance-decisions/checkout#promotion"
 		},
 		{
@@ -169,7 +169,7 @@ The request selects two tests and pins the target and plan by digest. It uses th
 	"runId": "run-1",
 	"plan": {
 		"path": "plans/checkout/v2.json",
-		"sha256": "ef15b530201bdc683341ecb0a704903d6e7eef2ab550f7df8fe3f98e7ad2c194"
+		"sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
 	},
 	"target": {
 		"path": "profile.json",
@@ -199,7 +199,7 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 	"completion": "completed",
 	"plan": {
 		"path": "plans/checkout/v2.json",
-		"sha256": "ef15b530201bdc683341ecb0a704903d6e7eef2ab550f7df8fe3f98e7ad2c194"
+		"sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
 	},
 	"target": {
 		"path": "profile.json",
@@ -212,8 +212,8 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 		{
 			"testId": "T1",
 			"outcome": "passed",
-			"expected": "The order total is 100 PLN.",
-			"observed": "Order confirmed: 100 PLN",
+			"expected": "The order total is 400 PLN.",
+			"observed": "Order confirmed: 400 PLN",
 			"assertionKind": "agent_observation",
 			"evidenceIds": ["E-T1"],
 			"reason": null
@@ -221,8 +221,8 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 		{
 			"testId": "T2",
 			"outcome": "failed",
-			"expected": "HTTP 200 and totalPLN equals 90, with the loyalty discount replaced.",
-			"observed": "HTTP 200; totalPLN = 85",
+			"expected": "HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.",
+			"observed": "HTTP 200; totalPLN = 220",
 			"assertionKind": "deterministic",
 			"evidenceIds": ["E-T2"],
 			"reason": "Observed total differs from expected total."
@@ -245,11 +245,11 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 			"testIds": ["T2"],
 			"requirementIds": ["R2"],
 			"title": "Promotion stacks with loyalty",
-			"expected": "90 PLN",
-			"observed": "85 PLN",
+			"expected": "240 PLN",
+			"observed": "220 PLN",
 			"reproduction": [
-				"Create a 100 PLN cart with 5 PLN loyalty.",
-				"Apply a 10 percent promotion.",
+				"Create a 400 PLN cart with 20 PLN loyalty.",
+				"Apply a 40 percent promotion.",
 				"Read the quote total."
 			],
 			"evidenceIds": ["E-T2"]
@@ -261,13 +261,13 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 			"id": "E-T1",
 			"kind": "observation",
 			"path": "evidence/T1.txt",
-			"sha256": "fa3a45444d201a31e6e94f5e2f15120fd0518c893b533db779d6f17f4341ee60"
+			"sha256": "defae3129c5e2095b2a6580118f56b824b9002714c9577730592317d1b8b8179"
 		},
 		{
 			"id": "E-T2",
 			"kind": "observation",
 			"path": "evidence/T2.txt",
-			"sha256": "a7605959105b8b69cfc226cfb2192dd2ec682fbba7ec47597796a09acd2315b3"
+			"sha256": "86f68eb060aca6d97061d59ce146a5dc2cd1f7a90c0ceaff465ff74ade9bd067"
 		}
 	],
 	"cleanup": {

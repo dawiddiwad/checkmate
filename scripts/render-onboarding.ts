@@ -13,16 +13,17 @@ const browser = await chromium.launch({
 	executablePath: process.env.CHECKMATE_BROWSER_EXECUTABLE ?? '/usr/bin/chromium',
 	headless: true,
 })
-type Animation = { DURATION: number; renderFrame: (seconds: number) => void }
+type Animation = { DURATION: number; measure: () => void; renderFrame: (seconds: number) => void }
 try {
-	const overview = await browser.newPage({ viewport: { width: 1600, height: 812 }, deviceScaleFactor: 1 })
+	const overview = await browser.newPage({ viewport: { width: 1600, height: 1200 }, deviceScaleFactor: 1 })
 	await overview.goto(media('infographic.html'))
 	await overview.evaluate(() => document.fonts.ready)
-	await overview.screenshot({ path: 'docs/img/checkmate-infographic.png' })
+	await overview.locator('main').screenshot({ path: 'docs/img/checkmate-infographic.png' })
 
 	const page = await browser.newPage({ viewport: { width: 700, height: 1244 }, deviceScaleFactor: 1 })
 	await page.goto(media('onboarding.html'))
 	await page.evaluate(() => document.fonts.ready)
+	await page.evaluate(() => (window as unknown as Animation).measure())
 	const duration = await page.evaluate(() => (window as unknown as Animation).DURATION)
 	const count = duration * framesPerSecond
 	for (let frame = 0; frame < count; frame++) {

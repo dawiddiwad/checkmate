@@ -5,7 +5,7 @@
   "operation": "revise",
   "basePlan": {
     "path": "plans/checkout/v1.json",
-    "sha256": "b03bbbf184594ed120e91b92efc45bd4382567e1d47a4fd03a907b266f9f27df"
+    "sha256": "df4e09ebcc886104a3ceb2760f7a251238f8ddceae71094c7d90c1c33955b32d"
   },
   "baseRevision": 1,
   "decisions": [
@@ -15,7 +15,7 @@
       "kind": "clarify",
       "actor": "factory-agent",
       "rationale": "Product acceptance decision supplied by dispatcher.",
-      "value": "Promotion replaces loyalty. Apply 10 percent to the undiscounted 100 PLN subtotal; expected total is 90 PLN.",
+      "value": "Promotion replaces loyalty. Apply 40 percent to the undiscounted 400 PLN subtotal; expected total is 240 PLN.",
       "source": "caller://acceptance-decisions/checkout#promotion"
     },
     {

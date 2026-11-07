@@ -9,17 +9,17 @@ export async function fixture() {
 		if (url.pathname === '/health') return response.end(JSON.stringify({ ready: true }))
 		if (url.pathname === '/quote') {
 			actions++
-			const totalPLN = url.searchParams.get('promotion') === 'true' ? (fixed ? 90 : 85) : 100
+			const totalPLN = url.searchParams.get('promotion') === 'true' ? (fixed ? 240 : 220) : 400
 			return response.end(JSON.stringify({ totalPLN }))
 		}
 		if (url.pathname === '/order' && request.method === 'POST') {
 			actions++
-			return response.end(JSON.stringify({ totalPLN: 100, status: 'confirmed' }))
+			return response.end(JSON.stringify({ totalPLN: 400, status: 'confirmed' }))
 		}
 		if (url.pathname === '/') {
 			response.setHeader('Content-Type', 'text/html')
 			return response.end(
-				'<!doctype html><html lang="en"><title>Checkout fixture</title><h1>Checkout</h1><p>One item: 100 PLN</p><button id="checkout">Complete checkout</button><p id="confirmation"></p><script>document.querySelector("button").onclick=async()=>{const result=await(await fetch("/order",{method:"POST"})).json();document.querySelector("#confirmation").textContent=`Order confirmed: ${result.totalPLN} PLN`}</script></html>'
+				'<!doctype html><html lang="en"><title>Checkout fixture</title><h1>Checkout</h1><p>One item: 400 PLN</p><button id="checkout">Complete checkout</button><p id="confirmation"></p><script>document.querySelector("button").onclick=async()=>{const result=await(await fetch("/order",{method:"POST"})).json();document.querySelector("#confirmation").textContent=`Order confirmed: ${result.totalPLN} PLN`}</script></html>'
 			)
 		}
 		response.statusCode = 404

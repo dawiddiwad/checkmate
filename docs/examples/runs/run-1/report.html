@@ -1,11 +1,11 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Checkmate result</title><style>body{font:16px system-ui;max-width:80rem;margin:2rem auto;padding:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}td,th{padding:.5rem;text-align:left}table{border-collapse:collapse}tr{border-bottom:1px solid #aaa}</style><h1>Test result</h1><p>Completion: completed. Coverage: partial.</p><table><thead><tr><th>Test</th><th>Outcome</th><th>Observation</th></tr></thead><tbody><tr><td>T1</td><td>passed</td><td>Order confirmed: 100 PLN</td></tr><tr><td>T2</td><td>failed</td><td>HTTP 200; totalPLN = 85</td></tr><tr><td>T3</td><td>not_run</td><td>Test was not selected or was deferred.</td></tr></tbody></table><h2>Complete record</h2><pre>{
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Checkmate result</title><style>body{font:16px system-ui;max-width:80rem;margin:2rem auto;padding:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}td,th{padding:.5rem;text-align:left}table{border-collapse:collapse}tr{border-bottom:1px solid #aaa}</style><h1>Test result</h1><p>Completion: completed. Coverage: partial.</p><table><thead><tr><th>Test</th><th>Outcome</th><th>Observation</th></tr></thead><tbody><tr><td>T1</td><td>passed</td><td>Order confirmed: 400 PLN</td></tr><tr><td>T2</td><td>failed</td><td>HTTP 200; totalPLN = 220</td></tr><tr><td>T3</td><td>not_run</td><td>Test was not selected or was deferred.</td></tr></tbody></table><h2>Complete record</h2><pre>{
   &quot;contractVersion&quot;: &quot;toolkit-1&quot;,
   &quot;requestId&quot;: &quot;execute-1&quot;,
   &quot;runId&quot;: &quot;run-1&quot;,
   &quot;completion&quot;: &quot;completed&quot;,
   &quot;plan&quot;: {
     &quot;path&quot;: &quot;plans/checkout/v2.json&quot;,
-    &quot;sha256&quot;: &quot;ef15b530201bdc683341ecb0a704903d6e7eef2ab550f7df8fe3f98e7ad2c194&quot;
+    &quot;sha256&quot;: &quot;2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc&quot;
   },
   &quot;target&quot;: {
     &quot;path&quot;: &quot;profile.json&quot;,
@@ -21,8 +21,8 @@
     {
       &quot;testId&quot;: &quot;T1&quot;,
       &quot;outcome&quot;: &quot;passed&quot;,
-      &quot;expected&quot;: &quot;The order total is 100 PLN.&quot;,
-      &quot;observed&quot;: &quot;Order confirmed: 100 PLN&quot;,
+      &quot;expected&quot;: &quot;The order total is 400 PLN.&quot;,
+      &quot;observed&quot;: &quot;Order confirmed: 400 PLN&quot;,
       &quot;assertionKind&quot;: &quot;agent_observation&quot;,
       &quot;evidenceIds&quot;: [
         &quot;E-T1&quot;
@@ -32,8 +32,8 @@
     {
       &quot;testId&quot;: &quot;T2&quot;,
       &quot;outcome&quot;: &quot;failed&quot;,
-      &quot;expected&quot;: &quot;HTTP 200 and totalPLN equals 90, with the loyalty discount replaced.&quot;,
-      &quot;observed&quot;: &quot;HTTP 200; totalPLN = 85&quot;,
+      &quot;expected&quot;: &quot;HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.&quot;,
+      &quot;observed&quot;: &quot;HTTP 200; totalPLN = 220&quot;,
       &quot;assertionKind&quot;: &quot;deterministic&quot;,
       &quot;evidenceIds&quot;: [
         &quot;E-T2&quot;
@@ -62,11 +62,11 @@
         &quot;R2&quot;
       ],
       &quot;title&quot;: &quot;Promotion stacks with loyalty&quot;,
-      &quot;expected&quot;: &quot;90 PLN&quot;,
-      &quot;observed&quot;: &quot;85 PLN&quot;,
+      &quot;expected&quot;: &quot;240 PLN&quot;,
+      &quot;observed&quot;: &quot;220 PLN&quot;,
       &quot;reproduction&quot;: [
-        &quot;Create a 100 PLN cart with 5 PLN loyalty.&quot;,
-        &quot;Apply a 10 percent promotion.&quot;,
+        &quot;Create a 400 PLN cart with 20 PLN loyalty.&quot;,
+        &quot;Apply a 40 percent promotion.&quot;,
         &quot;Read the quote total.&quot;
       ],
       &quot;evidenceIds&quot;: [
@@ -80,13 +80,13 @@
       &quot;id&quot;: &quot;E-T1&quot;,
       &quot;kind&quot;: &quot;observation&quot;,
       &quot;path&quot;: &quot;evidence/T1.txt&quot;,
-      &quot;sha256&quot;: &quot;fa3a45444d201a31e6e94f5e2f15120fd0518c893b533db779d6f17f4341ee60&quot;
+      &quot;sha256&quot;: &quot;defae3129c5e2095b2a6580118f56b824b9002714c9577730592317d1b8b8179&quot;
     },
     {
       &quot;id&quot;: &quot;E-T2&quot;,
       &quot;kind&quot;: &quot;observation&quot;,
       &quot;path&quot;: &quot;evidence/T2.txt&quot;,
-      &quot;sha256&quot;: &quot;a7605959105b8b69cfc226cfb2192dd2ec682fbba7ec47597796a09acd2315b3&quot;
+      &quot;sha256&quot;: &quot;86f68eb060aca6d97061d59ce146a5dc2cd1f7a90c0ceaff465ff74ade9bd067&quot;
     }
   ],
   &quot;cleanup&quot;: {

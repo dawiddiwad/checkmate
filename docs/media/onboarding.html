@@ -1,388 +1,431 @@
 <!doctype html>
 <html lang="en">
-	<meta charset="utf-8" />
-	<title>Checkmate onboarding</title>
-	<link
-		rel="stylesheet"
-		href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=block"
-	/>
-	<link rel="stylesheet" href="style.css" />
-	<style>
-		main {
-			width: 700px;
-			height: 1244px;
-			position: relative;
-			overflow: hidden;
-		}
-		.scene {
-			position: absolute;
-			inset: 0;
-			padding: 88px 48px 64px;
-			opacity: 0;
-		}
-		[data-at] {
-			opacity: 0;
-		}
-		.stack > * + * {
-			margin-top: 14px;
-		}
-		.gap {
-			height: 56px;
-		}
-		.row {
-			padding: 16px 20px;
-		}
-		.row b {
-			font: 500 20px var(--mono);
-		}
-		.row .mono {
-			font-size: 16px;
-			color: var(--muted);
-			margin-top: 6px;
-		}
-		.grid2 {
-			display: grid;
-			grid-template-columns: 1fr 1fr;
-			gap: 8px;
-		}
-		.code {
-			margin: 0;
-			font: 17px/1.75 var(--mono);
-			padding: 22px 24px;
-			white-space: pre;
-		}
-		.arrow {
-			text-align: center;
-			color: var(--faint);
-			font: 22px var(--mono);
-			margin: 10px 0;
-		}
-		.big {
-			font-size: 68px;
-			font-weight: 500;
-			letter-spacing: -2px;
-		}
-		.box {
-			padding: 18px 24px;
-			text-align: center;
-			font-size: 21px;
-		}
-		.status {
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-		}
-		.text {
-			font-size: 22px;
-			line-height: 1.5;
-			color: var(--muted);
-		}
-	</style>
-	<main>
-		<!-- 1: title -->
-		<section class="scene" data-seconds="6">
-			<div class="logo" id="logo" style="margin: 120px 0 0 40px"></div>
-			<div style="position: absolute; left: 48px; top: 640px">
-				<div style="font-size: 72px; font-weight: 500; letter-spacing: -1.5px">Checkmate</div>
-				<div class="text" style="font-size: 26px; margin-top: 10px">Testing workflows<br />for Claude Code</div>
-			</div>
-		</section>
+<meta charset="utf-8" />
+<title>Checkmate onboarding</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=block" />
+<link rel="stylesheet" href="style.css" />
+<style>
+	main { width: 700px; height: 1244px; position: relative; overflow: hidden; }
+	.scene { position: absolute; inset: 0; opacity: 0; }
+	.cam { position: absolute; left: 50px; right: 50px; top: 100px; }
+	h1 { font-size: 46px; line-height: 57px; font-weight: 500; letter-spacing: -0.6px; margin: 0; }
+	.label { font: 14px var(--mono); letter-spacing: 3px; color: var(--faint); text-transform: uppercase; }
+	.card { background: var(--card); border: 1px solid var(--line); border-radius: 3px; }
+	.inner { background: var(--card-strong); border-radius: 3px; }
+	.chip { font: 18px var(--mono); color: var(--blue); background: var(--blue-bg); border: 1px solid #1d2a40; border-radius: 2px; padding: 12px 0; text-align: center; }
+	.mono { font-family: var(--mono); }
+	.line { font: 19px/30px var(--mono); white-space: pre; }
+	.say { font-size: 22px; line-height: 33px; }
+	.sub { font-size: 30px; line-height: 40px; }
+	.dim { color: var(--muted); }
+	.faint { color: var(--faint); }
+	.blue { color: var(--blue); }
+	.ok { color: var(--green); }
+	.bad { color: #f0735a; }
+	.warn { color: var(--amber); }
+	.teal { color: #5fd3c8; }
+	.tags { display: flex; gap: 10px; }
+	.tags span { font: 14px var(--mono); color: var(--faint); background: var(--card-strong); padding: 6px 10px; border-radius: 2px; }
+	.grow { overflow: hidden; }
+	.row { padding: 0 22px; display: flex; align-items: center; gap: 18px; }
+	.stripe { border-left: 3px solid; }
+	svg { position: absolute; overflow: visible; }
+</style>
+<main>
 
-		<!-- 2: the problem -->
-		<section class="scene" data-seconds="9">
-			<h1>Scripted tests break.<br />Agents <em>guess</em>.</h1>
-			<div class="gap"></div>
-			<pre
-				class="card code"
-				data-at="0.8"
-			><span style="text-decoration: line-through; color: var(--faint)">await page.click('#add-to-cart')</span>
-<span style="color: var(--faint)">expect(total).toBe('90 PLN')</span>
+<!-- 1 · title: the checkerboard builds diagonally, then the name, then the blue square -->
+<section class="scene" data-start="0" data-length="5">
+	<div id="board" style="position: absolute; left: 150px; top: 216px; width: 400px; height: 400px; display: grid; grid-template-columns: repeat(6, 1fr)"></div>
+	<div style="position: absolute; left: 46px; top: 728px">
+		<div style="font-size: 76px; font-weight: 500; letter-spacing: -1.5px" data-in="1.6">Checkmate</div>
+		<div class="dim" style="font-size: 27px; line-height: 40px; margin-top: 18px" data-in="2.2">QA workflows<br />for Claude</div>
+	</div>
+</section>
 
-<span class="bad">× the selector changed</span>
-<span class="bad">× the wait timed out</span>
-<span class="bad">× the test needs repair again</span></pre>
-			<div class="label" style="margin: 14px 0 0" data-at="1.6">brittle · high maintenance</div>
-			<div class="gap"></div>
-			<pre class="card code" data-at="3.2"><span class="label">agent + tools</span>
+<!-- 2 · the problem, then the third option opens between the two cards -->
+<section class="scene" data-start="5" data-length="13">
+	<div class="cam" style="top: 84px" data-cam="7.5:-196">
+		<div class="card" style="padding: 26px 28px; height: 452px; position: relative" data-dim="7.6">
+			<div class="label">scripted e2e</div>
+			<div style="margin-top: 22px">
+				<div class="line faint" data-in="0.6"><span class="bad" data-strike="3.8">await page.click('#add-to-cart')</span></div>
+				<div class="line dim" data-in="1.0">expect(total).toBe('240 PLN')</div>
+				<div style="height: 18px"></div>
+				<div class="line bad" data-in="3.8">×  the selector changed</div>
+				<div class="line bad" data-in="4.3">×  the wait timed out</div>
+				<div class="line bad" data-in="4.8">×  the test needs repair again</div>
+			</div>
+			<div class="tags" style="position: absolute; left: 28px; bottom: 26px" data-in="5.5"><span>brittle</span><span>high maintenance</span><span>no adaptation</span></div>
+		</div>
+		<div class="grow" data-grow="7.5">
+			<div style="padding-top: 64px"></div>
+			<div class="card" style="background: var(--blue-bg); border-color: #24365e; padding: 30px 28px 34px; text-align: center">
+				<div class="label blue" style="color: var(--blue)" data-in="7.9">the third option</div>
+				<div style="font-size: 48px; font-weight: 500; margin-top: 14px" data-in="7.9">Checkmate</div>
+				<div class="blue" style="font-size: 30px; margin-top: 6px" data-in="8.1">QA workflows for Claude</div>
+				<div style="margin-top: 26px; display: inline-block; text-align: left">
+					<div class="line" data-in="8.6"><span class="blue">✓</span> tests like an agent</div>
+					<div class="line" data-in="9.1"><span class="blue">✓</span> asks before it guesses</div>
+					<div class="line" data-in="9.6"><span class="blue">✓</span> reports with evidence</div>
+				</div>
+			</div>
+		</div>
+		<div style="height: 168px" data-shrink="7.5" data-to="64"></div>
+		<div class="card" style="padding: 26px 28px; height: 452px; position: relative" data-dim="7.6">
+			<div class="label">agent + tools</div>
+			<div style="margin-top: 22px" class="say">
+				<div data-in="1.6">→ clicks through checkout</div>
+				<div data-in="2.0">→ reads a total</div>
+				<div data-in="2.4">→ decides that it looks right</div>
+			</div>
+			<div class="warn" style="font-size: 26px; font-style: italic; margin-top: 30px" data-in="5.5">"it seemed to work"</div>
+			<div class="tags" style="position: absolute; left: 28px; bottom: 26px" data-in="6.6"><span>no plan</span><span>no evidence</span><span>no audit trail</span></div>
+		</div>
+	</div>
+</section>
 
-<span class="dim">→ clicks through checkout</span>
-<span class="dim">→ reads a total</span>
-<span class="dim">→ decides that it looks right</span></pre>
-			<div style="margin: 22px 0 0; font-size: 26px; font-style: italic" class="warn" data-at="4.6">
-				"it seemed to work"
+<!-- 3 · the contract around the agent -->
+<section class="scene" data-start="18" data-length="11">
+	<div class="cam">
+		<h1>Put the agent inside a<br /><span class="blue">checked contract</span>.</h1>
+		<div class="grow" data-grow="6.0">
+			<div style="padding-top: 48px"></div>
+			<div class="label">in</div>
+			<div class="sub" style="margin-top: 12px">requirements, in words</div>
+			<div style="padding-top: 6px"></div>
+		</div>
+		<div style="height: 48px"></div>
+		<div class="card" style="padding: 52px 30px; position: relative" data-in="1.4" data-frame>
+			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
+				<div class="chip" style="padding: 15px 0" data-in="1.6">plan</div>
+				<div class="chip" style="padding: 15px 0" data-in="1.75">gaps</div>
+				<div class="chip" style="padding: 15px 0" data-in="1.9">decisions</div>
+				<div class="chip" style="padding: 15px 0" data-in="2.05">revisions</div>
 			</div>
-		</section>
+			<div class="inner" style="margin: 34px 0; padding: 58px 0; text-align: center" data-in="0.4">
+				<div style="font-size: 30px">Claude Code</div>
+				<div class="mono dim" style="font-size: 20px; margin-top: 10px">testing your app</div>
+			</div>
+			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
+				<div class="chip" style="padding: 15px 0" data-in="2.2">evidence</div>
+				<div class="chip" style="padding: 15px 0" data-in="2.35">digests</div>
+				<div class="chip" style="padding: 15px 0" data-in="2.5">coverage</div>
+				<div class="chip" style="padding: 15px 0" data-in="2.65">reports</div>
+			</div>
+		</div>
+		<div style="margin-top: 56px">
+			<div class="label" data-in="8.0">out</div>
+			<div class="sub blue" style="margin-top: 12px" data-in="8.0">one checked result</div>
+			<div class="say dim" style="margin-top: 14px; font-size: 23px; line-height: 35px" data-in="8.6">Everything the agent is <span style="color: var(--text)">not allowed to decide</span> comes back as a question.</div>
+		</div>
+	</div>
+</section>
 
-		<!-- 3: the idea -->
-		<section class="scene" data-seconds="8">
-			<h1>Let the agent test.<br />Keep the <em>record</em> strict.</h1>
-			<div class="gap"></div>
-			<div class="card accent" style="padding: 22px" data-at="0.6">
-				<div class="grid2">
-					<div class="chip" data-at="1.2">requirements</div>
-					<div class="chip" data-at="1.4">gaps</div>
-					<div class="chip" data-at="1.6">decisions</div>
-					<div class="chip" data-at="1.8">revisions</div>
-				</div>
-				<div class="card" style="margin: 22px 0; padding: 28px; text-align: center">
-					<div style="font-size: 26px">Claude Code</div>
-					<div class="mono dim" style="font-size: 18px; margin-top: 8px">testing your app</div>
-				</div>
-				<div class="grid2">
-					<div class="chip" data-at="2.4">evidence</div>
-					<div class="chip" data-at="2.6">digests</div>
-					<div class="chip" data-at="2.8">coverage</div>
-					<div class="chip" data-at="3.0">reports</div>
-				</div>
+<!-- 4 · one cycle: the list collapses, the highlight walks down, the tests report -->
+<section class="scene" data-start="29" data-length="12">
+	<div class="cam">
+		<h1><span class="blue">How</span> one cycle works.</h1>
+		<div style="height: 44px"></div>
+		<div class="steps">
+			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="0.3"><div class="mono" style="font-size: 22px; font-weight: 500">1 · Setup</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">check tools, save a target profile</div></div></div>
+			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="0.8"><div class="mono" style="font-size: 22px; font-weight: 500">2 · Plan</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">tests, expected results, open gaps</div></div></div>
+			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="1.3"><div class="mono" style="font-size: 22px; font-weight: 500">3 · Revise</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">apply the caller's decisions</div></div></div>
+			<div class="card" style="padding: 20px 24px; margin-bottom: 12px" data-in="1.8" data-hl="5.0-8.5"><div class="mono" style="font-size: 22px; font-weight: 500">4 · Execute</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">run selected tests, save evidence</div></div></div>
+			<div class="card" style="padding: 20px 24px" data-in="2.3" data-hl="8.5-99"><div class="mono" style="font-size: 22px; font-weight: 500">5 · Report</div><div class="grow" data-shrink="5.0"><div class="mono faint" style="font-size: 17px; padding-top: 8px">Markdown and HTML from the result</div></div></div>
+		</div>
+		<div class="grow" data-grow="5.0">
+			<div class="say dim" style="font-size: 21px; line-height: 32px; padding-top: 34px">Tests run in plan order. A failed prerequisite blocks its dependents — every planned test is still reported.</div>
+			<div style="height: 16px"></div>
+			<div class="card stripe" style="border-left-color: var(--green); padding: 20px 22px; margin-bottom: 12px" data-in="5.6">
+				<div class="say"><span class="mono faint">T1</span> Complete a standard checkout</div>
+				<div class="mono" style="font-size: 17px; margin-top: 4px"><span class="ok">passed</span> <span class="faint">evidence/T1.txt</span></div>
 			</div>
-			<div class="text" style="margin-top: 36px" data-at="4">
-				Claude Code supplies the model and the tools. Checkmate supplies the contracts and checks the record.
+			<div class="card stripe" style="border-left-color: #f0735a; padding: 20px 22px; margin-bottom: 12px" data-in="6.6">
+				<div class="say"><span class="mono faint">T2</span> Apply the promotion with loyalty</div>
+				<div class="mono" style="font-size: 17px; margin-top: 4px"><span class="bad">failed</span> <span class="faint">defect F1 · 220 ≠ 240 PLN</span></div>
 			</div>
-		</section>
+			<div class="card stripe" style="border-left-color: var(--faint); padding: 20px 22px" data-in="7.6">
+				<div class="say dim"><span class="mono faint">T3</span> Check refund eligibility</div>
+				<div class="mono" style="font-size: 17px; margin-top: 4px"><span class="dim">not_run</span> <span class="faint">deferred by the caller</span></div>
+			</div>
+		</div>
+		<div class="line" style="margin-top: 40px; font-size: 18px" data-in="9.2">run result — <span class="dim">completion</span> completed · <span class="dim">coverage</span> <span class="warn">partial</span></div>
+	</div>
+</section>
 
-		<!-- 4: one cycle -->
-		<section class="scene" data-seconds="10">
-			<h1><em>How</em> one cycle works.</h1>
-			<div class="gap"></div>
-			<div class="stack">
-				<div class="card row" data-at="0.6">
-					<b>1 · Setup</b>
-					<div class="mono">check tools, save a target profile</div>
-				</div>
-				<div class="card row" data-at="1.6">
-					<b>2 · Plan</b>
-					<div class="mono">tests, expected results, open gaps</div>
-				</div>
-				<div class="card row" data-at="2.6">
-					<b>3 · Revise</b>
-					<div class="mono">apply the caller's decisions</div>
-				</div>
-				<div class="card row" data-at="3.6">
-					<b>4 · Execute</b>
-					<div class="mono">run selected tests, save evidence</div>
-				</div>
-				<div class="card row" data-at="4.6">
-					<b>5 · Report</b>
-					<div class="mono">Markdown and HTML from the JSON result</div>
-				</div>
-			</div>
-			<div class="label" style="margin-top: 36px; text-align: center" data-at="5.6">
-				one skill per stage · /checkmate:plan
-			</div>
-		</section>
+<!-- 5 · one JSON result, with highlight bands -->
+<section class="scene" data-start="41" data-length="11">
+	<div class="cam">
+		<h1>Exactly one versioned<br /><span class="blue">JSON result</span> per<br />run.</h1>
+		<div class="card" style="margin-top: 44px; padding: 30px 0" data-in="0.3">
+			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.5">{</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.65">  "contractVersion": "toolkit-1",</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.8">  "runId": "run-2",</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.95" data-band="2.4">  "completion": "completed",</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.1" data-band="2.4">  "tests": [ … ],</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.25" data-band="2.4">  "coverage": { "status": "partial" },</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.4" data-band="5.0" data-band-color="amber">  "findings": [ { "type": "defect" } ],</div>
+			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.55">  "evidence": [ … ], "finishedAt": "…"</div>
+			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.7">}</div>
+		</div>
+		<div style="margin-top: 46px" data-in="3.0">
+			<div class="label blue" style="color: var(--blue)">route on these</div>
+			<div class="say" style="margin-top: 10px">Completion, outcomes, and coverage are separate fields. The caller branches on them, not on prose.</div>
+		</div>
+		<div style="margin-top: 40px" data-in="5.0">
+			<div class="label warn" style="color: var(--amber)">a failure has a finding</div>
+			<div class="say" style="margin-top: 10px">A failed check needs a defect and its evidence. A tool failure is an error instead.</div>
+		</div>
+		<div class="mono dim" style="margin-top: 40px; font-size: 18px; line-height: 29px" data-in="7.0">result.json, report.md, and report.html are <span style="color: var(--text)">the same record</span>.</div>
+	</div>
+</section>
 
-		<!-- 5: gaps -->
-		<section class="scene" data-seconds="11">
-			<h1>Unknowns become<br /><em>questions</em>.</h1>
-			<div class="gap"></div>
-			<div class="label" data-at="0.4">plans/checkout/v1.json</div>
-			<div class="stack" style="margin-top: 14px">
-				<div class="card row status mono" data-at="0.8">
-					<span>T1 standard checkout</span><span class="ok">ready</span>
-				</div>
-				<div class="card row status mono" data-at="1.2">
-					<span>T2 promotion + loyalty</span><span class="warn">blocked</span>
-				</div>
-				<div class="card row status mono" data-at="1.6">
-					<span>T3 refund eligibility</span><span class="warn">blocked</span>
-				</div>
-			</div>
-			<div class="card row" style="margin-top: 28px; border-left: 2px solid var(--amber)" data-at="2.8">
-				<div class="mono warn" style="font-size: 15px">G1 · blocking</div>
-				<div style="font-size: 21px; margin-top: 8px">Does the promotion stack with loyalty?</div>
-			</div>
-			<div class="arrow" data-at="4.2">↓ caller decides</div>
-			<div class="card accent row" data-at="4.6">
-				<div class="mono" style="font-size: 15px; color: var(--blue)">D1 · clarify</div>
-				<div style="font-size: 21px; margin-top: 8px">
-					Promotion replaces loyalty.<br />Expected total: 90 PLN.
-				</div>
-			</div>
-			<div class="label" style="margin-top: 22px" data-at="6.4">v2.json · T2 ready · T3 deferred · v1 kept</div>
-		</section>
+<!-- 6 · outcomes as fields -->
+<section class="scene" data-start="52" data-length="10">
+	<div class="cam">
+		<h1><span class="blue">Which</span> outcome<br />was it?</h1>
+		<div style="height: 52px"></div>
+		<div class="card stripe row" style="border-left-color: var(--green); height: 112px; margin-bottom: 14px" data-in="0.5">
+			<div class="mono ok" style="font-size: 34px; width: 30px">✓</div>
+			<div><div class="mono" style="font-size: 21px">passed</div><div class="ok" style="font-size: 19px; margin-top: 4px">Matches the expected result.</div></div>
+		</div>
+		<div class="card stripe row" style="border-left-color: #f0735a; height: 112px; margin-bottom: 14px" data-in="1.0">
+			<div class="mono bad" style="font-size: 34px; width: 30px">×</div>
+			<div><div class="mono" style="font-size: 21px">failed</div><div class="bad" style="font-size: 19px; margin-top: 4px">A defect finding — read the evidence.</div></div>
+		</div>
+		<div class="card stripe row" style="border-left-color: var(--amber); height: 112px; margin-bottom: 14px" data-in="1.5">
+			<div class="mono warn" style="font-size: 34px; width: 30px">!</div>
+			<div><div class="mono" style="font-size: 21px">error</div><div class="warn" style="font-size: 19px; margin-top: 4px">A tool or access failure, not a defect.</div></div>
+		</div>
+		<div class="card stripe row" style="border-left-color: #5fd3c8; height: 112px; margin-bottom: 14px" data-in="2.0">
+			<div class="mono teal" style="font-size: 34px; width: 30px">‖</div>
+			<div><div class="mono" style="font-size: 21px">blocked</div><div class="teal" style="font-size: 19px; margin-top: 4px">A prerequisite or an open gap stopped it.</div></div>
+		</div>
+		<div class="card stripe row" style="border-left-color: var(--faint); height: 112px" data-in="2.5">
+			<div class="mono faint" style="font-size: 34px; width: 30px">–</div>
+			<div><div class="mono" style="font-size: 21px">not_run</div><div class="dim" style="font-size: 19px; margin-top: 4px">Not selected, or deferred by the caller.</div></div>
+		</div>
+		<div style="margin-top: 50px" data-in="6.0">
+			<div class="sub" style="font-size: 30px">The outcome is <span class="blue">a field</span>, not a sentence.</div>
+			<div class="say dim" style="margin-top: 12px; font-size: 20px">Which is what lets an agent act on it without guessing.</div>
+		</div>
+	</div>
+</section>
 
-		<!-- 6: evidence -->
-		<section class="scene" data-seconds="10">
-			<h1>Every verdict needs<br /><em>evidence</em>.</h1>
-			<div class="gap"></div>
-			<div class="grid2" style="gap: 14px">
-				<div class="card" style="padding: 22px" data-at="0.6">
-					<div class="label">expected</div>
-					<div class="big" style="margin-top: 10px">90</div>
-					<div class="mono dim">PLN</div>
-				</div>
-				<div class="card" style="padding: 22px; border-color: #5a2a33" data-at="1.6">
-					<div class="label">observed</div>
-					<div class="big bad" style="margin-top: 10px">85</div>
-					<div class="mono dim">PLN</div>
-				</div>
-			</div>
-			<pre class="card code" style="margin-top: 14px" data-at="3"><span class="bad">F1 · defect</span>  T2 · R2
-Promotion stacks with loyalty
+<!-- 7 · a tool built for an agent: the pulse walks down, the loop draws back -->
+<section class="scene" data-start="62" data-length="13">
+	<div class="cam">
+		<h1>A tool built for an <span class="blue">agent</span>.</h1>
+		<div class="mono blue" style="font-size: 16px; margin: 44px 0 14px" data-in="9.6">decides, revises, runs again</div>
+		<div style="position: relative">
+			<svg width="600" height="900" style="left: -26px; top: 0" data-draw="8.4">
+				<path d="M 16 840 L 16 30 L 30 30" fill="none" stroke="#3b5fc4" stroke-width="2" pathLength="1" />
+			</svg>
+			<div class="card say" style="text-align: center; padding: 22px 0" data-in="0.4" data-hl="1.2-2.0">Agent gets a requirement</div>
+			<div class="faint mono" style="text-align: center; font-size: 18px; margin: 6px 0" data-in="0.8">↓</div>
+			<div class="card say" style="text-align: center; padding: 22px 0" data-in="0.9" data-hl="2.0-2.8">Writes a plan request (JSON)</div>
+			<div class="faint mono" style="text-align: center; font-size: 18px; margin: 6px 0" data-in="1.3">↓</div>
+			<div class="card mono" style="text-align: center; padding: 24px 0; font-size: 21px" data-in="1.4" data-hl="2.8-3.6">/checkmate:plan</div>
+			<div class="faint mono" style="text-align: center; font-size: 18px; margin: 6px 0" data-in="1.8">↓</div>
+			<div class="card say" style="text-align: center; padding: 22px 0" data-in="1.9" data-hl="3.6-99">open gaps, as questions</div>
+			<div class="label" style="text-align: center; margin: 40px 0 18px" data-in="5.0">decision</div>
+			<div class="card stripe row" style="border-left-color: #f0735a; height: 66px; margin-bottom: 10px" data-in="5.5"><span class="mono bad" style="font-size: 20px; width: 92px">clarify</span><span class="say" style="font-size: 20px">state the expected result</span></div>
+			<div class="card stripe row" style="border-left-color: var(--amber); height: 66px; margin-bottom: 10px" data-in="6.1"><span class="mono warn" style="font-size: 20px; width: 92px">accept</span><span class="say" style="font-size: 20px">record an assumption</span></div>
+			<div class="card stripe row" style="border-left-color: #5fd3c8; height: 66px" data-in="6.7"><span class="mono teal" style="font-size: 20px; width: 92px">defer</span><span class="say" style="font-size: 20px">keep the coverage open</span></div>
+		</div>
+	</div>
+</section>
 
-<span class="dim">evidence/T2.txt</span>
-<span class="dim">sha256 a7605959…</span></pre>
-			<div class="text" style="margin-top: 36px" data-at="4.8">
-				A tool failure is an error, not a product defect. A verdict without evidence does not save.
+<!-- 8 · a layer, not a migration target -->
+<section class="scene" data-start="75" data-length="10">
+	<div class="cam">
+		<h1><span class="blue">A layer</span>, not a migration<br />target.</h1>
+		<div class="label" style="text-align: center; margin: 120px 0 22px" data-in="3.0">adaptive · judgement-based</div>
+		<div style="display: flex; flex-direction: column; align-items: center; gap: 12px">
+			<div class="card say" style="width: 232px; text-align: center; padding: 16px 0; font-size: 20px" data-in="1.0">Agents + Tools</div>
+			<div class="card" style="width: 344px; text-align: center; padding: 12px 0; background: var(--blue-bg); border-color: #2c4a8c" data-in="0.4">
+				<div class="blue" style="font-size: 28px; font-weight: 500">Checkmate</div>
+				<div class="mono blue" style="font-size: 15px; margin-top: 4px; opacity: 0.8">QA workflows for Claude</div>
 			</div>
-		</section>
+			<div class="card say" style="width: 424px; text-align: center; padding: 16px 0; font-size: 20px" data-in="1.5">Scripted E2E tests</div>
+			<div class="card say" style="width: 504px; text-align: center; padding: 16px 0; font-size: 20px" data-in="2.0">API &amp; integration tests</div>
+			<div class="card say" style="width: 576px; text-align: center; padding: 16px 0; font-size: 20px" data-in="2.5">Unit tests</div>
+		</div>
+		<div class="label" style="text-align: center; margin-top: 22px" data-in="3.0">deterministic · fast · certain</div>
+		<div class="say" style="margin-top: 60px; font-size: 24px; line-height: 38px" data-in="4.5">It earns its place where the intent is stable but the implementation keeps moving.</div>
+	</div>
+</section>
 
-		<!-- 7: result -->
-		<section class="scene" data-seconds="9">
-			<h1>One <em>JSON result</em>.<br />Three separate answers.</h1>
-			<div class="gap"></div>
-			<pre class="card code" data-at="0.6">
-{
-  "completion": "completed",
-  "tests": [
-    { "testId": "T1", "outcome": "passed" },
-    { "testId": "T2", "outcome": "failed" },
-    { "testId": "T3", "outcome": "not_run" }
-  ],
-  "coverage": { "status": "partial" }
-}</pre>
-			<div class="stack" style="margin-top: 28px">
-				<div class="card row status" data-at="2.2">
-					<span class="mono">completion</span><span class="dim">did the run finish?</span>
-				</div>
-				<div class="card row status" data-at="3">
-					<span class="mono">outcomes</span><span class="dim">what passed or failed?</span>
-				</div>
-				<div class="card row status" data-at="3.8">
-					<span class="mono">coverage</span><span class="dim">what is still untested?</span>
-				</div>
-			</div>
-		</section>
+<!-- 9 · every run gets its own directory -->
+<section class="scene" data-start="85" data-length="9">
+	<div class="cam">
+		<h1>Every run gets its<br /><span class="blue">own directory</span>.</h1>
+		<div class="card" style="margin-top: 44px; padding: 26px 26px" data-in="0.3">
+			<div class="line" data-in="0.4">runs/&lt;runId&gt;/</div>
+			<div class="line" data-in="0.8">├─ invocation.json</div>
+			<div class="line faint" style="font-size: 15px" data-in="0.8">│    request, start time, browser session</div>
+			<div class="line" data-in="1.2">├─ evidence/…</div>
+			<div class="line faint" style="font-size: 15px" data-in="1.2">│    what the agent saw: text, HTTP, screenshots</div>
+			<div class="line" data-in="1.6">├─ report.md · report.html</div>
+			<div class="line faint" style="font-size: 15px" data-in="1.6">│    views rendered from the result</div>
+			<div class="line blue" data-in="2.0">└─ result.json</div>
+			<div class="line faint" style="font-size: 15px" data-in="2.0">     the record, with every evidence digest</div>
+		</div>
+		<div class="label" style="margin: 40px 0 18px" data-in="3.2">written once</div>
+		<div class="mono" style="font-size: 18px">
+			<div class="card" style="width: 290px; margin-left: 72px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="3.6">write temp</div>
+			<div class="card" style="width: 290px; margin: 10px 0 0 108px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="4.0">sync</div>
+			<div class="card" style="width: 290px; margin: 10px 0 0 144px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="4.4">link</div>
+			<div class="card" style="width: 290px; margin: 10px 0 0 180px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="4.8">sync directory</div>
+			<div class="card blue" style="width: 290px; margin: 10px 0 0 216px; padding: 11px 0; text-align: center; border-radius: 20px; background: var(--blue-bg); border-color: #2c4a8c" data-in="5.2">publish</div>
+		</div>
+		<div class="say" style="margin-top: 44px; font-size: 21px" data-in="6.4">Credentials never enter the record. A retest is a new run — earlier results stay byte-exact.</div>
+	</div>
+</section>
 
-		<!-- 8: run directory -->
-		<section class="scene" data-seconds="9">
-			<h1>Every run gets its<br /><em>own directory</em>.</h1>
-			<div class="gap"></div>
-			<pre class="card code" data-at="0.6">runs/run-1/
-├─ invocation.json
-<span class="dim">│    request and start time</span>
-├─ evidence/
-<span class="dim">│    T1.txt, T2.txt</span>
-├─ <span style="color: var(--blue)">result.json</span>
-<span class="dim">│    the record, with evidence digests</span>
-└─ report.md · report.html
-<span class="dim">     views generated from the JSON</span></pre>
-			<div class="label" style="margin: 36px 0 18px; text-align: center" data-at="2.4">written once</div>
-			<div class="stack mono" style="text-align: center; font-size: 17px">
-				<div class="card" style="padding: 10px; margin: 0 120px" data-at="2.8">write a temporary file</div>
-				<div class="card" style="padding: 10px; margin: 14px 110px 0" data-at="3.2">sync</div>
-				<div class="card" style="padding: 10px; margin: 14px 100px 0" data-at="3.6">link to the final name</div>
-				<div class="card accent" style="padding: 10px; margin: 14px 90px 0; color: var(--blue)" data-at="4">
-					never overwrite
-				</div>
-			</div>
-		</section>
+<!-- 10 · closing -->
+<section class="scene" data-start="94" data-length="9" data-fade-out="0.8">
+	<div style="position: absolute; left: 0; right: 0; top: 270px; text-align: center">
+		<div id="mark" style="display: inline-grid; grid-template-columns: repeat(4, 20px); grid-auto-rows: 20px; gap: 6px"></div>
+		<div style="font-size: 68px; font-weight: 500; letter-spacing: -1px; margin-top: 22px">Checkmate</div>
+		<div class="mono" style="font-size: 20px; line-height: 42px; margin-top: 40px">
+			<div data-in="0.6">requirements</div>
+			<div class="faint" data-in="1.0">↓</div>
+			<div data-in="1.1">plan with open gaps</div>
+			<div class="faint" data-in="1.5">↓</div>
+			<div data-in="1.6">caller decisions</div>
+			<div class="faint" data-in="2.0">↓</div>
+			<div data-in="2.1">checked evidence</div>
+			<div class="faint" data-in="2.5">↓</div>
+			<div class="blue" data-in="2.6">one result</div>
+		</div>
+		<div class="card mono" style="display: inline-block; margin-top: 64px; padding: 16px 26px; font-size: 18px; line-height: 30px; text-align: left" data-in="3.8">/plugin marketplace add dawiddiwad/checkmate<br />/plugin install checkmate@checkmate</div>
+	</div>
+</section>
 
-		<!-- 9: retest -->
-		<section class="scene" data-seconds="9">
-			<h1>Fix the app.<br /><em>Retest</em> in a new run.</h1>
-			<div class="gap"></div>
-			<div class="card row status mono" data-at="0.6">
-				<span>run-1 · build 1<br /><span class="dim">T2 observed 85 PLN</span></span
-				><span class="bad">failed</span>
-			</div>
-			<div class="label" style="margin: 10px 0 0" data-at="1.2">kept unchanged</div>
-			<div class="arrow" style="margin: 28px 0" data-at="2.2">↓ caller fixes the app</div>
-			<div class="card row status mono" data-at="3.2">
-				<span>run-2 · build 2<br /><span class="dim">T2 observed 90 PLN</span></span
-				><span class="ok">passed</span>
-			</div>
-			<div class="text" style="margin-top: 44px" data-at="4.6">
-				Refund checks stay deferred. Coverage stays partial until a decision covers them.
-			</div>
-		</section>
+</main>
+<script>
+	// Build the checkerboard and the small mark.
+	const board = document.getElementById('board')
+	for (let i = 0; i < 36; i++) {
+		const cell = document.createElement('div')
+		cell.dataset.cell = i
+		board.append(cell)
+	}
+	const mark = document.getElementById('mark')
+	for (let i = 0; i < 4; i++) {
+		const cell = document.createElement('div')
+		cell.style.background = i === 2 ? 'var(--blue)' : '#2a303b'
+		mark.append(cell)
+	}
 
-		<!-- 10: owners -->
-		<section class="scene" data-seconds="8">
-			<h1>Who <em>owns</em> what.</h1>
-			<div class="gap"></div>
-			<div class="stack">
-				<div class="card row" data-at="0.6">
-					<b>Claude Code</b>
-					<div class="mono">model, tools, permissions</div>
-				</div>
-				<div class="card accent row" data-at="1.4">
-					<b style="color: var(--blue)">Checkmate</b>
-					<div class="mono">contracts, checks, evidence</div>
-				</div>
-				<div class="card row" data-at="2.2">
-					<b>Caller</b>
-					<div class="mono">decisions, fixes, release</div>
-				</div>
-			</div>
-			<div class="text" style="margin-top: 44px" data-at="3.4">
-				A process exit code is not a release decision. The caller reads the result and decides.
-			</div>
-		</section>
+	const clamp = (value) => Math.min(1, Math.max(0, value))
+	const ramp = (time, start, length) => clamp((time - start) / length)
+	const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+	const mix = (a, b, k) => `rgb(${a.map((value, i) => Math.round(value + (b[i] - value) * k)).join(',')})`
+	const color = { card: [18, 23, 31], line: [31, 37, 48], chip: [22, 31, 46], blueLine: [59, 98, 196], text: [232, 235, 240], blue: [91, 138, 253], amberBand: [46, 38, 20], amberLine: [231, 180, 82] }
 
-		<!-- 11: closing -->
-		<section class="scene" data-seconds="9">
-			<div style="text-align: center; margin-top: 120px">
-				<div
-					class="logo"
-					id="mark"
-					style="display: inline-grid; grid-template-columns: repeat(4, 16px); gap: 8px"
-				></div>
-				<div style="font-size: 60px; font-weight: 500; letter-spacing: -1px; margin-top: 18px">Checkmate</div>
-			</div>
-			<div class="mono" style="text-align: center; font-size: 20px; line-height: 2.1; margin-top: 48px">
-				<div data-at="0.6">requirements</div>
-				<div class="dim" data-at="1">↓</div>
-				<div data-at="1.2">plan with open gaps</div>
-				<div class="dim" data-at="1.6">↓</div>
-				<div data-at="1.8">caller decisions</div>
-				<div class="dim" data-at="2.2">↓</div>
-				<div data-at="2.4">checked evidence</div>
-				<div class="dim" data-at="2.8">↓</div>
-				<div style="color: var(--blue)" data-at="3">result</div>
-			</div>
-			<pre class="card code" style="margin: 56px 60px 0; text-align: center; font-size: 16px" data-at="4">
-/plugin marketplace add dawiddiwad/checkmate
-/plugin install checkmate@checkmate</pre>
-		</section>
-	</main>
-	<script>
-		// A 6x6 checkerboard with one blue square, as in the earlier animation.
-		const logo = document.getElementById('logo')
-		logo.style.gridTemplateColumns = 'repeat(6, 48px)'
-		logo.style.gridAutoRows = '48px'
-		for (let i = 0; i < 36; i++) {
-			const cell = document.createElement('span')
-			cell.style.background = i === 15 ? 'var(--blue)' : (Math.floor(i / 6) + i) % 2 ? '#1b2029' : '#14181f'
-			logo.append(cell)
-		}
-		const mark = document.getElementById('mark')
-		mark.style.gridAutoRows = '16px'
-		for (let i = 0; i < 4; i++) {
-			const cell = document.createElement('span')
-			cell.style.background = i === 2 ? 'var(--blue)' : '#2a303b'
-			mark.append(cell)
-		}
+	const scenes = [...document.querySelectorAll('.scene')]
+	// Measure natural heights once, with every element expanded. Call this after the fonts load.
+	window.measure = () => {
+		for (const element of document.querySelectorAll('[data-grow], [data-shrink]')) element.dataset.height = element.offsetHeight
+	}
 
-		const scenes = [...document.querySelectorAll('.scene')]
-		const fade = 0.4
-		window.DURATION = scenes.reduce((total, scene) => total + Number(scene.dataset.seconds), 0)
-		// Show the frame at a time in seconds. The renderer calls this for each frame.
-		window.renderFrame = (time) => {
-			let start = 0
-			for (const scene of scenes) {
-				const length = Number(scene.dataset.seconds)
-				const local = time - start
-				const inside = local >= 0 && local < length
-				scene.style.opacity = inside ? Math.min(1, local / fade, (length - local) / fade) : 0
-				for (const item of scene.querySelectorAll('[data-at]')) {
-					const shown = Math.min(1, Math.max(0, (local - Number(item.dataset.at)) / fade))
-					item.style.opacity = shown
-					item.style.transform = `translateY(${(1 - shown) * 8}px)`
-				}
-				start += length
+	// The checkerboard: cells fade in along the diagonal. The centre cell glows, then turns blue.
+	function renderBoard(time) {
+		for (const cell of board.children) {
+			const i = Number(cell.dataset.cell), row = Math.floor(i / 6), column = i % 6
+			const base = (row + column) % 2 ? [19, 22, 26] : [26, 29, 34]
+			const shown = ease(ramp(time, 0.2 + (row + column) * 0.055, 0.3))
+			let rgb = base.map((value, k) => 15 + (value - [15, 18, 23][k]) * shown + ([15, 18, 23][k] - 15))
+			if (i === 15) {
+				const glow = ramp(time, 0.9, 0.4) * (1 - ramp(time, 2.2, 0.3))
+				rgb = rgb.map((value, k) => value + ([22, 31, 46][k] - value) * glow * 0.8)
+				const blue = ease(ramp(time, 2.2, 0.35))
+				rgb = rgb.map((value, k) => value + ([91, 138, 253][k] - value) * blue)
 			}
+			cell.style.background = `rgb(${rgb.map(Math.round).join(',')})`
 		}
-		window.renderFrame(0)
-	</script>
+	}
+
+	function renderScene(scene, time) {
+		for (const element of scene.querySelectorAll('[data-in]')) element.style.opacity = ramp(time, Number(element.dataset.in), 0.35)
+		// The inner card of a framed card shows before its frame.
+		for (const frame of scene.querySelectorAll('[data-frame]')) {
+			const k = ramp(time, Number(frame.dataset.in), 0.35)
+			frame.style.opacity = 1
+			frame.style.background = mix([15, 18, 23], color.card, k)
+			frame.style.borderColor = mix([15, 18, 23], [36, 52, 92], k)
+		}
+		for (const element of scene.querySelectorAll('[data-grow]')) {
+			const k = ease(ramp(time, Number(element.dataset.grow), 0.8))
+			element.style.height = `${Number(element.dataset.height) * k}px`
+		}
+		for (const element of scene.querySelectorAll('[data-shrink]')) {
+			const k = ease(ramp(time, Number(element.dataset.shrink), 0.7))
+			const to = Number(element.dataset.to ?? 0)
+			const from = Number(element.dataset.height)
+			element.style.height = `${from + (to - from) * k}px`
+			if (!element.dataset.to) element.style.opacity = 1 - ramp(time, Number(element.dataset.shrink), 0.3)
+		}
+		for (const element of scene.querySelectorAll('[data-dim]')) {
+			const k = ramp(time, Number(element.dataset.dim), 0.5)
+			element.style.opacity = 1 - 0.55 * k
+		}
+		for (const element of scene.querySelectorAll('[data-hl]')) {
+			const [from, to] = element.dataset.hl.split('-').map(Number)
+			const k = ramp(time, from, 0.25) * (1 - ramp(time, to, 0.25))
+			element.style.background = mix(color.card, color.chip, k)
+			element.style.borderColor = mix(color.line, color.blueLine, k)
+			element.style.color = mix(color.text, color.blue, k)
+		}
+		for (const element of scene.querySelectorAll('[data-band]')) {
+			const k = ramp(time, Number(element.dataset.band), 0.35)
+			const amber = element.dataset.bandColor === 'amber'
+			element.style.background = mix(color.card, amber ? color.amberBand : color.chip, k)
+			element.style.boxShadow = `inset 3px 0 0 ${mix(color.card, amber ? color.amberLine : color.blue, k)}`
+			element.style.color = mix([154, 163, 178], amber ? [240, 205, 140] : [170, 195, 255], k)
+		}
+		for (const element of scene.querySelectorAll('[data-strike]')) {
+			const k = ease(ramp(time, Number(element.dataset.strike), 0.4))
+			element.style.backgroundImage = 'linear-gradient(currentColor, currentColor)'
+			element.style.backgroundRepeat = 'no-repeat'
+			element.style.backgroundPosition = '0 55%'
+			element.style.backgroundSize = `${k * 100}% 2px`
+			element.style.color = k > 0 ? '#c25a45' : ''
+		}
+		for (const element of scene.querySelectorAll('[data-draw]')) {
+			const k = ease(ramp(time, Number(element.dataset.draw), 1.2))
+			const path = element.querySelector('path')
+			path.style.strokeDasharray = 1
+			path.style.strokeDashoffset = 1 - k
+		}
+		// The camera eases between positions: "time:y" pairs.
+		for (const camera of scene.querySelectorAll('[data-cam]')) {
+			let y = 0
+			for (const step of camera.dataset.cam.split(',')) {
+				const [at, to] = step.split(':').map(Number)
+				y += (to - y) * ease(ramp(time, at, 1.0))
+			}
+			camera.style.transform = `translateY(${y}px)`
+		}
+	}
+
+	window.DURATION = 103
+	// Show the frame at a time in seconds. The renderer calls this for each frame.
+	window.renderFrame = (time) => {
+		renderBoard(time)
+		for (const scene of scenes) {
+			const start = Number(scene.dataset.start)
+			const length = Number(scene.dataset.length)
+			const local = time - start
+			const fadeIn = start === 0 ? 1 : ramp(local, -0.1, 0.2)
+			const fadeOut = scene.dataset.fadeOut
+				? 1 - ramp(local, length - Number(scene.dataset.fadeOut), Number(scene.dataset.fadeOut))
+				: 1 - ramp(local, length - 0.1, 0.2)
+			scene.style.opacity = Math.min(fadeIn, fadeOut)
+			if (scene.style.opacity > 0) renderScene(scene, local)
+		}
+	}
+</script>
 </html>

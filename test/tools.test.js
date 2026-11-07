@@ -38,13 +38,13 @@ test('real browser and API find the defect; caller fix passes a narrow retest', 
 	await browser(['open', app.baseUrl, `--config=${browserConfig}`, '--idle-timeout=30000'])
 	await browser(['click', 'button'])
 	const confirmation = await browser(['eval', '() => document.querySelector("#confirmation").textContent'])
-	assert.match(confirmation, /Order confirmed: 100 PLN/)
+	assert.match(confirmation, /Order confirmed: 400 PLN/)
 	const response = await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`, {
 		signal: AbortSignal.timeout(5000),
 	})
 	const quote = await response.json()
 	assert.equal(response.status, 200)
-	assert.equal(quote.totalPLN, 85)
+	assert.equal(quote.totalPLN, 220)
 	const request = executeRequest(p, r)
 	const candidate = await observation(workspace, request, r.plan, quote.totalPLN)
 	const evidencePath = join(workspace, request.outputDirectory, 'evidence/T1.txt')
@@ -55,7 +55,7 @@ test('real browser and API find the defect; caller fix passes a narrow retest', 
 	app.fix()
 	const fixedResponse = await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)
 	const fixed = await fixedResponse.json()
-	assert.equal(fixed.totalPLN, 90)
+	assert.equal(fixed.totalPLN, 240)
 	const retest = executeRequest(p, r, {
 		requestId: 'retest',
 		runId: 'run-2',

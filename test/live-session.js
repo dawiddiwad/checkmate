@@ -15,6 +15,8 @@ assert(
 )
 process.env.PATH = `${join(root, 'node_modules/.bin')}:${process.env.PATH}`
 process.env.CLAUDE_CONFIG_DIR ??= '/tmp/checkmate-live-claude'
+// The host selects the model. Development runs use Sonnet to limit usage.
+process.env.ANTHROPIC_MODEL ??= 'sonnet'
 const workspace = await sandbox()
 const app = await fixture()
 console.log(`Same-session artifacts: ${workspace}`)

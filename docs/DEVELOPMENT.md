@@ -15,6 +15,8 @@ The browser test requires a Chromium executable. Set `CHECKMATE_BROWSER_EXECUTAB
 
 `test:live` requires an authenticated Claude Code CLI. Set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. The test fails when authentication is unavailable. It does not silently skip.
 
+`test:live` sets the host model with `ANTHROPIC_MODEL`. The default is `sonnet` to limit usage. To use a different model, set `ANTHROPIC_MODEL` before you run the test. Checkmate does not select a model. The launcher passes the environment to Claude Code without changes.
+
 The live test uses an isolated local fixture and permits Read, Write, Edit, and Bash in that temporary workspace. It checks setup, planning gaps, default blocking, explicit partial execution, revision, defect detection, retest, and a skill invoked within one session. It records stage durations and saves artifacts in the printed temporary directory. It does not change product code or send fixture data to a production service.
 
 The normal CI job runs on Ubuntu with Node.js 24. The live job runs only when selected in a manual workflow dispatch. Configure a repository secret for Claude authentication before that run. Do not expose secrets to untrusted pull requests.

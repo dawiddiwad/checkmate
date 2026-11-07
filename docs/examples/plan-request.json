@@ -1,0 +1,36 @@
+{
+  "contractVersion": "toolkit-1",
+  "requestId": "req-plan-1",
+  "operation": "plan",
+  "caller": "factory-agent",
+  "objective": "Verify checkout and identify missing acceptance decisions.",
+  "target": {
+    "path": "profile.json",
+    "sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "text": "A standard order for a 100 PLN item has a total of 100 PLN.",
+      "source": "caller://checkout-brief#standard"
+    },
+    {
+      "id": "R2",
+      "text": "A 10 percent promotion is applied during checkout; stacking behaviour is unspecified.",
+      "source": "caller://checkout-brief#promotion"
+    },
+    {
+      "id": "R3",
+      "text": "Refund behaviour must be checked; eligibility rules are unspecified.",
+      "source": "caller://checkout-brief#refund"
+    }
+  ],
+  "sourceContext": [
+    {
+      "uri": "caller://checkout-brief",
+      "content": "Fixture checkout sells one item at 100 PLN. Promotion is 10 percent. Existing loyalty reduction can be 5 PLN. Confirm stacking and refund eligibility before asserting them."
+    }
+  ],
+  "outputPlanId": "checkout",
+  "planDirectory": "plans/checkout"
+}

@@ -17,3 +17,6 @@ specs
 .playwright-cli
 .playwright-mcp
 .sf
+
+# Preserve exact bytes for the pinned documentation examples.
+docs/examples/

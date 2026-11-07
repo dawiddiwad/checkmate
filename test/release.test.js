@@ -1,0 +1,39 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { releaseVersion, prepareVersion } from '../scripts/release-version.ts'
+import { sandbox, root } from './support.js'
+
+test('first plugin release keeps 0.7.0; later merges get one patch', () => {
+	assert.equal(releaseVersion('0.7.0', ['v0.6.6']), '0.7.0')
+	assert.equal(releaseVersion('0.7.0', ['v0.7.0']), '0.7.1')
+	assert.equal(releaseVersion('0.7.9', ['v0.7.9']), '0.7.10')
+	assert.throws(() => releaseVersion('0.7.0', ['v0.7.1']), /behind/)
+	assert.throws(() => releaseVersion('invalid', []), /three-part/)
+})
+
+test('release preparation updates all version files without touching npm', async (t) => {
+	const workspace = await sandbox(t)
+	execFileSync('git', ['init', '-q', workspace])
+	await mkdir(join(workspace, '.claude-plugin'))
+	const paths = ['package.json', 'package-lock.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']
+	for (const path of paths) await writeFile(join(workspace, path), await readFile(join(root, path)))
+	execFileSync('git', ['add', '.'], { cwd: workspace })
+	execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'base'], {
+		cwd: workspace,
+	})
+	const current = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8')).version
+	const expected = releaseVersion(current, [`v${current}`])
+	execFileSync('git', ['tag', `v${current}`], { cwd: workspace })
+	assert.equal(await prepareVersion(workspace), expected)
+	assert.equal(await prepareVersion(workspace), expected)
+	for (const path of paths) {
+		const data = JSON.parse(await readFile(join(workspace, path), 'utf8'))
+		assert.equal(path.includes('marketplace') ? data.plugins[0].version : data.version, expected)
+	}
+	const pkg = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8'))
+	assert.equal(pkg.private, true)
+	assert.equal(pkg.publishConfig, undefined)
+})

@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Checkmate result</title><style>body{font:16px system-ui;max-width:80rem;margin:2rem auto;padding:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}td,th{padding:.5rem;text-align:left}table{border-collapse:collapse}tr{border-bottom:1px solid #aaa}</style><h1>Test result</h1><p>Completion: completed. Coverage: partial.</p><table><thead><tr><th>Test</th><th>Outcome</th><th>Observation</th></tr></thead><tbody><tr><td>T1</td><td>passed</td><td>Order confirmed: 100 PLN</td></tr><tr><td>T2</td><td>failed</td><td>HTTP 200; totalPLN = 85</td></tr><tr><td>T3</td><td>not_run</td><td>Test was not selected or was deferred.</td></tr></tbody></table><h2>Complete record</h2><pre>{
+  &quot;contractVersion&quot;: &quot;toolkit-1&quot;,
+  &quot;requestId&quot;: &quot;execute-1&quot;,
+  &quot;runId&quot;: &quot;run-1&quot;,
+  &quot;completion&quot;: &quot;completed&quot;,
+  &quot;plan&quot;: {
+    &quot;path&quot;: &quot;plans/checkout/v2.json&quot;,
+    &quot;sha256&quot;: &quot;ef15b530201bdc683341ecb0a704903d6e7eef2ab550f7df8fe3f98e7ad2c194&quot;
+  },
+  &quot;target&quot;: {
+    &quot;path&quot;: &quot;profile.json&quot;,
+    &quot;sha256&quot;: &quot;d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70&quot;
+  },
+  &quot;applicationBuild&quot;: &quot;fixture-build-1&quot;,
+  &quot;selectedTestIds&quot;: [
+    &quot;T1&quot;,
+    &quot;T2&quot;
+  ],
+  &quot;startedAt&quot;: &quot;2026-11-07T14:24:25.788Z&quot;,
+  &quot;tests&quot;: [
+    {
+      &quot;testId&quot;: &quot;T1&quot;,
+      &quot;outcome&quot;: &quot;passed&quot;,
+      &quot;expected&quot;: &quot;The order total is 100 PLN.&quot;,
+      &quot;observed&quot;: &quot;Order confirmed: 100 PLN&quot;,
+      &quot;assertionKind&quot;: &quot;agent_observation&quot;,
+      &quot;evidenceIds&quot;: [
+        &quot;E-T1&quot;
+      ],
+      &quot;reason&quot;: null
+    },
+    {
+      &quot;testId&quot;: &quot;T2&quot;,
+      &quot;outcome&quot;: &quot;failed&quot;,
+      &quot;expected&quot;: &quot;HTTP 200 and totalPLN equals 90, with the loyalty discount replaced.&quot;,
+      &quot;observed&quot;: &quot;HTTP 200; totalPLN = 85&quot;,
+      &quot;assertionKind&quot;: &quot;deterministic&quot;,
+      &quot;evidenceIds&quot;: [
+        &quot;E-T2&quot;
+      ],
+      &quot;reason&quot;: &quot;Observed total differs from expected total.&quot;
+    },
+    {
+      &quot;testId&quot;: &quot;T3&quot;,
+      &quot;outcome&quot;: &quot;not_run&quot;,
+      &quot;expected&quot;: null,
+      &quot;observed&quot;: null,
+      &quot;assertionKind&quot;: null,
+      &quot;evidenceIds&quot;: [],
+      &quot;reason&quot;: &quot;Test was not selected or was deferred.&quot;
+    }
+  ],
+  &quot;findings&quot;: [
+    {
+      &quot;id&quot;: &quot;F1&quot;,
+      &quot;type&quot;: &quot;defect&quot;,
+      &quot;severity&quot;: &quot;medium&quot;,
+      &quot;testIds&quot;: [
+        &quot;T2&quot;
+      ],
+      &quot;requirementIds&quot;: [
+        &quot;R2&quot;
+      ],
+      &quot;title&quot;: &quot;Promotion stacks with loyalty&quot;,
+      &quot;expected&quot;: &quot;90 PLN&quot;,
+      &quot;observed&quot;: &quot;85 PLN&quot;,
+      &quot;reproduction&quot;: [
+        &quot;Create a 100 PLN cart with 5 PLN loyalty.&quot;,
+        &quot;Apply a 10 percent promotion.&quot;,
+        &quot;Read the quote total.&quot;
+      ],
+      &quot;evidenceIds&quot;: [
+        &quot;E-T2&quot;
+      ]
+    }
+  ],
+  &quot;newGaps&quot;: [],
+  &quot;evidence&quot;: [
+    {
+      &quot;id&quot;: &quot;E-T1&quot;,
+      &quot;kind&quot;: &quot;observation&quot;,
+      &quot;path&quot;: &quot;evidence/T1.txt&quot;,
+      &quot;sha256&quot;: &quot;fa3a45444d201a31e6e94f5e2f15120fd0518c893b533db779d6f17f4341ee60&quot;
+    },
+    {
+      &quot;id&quot;: &quot;E-T2&quot;,
+      &quot;kind&quot;: &quot;observation&quot;,
+      &quot;path&quot;: &quot;evidence/T2.txt&quot;,
+      &quot;sha256&quot;: &quot;a7605959105b8b69cfc226cfb2192dd2ec682fbba7ec47597796a09acd2315b3&quot;
+    }
+  ],
+  &quot;cleanup&quot;: {
+    &quot;status&quot;: &quot;not_applicable&quot;,
+    &quot;reason&quot;: &quot;Illustrative document. No application was used to create this example.&quot;
+  },
+  &quot;finishedAt&quot;: &quot;2026-11-07T14:24:25.850Z&quot;,
+  &quot;coverage&quot;: {
+    &quot;status&quot;: &quot;partial&quot;,
+    &quot;requirements&quot;: [
+      {
+        &quot;requirementId&quot;: &quot;R1&quot;,
+        &quot;status&quot;: &quot;tested&quot;,
+        &quot;testIds&quot;: [
+          &quot;T1&quot;
+        ],
+        &quot;reason&quot;: null
+      },
+      {
+        &quot;requirementId&quot;: &quot;R2&quot;,
+        &quot;status&quot;: &quot;tested&quot;,
+        &quot;testIds&quot;: [
+          &quot;T2&quot;
+        ],
+        &quot;reason&quot;: null
+      },
+      {
+        &quot;requirementId&quot;: &quot;R3&quot;,
+        &quot;status&quot;: &quot;uncovered&quot;,
+        &quot;testIds&quot;: [
+          &quot;T3&quot;
+        ],
+        &quot;reason&quot;: &quot;At least one required check or decision is missing.&quot;
+      }
+    ]
+  }
+}</pre></html>

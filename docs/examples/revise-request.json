@@ -1,0 +1,31 @@
+{
+  "contractVersion": "toolkit-1",
+  "requestId": "revise-1",
+  "caller": "test-caller",
+  "operation": "revise",
+  "basePlan": {
+    "path": "plans/checkout/v1.json",
+    "sha256": "b03bbbf184594ed120e91b92efc45bd4382567e1d47a4fd03a907b266f9f27df"
+  },
+  "baseRevision": 1,
+  "decisions": [
+    {
+      "id": "D1",
+      "gapId": "G1",
+      "kind": "clarify",
+      "actor": "factory-agent",
+      "rationale": "Product acceptance decision supplied by dispatcher.",
+      "value": "Promotion replaces loyalty. Apply 10 percent to the undiscounted 100 PLN subtotal; expected total is 90 PLN.",
+      "source": "caller://acceptance-decisions/checkout#promotion"
+    },
+    {
+      "id": "D2",
+      "gapId": "G2",
+      "kind": "defer",
+      "actor": "factory-agent",
+      "rationale": "Refund policy is outside this delivery; preserve the uncovered requirement.",
+      "value": "Do not execute refund checks in this scope.",
+      "source": null
+    }
+  ]
+}

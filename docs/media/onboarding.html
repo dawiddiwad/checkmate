@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+	<meta charset="utf-8" />
+	<title>Checkmate onboarding</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			margin: 0;
+			background: #101318;
+			color: #edf0f5;
+			font-family: Arial, sans-serif;
+		}
+		main {
+			width: 700px;
+			height: 1120px;
+			padding: 48px;
+			position: relative;
+			overflow: hidden;
+			background: radial-gradient(ellipse at 100% 0, #1a2540 0, transparent 48%);
+		}
+		.brand {
+			font-size: 18px;
+			letter-spacing: 5px;
+			color: #8299ff;
+			font-weight: 700;
+		}
+		.eyebrow {
+			margin-top: 60px;
+			color: #94a4ba;
+			font-size: 15px;
+			letter-spacing: 3px;
+			text-transform: uppercase;
+		}
+		h1 {
+			font-size: 58px;
+			letter-spacing: -2px;
+			line-height: 1.07;
+			margin: 18px 0 32px;
+			font-weight: 750;
+		}
+		em {
+			font-style: normal;
+			color: #7695ff;
+		}
+		.lede {
+			font-size: 23px;
+			color: #bec7d6;
+			line-height: 1.5;
+			margin: 0 0 32px;
+		}
+		.panel {
+			background: #0b0e14;
+			border: 1px solid #303949;
+			border-radius: 14px;
+			padding: 27px;
+			margin: 18px 0;
+		}
+		.label {
+			font-size: 13px;
+			color: #91a4c0;
+			letter-spacing: 2px;
+			margin-bottom: 18px;
+		}
+		pre {
+			font: 19px/1.65 monospace;
+			margin: 0;
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+		}
+		.row {
+			display: flex;
+			align-items: center;
+			gap: 18px;
+			padding: 21px 0;
+			border-bottom: 1px solid #2a3341;
+			font-size: 22px;
+		}
+		.row:last-child {
+			border-bottom: 0;
+		}
+		.grow {
+			flex: 1;
+		}
+		.chip {
+			padding: 8px 12px;
+			font-size: 14px;
+			border-radius: 5px;
+			background: #152c26;
+			color: #64dfb2;
+		}
+		.amber {
+			background: #332a17;
+			color: #f4c35c;
+		}
+		.red {
+			background: #351d26;
+			color: #ff8a9e;
+		}
+		.blue {
+			background: #192640;
+			color: #9bb1ff;
+		}
+		.small {
+			font-size: 18px;
+			color: #aab6c9;
+			line-height: 1.55;
+		}
+		.value {
+			font-size: 68px;
+			font-weight: 700;
+			letter-spacing: -3px;
+		}
+		.amounts {
+			display: flex;
+			gap: 16px;
+		}
+		.amounts .panel {
+			flex: 1;
+		}
+		.caption {
+			font-size: 16px;
+			line-height: 1.4;
+			color: #aab6c9;
+		}
+		.arrow {
+			font-size: 32px;
+			color: #7695ff;
+			text-align: center;
+			margin: 12px;
+		}
+		.footer {
+			position: absolute;
+			bottom: 42px;
+			left: 48px;
+			right: 48px;
+			font: 12px monospace;
+			letter-spacing: 1px;
+			color: #8290a6;
+			display: flex;
+			justify-content: space-between;
+		}
+		.progress {
+			position: absolute;
+			bottom: 0;
+			left: 0;
+			height: 4px;
+			background: #7695ff;
+		}
+		.cards {
+			display: flex;
+			gap: 14px;
+		}
+		.cards .panel {
+			flex: 1;
+			padding: 24px 12px;
+			text-align: center;
+		}
+		.box {
+			font-size: 23px;
+			font-weight: 600;
+		}
+		.stage {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	</style>
+	<main>
+		<div class="brand">□ □ ■ □ &nbsp; CHECKMATE</div>
+		<section id="stage" class="stage"></section>
+		<div class="footer"><span>CHECKOUT EXAMPLE · ILLUSTRATED WORKFLOW</span><span id="count"></span></div>
+		<div class="progress" id="progress"></div>
+	</main>
+	<script>
+		const scenes = [
+			`<div class="eyebrow">Testing workflows for Claude Code</div><h1>From intent<br>to <em>evidence.</em></h1><p class="lede">Give the agent a test objective.<br>Keep decisions and results explicit.</p><div class="panel"><div class="label">INSTALL THE PLUGIN</div><pre>/plugin marketplace add\ndawiddiwad/checkmate\n\n/plugin install\ncheckmate@checkmate</pre></div><div class="row"><span class="grow">Setup → Plan → Revise</span><span class="chip blue">01–03</span></div><div class="row"><span class="grow">Execute → Report → Retest</span><span class="chip blue">04–06</span></div><p class="small">Claude Code supplies the model and tools.<br>Checkmate supplies the testing workflow.</p>`,
+			`<div class="eyebrow">01 / Setup</div><h1>Start with a<br><em>running app.</em></h1><p class="lede">Check access and available tools.<br>Save a target profile.</p><div class="panel"><div class="label">TARGET PROFILE</div><pre>{\n  "targetId": "checkout-local",\n  "capabilities": [\n    "browser", "http"\n  ],\n  "readyForLiveExecution": true\n}</pre></div><div class="row"><span class="grow">Playwright CLI</span><span class="chip">Browser ready</span></div><div class="row"><span class="grow">Node.js fetch</span><span class="chip">API ready</span></div><p class="small">The caller owns the environment.<br>Store credential references, not secret values.</p>`,
+			`<div class="eyebrow">02 / Plan</div><h1>Find gaps<br><em>before execution.</em></h1><p class="lede">Map each requirement to a test<br>or an explicit coverage gap.</p><div class="panel"><div class="label">PLAN · REVISION 1</div><div class="row"><span class="grow">Standard checkout</span><span class="chip">Ready</span></div><div class="row"><span class="grow">Discount stacking</span><span class="chip amber">Needs a rule</span></div><div class="row"><span class="grow">Refund eligibility</span><span class="chip amber">Needs a rule</span></div></div><div class="panel"><div class="label">DEFAULT EXECUTION GATE</div><div class="box" style="color:#f4c35c">Blocked until decisions arrive.</div></div><p class="small">Planning takes no test action.<br>Unknown expected behavior is a blocking gap.</p>`,
+			`<div class="eyebrow">03 / Revise</div><h1>Let the caller<br><em>decide.</em></h1><div class="panel"><div class="label">CLARIFY THE DISCOUNT RULE</div><p class="lede">Promotion replaces loyalty.<br>10% off 100 PLN means <em>90 PLN.</em></p><span class="chip">Decision recorded</span></div><div class="panel"><div class="label">DEFER REFUND COVERAGE</div><p class="lede">Refund rules are outside this run.</p><span class="chip amber">Coverage stays visible</span></div><div class="arrow">Plan v1 → Plan v2</div><p class="small">Save a new immutable revision.<br>Keep the caller's actor, source, and rationale.</p>`,
+			`<div class="eyebrow">04 / Execute</div><h1>Test with<br><em>real tools.</em></h1><p class="lede">Run the selected tests against<br>the pinned plan and target.</p><div class="panel"><div class="label">GET /quote?promotion=true&amp;loyalty=true</div><pre>{ "totalPLN": 85 }</pre></div><div class="amounts"><div class="panel"><div class="label">EXPECTED</div><div class="value">90</div><div class="caption">PLN</div></div><div class="panel"><div class="label">OBSERVED</div><div class="value" style="color:#ff8a9e">85</div><div class="caption">PLN</div></div></div><span class="chip red">Defect found</span><p class="small">Save the observation, assertion, and evidence.<br>A tool failure is an error, not a product defect.</p>`,
+			`<div class="eyebrow">05 / Report</div><h1>Keep results.<br><em>Keep evidence.</em></h1><div class="panel"><div class="label">RESULT SUMMARY</div><div class="row"><span class="grow">Standard checkout</span><span class="chip">Passed</span></div><div class="row"><span class="grow">Promotion rule</span><span class="chip red">Failed</span></div><div class="row"><span class="grow">Refund behavior</span><span class="chip amber">Not run</span></div></div><div class="panel"><pre>completion: completed\ncoverage: partial</pre></div><p class="small">A completed run can contain a defect.<br>A passed test does not mean complete coverage.</p>`,
+			`<div class="eyebrow">06 / Retest</div><h1>Fix the app.<br><em>Start a new run.</em></h1><div class="panel"><div class="label">RUN 1 · PRESERVED</div><div class="row"><span class="grow">Observed 85 PLN</span><span class="chip red">Failed</span></div></div><div class="arrow">Caller fixes the app ↓</div><div class="panel"><div class="label">RUN 2 · NEW BUILD</div><div class="row"><span class="grow">Observed 90 PLN</span><span class="chip">Passed</span></div></div><p class="small">Link the retest to the first result.<br>Keep refunds and omitted tests uncovered.</p>`,
+			`<div class="eyebrow">Checkmate</div><h1>Clear inputs.<br><em>Reviewable results.</em></h1><p class="lede">Use the current Claude session<br>or start a fresh delegated session.</p><div class="cards"><div class="panel"><div class="box">JSON</div><p class="caption">Authoritative<br>records</p></div><div class="panel"><div class="box">Markdown</div><p class="caption">Readable<br>summaries</p></div><div class="panel"><div class="box">HTML</div><p class="caption">Evidence<br>reports</p></div></div><div class="row"><span class="grow">Claude Code</span><span class="caption">Model, tools, permissions</span></div><div class="row"><span class="grow">Checkmate</span><span class="caption">Workflows and checks</span></div><div class="row"><span class="grow">Caller</span><span class="caption">Decisions, fixes, release</span></div>`,
+		]
+		window.renderFrame = (scene, progress) => {
+			document.querySelector('#stage').innerHTML = scenes[scene]
+			document.querySelector('#count').textContent = `${String(scene + 1).padStart(2, '0')} / 08`
+			document.querySelector('#progress').style.width = `${((scene + progress) / 8) * 100}%`
+			let fade = Math.min(1, progress * 8, (1 - progress) * 10)
+			document.querySelector('#stage').style.opacity = fade
+			document.querySelector('#stage').style.transform = `translateY(${(1 - fade) * 12}px)`
+		}
+		window.renderFrame(0, 0.5)
+	</script>
+</html>

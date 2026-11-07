@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { symlink, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { sandbox, prepare, revised, executeRequest, observation } from './support.js'
-import { savePlan, setup, gate, beginRun, finalize, reports } from '../src/stages.js'
-import { planCheck, planCoverage } from '../src/contracts.js'
-import { publish, readDocument, readReference } from '../src/files.js'
+import { savePlan, setup, gate, beginRun, finalize, reports } from '../src/stages.ts'
+import { planCheck, planCoverage } from '../src/contracts.ts'
+import { publish, readDocument, readReference } from '../src/files.ts'
 
 test('setup is repeatable and preserves local choices', async (t) => {
 	const workspace = await sandbox(t),

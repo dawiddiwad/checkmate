@@ -1,11 +1,17 @@
+import type { Request, Response, Plan, Reference, ExecuteRequest, Observation } from './types.ts'
 import { readdir, mkdir, stat, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { confined, digest, publish, readDocument, readReference, requireCondition, same } from './files.js'
-import { validate, profileCheck, planCheck, index, references } from './contracts.js'
-import { renderPlan, renderResult } from './render.js'
+import { confined, digest, publish, readDocument, readReference, requireCondition, same } from './files.ts'
+import { validate, profileCheck, planCheck, index, references, requestCheck } from './contracts.ts'
+import { renderPlan, renderResult } from './render.ts'
 
-export function response(request, status, artifact = null, reasons = []) {
+export function response(
+	request: Request,
+	status: Response['status'],
+	artifact: Reference | null = null,
+	reasons: string[] = []
+): Response {
 	return validate('response', {
 		contractVersion: 'toolkit-1',
 		requestId: request.requestId,
@@ -16,9 +22,9 @@ export function response(request, status, artifact = null, reasons = []) {
 	})
 }
 
-export async function setup(workspace, request, profile) {
-	validate('setup-request', request)
-	profileCheck(profile)
+export async function setup(workspace: string, input: unknown, candidate: unknown) {
+	const request = validate('setup-request', input)
+	const profile = profileCheck(candidate)
 	requireCondition(
 		profile.targetId === request.targetId && profile.baseUrl === request.baseUrl,
 		'Setup target changed'
@@ -33,7 +39,7 @@ export async function setup(workspace, request, profile) {
 		requireCondition(same(existing.value, profile), 'Profile exists. Use a new path and revision for changes')
 		artifact = existing.reference
 	} catch (error) {
-		if (error.code !== 'ENOENT') throw error
+		if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
 		artifact = await publish(workspace, request.profilePath, profile)
 	}
 	return response(
@@ -44,10 +50,13 @@ export async function setup(workspace, request, profile) {
 	)
 }
 
-export async function savePlan(workspace, request, plan) {
-	validate(`${request.operation}-request`, request)
-	requireCondition(['plan', 'revise'].includes(request.operation), 'Expected a plan or revise request')
-	planCheck(plan)
+export async function savePlan(workspace: string, input: unknown, candidate: unknown) {
+	const request = requestCheck(input)
+	requireCondition(
+		request.operation === 'plan' || request.operation === 'revise',
+		'Expected a plan or revise request'
+	)
+	const plan = planCheck(candidate)
 	const target = profileCheck(await readReference(workspace, plan.target))
 	requireCondition(plan.targetId === target.targetId, 'Plan target identity changed')
 	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {
@@ -91,7 +100,7 @@ export async function savePlan(workspace, request, plan) {
 			same(plan.target, base.target) && same(plan.requirements, base.requirements),
 			'Revision changed scope or provenance'
 		)
-		index(request.decisions)
+		index(request.decisions, 'id')
 		index(request.decisions, 'gapId')
 		const changed = new Set(request.decisions.map((decision) => decision.gapId))
 		for (const decision of request.decisions) {
@@ -164,15 +173,15 @@ export async function savePlan(workspace, request, plan) {
 	)
 }
 
-export async function gate(workspace, request) {
-	validate('execute-request', request)
+export async function gate(workspace: string, input: unknown) {
+	const request = validate('execute-request', input)
 	const plan = planCheck(await readReference(workspace, request.plan))
 	const target = profileCheck(await readReference(workspace, request.target))
 	requireCondition(
 		same(plan.target, request.target) && plan.targetId === target.targetId,
 		'Execution target differs from plan'
 	)
-	const tests = index(plan.tests)
+	const tests = index(plan.tests, 'id')
 	references(request.selectedTestIds, tests, 'selected test')
 	if (request.retestOf) {
 		const previous = validate('result', await readReference(workspace, request.retestOf))
@@ -193,7 +202,7 @@ export async function gate(workspace, request) {
 			if (gap.status === 'open' && gap.severity === 'blocking') reasons.push(`Open blocking gap: ${gap.id}`)
 	}
 	for (const id of request.selectedTestIds) {
-		const test = tests.get(id)
+		const test = tests.get(id)!
 		if (test.readiness !== 'ready') reasons.push(`Test is not ready: ${id}`)
 		if (!target.capabilities.includes(test.capability)) reasons.push(`Missing capability: ${test.capability}`)
 		if (!test.operations.every((operation) => target.allowedOperations.includes(operation)))
@@ -204,7 +213,8 @@ export async function gate(workspace, request) {
 	return { ...response(request, reasons.length ? 'needs_decision' : 'completed', null, reasons), plan, target }
 }
 
-export async function beginRun(workspace, request) {
+export async function beginRun(workspace: string, input: unknown) {
+	const request = validate('execute-request', input)
 	const checked = await gate(workspace, request)
 	if (checked.status !== 'completed') return response(request, checked.status, null, checked.reasons)
 	const directory = await confined(workspace, request.outputDirectory)
@@ -223,26 +233,29 @@ export async function beginRun(workspace, request) {
 	return response(request, 'completed', artifact)
 }
 
-export function resultCoverage(plan, result) {
+export function resultCoverage(plan: Plan, result: Observation): import('./types.ts').Result['coverage'] {
 	const outcomes = index(result.tests, 'testId')
-	const requirements = plan.requirements.map((requirement) => {
-		const tests = plan.tests.filter((test) => test.requirementIds.includes(requirement.id))
-		const unresolved = [...plan.gaps, ...result.newGaps].some(
-			(gap) =>
-				(gap.requirementIds.includes(requirement.id) || (!gap.requirementIds.length && !gap.testIds.length)) &&
-				(gap.status === 'deferred' || (gap.status === 'open' && gap.severity === 'blocking'))
-		)
-		const tested =
-			tests.length > 0 &&
-			!unresolved &&
-			tests.every((test) => ['passed', 'failed'].includes(outcomes.get(test.id)?.outcome))
-		return {
-			requirementId: requirement.id,
-			status: tested ? 'tested' : 'uncovered',
-			testIds: tests.map((test) => test.id),
-			reason: tested ? null : 'At least one required check or decision is missing.',
+	const requirements: import('./types.ts').Result['coverage']['requirements'] = plan.requirements.map(
+		(requirement) => {
+			const tests = plan.tests.filter((test) => test.requirementIds.includes(requirement.id))
+			const unresolved = [...plan.gaps, ...result.newGaps].some(
+				(gap) =>
+					(gap.requirementIds.includes(requirement.id) ||
+						(!gap.requirementIds.length && !gap.testIds.length)) &&
+					(gap.status === 'deferred' || (gap.status === 'open' && gap.severity === 'blocking'))
+			)
+			const tested =
+				tests.length > 0 &&
+				!unresolved &&
+				tests.every((test) => ['passed', 'failed'].includes(outcomes.get(test.id)?.outcome ?? ''))
+			return {
+				requirementId: requirement.id,
+				status: tested ? 'tested' : 'uncovered',
+				testIds: tests.map((test) => test.id),
+				reason: tested ? null : 'At least one required check or decision is missing.',
+			}
 		}
-	})
+	)
 	const count = requirements.filter((row) => row.status === 'tested').length
 	return {
 		status:
@@ -255,15 +268,24 @@ export function resultCoverage(plan, result) {
 	}
 }
 
-export async function finalize(workspace, request, observation) {
-	validate('observation', observation)
+export async function finalize(workspace: string, input: unknown, candidate: unknown) {
+	const request = validate('execute-request', input)
+	const observation = validate('observation', candidate)
 	const checked = await gate(workspace, request)
 	requireCondition(checked.status === 'completed', 'Execution gate rejected finalization')
 	const { plan } = checked
 	const directory = await confined(workspace, request.outputDirectory)
-	const { value: invocation } = await readDocument(directory, 'invocation.json')
+	const invocation = await readInvocation(workspace, request)
 	requireCondition(same(invocation.request, request), 'Run invocation changed')
-	for (const key of ['requestId', 'runId', 'plan', 'target', 'applicationBuild', 'selectedTestIds', 'retestOf'])
+	for (const key of [
+		'requestId',
+		'runId',
+		'plan',
+		'target',
+		'applicationBuild',
+		'selectedTestIds',
+		'retestOf',
+	] as const)
 		requireCondition(same(observation[key], request[key]), `Result changed ${key}`)
 	requireCondition(observation.startedAt === invocation.startedAt, 'Run start time changed')
 
@@ -272,9 +294,9 @@ export async function finalize(workspace, request, observation) {
 		same([...outcomes.keys()].sort(), plan.tests.map((test) => test.id).sort()),
 		'Result must list each planned test once'
 	)
-	const evidence = index(observation.evidence)
-	index(observation.findings)
-	index(observation.newGaps)
+	const evidence = index(observation.evidence, 'id')
+	index(observation.findings, 'id')
+	index(observation.newGaps, 'id')
 	for (const entry of observation.evidence) {
 		requireCondition(entry.path.startsWith('evidence/'), 'Evidence must be in the evidence directory')
 		const evidenceRoot = await confined(directory, 'evidence')
@@ -287,11 +309,11 @@ export async function finalize(workspace, request, observation) {
 			gap.status === 'open' && gap.decisionId === null && !plan.gaps.some((old) => old.id === gap.id),
 			'Runtime gap must be new and open'
 		)
-		references(gap.testIds, index(plan.tests), 'gap test')
-		references(gap.requirementIds, index(plan.requirements), 'gap requirement')
+		references(gap.testIds, index(plan.tests, 'id'), 'gap test')
+		references(gap.requirementIds, index(plan.requirements, 'id'), 'gap requirement')
 	}
 	for (const test of plan.tests) {
-		const outcome = outcomes.get(test.id)
+		const outcome = outcomes.get(test.id)!
 		references(outcome.evidenceIds, evidence, 'evidence')
 		const executed = ['passed', 'failed', 'error'].includes(outcome.outcome)
 		if (executed)
@@ -309,7 +331,7 @@ export async function finalize(workspace, request, observation) {
 				'Verdict needs an observation and evidence'
 			)
 			for (const dependency of test.dependsOn)
-				requireCondition(outcomes.get(dependency).outcome === 'passed', 'Prerequisite did not pass')
+				requireCondition(outcomes.get(dependency)!.outcome === 'passed', 'Prerequisite did not pass')
 		} else requireCondition(outcome.reason, 'Unexecuted or erroneous test needs a reason')
 		if (!request.selectedTestIds.includes(test.id))
 			requireCondition(['not_run', 'blocked'].includes(outcome.outcome), 'Omitted test has a verdict')
@@ -321,21 +343,21 @@ export async function finalize(workspace, request, observation) {
 	}
 	for (const finding of observation.findings) {
 		references(finding.testIds, outcomes, 'finding test')
-		references(finding.requirementIds, index(plan.requirements), 'finding requirement')
+		references(finding.requirementIds, index(plan.requirements, 'id'), 'finding requirement')
 		references(finding.evidenceIds, evidence, 'finding evidence')
 		for (const id of finding.testIds) {
 			requireCondition(
 				finding.requirementIds.every((req) =>
-					plan.tests.find((test) => test.id === id).requirementIds.includes(req)
+					plan.tests.find((test) => test.id === id)!.requirementIds.includes(req)
 				),
 				'Finding requirement differs from its test'
 			)
 			requireCondition(
-				finding.evidenceIds.every((ref) => outcomes.get(id).evidenceIds.includes(ref)),
+				finding.evidenceIds.every((ref) => outcomes.get(id)!.evidenceIds.includes(ref)),
 				'Finding evidence differs from its test'
 			)
 			if (finding.type === 'defect')
-				requireCondition(outcomes.get(id).outcome === 'failed', 'Defect needs a failed assertion')
+				requireCondition(outcomes.get(id)!.outcome === 'failed', 'Defect needs a failed assertion')
 		}
 	}
 	if (observation.completion === 'completed') {
@@ -344,10 +366,10 @@ export async function finalize(workspace, request, observation) {
 			'Operational failure cannot be completed'
 		)
 		for (const test of plan.tests.filter((test) => request.selectedTestIds.includes(test.id))) {
-			const outcome = outcomes.get(test.id)
+			const outcome = outcomes.get(test.id)!
 			if (['not_run', 'blocked'].includes(outcome.outcome))
 				requireCondition(
-					test.dependsOn.some((id) => outcomes.get(id).outcome !== 'passed') ||
+					test.dependsOn.some((id) => outcomes.get(id)!.outcome !== 'passed') ||
 						observation.newGaps.some((gap) => gap.severity === 'blocking'),
 					'Selected test was not executed'
 				)
@@ -360,7 +382,7 @@ export async function finalize(workspace, request, observation) {
 	return response(request, observation.completion === 'completed' ? 'completed' : observation.completion, artifact)
 }
 
-export async function reports(workspace, reference) {
+export async function reports(workspace: string, reference: Reference) {
 	const result = validate('result', await readReference(workspace, reference))
 	const rendered = renderResult(result)
 	for (const [extension, text] of Object.entries(rendered)) {
@@ -368,7 +390,7 @@ export async function reports(workspace, reference) {
 		try {
 			await publish(workspace, path, text)
 		} catch (error) {
-			if (error.code !== 'EEXIST') throw error
+			if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
 			requireCondition(
 				(await readFile(await confined(workspace, path), 'utf8')) === text,
 				'Existing report differs from result'
@@ -376,4 +398,27 @@ export async function reports(workspace, reference) {
 		}
 	}
 	return result
+}
+
+export async function readInvocation(workspace: string, request: ExecuteRequest) {
+	const { value } = await readDocument(workspace, join(request.outputDirectory, 'invocation.json'))
+	requireCondition(
+		typeof value === 'object' &&
+			value !== null &&
+			'request' in value &&
+			'startedAt' in value &&
+			'browserSession' in value,
+		'Invalid invocation record'
+	)
+	requireCondition(
+		typeof value.startedAt === 'string' &&
+			Number.isFinite(Date.parse(value.startedAt)) &&
+			typeof value.browserSession === 'string',
+		'Invalid invocation metadata'
+	)
+	return {
+		request: validate('execute-request', value.request),
+		startedAt: value.startedAt,
+		browserSession: value.browserSession,
+	}
 }

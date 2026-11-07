@@ -1,16 +1,21 @@
+import type { ExecuteRequest, Observation, Response } from './types.ts'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { confined, readDocument, readReference, requireCondition } from './files.js'
-import { schema, validate } from './contracts.js'
-import { setup, savePlan, beginRun, finalize, reports, response } from './stages.js'
+import { confined, readDocument, readReference, requireCondition } from './files.ts'
+import { schema, validate, requestCheck, planCheck } from './contracts.ts'
+import { setup, savePlan, beginRun, finalize, reports, response, readInvocation } from './stages.ts'
 
 export const pluginRoot = fileURLToPath(new URL('..', import.meta.url))
 
-async function closeBrowser(workspace, request, executable) {
-	const { value: invocation } = await readDocument(workspace, join(request.outputDirectory, 'invocation.json'))
+async function closeBrowser(
+	workspace: string,
+	request: ExecuteRequest,
+	executable: string
+): Promise<Observation['cleanup']> {
+	const invocation = await readInvocation(workspace, request)
 	return new Promise((resolveCleanup) => {
 		const child = spawn(executable, [`-s=${invocation.browserSession}`, 'close'], {
 			cwd: workspace,
@@ -30,9 +35,14 @@ async function closeBrowser(workspace, request, executable) {
 	})
 }
 
-async function interruptedResult(workspace, request, status, cleanup) {
-	const plan = await readReference(workspace, request.plan)
-	const { value: invocation } = await readDocument(workspace, join(request.outputDirectory, 'invocation.json'))
+async function interruptedResult(
+	workspace: string,
+	request: ExecuteRequest,
+	status: 'interrupted' | 'operational_error',
+	cleanup: Observation['cleanup']
+) {
+	const plan = planCheck(await readReference(workspace, request.plan))
+	const invocation = await readInvocation(workspace, request)
 	return finalize(workspace, request, {
 		contractVersion: 'toolkit-1',
 		requestId: request.requestId,
@@ -62,7 +72,11 @@ async function interruptedResult(workspace, request, status, cleanup) {
 	})
 }
 
-export async function worker(executable, args, options) {
+export async function worker(
+	executable: string,
+	args: string[],
+	options: { cwd: string; prompt: string; timeoutSeconds: number }
+): Promise<Response> {
 	requireCondition(process.platform !== 'win32', 'The launcher supports Linux and macOS process groups')
 	return new Promise((resolvePromise, reject) => {
 		const child = spawn(executable, args, {
@@ -72,16 +86,16 @@ export async function worker(executable, args, options) {
 			detached: true,
 		})
 		let output = ''
-		let failure
-		let killTimer
-		const stop = (reason) => {
+		let failure: Error | undefined
+		let killTimer: ReturnType<typeof setTimeout> | undefined
+		const stop = (reason: string) => {
 			failure ??= new Error(reason)
 			try {
-				process.kill(-child.pid, 'SIGTERM')
+				process.kill(-child.pid!, 'SIGTERM')
 			} catch {}
 			killTimer ??= setTimeout(() => {
 				try {
-					process.kill(-child.pid, 'SIGKILL')
+					process.kill(-child.pid!, 'SIGKILL')
 				} catch {}
 			}, 1500)
 		}
@@ -97,7 +111,7 @@ export async function worker(executable, args, options) {
 		child.stdin.on('error', () => {})
 		child.stdin.end(options.prompt)
 		child.on('error', (error) => {
-			failure = new Error(`Cannot start worker: ${error.code ?? 'unknown'}`)
+			failure = new Error(`Cannot start worker: ${'code' in error ? String(error.code) : 'unknown'}`)
 		})
 		child.on('close', (code) => {
 			clearTimeout(timer)
@@ -105,19 +119,29 @@ export async function worker(executable, args, options) {
 			process.removeListener('SIGINT', interrupt)
 			process.removeListener('SIGTERM', interrupt)
 			try {
-				process.kill(-child.pid, 'SIGKILL')
+				process.kill(-child.pid!, 'SIGKILL')
 			} catch {}
 			if (failure) return reject(failure)
 			if (code !== 0) return reject(new Error(`Worker exited with code ${code}`))
 			try {
-				let envelope
+				let envelope: unknown
 				try {
 					envelope = JSON.parse(output)
 				} catch {
 					throw new Error('Claude did not return a JSON envelope')
 				}
 				requireCondition(
-					envelope.type === 'result' && envelope.subtype === 'success' && envelope.is_error !== true,
+					typeof envelope === 'object' &&
+						envelope !== null &&
+						'type' in envelope &&
+						'subtype' in envelope &&
+						'structured_output' in envelope,
+					'Invalid Claude envelope'
+				)
+				requireCondition(
+					envelope.type === 'result' &&
+						envelope.subtype === 'success' &&
+						(!('is_error' in envelope) || envelope.is_error !== true),
 					'Claude did not complete the stage'
 				)
 				requireCondition(envelope.structured_output, 'Claude did not return structured output')
@@ -129,10 +153,17 @@ export async function worker(executable, args, options) {
 	})
 }
 
-export async function delegate(workspace, requestPath, options = {}) {
+export type DelegateOptions = {
+	allowedTools?: string[]
+	claude?: string
+	playwright?: string
+	pluginRoot?: string
+	timeoutSeconds?: number
+}
+export async function delegate(workspace: string, requestPath: string, options: DelegateOptions = {}) {
 	workspace = resolve(workspace)
 	const document = await readDocument(workspace, requestPath)
-	const request = validate(`${document.value.operation}-request`, document.value)
+	const request = requestCheck(document.value)
 	if (request.operation === 'report') {
 		await reports(workspace, request.result)
 		return response(request, 'completed', request.result)
@@ -173,7 +204,7 @@ export async function delegate(workspace, requestPath, options = {}) {
 		const result = await worker(options.claude ?? 'claude', args, {
 			cwd: workspace,
 			prompt,
-			timeoutSeconds: request.timeoutSeconds ?? options.timeoutSeconds ?? 300,
+			timeoutSeconds: request.operation === 'execute' ? request.timeoutSeconds : (options.timeoutSeconds ?? 300),
 		})
 		requireCondition(
 			result.requestId === request.requestId && result.operation === request.operation,
@@ -193,7 +224,8 @@ export async function delegate(workspace, requestPath, options = {}) {
 		if (request.operation === 'plan' || request.operation === 'revise')
 			return await savePlan(workspace, request, value)
 		return await finalize(workspace, request, value)
-	} catch (error) {
+	} catch (caught) {
+		const error = caught instanceof Error ? caught : new Error('Unknown worker failure')
 		const status = /deadline|interrupted/.test(error.message) ? 'interrupted' : 'operational_error'
 		if (request.operation === 'execute') {
 			const file = await confined(workspace, join(request.outputDirectory, 'launcher-error.json'))

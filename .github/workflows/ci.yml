@@ -1,10 +1,18 @@
-name: Verify
+name: CI
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
+      pull_request:
+        description: Resume a GitHub release for this merged PR number
+        type: string
+        required: false
+      release:
+        description: Create or resume a GitHub release
+        type: boolean
+        default: false
       live:
         description: Run authenticated Claude acceptance
         type: boolean
@@ -41,3 +49,136 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  release-source:
+    if: >-
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.release)) &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      source: ${{ steps.source.outputs.source }}
+    steps:
+      - name: Identify the merged PR or manual release
+        id: source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const branch = context.payload.repository.default_branch
+            let pull
+            if (context.eventName === 'workflow_dispatch') {
+              const input = context.payload.inputs?.pull_request?.trim()
+              if (!input) {
+                core.setOutput('source', `workflow-dispatch-${context.runId}`)
+                return
+              }
+              if (!/^[1-9][0-9]*$/.test(input)) throw new Error('Enter a positive PR number.')
+              const { data } = await github.rest.pulls.get({
+                ...context.repo, pull_number: Number(input),
+              })
+              if (!data.merged || data.base.ref !== branch) {
+                throw new Error('The selected PR must be merged into the default branch.')
+              }
+              pull = data
+            } else {
+              const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+                ...context.repo, commit_sha: context.sha,
+              })
+              pull = pulls.find(pull =>
+                pull.merged_at && pull.base.ref === branch && pull.merge_commit_sha === context.sha
+              )
+              if (!pull) return
+            }
+            core.setOutput('source', `pull-request-${pull.number}`)
+
+  release:
+    needs: [verify, release-source, live]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      needs.release-source.outputs.source != '' &&
+      (needs.live.result == 'success' || needs.live.result == 'skipped')
+    concurrency:
+      group: github-plugin-release
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_SOURCE: ${{ needs.release-source.outputs.source }}
+      CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Resume an existing release commit
+        id: resume
+        shell: bash
+        run: |
+          release_commit=$(git log --format=%H --grep="^Release-Source: $RELEASE_SOURCE$" -1)
+          if [ -n "$release_commit" ]; then
+            git checkout --detach "$release_commit"
+            echo "resume=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "resume=false" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm ci
+      - name: Prepare the plugin version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ steps.resume.outputs.resume }}" = 'true' ]; then
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/release-version.ts
+          fi
+      - name: Verify the release candidate
+        run: npm run phase:verify
+      - name: Commit and tag the verified version
+        if: steps.resume.outputs.resume != 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
+          git commit --allow-empty -m "Release v$RELEASE_VERSION" -m "Release-Source: $RELEASE_SOURCE"
+          git tag "v$RELEASE_VERSION"
+          git push --atomic origin "HEAD:refs/heads/$RELEASE_BRANCH" "refs/tags/v$RELEASE_VERSION"
+      - name: Create the GitHub release
+        uses: actions/github-script@v8
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const tag = `v${process.env.RELEASE_VERSION}`
+            const { data: reference } = await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })
+            const head = require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+            if (reference.object.sha !== head) throw new Error('Release tag does not match the verified commit.')
+            try {
+              await github.rest.repos.getReleaseByTag({ ...context.repo, tag })
+              core.info(`Release ${tag} already exists.`)
+              return
+            } catch (error) {
+              if (error.status !== 404) throw error
+            }
+            await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: tag,
+              name: tag,
+              body: 'Install the Claude Code plugin from the Checkmate marketplace. This release has no npm package.',
+              generate_release_notes: true,
+              make_latest: 'legacy',
+            })

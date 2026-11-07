@@ -2,9 +2,9 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { publish, readDocument } from '../src/files.js'
-import { planCoverage } from '../src/contracts.js'
-import { setup, savePlan, beginRun } from '../src/stages.js'
+import { publish, readDocument } from '../src/files.ts'
+import { planCoverage } from '../src/contracts.ts'
+import { setup, savePlan, beginRun } from '../src/stages.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
 export async function sandbox(t) {

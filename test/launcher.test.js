@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFile, chmod, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { worker, delegate } from '../src/launcher.js'
+import { worker, delegate } from '../src/launcher.ts'
 import { sandbox, prepare, revised, executeRequest, write } from './support.js'
 
 async function executable(workspace, code) {

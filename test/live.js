@@ -3,10 +3,10 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './fixture.js'
 import { sandbox, fixtureJson, root, write } from './support.js'
-import { delegate, worker } from '../src/launcher.js'
-import { gate } from '../src/stages.js'
-import { readReference, readDocument } from '../src/files.js'
-import { schema } from '../src/contracts.js'
+import { delegate, worker } from '../src/launcher.ts'
+import { gate } from '../src/stages.ts'
+import { readReference, readDocument } from '../src/files.ts'
+import { schema } from '../src/contracts.ts'
 
 assert(
 	process.env.CLAUDE_CODE_OAUTH_TOKEN ||

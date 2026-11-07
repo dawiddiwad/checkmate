@@ -1,6 +1,6 @@
 # CLI
 
-Run commands from the caller's workspace. Use `--workspace <path>` to select another directory. Paths in JSON remain relative to that workspace.
+Use `node /absolute/path/to/checkmate/bin/checkmate.ts <command>`. Run commands from the caller's workspace. Use `--workspace <path>` to select another directory. Paths in JSON remain relative to that workspace.
 
 | Command                                  | Input                               | Effect                                                                  |
 | ---------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------- |
@@ -13,7 +13,7 @@ Run commands from the caller's workspace. Use `--workspace <path>` to select ano
 | `report request.json`                    | Report request                      | Generate views from a pinned result.                                    |
 | `delegate request.json`                  | Any stage request                   | Run one fresh Claude session, or render a report directly.              |
 
-The plugin can also call these commands through `node <plugin>/bin/checkmate.js`.
+The plugin calls the same TypeScript entry point. No global npm command is installed.
 
 Use `--allow <rule>` for each Claude tool permission in a delegated stage. The launcher does not add a permission bypass. It preserves host configuration and authentication. Repository hooks and instructions can run under normal Claude configuration. Use a trusted workspace.
 

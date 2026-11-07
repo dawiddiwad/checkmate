@@ -1,23 +1,24 @@
+import type { Reference } from './types.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile, realpath, mkdir, open, link, unlink, stat } from 'node:fs/promises'
 import { resolve, relative, dirname, isAbsolute } from 'node:path'
 
-export function requireCondition(condition, message) {
+export function requireCondition(condition: unknown, message: string): asserts condition {
 	if (!condition) throw new Error(message)
 }
 
-export function digest(bytes) {
+export function digest(bytes: string | Uint8Array) {
 	return createHash('sha256').update(bytes).digest('hex')
 }
 
-export async function confined(root, name) {
+export async function confined(root: string, name: string) {
 	requireCondition(
 		typeof name === 'string' && name.length > 0 && !isAbsolute(name) && !name.includes('\\'),
 		'Use a relative path'
 	)
 	const base = await realpath(root)
 	const destination = resolve(base, name)
-	const inside = (path) =>
+	const inside = (path: string) =>
 		path === base || (!relative(base, path).startsWith('..') && !isAbsolute(relative(base, path)))
 	requireCondition(destination !== base && inside(destination), 'Path is outside its root')
 	let existing = destination
@@ -26,18 +27,18 @@ export async function confined(root, name) {
 			requireCondition(inside(await realpath(existing)), 'Symlink is outside its root')
 			break
 		} catch (error) {
-			if (error.code !== 'ENOENT') throw error
+			if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
 			existing = dirname(existing)
 		}
 	}
 	return destination
 }
 
-export async function readDocument(root, name) {
+export async function readDocument(root: string, name: string) {
 	const path = await confined(root, name)
 	requireCondition((await stat(path)).size <= 4 * 1024 * 1024, 'Document exceeds 4 MiB')
 	const bytes = await readFile(path)
-	let value
+	let value: unknown
 	try {
 		value = JSON.parse(bytes.toString('utf8'))
 	} catch {
@@ -46,13 +47,13 @@ export async function readDocument(root, name) {
 	return { value, reference: { path: name, sha256: digest(bytes) } }
 }
 
-export async function readReference(root, reference) {
+export async function readReference(root: string, reference: Reference) {
 	const document = await readDocument(root, reference.path)
 	requireCondition(document.reference.sha256 === reference.sha256, 'Document digest changed')
 	return document.value
 }
 
-export async function publish(root, name, value) {
+export async function publish(root: string, name: string, value: unknown) {
 	const path = await confined(root, name)
 	await mkdir(dirname(path), { recursive: true })
 	await confined(root, name)
@@ -77,11 +78,14 @@ export async function publish(root, name, value) {
 	return { path: name, sha256: digest(bytes) }
 }
 
-export function same(a, b) {
+export function same(a: unknown, b: unknown): boolean {
 	if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => same(item, b[i]))
 	if (a && b && typeof a === 'object' && typeof b === 'object') {
 		const keys = Object.keys(a).sort()
-		return same(keys, Object.keys(b).sort()) && keys.every((key) => same(a[key], b[key]))
+		return (
+			same(keys, Object.keys(b).sort()) &&
+			keys.every((key) => same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+		)
 	}
 	return a === b
 }

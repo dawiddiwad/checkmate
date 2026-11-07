@@ -1,0 +1,38 @@
+{
+  "contractVersion": "toolkit-1",
+  "targetId": "checkout-local",
+  "revision": 1,
+  "baseUrl": "http://127.0.0.1:4173",
+  "environment": "local_fixture",
+  "capabilities": [
+    "browser",
+    "http"
+  ],
+  "tooling": [
+    {
+      "capability": "browser",
+      "executable": "playwright-cli",
+      "version": "0.1.23"
+    },
+    {
+      "capability": "http",
+      "executable": "node",
+      "version": "v24.22.1"
+    }
+  ],
+  "authentication": {
+    "kind": "none",
+    "references": []
+  },
+  "allowedOperations": [
+    "read_catalog",
+    "create_fixture_order",
+    "apply_fixture_discount"
+  ],
+  "startup": {
+    "owner": "caller",
+    "command": null
+  },
+  "cleanup": "Close the run browser session. The fixture stores no records.",
+  "readyForLiveExecution": true
+}

@@ -3,7 +3,7 @@ name: update-model-policy
 description: Keep model selection and authentication with the Claude Code host.
 ---
 
-Read `src/launcher.js` and the workflow skills before changing host integration.
+Read `src/launcher.ts` and the workflow skills before changing host integration.
 Use ASD-STE100 style for instructions and documentation.
 
 Use the installed Claude Code CLI. Keep model selection, credentials, context, tools, and native permissions with the host.

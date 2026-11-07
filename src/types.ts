@@ -324,30 +324,3 @@ export type Response = {
 
 export type Reference = { path: string; sha256: string }
 export type Request = SetupRequest | PlanRequest | ReviseRequest | ExecuteRequest | ReportRequest
-export function validate(name: string, value: unknown): unknown
-export function schema(name: string): object
-export function profileCheck(value: unknown): Profile
-export function planCheck(value: unknown): Plan
-export function planCoverage(plan: Plan): Plan['coverage']
-export function resultCoverage(plan: Plan, result: Observation): Result['coverage']
-export function setup(workspace: string, request: SetupRequest, profile: Profile): Promise<Response>
-export function savePlan(workspace: string, request: PlanRequest | ReviseRequest, plan: Plan): Promise<Response>
-export function gate(workspace: string, request: ExecuteRequest): Promise<Response & { plan: Plan; target: Profile }>
-export function beginRun(workspace: string, request: ExecuteRequest): Promise<Response>
-export function finalize(workspace: string, request: ExecuteRequest, observation: Observation): Promise<Response>
-export function reports(workspace: string, reference: Reference): Promise<Result>
-export function delegate(
-	workspace: string,
-	requestPath: string,
-	options?: {
-		allowedTools?: string[]
-		claude?: string
-		playwright?: string
-		pluginRoot?: string
-		timeoutSeconds?: number
-	}
-): Promise<Response>
-export function digest(bytes: string | Uint8Array): string
-export function readDocument(workspace: string, path: string): Promise<{ value: unknown; reference: Reference }>
-export function readReference(workspace: string, reference: Reference): Promise<unknown>
-export function publish(workspace: string, path: string, value: unknown): Promise<Reference>

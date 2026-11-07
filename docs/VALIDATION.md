@@ -1,18 +1,27 @@
 # Validation record
 
-Date: 7 November 2026. Package and plugin version: `0.7.0`.
+Date: 7 November 2026. Repository and plugin version: `0.7.0`.
 
 The checks ran on Debian Linux with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chromium `156.0.8078.79`.
 
 ## Automated checks
 
-- `npm run phase:verify`: passed. All 18 tests passed. No test was skipped.
-- Type generation, TypeScript declaration checks, lint, and formatting: passed.
-- Installed npm package, public exports, CLI, schemas, and plugin assets: passed.
+- `npm run phase:verify`: passed. All 21 tests passed. No test was skipped.
+- Type generation, strict TypeScript checks, lint, and formatting: passed.
+- Clean plugin install with production dependencies: passed. Node ran the TypeScript CLI and API without a build.
 - Claude plugin and marketplace validation: passed. The validator reported optional listing metadata warnings.
-- Local documentation links and agent Markdown formatting: passed.
+- Documentation contracts, file digests, local links, and agent Markdown formatting: passed.
+- All eight animation scenes fit the viewport. The GIF and static infographic were inspected.
 
 The tests cover stale inputs, conflicting writes, blocked prerequisites, missing evidence, path escape, report escaping, duplicate run IDs, worker output errors, missing authentication, and worker interruption.
+
+## Release checks
+
+Version tests passed for the first `0.7.0` release, patch increases, repeated preparation, and rejection of stale versions. All version files stayed in sync. The package remained private.
+
+Local simulations passed for Dependabot merge detection, direct pushes, manual releases, PR resume, invalid input, repeated release creation, and tag mismatch rejection. These simulations used a mock GitHub API. They did not create a release.
+
+Actionlint `1.7.12` passed after excluding its unsupported `queue` field check. GitHub documents [`queue: max`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency) as a supported setting. The workflow preserves that setting from the prior release job.
 
 ## Live Claude checks
 
@@ -30,12 +39,12 @@ A separate Claude session invoked the plan skill directly. Another session execu
 
 | Stage                | Seconds |
 | -------------------- | ------: |
-| Setup                |    25.3 |
-| Plan                 |    22.7 |
-| Ready-only execution |    54.3 |
-| Revise               |    17.2 |
-| Execute              |    31.6 |
-| Retest               |    26.1 |
+| Setup                |    36.7 |
+| Plan                 |    27.0 |
+| Ready-only execution |    71.3 |
+| Revise               |    34.3 |
+| Execute              |    50.1 |
+| Retest               |    31.5 |
 
 These values describe one local run. They are not performance targets. Model behavior, load, and tool latency can change them.
 

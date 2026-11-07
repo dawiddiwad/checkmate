@@ -3,9 +3,9 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './fixture.js'
 import { sandbox, prepare, revised, executeRequest, root, write } from './support.js'
-import { worker } from '../src/launcher.js'
-import { schema } from '../src/contracts.js'
-import { readReference } from '../src/files.js'
+import { worker } from '../src/launcher.ts'
+import { schema } from '../src/contracts.ts'
+import { readReference } from '../src/files.ts'
 
 assert(
 	process.env.CLAUDE_CODE_OAUTH_TOKEN ||

@@ -6,8 +6,8 @@ import { writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './fixture.js'
 import { sandbox, prepare, revised, executeRequest, observation, root } from './support.js'
-import { finalize } from '../src/stages.js'
-import { readReference, digest } from '../src/files.js'
+import { finalize } from '../src/stages.ts'
+import { readReference, digest } from '../src/files.ts'
 
 const exec = promisify(execFile)
 

@@ -5,15 +5,17 @@ Read the request schema and the output schema in `contracts/` before you write a
 Use the exact file bytes to calculate each SHA-256 digest.
 Resolve relative paths from the caller's workspace. Resolve evidence paths from the run directory.
 
+In a skill, `checkmate <command>` means `node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" <command>`. There is no global npm command.
+
 Use these commands from the caller's workspace:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.js" validate request.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.js" setup request.json profile-candidate.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.js" save-plan request.json plan-candidate.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.js" gate request.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.js" begin request.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.js" finalize request.json observation.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" validate request.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" setup request.json profile-candidate.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" save-plan request.json plan-candidate.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" gate request.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" begin request.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" finalize request.json observation.json
 ```
 
 For a delegated stage, write only the candidate requested by the parent. Do not publish it.

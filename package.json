@@ -4,37 +4,16 @@
 	"description": "Testing workflows and evidence contracts for Claude Code",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=24.12.0"
 	},
-	"bin": {
-		"checkmate": "bin/checkmate.js"
-	},
-	"exports": {
-		".": {
-			"types": "./src/types.d.ts",
-			"default": "./src/index.js"
-		},
-		"./schemas/*": "./contracts/*"
-	},
-	"files": [
-		".claude-plugin",
-		"skills",
-		"references",
-		"contracts",
-		"src",
-		"bin",
-		"docs",
-		"README.md",
-		"LICENSE"
-	],
 	"scripts": {
 		"test": "node --test test/*.test.js",
 		"test:tools": "node --test test/tools.test.js",
 		"test:live": "node test/live.js && node test/live-session.js",
-		"compile:check": "node scripts/generate-types.mjs --check && tsc --noEmit --strict --skipLibCheck --module nodenext src/types.d.ts",
-		"lint:check": "eslint src bin test",
+		"type:check": "node scripts/generate-types.ts --check && tsc --noEmit",
+		"lint:check": "eslint src bin scripts test",
 		"format:check": "prettier . --check",
-		"phase:verify": "npm run compile:check && npm run lint:check && npm run format:check && npm test && node test/package.js"
+		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.js"
 	},
 	"dependencies": {
 		"ajv": "8.20.0",
@@ -42,19 +21,19 @@
 	},
 	"devDependencies": {
 		"@anthropic-ai/claude-code": "2.1.319",
-		"@playwright/cli": "0.1.23",
 		"@eslint/js": "10.0.1",
+		"@playwright/cli": "0.1.23",
 		"@types/node": "26.5.0",
 		"eslint": "10.10.0",
 		"prettier": "3.9.6",
-		"typescript": "6.0.3"
+		"typescript": "6.0.3",
+		"typescript-eslint": "8.70.0",
+		"playwright-core": "1.65.0-alpha-2026-10-30"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/dawiddiwad/checkmate.git"
 	},
 	"license": "MIT",
-	"publishConfig": {
-		"access": "public"
-	}
+	"private": true
 }

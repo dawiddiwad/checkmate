@@ -4,7 +4,7 @@ Read the implementation before changing its contract or documentation.
 
 1. Update the relevant JSON Schema.
 2. Update the implementation and tests.
-3. Run `node scripts/generate-types.mjs` after a schema change.
+3. Run `node scripts/generate-types.ts` after a schema change.
 4. Update the relevant workflow skill and documentation.
 5. Run `npm run phase:verify`.
 6. Run `npm run test:live` for changes to Claude integration or workflow behavior when authentication is available.

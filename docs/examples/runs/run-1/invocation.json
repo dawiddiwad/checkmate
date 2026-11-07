@@ -1,0 +1,28 @@
+{
+  "request": {
+    "contractVersion": "toolkit-1",
+    "requestId": "execute-1",
+    "caller": "test-caller",
+    "operation": "execute",
+    "runId": "run-1",
+    "plan": {
+      "path": "plans/checkout/v2.json",
+      "sha256": "ef15b530201bdc683341ecb0a704903d6e7eef2ab550f7df8fe3f98e7ad2c194"
+    },
+    "target": {
+      "path": "profile.json",
+      "sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+    },
+    "selectedTestIds": [
+      "T1",
+      "T2"
+    ],
+    "partialExecution": "wait_for_resolution",
+    "timeoutSeconds": 180,
+    "onNewBlocker": "return_to_caller",
+    "applicationBuild": "fixture-build-1",
+    "outputDirectory": "runs/run-1"
+  },
+  "startedAt": "2026-11-07T14:24:25.788Z",
+  "browserSession": "cm-4a044241-2913-4610-97e5-bb0889f19a98"
+}

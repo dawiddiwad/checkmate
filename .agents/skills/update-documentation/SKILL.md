@@ -6,7 +6,7 @@ description: Keep Checkmate contracts, workflows, examples, and documentation co
 Read the changed code and tests before editing documentation.
 Use ASD-STE100 style. Use short sentences, consistent terms, and explicit steps.
 
-Check `contracts/`, `src/index.js`, `skills/`, and package contents.
+Check `contracts/`, `src/index.ts`, `skills/`, and package contents.
 Update the relevant files in `docs/`, `README.md`, and `.agents/wiki/`.
 
 Distinguish operation completion, test outcomes, and coverage.

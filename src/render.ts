@@ -1,21 +1,22 @@
-function escapeHtml(value) {
+import type { Plan, Result } from './types.ts'
+function escapeHtml(value: unknown) {
 	return String(value).replace(
 		/[&<>"']/g,
-		(character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]
+		(character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!
 	)
 }
-function jsonBlock(value) {
+function jsonBlock(value: unknown) {
 	const json = JSON.stringify(value, null, 2)
 	const fence = '`'.repeat(Math.max(3, ...[...json.matchAll(/`+/g)].map((match) => match[0].length + 1)))
 	return `${fence}json\n${json}\n${fence}\n`
 }
-export function renderPlan(plan) {
+export function renderPlan(plan: Plan) {
 	return (
 		'# Test plan\n\nThis view is generated from the saved JSON plan. Edit a new plan revision to change it.\n\n' +
 		jsonBlock(plan)
 	)
 }
-export function renderResult(result) {
+export function renderResult(result: Result) {
 	const json = JSON.stringify(result, null, 2)
 	return {
 		md: '# Test result\n\nCompletion and coverage are separate. Inspect each test outcome.\n\n' + jsonBlock(result),

@@ -219,6 +219,10 @@ export async function delegate(workspace: string, requestPath: string, options: 
 	]
 	for (const permission of options.allowedTools ?? []) args.push('--allowedTools', permission)
 	let candidateReceived = false
+	// Close the run's browser session once, and reuse that status.
+	let cleanup: Promise<Observation['cleanup']> | undefined
+	const close = (run: ExecuteRequest) =>
+		(cleanup ??= closeBrowser(workspace, run, options.playwright ?? 'playwright-cli'))
 	try {
 		const result = await worker(options.claude ?? 'claude', args, {
 			cwd: workspace,
@@ -256,15 +260,13 @@ export async function delegate(workspace: string, requestPath: string, options: 
 				mode: 0o600,
 			})
 			if (!candidateReceived) {
-				const cleanup = await closeBrowser(workspace, request, options.playwright ?? 'playwright-cli')
 				try {
-					return await interruptedResult(workspace, request, status, cleanup)
+					return await interruptedResult(workspace, request, status, await close(request))
 				} catch {}
 			}
 		}
 		return response(request, status, null, [error.message])
 	} finally {
-		if (request.operation === 'execute')
-			await closeBrowser(workspace, request, options.playwright ?? 'playwright-cli')
+		if (request.operation === 'execute') await close(request)
 	}
 }

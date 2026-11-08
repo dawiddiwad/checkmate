@@ -156,3 +156,24 @@ test('delegate without tool rules names the minimum rules and reserves no run', 
 	)
 	await assert.rejects(readFile(join(workspace, 'runs/run-1/invocation.json')), { code: 'ENOENT' })
 })
+
+test('a failed execute worker closes the browser session once', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace),
+		r = await revised(workspace, p)
+	await write(workspace, 'request.json', executeRequest(p, r))
+	const claude = await executable(workspace, 'process.exit(3)')
+	const playwright = join(workspace, 'fake-playwright')
+	await writeFile(
+		playwright,
+		`#!/usr/bin/env node\nrequire('node:fs').appendFileSync('closed.log', process.argv.slice(2).join(' ') + '\\n')\n`
+	)
+	await chmod(playwright, 0o700)
+	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], claude, playwright })
+	assert.equal(result.status, 'operational_error')
+	const closed = (await readFile(join(workspace, 'closed.log'), 'utf8')).trim().split('\n')
+	assert.equal(closed.length, 1)
+	assert.match(closed[0], /^-s=cm-.* close$/)
+	const saved = JSON.parse(await readFile(join(workspace, 'runs/run-1/result.json'), 'utf8')) as Result
+	assert.equal(saved.cleanup.status, 'completed')
+})

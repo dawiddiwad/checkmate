@@ -333,7 +333,7 @@ checkmate gate <request.json>
 checkmate begin <request.json>
 checkmate finalize <request.json> <observation.json>
 checkmate report <request.json>
-checkmate delegate <request.json> [--allow <rule>] [--timeout <seconds>]
+checkmate delegate <request.json> --allow <rule>... [--timeout <seconds>]
 ```
 
 Run a command as `node plugin/bin/checkmate.ts <command>`. `delegate` runs one stage in a fresh Claude Code session.

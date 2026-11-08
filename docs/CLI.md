@@ -17,7 +17,16 @@ Use `node /absolute/path/to/checkmate/plugin/bin/checkmate.ts <command>`. Run co
 
 The plugin calls the same TypeScript entry point. No global npm command is installed.
 
-Use `--allow <rule>` for each Claude tool permission in a delegated stage. The launcher does not add a permission bypass. It preserves host configuration and authentication. Repository hooks and instructions can run under normal Claude configuration. Use a trusted workspace.
+Use `--allow <rule>` for each Claude tool permission in a delegated stage. `delegate` refuses to start without at least one rule, because the worker cannot answer permission prompts. Give at least these rules:
+
+| Stage            | Minimum rules                                                 |
+| ---------------- | ------------------------------------------------------------- |
+| `setup`          | `Read`, `Write`, `Bash(node *)`, `Bash(playwright-cli *)`     |
+| `plan`, `revise` | `Read`, `Write`                                               |
+| `execute`        | `Read`, `Write`, `Bash(node *)`, `Bash(playwright-cli *)`     |
+| `report`         | None. `delegate` renders the report without a Claude session. |
+
+Add rules for the target's own tools, if a stage needs them. The launcher does not add a permission bypass. It preserves host configuration and authentication. Repository hooks and instructions can run under normal Claude configuration. Use a trusted workspace.
 
 Use `--timeout <seconds>` for delegated setup, planning, or revision. The default is 300 seconds. Execution uses `timeoutSeconds` from its request. The maximum is 3600 seconds.
 

@@ -159,6 +159,15 @@ function workerResponseSchema() {
 	return { ...response, properties: { ...response.properties, artifact: { type: 'null' } } }
 }
 
+// The smallest set of Claude tool rules each delegated stage needs.
+// The caller still chooses the rules; Checkmate only names the minimum.
+export const minimumRules = {
+	setup: ['Read', 'Write', 'Bash(node *)', 'Bash(playwright-cli *)'],
+	plan: ['Read', 'Write'],
+	revise: ['Read', 'Write'],
+	execute: ['Read', 'Write', 'Bash(node *)', 'Bash(playwright-cli *)'],
+}
+
 export type DelegateOptions = {
 	allowedTools?: string[]
 	claude?: string
@@ -174,6 +183,10 @@ export async function delegate(workspace: string, requestPath: string, options: 
 		await reports(workspace, request.result)
 		return response(request, 'completed', request.result)
 	}
+	requireCondition(
+		options.allowedTools?.length,
+		`delegate needs --allow rules. Minimum for ${request.operation}: ${minimumRules[request.operation].join(', ')}`
+	)
 	if (request.operation === 'execute') {
 		const started = await beginRun(workspace, request)
 		if (started.status !== 'completed') return started

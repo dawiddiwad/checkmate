@@ -11,7 +11,7 @@ import { finalize } from '../plugin/src/stages.ts'
 
 const exec = promisify(execFile)
 
-test('real browser and API find the defect; caller fix passes a narrow retest', { timeout: 90000 }, async (t) => {
+test('real browser and API find the defect; caller fix passes a narrow retest', { timeout: 180000 }, async (t) => {
 	const workspace = await sandbox(t)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -32,8 +32,9 @@ test('real browser and API find the defect; caller fix passes a narrow retest', 
 	)
 	const session = `test-${Date.now()}`
 	const cli = join(root, 'node_modules/.bin/playwright-cli')
+	// A cold browser start on a shared CI runner can take most of a minute.
 	const browser = async (args: string[]) =>
-		(await exec(cli, [`-s=${session}`, ...args], { cwd: workspace, timeout: 20000, maxBuffer: 1024 * 1024 })).stdout
+		(await exec(cli, [`-s=${session}`, ...args], { cwd: workspace, timeout: 60000, maxBuffer: 1024 * 1024 })).stdout
 	t.after(() => browser(['close']).catch(() => {}))
 	await browser(['open', app.baseUrl, `--config=${browserConfig}`, '--idle-timeout=30000'])
 	await browser(['click', 'button'])

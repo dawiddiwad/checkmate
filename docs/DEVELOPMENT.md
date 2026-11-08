@@ -41,13 +41,13 @@ The plugin uses the installed Claude Code CLI. Do not add a custom model loop or
 
 Run `plugin/bin/checkmate.ts` with Node.js. The runtime uses erasable TypeScript syntax. It does not need a compiler at startup.
 
-`npm run type:check` checks types without emitting files.
+`npm run type:check` checks types without emitting files. It covers the plugin, the scripts, and the tests. The tests are TypeScript and run directly with `node --test`.
 
 ## Plugin layout
 
 The marketplace source is `./plugin`. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tooling outside it.
 
-The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.js` copies `plugin/` to a temporary directory and runs the CLI there.
+The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
 
 The root package is private. npm is used only to install development dependencies and run development commands. Do not add npm build or publish jobs. The last npm package version is `0.6.7`.
 

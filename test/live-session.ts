@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fixture } from './fixture.js'
-import { sandbox, prepare, revised, executeRequest, root, write } from './support.js'
+import { fixture } from './fixture.ts'
+import type { Result } from '../plugin/src/types.ts'
+import { sandbox, prepare, revised, executeRequest, root, write, artifact, load } from './support.ts'
 import { worker } from '../plugin/src/launcher.ts'
 import { schema } from '../plugin/src/contracts.ts'
-import { readReference } from '../plugin/src/files.ts'
 
 assert(
 	process.env.CLAUDE_CODE_OAUTH_TOKEN ||
@@ -69,7 +69,7 @@ try {
 	})
 	assert.equal(result.status, 'completed', JSON.stringify(result))
 	assert(result.artifact)
-	const saved = await readReference(workspace, result.artifact)
+	const saved = await load<Result>(workspace, artifact(result))
 	assert(saved.findings.some((finding) => finding.type === 'defect' && finding.requirementIds.includes('R2')))
 	assert.equal(saved.coverage.status, 'partial')
 	console.log('Same-session execution and live permission denial passed.')

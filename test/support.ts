@@ -1,3 +1,17 @@
+import type { TestContext } from 'node:test'
+import type {
+	ExecuteRequest,
+	Observation,
+	Plan,
+	PlanRequest,
+	Profile,
+	Reference,
+	Response,
+	ReviseRequest,
+	SetupRequest,
+} from '../plugin/src/types.ts'
+import type { PlanCandidate } from '../plugin/src/contracts.ts'
+import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -5,17 +19,36 @@ import { fileURLToPath } from 'node:url'
 import { publish, readDocument, readReference } from '../plugin/src/files.ts'
 import { setup, savePlan, beginRun } from '../plugin/src/stages.ts'
 
+export type Prepared = {
+	profile: Profile
+	target: Reference
+	plan: Plan
+	planRequest: PlanRequest
+	setupRequest: SetupRequest
+	base: Reference
+}
+export type Revised = { request: ReviseRequest; candidate: PlanCandidate; plan: Plan; reference: Reference }
+
 export const root = fileURLToPath(new URL('..', import.meta.url))
-export async function sandbox(t) {
+// The artifact of a response that must have one.
+export function artifact(response: Response): Reference {
+	assert(response.artifact, JSON.stringify(response))
+	return response.artifact
+}
+// A pinned document, read as a known contract type.
+export async function load<T>(workspace: string, reference: Reference): Promise<T> {
+	return (await readReference(workspace, reference)) as T
+}
+export async function sandbox(t?: TestContext) {
 	const directory = await mkdtemp(join(tmpdir(), 'checkmate-test-'))
 	t?.after(() => rm(directory, { recursive: true, force: true }))
 	return directory
 }
-export async function fixtureJson(name) {
-	return JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url)))
+export async function fixtureJson<T>(name: string): Promise<T> {
+	return JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8')) as T
 }
-export async function prepare(workspace, baseUrl = 'http://127.0.0.1:4173') {
-	const profile = {
+export async function prepare(workspace: string, baseUrl = 'http://127.0.0.1:4173'): Promise<Prepared> {
+	const profile: Profile = {
 		contractVersion: 'toolkit-1',
 		targetId: 'checkout-local',
 		revision: 1,
@@ -32,7 +65,7 @@ export async function prepare(workspace, baseUrl = 'http://127.0.0.1:4173') {
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
 	}
-	const setupRequest = {
+	const setupRequest: SetupRequest = {
 		contractVersion: 'toolkit-1',
 		requestId: 'setup-1',
 		caller: 'test-caller',
@@ -43,24 +76,17 @@ export async function prepare(workspace, baseUrl = 'http://127.0.0.1:4173') {
 		capabilities: profile.capabilities,
 		allowedOperations: profile.allowedOperations,
 	}
-	const target = (await setup(workspace, setupRequest, profile)).artifact
-	const plan = await fixtureJson('plan')
+	const target = artifact(await setup(workspace, setupRequest, profile))
+	const plan = await fixtureJson<PlanCandidate>('plan')
 	plan.target = target
-	const planRequest = await fixtureJson('plan-request')
+	const planRequest = await fixtureJson<PlanRequest>('plan-request')
 	planRequest.target = target
-	const saved = await savePlan(workspace, planRequest, plan)
-	return {
-		profile,
-		target,
-		plan: await readReference(workspace, saved.artifact),
-		planRequest,
-		setupRequest,
-		base: saved.artifact,
-	}
+	const base = artifact(await savePlan(workspace, planRequest, plan))
+	return { profile, target, plan: await load<Plan>(workspace, base), planRequest, setupRequest, base }
 }
-export async function revised(workspace, prepared) {
-	const decisions = await fixtureJson('decisions')
-	const request = {
+export async function revised(workspace: string, prepared: Prepared): Promise<Revised> {
+	const decisions = await fixtureJson<ReviseRequest['decisions']>('decisions')
+	const request: ReviseRequest = {
 		contractVersion: 'toolkit-1',
 		requestId: 'revise-1',
 		caller: 'test-caller',
@@ -69,8 +95,7 @@ export async function revised(workspace, prepared) {
 		baseRevision: 1,
 		decisions,
 	}
-	const plan = structuredClone(prepared.plan)
-	delete plan.coverage
+	const { coverage, ...plan } = structuredClone(prepared.plan)
 	plan.revision = 2
 	plan.previousRevision = 1
 	plan.decisions = decisions
@@ -81,10 +106,14 @@ export async function revised(workspace, prepared) {
 	plan.tests[1].readiness = 'ready'
 	plan.tests[1].expected = 'HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.'
 	plan.tests[2].readiness = 'deferred'
-	const saved = await savePlan(workspace, request, plan)
-	return { request, candidate: plan, plan: await readReference(workspace, saved.artifact), reference: saved.artifact }
+	const reference = artifact(await savePlan(workspace, request, plan))
+	return { request, candidate: plan, plan: await load<Plan>(workspace, reference), reference }
 }
-export function executeRequest(prepared, revision, overrides = {}) {
+export function executeRequest(
+	prepared: Prepared,
+	revision: { reference: Reference },
+	overrides: Partial<ExecuteRequest> = {}
+): ExecuteRequest {
 	return {
 		contractVersion: 'toolkit-1',
 		requestId: 'execute-1',
@@ -102,11 +131,17 @@ export function executeRequest(prepared, revision, overrides = {}) {
 		...overrides,
 	}
 }
-export async function observation(workspace, request, plan, total = 220) {
+export async function observation(
+	workspace: string,
+	request: ExecuteRequest,
+	plan: PlanCandidate,
+	total = 220
+): Promise<Observation> {
 	await beginRun(workspace, request)
-	const { value: invocation } = await readDocument(workspace, `${request.outputDirectory}/invocation.json`)
-	const evidence = []
-	const tests = []
+	const { value } = await readDocument(workspace, `${request.outputDirectory}/invocation.json`)
+	const invocation = value as { startedAt: string }
+	const evidence: Observation['evidence'] = []
+	const tests: Observation['tests'] = []
 	for (const test of plan.tests) {
 		const selected = request.selectedTestIds.includes(test.id)
 		const failed = test.id === 'T2' && total !== 240
@@ -166,6 +201,6 @@ export async function observation(workspace, request, plan, total = 220) {
 		...(request.retestOf ? { retestOf: request.retestOf } : {}),
 	}
 }
-export async function write(workspace, name, value) {
+export async function write(workspace: string, name: string, value: unknown) {
 	await writeFile(join(workspace, name), JSON.stringify(value, null, 2) + '\n')
 }

@@ -1,10 +1,11 @@
+import type { AddressInfo } from 'node:net'
 import { createServer } from 'node:http'
 
 export async function fixture() {
 	let fixed = false
 	let actions = 0
 	const server = createServer(async (request, response) => {
-		const url = new URL(request.url, 'http://fixture')
+		const url = new URL(request.url ?? '/', 'http://fixture')
 		response.setHeader('Content-Type', 'application/json')
 		if (url.pathname === '/health') return response.end(JSON.stringify({ ready: true }))
 		if (url.pathname === '/quote') {
@@ -25,9 +26,9 @@ export async function fixture() {
 		response.statusCode = 404
 		response.end(JSON.stringify({ error: 'not_found' }))
 	})
-	await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 	return {
-		baseUrl: `http://127.0.0.1:${server.address().port}`,
+		baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
 		fix() {
 			fixed = true
 		},

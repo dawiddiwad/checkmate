@@ -5,14 +5,14 @@ import { join } from 'node:path'
 import { validate, planCheck } from '../plugin/src/contracts.ts'
 import { readDocument, readReference, digest } from '../plugin/src/files.ts'
 import { gate, resultCoverage } from '../plugin/src/stages.ts'
-import { root } from './support.js'
+import { root } from './support.ts'
 
 test('documentation examples retain valid contracts, references, coverage, and evidence', async () => {
 	const workspace = join(root, 'docs/examples')
-	for (const operation of ['setup', 'plan', 'revise', 'execute']) {
+	for (const operation of ['setup', 'plan', 'revise', 'execute'] as const) {
 		validate(`${operation}-request`, (await readDocument(workspace, `${operation}-request.json`)).value)
 	}
-	const request = (await readDocument(workspace, 'execute-request.json')).value
+	const request = validate('execute-request', (await readDocument(workspace, 'execute-request.json')).value)
 	const checked = await gate(workspace, request)
 	assert.equal(checked.status, 'completed')
 	const plan = planCheck(await readReference(workspace, request.plan))

@@ -2,10 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { symlink, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { sandbox, prepare, revised, executeRequest, observation } from './support.js'
+import type { Observation, Plan, Result } from '../plugin/src/types.ts'
+import { sandbox, prepare, revised, executeRequest, observation, artifact, load } from './support.ts'
 import { savePlan, setup, gate, beginRun, finalize, reports } from '../plugin/src/stages.ts'
 import { planCheck, planCoverage } from '../plugin/src/contracts.ts'
-import { publish, readDocument, readReference, digest } from '../plugin/src/files.ts'
+import { publish, readDocument, digest } from '../plugin/src/files.ts'
 
 test('setup is repeatable and preserves local choices', async (t) => {
 	const workspace = await sandbox(t),
@@ -34,7 +35,7 @@ test('revision preserves decisions and rejects stale or conflicting writes', asy
 	const r = await revised(workspace, p)
 	assert.equal(r.plan.coverage[2].status, 'deferred')
 	await assert.rejects(savePlan(workspace, r.request, r.candidate), /newer revision/)
-	assert.equal((await readReference(workspace, p.base)).revision, 1)
+	assert.equal((await load<Plan>(workspace, p.base)).revision, 1)
 	const p2 = await prepare(await sandbox(t))
 	const changed = structuredClone(p2.plan)
 	changed.tests[0].expected = null
@@ -68,7 +69,7 @@ test('finalize records the digest of each evidence file', async (t) => {
 		r = await revised(workspace, p)
 	const request = executeRequest(p, r)
 	const saved = await finalize(workspace, request, await observation(workspace, request, r.plan))
-	const result = await readReference(workspace, saved.artifact)
+	const result = await load<Result>(workspace, artifact(saved))
 	for (const entry of result.evidence)
 		assert.equal(entry.sha256, digest(await readFile(join(workspace, request.outputDirectory, entry.path))))
 })
@@ -80,14 +81,14 @@ test('finalize lists an omitted unselected test as not_run', async (t) => {
 	const candidate = await observation(workspace, request, r.plan)
 	candidate.tests = candidate.tests.filter((test) => request.selectedTestIds.includes(test.testId))
 	const saved = await finalize(workspace, request, candidate)
-	const result = await readReference(workspace, saved.artifact)
+	const result = await load<Result>(workspace, artifact(saved))
 	assert.deepEqual(
 		result.tests.map((test) => test.testId),
 		r.plan.tests.map((test) => test.id)
 	)
 	const omitted = result.tests.find((test) => !request.selectedTestIds.includes(test.testId))
-	assert.equal(omitted.outcome, 'not_run')
-	assert.equal(omitted.reason, 'Test was not selected.')
+	assert.equal(omitted?.outcome, 'not_run')
+	assert.equal(omitted?.reason, 'Test was not selected.')
 	assert.equal(result.coverage.status, 'partial')
 })
 test('result preserves omitted coverage and immutable retest history', async (t) => {
@@ -96,7 +97,7 @@ test('result preserves omitted coverage and immutable retest history', async (t)
 		r = await revised(workspace, p)
 	const request = executeRequest(p, r)
 	const saved = await finalize(workspace, request, await observation(workspace, request, r.plan))
-	const failed = await readReference(workspace, saved.artifact)
+	const failed = await load<Result>(workspace, artifact(saved))
 	assert.equal(failed.tests[1].outcome, 'failed')
 	assert.equal(failed.coverage.status, 'partial')
 	const retest = executeRequest(p, r, {
@@ -105,16 +106,16 @@ test('result preserves omitted coverage and immutable retest history', async (t)
 		outputDirectory: 'runs/run-2',
 		applicationBuild: 'fixture-build-2',
 		selectedTestIds: ['T2'],
-		retestOf: saved.artifact,
+		retestOf: artifact(saved),
 	})
 	const passed = await finalize(workspace, retest, await observation(workspace, retest, r.plan, 240))
-	const result = await readReference(workspace, passed.artifact)
+	const result = await load<Result>(workspace, artifact(passed))
 	assert.equal(result.tests[0].outcome, 'not_run')
 	assert.equal(result.tests[1].outcome, 'passed')
 	assert.equal(result.coverage.status, 'partial')
-	assert.equal((await readReference(workspace, saved.artifact)).tests[1].outcome, 'failed')
+	assert.equal((await load<Result>(workspace, artifact(saved))).tests[1].outcome, 'failed')
 	await assert.rejects(beginRun(workspace, request), { code: 'EEXIST' })
-	await reports(workspace, saved.artifact)
+	await reports(workspace, artifact(saved))
 })
 test('finalizer rejects fabricated scope, assertions, evidence, and operational success', async (t) => {
 	const workspace = await sandbox(t),
@@ -123,18 +124,18 @@ test('finalizer rejects fabricated scope, assertions, evidence, and operational 
 		request = executeRequest(p, r)
 	const candidate = await observation(workspace, request, r.plan)
 	const mutations = [
-		(c) => c.tests.shift(),
-		(c) => c.tests.push({ ...c.tests[2], testId: 'unknown' }),
-		(c) => c.tests.push(c.tests[2]),
-		(c) => (c.tests[0].evidenceIds = []),
-		(c) => (c.tests[0].expected = 'invented'),
-		(c) => (c.evidence[0].path = '../profile.json'),
-		(c) => (c.evidence[0].path = 'evidence/../invocation.json'),
-		(c) => (c.cleanup.status = 'failed'),
-		(c) => (c.tests[0].outcome = 'error'),
-		(c) => (c.findings = []),
-		(c) => (c.selectedTestIds = ['T2']),
-		(c) => (c.tests[2].outcome = 'passed'),
+		(c: Observation) => c.tests.shift(),
+		(c: Observation) => c.tests.push({ ...c.tests[2], testId: 'unknown' }),
+		(c: Observation) => c.tests.push(c.tests[2]),
+		(c: Observation) => (c.tests[0].evidenceIds = []),
+		(c: Observation) => (c.tests[0].expected = 'invented'),
+		(c: Observation) => (c.evidence[0].path = '../profile.json'),
+		(c: Observation) => (c.evidence[0].path = 'evidence/../invocation.json'),
+		(c: Observation) => (c.cleanup.status = 'failed'),
+		(c: Observation) => (c.tests[0].outcome = 'error'),
+		(c: Observation) => (c.findings = []),
+		(c: Observation) => (c.selectedTestIds = ['T2']),
+		(c: Observation) => (c.tests[2].outcome = 'passed'),
 	]
 	for (const mutate of mutations) {
 		const changed = structuredClone(candidate)
@@ -158,7 +159,7 @@ test('renderer escapes content and detects changed generated views', async (t) =
 	assert(!html.includes('<script>'))
 	assert(html.includes('&lt;script&gt;'))
 	await writeFile(join(workspace, 'runs/run-1/report.md'), 'changed')
-	await assert.rejects(reports(workspace, saved.artifact), /differs/)
+	await assert.rejects(reports(workspace, artifact(saved)), /differs/)
 })
 test('concurrent immutable writes have one winner', async (t) => {
 	const workspace = await sandbox(t)

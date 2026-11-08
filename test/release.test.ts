@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { releaseVersion, prepareVersion } from '../scripts/release-version.ts'
-import { sandbox, root } from './support.js'
+import { sandbox, root } from './support.ts'
 
 test('first plugin release keeps 0.7.0; later merges get one patch', () => {
 	assert.equal(releaseVersion('0.7.0', ['v0.6.6']), '0.7.0')

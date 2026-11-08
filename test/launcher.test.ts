@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { writeFile, chmod, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { worker, delegate } from '../plugin/src/launcher.ts'
-import { sandbox, prepare, revised, executeRequest, write, fixtureJson } from './support.js'
-import { readReference } from '../plugin/src/files.ts'
-import { planCoverage } from '../plugin/src/contracts.ts'
+import type { Plan, Result } from '../plugin/src/types.ts'
+import { sandbox, prepare, revised, executeRequest, write, fixtureJson, artifact, load } from './support.ts'
+import { planCoverage, type PlanCandidate } from '../plugin/src/contracts.ts'
 
-async function executable(workspace, code) {
+async function executable(workspace: string, code: string) {
 	const path = join(workspace, 'fake-claude')
 	await writeFile(path, `#!/usr/bin/env node\n${code}\n`)
 	await chmod(path, 0o700)
@@ -36,7 +36,7 @@ test('launcher reads the candidate it named and publishes the plan', async (t) =
 		p = await prepare(workspace)
 	const request = { ...p.planRequest, requestId: 'plan-2', outputPlanId: 'second', planDirectory: 'plans/second' }
 	await write(workspace, 'request.json', request)
-	const candidate = { ...(await fixtureJson('plan')), planId: 'second', target: p.target }
+	const candidate = { ...(await fixtureJson<PlanCandidate>('plan')), planId: 'second', target: p.target }
 	const response = { contractVersion: 'toolkit-1', requestId: 'plan-2', operation: 'plan', reasons: [] }
 	const path = await executable(
 		workspace,
@@ -51,8 +51,8 @@ test('launcher reads the candidate it named and publishes the plan', async (t) =
 	t.after(() => delete process.env.WORKER_STATUS)
 	const result = await delegate(workspace, 'request.json', { claude: path })
 	assert.equal(result.status, 'needs_decision')
-	assert.equal(result.artifact.path, 'plans/second/v1.json')
-	const saved = await readReference(workspace, result.artifact)
+	assert.equal(artifact(result).path, 'plans/second/v1.json')
+	const saved = await load<Plan>(workspace, artifact(result))
 	assert.deepEqual(saved.coverage, planCoverage(saved))
 })
 test('launcher deadline terminates the worker group and records no completed result', async (t) => {
@@ -68,7 +68,7 @@ test('launcher deadline terminates the worker group and records no completed res
 	const result = await delegate(workspace, 'request.json', { claude: path, playwright: '/missing-playwright' })
 	assert.equal(result.status, 'interrupted')
 	assert(result.artifact)
-	const interrupted = JSON.parse(await readFile(join(workspace, 'runs/run-1/result.json'), 'utf8'))
+	const interrupted = JSON.parse(await readFile(join(workspace, 'runs/run-1/result.json'), 'utf8')) as Result
 	assert.equal(interrupted.completion, 'interrupted')
 	assert(interrupted.tests.every((test) => test.outcome === 'error' || test.outcome === 'not_run'))
 	assert(interrupted.tests.every((test) => test.observed === null))
@@ -78,7 +78,8 @@ test('launcher deadline terminates the worker group and records no completed res
 		const state = await readFile(`/proc/${pid}/stat`, 'utf8')
 		assert.match(state, /\) Z /)
 	} catch (error) {
-		if (error.code !== 'ESRCH' && error.code !== 'ENOENT') throw error
+		const code = (error as NodeJS.ErrnoException).code
+		if (code !== 'ESRCH' && code !== 'ENOENT') throw error
 	}
 })
 test('preflight rejection never launches Claude', async (t) => {
@@ -92,9 +93,9 @@ test('preflight rejection never launches Claude', async (t) => {
 test('Claude reports missing authentication in a clean host configuration', async (t) => {
 	const { execFile } = await import('node:child_process')
 	const { promisify } = await import('node:util')
-	const { root } = await import('./support.js')
+	const { root } = await import('./support.ts')
 	const workspace = await sandbox(t)
-	const environment = { ...process.env, CLAUDE_CONFIG_DIR: workspace }
+	const environment: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CONFIG_DIR: workspace }
 	for (const name of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
 		delete environment[name]
 	const output = await promisify(execFile)(join(root, 'node_modules/.bin/claude'), ['auth', 'status'], {

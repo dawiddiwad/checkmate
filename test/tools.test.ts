@@ -4,10 +4,10 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fixture } from './fixture.js'
-import { sandbox, prepare, revised, executeRequest, observation, root } from './support.js'
+import { fixture } from './fixture.ts'
+import type { Result } from '../plugin/src/types.ts'
+import { sandbox, prepare, revised, executeRequest, observation, root, artifact, load } from './support.ts'
 import { finalize } from '../plugin/src/stages.ts'
-import { readReference } from '../plugin/src/files.ts'
 
 const exec = promisify(execFile)
 
@@ -32,7 +32,7 @@ test('real browser and API find the defect; caller fix passes a narrow retest', 
 	)
 	const session = `test-${Date.now()}`
 	const cli = join(root, 'node_modules/.bin/playwright-cli')
-	const browser = async (args) =>
+	const browser = async (args: string[]) =>
 		(await exec(cli, [`-s=${session}`, ...args], { cwd: workspace, timeout: 20000, maxBuffer: 1024 * 1024 })).stdout
 	t.after(() => browser(['close']).catch(() => {}))
 	await browser(['open', app.baseUrl, `--config=${browserConfig}`, '--idle-timeout=30000'])
@@ -62,11 +62,11 @@ test('real browser and API find the defect; caller fix passes a narrow retest', 
 		outputDirectory: 'runs/run-2',
 		selectedTestIds: ['T2'],
 		applicationBuild: 'fixture-build-2',
-		retestOf: failed.artifact,
+		retestOf: artifact(failed),
 	})
 	const passed = await finalize(workspace, retest, await observation(workspace, retest, r.plan, fixed.totalPLN))
-	const result = await readReference(workspace, passed.artifact)
+	const result = await load<Result>(workspace, artifact(passed))
 	assert.equal(result.tests[1].outcome, 'passed')
 	assert.equal(result.coverage.status, 'partial')
-	assert.equal((await readReference(workspace, failed.artifact)).tests[1].outcome, 'failed')
+	assert.equal((await load<Result>(workspace, artifact(failed))).tests[1].outcome, 'failed')
 })

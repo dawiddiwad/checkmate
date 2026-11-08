@@ -102,11 +102,16 @@ try {
 	const decisions = planned.value.gaps
 		.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
 		.map((gap, i) => {
-			assert(
-				gap.requirementIds.length === 1 && ['R2', 'R3'].includes(gap.requirementIds[0]),
-				'Unexpected blocker needs a caller decision'
-			)
-			const decision = templates[gap.requirementIds[0] === 'R2' ? 0 : 1]
+			// A gap names its requirement, or names tests that cover one requirement.
+			const scope = new Set([
+				...gap.requirementIds,
+				...planned.value.tests
+					.filter((test) => gap.testIds.includes(test.id))
+					.flatMap((test) => test.requirementIds),
+			])
+			const [requirement] = scope
+			assert(scope.size === 1 && ['R2', 'R3'].includes(requirement), 'Unexpected blocker needs a caller decision')
+			const decision = templates[requirement === 'R2' ? 0 : 1]
 			return { ...decision, id: `D${i + 1}`, gapId: gap.id }
 		})
 	const revised = await stage<Plan>('revise', {

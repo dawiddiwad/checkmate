@@ -28,6 +28,7 @@ test('the CLI names unknown commands, unknown options, and missing option values
 		[['gate', 'request.json', '--workspace'], 'Missing value for --workspace'],
 		[['delegate', 'request.json', '--allow'], 'Missing value for --allow'],
 		[['delegate', 'request.json', '--timeout', '--allow', 'Read'], 'Missing value for --timeout'],
+		[['gate', 'request.json', '--timeout', '30'], '--allow and --timeout apply only to delegate'],
 	]
 	for (const [args, reason] of cases) {
 		const { code, output } = await checkmate(workspace, args)

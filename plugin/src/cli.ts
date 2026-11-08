@@ -53,6 +53,10 @@ export async function main(args: string[]) {
 			)
 		const [command] = positional
 		requireCondition(commands.includes(command), `Unknown command: ${command}`)
+		requireCondition(
+			command === 'delegate' || (options.timeoutSeconds === undefined && !options.allowedTools.length),
+			'--allow and --timeout apply only to delegate'
+		)
 		if (command === 'validate') {
 			const [, kind, file] = positional
 			requireCondition(positional.length === 3, 'Usage: checkmate validate <kind> <file>')

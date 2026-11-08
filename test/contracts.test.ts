@@ -219,5 +219,7 @@ test('run IDs remain unique across output directories', async (t) => {
 		r = await revised(workspace, p)
 	const request = executeRequest(p, r)
 	await beginRun(workspace, request)
+	const { value } = await readDocument(workspace, 'runs/run-1/invocation.json')
+	assert.equal((value as { deadlineSeconds: number }).deadlineSeconds, request.timeoutSeconds)
 	await assert.rejects(beginRun(workspace, { ...request, outputDirectory: 'another/run-1' }), { code: 'EEXIST' })
 })

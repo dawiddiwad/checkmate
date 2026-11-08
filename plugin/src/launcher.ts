@@ -188,7 +188,7 @@ export async function delegate(workspace: string, requestPath: string, options: 
 		`delegate needs --allow rules. Minimum for ${request.operation}: ${minimumRules[request.operation].join(', ')}`
 	)
 	if (request.operation === 'execute') {
-		const started = await beginRun(workspace, request)
+		const started = await beginRun(workspace, request, options.timeoutSeconds)
 		if (started.status !== 'completed') return started
 	}
 	const candidate = `.checkmate/candidates/${request.requestId}-${randomUUID()}.json`
@@ -223,7 +223,8 @@ export async function delegate(workspace: string, requestPath: string, options: 
 		const result = await worker(options.claude ?? 'claude', args, {
 			cwd: workspace,
 			prompt,
-			timeoutSeconds: request.operation === 'execute' ? request.timeoutSeconds : (options.timeoutSeconds ?? 300),
+			// --timeout overrides the request; invocation.json records the deadline that applies.
+			timeoutSeconds: options.timeoutSeconds ?? (request.operation === 'execute' ? request.timeoutSeconds : 300),
 		})
 		requireCondition(
 			result.requestId === request.requestId && result.operation === request.operation,

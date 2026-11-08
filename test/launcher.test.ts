@@ -65,7 +65,7 @@ test('launcher deadline terminates the worker group and records no completed res
 	const workspace = await sandbox(t),
 		p = await prepare(workspace),
 		r = await revised(workspace, p)
-	const request = executeRequest(p, r, { timeoutSeconds: 1 })
+	const request = executeRequest(p, r)
 	await write(workspace, 'request.json', request)
 	const path = await executable(
 		workspace,
@@ -73,6 +73,7 @@ test('launcher deadline terminates the worker group and records no completed res
 	)
 	const result = await delegate(workspace, 'request.json', {
 		allowedTools: ['Read', 'Write'],
+		timeoutSeconds: 1,
 		claude: path,
 		playwright: '/missing-playwright',
 	})
@@ -80,6 +81,9 @@ test('launcher deadline terminates the worker group and records no completed res
 	assert(result.artifact)
 	const interrupted = JSON.parse(await readFile(join(workspace, 'runs/run-1/result.json'), 'utf8')) as Result
 	assert.equal(interrupted.completion, 'interrupted')
+	const invocation = JSON.parse(await readFile(join(workspace, 'runs/run-1/invocation.json'), 'utf8'))
+	assert.equal(invocation.request.timeoutSeconds, 180)
+	assert.equal(invocation.deadlineSeconds, 1)
 	assert(interrupted.tests.every((test) => test.outcome === 'error' || test.outcome === 'not_run'))
 	assert(interrupted.tests.every((test) => test.observed === null))
 	const pid = Number(await readFile(join(workspace, 'child.pid'), 'utf8'))

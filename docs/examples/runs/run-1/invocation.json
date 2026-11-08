@@ -24,5 +24,6 @@
     "outputDirectory": "runs/run-1"
   },
   "startedAt": "2026-11-07T14:24:25.788Z",
-  "browserSession": "cm-4a044241-2913-4610-97e5-bb0889f19a98"
+  "browserSession": "cm-4a044241-2913-4610-97e5-bb0889f19a98",
+  "deadlineSeconds": 180
 }

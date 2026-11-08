@@ -215,7 +215,8 @@ export async function gate(workspace: string, input: unknown) {
 	return { ...response(request, reasons.length ? 'needs_decision' : 'completed', null, reasons), plan, target }
 }
 
-export async function beginRun(workspace: string, input: unknown) {
+// deadlineSeconds is the deadline the launcher applies. It defaults to the request's timeoutSeconds.
+export async function beginRun(workspace: string, input: unknown, deadlineSeconds?: number) {
 	const request = validate('execute-request', input)
 	const checked = await gate(workspace, request)
 	if (checked.status !== 'completed') return response(request, checked.status, null, checked.reasons)
@@ -230,6 +231,7 @@ export async function beginRun(workspace: string, input: unknown) {
 		request,
 		startedAt,
 		browserSession: `cm-${randomUUID()}`,
+		deadlineSeconds: deadlineSeconds ?? request.timeoutSeconds,
 	})
 	await mkdir(await confined(directory, 'evidence'), { recursive: true })
 	return response(request, 'completed', artifact)

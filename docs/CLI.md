@@ -28,7 +28,7 @@ Use `--allow <rule>` for each Claude tool permission in a delegated stage. `dele
 
 Add rules for the target's own tools, if a stage needs them. The launcher does not add a permission bypass. It preserves host configuration and authentication. Repository hooks and instructions can run under normal Claude configuration. Use a trusted workspace.
 
-Use `--timeout <seconds>` for delegated setup, planning, or revision. The default is 300 seconds. Execution uses `timeoutSeconds` from its request. The maximum is 3600 seconds.
+`--timeout <seconds>` sets the deadline of a delegated stage. The maximum is 3600 seconds. Without it, setup, planning, and revision use 300 seconds, and execution uses `timeoutSeconds` from its request. For execution, `--timeout` overrides the request, and `invocation.json` records the applied deadline as `deadlineSeconds`. `--allow` and `--timeout` apply only to `delegate`.
 
 ## Responses
 
@@ -52,7 +52,7 @@ The launcher selects the candidate path. The worker writes the candidate there a
 
 Each invocation starts a fresh session. All required context must be in the request and saved inputs. Model selection remains a host setting.
 
-For execution, the parent applies the gate before it starts Claude. It records `startedAt` and a unique `browserSession` in `invocation.json`. The worker uses those values. The parent checks the candidate before finalization.
+For execution, the parent applies the gate before it starts Claude. It records `startedAt`, a unique `browserSession`, and the applied `deadlineSeconds` in `invocation.json`. The worker uses those values. The parent checks the candidate before finalization.
 
 A stopped or failed worker does not produce a completed result. If no checked observation is available, the finalizer records selected tests as errors with unknown observations. It keeps omitted tests visible. Do not infer that no target action occurred. An invalid candidate cannot be published as a result. `launcher-error.json` records the failure when applicable. The parent attempts to close only the reserved browser session. Use a browser idle timeout as an additional cleanup measure.
 

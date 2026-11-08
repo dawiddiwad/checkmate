@@ -92,6 +92,19 @@ jobs:
                 pull.merged_at && pull.base.ref === branch && pull.merge_commit_sha === context.sha
               )
               if (!pull) return
+              // Release only merges that change the installed plugin or its marketplace entry.
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                ...context.repo, pull_number: pull.number,
+              })
+              const shipped = files.some(file =>
+                [file.filename, file.previous_filename].some(name =>
+                  name && (name.startsWith('plugin/') || name === '.claude-plugin/marketplace.json')
+                )
+              )
+              if (!shipped) {
+                core.info(`PR #${pull.number} changes no plugin files. No release.`)
+                return
+              }
             }
             core.setOutput('source', `pull-request-${pull.number}`)
 

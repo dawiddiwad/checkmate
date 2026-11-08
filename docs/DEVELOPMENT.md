@@ -53,7 +53,7 @@ The root package is private. npm is used only to install development dependencie
 
 ## GitHub releases
 
-A merged PR to `main` starts the release job after verification passes. This includes Dependabot PRs. The job updates the package, lockfile, plugin, and marketplace versions together. It commits the version, creates a tag, and creates a GitHub release.
+A merged PR to `main` starts the release job after verification passes, if the PR changes the plugin. A PR changes the plugin when it changes a file under `plugin/` or `.claude-plugin/marketplace.json`. Merges that change only documentation, tests, CI, or development dependencies do not create a release. The job updates the package, lockfile, plugin, and marketplace versions together. It commits the version, creates a tag, and creates a GitHub release.
 
 The first plugin release is `v0.7.0`. Later merges increase the patch version. To select a new minor or major version, update all four version records in the PR. The selected version must be newer than every existing release tag.
 
@@ -61,7 +61,7 @@ Release jobs run one at a time. The job verifies the release candidate before it
 
 If release creation fails after the push, rerun the failed job. You can also run CI manually on `main`. Enable `release` and enter the merged PR number in `pull_request`. The job reuses the release commit and tag for that PR. It does not increase the version again.
 
-A manual release with no PR number creates a separate release request. Direct pushes without an associated merged PR do not start an automatic release.
+A manual release does not check the changed files. A manual release with no PR number creates a separate release request. Direct pushes without an associated merged PR do not start an automatic release.
 
 The GitHub Actions token needs write access to repository contents. Repository rules must permit the release bot to push the version commit and tag. Live Claude checks run only when selected. They are not a required automatic release check.
 

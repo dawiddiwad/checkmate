@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdir, rm, symlink, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Observation, Plan, Result } from '../plugin/src/types.ts'
-import { sandbox, prepare, revised, executeRequest, observation, artifact, load } from './support.ts'
+import { sandbox, prepare, revised, executeRequest, observation, artifact, load, fixtureJson } from './support.ts'
 import { savePlan, setup, gate, beginRun, finalize, reports } from '../plugin/src/stages.ts'
-import { planCheck, planCoverage } from '../plugin/src/contracts.ts'
+import { planCheck, planCoverage, type PlanCandidate } from '../plugin/src/contracts.ts'
 import { publish, readDocument, digest } from '../plugin/src/files.ts'
 
 test('setup is repeatable and preserves local choices', async (t) => {
@@ -246,4 +246,25 @@ test('a failed begin releases the run ID', async (t) => {
 	await assert.rejects(readDocument(workspace, '.checkmate/run-ids/run-1.json'), { code: 'ENOENT' })
 	await rm(join(workspace, 'runs/run-1/invocation.json'), { recursive: true })
 	assert.equal((await beginRun(workspace, request)).status, 'completed')
+})
+
+test('save-plan sets test readiness from the gaps', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace)
+	const candidate = structuredClone(await fixtureJson<PlanCandidate>('plan'))
+	candidate.target = p.target
+	const expected = candidate.tests.map((test) => test.readiness)
+	for (const [planId, change] of [
+		['omitted', (test: PlanCandidate['tests'][number]) => delete test.readiness],
+		['wrong', (test: PlanCandidate['tests'][number]) => (test.readiness = 'ready')],
+	] as const) {
+		const draft = { ...structuredClone(candidate), planId }
+		draft.tests.forEach(change)
+		const request = { ...p.planRequest, outputPlanId: planId, planDirectory: `plans/${planId}` }
+		const saved = await load<Plan>(workspace, artifact(await savePlan(workspace, request, draft)))
+		assert.deepEqual(
+			saved.tests.map((test) => test.readiness),
+			expected
+		)
+	}
 })

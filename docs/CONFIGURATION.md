@@ -38,7 +38,9 @@ Each requirement has an ID, text, and source. Each test maps to requirements and
 
 Use `deterministic` for a direct assertion. Use `agent_observation` when an agent interprets the evidence. Record that distinction in the result.
 
-A gap can be blocking or non-blocking. An unknown expected result is blocking. A gap with empty requirement and test lists affects the whole plan.
+A gap can be blocking or non-blocking. An unknown expected result is blocking. A gap with empty requirement and test lists affects the whole plan. Otherwise a gap affects the tests it names and every test of the requirements it names.
+
+`save-plan` sets each test's readiness from the gaps that affect it. A deferred gap makes the test `deferred`. An open blocking gap makes it `blocked`. Otherwise the test is `ready`. A readiness value in the candidate is replaced. `save-plan` also calculates the plan coverage.
 
 The caller can clarify, accept an assumption, or defer coverage. Each decision needs an actor and rationale. Clarification needs a source. An accepted assumption remains visible in the plan.
 

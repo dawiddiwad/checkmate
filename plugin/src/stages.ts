@@ -3,7 +3,16 @@ import { readdir, mkdir, stat, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { confined, digest, publish, readDocument, readReference, requireCondition, same } from './files.ts'
-import { validate, profileCheck, planCheck, planCoverage, index, references, requestCheck } from './contracts.ts'
+import {
+	validate,
+	profileCheck,
+	planCheck,
+	planCoverage,
+	testReadiness,
+	index,
+	references,
+	requestCheck,
+} from './contracts.ts'
 import { renderPlan, renderResult } from './render.ts'
 
 export function response(
@@ -56,9 +65,11 @@ export async function savePlan(workspace: string, input: unknown, candidate: unk
 		request.operation === 'plan' || request.operation === 'revise',
 		'Expected a plan or revise request'
 	)
-	// The candidate omits coverage. Checkmate calculates it from the tests and gaps.
+	// Checkmate sets each test's readiness from the gaps, then the coverage from the tests and gaps.
+	// A readiness value in the candidate is replaced.
 	const draft = validate('plan-candidate', candidate)
-	const plan = planCheck({ ...draft, coverage: planCoverage(draft) })
+	const tests = draft.tests.map((test) => ({ ...test, readiness: testReadiness(draft.gaps, test) }))
+	const plan = planCheck({ ...draft, tests, coverage: planCoverage({ ...draft, tests }) })
 	const target = profileCheck(await readReference(workspace, plan.target))
 	requireCondition(plan.targetId === target.targetId, 'Plan target identity changed')
 	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {

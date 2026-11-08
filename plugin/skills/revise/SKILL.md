@@ -11,8 +11,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/contracts/revise-request.schema.json` and `${CLAUDE_
 3. Preserve the requirement text and source. The decision supplies the additional interpretation. Preserve test IDs, gap IDs, and scope.
 4. For `clarify`, resolve the gap and update the affected test's expected result, action, or preconditions as needed.
 5. For `accept_assumption`, resolve the gap. Add the exact decision value to `assumptions` with its decision ID.
-6. For `defer`, mark the gap and affected tests as deferred. Keep the coverage visible.
-7. Preserve prior decisions and assumptions. Append the caller's decisions in request order. Recalculate readiness. Do not write `coverage`. `save-plan` calculates it. Do not change unrelated tests.
+6. For `defer`, mark the gap as deferred. Keep the coverage visible.
+7. Preserve prior decisions and assumptions. Append the caller's decisions in request order. Do not set readiness or write `coverage`. `save-plan` calculates both from the gaps. Do not change unrelated tests.
 8. Increment the revision by one. Set `previousRevision` to the base revision.
 9. Publish with `checkmate save-plan`, unless the parent requested a candidate only.
 

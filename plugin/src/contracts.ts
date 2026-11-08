@@ -14,7 +14,11 @@ import { readFileSync } from 'node:fs'
 import { requireCondition, same } from './files.ts'
 import * as validators from './validators.js'
 
-export type PlanCandidate = Omit<Plan, 'coverage'>
+type PlanTest = Plan['tests'][number]
+// A plan candidate omits coverage. Each test may omit readiness; save-plan sets both.
+export type PlanCandidate = Omit<Plan, 'coverage' | 'tests'> & {
+	tests: Array<Omit<PlanTest, 'readiness'> & { readiness?: PlanTest['readiness'] }>
+}
 export type Documents = {
 	profile: Profile
 	plan: Plan
@@ -108,6 +112,26 @@ export function planCoverage(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>
 		return { requirementId: requirement.id, testIds: tests.map((test) => test.id), status }
 	})
 }
+// A gap applies to the tests it names, to every test of the requirements it names,
+// and to every test when it names neither.
+export function gapsAffecting(gaps: Plan['gaps'], test: Pick<PlanTest, 'id' | 'requirementIds'>) {
+	return gaps.filter(
+		(gap) =>
+			gap.testIds.includes(test.id) ||
+			gap.requirementIds.some((id) => test.requirementIds.includes(id)) ||
+			(gap.testIds.length === 0 && gap.requirementIds.length === 0)
+	)
+}
+// A deferred gap defers a test. An open blocking gap blocks it. Otherwise the test is ready.
+export function testReadiness(
+	gaps: Plan['gaps'],
+	test: Pick<PlanTest, 'id' | 'requirementIds'>
+): PlanTest['readiness'] {
+	const affected = gapsAffecting(gaps, test)
+	if (affected.some((gap) => gap.status === 'deferred')) return 'deferred'
+	if (affected.some((gap) => gap.status === 'open' && gap.severity === 'blocking')) return 'blocked'
+	return 'ready'
+}
 export function planCheck(value: unknown): Plan {
 	const plan = validate('plan', value)
 	const requirements = index(plan.requirements, 'id')
@@ -157,20 +181,12 @@ export function planCheck(value: unknown): Plan {
 		references(test.requirementIds, requirements, 'requirement')
 		references(test.gapIds, gaps, 'gap')
 		references(test.dependsOn, tests, 'dependency')
-		const affected = plan.gaps.filter(
-			(gap) =>
-				gap.testIds.includes(test.id) ||
-				gap.requirementIds.some((id) => test.requirementIds.includes(id)) ||
-				(gap.testIds.length === 0 && gap.requirementIds.length === 0)
-		)
+		const affected = gapsAffecting(plan.gaps, test)
 		requireCondition(
 			test.gapIds.every((id) => affected.some((gap) => gap.id === id)),
 			'Test gap has no matching scope'
 		)
-		const deferred = affected.some((gap) => gap.status === 'deferred')
-		const blocked = affected.some((gap) => gap.status === 'open' && gap.severity === 'blocking')
-		const expectedReadiness = deferred ? 'deferred' : blocked ? 'blocked' : 'ready'
-		requireCondition(test.readiness === expectedReadiness, 'Test readiness conflicts with gaps')
+		requireCondition(test.readiness === testReadiness(plan.gaps, test), 'Test readiness conflicts with gaps')
 		if (test.readiness === 'ready')
 			requireCondition(test.expected?.trim(), 'Ready test needs an explicit expected result')
 	}

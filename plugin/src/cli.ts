@@ -7,6 +7,8 @@ import { validate, profileCheck, planCheck, requestCheck } from './contracts.ts'
 import { setup, savePlan, gate, beginRun, finalize, reports, response } from './stages.ts'
 import { delegate } from './launcher.ts'
 
+const commands = ['validate', 'setup', 'save-plan', 'gate', 'begin', 'finalize', 'report', 'delegate']
+
 export async function main(args: string[]) {
 	let request: Request | undefined
 	try {
@@ -26,12 +28,18 @@ export async function main(args: string[]) {
 		const options: DelegateOptions & { allowedTools: string[] } = { allowedTools: [] }
 		let workspace = process.cwd()
 		for (let i = 0; i < args.length; i++) {
-			if (args[i] === '--workspace') workspace = resolve(args[++i])
-			else if (args[i] === '--allow') options.allowedTools.push(args[++i])
-			else if (args[i] === '--timeout') options.timeoutSeconds = Number(args[++i])
+			const option = args[i]
+			const value = () => {
+				const next = args[++i]
+				requireCondition(next !== undefined && !next.startsWith('--'), `Missing value for ${option}`)
+				return next
+			}
+			if (option === '--workspace') workspace = resolve(value())
+			else if (option === '--allow') options.allowedTools.push(value())
+			else if (option === '--timeout') options.timeoutSeconds = Number(value())
 			else {
-				requireCondition(!args[i].startsWith('--'), 'Unknown option')
-				positional.push(args[i])
+				requireCondition(!option.startsWith('--'), `Unknown option: ${option}`)
+				positional.push(option)
 			}
 		}
 		if (options.timeoutSeconds !== undefined)
@@ -41,11 +49,8 @@ export async function main(args: string[]) {
 					options.timeoutSeconds <= 3600,
 				'Invalid timeout'
 			)
-		requireCondition(
-			options.allowedTools.every((value) => typeof value === 'string' && value.length > 0),
-			'Missing tool rule'
-		)
 		const [command, path, candidatePath] = positional
+		requireCondition(commands.includes(command), `Unknown command: ${command}`)
 		requireCondition(positional.length >= 2 && positional.length <= 3, 'Invalid arguments')
 		const document = await readDocument(workspace, path)
 		if (command === 'validate') {
@@ -70,10 +75,7 @@ export async function main(args: string[]) {
 			await reports(workspace, request.result)
 			result = response(request, 'completed', request.result)
 		} else {
-			requireCondition(
-				['setup', 'save-plan', 'finalize'].includes(command) && candidatePath,
-				'Command needs a candidate file'
-			)
+			requireCondition(candidatePath, `${command} needs a candidate file`)
 			const candidate = (await readDocument(workspace, candidatePath)).value
 			if (command === 'setup') result = await setup(workspace, request, candidate)
 			else if (command === 'save-plan') result = await savePlan(workspace, request, candidate)

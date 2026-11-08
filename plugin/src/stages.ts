@@ -1,5 +1,5 @@
 import type { Request, Response, Plan, Reference, ExecuteRequest, Observation } from './types.ts'
-import { readdir, mkdir, stat, readFile } from 'node:fs/promises'
+import { readdir, mkdir, stat, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { confined, digest, publish, readDocument, readReference, requireCondition, same } from './files.ts'
@@ -223,16 +223,21 @@ export async function beginRun(workspace: string, input: unknown, deadlineSecond
 	const directory = await confined(workspace, request.outputDirectory)
 	await mkdir(directory, { recursive: true })
 	const startedAt = new Date().toISOString()
-	await publish(workspace, `.checkmate/run-ids/${request.runId}.json`, {
-		requestId: request.requestId,
-		outputDirectory: request.outputDirectory,
-	})
-	const artifact = await publish(workspace, join(request.outputDirectory, 'invocation.json'), {
-		request,
-		startedAt,
-		browserSession: `cm-${randomUUID()}`,
-		deadlineSeconds: deadlineSeconds ?? request.timeoutSeconds,
-	})
+	const reservation = `.checkmate/run-ids/${request.runId}.json`
+	await publish(workspace, reservation, { requestId: request.requestId, outputDirectory: request.outputDirectory })
+	let artifact
+	try {
+		artifact = await publish(workspace, join(request.outputDirectory, 'invocation.json'), {
+			request,
+			startedAt,
+			browserSession: `cm-${randomUUID()}`,
+			deadlineSeconds: deadlineSeconds ?? request.timeoutSeconds,
+		})
+	} catch (error) {
+		// No run started, so release the run ID for a later attempt.
+		await unlink(await confined(workspace, reservation))
+		throw error
+	}
 	await mkdir(await confined(directory, 'evidence'), { recursive: true })
 	return response(request, 'completed', artifact)
 }

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { symlink, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Observation, Plan, Result } from '../plugin/src/types.ts'
 import { sandbox, prepare, revised, executeRequest, observation, artifact, load } from './support.ts'
@@ -222,4 +222,17 @@ test('run IDs remain unique across output directories', async (t) => {
 	const { value } = await readDocument(workspace, 'runs/run-1/invocation.json')
 	assert.equal((value as { deadlineSeconds: number }).deadlineSeconds, request.timeoutSeconds)
 	await assert.rejects(beginRun(workspace, { ...request, outputDirectory: 'another/run-1' }), { code: 'EEXIST' })
+})
+
+test('a failed begin releases the run ID', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace),
+		r = await revised(workspace, p)
+	const request = executeRequest(p, r)
+	// A directory in the place of invocation.json makes the second write fail.
+	await mkdir(join(workspace, 'runs/run-1/invocation.json'), { recursive: true })
+	await assert.rejects(beginRun(workspace, request), { code: 'EEXIST' })
+	await assert.rejects(readDocument(workspace, '.checkmate/run-ids/run-1.json'), { code: 'ENOENT' })
+	await rm(join(workspace, 'runs/run-1/invocation.json'), { recursive: true })
+	assert.equal((await beginRun(workspace, request)).status, 'completed')
 })

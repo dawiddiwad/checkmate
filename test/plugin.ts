@@ -38,7 +38,7 @@ try {
 	)
 	const validated = execFileSync(
 		process.execPath,
-		[join(source, 'bin/checkmate.ts'), 'validate', 'plan-request.json'],
+		[join(source, 'bin/checkmate.ts'), 'validate', 'request', 'plan-request.json'],
 		{ cwd: join(root, 'docs/examples'), encoding: 'utf8' }
 	)
 	assert.equal(JSON.parse(validated).valid, true)

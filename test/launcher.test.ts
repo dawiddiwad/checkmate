@@ -118,21 +118,26 @@ test('preflight rejection never launches Claude', async (t) => {
 	assert.equal(result.status, 'needs_decision')
 })
 
-test('Claude reports missing authentication in a clean host configuration', async (t) => {
-	const { execFile } = await import('node:child_process')
-	const { promisify } = await import('node:util')
-	const { root } = await import('./support.ts')
-	const workspace = await sandbox(t)
-	const environment: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CONFIG_DIR: workspace }
-	for (const name of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
-		delete environment[name]
-	const output = await promisify(execFile)(join(root, 'node_modules/.bin/claude'), ['auth', 'status'], {
-		env: environment,
-	}).catch((error) => {
-		assert(error.stdout, 'Expected a structured authentication status')
-		return error
-	})
-	assert.equal(JSON.parse(output.stdout).loggedIn, false)
+test('a worker that is not logged in fails the stage with its reason', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace)
+	await write(workspace, 'request.json', p.planRequest)
+	const options = { allowedTools: ['Read', 'Write'] }
+	const envelope = {
+		type: 'result',
+		subtype: 'success',
+		is_error: true,
+		result: 'Invalid API key · Please run /login',
+	}
+	const loggedOut = await executable(workspace, `console.log(${JSON.stringify(JSON.stringify(envelope))})`)
+	const first = await delegate(workspace, 'request.json', { ...options, claude: loggedOut })
+	assert.equal(first.status, 'operational_error')
+	assert.equal(first.artifact, null)
+	assert.deepEqual(first.reasons, ['Claude did not complete the stage: Invalid API key · Please run /login'])
+	const exits = await executable(workspace, `console.error('Not logged in. Run claude auth login.'); process.exit(1)`)
+	const second = await delegate(workspace, 'request.json', { ...options, claude: exits })
+	assert.deepEqual(second.reasons, ['Worker exited with code 1: Not logged in. Run claude auth login.'])
+	await assert.rejects(readFile(join(workspace, 'plans/checkout/v2.json')), { code: 'ENOENT' })
 })
 
 test('worker cannot silently change a pinned request', async (t) => {

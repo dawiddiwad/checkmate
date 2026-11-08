@@ -72,6 +72,12 @@ async function interruptedResult(
 	})
 }
 
+// The first line of Claude's own message, shortened, so a failure says why.
+function excerpt(message: unknown) {
+	const line = typeof message === 'string' ? message.trim().split('\n')[0].slice(0, 200) : ''
+	return line ? `: ${line}` : ''
+}
+
 export async function worker(
 	executable: string,
 	args: string[],
@@ -86,6 +92,7 @@ export async function worker(
 			detached: true,
 		})
 		let output = ''
+		let errors = ''
 		let failure: Error | undefined
 		let killTimer: ReturnType<typeof setTimeout> | undefined
 		const stop = (reason: string) => {
@@ -107,7 +114,9 @@ export async function worker(
 			if (output.length + bytes.length > 4 * 1024 * 1024) stop('Worker output exceeds 4 MiB')
 			else output += bytes.toString()
 		})
-		child.stderr.resume()
+		child.stderr.on('data', (bytes) => {
+			if (errors.length < 4096) errors += bytes.toString()
+		})
 		child.stdin.on('error', () => {})
 		child.stdin.end(options.prompt)
 		child.on('error', (error) => {
@@ -122,7 +131,7 @@ export async function worker(
 				process.kill(-child.pid!, 'SIGKILL')
 			} catch {}
 			if (failure) return reject(failure)
-			if (code !== 0) return reject(new Error(`Worker exited with code ${code}`))
+			if (code !== 0) return reject(new Error(`Worker exited with code ${code}${excerpt(errors)}`))
 			try {
 				let envelope: unknown
 				try {
@@ -131,20 +140,19 @@ export async function worker(
 					throw new Error('Claude did not return a JSON envelope')
 				}
 				requireCondition(
-					typeof envelope === 'object' &&
-						envelope !== null &&
-						'type' in envelope &&
-						'subtype' in envelope &&
-						'structured_output' in envelope,
+					typeof envelope === 'object' && envelope !== null && 'type' in envelope && 'subtype' in envelope,
 					'Invalid Claude envelope'
 				)
 				requireCondition(
 					envelope.type === 'result' &&
 						envelope.subtype === 'success' &&
 						(!('is_error' in envelope) || envelope.is_error !== true),
-					'Claude did not complete the stage'
+					`Claude did not complete the stage${excerpt('result' in envelope ? envelope.result : '')}`
 				)
-				requireCondition(envelope.structured_output, 'Claude did not return structured output')
+				requireCondition(
+					'structured_output' in envelope && envelope.structured_output,
+					'Claude did not return structured output'
+				)
 				resolvePromise(validate('response', envelope.structured_output))
 			} catch (error) {
 				reject(error)

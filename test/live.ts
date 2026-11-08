@@ -78,8 +78,14 @@ try {
 	planRequest.target = artifact(configured.response)
 	const planned = await stage<Plan>('plan', planRequest)
 	assert.equal(app.actions(), 0, 'Planning executed a test action')
-	assert(planned.value.gaps.some((g) => g.requirementIds.includes('R2') && g.severity === 'blocking'))
-	assert(planned.value.gaps.some((g) => g.requirementIds.includes('R3') && g.severity === 'blocking'))
+	// The unknown stacking and refund rules must block at least one test of R2 and of R3.
+	for (const requirement of ['R2', 'R3'])
+		assert(
+			planned.value.tests.some(
+				(test) => test.requirementIds.includes(requirement) && test.readiness === 'blocked'
+			),
+			`No ${requirement} test is blocked`
+		)
 	const selected = planned.value.tests.filter((t) => t.requirementIds.includes('R1')).map((t) => t.id)
 	const initial: ExecuteRequest = {
 		contractVersion: 'toolkit-1',

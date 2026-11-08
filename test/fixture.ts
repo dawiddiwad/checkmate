@@ -10,7 +10,10 @@ export async function fixture() {
 		if (url.pathname === '/health') return response.end(JSON.stringify({ ready: true }))
 		if (url.pathname === '/quote') {
 			actions++
-			const totalPLN = url.searchParams.get('promotion') === 'true' ? (fixed ? 240 : 220) : 400
+			// The seeded defect: the promotion stacks with loyalty until the caller fixes it.
+			const promotion = url.searchParams.get('promotion') === 'true'
+			const loyalty = url.searchParams.get('loyalty') === 'true'
+			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : 400
 			return response.end(JSON.stringify({ totalPLN }))
 		}
 		if (url.pathname === '/order' && request.method === 'POST') {

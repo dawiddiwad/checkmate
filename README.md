@@ -326,7 +326,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 ## Commands
 
 ```text
-checkmate validate <file.json>
+checkmate validate <kind> <file.json>
 checkmate setup <request.json> <profile.json>
 checkmate save-plan <request.json> <plan.json>
 checkmate gate <request.json>

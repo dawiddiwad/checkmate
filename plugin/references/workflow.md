@@ -11,7 +11,8 @@ In a skill, `checkmate <command>` means `node "${CLAUDE_PLUGIN_ROOT}/bin/checkma
 Use these commands from the caller's workspace:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" validate request.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" validate request request.json
+node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" validate plan-candidate plan-candidate.json
 node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" setup request.json profile-candidate.json
 node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" save-plan request.json plan-candidate.json
 node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" gate request.json

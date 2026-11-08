@@ -2,16 +2,18 @@
 
 Use `node /absolute/path/to/checkmate/plugin/bin/checkmate.ts <command>`. Run commands from the caller's workspace. Use `--workspace <path>` to select another directory. Paths in JSON remain relative to that workspace.
 
-| Command                                  | Input                               | Effect                                                                   |
-| ---------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------ |
-| `validate file.json`                     | A request, profile, plan, or result | Check the contract. Plan checks include relationships.                   |
-| `setup request.json candidate.json`      | Setup request and profile           | Save a new profile, or accept an identical existing profile.             |
-| `save-plan request.json candidate.json`  | Plan or revise request and plan     | Check scope and decisions. Calculate coverage. Publish a revision.       |
-| `gate request.json`                      | Execute request                     | Check digests, gaps, capabilities, operations, and prerequisites.        |
-| `begin request.json`                     | Execute request                     | Apply the gate. Reserve the output directory with an invocation record.  |
-| `finalize request.json observation.json` | Execute request and observations    | Record evidence digests. Calculate coverage. Publish result and reports. |
-| `report request.json`                    | Report request                      | Generate views from a pinned result.                                     |
-| `delegate request.json`                  | Any stage request                   | Run one fresh Claude session, or render a report directly.               |
+| Command                                  | Input                            | Effect                                                                   |
+| ---------------------------------------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `validate <kind> file.json`              | A document of the named kind     | Check the contract. Profile and plan checks include relationships.       |
+| `setup request.json candidate.json`      | Setup request and profile        | Save a new profile, or accept an identical existing profile.             |
+| `save-plan request.json candidate.json`  | Plan or revise request and plan  | Check scope and decisions. Calculate coverage. Publish a revision.       |
+| `gate request.json`                      | Execute request                  | Check digests, gaps, capabilities, operations, and prerequisites.        |
+| `begin request.json`                     | Execute request                  | Apply the gate. Reserve the output directory with an invocation record.  |
+| `finalize request.json observation.json` | Execute request and observations | Record evidence digests. Calculate coverage. Publish result and reports. |
+| `report request.json`                    | Report request                   | Generate views from a pinned result.                                     |
+| `delegate request.json`                  | Any stage request                | Run one fresh Claude session, or render a report directly.               |
+
+`validate` needs the document kind: `request`, `profile`, `plan`, `plan-candidate`, `observation`, or `result`. It does not guess the kind. Use `plan-candidate` and `observation` to check a document before you publish it.
 
 The plugin calls the same TypeScript entry point. No global npm command is installed.
 

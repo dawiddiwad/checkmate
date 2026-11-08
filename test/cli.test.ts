@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
-import { root, sandbox, write } from './support.ts'
+import { fixtureJson, root, sandbox, write } from './support.ts'
 
 const exec = promisify(execFile)
 const cli = join(root, 'plugin/bin/checkmate.ts')
@@ -34,4 +34,20 @@ test('the CLI names unknown commands, unknown options, and missing option values
 		assert.equal(code, 1, args.join(' '))
 		assert.deepEqual(output, { status: 'invalid_request', reasons: [reason] })
 	}
+})
+
+test('validate checks a document against the named kind and never guesses', async (t) => {
+	const workspace = await sandbox(t)
+	await write(workspace, 'plan.json', await fixtureJson('plan'))
+	const valid = await checkmate(workspace, ['validate', 'plan-candidate', 'plan.json'])
+	assert.equal(valid.code, 0)
+	assert.equal(valid.output.valid, true)
+	assert.equal(valid.output.kind, 'plan-candidate')
+	const wrong = await checkmate(workspace, ['validate', 'observation', 'plan.json'])
+	assert.equal(wrong.code, 1)
+	assert.match(wrong.output.reasons[0], /^Invalid observation/)
+	const unknown = await checkmate(workspace, ['validate', 'scenario', 'plan.json'])
+	assert.match(unknown.output.reasons[0], /^Unknown kind: scenario/)
+	const missing = await checkmate(workspace, ['validate', 'plan.json'])
+	assert.equal(missing.output.reasons[0], 'Usage: checkmate validate <kind> <file>')
 })

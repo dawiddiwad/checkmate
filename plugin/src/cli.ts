@@ -8,6 +8,8 @@ import { setup, savePlan, gate, beginRun, finalize, reports, response } from './
 import { delegate } from './launcher.ts'
 
 const commands = ['validate', 'setup', 'save-plan', 'gate', 'begin', 'finalize', 'report', 'delegate']
+// validate <kind> <file> checks one document against the named contract.
+const kinds = ['request', 'profile', 'plan', 'plan-candidate', 'observation', 'result']
 
 export async function main(args: string[]) {
 	let request: Request | undefined
@@ -20,7 +22,7 @@ export async function main(args: string[]) {
 		}
 		if (!args.length || args[0] === '--help') {
 			console.log(
-				'checkmate <validate|setup|save-plan|gate|begin|finalize|report|delegate> <file> [candidate]\nOptions: --workspace <path>, --allow <Claude tool rule>, --timeout <seconds>'
+				'checkmate validate <request|profile|plan|plan-candidate|observation|result> <file>\ncheckmate <setup|save-plan|gate|begin|finalize|report|delegate> <request> [candidate]\nOptions: --workspace <path>, --allow <Claude tool rule>, --timeout <seconds>'
 			)
 			return
 		}
@@ -49,20 +51,23 @@ export async function main(args: string[]) {
 					options.timeoutSeconds <= 3600,
 				'Invalid timeout'
 			)
-		const [command, path, candidatePath] = positional
+		const [command] = positional
 		requireCondition(commands.includes(command), `Unknown command: ${command}`)
-		requireCondition(positional.length >= 2 && positional.length <= 3, 'Invalid arguments')
-		const document = await readDocument(workspace, path)
 		if (command === 'validate') {
-			const value = document.value
-			requireCondition(typeof value === 'object' && value !== null, 'Expected a JSON object')
-			if ('operation' in value) requestCheck(value)
-			else if ('planId' in value) planCheck(value)
-			else if ('targetId' in value) profileCheck(value)
-			else validate('result', value)
-			console.log(JSON.stringify({ valid: true, artifact: document.reference }))
+			const [, kind, file] = positional
+			requireCondition(positional.length === 3, 'Usage: checkmate validate <kind> <file>')
+			requireCondition(kinds.includes(kind), `Unknown kind: ${kind}. Use one of: ${kinds.join(', ')}`)
+			const document = await readDocument(workspace, file)
+			if (kind === 'request') requestCheck(document.value)
+			else if (kind === 'profile') profileCheck(document.value)
+			else if (kind === 'plan') planCheck(document.value)
+			else validate(kind as 'plan-candidate' | 'observation' | 'result', document.value)
+			console.log(JSON.stringify({ valid: true, kind, artifact: document.reference }))
 			return
 		}
+		const [, path, candidatePath] = positional
+		requireCondition(positional.length >= 2 && positional.length <= 3, 'Invalid arguments')
+		const document = await readDocument(workspace, path)
 		request = requestCheck(document.value)
 		let result: Response
 		if (command === 'delegate') result = await delegate(workspace, path, options)

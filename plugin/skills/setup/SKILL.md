@@ -4,7 +4,7 @@ description: Set up a Checkmate target profile from an explicit setup request. C
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `contracts/setup-request.schema.json` and `contracts/profile.schema.json` in the plugin.
+Read `${CLAUDE_PLUGIN_ROOT}/contracts/setup-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/profile.schema.json`.
 
 1. Read the caller's setup request. Inspect project instructions and existing profiles. Source code is optional.
 2. Check for Node.js 24.12.0 or later. Check Claude Code and the requested tools. In `tooling`, record exactly one entry for each requested capability. Use `browser` for Playwright CLI and `http` for Node.js. Do not add an extra Claude capability. Record actual versions.

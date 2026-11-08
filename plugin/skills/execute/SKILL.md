@@ -4,7 +4,7 @@ description: Execute a pinned Checkmate plan with direct tools. Record observati
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `contracts/execute-request.schema.json` and `contracts/observation.schema.json` in the plugin.
+Read `${CLAUDE_PLUGIN_ROOT}/contracts/execute-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/observation.schema.json`.
 Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/references/http.md` as needed.
 
 1. Read the request, plan, and profile. Run `checkmate gate`. Stop if the gate does not return `completed`.

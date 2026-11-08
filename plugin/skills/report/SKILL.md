@@ -4,7 +4,7 @@ description: Generate Markdown and HTML views from a saved Checkmate result.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `contracts/report-request.schema.json` in the plugin.
+Read `${CLAUDE_PLUGIN_ROOT}/contracts/report-request.schema.json`.
 
 Read the request. Run:
 

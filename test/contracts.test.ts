@@ -158,6 +158,17 @@ test('renderer escapes content and detects changed generated views', async (t) =
 	const html = await readFile(join(workspace, 'runs/run-1/report.html'), 'utf8')
 	assert(!html.includes('<script>'))
 	assert(html.includes('&lt;script&gt;'))
+	assert(html.includes('<a href="evidence/T2.txt">evidence/T2.txt</a>'))
+	const md = await readFile(join(workspace, 'runs/run-1/report.md'), 'utf8')
+	assert(
+		md.includes('| T1 | passed | The order total is 400 PLN. | &lt;script&gt;alert(1)&lt;/script&gt; \\`\\`\\` |')
+	)
+	assert(md.includes('[evidence/T2.txt](evidence/T2.txt)'))
+	const plan = await readFile(join(workspace, 'plans/checkout/v2.md'), 'utf8')
+	assert.match(
+		plan,
+		/\| G1 \| blocking \| resolved \| Does the promotion stack with loyalty, and in which order\? \|/
+	)
 	await writeFile(join(workspace, 'runs/run-1/report.md'), 'changed')
 	await assert.rejects(reports(workspace, artifact(saved)), /differs/)
 })

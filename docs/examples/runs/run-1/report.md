@@ -1,6 +1,60 @@
-# Test result
+# Test result: run-1
 
-Completion and coverage are separate. Inspect each test outcome.
+Generated from result.json. Completion, test outcomes, and coverage are separate. Edit the JSON record, not this view.
+
+| Field | Value |
+| --- | --- |
+| Completion | completed |
+| Coverage | partial |
+| Run | run-1 |
+| Application build | fixture-build-1 |
+| Plan | plans/checkout/v2.json |
+| Target profile | profile.json |
+| Started | 2026-11-07T14:24:25.788Z |
+| Finished | 2026-11-07T14:24:25.850Z |
+
+## Tests
+
+| Test | Outcome | Expected | Observed | Reason | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| T1 | passed | The order total is 400 PLN. | Order confirmed: 400 PLN | — | [evidence/T1.txt](evidence/T1.txt) |
+| T2 | failed | HTTP 200 and totalPLN equals 240, with the loyalty discount replaced. | HTTP 200; totalPLN = 220 | Observed total differs from expected total. | [evidence/T2.txt](evidence/T2.txt) |
+| T3 | not\_run | — | — | Test was not selected or was deferred. | — |
+
+## Findings
+
+### F1 · defect · medium: Promotion stacks with loyalty
+
+| Field | Value |
+| --- | --- |
+| Tests | T2 |
+| Requirements | R2 |
+| Expected | 240 PLN |
+| Observed | 220 PLN |
+| Evidence | [evidence/T2.txt](evidence/T2.txt) |
+
+1. Create a 400 PLN cart with 20 PLN loyalty.
+2. Apply a 40 percent promotion.
+3. Read the quote total.
+
+## New gaps
+
+No new gaps.
+
+## Coverage
+
+| Requirement | Status | Tests | Reason |
+| --- | --- | --- | --- |
+| R1 | tested | T1 | — |
+| R2 | tested | T2 | — |
+| R3 | uncovered | T3 | At least one required check or decision is missing. |
+
+## Cleanup
+
+not\_applicable: Illustrative document. No application was used to create this example.
+
+<details>
+<summary>Complete JSON record</summary>
 
 ```json
 {
@@ -130,3 +184,5 @@ Completion and coverage are separate. Inspect each test outcome.
   }
 }
 ```
+
+</details>

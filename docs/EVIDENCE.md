@@ -10,7 +10,9 @@ Completion describes the operation: `completed`, `interrupted`, or `operational_
 
 A tool or access failure is an error. It is not a product defect. A cleanup failure prevents `completion: completed`.
 
-JSON is authoritative. The renderer creates Markdown and HTML from the same record. It escapes HTML and uses a safe Markdown code fence. HTML uses no scripts or remote resources. Do not edit a generated view to change a verdict.
+JSON is authoritative. The renderer creates Markdown and HTML from the same record. A report shows the completion and coverage summary, each test with its expected and observed values and evidence links, the findings with reproduction steps, new gaps, coverage for each requirement, and cleanup. The complete JSON record follows in a collapsed section. A plan view shows the requirements, tests and readiness, gaps, decisions, and assumptions.
+
+The renderer escapes untrusted text for Markdown and HTML. HTML uses no scripts or remote resources. Do not edit a generated view to change a verdict.
 
 Publication uses an exclusive temporary file, file sync, and a hard link that refuses overwrite. A completed result cannot replace an existing result. Generated views can be recovered with `report` after a rendering failure.
 

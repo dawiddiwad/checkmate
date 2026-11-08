@@ -135,9 +135,10 @@ export async function observation(
 	workspace: string,
 	request: ExecuteRequest,
 	plan: PlanCandidate,
-	total = 220
+	total = 220,
+	begin = true
 ): Promise<Observation> {
-	await beginRun(workspace, request)
+	if (begin) await beginRun(workspace, request)
 	const { value } = await readDocument(workspace, `${request.outputDirectory}/invocation.json`)
 	const invocation = value as { startedAt: string }
 	const evidence: Observation['evidence'] = []

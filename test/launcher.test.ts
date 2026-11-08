@@ -4,7 +4,18 @@ import { writeFile, chmod, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { worker, delegate } from '../plugin/src/launcher.ts'
 import type { Plan, Result } from '../plugin/src/types.ts'
-import { sandbox, prepare, revised, executeRequest, write, fixtureJson, artifact, load } from './support.ts'
+import {
+	sandbox,
+	prepare,
+	revised,
+	executeRequest,
+	write,
+	fixtureJson,
+	artifact,
+	load,
+	observation,
+} from './support.ts'
+import { finalize } from '../plugin/src/stages.ts'
 import { planCoverage, type PlanCandidate } from '../plugin/src/contracts.ts'
 
 async function executable(workspace: string, code: string) {
@@ -176,4 +187,33 @@ test('a failed execute worker closes the browser session once', async (t) => {
 	assert.match(closed[0], /^-s=cm-.* close$/)
 	const saved = JSON.parse(await readFile(join(workspace, 'runs/run-1/result.json'), 'utf8')) as Result
 	assert.equal(saved.cleanup.status, 'completed')
+})
+
+test('a rejected observation stays recoverable with finalize', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace),
+		r = await revised(workspace, p)
+	const request = executeRequest(p, r)
+	await write(workspace, 'request.json', request)
+	const response = { contractVersion: 'toolkit-1', requestId: request.requestId, operation: 'execute', reasons: [] }
+	const claude = await executable(
+		workspace,
+		`let prompt='';process.stdin.on('data',(b)=>prompt+=b).on('end',()=>{` +
+			`const file=prompt.match(/Write the candidate JSON to (\\S+)\\./)[1];` +
+			`require('node:fs').writeFileSync(file,'{}');` +
+			`console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{...${JSON.stringify(response)},status:'completed',artifact:null}}))})`
+	)
+	const result = await delegate(workspace, 'request.json', {
+		allowedTools: ['Read', 'Write'],
+		claude,
+		playwright: '/missing-playwright',
+	})
+	assert.equal(result.status, 'operational_error')
+	await assert.rejects(readFile(join(workspace, 'runs/run-1/result.json')), { code: 'ENOENT' })
+	const record = JSON.parse(await readFile(join(workspace, 'runs/run-1/launcher-error.json'), 'utf8'))
+	assert.match(record.reason, /Invalid observation/)
+	assert.match(record.candidate, /^\.checkmate\/candidates\/execute-1-.*\.json$/)
+	await readFile(join(workspace, record.candidate))
+	const corrected = await observation(workspace, request, r.plan, 220, false)
+	assert.equal((await finalize(workspace, request, corrected)).status, 'completed')
 })

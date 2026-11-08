@@ -255,7 +255,14 @@ export async function delegate(workspace: string, requestPath: string, options: 
 		const status = /deadline|interrupted/.test(error.message) ? 'interrupted' : 'operational_error'
 		if (request.operation === 'execute') {
 			const file = await confined(workspace, join(request.outputDirectory, 'launcher-error.json'))
-			await writeFile(file, JSON.stringify({ status, reason: error.message, completedResult: false }) + '\n', {
+			// A rejected candidate stays in place. The caller can correct it and run finalize.
+			const record = {
+				status,
+				reason: error.message,
+				completedResult: false,
+				...(candidateReceived ? { candidate } : {}),
+			}
+			await writeFile(file, JSON.stringify(record) + '\n', {
 				flag: 'wx',
 				mode: 0o600,
 			})

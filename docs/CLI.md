@@ -54,7 +54,13 @@ Each invocation starts a fresh session. All required context must be in the requ
 
 For execution, the parent applies the gate before it starts Claude. It records `startedAt`, a unique `browserSession`, and the applied `deadlineSeconds` in `invocation.json`. The worker uses those values. The parent checks the candidate before finalization.
 
-A stopped or failed worker does not produce a completed result. If no checked observation is available, the finalizer records selected tests as errors with unknown observations. It keeps omitted tests visible. Do not infer that no target action occurred. An invalid candidate cannot be published as a result. `launcher-error.json` records the failure when applicable. The parent attempts to close only the reserved browser session. Use a browser idle timeout as an additional cleanup measure.
+A stopped or failed worker does not produce a completed result. If no checked observation is available, the finalizer records selected tests as errors with unknown observations. It keeps omitted tests visible. Do not infer that no target action occurred. An invalid candidate cannot be published as a result. `launcher-error.json` records the failure when applicable.
+
+If the finalizer rejects a received observation, the run gets no result. `launcher-error.json` records the reason and the `candidate` path. The candidate stays in place. To recover the run:
+
+1. Read the reason in `launcher-error.json`.
+2. Copy the candidate and correct the copy. Change only what the reason names. Do not invent observations.
+3. Run `checkmate finalize request.json corrected-observation.json` for the same request. The parent attempts to close only the reserved browser session. Use a browser idle timeout as an additional cleanup measure.
 
 Linux process groups are tested. The launcher rejects Windows. macOS process groups use the same code but are not in the measured support baseline.
 

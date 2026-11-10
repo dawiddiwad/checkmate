@@ -15,8 +15,8 @@ import { requireCondition, same } from './files.ts'
 import * as validators from './validators.js'
 
 type PlanTest = Plan['tests'][number]
-// A plan candidate omits coverage. Each test may omit readiness; save-plan sets both.
-export type PlanCandidate = Omit<Plan, 'coverage' | 'tests'> & {
+// A plan candidate omits coverage and usage. Each test may omit readiness; save-plan sets them.
+export type PlanCandidate = Omit<Plan, 'coverage' | 'usage' | 'tests'> & {
 	tests: Array<Omit<PlanTest, 'readiness'> & { readiness?: PlanTest['readiness'] }>
 }
 export type Documents = {

@@ -147,7 +147,7 @@ The caller clarifies the discount rule and defers refund coverage. The next plan
 	"operation": "revise",
 	"basePlan": {
 		"path": "plans/checkout/v1.json",
-		"sha256": "6662aafbd34bdc39353836937e4e8dae50d0e4c07ff611f020a276649714c5e5"
+		"sha256": "a61f139d1d82398bf9a8a0b6c6a565043774f7b957acdee7b6cc0d548d135bb9"
 	},
 	"baseRevision": 1,
 	"decisions": [
@@ -189,7 +189,7 @@ The request selects two tests and pins the target and plan by digest. It uses th
 	"runId": "run-1",
 	"plan": {
 		"path": "plans/checkout/v2.json",
-		"sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
+		"sha256": "e98fd465626ea176c66c6dc24f573639cced18d610249c46cc1a6b27bfde5d28"
 	},
 	"target": {
 		"path": "profile.json",
@@ -219,7 +219,7 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 	"completion": "completed",
 	"plan": {
 		"path": "plans/checkout/v2.json",
-		"sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
+		"sha256": "e98fd465626ea176c66c6dc24f573639cced18d610249c46cc1a6b27bfde5d28"
 	},
 	"target": {
 		"path": "profile.json",
@@ -324,7 +324,8 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 				"reason": "At least one required check or decision is missing."
 			}
 		]
-	}
+	},
+	"usage": null
 }
 ```
 

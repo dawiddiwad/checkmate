@@ -1,5 +1,10 @@
+import type { Result } from './types.ts'
 import { execFileSync } from 'node:child_process'
 import { requireCondition } from './files.ts'
+
+// Token, context, and cost figures exactly as the host reports them for one stage.
+// Input tokens include cached input. Checkmate keeps no price table.
+export type Usage = NonNullable<Result['usage']>
 
 // A host is an agent CLI that can run one Checkmate stage headless.
 // Each host keeps its own model, authentication, and permissions. Checkmate only
@@ -23,8 +28,8 @@ export type Host = {
 	args(run: HostRun): string[]
 	// Hosts that do not read the prompt from standard input get it as an argument.
 	promptOnStdin: boolean
-	// Throws when the output reports a failure. Returns the model name if the output has one.
-	read(output: string): { model: string | null }
+	// Throws when the output reports a failure. Returns the model name and usage if the output has them.
+	read(output: string): { model: string | null; usage: Usage | null }
 }
 
 // The first line of a host message, shortened, so a failure says why.
@@ -46,6 +51,11 @@ function jsonLines(output: string, host: string) {
 	}
 	requireCondition(events.length, `${host} returned no events`)
 	return events
+}
+
+// A token count from host output. A missing or invalid value counts as zero.
+function count(value: unknown) {
+	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : 0
 }
 
 // The first string value of a "model" key, at any depth. Hosts that do not name the model give null.
@@ -103,14 +113,45 @@ const claude: Host = {
 			`Claude did not complete the stage${excerpt('result' in envelope ? envelope.result : '')}`
 		)
 		// modelUsage names each model the session used. The main model wrote the most output.
-		const usage = 'modelUsage' in envelope ? envelope.modelUsage : null
-		const models = typeof usage === 'object' && usage !== null ? Object.entries(usage) : []
-		const outputTokens = (entry: [string, unknown]) => {
-			const tokens = (entry[1] as { outputTokens?: unknown })?.outputTokens
-			return typeof tokens === 'number' ? tokens : 0
+		const byModel = 'modelUsage' in envelope ? envelope.modelUsage : null
+		type ModelUsage = { outputTokens?: unknown; contextWindow?: unknown; costBasis?: unknown }
+		const models = (typeof byModel === 'object' && byModel !== null ? Object.entries(byModel) : []) as Array<
+			[string, ModelUsage]
+		>
+		models.sort((a, b) => count(b[1]?.outputTokens) - count(a[1]?.outputTokens))
+		const main = models[0]?.[1]
+		type Tokens = {
+			input_tokens?: unknown
+			cache_read_input_tokens?: unknown
+			cache_creation_input_tokens?: unknown
+			output_tokens?: unknown
 		}
-		models.sort((a, b) => outputTokens(b) - outputTokens(a))
-		return { model: models[0]?.[0] ?? null }
+		const input = (tokens: Tokens) =>
+			count(tokens.input_tokens) +
+			count(tokens.cache_read_input_tokens) +
+			count(tokens.cache_creation_input_tokens)
+		const totals = ('usage' in envelope ? envelope.usage : null) as (Tokens & { iterations?: Tokens[] }) | null
+		// Claude reports only its final request in iterations. That request is the largest unless the context was compacted.
+		const requests = Array.isArray(totals?.iterations) ? totals.iterations : []
+		const cost = 'total_cost_usd' in envelope ? envelope.total_cost_usd : null
+		return {
+			model: models[0]?.[0] ?? null,
+			usage: totals
+				? {
+						inputTokens: input(totals),
+						cacheReadTokens: count(totals.cache_read_input_tokens),
+						cacheWriteTokens: count(totals.cache_creation_input_tokens),
+						outputTokens: count(totals.output_tokens),
+						peakContextTokens: requests.length ? Math.max(...requests.map(input)) : null,
+						contextWindowTokens: count(main?.contextWindow) || null,
+						costUSD: typeof cost === 'number' && cost >= 0 ? cost : null,
+						costSource:
+							typeof cost === 'number'
+								? `Claude Code${typeof main?.costBasis === 'string' ? ` (${main.costBasis} prices)` : ''}`
+								: null,
+					}
+				: null,
+		}
 	},
 }
 
@@ -153,11 +194,32 @@ const codex: Host = {
 			const error = failure.error as { message?: unknown } | undefined
 			throw new Error(`Codex did not complete the stage${excerpt(error?.message ?? failure.message)}`)
 		}
-		requireCondition(
-			events.some((event) => event.type === 'turn.completed'),
-			'Codex did not complete the stage'
-		)
-		return { model: findModel(events) }
+		const turns = events.filter((event) => event.type === 'turn.completed')
+		requireCondition(turns.length, 'Codex did not complete the stage')
+		// Codex reports the total of each turn. Its input tokens include cached input. It reports no cost or window.
+		type Tokens = {
+			input_tokens?: unknown
+			cached_input_tokens?: unknown
+			cache_write_input_tokens?: unknown
+			output_tokens?: unknown
+		}
+		const sum = (key: keyof Tokens) =>
+			turns.reduce((total, turn) => total + count((turn.usage as Tokens)?.[key]), 0)
+		return {
+			model: findModel(events),
+			usage: turns.some((turn) => turn.usage)
+				? {
+						inputTokens: sum('input_tokens'),
+						cacheReadTokens: sum('cached_input_tokens'),
+						cacheWriteTokens: sum('cache_write_input_tokens'),
+						outputTokens: sum('output_tokens'),
+						peakContextTokens: null,
+						contextWindowTokens: null,
+						costUSD: null,
+						costSource: null,
+					}
+				: null,
+		}
 	},
 }
 
@@ -195,7 +257,40 @@ const pi: Host = {
 			if (event.type === 'agent_settled' && event.aborted === true)
 				throw new Error('pi stopped the stage before the end')
 		}
-		return { model: findModel(events) }
+		// pi reports usage for each model request in message_end. Its input excludes cached input.
+		type Tokens = {
+			input?: unknown
+			cacheRead?: unknown
+			cacheWrite?: unknown
+			output?: unknown
+			cost?: { total?: unknown; totalFromProvider?: unknown }
+		}
+		const requests = events.flatMap((event) => {
+			const message = event.message as { role?: unknown; usage?: Tokens } | undefined
+			return event.type === 'message_end' && message?.role === 'assistant' && message.usage ? [message.usage] : []
+		})
+		const input = (tokens: Tokens) => count(tokens.input) + count(tokens.cacheRead) + count(tokens.cacheWrite)
+		const sum = (value: (tokens: Tokens) => number) => requests.reduce((total, tokens) => total + value(tokens), 0)
+		const costed = requests.filter((tokens) => typeof tokens.cost?.total === 'number')
+		return {
+			model: findModel(events),
+			usage: requests.length
+				? {
+						inputTokens: sum(input),
+						cacheReadTokens: sum((tokens) => count(tokens.cacheRead)),
+						cacheWriteTokens: sum((tokens) => count(tokens.cacheWrite)),
+						outputTokens: sum((tokens) => count(tokens.output)),
+						peakContextTokens: Math.max(...requests.map(input)),
+						contextWindowTokens: null,
+						costUSD: costed.length ? sum((tokens) => Number(tokens.cost?.total ?? 0)) : null,
+						costSource: costed.length
+							? costed.every((tokens) => tokens.cost?.totalFromProvider === true)
+								? 'pi (provider cost)'
+								: 'pi (model catalog prices)'
+							: null,
+					}
+				: null,
+		}
 	},
 }
 

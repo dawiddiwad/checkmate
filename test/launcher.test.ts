@@ -46,9 +46,7 @@ test('the Claude adapter rejects prose, an unfinished stage, and an error', () =
 	])
 		assert.throws(() => hosts.claude.read(output))
 	const usage = { modelUsage: { small: { outputTokens: 5 }, main: { outputTokens: 900 } } }
-	assert.deepEqual(hosts.claude.read(JSON.stringify({ type: 'result', subtype: 'success', ...usage })), {
-		model: 'main',
-	})
+	assert.equal(hosts.claude.read(JSON.stringify({ type: 'result', subtype: 'success', ...usage })).model, 'main')
 })
 test('the Codex adapter maps sandbox rules and reads failures from events', () => {
 	const run = { prompt: 'p', pluginRoot: '/p', skill: '/p/skills/checkmate-plan', allow: ['workspace-write'] }
@@ -72,7 +70,10 @@ test('the Codex adapter maps sandbox rules and reads failures from events', () =
 		/Not logged in/
 	)
 	assert.throws(() => hosts.codex.read(events({ type: 'thread.started' })), /did not complete/)
-	assert.deepEqual(hosts.codex.read(events({ type: 'thread.started' }, { type: 'turn.completed' })), { model: null })
+	assert.deepEqual(hosts.codex.read(events({ type: 'thread.started' }, { type: 'turn.completed' })), {
+		model: null,
+		usage: null,
+	})
 })
 test('the pi adapter passes the prompt as an argument and reads errors from events', () => {
 	const args = hosts.pi.args({
@@ -89,7 +90,71 @@ test('the pi adapter passes the prompt as an argument and reads errors from even
 	const error = { type: 'message_update', assistantMessageEvent: { type: 'error', error: 'No API key' } }
 	assert.throws(() => hosts.pi.read(JSON.stringify(error)), /No API key/)
 	const done = { type: 'message_end', message: { role: 'assistant', model: 'pi-model' } }
-	assert.deepEqual(hosts.pi.read(JSON.stringify(done)), { model: 'pi-model' })
+	assert.equal(hosts.pi.read(JSON.stringify(done)).model, 'pi-model')
+})
+// The shapes below follow the output of Claude Code 2.1, Codex 0.167, and pi 1.5.
+test('each adapter reads tokens, peak context, and cost as the host reports them', () => {
+	const claude = {
+		type: 'result',
+		subtype: 'success',
+		total_cost_usd: 0.0125,
+		usage: {
+			input_tokens: 10,
+			cache_read_input_tokens: 30000,
+			cache_creation_input_tokens: 2000,
+			output_tokens: 500,
+			iterations: [{ input_tokens: 4, cache_read_input_tokens: 31000, cache_creation_input_tokens: 100 }],
+		},
+		modelUsage: { main: { outputTokens: 500, contextWindow: 200000, costBasis: 'list' } },
+	}
+	assert.deepEqual(hosts.claude.read(JSON.stringify(claude)).usage, {
+		inputTokens: 32010,
+		cacheReadTokens: 30000,
+		cacheWriteTokens: 2000,
+		outputTokens: 500,
+		peakContextTokens: 31104,
+		contextWindowTokens: 200000,
+		costUSD: 0.0125,
+		costSource: 'Claude Code (list prices)',
+	})
+	const turn = (input: number, output: number) => ({
+		type: 'turn.completed',
+		usage: { input_tokens: input, cached_input_tokens: 100, cache_write_input_tokens: 50, output_tokens: output },
+	})
+	const codex = [{ type: 'thread.started' }, turn(1000, 20), turn(3000, 40)].map((e) => JSON.stringify(e))
+	assert.deepEqual(hosts.codex.read(codex.join('\n')).usage, {
+		inputTokens: 4000,
+		cacheReadTokens: 200,
+		cacheWriteTokens: 100,
+		outputTokens: 60,
+		peakContextTokens: null,
+		contextWindowTokens: null,
+		costUSD: null,
+		costSource: null,
+	})
+	const message = (input: number, cacheRead: number, cost: number) => ({
+		type: 'message_end',
+		message: {
+			role: 'assistant',
+			model: 'pi-model',
+			usage: { input, output: 10, cacheRead, cacheWrite: 0, cost: { total: cost, totalFromProvider: false } },
+		},
+	})
+	const pi = [
+		{ type: 'message_end', message: { role: 'user' } },
+		message(600, 0, 0.001),
+		message(200, 900, 0.0005),
+	].map((e) => JSON.stringify(e))
+	assert.deepEqual(hosts.pi.read(pi.join('\n')).usage, {
+		inputTokens: 1700,
+		cacheReadTokens: 900,
+		cacheWriteTokens: 0,
+		outputTokens: 20,
+		peakContextTokens: 1100,
+		contextWindowTokens: null,
+		costUSD: 0.0015,
+		costSource: 'pi (model catalog prices)',
+	})
 })
 test('launcher rejects a response with the wrong identity', async (t) => {
 	const workspace = await sandbox(t)
@@ -333,7 +398,7 @@ test('a pi worker needs --unrestricted-host and gets its skill and prompt as arg
 		answering(
 			`fs.writeFileSync(candidate,${JSON.stringify(JSON.stringify(candidate))});` +
 				reply({ requestId: 'plan-pi', operation: 'plan', status: 'completed' }),
-			`{type:'agent_settled',aborted:false}`
+			`{type:'message_end',message:{role:'assistant',model:'pi-model',usage:{input:700,output:40,cacheRead:0,cacheWrite:0,cost:{total:0.002,totalFromProvider:false}}}}`
 		),
 		'fake-pi'
 	)
@@ -341,6 +406,12 @@ test('a pi worker needs --unrestricted-host and gets its skill and prompt as arg
 	await assert.rejects(delegate(workspace, 'request.json', options), /--unrestricted-host/)
 	const result = await delegate(workspace, 'request.json', { ...options, unrestrictedHost: true })
 	assert.equal(artifact(result).path, 'plans/pi/v1.json')
+	assert.equal(result.usage?.costUSD, 0.002)
+	assert.deepEqual((await load<Plan>(workspace, artifact(result))).usage, result.usage)
+	assert.match(
+		await readFile(join(workspace, 'plans/pi/v1.md'), 'utf8'),
+		/\| plan \| 700 \| 0 \/ 0 \| 40 \| 700 \| \$0\.0020 \| pi \(model catalog prices\) \|/
+	)
 	await assert.rejects(
 		delegate(workspace, 'request.json', { ...options, host: 'other' }),
 		/Unknown host: other. Use one of: claude, codex, pi/
@@ -369,7 +440,7 @@ test('an execute run records the worker host in the invocation and the result', 
 					`for(const e of observation.evidence)fs.writeFileSync('runs/run-1/'+e.path,'observed');` +
 					`fs.writeFileSync(candidate,JSON.stringify(observation));` +
 					reply({ requestId: request.requestId, operation: 'execute', status: 'completed' }),
-				`{type:'turn.completed',model:'codex-model'}`
+				`{type:'turn.completed',model:'codex-model',usage:{input_tokens:5000,cached_input_tokens:4000,cache_write_input_tokens:0,output_tokens:300}}`
 			),
 		'fake-codex'
 	)
@@ -390,4 +461,12 @@ test('an execute run records the worker host in the invocation and the result', 
 		source: 'launcher',
 		permissions: 'allow_rules',
 	})
+	// The stage response logs the usage, and the result keeps it.
+	assert.deepEqual(result.usage, saved.usage)
+	assert.equal(saved.usage?.inputTokens, 5000)
+	assert.equal(saved.usage?.costUSD, null)
+	const report = await readFile(join(workspace, 'runs/run-1/report.md'), 'utf8')
+	assert.match(report, /\| plan \(revision 1\) \| not measured \|/)
+	assert.match(report, /\| execute \(run-1\) \| 5,000 \| 4,000 \/ 0 \| 300 \| not reported \| not reported \|/)
+	assert.match(report, /The total includes only the measured stages\./)
 })

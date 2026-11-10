@@ -10,7 +10,7 @@ Checkmate is an agent plugin and a deterministic Node.js toolkit. It works with 
 - `plugin/src/stages.ts` owns profile publication, plan coverage, revisions, execution gates, evidence digests, and result finalization.
 - `plugin/src/files.ts` owns path checks, digests, and exclusive writes.
 - `plugin/src/launcher.ts` starts one headless host session, applies the deadline, and reads the response and candidate files that it named.
-- `plugin/src/hosts.ts` contains one adapter for each host CLI. An adapter builds the command line and reads the host output for failure and model name.
+- `plugin/src/hosts.ts` contains one adapter for each host CLI. An adapter builds the command line and reads the host output for failure, model name, and usage.
 - `plugin/src/render.ts` generates Markdown and HTML views.
 - `plugin/src/types.ts` and `plugin/src/validators.js` are generated from the schemas.
 

@@ -34,11 +34,12 @@ for (const name of names) {
 	exports[name.replace(/-./g, (match) => match[1].toUpperCase())] = name
 }
 
-// A plan candidate is a plan without coverage, and its tests may omit readiness.
-// save-plan calculates both.
+// A plan candidate is a plan without coverage and usage, and its tests may omit readiness.
+// save-plan sets coverage, readiness, and usage.
 const plan = JSON.parse(await readFile(new URL('plan.schema.json', contracts), 'utf8'))
 delete plan.properties.coverage
-plan.required = plan.required.filter((key: string) => key !== 'coverage')
+delete plan.properties.usage
+plan.required = plan.required.filter((key: string) => key !== 'coverage' && key !== 'usage')
 const test = plan.properties.tests.items
 test.required = test.required.filter((key: string) => key !== 'readiness')
 ajv.addSchema(plan, 'plan-candidate')

@@ -5,7 +5,7 @@
   "completion": "completed",
   "plan": {
     "path": "plans/checkout/v2.json",
-    "sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
+    "sha256": "e98fd465626ea176c66c6dc24f573639cced18d610249c46cc1a6b27bfde5d28"
   },
   "target": {
     "path": "profile.json",
@@ -129,5 +129,6 @@
         "reason": "At least one required check or decision is missing."
       }
     ]
-  }
+  },
+  "usage": null
 }

@@ -79,6 +79,16 @@ export type Plan = {
 		testIds: Array<string>
 		status: 'planned' | 'blocked' | 'deferred'
 	}>
+	usage: {
+		inputTokens: number
+		cacheReadTokens: number
+		cacheWriteTokens: number
+		outputTokens: number
+		peakContextTokens: number | null
+		contextWindowTokens: number | null
+		costUSD: number | null
+		costSource: string | null
+	} | null
 }
 
 export type SetupRequest = {
@@ -319,6 +329,16 @@ export type Result = {
 		path: string
 		sha256: string
 	}
+	usage: {
+		inputTokens: number
+		cacheReadTokens: number
+		cacheWriteTokens: number
+		outputTokens: number
+		peakContextTokens: number | null
+		contextWindowTokens: number | null
+		costUSD: number | null
+		costSource: string | null
+	} | null
 }
 
 export type Response = {
@@ -331,6 +351,16 @@ export type Response = {
 		sha256: string
 	} | null
 	reasons: Array<string>
+	usage?: {
+		inputTokens: number
+		cacheReadTokens: number
+		cacheWriteTokens: number
+		outputTokens: number
+		peakContextTokens: number | null
+		contextWindowTokens: number | null
+		costUSD: number | null
+		costSource: string | null
+	} | null
 }
 
 export type Reference = { path: string; sha256: string }

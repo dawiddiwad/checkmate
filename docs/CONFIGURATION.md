@@ -66,3 +66,19 @@ A result records the host that produced it in `host`. The record contains the ho
 - A run in the agent's own session uses `source: "declared"` and `permissions: "session"`. The agent declares the host in the observation. Checkmate cannot verify this declaration.
 
 `invocation.json` of a delegated run also records the host name, version, and permission mode. A run in the agent's own session records `host: null`.
+
+## Stage usage
+
+A delegated stage records the token use, context use, and cost that the host reports. The record is `usage`.
+
+- `inputTokens` is all input tokens, including cached input. `cacheReadTokens` and `cacheWriteTokens` are the cached parts.
+- `outputTokens` is the output tokens.
+- `peakContextTokens` is the input size of the largest model request that the host reports. Claude Code reports only its final request. That request is the largest, unless the host compacted the context. Codex reports only stage totals, so this value is `null`.
+- `contextWindowTokens` is the context window of the model. Only Claude Code reports it.
+- `costUSD` and `costSource` are the cost as the host reports it, and its source. Codex reports no cost, so both are `null`.
+
+Checkmate keeps no price table and does not estimate a missing value.
+
+Each delegated stage response contains `usage`. Each plan revision and each result also contain `usage`. A stage in the agent's own session records `usage: null`, because Checkmate cannot read its token use.
+
+A result report shows the usage of the plan revisions that led to the result, the usage of the run, and a total of the measured stages. A plan view shows the usage of its own stage. Setup usage is only in the setup response.

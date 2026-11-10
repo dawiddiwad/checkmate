@@ -44,7 +44,7 @@ Add tests for changed relationships and failure paths. Do not replace browser or
 
 The plugin uses the installed host CLI: Claude Code, Codex, or pi. Do not add a custom model loop, a provider client, or an Agent SDK runner. Keep model selection, authentication, and native permissions with the host.
 
-To add a host, add one adapter to `plugin/src/hosts.ts`. The adapter builds the command line, sets the minimum rules for each stage, and reads the host output for failure and model name. The stage answer always comes from the response file. Test the adapter with a fake executable in `test/launcher.test.ts`.
+To add a host, add one adapter to `plugin/src/hosts.ts`. The adapter builds the command line, sets the minimum rules for each stage, and reads the host output for failure, model name, and usage. The stage answer always comes from the response file. Test the adapter with a fake executable in `test/launcher.test.ts`.
 
 ## Native TypeScript
 

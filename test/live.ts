@@ -161,6 +161,12 @@ try {
 	assert.equal(failed.value.host.name, host)
 	assert.equal(failed.value.host.source, 'launcher')
 	console.log(`Host record: ${JSON.stringify(failed.value.host)}`)
+	// The host reports usage for a delegated stage. Claude Code and pi also report cost.
+	const usage = failed.value.usage
+	assert(usage && usage.inputTokens > 0 && usage.outputTokens > 0, 'The execute stage has no usage')
+	if (host !== 'codex') assert(usage.costUSD !== null, 'The host reported no cost')
+	console.log(`Usage: ${JSON.stringify(usage)}`)
+	assert((await readFile(join(workspace, 'runs/live-run/report.md'), 'utf8')).includes('## Usage'))
 	assert(failed.value.findings.some((f) => f.type === 'defect' && f.requirementIds.includes('R2')))
 	assert.equal(failed.value.coverage.status, 'partial')
 	app.fix()

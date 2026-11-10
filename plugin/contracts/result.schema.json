@@ -421,6 +421,89 @@
 			},
 			"required": ["path", "sha256"],
 			"additionalProperties": false
+		},
+		"usage": {
+			"anyOf": [
+				{
+					"type": "object",
+					"properties": {
+						"inputTokens": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"cacheReadTokens": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"cacheWriteTokens": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"outputTokens": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"peakContextTokens": {
+							"anyOf": [
+								{
+									"type": "integer",
+									"minimum": 0
+								},
+								{
+									"type": "null"
+								}
+							]
+						},
+						"contextWindowTokens": {
+							"anyOf": [
+								{
+									"type": "integer",
+									"minimum": 0
+								},
+								{
+									"type": "null"
+								}
+							]
+						},
+						"costUSD": {
+							"anyOf": [
+								{
+									"type": "number",
+									"minimum": 0
+								},
+								{
+									"type": "null"
+								}
+							]
+						},
+						"costSource": {
+							"anyOf": [
+								{
+									"type": "string",
+									"minLength": 1
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					},
+					"required": [
+						"inputTokens",
+						"cacheReadTokens",
+						"cacheWriteTokens",
+						"outputTokens",
+						"peakContextTokens",
+						"contextWindowTokens",
+						"costUSD",
+						"costSource"
+					],
+					"additionalProperties": false
+				},
+				{
+					"type": "null"
+				}
+			]
 		}
 	},
 	"required": [
@@ -440,7 +523,8 @@
 		"findings",
 		"newGaps",
 		"evidence",
-		"cleanup"
+		"cleanup",
+		"usage"
 	],
 	"additionalProperties": false
 }

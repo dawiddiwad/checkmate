@@ -56,6 +56,16 @@ No new gaps.
 
 not\_applicable: Illustrative document. No application was used to create this example.
 
+## Usage
+
+| Stage | Input tokens | Cache read / write | Output tokens | Peak context | Cost (USD) | Cost source |
+| --- | --- | --- | --- | --- | --- | --- |
+| plan (revision 1) | not measured | — | — | — | — | — |
+| revise (revision 2) | not measured | — | — | — | — | — |
+| execute (run-1) | not measured | — | — | — | — | — |
+
+No stage was measured. A stage run in the agent's own session has no usage record.
+
 <details>
 <summary>Complete JSON record</summary>
 
@@ -67,7 +77,7 @@ not\_applicable: Illustrative document. No application was used to create this e
   "completion": "completed",
   "plan": {
     "path": "plans/checkout/v2.json",
-    "sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
+    "sha256": "e98fd465626ea176c66c6dc24f573639cced18d610249c46cc1a6b27bfde5d28"
   },
   "target": {
     "path": "profile.json",
@@ -191,7 +201,8 @@ not\_applicable: Illustrative document. No application was used to create this e
         "reason": "At least one required check or decision is missing."
       }
     ]
-  }
+  },
+  "usage": null
 }
 ```
 

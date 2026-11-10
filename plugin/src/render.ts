@@ -15,6 +15,68 @@ type Report = { title: string; note: string; blocks: Block[] }
 const none = '—'
 const join = (values: string[]) => (values.length ? values.join(', ') : none)
 
+type Usage = NonNullable<Result['usage']>
+const number = (value: number) => value.toLocaleString('en-US')
+const dollars = (value: number) => `$${value.toFixed(4)}`
+function context(usage: Usage) {
+	if (usage.peakContextTokens === null) return 'not reported'
+	const share = usage.contextWindowTokens
+		? ` (${((usage.peakContextTokens / usage.contextWindowTokens) * 100).toFixed(1)}% of ${number(usage.contextWindowTokens)})`
+		: ''
+	return `${number(usage.peakContextTokens)}${share}`
+}
+function usageRow(stage: string, usage: Usage | null): Cell[] {
+	if (!usage) return [stage, 'not measured', none, none, none, none, none]
+	return [
+		stage,
+		number(usage.inputTokens),
+		`${number(usage.cacheReadTokens)} / ${number(usage.cacheWriteTokens)}`,
+		number(usage.outputTokens),
+		context(usage),
+		usage.costUSD === null ? 'not reported' : dollars(usage.costUSD),
+		usage.costSource ?? none,
+	]
+}
+const usageColumns = [
+	'Stage',
+	'Input tokens',
+	'Cache read / write',
+	'Output tokens',
+	'Peak context',
+	'Cost (USD)',
+	'Cost source',
+]
+// Usage of each stage, with a total over the measured stages. Checkmate never estimates a missing value.
+function usageBlocks(stages: Array<{ stage: string; usage: Usage | null }>): Block[] {
+	const measured = stages.flatMap((entry) => (entry.usage ? [entry.usage] : []))
+	const rows = stages.map((entry) => usageRow(entry.stage, entry.usage))
+	const notes: string[] = []
+	if (stages.length > 1 && measured.length) {
+		const sum = (key: 'inputTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'outputTokens') =>
+			measured.reduce((total, usage) => total + usage[key], 0)
+		const costs = measured.flatMap((usage) => (usage.costUSD === null ? [] : [usage.costUSD]))
+		rows.push([
+			'Total',
+			number(sum('inputTokens')),
+			`${number(sum('cacheReadTokens'))} / ${number(sum('cacheWriteTokens'))}`,
+			number(sum('outputTokens')),
+			none,
+			costs.length ? dollars(costs.reduce((total, cost) => total + cost, 0)) : 'not reported',
+			none,
+		])
+		if (measured.length < stages.length) notes.push('The total includes only the measured stages.')
+		if (costs.length && costs.length < measured.length)
+			notes.push('The total cost includes only the stages with a reported cost.')
+	}
+	if (!measured.length)
+		notes.push("No stage was measured. A stage run in the agent's own session has no usage record.")
+	else
+		notes.push(
+			'Input tokens include cached input. Peak context is the largest model request that the host reports. Cost is as the host reports it.'
+		)
+	return [{ table: usageColumns, rows }, ...notes.map((text) => ({ text }))]
+}
+
 function markdownText(value: string) {
 	return value
 		.replace(/\\/g, '\\\\')
@@ -99,7 +161,7 @@ function html(report: Report) {
 	)
 }
 
-function resultReport(result: Result): Report {
+function resultReport(result: Result, chain: Plan[]): Report {
 	const evidence = new Map(result.evidence.map((entry) => [entry.id, entry]))
 	// Evidence paths are relative to the run directory, where the report is saved.
 	const links = (ids: string[]): Cell => {
@@ -183,6 +245,14 @@ function resultReport(result: Result): Report {
 		},
 		{ heading: 'Cleanup' },
 		{ text: `${result.cleanup.status}: ${result.cleanup.reason}` },
+		{ heading: 'Usage' },
+		...usageBlocks([
+			...chain.map((plan) => ({
+				stage: `${plan.revision === 1 ? 'plan' : 'revise'} (revision ${plan.revision})`,
+				usage: plan.usage,
+			})),
+			{ stage: `execute (${result.runId})`, usage: result.usage },
+		]),
 		{ record: result }
 	)
 	return {
@@ -260,6 +330,10 @@ function planReport(plan: Plan): Report {
 	blocks.push({ heading: 'Assumptions' })
 	if (!plan.assumptions.length) blocks.push({ text: 'No accepted assumptions.' })
 	else blocks.push({ list: plan.assumptions.map((assumption) => `${assumption.decisionId}: ${assumption.text}`) })
+	blocks.push(
+		{ heading: 'Usage' },
+		...usageBlocks([{ stage: plan.revision === 1 ? 'plan' : 'revise', usage: plan.usage }])
+	)
 	blocks.push({ record: plan })
 	return {
 		title: `Test plan: ${plan.planId} revision ${plan.revision}`,
@@ -271,7 +345,8 @@ function planReport(plan: Plan): Report {
 export function renderPlan(plan: Plan) {
 	return markdown(planReport(plan))
 }
-export function renderResult(result: Result) {
-	const report = resultReport(result)
+// chain is the plan revisions that led to the result, oldest first.
+export function renderResult(result: Result, chain: Plan[]) {
+	const report = resultReport(result, chain)
 	return { md: markdown(report), html: html(report) }
 }

@@ -1,4 +1,4 @@
-import type { ExecuteRequest, Observation, Result } from './types.ts'
+import type { ExecuteRequest, Observation, Response, Result } from './types.ts'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { confined, readDocument, readReference, requireCondition } from './files.ts'
 import { validate, requestCheck, planCheck } from './contracts.ts'
 import { setup, savePlan, beginRun, finalize, reports, response, readInvocation, type LaunchedHost } from './stages.ts'
-import { hostNamed, hostVersion, excerpt } from './hosts.ts'
+import { hostNamed, hostVersion, excerpt, type Usage } from './hosts.ts'
 
 export const pluginRoot = fileURLToPath(new URL('..', import.meta.url))
 
@@ -41,7 +41,8 @@ async function interruptedResult(
 	request: ExecuteRequest,
 	status: 'interrupted' | 'operational_error',
 	cleanup: Observation['cleanup'],
-	host: Result['host']
+	host: Result['host'],
+	usage: Usage | null
 ) {
 	const plan = planCheck(await readReference(workspace, request.plan))
 	const invocation = await readInvocation(workspace, request)
@@ -76,7 +77,8 @@ async function interruptedResult(
 			cleanup,
 			...(request.retestOf ? { retestOf: request.retestOf } : {}),
 		},
-		host
+		host,
+		usage
 	)
 }
 
@@ -207,6 +209,9 @@ export async function delegate(workspace: string, requestPath: string, options: 
 	const close = (run: ExecuteRequest) =>
 		(cleanup ??= closeBrowser(workspace, run, options.playwright ?? 'playwright-cli'))
 	let worked: Result['host'] | undefined
+	// The usage that the host reported for this stage. Every delegated response carries it.
+	let used: Usage | null = null
+	const logged = (answer: Response) => validate('response', { ...answer, usage: used })
 	try {
 		const output = await worker(
 			executable,
@@ -219,8 +224,9 @@ export async function delegate(workspace: string, requestPath: string, options: 
 					options.timeoutSeconds ?? (request.operation === 'execute' ? request.timeoutSeconds : 300),
 			}
 		)
-		const { model } = host.read(output)
-		worked = { ...launched, model, source: 'launcher' }
+		const read = host.read(output)
+		worked = { ...launched, model: read.model, source: 'launcher' }
+		used = read.usage
 		let result
 		try {
 			result = validate('response', (await readDocument(workspace, answer)).value)
@@ -239,16 +245,16 @@ export async function delegate(workspace: string, requestPath: string, options: 
 			requireCondition(result.reasons.length > 0, 'Worker needs a decision but gave no reason')
 			if (request.operation === 'execute')
 				throw new Error('Worker could not execute the stage with current access or tools')
-			return result
+			return logged(result)
 		}
 		requireCondition(result.status === 'completed', `Worker returned ${result.status}`)
 		// The launcher chose the candidate path, so it reads and digests the file itself.
 		const value = (await readDocument(workspace, candidate)).value
 		candidateReceived = true
-		if (request.operation === 'setup') return await setup(workspace, request, value)
+		if (request.operation === 'setup') return logged(await setup(workspace, request, value))
 		if (request.operation === 'plan' || request.operation === 'revise')
-			return await savePlan(workspace, request, value)
-		return await finalize(workspace, request, value, worked)
+			return logged(await savePlan(workspace, request, value, used))
+		return logged(await finalize(workspace, request, value, worked, used))
 	} catch (caught) {
 		const error = caught instanceof Error ? caught : new Error('Unknown worker failure')
 		const status = /deadline|interrupted/.test(error.message) ? 'interrupted' : 'operational_error'
@@ -268,11 +274,11 @@ export async function delegate(workspace: string, requestPath: string, options: 
 			if (!candidateReceived) {
 				try {
 					const ran = worked ?? { ...launched, model: null, source: 'launcher' as const }
-					return await interruptedResult(workspace, request, status, await close(request), ran)
+					return logged(await interruptedResult(workspace, request, status, await close(request), ran, used))
 				} catch {}
 			}
 		}
-		return response(request, status, null, [error.message])
+		return logged(response(request, status, null, [error.message]))
 	} finally {
 		if (request.operation === 'execute') await close(request)
 	}

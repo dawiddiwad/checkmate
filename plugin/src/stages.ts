@@ -1,4 +1,5 @@
 import type { Request, Response, Plan, Reference, ExecuteRequest, Observation, Result } from './types.ts'
+import type { Usage } from './hosts.ts'
 import { readdir, mkdir, stat, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -59,7 +60,8 @@ export async function setup(workspace: string, input: unknown, candidate: unknow
 	)
 }
 
-export async function savePlan(workspace: string, input: unknown, candidate: unknown) {
+// usage is what the host reported for this stage. A plan written in the agent's own session has none.
+export async function savePlan(workspace: string, input: unknown, candidate: unknown, usage: Usage | null = null) {
 	const request = requestCheck(input)
 	requireCondition(
 		request.operation === 'plan' || request.operation === 'revise',
@@ -69,7 +71,7 @@ export async function savePlan(workspace: string, input: unknown, candidate: unk
 	// A readiness value in the candidate is replaced.
 	const draft = validate('plan-candidate', candidate)
 	const tests = draft.tests.map((test) => ({ ...test, readiness: testReadiness(draft.gaps, test) }))
-	const plan = planCheck({ ...draft, tests, coverage: planCoverage({ ...draft, tests }) })
+	const plan = planCheck({ ...draft, tests, coverage: planCoverage({ ...draft, tests }), usage })
 	const target = profileCheck(await readReference(workspace, plan.target))
 	requireCondition(plan.targetId === target.targetId, 'Plan target identity changed')
 	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {
@@ -301,7 +303,13 @@ export function resultCoverage(plan: Plan, result: Observation): import('./types
 }
 
 // The launcher passes the host it ran. Otherwise the result keeps the host that the observation declares.
-export async function finalize(workspace: string, input: unknown, candidate: unknown, host?: Host) {
+export async function finalize(
+	workspace: string,
+	input: unknown,
+	candidate: unknown,
+	host?: Host,
+	usage: Usage | null = null
+) {
 	const request = validate('execute-request', input)
 	const observation = validate('observation', candidate)
 	const checked = await gate(workspace, request)
@@ -434,6 +442,7 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 		evidence: recordedEvidence,
 		finishedAt: new Date().toISOString(),
 		coverage: resultCoverage(plan, { ...observation, tests }),
+		usage,
 	}
 	validate('result', result)
 	const artifact = await publish(workspace, join(request.outputDirectory, 'result.json'), result)
@@ -441,9 +450,19 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 	return response(request, observation.completion === 'completed' ? 'completed' : observation.completion, artifact)
 }
 
+// The plan revisions that led to a result, oldest first. Each saved revision keeps the usage of its stage.
+async function planChain(workspace: string, reference: Reference) {
+	const chain = [planCheck(await readReference(workspace, reference))]
+	while (chain[0].previousRevision !== null) {
+		const path = join(dirname(reference.path), `v${chain[0].previousRevision}.json`)
+		chain.unshift(planCheck((await readDocument(workspace, path)).value))
+	}
+	return chain
+}
+
 export async function reports(workspace: string, reference: Reference) {
 	const result = validate('result', await readReference(workspace, reference))
-	const rendered = renderResult(result)
+	const rendered = renderResult(result, await planChain(workspace, result.plan))
 	for (const [extension, text] of Object.entries(rendered)) {
 		const path = join(dirname(reference.path), `report.${extension}`)
 		try {

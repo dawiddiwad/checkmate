@@ -38,7 +38,7 @@ The launcher does not add a permission bypass. It preserves host configuration a
 
 ## Responses
 
-Stage responses contain `contractVersion`, `requestId`, `operation`, `status`, `artifact`, and `reasons`.
+Stage responses contain `contractVersion`, `requestId`, `operation`, `status`, `artifact`, and `reasons`. A delegated stage response also contains `usage`: the tokens, context, and cost that the host reported for the stage. See [Stage usage](CONFIGURATION.md#stage-usage).
 
 - `completed`: the stage produced a checked artifact, or the gate accepted the request.
 - `needs_decision`: access, readiness, or a caller decision is missing.
@@ -54,7 +54,7 @@ Malformed input can have no valid request identity. Its error response contains 
 
 The launcher uses an argument array. The prompt names the stage skill file and tells the worker to follow it. A host that can load a skill directly also gets the skill: Claude Code with `--plugin-dir`, and pi with `--skill`. Claude Code and Codex read the prompt from standard input. pi gets the prompt as an argument.
 
-The launcher selects two paths: the candidate file and the response file. The worker writes the candidate and a stage response with `artifact: null`. The response must match `response.schema.json`. The launcher reads both files, checks them, and publishes the candidate. It does not accept prose as a result. The host output is used only to detect a failed session and to read the model name.
+The launcher selects two paths: the candidate file and the response file. The worker writes the candidate and a stage response with `artifact: null`. The response must match `response.schema.json`. The launcher reads both files, checks them, and publishes the candidate. It does not accept prose as a result. The host output is used only to detect a failed session and to read the model name and usage.
 
 Each invocation starts a fresh session. All required context must be in the request and saved inputs. Model selection remains a host setting.
 

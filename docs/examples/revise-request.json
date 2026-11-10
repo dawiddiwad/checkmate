@@ -5,7 +5,7 @@
   "operation": "revise",
   "basePlan": {
     "path": "plans/checkout/v1.json",
-    "sha256": "6662aafbd34bdc39353836937e4e8dae50d0e4c07ff611f020a276649714c5e5"
+    "sha256": "a61f139d1d82398bf9a8a0b6c6a565043774f7b957acdee7b6cc0d548d135bb9"
   },
   "baseRevision": 1,
   "decisions": [

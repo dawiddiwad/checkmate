@@ -97,7 +97,7 @@ export async function revised(workspace: string, prepared: Prepared): Promise<Re
 		baseRevision: 1,
 		decisions,
 	}
-	const { coverage, ...plan } = structuredClone(prepared.plan)
+	const { coverage, usage, ...plan } = structuredClone(prepared.plan)
 	plan.revision = 2
 	plan.previousRevision = 1
 	plan.decisions = decisions

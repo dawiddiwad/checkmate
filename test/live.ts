@@ -44,6 +44,8 @@ if (host === 'claude') {
 }
 process.env.PATH = `${join(root, 'node_modules/.bin')}:${process.env.PATH}`
 const workspace = await sandbox()
+// The Codex sandbox permits writes only in the workspace. Playwright CLI keeps its daemon state in the cache directory.
+if (host === 'codex') process.env.XDG_CACHE_HOME = join(workspace, '.cache')
 const app = await fixture()
 const measurements: Array<{ stage: string; durationMs: number; status: Response['status'] }> = []
 console.log(`Live artifacts: ${workspace}`)

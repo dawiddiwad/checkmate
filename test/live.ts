@@ -16,21 +16,39 @@ import { delegate } from '../plugin/src/launcher.ts'
 import { gate } from '../plugin/src/stages.ts'
 import { readDocument } from '../plugin/src/files.ts'
 
-assert(
-	process.env.CLAUDE_CODE_OAUTH_TOKEN ||
-		process.env.ANTHROPIC_API_KEY ||
-		process.env.CHECKMATE_USE_HOST_LOGIN === '1',
-	'Configure Claude authentication before live tests'
-)
+// CHECKMATE_LIVE_HOST selects the worker host. The host keeps its own login and model.
+const host = process.env.CHECKMATE_LIVE_HOST ?? 'claude'
+const hostOptions: Record<string, { allowedTools: string[]; unrestrictedHost?: boolean }> = {
+	claude: { allowedTools: ['Read', 'Write', 'Edit', 'Bash'] },
+	codex: { allowedTools: ['workspace-write', 'network'] },
+	pi: { allowedTools: ['read', 'write', 'edit', 'bash'], unrestrictedHost: true },
+}
+assert(hostOptions[host], `Unknown CHECKMATE_LIVE_HOST: ${host}`)
+if (host === 'claude') {
+	assert(
+		process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+			process.env.ANTHROPIC_API_KEY ||
+			process.env.CHECKMATE_USE_HOST_LOGIN === '1',
+		'Configure Claude authentication before live tests'
+	)
+	process.env.CLAUDE_CONFIG_DIR ??= '/tmp/checkmate-live-claude'
+	// The host selects the model. Development runs use Sonnet to limit usage.
+	process.env.ANTHROPIC_MODEL ??= 'sonnet'
+} else {
+	assert(
+		process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY || process.env.CHECKMATE_USE_HOST_LOGIN === '1',
+		`Configure ${host} authentication before live tests`
+	)
+	// codex exec reads an API key from CODEX_API_KEY. pi reads OPENAI_API_KEY.
+	if (host === 'codex' && process.env.OPENAI_API_KEY) process.env.CODEX_API_KEY ??= process.env.OPENAI_API_KEY
+}
 process.env.PATH = `${join(root, 'node_modules/.bin')}:${process.env.PATH}`
-process.env.CLAUDE_CONFIG_DIR ??= '/tmp/checkmate-live-claude'
-// The host selects the model. Development runs use Sonnet to limit usage.
-process.env.ANTHROPIC_MODEL ??= 'sonnet'
 const workspace = await sandbox()
 const app = await fixture()
 const measurements: Array<{ stage: string; durationMs: number; status: Response['status'] }> = []
 console.log(`Live artifacts: ${workspace}`)
-const options = { allowedTools: ['Read', 'Write', 'Edit', 'Bash'], timeoutSeconds: 240 }
+console.log(`Live host: ${host}`)
+const options = { ...hostOptions[host], host, timeoutSeconds: 240 }
 async function stage<T>(name: string, request: unknown): Promise<{ response: Response; value: T }> {
 	const path = `${name}.json`
 	await write(workspace, path, request)
@@ -138,6 +156,9 @@ try {
 		selectedTestIds: ready,
 	}
 	const failed = await stage<Result>('execute', execute)
+	assert.equal(failed.value.host.name, host)
+	assert.equal(failed.value.host.source, 'launcher')
+	console.log(`Host record: ${JSON.stringify(failed.value.host)}`)
 	assert(failed.value.findings.some((f) => f.type === 'defect' && f.requirementIds.includes('R2')))
 	assert.equal(failed.value.coverage.status, 'partial')
 	app.fix()
@@ -157,23 +178,26 @@ try {
 	)
 	assert.equal(retest.value.coverage.status, 'partial')
 	assert((await load<Result>(workspace, artifact(failed.response))).findings.some((f) => f.type === 'defect'))
-	const sameRequest = {
-		...planRequest,
-		requestId: 'same-session-plan',
-		outputPlanId: 'same-session',
-		planDirectory: 'plans/same-session',
+	// A skill in the agent's own session. Only Claude has this check.
+	if (host === 'claude') {
+		const sameRequest = {
+			...planRequest,
+			requestId: 'same-session-plan',
+			outputPlanId: 'same-session',
+			planDirectory: 'plans/same-session',
+		}
+		await write(workspace, 'same-session.json', sameRequest)
+		const same = await claudeSession(['--allowedTools', 'Read,Write,Edit,Bash'], {
+			cwd: workspace,
+			timeoutSeconds: 240,
+			prompt: 'Use checkmate:checkmate-plan in this session with same-session.json. This is not a delegated candidate task. Publish the plan with the Checkmate CLI and return its response. Do not execute tests.',
+		})
+		assert.equal((await load<Plan>(workspace, artifact(same))).revision, 1)
+		await readDocument(workspace, 'plans/same-session/v1.json')
 	}
-	await write(workspace, 'same-session.json', sameRequest)
-	const same = await claudeSession(['--allowedTools', 'Read,Write,Edit,Bash'], {
-		cwd: workspace,
-		timeoutSeconds: 240,
-		prompt: 'Use checkmate:checkmate-plan in this session with same-session.json. This is not a delegated candidate task. Publish the plan with the Checkmate CLI and return its response. Do not execute tests.',
-	})
-	assert.equal((await load<Plan>(workspace, artifact(same))).revision, 1)
-	await readDocument(workspace, 'plans/same-session/v1.json')
 	assert((await readFile(join(workspace, 'runs/live-run/report.html'), 'utf8')).includes('Test result'))
 	console.log(
-		'Live acceptance passed: setup, gaps, partial execution, revision, defect, retest, and same-session planning.'
+		`Live acceptance passed on ${host}: setup, gaps, partial execution, revision, defect, retest${host === 'claude' ? ', and same-session planning' : ''}.`
 	)
 } finally {
 	await app.close()

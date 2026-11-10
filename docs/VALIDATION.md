@@ -4,7 +4,42 @@ Date: 7 November 2026. Repository and plugin version: `0.7.0`.
 
 The checks ran on Debian Linux with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chromium `156.0.8078.79`.
 
-After this record, the plugin moved to `plugin/` and the runtime npm dependencies were removed. The commands now calculate plan coverage and evidence digests. `finalize` records an omitted unselected test as `not_run`. The live tests use Sonnet by default. The next section records the checks after these changes. The later sections record the earlier run.
+After this record, the plugin moved to `plugin/` and the runtime npm dependencies were removed. The commands now calculate plan coverage and evidence digests. `finalize` records an omitted unselected test as `not_run`. The live tests use Sonnet by default. The next section records the checks for Codex, pi, and stage usage. The section after it records the checks after these changes. The later sections record the earlier run.
+
+## Checks for Codex, pi, and stage usage
+
+Date: 10 November 2026. The checks ran in a Linux cloud container with Node.js `24.22.2`, Claude Code `2.1.319`, Codex `0.167.0`, pi `1.5.2`, Playwright CLI `0.1.23`, and Chrome for Testing `153.0.8010.12`. Each host used its own login and its own model setting. Claude Code used a small Claude model. Codex and pi used the same OpenAI model. Hosted CI did not run these checks.
+
+- `npm run phase:verify`: passed. All 41 tests passed.
+- `node test/live.ts` passed on each host with `CHECKMATE_LIVE_HOST` set to `claude`, `codex`, and `pi`. Each run completed setup, the planning gaps, ready-only execution, revision, the defect, and the retest. The execute result recorded the host and the usage.
+- `node test/live-session.ts`: passed on Claude Code.
+- `pi install` of `plugin/` and `codex plugin add checkmate@checkmate` from a local marketplace: passed. Each host listed the five `checkmate-` skills.
+
+| Stage                | Claude Code (s) | Codex (s) | pi (s) | Status           |
+| -------------------- | --------------: | --------: | -----: | ---------------- |
+| Setup                |            39.7 |      69.1 |   34.3 | `completed`      |
+| Plan                 |            62.9 |     103.2 |   75.1 | `needs_decision` |
+| Ready-only execution |            57.9 |     139.3 |   47.1 | `completed`      |
+| Revise               |            55.9 |      51.9 |   36.8 | `completed`      |
+| Execute              |            61.6 |     142.2 |   73.4 | `completed`      |
+| Retest               |           182.0 |     107.9 |   61.9 | `completed`      |
+
+These values describe one run for each host. They are not performance targets.
+
+The reports recorded this usage for plan, revise, and execute together:
+
+| Host        | Input tokens | Output tokens | Largest peak context    | Cost as reported |
+| ----------- | -----------: | ------------: | ----------------------- | ---------------- |
+| Claude Code |    1,882,318 |        30,567 | 65,139 (6.5% of window) | $0.0538          |
+| Codex       |    1,126,740 |        21,439 | not reported            | not reported     |
+| pi          |      446,604 |        10,844 | 17,008                  | $0.0154          |
+
+Earlier live runs during these changes failed:
+
+- Codex setup could not start a browser. The Codex sandbox permits writes only in the workspace, and Playwright CLI writes its daemon state to the cache directory. The live test now sets `XDG_CACHE_HOME` in the workspace for Codex.
+- Two hosts planned the promotion check as a browser test. The fixture page has no promotion control. The fixture instructions now say that the promotion is available only on the quote endpoint.
+- In one pi run, the execute stage checked a browser test with an HTTP request. The finalizer accepted the result, because it cannot see which tool made an observation.
+- In one Codex run, setup failed with `Worker wrote no response file`. The file appeared after `codex exec` stopped. Three direct trials and the next live run did not show the failure.
 
 ## Checks after the plugin layout change
 

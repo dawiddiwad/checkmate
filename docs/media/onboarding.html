@@ -62,7 +62,7 @@
 			<div class="card" style="background: var(--blue-bg); border-color: #24365e; padding: 30px 28px 34px; text-align: center">
 				<div class="label blue" style="color: var(--blue)" data-in="7.9">the third option</div>
 				<div style="font-size: 48px; font-weight: 500; margin-top: 14px" data-in="7.9">Checkmate</div>
-				<div class="blue" style="font-size: 30px; margin-top: 6px" data-in="8.1">QA workflows for Claude</div>
+				<div class="blue" style="font-size: 30px; margin-top: 6px" data-in="8.1">QA workflows for coding agents</div>
 				<div style="margin-top: 26px; display: inline-block; text-align: left">
 					<div class="line" data-in="8.6"><span class="blue">✓</span> tests like an agent</div>
 					<div class="line" data-in="9.1"><span class="blue">✓</span> asks before it guesses</div>
@@ -92,7 +92,7 @@
 		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.4"><span class="mono faint" style="font-size: 18px; width: 34px">R1</span><span class="say" style="font-size: 21px">A standard order totals 400 PLN.</span></div>
 		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.8"><span class="mono faint" style="font-size: 18px; width: 34px">R2</span><span class="say" style="font-size: 21px">A 40% promotion applies at checkout.</span></div>
 		<div class="card row" style="height: 64px" data-in="1.2"><span class="mono faint" style="font-size: 18px; width: 34px">R3</span><span class="say" style="font-size: 21px">Refunds follow the eligibility rules.</span></div>
-		<div class="mono blue" style="text-align: center; font-size: 20px; margin: 22px 0" data-in="2.0">↓ /checkmate:plan</div>
+		<div class="mono blue" style="text-align: center; font-size: 20px; margin: 22px 0" data-in="2.0">↓ checkmate-plan</div>
 		<div class="label" style="margin-bottom: 14px" data-in="2.6">plans/checkout/v1.json</div>
 		<div class="card row" style="height: 64px; margin-bottom: 10px; justify-content: space-between" data-in="2.8"><span class="mono" style="font-size: 19px">T1 standard checkout</span><span class="mono ok" style="font-size: 18px">ready</span></div>
 		<div class="card row" style="height: 64px; margin-bottom: 10px; justify-content: space-between" data-in="3.2" data-hl="4.4-6.4"><span class="mono" style="font-size: 19px">T2 promotion + loyalty</span><span class="mono warn" style="font-size: 18px">blocked</span></div>
@@ -254,12 +254,33 @@
 	</div>
 </section>
 
-<!-- 9 · who owns what: three owners, the middle one is the layer -->
+<!-- 9 · any host: the same stages run on three hosts, and each stage records its usage -->
 <section class="scene" data-start="84" data-length="10">
+	<div class="cam">
+		<h1>Any host.<br /><span class="blue">Every stage</span> measured.</h1>
+		<div class="label" style="margin: 44px 0 14px" data-in="0.3">delegate --host</div>
+		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.5"><span class="mono" style="font-size: 19px; width: 92px">claude</span><span class="say dim" style="font-size: 20px">Claude Code · tool rules</span></div>
+		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.9"><span class="mono" style="font-size: 19px; width: 92px">codex</span><span class="say dim" style="font-size: 20px">Codex · sandbox modes</span></div>
+		<div class="card row" style="height: 64px" data-in="1.3"><span class="mono" style="font-size: 19px; width: 92px">pi</span><span class="say dim" style="font-size: 20px">pi · no rules, <span class="warn">explicit consent</span></span></div>
+		<div class="label" style="margin: 36px 0 14px" data-in="2.6">report.md · usage</div>
+		<div class="card" style="padding: 20px 24px" data-in="2.8">
+			<div class="line faint" style="font-size: 16px" data-in="2.9">stage     input    peak ctx  cost</div>
+			<div class="line dim" style="font-size: 16px" data-in="3.3">plan      158,416  15,460    $0.0059</div>
+			<div class="line dim" style="font-size: 16px" data-in="3.7">revise    110,364  17,008    $0.0043</div>
+			<div class="line dim" style="font-size: 16px" data-in="4.1">execute   177,824  15,223    $0.0052</div>
+			<div class="line blue" style="font-size: 16px" data-in="4.7">total     446,604  —         $0.0154</div>
+		</div>
+		<div class="mono faint" style="font-size: 15px; margin-top: 10px" data-in="4.9">live run on pi · plan, revise, and execute</div>
+		<div class="say dim" style="margin-top: 30px" data-in="6.2">Tokens, context, and cost come <span style="color: var(--text)">from the host</span>. Checkmate keeps no price table.</div>
+	</div>
+</section>
+
+<!-- 10 · who owns what: three owners, the middle one is the layer -->
+<section class="scene" data-start="94" data-length="10">
 	<div class="cam">
 		<h1>Who <span class="blue">owns</span> what.</h1>
 		<div class="card" style="margin-top: 50px; padding: 26px 28px" data-in="0.4">
-			<div class="mono" style="font-size: 24px">Claude Code</div>
+			<div class="mono" style="font-size: 24px">Host · Claude Code, Codex, or pi</div>
 			<div class="say dim" style="margin-top: 8px">Model, tools, authentication, and permissions.</div>
 		</div>
 		<div class="card" style="margin-top: 14px; padding: 26px 28px; background: var(--blue-bg); border-color: #2c4a8c" data-in="1.4">
@@ -282,8 +303,8 @@
 	</div>
 </section>
 
-<!-- 10 · closing -->
-<section class="scene" data-start="94" data-length="9" data-fade-out="0.8">
+<!-- 11 · closing -->
+<section class="scene" data-start="104" data-length="9" data-fade-out="0.8">
 	<div style="position: absolute; left: 0; right: 0; top: 270px; text-align: center">
 		<div id="mark" style="display: inline-grid; grid-template-columns: repeat(4, 20px); grid-auto-rows: 20px; gap: 6px"></div>
 		<div style="font-size: 68px; font-weight: 500; letter-spacing: -1px; margin-top: 22px">Checkmate</div>
@@ -298,7 +319,7 @@
 			<div class="faint" data-in="2.5">↓</div>
 			<div class="blue" data-in="2.6">one result</div>
 		</div>
-		<div class="card mono" style="display: inline-block; margin-top: 64px; padding: 16px 26px; font-size: 18px; line-height: 30px; text-align: left" data-in="3.8">/plugin marketplace add dawiddiwad/checkmate<br />/plugin install checkmate@checkmate</div>
+		<div class="card mono" style="display: inline-block; margin-top: 64px; padding: 16px 26px; font-size: 18px; line-height: 30px; text-align: left" data-in="3.8"><span class="faint">available for</span> Claude Code · Codex · pi</div>
 	</div>
 </section>
 
@@ -412,7 +433,7 @@
 		}
 	}
 
-	window.DURATION = 103
+	window.DURATION = 113
 	// Show the frame at a time in seconds. The renderer calls this for each frame.
 	window.renderFrame = (time) => {
 		renderBoard(time)

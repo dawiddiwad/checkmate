@@ -17,6 +17,13 @@ The browser test requires a Chromium executable. Set `CHECKMATE_BROWSER_EXECUTAB
 
 `test:live` sets the host model with `ANTHROPIC_MODEL`. The default is `sonnet` to limit usage. To use a different model, set `ANTHROPIC_MODEL` before you run the test. Checkmate does not select a model. The launcher passes the environment to Claude Code without changes.
 
+Set `CHECKMATE_LIVE_HOST` to `codex` or `pi` to run `node test/live.ts` on another host. The default is `claude`. Install the host CLI first. Each host keeps its own login and model. Checkmate does not pass a model.
+
+- `codex`: set `OPENAI_API_KEY` or `CODEX_API_KEY`. Select the model in `config.toml` in `CODEX_HOME`, for example `model = "<model>"`. The test sets `XDG_CACHE_HOME` in the workspace, because the Codex sandbox permits writes only in the workspace.
+- `pi`: set the provider key, for example `OPENAI_API_KEY`. Select the model with `defaultProvider` and `defaultModel` in `settings.json` in `PI_CODING_AGENT_DIR`.
+
+`test/live-session.ts` checks a skill in Claude Code's own session. It has no Codex or pi version.
+
 The live test uses an isolated local fixture and permits Read, Write, Edit, and Bash in that temporary workspace. It checks setup, planning gaps, default blocking, explicit partial execution, revision, defect detection, retest, and a skill invoked within one session. It records stage durations and saves artifacts in the printed temporary directory. It does not change product code or send fixture data to a production service.
 
 The normal CI job runs on Ubuntu with Node.js 24. The live job runs only when selected in a manual workflow dispatch. Configure a repository secret for Claude authentication before that run. Do not expose secrets to untrusted pull requests.

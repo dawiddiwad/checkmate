@@ -23,9 +23,8 @@ In Codex:
 
 ```text
 codex plugin marketplace add dawiddiwad/checkmate
+codex plugin add checkmate@checkmate
 ```
-
-Then open `/plugins` in Codex and install `checkmate`.
 
 In pi, clone this repository and install the plugin directory:
 
@@ -84,7 +83,7 @@ Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build st
 /checkmate:checkmate-plan plan-request.json
 ```
 
-The command is for Claude Code. In Codex, use `$checkmate-plan`. In pi, use `/skill:checkmate-plan`.
+The command is for Claude Code. In Codex, mention the `checkmate:checkmate-plan` skill. Type `$` to select it. In pi, use `/skill:checkmate-plan`.
 
 The request pins the target profile that `checkmate-setup` saved. Checkmate saves `plans/checkout/v1.json` and returns a response. Unclear requirements come back as blocking gaps with `status: "needs_decision"`. The caller answers them with `checkmate-revise`, then runs the plan with `checkmate-execute`.
 

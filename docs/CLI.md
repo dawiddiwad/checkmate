@@ -88,4 +88,4 @@ Save this file in the caller's workspace. Replace the URL and allowed operations
 }
 ```
 
-In Claude Code, invoke `/checkmate:checkmate-setup` with this request file. In Codex, use `$checkmate-setup`. In pi, use `/skill:checkmate-setup`. Then create a plan request with the returned profile reference. Use `plugin/contracts/plan-request.schema.json` for its fields.
+In Claude Code, invoke `/checkmate:checkmate-setup` with this request file. In Codex, mention the `checkmate:checkmate-setup` skill. Type `$` to select it. In pi, use `/skill:checkmate-setup`. Then create a plan request with the returned profile reference. Use `plugin/contracts/plan-request.schema.json` for its fields.

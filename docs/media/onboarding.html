@@ -33,17 +33,17 @@
 </style>
 <main>
 
-<!-- 1 · title: the checkerboard builds diagonally, then the name, then the blue square -->
-<section class="scene" data-start="0" data-length="5">
+<!-- 1 · title: the checkerboard builds diagonally, the blue square lights, then the name -->
+<section class="scene" data-start="0" data-length="6">
 	<div id="board" style="position: absolute; left: 150px; top: 216px; width: 400px; height: 400px; display: grid; grid-template-columns: repeat(6, 1fr)"></div>
 	<div style="position: absolute; left: 46px; top: 728px">
-		<div style="font-size: 76px; font-weight: 500; letter-spacing: -1.5px; color: #eaedf2" data-in="1.6">Checkmate</div>
-		<div style="font-size: 27px; line-height: 40px; margin-top: 18px; color: rgb(165, 169, 179)" data-in="2.2">QA workflows<br />for running acceptance scenarios</div>
+		<div style="font-size: 76px; font-weight: 500; letter-spacing: -1.5px; color: #eaedf2" data-in="2.8">Checkmate</div>
+		<div style="font-size: 27px; line-height: 40px; margin-top: 18px; color: rgb(165, 169, 179)" data-in="3.2">QA workflows<br />for running acceptance scenarios</div>
 	</div>
 </section>
 
 <!-- 2 · the problem, then the third option opens between the two cards -->
-<section class="scene" data-start="5" data-length="13">
+<section class="scene" data-start="6" data-length="13">
 	<div class="cam" style="top: 84px" data-cam="7.5:-196">
 		<div class="card" style="padding: 26px 28px; height: 452px; position: relative" data-dim="7.6">
 			<div class="label">scripted e2e</div>
@@ -85,7 +85,7 @@
 </section>
 
 <!-- 3 · requirements in, questions out: the plan marks what it cannot assert -->
-<section class="scene" data-start="18" data-length="12">
+<section class="scene" data-start="19" data-length="12">
 	<div class="cam">
 		<h1>Requirements in.<br /><span class="blue">Questions</span> out.</h1>
 		<div class="label" style="margin: 44px 0 14px" data-in="0.3">plan-request.json</div>
@@ -111,7 +111,7 @@
 </section>
 
 <!-- 4 · the caller decides: the highlight picks a decision, the plan gets a new revision -->
-<section class="scene" data-start="30" data-length="11">
+<section class="scene" data-start="31" data-length="11">
 	<div class="cam">
 		<h1>The caller <span class="blue">decides</span>.</h1>
 		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px; margin-top: 44px" data-in="0.3">
@@ -141,7 +141,7 @@
 </section>
 
 <!-- 5 · test with real tools: the commands run, then expected meets observed -->
-<section class="scene" data-start="41" data-length="11">
+<section class="scene" data-start="42" data-length="11">
 	<div class="cam">
 		<h1>Test with <span class="blue">real tools</span>.</h1>
 		<div class="card" style="margin-top: 44px; padding: 22px 24px" data-in="0.3">
@@ -183,7 +183,7 @@
 </section>
 
 <!-- 6 · a failure is a finding: the defect builds line by line, errors stay separate -->
-<section class="scene" data-start="52" data-length="10">
+<section class="scene" data-start="53" data-length="10">
 	<div class="cam">
 		<h1>A failure is a<br /><span class="blue">finding</span>.</h1>
 		<div class="card stripe" style="border-left-color: #f0735a; margin-top: 44px; padding: 24px 26px" data-in="0.3">
@@ -207,7 +207,7 @@
 </section>
 
 <!-- 7 · one JSON result, three separate answers: bands and rows light together -->
-<section class="scene" data-start="62" data-length="11">
+<section class="scene" data-start="63" data-length="11">
 	<div class="cam">
 		<h1>One JSON result.<br />Three <span class="blue">separate answers</span>.</h1>
 		<div class="card" style="margin-top: 44px; padding: 26px 0" data-in="0.3">
@@ -229,7 +229,7 @@
 </section>
 
 <!-- 8 · fix the app, retest in a new run: the first run dims but stays -->
-<section class="scene" data-start="73" data-length="11">
+<section class="scene" data-start="74" data-length="11">
 	<div class="cam">
 		<h1>Fix the app.<br /><span class="blue">Retest</span> in a new run.</h1>
 		<div class="card" style="margin-top: 44px; padding: 22px 24px" data-in="0.3" data-dim="5.6">
@@ -255,7 +255,7 @@
 </section>
 
 <!-- 9 · any host: the same stages run on three hosts, and each stage records its usage -->
-<section class="scene" data-start="84" data-length="10">
+<section class="scene" data-start="85" data-length="10">
 	<div class="cam">
 		<h1>Any host.<br /><span class="blue">Every stage</span> measured.</h1>
 		<div class="label" style="margin: 44px 0 14px" data-in="0.3">delegate --host</div>
@@ -276,7 +276,7 @@
 </section>
 
 <!-- 10 · who owns what: three owners, the middle one is the layer -->
-<section class="scene" data-start="94" data-length="10">
+<section class="scene" data-start="95" data-length="10">
 	<div class="cam">
 		<h1>Who <span class="blue">owns</span> what.</h1>
 		<div class="card" style="margin-top: 50px; padding: 26px 28px" data-in="0.4">
@@ -304,7 +304,7 @@
 </section>
 
 <!-- 11 · closing -->
-<section class="scene" data-start="104" data-length="9" data-fade-out="0.8">
+<section class="scene" data-start="105" data-length="9" data-fade-out="0.8">
 	<div style="position: absolute; left: 0; right: 0; top: 270px; text-align: center">
 		<div id="mark" style="display: inline-grid; grid-template-columns: repeat(4, 20px); grid-auto-rows: 20px; gap: 6px"></div>
 		<div style="font-size: 68px; font-weight: 500; letter-spacing: -1px; margin-top: 22px">Checkmate</div>
@@ -433,7 +433,7 @@
 		}
 	}
 
-	window.DURATION = 113
+	window.DURATION = 114
 	// Show the frame at a time in seconds. The renderer calls this for each frame.
 	window.renderFrame = (time) => {
 		renderBoard(time)

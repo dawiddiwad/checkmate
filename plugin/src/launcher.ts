@@ -82,8 +82,6 @@ async function interruptedResult(
 	)
 }
 
-// Runs one host process. It returns the standard output after a zero exit.
-// The caller reads the host output and the response file.
 export async function worker(
 	executable: string,
 	args: string[],
@@ -146,9 +144,7 @@ export async function worker(
 export type DelegateOptions = {
 	allowedTools?: string[]
 	host?: string
-	// The host CLI to start. The default is the host name.
 	executable?: string
-	// The caller accepts a host that cannot enforce the rules.
 	unrestrictedHost?: boolean
 	playwright?: string
 	pluginRoot?: string
@@ -208,10 +204,9 @@ export async function delegate(workspace: string, requestPath: string, options: 
 	let cleanup: Promise<Observation['cleanup']> | undefined
 	const close = (run: ExecuteRequest) =>
 		(cleanup ??= closeBrowser(workspace, run, options.playwright ?? 'playwright-cli'))
-	let worked: Result['host'] | undefined
-	// The usage that the host reported for this stage. Every delegated response carries it.
-	let used: Usage | null = null
-	const logged = (answer: Response) => validate('response', { ...answer, usage: used })
+	let workerHost: Result['host'] | undefined
+	let stageUsage: Usage | null = null
+	const withUsage = (answer: Response) => validate('response', { ...answer, usage: stageUsage })
 	try {
 		const output = await worker(
 			executable,
@@ -225,8 +220,8 @@ export async function delegate(workspace: string, requestPath: string, options: 
 			}
 		)
 		const read = host.read(output)
-		worked = { ...launched, model: read.model, source: 'launcher' }
-		used = read.usage
+		workerHost = { ...launched, model: read.model, source: 'launcher' }
+		stageUsage = read.usage
 		let result
 		try {
 			result = validate('response', (await readDocument(workspace, answer)).value)
@@ -245,16 +240,16 @@ export async function delegate(workspace: string, requestPath: string, options: 
 			requireCondition(result.reasons.length > 0, 'Worker needs a decision but gave no reason')
 			if (request.operation === 'execute')
 				throw new Error('Worker could not execute the stage with current access or tools')
-			return logged(result)
+			return withUsage(result)
 		}
 		requireCondition(result.status === 'completed', `Worker returned ${result.status}`)
 		// The launcher chose the candidate path, so it reads and digests the file itself.
 		const value = (await readDocument(workspace, candidate)).value
 		candidateReceived = true
-		if (request.operation === 'setup') return logged(await setup(workspace, request, value))
+		if (request.operation === 'setup') return withUsage(await setup(workspace, request, value))
 		if (request.operation === 'plan' || request.operation === 'revise')
-			return logged(await savePlan(workspace, request, value, used))
-		return logged(await finalize(workspace, request, value, worked, used))
+			return withUsage(await savePlan(workspace, request, value, stageUsage))
+		return withUsage(await finalize(workspace, request, value, workerHost, stageUsage))
 	} catch (caught) {
 		const error = caught instanceof Error ? caught : new Error('Unknown worker failure')
 		const status = /deadline|interrupted/.test(error.message) ? 'interrupted' : 'operational_error'
@@ -273,12 +268,14 @@ export async function delegate(workspace: string, requestPath: string, options: 
 			})
 			if (!candidateReceived) {
 				try {
-					const ran = worked ?? { ...launched, model: null, source: 'launcher' as const }
-					return logged(await interruptedResult(workspace, request, status, await close(request), ran, used))
+					const ran = workerHost ?? { ...launched, model: null, source: 'launcher' as const }
+					return withUsage(
+						await interruptedResult(workspace, request, status, await close(request), ran, stageUsage)
+					)
 				} catch {}
 			}
 		}
-		return logged(response(request, status, null, [error.message]))
+		return withUsage(response(request, status, null, [error.message]))
 	} finally {
 		if (request.operation === 'execute') await close(request)
 	}

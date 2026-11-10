@@ -16,7 +16,6 @@ import { delegate } from '../plugin/src/launcher.ts'
 import { gate } from '../plugin/src/stages.ts'
 import { readDocument } from '../plugin/src/files.ts'
 
-// CHECKMATE_LIVE_HOST selects the worker host. The host keeps its own login and model.
 const host = process.env.CHECKMATE_LIVE_HOST ?? 'claude'
 const hostOptions: Record<string, { allowedTools: string[]; unrestrictedHost?: boolean }> = {
 	claude: { allowedTools: ['Read', 'Write', 'Edit', 'Bash'] },
@@ -39,12 +38,10 @@ if (host === 'claude') {
 		process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY || process.env.CHECKMATE_USE_HOST_LOGIN === '1',
 		`Configure ${host} authentication before live tests`
 	)
-	// codex exec reads an API key from CODEX_API_KEY. pi reads OPENAI_API_KEY.
 	if (host === 'codex' && process.env.OPENAI_API_KEY) process.env.CODEX_API_KEY ??= process.env.OPENAI_API_KEY
 }
 process.env.PATH = `${join(root, 'node_modules/.bin')}:${process.env.PATH}`
 const workspace = await sandbox()
-// The Codex sandbox permits writes only in the workspace. Playwright CLI keeps its daemon state in the cache directory.
 if (host === 'codex') process.env.XDG_CACHE_HOME = join(workspace, '.cache')
 const app = await fixture()
 const measurements: Array<{ stage: string; durationMs: number; status: Response['status'] }> = []
@@ -161,7 +158,6 @@ try {
 	assert.equal(failed.value.host.name, host)
 	assert.equal(failed.value.host.source, 'launcher')
 	console.log(`Host record: ${JSON.stringify(failed.value.host)}`)
-	// The host reports usage for a delegated stage. Claude Code and pi also report cost.
 	const usage = failed.value.usage
 	assert(usage && usage.inputTokens > 0 && usage.outputTokens > 0, 'The execute stage has no usage')
 	if (host !== 'codex') assert(usage.costUSD !== null, 'The host reported no cost')
@@ -186,7 +182,6 @@ try {
 	)
 	assert.equal(retest.value.coverage.status, 'partial')
 	assert((await load<Result>(workspace, artifact(failed.response))).findings.some((f) => f.type === 'defect'))
-	// A skill in the agent's own session. Only Claude has this check.
 	if (host === 'claude') {
 		const sameRequest = {
 			...planRequest,

@@ -25,8 +25,6 @@ async function executable(workspace: string, code: string, name = 'fake-claude')
 	await chmod(path, 0o700)
 	return path
 }
-// A fake host that reads the prompt, runs the given code, and writes the response file.
-// The code can use prompt, candidate, and answer, the paths that the launcher named.
 function answering(code: string, output = `{type:'result',subtype:'success'}`) {
 	return (
 		`let prompt=process.argv.slice(2).join(' ');process.stdin.on('data',(b)=>prompt+=b).on('end',()=>{` +
@@ -92,7 +90,6 @@ test('the pi adapter passes the prompt as an argument and reads errors from even
 	const done = { type: 'message_end', message: { role: 'assistant', model: 'pi-model' } }
 	assert.equal(hosts.pi.read(JSON.stringify(done)).model, 'pi-model')
 })
-// The shapes below follow the output of Claude Code 2.1, Codex 0.167, and pi 1.5.
 test('each adapter reads tokens, peak context, and cost as the host reports them', () => {
 	const claude = {
 		type: 'result',
@@ -424,7 +421,6 @@ test('an execute run records the worker host in the invocation and the result', 
 		r = await revised(workspace, p)
 	const request = executeRequest(p, r)
 	await write(workspace, 'request.json', request)
-	// Build a passing observation in a separate run. The fake worker copies its shape and evidence.
 	const corrected = await observation(
 		workspace,
 		{ ...request, runId: 'shape', outputDirectory: 'runs/shape' },
@@ -461,7 +457,6 @@ test('an execute run records the worker host in the invocation and the result', 
 		source: 'launcher',
 		permissions: 'allow_rules',
 	})
-	// The stage response logs the usage, and the result keeps it.
 	assert.deepEqual(result.usage, saved.usage)
 	assert.equal(saved.usage?.inputTokens, 5000)
 	assert.equal(saved.usage?.costUSD, null)

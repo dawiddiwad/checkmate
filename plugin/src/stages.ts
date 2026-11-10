@@ -60,7 +60,6 @@ export async function setup(workspace: string, input: unknown, candidate: unknow
 	)
 }
 
-// usage is what the host reported for this stage. A plan written in the agent's own session has none.
 export async function savePlan(workspace: string, input: unknown, candidate: unknown, usage: Usage | null = null) {
 	const request = requestCheck(input)
 	requireCondition(
@@ -228,13 +227,10 @@ export async function gate(workspace: string, input: unknown) {
 	return { ...response(request, reasons.length ? 'needs_decision' : 'completed', null, reasons), plan, target }
 }
 
-// The host that produced a result. The launcher knows it; an agent in its own session declares it.
 export type Host = Result['host']
-// The launcher records the worker host when it reserves the run. It learns the model later.
 export type LaunchedHost = Omit<Host, 'model' | 'source'>
 
 // deadlineSeconds is the deadline the launcher applies. It defaults to the request's timeoutSeconds.
-// host is the worker host that the launcher starts. A run in the current session has none.
 export async function beginRun(
 	workspace: string,
 	input: unknown,
@@ -302,7 +298,6 @@ export function resultCoverage(plan: Plan, result: Observation): import('./types
 	}
 }
 
-// The launcher passes the host it ran. Otherwise the result keeps the host that the observation declares.
 export async function finalize(
 	workspace: string,
 	input: unknown,
@@ -450,7 +445,6 @@ export async function finalize(
 	return response(request, observation.completion === 'completed' ? 'completed' : observation.completion, artifact)
 }
 
-// The plan revisions that led to a result, oldest first. Each saved revision keeps the usage of its stage.
 async function planChain(workspace: string, reference: Reference) {
 	const chain = [planCheck(await readReference(workspace, reference))]
 	while (chain[0].previousRevision !== null) {

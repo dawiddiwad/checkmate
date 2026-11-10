@@ -72,7 +72,6 @@ test('finalize records the digest of each evidence file', async (t) => {
 	const result = await load<Result>(workspace, artifact(saved))
 	for (const entry of result.evidence)
 		assert.equal(entry.sha256, digest(await readFile(join(workspace, request.outputDirectory, entry.path))))
-	// A run in the current session keeps the host that the agent declares.
 	assert.deepEqual(result.host, {
 		name: 'test-host',
 		version: '1.0.0',

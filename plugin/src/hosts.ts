@@ -2,33 +2,20 @@ import type { Result } from './types.ts'
 import { execFileSync } from 'node:child_process'
 import { requireCondition } from './files.ts'
 
-// Token, context, and cost figures exactly as the host reports them for one stage.
-// Input tokens include cached input. Checkmate keeps no price table.
 export type Usage = NonNullable<Result['usage']>
-
-// A host is an agent CLI that can run one Checkmate stage headless.
-// Each host keeps its own model, authentication, and permissions. Checkmate only
-// builds the command line and reads the host's own output for failure and model name.
-// The stage answer always comes from the response file, never from this output.
 
 export type Stage = 'setup' | 'plan' | 'revise' | 'execute'
 export type HostRun = {
 	prompt: string
 	pluginRoot: string
-	// The skill directory of the stage, for hosts that can load a skill directly.
 	skill: string
-	// The caller's rules, in the host's own format.
 	allow: string[]
 }
 export type Host = {
-	// True when the host cannot enforce the rules. The caller must accept that.
 	unrestricted: boolean
-	// The smallest set of rules each stage needs. The caller still chooses the rules.
 	minimumRules: Record<Stage, string[]>
 	args(run: HostRun): string[]
-	// Hosts that do not read the prompt from standard input get it as an argument.
 	promptOnStdin: boolean
-	// Throws when the output reports a failure. Returns the model name and usage if the output has them.
 	read(output: string): { model: string | null; usage: Usage | null }
 }
 
@@ -53,12 +40,10 @@ function jsonLines(output: string, host: string) {
 	return events
 }
 
-// A token count from host output. A missing or invalid value counts as zero.
 function count(value: unknown) {
 	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : 0
 }
 
-// The first string value of a "model" key, at any depth. Hosts that do not name the model give null.
 function findModel(value: unknown): string | null {
 	if (Array.isArray(value)) {
 		for (const item of value) {
@@ -112,7 +97,6 @@ const claude: Host = {
 				(!('is_error' in envelope) || envelope.is_error !== true),
 			`Claude did not complete the stage${excerpt('result' in envelope ? envelope.result : '')}`
 		)
-		// modelUsage names each model the session used. The main model wrote the most output.
 		const byModel = 'modelUsage' in envelope ? envelope.modelUsage : null
 		type ModelUsage = { outputTokens?: unknown; contextWindow?: unknown; costBasis?: unknown }
 		const models = (typeof byModel === 'object' && byModel !== null ? Object.entries(byModel) : []) as Array<
@@ -131,7 +115,6 @@ const claude: Host = {
 			count(tokens.cache_read_input_tokens) +
 			count(tokens.cache_creation_input_tokens)
 		const totals = ('usage' in envelope ? envelope.usage : null) as (Tokens & { iterations?: Tokens[] }) | null
-		// Claude reports only its final request in iterations. That request is the largest unless the context was compacted.
 		const requests = Array.isArray(totals?.iterations) ? totals.iterations : []
 		const cost = 'total_cost_usd' in envelope ? envelope.total_cost_usd : null
 		return {
@@ -155,7 +138,6 @@ const claude: Host = {
 	},
 }
 
-// Codex has sandbox modes, not rules per command. A rule is a sandbox mode or "network".
 const codexModes = ['read-only', 'workspace-write']
 const codex: Host = {
 	unrestricted: false,
@@ -196,7 +178,6 @@ const codex: Host = {
 		}
 		const turns = events.filter((event) => event.type === 'turn.completed')
 		requireCondition(turns.length, 'Codex did not complete the stage')
-		// Codex reports the total of each turn. Its input tokens include cached input. It reports no cost or window.
 		type Tokens = {
 			input_tokens?: unknown
 			cached_input_tokens?: unknown
@@ -223,7 +204,6 @@ const codex: Host = {
 	},
 }
 
-// pi has no permission system. A rule is a tool name for --tools; the tools themselves are unrestricted.
 const pi: Host = {
 	unrestricted: true,
 	minimumRules: {
@@ -236,7 +216,6 @@ const pi: Host = {
 		'--mode',
 		'json',
 		'--no-session',
-		// Ignore untrusted project configuration. Load the stage skill explicitly.
 		'--no-approve',
 		'--skill',
 		run.skill,
@@ -257,7 +236,6 @@ const pi: Host = {
 			if (event.type === 'agent_settled' && event.aborted === true)
 				throw new Error('pi stopped the stage before the end')
 		}
-		// pi reports usage for each model request in message_end. Its input excludes cached input.
 		type Tokens = {
 			input?: unknown
 			cacheRead?: unknown
@@ -302,7 +280,6 @@ export function hostNamed(name: string): Host {
 	return hosts[name as HostName]
 }
 
-// The version line that the host CLI reports, or null if it does not answer.
 export function hostVersion(executable: string): string | null {
 	try {
 		const output = execFileSync(executable, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: 'pipe' })

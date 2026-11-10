@@ -209,7 +209,6 @@ export async function write(workspace: string, name: string, value: unknown) {
 	await writeFile(join(workspace, name), JSON.stringify(value, null, 2) + '\n')
 }
 
-// A live Claude session in the caller's own session. It returns the stage response from structured output.
 export async function claudeSession(args: string[], options: { cwd: string; timeoutSeconds: number; prompt: string }) {
 	const output = await worker(
 		'claude',

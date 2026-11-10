@@ -46,7 +46,6 @@ const usageColumns = [
 	'Cost (USD)',
 	'Cost source',
 ]
-// Usage of each stage, with a total over the measured stages. Checkmate never estimates a missing value.
 function usageBlocks(stages: Array<{ stage: string; usage: Usage | null }>): Block[] {
 	const measured = stages.flatMap((entry) => (entry.usage ? [entry.usage] : []))
 	const rows = stages.map((entry) => usageRow(entry.stage, entry.usage))
@@ -345,7 +344,6 @@ function planReport(plan: Plan): Report {
 export function renderPlan(plan: Plan) {
 	return markdown(planReport(plan))
 }
-// chain is the plan revisions that led to the result, oldest first.
 export function renderResult(result: Result, chain: Plan[]) {
 	const report = resultReport(result, chain)
 	return { md: markdown(report), html: html(report) }

@@ -78,7 +78,7 @@ try {
 	)
 	await writeFile(
 		join(workspace, 'AGENTS.md'),
-		'# Fixture workspace\n\nUse the running fixture. Do not change its code. The browser config is `.playwright/cli.config.json`. Use one isolated session per run. Use `open --idle-timeout=30000`. The checkout button creates a 400 PLN order. The quote endpoint is GET /quote?promotion=true&loyalty=true. The health endpoint is GET /health. Read /health for setup. Do not use /order or /quote during setup or planning. The caller owns the fixture server. No record cleanup is required. Browser sessions must be closed.\n'
+		'# Fixture workspace\n\nUse the running fixture. Do not change its code. The browser config is `.playwright/cli.config.json`. Use one isolated session per run. Use `open --idle-timeout=30000`. The checkout button creates a 400 PLN order. The page has no promotion or loyalty control. Check promotion and loyalty totals only through the quote endpoint with the http capability: GET /quote?promotion=true, optionally with &loyalty=true. The health endpoint is GET /health. Read /health for setup. Do not use /order or /quote during setup or planning. The caller owns the fixture server. No record cleanup is required. Browser sessions must be closed.\n'
 	)
 	const setupRequest = {
 		contractVersion: 'toolkit-2',

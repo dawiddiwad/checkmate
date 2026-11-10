@@ -1,4 +1,9 @@
 {
 	"private": true,
-	"type": "module"
+	"type": "module",
+	"pi": {
+		"skills": [
+			"./skills"
+		]
+	}
 }

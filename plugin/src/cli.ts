@@ -22,7 +22,7 @@ export async function main(args: string[]) {
 		}
 		if (!args.length || args[0] === '--help') {
 			console.log(
-				'checkmate validate <request|profile|plan|plan-candidate|observation|result> <file>\ncheckmate <setup|save-plan|gate|begin|finalize|report|delegate> <request> [candidate]\nOptions: --workspace <path>, --allow <Claude tool rule>, --timeout <seconds>'
+				'checkmate validate <request|profile|plan|plan-candidate|observation|result> <file>\ncheckmate <setup|save-plan|gate|begin|finalize|report|delegate> <request> [candidate]\nOptions: --workspace <path>\nDelegate options: --host <claude|codex|pi>, --allow <host rule>, --unrestricted-host, --timeout <seconds>'
 			)
 			return
 		}
@@ -39,6 +39,8 @@ export async function main(args: string[]) {
 			if (option === '--workspace') workspace = resolve(value())
 			else if (option === '--allow') options.allowedTools.push(value())
 			else if (option === '--timeout') options.timeoutSeconds = Number(value())
+			else if (option === '--host') options.host = value()
+			else if (option === '--unrestricted-host') options.unrestrictedHost = true
 			else {
 				requireCondition(!option.startsWith('--'), `Unknown option: ${option}`)
 				positional.push(option)
@@ -54,8 +56,12 @@ export async function main(args: string[]) {
 		const [command] = positional
 		requireCondition(commands.includes(command), `Unknown command: ${command}`)
 		requireCondition(
-			command === 'delegate' || (options.timeoutSeconds === undefined && !options.allowedTools.length),
-			'--allow and --timeout apply only to delegate'
+			command === 'delegate' ||
+				(options.timeoutSeconds === undefined &&
+					!options.allowedTools.length &&
+					options.host === undefined &&
+					!options.unrestrictedHost),
+			'--host, --allow, --unrestricted-host, and --timeout apply only to delegate'
 		)
 		if (command === 'validate') {
 			const [, kind, file] = positional

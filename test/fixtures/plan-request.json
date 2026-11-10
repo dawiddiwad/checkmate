@@ -1,5 +1,5 @@
 {
-	"contractVersion": "toolkit-1",
+	"contractVersion": "toolkit-2",
 	"requestId": "req-plan-1",
 	"operation": "plan",
 	"caller": "factory-agent",

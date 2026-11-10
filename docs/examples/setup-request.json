@@ -1,5 +1,5 @@
 {
-  "contractVersion": "toolkit-1",
+  "contractVersion": "toolkit-2",
   "requestId": "setup-1",
   "caller": "test-caller",
   "operation": "setup",

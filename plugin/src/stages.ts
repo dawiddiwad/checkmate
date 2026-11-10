@@ -1,4 +1,4 @@
-import type { Request, Response, Plan, Reference, ExecuteRequest, Observation } from './types.ts'
+import type { Request, Response, Plan, Reference, ExecuteRequest, Observation, Result } from './types.ts'
 import { readdir, mkdir, stat, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -22,7 +22,7 @@ export function response(
 	reasons: string[] = []
 ): Response {
 	return validate('response', {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: request.requestId,
 		operation: request.operation,
 		status,
@@ -226,8 +226,19 @@ export async function gate(workspace: string, input: unknown) {
 	return { ...response(request, reasons.length ? 'needs_decision' : 'completed', null, reasons), plan, target }
 }
 
+// The host that produced a result. The launcher knows it; an agent in its own session declares it.
+export type Host = Result['host']
+// The launcher records the worker host when it reserves the run. It learns the model later.
+export type LaunchedHost = Omit<Host, 'model' | 'source'>
+
 // deadlineSeconds is the deadline the launcher applies. It defaults to the request's timeoutSeconds.
-export async function beginRun(workspace: string, input: unknown, deadlineSeconds?: number) {
+// host is the worker host that the launcher starts. A run in the current session has none.
+export async function beginRun(
+	workspace: string,
+	input: unknown,
+	deadlineSeconds?: number,
+	host: LaunchedHost | null = null
+) {
 	const request = validate('execute-request', input)
 	const checked = await gate(workspace, request)
 	if (checked.status !== 'completed') return response(request, checked.status, null, checked.reasons)
@@ -243,6 +254,7 @@ export async function beginRun(workspace: string, input: unknown, deadlineSecond
 			startedAt,
 			browserSession: `cm-${randomUUID()}`,
 			deadlineSeconds: deadlineSeconds ?? request.timeoutSeconds,
+			host,
 		})
 	} catch (error) {
 		// No run started, so release the run ID for a later attempt.
@@ -288,7 +300,8 @@ export function resultCoverage(plan: Plan, result: Observation): import('./types
 	}
 }
 
-export async function finalize(workspace: string, input: unknown, candidate: unknown) {
+// The launcher passes the host it ran. Otherwise the result keeps the host that the observation declares.
+export async function finalize(workspace: string, input: unknown, candidate: unknown, host?: Host) {
 	const request = validate('execute-request', input)
 	const observation = validate('observation', candidate)
 	const checked = await gate(workspace, request)
@@ -416,6 +429,7 @@ export async function finalize(workspace: string, input: unknown, candidate: unk
 	}
 	const result = {
 		...observation,
+		host: host ?? { ...observation.host, source: 'declared', permissions: 'session' },
 		tests,
 		evidence: recordedEvidence,
 		finishedAt: new Date().toISOString(),

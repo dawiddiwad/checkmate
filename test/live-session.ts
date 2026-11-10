@@ -3,9 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './fixture.ts'
 import type { Result } from '../plugin/src/types.ts'
-import { sandbox, prepare, revised, executeRequest, root, write, artifact, load } from './support.ts'
-import { worker } from '../plugin/src/launcher.ts'
-import { schema } from '../plugin/src/contracts.ts'
+import { sandbox, prepare, revised, executeRequest, root, write, artifact, load, claudeSession } from './support.ts'
 
 assert(
 	process.env.CLAUDE_CODE_OAUTH_TOKEN ||
@@ -42,30 +40,18 @@ try {
 		join(workspace, 'AGENTS.md'),
 		'# Fixture\n\nUse `.playwright/cli.config.json`. Use an isolated browser session with `--idle-timeout=30000`. Click the checkout button to create a standard order. GET /quote?promotion=true&loyalty=true returns the promotion quote. The caller owns the server. Close the browser session. No fixture record cleanup is required.\n'
 	)
-	const args = [
-		'-p',
-		'--plugin-dir',
-		join(root, 'plugin'),
-		'--output-format',
-		'json',
-		'--json-schema',
-		JSON.stringify(schema('response')),
-		'--permission-prompts',
-		'none',
-		'--no-session-persistence',
-	]
-	const denied = await worker('claude', [...args, '--tools', 'Read,Skill'], {
+	const denied = await claudeSession(['--tools', 'Read,Skill'], {
 		cwd: workspace,
 		timeoutSeconds: 90,
-		prompt: 'Use checkmate:execute with request.json. You have no shell or write permission. Return needs_decision with artifact null if a required tool is unavailable. Do not invent a result.',
+		prompt: 'Use checkmate:checkmate-execute with request.json. You have no shell or write permission. Return needs_decision with artifact null if a required tool is unavailable. Do not invent a result.',
 	})
 	assert.equal(denied.status, 'needs_decision')
 	assert.equal(denied.artifact, null)
 	assert.equal(app.actions(), 0)
-	const result = await worker('claude', [...args, '--allowedTools', 'Read,Write,Edit,Bash'], {
+	const result = await claudeSession(['--allowedTools', 'Read,Write,Edit,Bash'], {
 		cwd: workspace,
 		timeoutSeconds: 240,
-		prompt: 'Use checkmate:execute in this session with request.json. This is not a delegated candidate task. Apply the gate, begin the run, execute the tests, and publish the result with the Checkmate CLI. Return its response. Do not fix the application.',
+		prompt: 'Use checkmate:checkmate-execute in this session with request.json. This is not a delegated candidate task. Apply the gate, begin the run, execute the tests, and publish the result with the Checkmate CLI. Return its response. Do not fix the application.',
 	})
 	assert.equal(result.status, 'completed', JSON.stringify(result))
 	assert(result.artifact)

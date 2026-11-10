@@ -1,7 +1,7 @@
 {
 	"name": "@xoxoai/checkmate",
 	"version": "0.7.0",
-	"description": "Testing workflows and evidence contracts for Claude Code",
+	"description": "Testing workflows and evidence contracts for coding agents",
 	"type": "module",
 	"engines": {
 		"node": ">=24.12.0"

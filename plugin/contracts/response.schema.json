@@ -3,7 +3,7 @@
 	"type": "object",
 	"properties": {
 		"contractVersion": {
-			"const": "toolkit-1"
+			"const": "toolkit-2"
 		},
 		"requestId": {
 			"type": "string",

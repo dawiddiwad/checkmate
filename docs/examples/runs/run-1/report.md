@@ -8,6 +8,9 @@ Generated from result.json. Completion, test outcomes, and coverage are separate
 | Coverage | partial |
 | Run | run-1 |
 | Application build | fixture-build-1 |
+| Host | example-host 1.0.0 |
+| Model | example-model |
+| Host record | declared, permissions: session |
 | Plan | plans/checkout/v2.json |
 | Target profile | profile.json |
 | Started | 2026-11-07T14:24:25.788Z |
@@ -58,19 +61,26 @@ not\_applicable: Illustrative document. No application was used to create this e
 
 ```json
 {
-  "contractVersion": "toolkit-1",
+  "contractVersion": "toolkit-2",
   "requestId": "execute-1",
   "runId": "run-1",
   "completion": "completed",
   "plan": {
     "path": "plans/checkout/v2.json",
-    "sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
+    "sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
   },
   "target": {
     "path": "profile.json",
-    "sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+    "sha256": "d071d6df7d0308cf1a0de2a6bf87216531a03ec63764441a042003becff37717"
   },
   "applicationBuild": "fixture-build-1",
+  "host": {
+    "name": "example-host",
+    "version": "1.0.0",
+    "model": "example-model",
+    "source": "declared",
+    "permissions": "session"
+  },
   "selectedTestIds": [
     "T1",
     "T2"

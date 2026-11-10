@@ -11,11 +11,10 @@ import type {
 	Result,
 	ReviseRequest,
 } from '../plugin/src/types.ts'
-import { sandbox, fixtureJson, root, write, artifact, load } from './support.ts'
-import { delegate, worker } from '../plugin/src/launcher.ts'
+import { sandbox, fixtureJson, root, write, artifact, load, claudeSession } from './support.ts'
+import { delegate } from '../plugin/src/launcher.ts'
 import { gate } from '../plugin/src/stages.ts'
 import { readDocument } from '../plugin/src/files.ts'
-import { schema } from '../plugin/src/contracts.ts'
 
 assert(
 	process.env.CLAUDE_CODE_OAUTH_TOKEN ||
@@ -62,7 +61,7 @@ try {
 		'# Fixture workspace\n\nUse the running fixture. Do not change its code. The browser config is `.playwright/cli.config.json`. Use one isolated session per run. Use `open --idle-timeout=30000`. The checkout button creates a 400 PLN order. The quote endpoint is GET /quote?promotion=true&loyalty=true. The health endpoint is GET /health. Read /health for setup. Do not use /order or /quote during setup or planning. The caller owns the fixture server. No record cleanup is required. Browser sessions must be closed.\n'
 	)
 	const setupRequest = {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: 'live-setup',
 		operation: 'setup',
 		caller: 'acceptance-test',
@@ -88,7 +87,7 @@ try {
 		)
 	const selected = planned.value.tests.filter((t) => t.requirementIds.includes('R1')).map((t) => t.id)
 	const initial: ExecuteRequest = {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: 'live-partial',
 		operation: 'execute',
 		caller: 'acceptance-test',
@@ -121,7 +120,7 @@ try {
 			return { ...decision, id: `D${i + 1}`, gapId: gap.id }
 		})
 	const revised = await stage<Plan>('revise', {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: 'live-revise',
 		operation: 'revise',
 		caller: 'acceptance-test',
@@ -165,28 +164,11 @@ try {
 		planDirectory: 'plans/same-session',
 	}
 	await write(workspace, 'same-session.json', sameRequest)
-	const same = await worker(
-		'claude',
-		[
-			'-p',
-			'--plugin-dir',
-			join(root, 'plugin'),
-			'--output-format',
-			'json',
-			'--json-schema',
-			JSON.stringify(schema('response')),
-			'--permission-prompts',
-			'none',
-			'--allowedTools',
-			'Read,Write,Edit,Bash',
-			'--no-session-persistence',
-		],
-		{
-			cwd: workspace,
-			timeoutSeconds: 240,
-			prompt: 'Use checkmate:plan in this session with same-session.json. This is not a delegated candidate task. Publish the plan with the Checkmate CLI and return its response. Do not execute tests.',
-		}
-	)
+	const same = await claudeSession(['--allowedTools', 'Read,Write,Edit,Bash'], {
+		cwd: workspace,
+		timeoutSeconds: 240,
+		prompt: 'Use checkmate:checkmate-plan in this session with same-session.json. This is not a delegated candidate task. Publish the plan with the Checkmate CLI and return its response. Do not execute tests.',
+	})
 	assert.equal((await load<Plan>(workspace, artifact(same))).revision, 1)
 	await readDocument(workspace, 'plans/same-session/v1.json')
 	assert((await readFile(join(workspace, 'runs/live-run/report.html'), 'utf8')).includes('Test result'))

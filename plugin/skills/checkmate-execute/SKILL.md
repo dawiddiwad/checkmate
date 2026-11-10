@@ -1,11 +1,13 @@
 ---
-name: execute
+name: checkmate-execute
 description: Execute a pinned Checkmate plan with direct tools. Record observations and evidence. Preserve blocked and omitted coverage.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/execute-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/observation.schema.json`.
-Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/references/http.md` as needed.
+`<plugin>` is the Checkmate plugin root: the directory two levels above this `SKILL.md`. Use its absolute path in commands.
+
+Read `<plugin>/references/workflow.md`.
+Read `<plugin>/contracts/execute-request.schema.json` and `<plugin>/contracts/observation.schema.json`.
+Read `<plugin>/references/browser.md` and `<plugin>/references/http.md` as needed.
 
 1. Read the request, plan, and profile. Run `checkmate gate`. Stop if the gate does not return `completed`.
 2. In the current session, run `checkmate begin` once. In a delegated stage, the parent has already done this. Read `invocation.json` in the output directory. Use its exact `startedAt` and `browserSession`.
@@ -17,7 +19,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/re
 8. Record new ambiguity as an open gap. Stop further actions if `onNewBlocker` is `return_to_caller`. Otherwise continue only independent tests. Record blocked dependent tests.
 9. Include each selected test exactly once. Give each blocked, not-run, or erroneous test a reason. You can omit an unselected test. The finalizer records it as `not_run`.
 10. Close only this run's browser session. Record cleanup status. A tool or cleanup error requires `completion: operational_error`. A deadline requires `completion: interrupted`.
-11. Write the observation document. Do not include `coverage` or `finishedAt`. The finalizer calculates coverage and records the finish time. Copy request identity, pinned references, selected IDs, build identity, and any `retestOf` reference exactly.
+11. Write the observation document. In `host`, declare the agent CLI that runs this session, its version, and your model. Use null for a value that you do not know. In a delegated stage, the parent replaces it with the host that it ran. Do not include `coverage` or `finishedAt`. The finalizer calculates coverage and records the finish time. Copy request identity, pinned references, selected IDs, build identity, and any `retestOf` reference exactly.
 12. Publish with `checkmate finalize`, unless the parent requested a candidate only. Return its response.
 
 A retest is a new run with a new build identity. Keep the prior run unchanged. A narrow retest does not establish full coverage.

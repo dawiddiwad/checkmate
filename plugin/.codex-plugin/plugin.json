@@ -1,0 +1,9 @@
+{
+	"name": "checkmate",
+	"version": "0.7.0",
+	"description": "Plan tests, resolve gaps, and collect evidence.",
+	"author": { "name": "Dawid Dobrowolski" },
+	"repository": "https://github.com/dawiddiwad/checkmate",
+	"license": "MIT",
+	"skills": "./skills/"
+}

@@ -1,13 +1,15 @@
 ---
-name: setup
+name: checkmate-setup
 description: Set up a Checkmate target profile from an explicit setup request. Check tools and access. Preserve local choices.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/setup-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/profile.schema.json`.
+`<plugin>` is the Checkmate plugin root: the directory two levels above this `SKILL.md`. Use its absolute path in commands.
+
+Read `<plugin>/references/workflow.md`.
+Read `<plugin>/contracts/setup-request.schema.json` and `<plugin>/contracts/profile.schema.json`.
 
 1. Read the caller's setup request. Inspect project instructions and existing profiles. Source code is optional.
-2. Check for Node.js 24.12.0 or later. Check Claude Code and the requested tools. In `tooling`, record exactly one entry for each requested capability. Use `browser` for Playwright CLI and `http` for Node.js. Do not add an extra Claude capability. Record actual versions.
+2. Check for Node.js 24.12.0 or later. Check the requested tools. In `tooling`, record exactly one entry for each requested capability. Use `browser` for Playwright CLI and `http` for Node.js. Do not add a capability for the agent host. Record actual versions.
 3. Use the caller's running application. Start it only if the caller authorized a startup command.
 4. Check target access with a read-only request. Do not invent authentication or install packages without authorization.
    For the browser capability, open `about:blank` in a temporary isolated session with the caller's browser config. Close that session after the check.
@@ -16,4 +18,4 @@ Read `${CLAUDE_PLUGIN_ROOT}/contracts/setup-request.schema.json` and `${CLAUDE_P
 7. Publish with `checkmate setup`, unless the parent requested a candidate only.
 
 If the profile already exists, preserve it. Identical setup is safe to repeat. Do not overwrite deliberate local choices.
-For browser setup, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
+For browser setup, read `<plugin>/references/browser.md`.

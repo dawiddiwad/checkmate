@@ -18,11 +18,13 @@ test('release preparation updates all version files without touching npm', async
 	const workspace = await sandbox(t)
 	execFileSync('git', ['init', '-q', workspace])
 	await mkdir(join(workspace, 'plugin/.claude-plugin'), { recursive: true })
+	await mkdir(join(workspace, 'plugin/.codex-plugin'), { recursive: true })
 	await mkdir(join(workspace, '.claude-plugin'))
 	const paths = [
 		'package.json',
 		'package-lock.json',
 		'plugin/.claude-plugin/plugin.json',
+		'plugin/.codex-plugin/plugin.json',
 		'.claude-plugin/marketplace.json',
 	]
 	for (const path of paths) await writeFile(join(workspace, path), await readFile(join(root, path)))

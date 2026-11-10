@@ -35,7 +35,9 @@ The plan candidate validator uses the plan schema without `coverage`. The genera
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success results.
 
-The plugin uses the installed Claude Code CLI. Do not add a custom model loop or an Agent SDK runner. Keep model selection, authentication, and native permissions with the host.
+The plugin uses the installed host CLI: Claude Code, Codex, or pi. Do not add a custom model loop, a provider client, or an Agent SDK runner. Keep model selection, authentication, and native permissions with the host.
+
+To add a host, add one adapter to `plugin/src/hosts.ts`. The adapter builds the command line, sets the minimum rules for each stage, and reads the host output for failure and model name. The stage answer always comes from the response file. Test the adapter with a fake executable in `test/launcher.test.ts`.
 
 ## Native TypeScript
 
@@ -45,17 +47,17 @@ Run `plugin/bin/checkmate.ts` with Node.js. The runtime uses erasable TypeScript
 
 ## Plugin layout
 
-The marketplace source is `./plugin`. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tooling outside it.
+The marketplace source is `./plugin`. `.claude-plugin/marketplace.json` lists it for Claude Code. `.agents/plugins/marketplace.json` lists it for Codex. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tooling outside it.
 
-The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
+The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type and the `pi` skills directory. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
 
 The root package is private. npm is used only to install development dependencies and run development commands. Do not add npm build or publish jobs. The last npm package version is `0.6.7`.
 
 ## GitHub releases
 
-A merged PR to `main` starts the release job after verification passes, if the PR changes the plugin. A PR changes the plugin when it changes a file under `plugin/` or `.claude-plugin/marketplace.json`. Merges that change only documentation, tests, CI, or development dependencies do not create a release. The job updates the package, lockfile, plugin, and marketplace versions together. It commits the version, creates a tag, and creates a GitHub release.
+A merged PR to `main` starts the release job after verification passes, if the PR changes the plugin. A PR changes the plugin when it changes a file under `plugin/`, `.claude-plugin/marketplace.json`, or `.agents/plugins/marketplace.json`. Merges that change only documentation, tests, CI, or development dependencies do not create a release. The job updates the package, lockfile, Claude plugin, Codex plugin, and marketplace versions together. It commits the version, creates a tag, and creates a GitHub release.
 
-The first plugin release is `v0.7.0`. Later merges increase the patch version. To select a new minor or major version, update all four version records in the PR. The selected version must be newer than every existing release tag.
+The first plugin release is `v0.7.0`. Later merges increase the patch version. To select a new minor or major version, update all five version records in the PR. The selected version must be newer than every existing release tag.
 
 Release jobs run one at a time. The job verifies the release candidate before it pushes the commit and tag together. It never publishes to npm.
 

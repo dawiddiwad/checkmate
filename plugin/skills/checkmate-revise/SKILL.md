@@ -1,10 +1,12 @@
 ---
-name: revise
+name: checkmate-revise
 description: Apply caller decisions to an immutable test plan. Preserve provenance and unresolved coverage.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/revise-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/plan.schema.json`. The plan candidate uses the plan schema without `coverage`.
+`<plugin>` is the Checkmate plugin root: the directory two levels above this `SKILL.md`. Use its absolute path in commands.
+
+Read `<plugin>/references/workflow.md`.
+Read `<plugin>/contracts/revise-request.schema.json` and `<plugin>/contracts/plan.schema.json`. The plan candidate uses the plan schema without `coverage`.
 
 1. Read the pinned base plan. Check its digest and revision.
 2. Apply only the decisions in the request. Each decision needs an actor and rationale. A clarification also needs a source.

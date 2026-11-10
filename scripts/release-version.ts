@@ -25,23 +25,31 @@ export async function prepareVersion(directory: string): Promise<string> {
 	const packageJson = await read('package.json')
 	const lock = await read('package-lock.json')
 	const plugin = await read('plugin/.claude-plugin/plugin.json')
+	const codex = await read('plugin/.codex-plugin/plugin.json')
 	const marketplace = await read('.claude-plugin/marketplace.json')
 	const entry = marketplace.plugins.find((item: { name: string }) => item.name === 'checkmate')
 	requireCondition(packageJson.private === true, 'The project must remain private on npm')
 	requireCondition(
 		entry &&
-			[lock.version, lock.packages[''].version, plugin.version, entry.version].every(
+			[lock.version, lock.packages[''].version, plugin.version, codex.version, entry.version].every(
 				(version) => version === packageJson.version
 			),
 		'Version files are inconsistent'
 	)
 	const tags = execFileSync('git', ['tag', '--list', 'v*'], { cwd: directory, encoding: 'utf8' }).trim().split('\n')
 	const version = releaseVersion(packageJson.version, tags)
-	packageJson.version = lock.version = lock.packages[''].version = plugin.version = entry.version = version
+	packageJson.version =
+		lock.version =
+		lock.packages[''].version =
+		plugin.version =
+		codex.version =
+		entry.version =
+			version
 	for (const [path, value] of [
 		['package.json', packageJson],
 		['package-lock.json', lock],
 		['plugin/.claude-plugin/plugin.json', plugin],
+		['plugin/.codex-plugin/plugin.json', codex],
 		['.claude-plugin/marketplace.json', marketplace],
 	] as const) {
 		await writeFile(resolve(directory, path), JSON.stringify(value, null, '\t') + '\n')

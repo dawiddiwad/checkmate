@@ -1,11 +1,11 @@
 {
-  "contractVersion": "toolkit-1",
+  "contractVersion": "toolkit-2",
   "requestId": "revise-1",
   "caller": "test-caller",
   "operation": "revise",
   "basePlan": {
     "path": "plans/checkout/v1.json",
-    "sha256": "df4e09ebcc886104a3ceb2760f7a251238f8ddceae71094c7d90c1c33955b32d"
+    "sha256": "6662aafbd34bdc39353836937e4e8dae50d0e4c07ff611f020a276649714c5e5"
   },
   "baseRevision": 1,
   "decisions": [

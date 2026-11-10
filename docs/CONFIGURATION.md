@@ -1,6 +1,6 @@
 # Contracts and configuration
 
-The JSON Schemas in `plugin/contracts/` are authoritative. The package exports matching TypeScript types. Use `contractVersion: "toolkit-1"`.
+The JSON Schemas in `plugin/contracts/` are authoritative. The package exports matching TypeScript types. Use `contractVersion: "toolkit-2"`. Checkmate rejects documents with another contract version. It does not convert them.
 
 ## Files
 
@@ -57,3 +57,12 @@ Every result lists every planned test once. An observation must list each select
 Use `onNewBlocker: return_to_caller` to stop after a new blocker. Use `continue_independent` to permit unrelated tests. These action-order rules depend on the host workflow; the finalizer cannot observe arbitrary external tool calls.
 
 A retest uses a new run ID and build identity. It references the prior result with `retestOf`. A narrow retest retains uncovered requirements.
+
+## Host record
+
+A result records the host that produced it in `host`. The record contains the host name, the host version, the model, `source`, and `permissions`.
+
+- A delegated run uses `source: "launcher"`. The launcher writes the host name and version, and the model from the host output. The model is `null` when the host output does not name it. `permissions` is `allow_rules` when the host applies the caller's rules. It is `unrestricted` when the caller accepted a host that cannot enforce rules.
+- A run in the agent's own session uses `source: "declared"` and `permissions: "session"`. The agent declares the host in the observation. Checkmate cannot verify this declaration.
+
+`invocation.json` of a delegated run also records the host name, version, and permission mode. A run in the agent's own session records `host: null`.

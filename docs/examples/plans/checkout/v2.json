@@ -1,5 +1,5 @@
 {
-  "contractVersion": "toolkit-1",
+  "contractVersion": "toolkit-2",
   "planId": "checkout",
   "revision": 2,
   "previousRevision": 1,
@@ -140,7 +140,7 @@
   ],
   "target": {
     "path": "profile.json",
-    "sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+    "sha256": "d071d6df7d0308cf1a0de2a6bf87216531a03ec63764441a042003becff37717"
   },
   "decisions": [
     {

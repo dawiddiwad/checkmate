@@ -1,0 +1,11 @@
+{
+	"name": "checkmate",
+	"interface": { "displayName": "Checkmate" },
+	"plugins": [
+		{
+			"name": "checkmate",
+			"source": { "source": "local", "path": "./plugin" },
+			"policy": { "installation": "AVAILABLE" }
+		}
+	]
+}

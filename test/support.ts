@@ -10,13 +10,15 @@ import type {
 	ReviseRequest,
 	SetupRequest,
 } from '../plugin/src/types.ts'
-import type { PlanCandidate } from '../plugin/src/contracts.ts'
+import { schema, validate, type PlanCandidate } from '../plugin/src/contracts.ts'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { publish, readDocument, readReference } from '../plugin/src/files.ts'
+import { worker } from '../plugin/src/launcher.ts'
+import { hosts } from '../plugin/src/hosts.ts'
 import { setup, savePlan, beginRun } from '../plugin/src/stages.ts'
 
 export type Prepared = {
@@ -49,7 +51,7 @@ export async function fixtureJson<T>(name: string): Promise<T> {
 }
 export async function prepare(workspace: string, baseUrl = 'http://127.0.0.1:4173'): Promise<Prepared> {
 	const profile: Profile = {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		targetId: 'checkout-local',
 		revision: 1,
 		baseUrl,
@@ -66,7 +68,7 @@ export async function prepare(workspace: string, baseUrl = 'http://127.0.0.1:417
 		readyForLiveExecution: true,
 	}
 	const setupRequest: SetupRequest = {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: 'setup-1',
 		caller: 'test-caller',
 		operation: 'setup',
@@ -87,7 +89,7 @@ export async function prepare(workspace: string, baseUrl = 'http://127.0.0.1:417
 export async function revised(workspace: string, prepared: Prepared): Promise<Revised> {
 	const decisions = await fixtureJson<ReviseRequest['decisions']>('decisions')
 	const request: ReviseRequest = {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: 'revise-1',
 		caller: 'test-caller',
 		operation: 'revise',
@@ -115,7 +117,7 @@ export function executeRequest(
 	overrides: Partial<ExecuteRequest> = {}
 ): ExecuteRequest {
 	return {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: 'execute-1',
 		caller: 'test-caller',
 		operation: 'execute',
@@ -166,13 +168,14 @@ export async function observation(
 		})
 	}
 	return {
-		contractVersion: 'toolkit-1',
+		contractVersion: 'toolkit-2',
 		requestId: request.requestId,
 		runId: request.runId,
 		completion: 'completed',
 		plan: request.plan,
 		target: request.target,
 		applicationBuild: request.applicationBuild,
+		host: { name: 'test-host', version: '1.0.0', model: 'test-model' },
 		selectedTestIds: request.selectedTestIds,
 		startedAt: invocation.startedAt,
 		tests,
@@ -204,4 +207,27 @@ export async function observation(
 }
 export async function write(workspace: string, name: string, value: unknown) {
 	await writeFile(join(workspace, name), JSON.stringify(value, null, 2) + '\n')
+}
+
+// A live Claude session in the caller's own session. It returns the stage response from structured output.
+export async function claudeSession(args: string[], options: { cwd: string; timeoutSeconds: number; prompt: string }) {
+	const output = await worker(
+		'claude',
+		[
+			'-p',
+			'--plugin-dir',
+			join(root, 'plugin'),
+			'--output-format',
+			'json',
+			'--json-schema',
+			JSON.stringify(schema('response')),
+			'--permission-prompts',
+			'none',
+			'--no-session-persistence',
+			...args,
+		],
+		{ cwd: options.cwd, timeoutSeconds: options.timeoutSeconds, stdin: options.prompt }
+	)
+	hosts.claude.read(output)
+	return validate('response', JSON.parse(output).structured_output)
 }

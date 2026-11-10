@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFile, chmod, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { worker, delegate } from '../plugin/src/launcher.ts'
+import { delegate } from '../plugin/src/launcher.ts'
+import { hosts } from '../plugin/src/hosts.ts'
 import type { Plan, Result } from '../plugin/src/types.ts'
 import {
 	sandbox,
@@ -18,32 +19,101 @@ import {
 import { finalize } from '../plugin/src/stages.ts'
 import { planCoverage, type PlanCandidate } from '../plugin/src/contracts.ts'
 
-async function executable(workspace: string, code: string) {
-	const path = join(workspace, 'fake-claude')
+async function executable(workspace: string, code: string, name = 'fake-claude') {
+	const path = join(workspace, name)
 	await writeFile(path, `#!/usr/bin/env node\n${code}\n`)
 	await chmod(path, 0o700)
 	return path
 }
-test('launcher rejects prose, missing output, denial, and wrong identity', async (t) => {
-	const workspace = await sandbox(t)
+// A fake host that reads the prompt, runs the given code, and writes the response file.
+// The code can use prompt, candidate, and answer, the paths that the launcher named.
+function answering(code: string, output = `{type:'result',subtype:'success'}`) {
+	return (
+		`let prompt=process.argv.slice(2).join(' ');process.stdin.on('data',(b)=>prompt+=b).on('end',()=>{` +
+		`const candidate=prompt.match(/Write the candidate JSON to (\\S+)\\./)[1];` +
+		`const answer=prompt.match(/Write the response JSON to (\\S+)\\./)[1];` +
+		`const fs=require('node:fs');${code};console.log(JSON.stringify(${output}))})`
+	)
+}
+const reply = (fields: object) =>
+	`fs.writeFileSync(answer,JSON.stringify({contractVersion:'toolkit-2',artifact:null,reasons:[],...${JSON.stringify(fields)}}))`
+
+test('the Claude adapter rejects prose, an unfinished stage, and an error', () => {
 	for (const output of [
 		'not json',
-		JSON.stringify({ type: 'result', subtype: 'success' }),
-		JSON.stringify({ type: 'result', subtype: 'error', is_error: true }),
-	]) {
-		const path = await executable(workspace, `console.log(${JSON.stringify(output)})`)
-		await assert.rejects(worker(path, [], { cwd: workspace, prompt: 'test', timeoutSeconds: 2 }))
-	}
+		JSON.stringify({ type: 'result', subtype: 'error' }),
+		JSON.stringify({ type: 'result', subtype: 'success', is_error: true }),
+	])
+		assert.throws(() => hosts.claude.read(output))
+	const usage = { modelUsage: { small: { outputTokens: 5 }, main: { outputTokens: 900 } } }
+	assert.deepEqual(hosts.claude.read(JSON.stringify({ type: 'result', subtype: 'success', ...usage })), {
+		model: 'main',
+	})
+})
+test('the Codex adapter maps sandbox rules and reads failures from events', () => {
+	const run = { prompt: 'p', pluginRoot: '/p', skill: '/p/skills/checkmate-plan', allow: ['workspace-write'] }
+	const args = hosts.codex.args(run)
+	assert.deepEqual(args.slice(0, 2), ['exec', '--json'])
+	assert.equal(args[args.indexOf('--sandbox') + 1], 'workspace-write')
+	assert(!args.includes('sandbox_workspace_write.network_access=true'))
+	assert(
+		hosts.codex
+			.args({ ...run, allow: ['workspace-write', 'network'] })
+			.includes('sandbox_workspace_write.network_access=true')
+	)
+	assert.throws(() => hosts.codex.args({ ...run, allow: ['Bash(node *)'] }), /Unknown Codex rule/)
+	assert.throws(() => hosts.codex.args({ ...run, allow: ['network'] }), /exactly one Codex sandbox mode/)
+	const events = (...lines: object[]) => lines.map((line) => JSON.stringify(line)).join('\n')
+	assert.throws(
+		() =>
+			hosts.codex.read(
+				events({ type: 'thread.started' }, { type: 'turn.failed', error: { message: 'Not logged in' } })
+			),
+		/Not logged in/
+	)
+	assert.throws(() => hosts.codex.read(events({ type: 'thread.started' })), /did not complete/)
+	assert.deepEqual(hosts.codex.read(events({ type: 'thread.started' }, { type: 'turn.completed' })), { model: null })
+})
+test('the pi adapter passes the prompt as an argument and reads errors from events', () => {
+	const args = hosts.pi.args({
+		prompt: 'do it',
+		pluginRoot: '/p',
+		skill: '/p/skills/checkmate-plan',
+		allow: ['read', 'write'],
+	})
+	assert.equal(args.at(-1), 'do it')
+	assert.equal(args[args.indexOf('--skill') + 1], '/p/skills/checkmate-plan')
+	assert.equal(args[args.indexOf('--tools') + 1], 'read,write')
+	assert(args.includes('--no-approve') && args.includes('--no-session'))
+	assert.equal(hosts.pi.promptOnStdin, false)
+	const error = { type: 'message_update', assistantMessageEvent: { type: 'error', error: 'No API key' } }
+	assert.throws(() => hosts.pi.read(JSON.stringify(error)), /No API key/)
+	const done = { type: 'message_end', message: { role: 'assistant', model: 'pi-model' } }
+	assert.deepEqual(hosts.pi.read(JSON.stringify(done)), { model: 'pi-model' })
+})
+test('launcher rejects a response with the wrong identity', async (t) => {
+	const workspace = await sandbox(t)
 	const p = await prepare(workspace)
 	await write(workspace, 'request.json', p.planRequest)
 	const path = await executable(
 		workspace,
-		`console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{contractVersion:'toolkit-1',requestId:'wrong',operation:'plan',status:'needs_decision',artifact:null,reasons:['Permission denied']}}))`
+		answering(
+			reply({ requestId: 'wrong', operation: 'plan', status: 'needs_decision', reasons: ['Permission denied'] })
+		)
 	)
 	assert.equal(
-		(await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], claude: path })).status,
+		(await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], executable: path })).status,
 		'operational_error'
 	)
+})
+test('launcher fails a stage when the worker writes no response file', async (t) => {
+	const workspace = await sandbox(t)
+	const p = await prepare(workspace)
+	await write(workspace, 'request.json', p.planRequest)
+	const path = await executable(workspace, answering(''))
+	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], executable: path })
+	assert.equal(result.status, 'operational_error')
+	assert.deepEqual(result.reasons, ['Worker wrote no response file'])
 })
 test('launcher reads the candidate it named and publishes the plan', async (t) => {
 	const workspace = await sandbox(t),
@@ -51,22 +121,21 @@ test('launcher reads the candidate it named and publishes the plan', async (t) =
 	const request = { ...p.planRequest, requestId: 'plan-2', outputPlanId: 'second', planDirectory: 'plans/second' }
 	await write(workspace, 'request.json', request)
 	const candidate = { ...(await fixtureJson<PlanCandidate>('plan')), planId: 'second', target: p.target }
-	const response = { contractVersion: 'toolkit-1', requestId: 'plan-2', operation: 'plan', reasons: [] }
 	const path = await executable(
 		workspace,
-		`let prompt='';process.stdin.on('data',(b)=>prompt+=b).on('end',()=>{` +
-			`const file=prompt.match(/Write the candidate JSON to (\\S+)\\./)[1];` +
-			`require('node:fs').writeFileSync(file,${JSON.stringify(JSON.stringify(candidate))});` +
-			`console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{...${JSON.stringify(response)},status:process.env.WORKER_STATUS,artifact:null}}))})`
+		answering(
+			`fs.writeFileSync(candidate,${JSON.stringify(JSON.stringify(candidate))});` +
+				`fs.writeFileSync(answer,JSON.stringify({contractVersion:'toolkit-2',requestId:'plan-2',operation:'plan',reasons:[],artifact:null,status:process.env.WORKER_STATUS}))`
+		)
 	)
 	process.env.WORKER_STATUS = 'operational_error'
 	assert.equal(
-		(await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], claude: path })).status,
+		(await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], executable: path })).status,
 		'operational_error'
 	)
 	process.env.WORKER_STATUS = 'completed'
 	t.after(() => delete process.env.WORKER_STATUS)
-	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], claude: path })
+	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], executable: path })
 	assert.equal(result.status, 'needs_decision')
 	assert.equal(artifact(result).path, 'plans/second/v1.json')
 	const saved = await load<Plan>(workspace, artifact(result))
@@ -85,7 +154,7 @@ test('launcher deadline terminates the worker group and records no completed res
 	const result = await delegate(workspace, 'request.json', {
 		allowedTools: ['Read', 'Write'],
 		timeoutSeconds: 1,
-		claude: path,
+		executable: path,
 		playwright: '/missing-playwright',
 	})
 	assert.equal(result.status, 'interrupted')
@@ -113,7 +182,7 @@ test('preflight rejection never launches Claude', async (t) => {
 	await write(workspace, 'request.json', executeRequest(p, { reference: p.base }, { selectedTestIds: ['T1'] }))
 	const result = await delegate(workspace, 'request.json', {
 		allowedTools: ['Read', 'Write'],
-		claude: '/does-not-exist',
+		executable: '/does-not-exist',
 	})
 	assert.equal(result.status, 'needs_decision')
 })
@@ -130,12 +199,12 @@ test('a worker that is not logged in fails the stage with its reason', async (t)
 		result: 'Invalid API key · Please run /login',
 	}
 	const loggedOut = await executable(workspace, `console.log(${JSON.stringify(JSON.stringify(envelope))})`)
-	const first = await delegate(workspace, 'request.json', { ...options, claude: loggedOut })
+	const first = await delegate(workspace, 'request.json', { ...options, executable: loggedOut })
 	assert.equal(first.status, 'operational_error')
 	assert.equal(first.artifact, null)
 	assert.deepEqual(first.reasons, ['Claude did not complete the stage: Invalid API key · Please run /login'])
 	const exits = await executable(workspace, `console.error('Not logged in. Run claude auth login.'); process.exit(1)`)
-	const second = await delegate(workspace, 'request.json', { ...options, claude: exits })
+	const second = await delegate(workspace, 'request.json', { ...options, executable: exits })
 	assert.deepEqual(second.reasons, ['Worker exited with code 1: Not logged in. Run claude auth login.'])
 	await assert.rejects(readFile(join(workspace, 'plans/checkout/v2.json')), { code: 'ENOENT' })
 })
@@ -144,19 +213,19 @@ test('worker cannot silently change a pinned request', async (t) => {
 	const workspace = await sandbox(t),
 		p = await prepare(workspace)
 	await write(workspace, 'request.json', p.planRequest)
-	const response = {
-		contractVersion: 'toolkit-1',
-		requestId: p.planRequest.requestId,
-		operation: 'plan',
-		status: 'needs_decision',
-		artifact: null,
-		reasons: ['Needs access.'],
-	}
 	const path = await executable(
 		workspace,
-		`require('node:fs').appendFileSync('request.json',' ');console.log(JSON.stringify({type:'result',subtype:'success',structured_output:${JSON.stringify(response)}}))`
+		answering(
+			`fs.appendFileSync('request.json',' ');` +
+				reply({
+					requestId: p.planRequest.requestId,
+					operation: 'plan',
+					status: 'needs_decision',
+					reasons: ['Needs access.'],
+				})
+		)
 	)
-	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], claude: path })
+	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], executable: path })
 	assert.equal(result.status, 'operational_error')
 	assert.match(result.reasons[0], /digest/)
 })
@@ -167,8 +236,8 @@ test('delegate without tool rules names the minimum rules and reserves no run', 
 		r = await revised(workspace, p)
 	await write(workspace, 'request.json', executeRequest(p, r))
 	await assert.rejects(
-		delegate(workspace, 'request.json', { claude: '/does-not-exist' }),
-		/Minimum for execute: Read, Write, Bash\(node \*\), Bash\(playwright-cli \*\)/
+		delegate(workspace, 'request.json', { executable: '/does-not-exist' }),
+		/Minimum for execute on claude: Read, Write, Bash\(node \*\), Bash\(playwright-cli \*\)/
 	)
 	await assert.rejects(readFile(join(workspace, 'runs/run-1/invocation.json')), { code: 'ENOENT' })
 })
@@ -185,7 +254,11 @@ test('a failed execute worker closes the browser session once', async (t) => {
 		`#!/usr/bin/env node\nrequire('node:fs').appendFileSync('closed.log', process.argv.slice(2).join(' ') + '\\n')\n`
 	)
 	await chmod(playwright, 0o700)
-	const result = await delegate(workspace, 'request.json', { allowedTools: ['Read', 'Write'], claude, playwright })
+	const result = await delegate(workspace, 'request.json', {
+		allowedTools: ['Read', 'Write'],
+		executable: claude,
+		playwright,
+	})
 	assert.equal(result.status, 'operational_error')
 	const closed = (await readFile(join(workspace, 'closed.log'), 'utf8')).trim().split('\n')
 	assert.equal(closed.length, 1)
@@ -200,17 +273,16 @@ test('a rejected observation stays recoverable with finalize', async (t) => {
 		r = await revised(workspace, p)
 	const request = executeRequest(p, r)
 	await write(workspace, 'request.json', request)
-	const response = { contractVersion: 'toolkit-1', requestId: request.requestId, operation: 'execute', reasons: [] }
 	const claude = await executable(
 		workspace,
-		`let prompt='';process.stdin.on('data',(b)=>prompt+=b).on('end',()=>{` +
-			`const file=prompt.match(/Write the candidate JSON to (\\S+)\\./)[1];` +
-			`require('node:fs').writeFileSync(file,'{}');` +
-			`console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{...${JSON.stringify(response)},status:'completed',artifact:null}}))})`
+		answering(
+			`fs.writeFileSync(candidate,'{}');` +
+				reply({ requestId: request.requestId, operation: 'execute', status: 'completed' })
+		)
 	)
 	const result = await delegate(workspace, 'request.json', {
 		allowedTools: ['Read', 'Write'],
-		claude,
+		executable: claude,
 		playwright: '/missing-playwright',
 	})
 	assert.equal(result.status, 'operational_error')
@@ -221,4 +293,101 @@ test('a rejected observation stays recoverable with finalize', async (t) => {
 	await readFile(join(workspace, record.candidate))
 	const corrected = await observation(workspace, request, r.plan, 220, false)
 	assert.equal((await finalize(workspace, request, corrected)).status, 'completed')
+})
+
+test('a Codex worker reads the prompt on standard input and the plan is published', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace)
+	const request = { ...p.planRequest, requestId: 'plan-codex', outputPlanId: 'codex', planDirectory: 'plans/codex' }
+	await write(workspace, 'request.json', request)
+	const candidate = { ...(await fixtureJson<PlanCandidate>('plan')), planId: 'codex', target: p.target }
+	const codex = await executable(
+		workspace,
+		`if (process.argv[2] === '--version') { console.log('codex-cli 9.9.9'); process.exit(0) }\n` +
+			answering(
+				`fs.writeFileSync('codex.args',JSON.stringify(process.argv.slice(2)));` +
+					`fs.writeFileSync(candidate,${JSON.stringify(JSON.stringify(candidate))});` +
+					reply({ requestId: 'plan-codex', operation: 'plan', status: 'completed' }),
+				`{type:'turn.completed'}`
+			),
+		'fake-codex'
+	)
+	const result = await delegate(workspace, 'request.json', {
+		host: 'codex',
+		executable: codex,
+		allowedTools: ['workspace-write'],
+	})
+	assert.equal(artifact(result).path, 'plans/codex/v1.json')
+	const args = JSON.parse(await readFile(join(workspace, 'codex.args'), 'utf8'))
+	assert.equal(args.at(-1), '-')
+})
+
+test('a pi worker needs --unrestricted-host and gets its skill and prompt as arguments', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace)
+	const request = { ...p.planRequest, requestId: 'plan-pi', outputPlanId: 'pi', planDirectory: 'plans/pi' }
+	await write(workspace, 'request.json', request)
+	const candidate = { ...(await fixtureJson<PlanCandidate>('plan')), planId: 'pi', target: p.target }
+	const pi = await executable(
+		workspace,
+		answering(
+			`fs.writeFileSync(candidate,${JSON.stringify(JSON.stringify(candidate))});` +
+				reply({ requestId: 'plan-pi', operation: 'plan', status: 'completed' }),
+			`{type:'agent_settled',aborted:false}`
+		),
+		'fake-pi'
+	)
+	const options = { host: 'pi', executable: pi, allowedTools: ['read', 'write'] }
+	await assert.rejects(delegate(workspace, 'request.json', options), /--unrestricted-host/)
+	const result = await delegate(workspace, 'request.json', { ...options, unrestrictedHost: true })
+	assert.equal(artifact(result).path, 'plans/pi/v1.json')
+	await assert.rejects(
+		delegate(workspace, 'request.json', { ...options, host: 'other' }),
+		/Unknown host: other. Use one of: claude, codex, pi/
+	)
+})
+
+test('an execute run records the worker host in the invocation and the result', async (t) => {
+	const workspace = await sandbox(t),
+		p = await prepare(workspace),
+		r = await revised(workspace, p)
+	const request = executeRequest(p, r)
+	await write(workspace, 'request.json', request)
+	// Build a passing observation in a separate run. The fake worker copies its shape and evidence.
+	const corrected = await observation(
+		workspace,
+		{ ...request, runId: 'shape', outputDirectory: 'runs/shape' },
+		r.plan,
+		240
+	)
+	const codex = await executable(
+		workspace,
+		`if (process.argv[2] === '--version') { console.log('codex-cli 9.9.9'); process.exit(0) }\n` +
+			answering(
+				`const invocation=JSON.parse(fs.readFileSync('runs/run-1/invocation.json','utf8'));` +
+					`const observation={...${JSON.stringify(corrected)},runId:'run-1',startedAt:invocation.startedAt};` +
+					`for(const e of observation.evidence)fs.writeFileSync('runs/run-1/'+e.path,'observed');` +
+					`fs.writeFileSync(candidate,JSON.stringify(observation));` +
+					reply({ requestId: request.requestId, operation: 'execute', status: 'completed' }),
+				`{type:'turn.completed',model:'codex-model'}`
+			),
+		'fake-codex'
+	)
+	const result = await delegate(workspace, 'request.json', {
+		host: 'codex',
+		executable: codex,
+		allowedTools: ['workspace-write', 'network'],
+		playwright: '/missing-playwright',
+	})
+	assert.equal(result.status, 'completed', JSON.stringify(result))
+	const invocation = JSON.parse(await readFile(join(workspace, 'runs/run-1/invocation.json'), 'utf8'))
+	assert.deepEqual(invocation.host, { name: 'codex', version: 'codex-cli 9.9.9', permissions: 'allow_rules' })
+	const saved = await load<Result>(workspace, artifact(result))
+	assert.deepEqual(saved.host, {
+		name: 'codex',
+		version: 'codex-cli 9.9.9',
+		model: 'codex-model',
+		source: 'launcher',
+		permissions: 'allow_rules',
+	})
 })

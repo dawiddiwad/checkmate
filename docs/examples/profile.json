@@ -1,5 +1,5 @@
 {
-  "contractVersion": "toolkit-1",
+  "contractVersion": "toolkit-2",
   "targetId": "checkout-local",
   "revision": 1,
   "baseUrl": "http://127.0.0.1:4173",

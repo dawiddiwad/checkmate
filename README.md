@@ -1,18 +1,36 @@
 #### □ □ ■ □
 
-## _Checkmate - QA workflows for Claude_
+## _Checkmate - QA workflows for coding agents_
 
 <img src="docs/img/onboarding.gif" alt="onboarding" width="50%"/>
 
 #
 
-Think of it like a QA contract for agent testing: Claude Code drives your running application with real tools, and Checkmate keeps the record strict. A plan maps each requirement to a test or an open question, the caller answers what is unclear, and every verdict needs saved evidence. It aims to patch the gap between fully coded tests and freelance agent testing.
+Think of it like a QA contract for agent testing: a coding agent drives your running application with real tools, and Checkmate keeps the record strict. A plan maps each requirement to a test or an open question, the caller answers what is unclear, and every verdict needs saved evidence. It aims to patch the gap between fully coded tests and freelance agent testing.
 
 ## Install
+
+Checkmate works with Claude Code, Codex, and pi. Each host keeps its own model, authentication, and permissions.
+
+In Claude Code:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
+```
+
+In Codex:
+
+```text
+codex plugin marketplace add dawiddiwad/checkmate
+```
+
+Then open `/plugins` in Codex and install `checkmate`.
+
+In pi, clone this repository and install the plugin directory:
+
+```text
+pi install ./checkmate/plugin
 ```
 
 Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build step. Browser tests use [Playwright CLI](plugin/references/browser.md).
@@ -23,14 +41,14 @@ Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build st
 
 ```json
 {
-	"contractVersion": "toolkit-1",
+	"contractVersion": "toolkit-2",
 	"requestId": "req-plan-1",
 	"operation": "plan",
 	"caller": "factory-agent",
 	"objective": "Verify checkout and identify missing acceptance decisions.",
 	"target": {
 		"path": "profile.json",
-		"sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+		"sha256": "d071d6df7d0308cf1a0de2a6bf87216531a03ec63764441a042003becff37717"
 	},
 	"requirements": [
 		{
@@ -63,10 +81,12 @@ Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build st
 #### Run:
 
 ```text
-/checkmate:plan plan-request.json
+/checkmate:checkmate-plan plan-request.json
 ```
 
-The request pins the target profile that `/checkmate:setup` saved. Checkmate saves `plans/checkout/v1.json` and returns a response. Unclear requirements come back as blocking gaps with `status: "needs_decision"`. The caller answers them with `/checkmate:revise`, then runs the plan with `/checkmate:execute`.
+The command is for Claude Code. In Codex, use `$checkmate-plan`. In pi, use `/skill:checkmate-plan`.
+
+The request pins the target profile that `checkmate-setup` saved. Checkmate saves `plans/checkout/v1.json` and returns a response. Unclear requirements come back as blocking gaps with `status: "needs_decision"`. The caller answers them with `checkmate-revise`, then runs the plan with `checkmate-execute`.
 
 <details>
 <summary>Example documents</summary>
@@ -80,7 +100,7 @@ The profile records the target, tool versions, access references, and permitted 
 
 ```json
 {
-	"contractVersion": "toolkit-1",
+	"contractVersion": "toolkit-2",
 	"targetId": "checkout-local",
 	"revision": 1,
 	"baseUrl": "http://127.0.0.1:4173",
@@ -121,13 +141,13 @@ The caller clarifies the discount rule and defers refund coverage. The next plan
 
 ```json
 {
-	"contractVersion": "toolkit-1",
+	"contractVersion": "toolkit-2",
 	"requestId": "revise-1",
 	"caller": "test-caller",
 	"operation": "revise",
 	"basePlan": {
 		"path": "plans/checkout/v1.json",
-		"sha256": "df4e09ebcc886104a3ceb2760f7a251238f8ddceae71094c7d90c1c33955b32d"
+		"sha256": "6662aafbd34bdc39353836937e4e8dae50d0e4c07ff611f020a276649714c5e5"
 	},
 	"baseRevision": 1,
 	"decisions": [
@@ -162,18 +182,18 @@ The request selects two tests and pins the target and plan by digest. It uses th
 
 ```json
 {
-	"contractVersion": "toolkit-1",
+	"contractVersion": "toolkit-2",
 	"requestId": "execute-1",
 	"caller": "test-caller",
 	"operation": "execute",
 	"runId": "run-1",
 	"plan": {
 		"path": "plans/checkout/v2.json",
-		"sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
+		"sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
 	},
 	"target": {
 		"path": "profile.json",
-		"sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+		"sha256": "d071d6df7d0308cf1a0de2a6bf87216531a03ec63764441a042003becff37717"
 	},
 	"selectedTestIds": ["T1", "T2"],
 	"partialExecution": "wait_for_resolution",
@@ -193,19 +213,26 @@ The run completed. One test failed. Deferred refund coverage remains visible. Co
 
 ```json
 {
-	"contractVersion": "toolkit-1",
+	"contractVersion": "toolkit-2",
 	"requestId": "execute-1",
 	"runId": "run-1",
 	"completion": "completed",
 	"plan": {
 		"path": "plans/checkout/v2.json",
-		"sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
+		"sha256": "19e87d6749c3fd0fcdee71680f6d566a93b3c92af8e3446065e0f7fcfcfb8214"
 	},
 	"target": {
 		"path": "profile.json",
-		"sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
+		"sha256": "d071d6df7d0308cf1a0de2a6bf87216531a03ec63764441a042003becff37717"
 	},
 	"applicationBuild": "fixture-build-1",
+	"host": {
+		"name": "example-host",
+		"version": "1.0.0",
+		"model": "example-model",
+		"source": "declared",
+		"permissions": "session"
+	},
 	"selectedTestIds": ["T1", "T2"],
 	"startedAt": "2026-11-07T14:24:25.788Z",
 	"tests": [
@@ -313,15 +340,15 @@ Read the [first plan](docs/examples/plans/checkout/v1.md), [revised plan](docs/e
 
 Each stage is a skill with an explicit request file:
 
-- `/checkmate:setup` checks tools and access, and saves a target profile.
-- `/checkmate:plan` maps requirements to tests and records open gaps.
-- `/checkmate:revise` applies the caller's decisions in a new plan revision.
-- `/checkmate:execute` runs selected tests and saves evidence.
-- `/checkmate:report` generates Markdown and HTML from the JSON result.
+- `checkmate-setup` checks tools and access, and saves a target profile.
+- `checkmate-plan` maps requirements to tests and records open gaps.
+- `checkmate-revise` applies the caller's decisions in a new plan revision.
+- `checkmate-execute` runs selected tests and saves evidence.
+- `checkmate-report` generates Markdown and HTML from the JSON result.
 
 Saved files are never overwritten. A retest is a new run. Completion, test outcomes, and coverage are separate fields, and a process exit code is not a release decision.
 
-Checkmate checks structure and relationships. It cannot prove that an observation is true. Claude Code owns the model, tools, and permissions.
+Checkmate checks structure and relationships. It cannot prove that an observation is true. The host owns the model, tools, and permissions. Each result records the host that produced it.
 
 ## Commands
 
@@ -333,10 +360,10 @@ checkmate gate <request.json>
 checkmate begin <request.json>
 checkmate finalize <request.json> <observation.json>
 checkmate report <request.json>
-checkmate delegate <request.json> --allow <rule>... [--timeout <seconds>]
+checkmate delegate <request.json> [--host claude|codex|pi] --allow <rule>... [--unrestricted-host] [--timeout <seconds>]
 ```
 
-Run a command as `node plugin/bin/checkmate.ts <command>`. `delegate` runs one stage in a fresh Claude Code session.
+Run a command as `node plugin/bin/checkmate.ts <command>`. `delegate` runs one stage in a fresh headless session of the selected host. The default host is `claude`.
 
 ## Docs
 

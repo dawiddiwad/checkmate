@@ -1,5 +1,5 @@
 export type Profile = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	targetId: string
 	revision: number
 	baseUrl: string
@@ -24,7 +24,7 @@ export type Profile = {
 }
 
 export type Plan = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	planId: string
 	revision: number
 	previousRevision: number | null
@@ -82,7 +82,7 @@ export type Plan = {
 }
 
 export type SetupRequest = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	caller: string
 	operation: 'setup'
@@ -94,7 +94,7 @@ export type SetupRequest = {
 }
 
 export type PlanRequest = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	caller: string
 	operation: 'plan'
@@ -117,7 +117,7 @@ export type PlanRequest = {
 }
 
 export type ReviseRequest = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	caller: string
 	operation: 'revise'
@@ -138,7 +138,7 @@ export type ReviseRequest = {
 }
 
 export type ExecuteRequest = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	caller: string
 	operation: 'execute'
@@ -164,7 +164,7 @@ export type ExecuteRequest = {
 }
 
 export type ReportRequest = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	caller: string
 	operation: 'report'
@@ -175,7 +175,7 @@ export type ReportRequest = {
 }
 
 export type Observation = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	runId: string
 	completion: 'completed' | 'interrupted' | 'operational_error'
@@ -188,6 +188,11 @@ export type Observation = {
 		sha256: string
 	}
 	applicationBuild: string
+	host: {
+		name: string
+		version: string | null
+		model: string | null
+	}
 	selectedTestIds: Array<string>
 	startedAt: string
 	tests: Array<{
@@ -237,7 +242,7 @@ export type Observation = {
 }
 
 export type Result = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	runId: string
 	completion: 'completed' | 'interrupted' | 'operational_error'
@@ -250,6 +255,13 @@ export type Result = {
 		sha256: string
 	}
 	applicationBuild: string
+	host: {
+		name: string
+		version: string | null
+		model: string | null
+		source: 'launcher' | 'declared'
+		permissions: 'allow_rules' | 'unrestricted' | 'session'
+	}
 	selectedTestIds: Array<string>
 	startedAt: string
 	finishedAt: string
@@ -310,7 +322,7 @@ export type Result = {
 }
 
 export type Response = {
-	contractVersion: 'toolkit-1'
+	contractVersion: 'toolkit-2'
 	requestId: string
 	operation: 'setup' | 'plan' | 'revise' | 'execute' | 'report'
 	status: 'completed' | 'needs_decision' | 'invalid_request' | 'interrupted' | 'operational_error'

@@ -1,23 +1,23 @@
 # Stage rules
 
-JSON is authoritative. Use `contractVersion: "toolkit-1"`.
-Read the request schema and the output schema in `${CLAUDE_PLUGIN_ROOT}/contracts/` before you write a candidate.
+JSON is authoritative. Use `contractVersion: "toolkit-2"`.
+Read the request schema and the output schema in `<plugin>/contracts/` before you write a candidate.
 A request pins its inputs by path and SHA-256 digest. Use the exact file bytes to calculate a digest.
 Do not calculate plan coverage, result coverage, or evidence digests. The commands calculate them.
 Resolve relative paths from the caller's workspace. Write evidence paths relative to the run's output directory. They start with `evidence/`.
 
-In a skill, `checkmate <command>` means `node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" <command>`. There is no global npm command.
+`<plugin>` is the Checkmate plugin root: the directory above this `references` directory. In a skill, `checkmate <command>` means `node "<plugin>/bin/checkmate.ts" <command>`. Use the absolute path. There is no global npm command.
 
 Use these commands from the caller's workspace:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" validate request request.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" validate plan-candidate plan-candidate.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" setup request.json profile-candidate.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" save-plan request.json plan-candidate.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" gate request.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" begin request.json
-node "${CLAUDE_PLUGIN_ROOT}/bin/checkmate.ts" finalize request.json observation.json
+node "<plugin>/bin/checkmate.ts" validate request request.json
+node "<plugin>/bin/checkmate.ts" validate plan-candidate plan-candidate.json
+node "<plugin>/bin/checkmate.ts" setup request.json profile-candidate.json
+node "<plugin>/bin/checkmate.ts" save-plan request.json plan-candidate.json
+node "<plugin>/bin/checkmate.ts" gate request.json
+node "<plugin>/bin/checkmate.ts" begin request.json
+node "<plugin>/bin/checkmate.ts" finalize request.json observation.json
 ```
 
 For a delegated stage, write only the candidate requested by the parent. Do not publish it.

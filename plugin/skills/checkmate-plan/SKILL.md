@@ -1,10 +1,12 @@
 ---
-name: plan
+name: checkmate-plan
 description: Create a test plan from requirements or an exploratory objective. Record explicit oracles, coverage, and gaps before execution.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/plan-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/plan.schema.json`. The plan candidate uses the plan schema without `coverage`.
+`<plugin>` is the Checkmate plugin root: the directory two levels above this `SKILL.md`. Use its absolute path in commands.
+
+Read `<plugin>/references/workflow.md`.
+Read `<plugin>/contracts/plan-request.schema.json` and `<plugin>/contracts/plan.schema.json`. The plan candidate uses the plan schema without `coverage`.
 
 1. Read the request and the pinned target profile. Check the profile digest.
 2. Preserve every declared requirement and its source. Do not broaden the declared scope.

@@ -1,12 +1,22 @@
-# Test result: live-retest
+# Test report: live-retest
 
-Generated from the Checkmate database. Completion, test outcomes, and coverage are separate. Use checkmate evidence get to read evidence.
+checkout@2 on build fixture-build-2. Generated from the Checkmate database. Completion, test outcomes, and coverage are separate.
+
+- **Completion:** completed
+- **Coverage:** partial
+- **Acceptance:** pending
+- **Selected tests:** 2
+- **passed:** 2
+- **Assertions passed:** 2 of 2
+- **Findings:** 0
+- **New gaps:** 0
+
+## Summary
 
 | Field | Value |
 | --- | --- |
-| Completion | completed |
-| Coverage | partial |
 | Run | live-retest |
+| Objective | Verify checkout totals and identify missing acceptance decisions. |
 | Application build | fixture-build-2 |
 | Plan | checkout@2 |
 | Target profile | checkout-local@1 |
@@ -14,16 +24,19 @@ Generated from the Checkmate database. Completion, test outcomes, and coverage a
 | Finished | 2026-11-11T12:42:17.363Z |
 | Attempts | 1 |
 | Retest of | live-run |
+| Cleanup | completed: Browser session was not opened; quote checks were HTTP GET requests that create no records. No records to clean up. |
 | Result digest | 0c821fad4c3add5eb8f410e5d5f4ce7a37d07f2a90f505a537b90604600707cb |
+
+## Acceptance
+
+No decision yet.
 
 ## Tests
 
-| Test | Outcome | Reason |
-| --- | --- | --- |
-| T1 | not\_run | Test was not selected. |
-| T2 | passed | — |
-| T3 | passed | — |
-| T4 | not\_run | Test was not selected. |
+| Test | Outcome | Assertions | Reason |
+| --- | --- | --- | --- |
+| T2 | passed | 1 of 1 passed | — |
+| T3 | passed | 1 of 1 passed | — |
 
 ## Assertions
 
@@ -40,7 +53,25 @@ No findings.
 
 No new gaps.
 
+## Plan gaps and decisions (checkout@2)
+
+| Gap | Severity | Status | Question | Decision | Value | Actor | Rationale |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| G1 | blocking | resolved | Does the 40 percent promotion stack with the 20 PLN loyalty discount, and what is the expected total? | clarify | The promotion replaces the loyalty discount. With the promotion and loyalty, the quote total is 240 PLN. | acceptance-test | Product owner decision. |
+| G2 | blocking | deferred | Which orders qualify for a refund, and under what conditions? | defer | Refunds are out of scope for this release. | acceptance-test | Product owner decision. |
+
 ## Evidence
+
+- T2.A1: T2-A1.json (application/json, 75 bytes)
+
+  ```
+  {"method":"GET","path":"/quote?promotion=true","status":200,"totalPLN":240}
+  ```
+- T3.A1: T3-A1.json (application/json, 88 bytes)
+
+  ```
+  {"method":"GET","path":"/quote?promotion=true&loyalty=true","status":200,"totalPLN":240}
+  ```
 
 | Evidence | Assertion | Kind | Name | Media type | Size | SHA-256 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -49,15 +80,11 @@ No new gaps.
 
 ## Coverage
 
-| Requirement | Status | Tests | Reason |
-| --- | --- | --- | --- |
-| R1 | uncovered | T1 | At least one required check or decision is missing. |
-| R2 | tested | T2, T3 | — |
-| R3 | uncovered | T4 | At least one required check or decision is missing. |
-
-## Cleanup
-
-completed: Browser session was not opened; quote checks were HTTP GET requests that create no records. No records to clean up.
+| Requirement | Text | Status | Tests | Reason |
+| --- | --- | --- | --- | --- |
+| R1 | A standard order for one 400 PLN item has a total of 400 PLN. | uncovered | T1 | At least one required check or decision is missing. |
+| R2 | A 40 percent promotion applies to the order. The brief does not say if it stacks with the 20 PLN loyalty discount. | tested | T2, T3 | — |
+| R3 | Customers can request refunds. The brief does not say which orders qualify. | uncovered | T4 | At least one required check or decision is missing. |
 
 <details>
 <summary>Complete JSON record</summary>

@@ -364,7 +364,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function actorFrom(request: Request, form: URLSearchParams) {
 		const typed = form.get('actor')?.trim() ?? ''
-		const actor = request.cookies.checkmate_actor?.trim() || typed || fallbackActor
+		const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor
 		return { actor, cookies: typed ? [cookie('checkmate_actor', typed)] : [] }
 	}
 

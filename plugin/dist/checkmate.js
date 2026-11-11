@@ -10658,7 +10658,7 @@ data: ${matched.join(",") || "*"}
   }
   function actorFrom(request, form) {
     const typed = form.get("actor")?.trim() ?? "";
-    const actor = request.cookies.checkmate_actor?.trim() || typed || fallbackActor;
+    const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor;
     return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
   }
   function values(form, names) {
@@ -11436,9 +11436,16 @@ var commands = {
   log: {
     positionals: [],
     flags: { subject: "value", limit: "value" },
-    run: (store, args) => completed("log", {
-      operations: operationLog(store, { subject: value(args, "subject"), limit: integer(args, "limit") })
-    }),
+    run: (store, args) => {
+      const subject = value(args, "subject");
+      requireCondition(
+        subject === void 0 || subject === "inbox" || /^(target|plan|run):./.test(subject),
+        `Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
+      );
+      return completed("log", {
+        operations: operationLog(store, { subject, limit: integer(args, "limit") })
+      });
+    },
     print: (reply) => ({
       lines: reply.data.operations.map((operation) => [
         operation.id,

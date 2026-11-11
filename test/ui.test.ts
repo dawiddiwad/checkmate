@@ -602,7 +602,7 @@ test('an unapproved plan changes in place and an approved plan gets a new revisi
 	assert.doesNotMatch((await call(ui, '/plans/checkout@2')).body, /\/edit"/)
 })
 
-test('the JSON editor reports invalid JSON and contract errors and keeps the text', async (t) => {
+test('the JSON editor reports errors, keeps the text, and records the typed name over a saved one', async (t) => {
 	const { ui, workspace } = await start(t)
 	const page = (await call(ui, '/plans/search@1/edit')).body
 	const base = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), mode: 'json' }
@@ -622,6 +622,7 @@ test('the JSON editor reports invalid JSON and contract errors and keeps the tex
 	candidate.tests[1].assertions.push({ id: 'A2', check: 'Popular items show.', oracleKind: 'agent_observation' })
 	const done = await call(ui, '/plans/search@1/edit', {
 		form: { ...base, json: JSON.stringify(candidate), actor: 'reviewer' },
+		headers: { Cookie: 'checkmate_actor=saved-name' },
 	})
 	assert.equal(done.status, 303)
 	assert.match(String(done.headers['set-cookie']), /checkmate_actor=reviewer/)

@@ -70,7 +70,7 @@ Every write records an actor. Commands use `--actor`, then `CHECKMATE_ACTOR`, th
 
 Use this format when you show state or the end of a stage to the caller in the terminal. A sub-agent or a delegated stage returns only the response object.
 
-1. A Markdown table of the plans, tests, gaps, or runs that matter now. Use one row for each item and only the columns that help the decision.
+1. A Markdown table of the plans, tests, gaps, or runs that matter now. Use one row for each item and only the columns that help the decision. Copy IDs, titles, and statuses exactly from the database.
 2. `Done:` one or two short lines about what you did.
 3. `Next:` what is necessary to continue: the decision, who makes it, and the command or the UI action. Give enough context to decide.
 

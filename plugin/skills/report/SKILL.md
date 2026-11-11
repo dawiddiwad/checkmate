@@ -17,7 +17,11 @@ checkmate export plan <planId@rev> --format md
 ```
 
 4. Add `--out <path>` only when the caller asks for a file. Use a new path, for example `reports/<runId>.html`. The command refuses an existing file.
-5. Return the report, or the command response and the output path. A JSON run report has `result`, `sha256`, `acceptance`, and `plan`.
+5. Without `--out`, print the full report to the caller as the command prints it. Do not summarize it, shorten it, or reorder it.
+6. With `--out`, give the command response and the output path.
+7. When you add a table or a sentence of your own, copy each ID and title exactly from the report or the database. Do not rename, renumber, or translate them.
+
+A JSON run report has `result`, `sha256`, `acceptance`, and `plan`.
 
 The review UI gives the same exports: `Download report` on the run page, and `Export` on the plan page.
 

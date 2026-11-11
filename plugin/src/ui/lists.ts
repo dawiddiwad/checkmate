@@ -1,7 +1,7 @@
-import type { Store } from '../../../plugin/src/store.ts'
+import type { Store } from '../store.ts'
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
-import { inbox, operationLog, planDetail, planList, runDetail, runList } from '../../../plugin/src/views.ts'
+import { inbox, operationLog, planDetail, planList, runDetail, runList } from '../views.ts'
 import { html, join, pill, plural, time, words } from './html.ts'
 import { heading } from './layout.ts'
 

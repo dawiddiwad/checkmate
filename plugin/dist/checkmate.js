@@ -256,12 +256,12 @@ function execute(store, sql, ...parameters) {
 function write(store, operation, change) {
   const actor = operation.actor?.trim();
   if (!actor) throw new Error("A write needs an actor. Use --actor <name> or set CHECKMATE_ACTOR.");
-  const id = ulid();
+  const id2 = ulid();
   const at = (/* @__PURE__ */ new Date()).toISOString();
   store.db.exec("BEGIN IMMEDIATE");
   try {
-    const { reply, subjects } = change(id, at, actor);
-    recordOperation(store, { ...operation, id, at, actor }, reply, subjects);
+    const { reply, subjects } = change(id2, at, actor);
+    recordOperation(store, { ...operation, id: id2, at, actor }, reply, subjects);
     store.db.exec("COMMIT");
     return reply;
   } catch (error) {
@@ -5358,13 +5358,13 @@ function requireChoice(value2, choices, name) {
   return value2;
 }
 function revisionReference(text, name) {
-  const [id, revision, ...rest] = text.split("@");
-  requireIdentifier(id, name);
+  const [id2, revision, ...rest] = text.split("@");
+  requireIdentifier(id2, name);
   requireCondition(
     !rest.length && (revision === void 0 || /^[1-9][0-9]*$/.test(revision)),
     `Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`
   );
-  return { id, revision: revision === void 0 ? null : Number(revision) };
+  return { id: id2, revision: revision === void 0 ? null : Number(revision) };
 }
 function testReference(reference) {
   const [planId, testId] = reference.includes(":") ? reference.split(":") : [null, reference];
@@ -5386,8 +5386,8 @@ function index(items, key, name) {
   }
   return map;
 }
-function references(ids, map, name) {
-  for (const id of ids) requireCondition(map.has(id), `Unknown ${name}: ${id}`);
+function references(ids2, map, name) {
+  for (const id2 of ids2) requireCondition(map.has(id2), `Unknown ${name}: ${id2}`);
 }
 function profileCheck(value2) {
   const profile = validate("profile", value2);
@@ -5410,7 +5410,7 @@ function approvalPolicy(profile) {
 }
 function gapsAffecting(gaps, test) {
   return gaps.filter(
-    (gap) => gap.testIds.includes(test.id) || gap.requirementIds.some((id) => test.requirementIds.includes(id)) || gap.testIds.length === 0 && gap.requirementIds.length === 0
+    (gap) => gap.testIds.includes(test.id) || gap.requirementIds.some((id2) => test.requirementIds.includes(id2)) || gap.testIds.length === 0 && gap.requirementIds.length === 0
   );
 }
 function testReadiness(gaps, test) {
@@ -5445,9 +5445,9 @@ function planCheck(value2) {
   const decisions = index(plan.decisions, "id", "decision");
   index(plan.coverage, "requirementId", "coverage requirement");
   index(plan.assumptions, "decisionId", "assumption decision");
-  const localReferences = (ids) => ids.filter((id) => {
-    const { planId } = testReference(id);
-    requireCondition(planId !== plan.planId, `Use the local test ID, not ${id}`);
+  const localReferences = (ids2) => ids2.filter((id2) => {
+    const { planId } = testReference(id2);
+    requireCondition(planId !== plan.planId, `Use the local test ID, not ${id2}`);
     return planId === null;
   });
   for (const gap of plan.gaps) {
@@ -5526,7 +5526,7 @@ function dependencyCheck(plan, latest) {
   const crossReferences = [
     ...plan.tests.flatMap((test) => test.dependsOn),
     ...plan.gaps.flatMap((gap) => gap.testIds)
-  ].filter((id) => id.includes(":"));
+  ].filter((id2) => id2.includes(":"));
   for (const reference of crossReferences) {
     const { planId, testId } = testReference(reference);
     const other = plans.get(planId);
@@ -5541,7 +5541,7 @@ function dependencyCheck(plan, latest) {
     for (const test of other.tests)
       edges.set(
         `${planId}:${test.id}`,
-        test.dependsOn.map((id) => id.includes(":") ? id : `${planId}:${id}`)
+        test.dependsOn.map((id2) => id2.includes(":") ? id2 : `${planId}:${id2}`)
       );
   const visiting = [];
   const visited = /* @__PURE__ */ new Set();
@@ -5562,12 +5562,12 @@ function testOutcome(results) {
   if (results.includes("inconclusive")) return "inconclusive";
   return "passed";
 }
-function resultCoverage(plan, tests, newGaps) {
+function resultCoverage(plan, tests, newGaps2) {
   const outcomes = new Map(tests.map((test) => [test.testId, test.outcome]));
   const requirements = plan.requirements.map((requirement) => {
     const planned = plan.tests.filter((test) => test.requirementIds.includes(requirement.id));
     const seen = planned.map((test) => outcomes.get(test.id));
-    const unresolved = [...plan.gaps, ...newGaps].some(
+    const unresolved = [...plan.gaps, ...newGaps2].some(
       (gap) => (gap.requirementIds.includes(requirement.id) || !gap.requirementIds.length && !gap.testIds.length) && (gap.status === "deferred" || gap.status === "open" && gap.severity === "blocking")
     );
     const tested = planned.length > 0 && !unresolved && seen.every((outcome) => outcome === "passed" || outcome === "failed");
@@ -5670,7 +5670,7 @@ function saveTarget(store, actor, input) {
       profile.targetId
     );
     const subject = `${profile.targetId}@${profile.revision}`;
-    const reasons = profile.readyForLiveExecution ? [] : ["Target prerequisites are not ready. Inspect the profile."];
+    const reasons2 = profile.readyForLiveExecution ? [] : ["Target prerequisites are not ready. Inspect the profile."];
     const status = profile.readyForLiveExecution ? "completed" : "needs_decision";
     const data = { targetId: profile.targetId, revision: profile.revision, sha256: digest(body) };
     if (latest && latest.revision === profile.revision) {
@@ -5678,7 +5678,7 @@ function saveTarget(store, actor, input) {
         latest.body === body,
         `Profile ${subject} exists with other content. Save revision ${latest.revision + 1} for changes.`
       );
-      return { reply: { status, subject, reasons, data: { ...data, recorded: false } }, subjects: [] };
+      return { reply: { status, subject, reasons: reasons2, data: { ...data, recorded: false } }, subjects: [] };
     }
     const next = (latest?.revision ?? 0) + 1;
     requireCondition(profile.revision === next, `Profile revision must be ${next}, not ${profile.revision}`);
@@ -5692,7 +5692,7 @@ function saveTarget(store, actor, input) {
       operationId
     );
     return {
-      reply: { status, subject, reasons, data: { ...data, recorded: true } },
+      reply: { status, subject, reasons: reasons2, data: { ...data, recorded: true } },
       subjects: [`target:${profile.targetId}`]
     };
   });
@@ -5708,10 +5708,10 @@ function targetRevision(store, targetId, revision = null) {
   return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 };
 }
 function showTarget(store, reference) {
-  const { id, revision } = revisionReference(reference, "target reference");
-  const target = targetRevision(store, id, revision);
-  return completed(`${id}@${target.revision}`, {
-    targetId: id,
+  const { id: id2, revision } = revisionReference(reference, "target reference");
+  const target = targetRevision(store, id2, revision);
+  return completed(`${id2}@${target.revision}`, {
+    targetId: id2,
     revision: target.revision,
     sha256: target.sha256,
     approvals: approvalPolicy(target.profile),
@@ -5875,11 +5875,11 @@ function answerGap(store, actor, input) {
       !pending,
       `Gap ${gap.id} has a pending decision ${pending?.id}. Run plan revise to apply it first.`
     );
-    const id = ulid();
+    const id2 = ulid();
     execute(
       store,
       "INSERT INTO decisions (id, plan_id, base_revision, gap_id, kind, value, source, rationale, actor, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      id,
+      id2,
       input.planId,
       latest.plan.revision,
       gap.id,
@@ -5892,7 +5892,7 @@ function answerGap(store, actor, input) {
     );
     return {
       reply: completed(input.planId, {
-        decisionId: id,
+        decisionId: id2,
         planId: input.planId,
         baseRevision: latest.plan.revision,
         gapId: gap.id,
@@ -5940,7 +5940,7 @@ function revisePlan(store, actor, input) {
       `Plan ${input.planId} has no pending decision. Record one with gap answer first.`
     );
     const delta = validate("plan-delta", input.delta);
-    const { coverage, ...draft } = structuredClone(base.plan);
+    const { coverage: coverage2, ...draft } = structuredClone(base.plan);
     draft.revision = base.plan.revision + 1;
     draft.previousRevision = base.plan.revision;
     for (const decision of decisions) {
@@ -5982,22 +5982,22 @@ function usedAssertionIds(store, planId, testId) {
 function applyTestChange(test, change, used) {
   if (change.action !== void 0) test.action = change.action;
   if (change.preconditions !== void 0) test.preconditions = change.preconditions;
-  for (const [id, assertion] of Object.entries(change.assertions ?? {})) {
-    const position = test.assertions.findIndex((existing) => existing.id === id);
+  for (const [id2, assertion] of Object.entries(change.assertions ?? {})) {
+    const position = test.assertions.findIndex((existing) => existing.id === id2);
     if (assertion === null) {
-      requireCondition(position >= 0, `Cannot remove unknown assertion ${test.id}.${id}`);
+      requireCondition(position >= 0, `Cannot remove unknown assertion ${test.id}.${id2}`);
       test.assertions.splice(position, 1);
     } else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion };
     else {
       requireCondition(
-        !used.includes(id),
-        `Assertion ID ${test.id}.${id} was used in an earlier revision. Use a new ID.`
+        !used.includes(id2),
+        `Assertion ID ${test.id}.${id2} was used in an earlier revision. Use a new ID.`
       );
       requireCondition(
         assertion.check !== void 0 && assertion.oracleKind !== void 0,
-        `New assertion ${test.id}.${id} needs check and oracleKind`
+        `New assertion ${test.id}.${id2} needs check and oracleKind`
       );
-      test.assertions.push({ id, check: assertion.check, oracleKind: assertion.oracleKind });
+      test.assertions.push({ id: id2, check: assertion.check, oracleKind: assertion.oracleKind });
     }
   }
 }
@@ -6029,11 +6029,11 @@ function decidePlan(store, actor, input, verdict) {
 }
 function recordApproval(store, actor, operationId, input) {
   const rationale = requireText(input.rationale, "rationale (--rationale)");
-  const id = ulid();
+  const id2 = ulid();
   execute(
     store,
     "INSERT INTO approvals (id, subject_kind, subject_id, subject_sha256, verdict, rationale, actor, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    id,
+    id2,
     input.kind,
     input.subject,
     input.sha256,
@@ -6042,7 +6042,7 @@ function recordApproval(store, actor, operationId, input) {
     actor,
     operationId
   );
-  return completed(input.subject, { approvalId: id, verdict: input.verdict, sha256: input.sha256 });
+  return completed(input.subject, { approvalId: id2, verdict: input.verdict, sha256: input.sha256 });
 }
 function latestApproval(store, kind, subject) {
   return one(
@@ -6076,37 +6076,37 @@ function gate(store, input) {
   const build = requireText(input.build, "application build (--build)");
   const partial = requireChoice(input.partial ?? "wait_for_resolution", partialModes, "partial execution (--partial)");
   if (input.retestOf) retestCheck(store, input.retestOf, plan, build);
-  const reasons = [];
+  const reasons2 = [];
   if (!target.profile.readyForLiveExecution)
-    reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`);
+    reasons2.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`);
   const approval = planApproval(store, plan, revision.sha256);
-  if (approval.policy === "required" && !approval.approved) reasons.push(`Plan ${subject} is not approved`);
+  if (approval.policy === "required" && !approval.approved) reasons2.push(`Plan ${subject} is not approved`);
   if (partial === "wait_for_resolution") {
     for (const gap of plan.gaps)
-      if (gap.status === "open" && gap.severity === "blocking") reasons.push(`Open blocking gap: ${gap.id}`);
+      if (gap.status === "open" && gap.severity === "blocking") reasons2.push(`Open blocking gap: ${gap.id}`);
   }
-  for (const id of input.tests) {
-    const test = tests.get(id);
-    if (test.readiness !== "ready") reasons.push(`Test is not ready: ${id}`);
+  for (const id2 of input.tests) {
+    const test = tests.get(id2);
+    if (test.readiness !== "ready") reasons2.push(`Test is not ready: ${id2}`);
     if (!target.profile.capabilities.includes(test.capability))
-      reasons.push(`Missing capability: ${test.capability}`);
+      reasons2.push(`Missing capability: ${test.capability}`);
     if (!test.operations.every((operation) => target.profile.allowedOperations.includes(operation)))
-      reasons.push(`Operation is not permitted: ${id}`);
-    if (!test.assertions.length) reasons.push(`Test has no assertions: ${id}`);
+      reasons2.push(`Operation is not permitted: ${id2}`);
+    if (!test.assertions.length) reasons2.push(`Test has no assertions: ${id2}`);
     for (const dependency of test.dependsOn)
       if (!dependency.includes(":") && !input.tests.includes(dependency))
-        reasons.push(`Missing prerequisite: ${dependency}`);
+        reasons2.push(`Missing prerequisite: ${dependency}`);
   }
-  for (const id of input.tests)
-    for (const dependency of tests.get(id).dependsOn.filter((dependency2) => dependency2.includes(":"))) {
+  for (const id2 of input.tests)
+    for (const dependency of tests.get(id2).dependsOn.filter((dependency2) => dependency2.includes(":"))) {
       const cause = dependencyBlock(store, dependency, build);
-      if (cause) reasons.push(`Blocked by ${dependency}: ${cause}`);
+      if (cause) reasons2.push(`Blocked by ${dependency}: ${cause}`);
     }
   return {
     reply: {
-      status: reasons.length ? "needs_decision" : "completed",
+      status: reasons2.length ? "needs_decision" : "completed",
       subject,
-      reasons,
+      reasons: reasons2,
       data: { planId: plan.planId, revision: plan.revision, sha256: revision.sha256 }
     },
     revision,
@@ -6409,13 +6409,13 @@ function readEvidence(store, runId, spec) {
   const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec);
   const name = match ? match[1] : spec;
   requireCondition(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
-  const directory = evidenceDirectory(runId);
+  const directory2 = evidenceDirectory(runId);
   let root;
   let real;
   try {
-    root = realpathSync(join2(store.workspace, directory));
+    root = realpathSync(join2(store.workspace, directory2));
   } catch {
-    throw new Error(`Evidence directory ${directory} does not exist`);
+    throw new Error(`Evidence directory ${directory2} does not exist`);
   }
   const path = resolve(store.workspace, name);
   try {
@@ -6423,7 +6423,7 @@ function readEvidence(store, runId, spec) {
   } catch {
     throw new Error(`Evidence file not found: ${name}`);
   }
-  requireCondition(real.startsWith(root + sep), `Evidence file must be inside ${directory}: ${name}`);
+  requireCondition(real.startsWith(root + sep), `Evidence file must be inside ${directory2}: ${name}`);
   const stats = statSync(real);
   requireCondition(stats.isFile(), `Evidence must be a file: ${name}`);
   requireCondition(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
@@ -6446,11 +6446,11 @@ function storeEvidence(store, runId, testId, assertionId, files, operationId) {
       file.bytes.length,
       file.bytes
     );
-    const id = ulid();
+    const id2 = ulid();
     execute(
       store,
       "INSERT INTO evidence (id, run_id, test_id, assertion_id, kind, name, media_type, sha256, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      id,
+      id2,
       runId,
       testId,
       assertionId,
@@ -6460,7 +6460,7 @@ function storeEvidence(store, runId, testId, assertionId, files, operationId) {
       sha256,
       operationId
     );
-    return id;
+    return id2;
   });
 }
 function evidenceFiles(store, runId, specs = []) {
@@ -6489,7 +6489,7 @@ function checkAssertion(store, actor, input) {
       `Assertion ${test.id}.${assertion.id} has a result. An assertion result is final.`
     );
     const outcomes = runOutcomes(store, input.runId);
-    for (const dependency of test.dependsOn.filter((id) => !id.includes(":")))
+    for (const dependency of test.dependsOn.filter((id2) => !id2.includes(":")))
       requireCondition(
         outcomes.get(dependency)?.outcome === "passed",
         `Prerequisite ${dependency} has not passed. Close ${dependency} as passed before you check ${test.id}.`
@@ -6627,12 +6627,12 @@ function recordFinding(store, actor, input) {
           `Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
         );
     const evidence = new Map(runEvidence(store, input.runId).map((row) => [row.id, row]));
-    for (const id of finding.evidenceIds) {
-      const row = evidence.get(id);
-      requireCondition(row, `Unknown evidence in finding ${finding.id}: ${id}`);
+    for (const id2 of finding.evidenceIds) {
+      const row = evidence.get(id2);
+      requireCondition(row, `Unknown evidence in finding ${finding.id}: ${id2}`);
       requireCondition(
         testIds.includes(row.test_id) && (row.assertion_id === null || finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)),
-        `Evidence ${id} does not belong to the assertions or tests of finding ${finding.id}`
+        `Evidence ${id2} does not belong to the assertions or tests of finding ${finding.id}`
       );
     }
     execute(
@@ -6665,10 +6665,10 @@ function recordGap(store, actor, input) {
       !one(store, "SELECT 1 FROM run_gaps WHERE run_id = ? AND id = ?", input.runId, gap.id),
       `Gap ${gap.id} exists in run ${input.runId}. Use a new gap ID.`
     );
-    for (const id of gap.requirementIds)
+    for (const id2 of gap.requirementIds)
       requireCondition(
-        run2.plan.requirements.some((requirement) => requirement.id === id),
-        `Unknown requirement in gap ${gap.id}: ${id}`
+        run2.plan.requirements.some((requirement) => requirement.id === id2),
+        `Unknown requirement in gap ${gap.id}: ${id2}`
       );
     const plans = latestPlans(store);
     for (const reference of gap.testIds) {
@@ -6701,7 +6701,7 @@ function finishRun(store, actor, input) {
       ["completed", "interrupted", "operational_error"],
       "completion (--completion)"
     );
-    const cleanup = {
+    const cleanup2 = {
       status: requireChoice(
         input.cleanup,
         ["completed", "failed", "not_applicable"],
@@ -6711,7 +6711,7 @@ function finishRun(store, actor, input) {
     };
     const selected = run2.request.selectedTestIds;
     const attempt = currentAttempt(store, input.runId);
-    const unclosed = selected.filter((id) => !runOutcomes(store, input.runId).has(id));
+    const unclosed = selected.filter((id2) => !runOutcomes(store, input.runId).has(id2));
     if (completion === "completed")
       requireCondition(
         !unclosed.length,
@@ -6731,29 +6731,29 @@ function finishRun(store, actor, input) {
       );
     const outcomes = runOutcomes(store, input.runId);
     const results = runAssertions(store, input.runId);
-    const findings = runFindings(store, input.runId);
-    const newGaps = runGaps(store, input.runId);
+    const findings2 = runFindings(store, input.runId);
+    const newGaps2 = runGaps(store, input.runId);
     for (const row of results.values())
       if (row.result === "failed")
         requireCondition(
-          findings.some(
+          findings2.some(
             (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)
           ),
           `Failed assertion ${row.test_id}.${row.assertion_id} needs a defect finding. Record it with run finding.`
         );
     if (completion === "completed") {
-      const failures = selected.filter((id) => outcomes.get(id).outcome === "error");
+      const failures = selected.filter((id2) => outcomes.get(id2).outcome === "error");
       requireCondition(
         !failures.length,
         `Operational failure cannot be completed: ${failures.join(", ")} closed as error`
       );
-      requireCondition(cleanup.status !== "failed", "Cleanup failed, so the run cannot be completed");
+      requireCondition(cleanup2.status !== "failed", "Cleanup failed, so the run cannot be completed");
       for (const test of run2.plan.tests.filter((test2) => selected.includes(test2.id))) {
         const outcome = outcomes.get(test.id).outcome;
         if (outcome !== "not_run" && outcome !== "blocked") continue;
         const cause = test.dependsOn.some(
-          (id) => id.includes(":") ? dependencyBlock(store, id, run2.row.application_build) !== null : outcomes.get(id)?.outcome !== "passed"
-        ) || newGaps.some((gap) => gap.severity === "blocking");
+          (id2) => id2.includes(":") ? dependencyBlock(store, id2, run2.row.application_build) !== null : outcomes.get(id2)?.outcome !== "passed"
+        ) || newGaps2.some((gap) => gap.severity === "blocking");
         requireCondition(
           cause,
           `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a failed prerequisite or a new blocking gap.`
@@ -6784,7 +6784,7 @@ function finishRun(store, actor, input) {
         })
       };
     });
-    const coverage = resultCoverage(run2.plan, tests, newGaps);
+    const coverage2 = resultCoverage(run2.plan, tests, newGaps2);
     const result = validate("result", {
       contractVersion: "toolkit-2",
       runId: input.runId,
@@ -6798,8 +6798,8 @@ function finishRun(store, actor, input) {
       attempts: attempt,
       completion,
       tests,
-      findings,
-      newGaps,
+      findings: findings2,
+      newGaps: newGaps2,
       evidence: evidence.map((row) => ({
         id: row.id,
         testId: row.test_id,
@@ -6810,8 +6810,8 @@ function finishRun(store, actor, input) {
         sha256: row.sha256,
         size: row.size
       })),
-      cleanup,
-      coverage
+      cleanup: cleanup2,
+      coverage: coverage2
     });
     const body = canonical(result);
     const sha256 = digest(body);
@@ -6820,7 +6820,7 @@ function finishRun(store, actor, input) {
       "INSERT INTO results (run_id, completion, coverage, finished_at, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
       input.runId,
       completion,
-      coverage.status,
+      coverage2.status,
       at,
       sha256,
       body,
@@ -6834,7 +6834,7 @@ function finishRun(store, actor, input) {
         data: {
           runId: input.runId,
           completion,
-          coverage: coverage.status,
+          coverage: coverage2.status,
           sha256,
           counts: outcomeCounts(tests)
         }
@@ -6844,9 +6844,9 @@ function finishRun(store, actor, input) {
   });
 }
 function outcomeCounts(tests) {
-  const counts = {};
-  for (const test of tests) counts[test.outcome] = (counts[test.outcome] ?? 0) + 1;
-  return counts;
+  const counts2 = {};
+  for (const test of tests) counts2[test.outcome] = (counts2[test.outcome] ?? 0) + 1;
+  return counts2;
 }
 function resumeRun(store, actor, input) {
   return write(store, { actor, command: "run resume", subject: input.runId, input }, (operationId, at, actor2) => {
@@ -6947,6 +6947,60 @@ function latestRevisions(store) {
 		JOIN operations o ON o.id = p.operation_id ORDER BY p.plan_id`
   ).map((row) => ({ ...row, plan: JSON.parse(row.body) }));
 }
+function planSummary(plan) {
+  const count = (readiness) => plan.tests.filter((test) => test.readiness === readiness).length;
+  const open = plan.gaps.filter((gap) => gap.status === "open").length;
+  return `${plan.tests.length} tests: ${count("ready")} ready, ${count("blocked")} blocked, ${count("deferred")} deferred; ${open} open gaps`;
+}
+function inbox(store) {
+  const pending = new Set(
+    all(
+      store,
+      "SELECT plan_id, gap_id FROM decisions WHERE applied_revision IS NULL"
+    ).map((row) => `${row.plan_id}:${row.gap_id}`)
+  );
+  const revisions = latestRevisions(store);
+  const gaps = revisions.flatMap(
+    (row) => row.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row.plan_id}:${gap.id}`)).map((gap) => ({
+      planId: row.plan_id,
+      revision: row.revision,
+      gapId: gap.id,
+      question: gap.question,
+      severity: gap.severity,
+      since: row.at
+    }))
+  ).sort(bySince);
+  const plans = revisions.filter((row) => {
+    const state = planApproval(store, row.plan, row.sha256);
+    return state.policy === "required" && !state.latest;
+  }).map((row) => ({
+    planId: row.plan_id,
+    revision: row.revision,
+    sha256: row.sha256,
+    since: row.at,
+    summary: planSummary(row.plan)
+  })).sort(bySince);
+  const results = all(
+    store,
+    "SELECT r.*, s.finished_at, s.sha256, s.coverage FROM runs r JOIN results s ON s.run_id = r.run_id ORDER BY s.rowid"
+  ).filter((row) => {
+    const state = resultAcceptance(store, row, row.sha256);
+    return state.policy === "required" && !state.latest;
+  }).map((row) => ({
+    runId: row.run_id,
+    planId: row.plan_id,
+    revision: row.plan_revision,
+    build: row.application_build,
+    counts: outcomeCounts(runResult(store, row.run_id).result.tests),
+    coverage: row.coverage,
+    sha256: row.sha256,
+    since: row.finished_at
+  }));
+  return { gaps, plans, results };
+}
+function bySince(a, b2) {
+  return a.since.localeCompare(b2.since);
+}
 function planList(store) {
   return latestRevisions(store).map((row) => {
     const open = row.plan.gaps.filter((gap) => gap.status === "open");
@@ -6985,6 +7039,24 @@ function planDetail(store, planId, revision = null) {
     pendingDecisions: pending,
     plan: selected.plan
   };
+}
+function planHistory(store, planId) {
+  planRevision(store, planId);
+  const rows = all(
+    store,
+    `SELECT p.plan_id, p.revision, p.sha256, p.body, p.operation_id, o.at, o.actor FROM plan_revisions p
+		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision`,
+    planId
+  );
+  const plans = rows.map((row) => JSON.parse(row.body));
+  return rows.map((row, i) => ({
+    revision: row.revision,
+    sha256: row.sha256,
+    operationId: row.operation_id,
+    actor: row.actor,
+    at: row.at,
+    changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i])
+  }));
 }
 function runList(store, filters = {}) {
   const rows = all(
@@ -7104,13 +7176,20 @@ function operationLog(store, filters = {}) {
     response: JSON.parse(row.response)
   }));
 }
-function evidenceBytes(store, id) {
+function changesAfter(store, rowid) {
+  return all(
+    store,
+    "SELECT rowid, id, subjects FROM operations WHERE rowid > ? ORDER BY rowid",
+    rowid
+  ).map((row) => ({ rowid: row.rowid, id: row.id, subjects: JSON.parse(row.subjects) }));
+}
+function evidenceBytes(store, id2) {
   const row = one(
     store,
     "SELECT e.id, e.run_id, e.test_id, e.assertion_id, e.kind, e.name, e.media_type, e.sha256, b.size, b.bytes FROM evidence e JOIN blobs b ON b.sha256 = e.sha256 WHERE e.id = ?",
-    id
+    id2
   );
-  requireCondition(row, `Unknown evidence: ${id}`);
+  requireCondition(row, `Unknown evidence: ${id2}`);
   return {
     id: row.id,
     runId: row.run_id,
@@ -7193,7 +7272,7 @@ function html(report) {
 }
 function resultReport(result, sha256) {
   const evidence = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files = (ids) => join3(ids.map((id) => `${evidence.get(id)?.name ?? id} (${id})`));
+  const files = (ids2) => join3(ids2.map((id2) => `${evidence.get(id2)?.name ?? id2} (${id2})`));
   const blocks = [
     {
       table: ["Field", "Value"],
@@ -7299,7 +7378,7 @@ function resultReport(result, sha256) {
   };
 }
 function planReport(plan, sha256) {
-  const coverage = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
+  const coverage2 = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
   const blocks = [
     {
       table: ["Field", "Value"],
@@ -7319,7 +7398,7 @@ function planReport(plan, sha256) {
         requirement.id,
         requirement.text,
         requirement.source,
-        coverage.get(requirement.id) ?? none
+        coverage2.get(requirement.id) ?? none
       ])
     },
     { heading: "Tests" },
@@ -7397,8 +7476,8 @@ function renderResult(result, sha256, format2) {
   return rendered(resultReport(result, sha256), result, format2);
 }
 function exportPlan(store, reference, format2) {
-  const { id, revision } = revisionReference(reference, "plan reference");
-  const selected = planRevision(store, id, revision);
+  const { id: id2, revision } = revisionReference(reference, "plan reference");
+  const selected = planRevision(store, id2, revision);
   return renderPlan(selected.plan, selected.sha256, requireChoice(format2, formats, "format (--format)"));
 }
 function exportRun(store, runId, format2) {
@@ -7408,8 +7487,2036 @@ function exportRun(store, runId, format2) {
   return renderResult(finished.result, finished.sha256, requireChoice(format2, formats, "format (--format)"));
 }
 
+// plugin/src/ui/server.ts
+import { createServer } from "node:http";
+import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// plugin/src/ui/html.ts
+var entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function escape(text) {
+  return text.replace(/[&<>"']/g, (character) => entities[character]);
+}
+function isHtml(value2) {
+  return typeof value2 === "object" && value2 !== null && "html" in value2;
+}
+function piece(value2) {
+  if (value2 === null || value2 === void 0 || value2 === false) return "";
+  if (Array.isArray(value2)) return value2.map(piece).join("");
+  if (isHtml(value2)) return value2.html;
+  return escape(String(value2));
+}
+function html2(strings, ...values) {
+  let text = strings[0];
+  for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
+  return { html: text };
+}
+function join4(items, separator) {
+  return html2`${items.flatMap((item, i) => i ? [separator, item] : [item])}`;
+}
+var statusLook = {
+  passed: ["\u2713", "pass"],
+  failed: ["\u2717", "fail"],
+  inconclusive: ["?", "unsure"],
+  not_checked: ["!", "warn"],
+  blocked: ["\u2013", "block"],
+  not_run: ["\u2013", "block"],
+  error: ["!", "warn"],
+  ready: ["\u2713", "pass"],
+  deferred: ["\u2013", "block"],
+  planned: ["\u2713", "pass"],
+  tested: ["\u2713", "pass"],
+  uncovered: ["\u2013", "block"],
+  complete: ["\u2713", "pass"],
+  partial: ["\u25D0", "warn"],
+  not_executed: ["\u2013", "block"],
+  completed: ["\u2713", "pass"],
+  interrupted: ["!", "warn"],
+  operational_error: ["!", "fail"],
+  not_applicable: ["\u2013", "block"],
+  approved: ["\u2713", "pass"],
+  rejected: ["\u2717", "fail"],
+  pending: ["\u25CB", "acc"],
+  not_required: ["\u2013", "block"],
+  started: ["\u25CF", "acc"],
+  finalized: ["\u2713", "pass"],
+  open: ["\u25CB", "warn"],
+  resolved: ["\u2713", "pass"],
+  blocking: ["\u25CF", "fail"],
+  non_blocking: ["\u25CB", "warn"],
+  clarify: ["\u2713", "acc"],
+  accept_assumption: ["\u2248", "acc"],
+  defer: ["\u2013", "block"],
+  defect: ["\u2717", "fail"],
+  potential_issue: ["?", "warn"],
+  low: ["\xB7", "block"],
+  medium: ["!", "warn"],
+  high: ["!", "fail"],
+  critical: ["!!", "fail"],
+  rejected_operation: ["\u2717", "fail"],
+  needs_decision: ["?", "warn"],
+  invalid_request: ["\u2717", "fail"]
+};
+function words(status) {
+  return status.replace(/_/g, " ");
+}
+function pill(status, label = words(status)) {
+  const [icon2, tone2] = statusLook[status] ?? ["\xB7", "muted"];
+  return html2`<span class="st ${tone2}"><span aria-hidden="true">${icon2}</span> ${label}</span>`;
+}
+function icon(status) {
+  const [symbol, tone2] = status ? statusLook[status] ?? ["\xB7", "muted"] : ["\xB7", "muted"];
+  return html2`<span class="ic ${tone2}" role="img" aria-label="${status ? words(status) : "no result yet"}"
+		>${symbol}</span
+	>`;
+}
+function short(sha256) {
+  return `${sha256.slice(0, 4)}\u2026${sha256.slice(-4)}`;
+}
+function age(iso, now = Date.now()) {
+  const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1e3));
+  if (seconds < 45) return "now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} d`;
+}
+function clock(iso) {
+  const date = new Date(iso);
+  const pad = (value2) => String(value2).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function time(iso, text = age(iso)) {
+  return html2`<time datetime="${iso}" title="${clock(iso)}">${text}</time>`;
+}
+function plural(count, one2, many = `${one2}s`) {
+  return `${count} ${count === 1 ? one2 : many}`;
+}
+
+// plugin/src/ui/layout.ts
+var nextTheme = { system: "light", light: "dark", dark: "system" };
+var themeIcons = html2`<svg class="ti ti-system" viewBox="0 0 16 16" aria-hidden="true">
+		<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
+		<path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" />
+	</svg>
+	<svg class="ti ti-light" viewBox="0 0 16 16" aria-hidden="true">
+		<circle cx="8" cy="8" r="3" fill="currentColor" />
+		<path
+			d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3"
+			stroke="currentColor"
+			stroke-width="1.5"
+			stroke-linecap="round"
+		/>
+	</svg>
+	<svg class="ti ti-dark" viewBox="0 0 16 16" aria-hidden="true">
+		<path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z" fill="currentColor" />
+	</svg>`;
+function mark() {
+  return html2`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`;
+}
+function navLink(context, page, section, href, label, extra = "") {
+  const current = page.section === section ? html2` aria-current="page"` : "";
+  return html2`<li><a href="${href}" ${current}>${label}${extra}</a></li>`;
+}
+function themeForm(context) {
+  const next = nextTheme[context.theme];
+  return html2`<form method="post" action="/theme" class="theme-form" data-theme-form>
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="back" value="${context.path}" />
+		<button
+			class="icon-btn"
+			name="theme"
+			value="${next}"
+			data-current="${context.theme}"
+			title="Theme: ${context.theme}. Switch to ${next}."
+			aria-label="Theme: ${context.theme}. Switch to ${next}."
+		>
+			${themeIcons}
+		</button>
+	</form>`;
+}
+function header(context, page) {
+  const count = html2`<b class="count" data-region="nav-count">${context.inboxCount || ""}</b>`;
+  const actor = context.actor ? html2`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}" title="Change your name"
+				>actor: ${context.actor}</a
+			>` : html2`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}">Set your name</a>`;
+  return html2`<header class="bar">
+		<div class="bar-in">
+			<a class="brand" href="/">${mark()}<span>checkmate</span></a>
+			<nav aria-label="Main">
+				<ul class="nav">
+					${navLink(context, page, "inbox", "/", "Inbox", count)}
+					${navLink(context, page, "plans", "/plans", "Plans")}
+					${navLink(context, page, "runs", "/runs", "Runs")} ${navLink(context, page, "log", "/log", "Log")}
+				</ul>
+			</nav>
+			<div class="who">
+				<span class="live" data-live hidden>○ Connecting…</span>
+				${actor} ${themeForm(context)}
+				<button
+					class="icon-btn"
+					type="button"
+					data-shortcuts-open
+					hidden
+					aria-label="Keyboard shortcuts"
+					title="Keyboard shortcuts (?)"
+				>
+					?
+				</button>
+			</div>
+		</div>
+	</header>`;
+}
+var shortcuts = html2`<aside class="shortcuts" data-shortcuts hidden aria-labelledby="shortcuts-title">
+	<div class="shortcuts-head">
+		<h2 id="shortcuts-title">Keyboard shortcuts</h2>
+		<button class="icon-btn" type="button" data-shortcuts-close aria-label="Close shortcuts">×</button>
+	</div>
+	<dl>
+		<dt><kbd>/</kbd></dt>
+		<dd>Search or filter</dd>
+		<dt><kbd>j</kbd> <kbd>k</kbd></dt>
+		<dd>Next or previous item</dd>
+		<dt><kbd>Enter</kbd></dt>
+		<dd>Open the item</dd>
+		<dt><kbd>g</kbd> <kbd>i</kbd></dt>
+		<dd>Go to the inbox</dd>
+		<dt><kbd>Esc</kbd></dt>
+		<dd>Close the viewer or this panel</dd>
+		<dt><kbd>?</kbd></dt>
+		<dd>Show these shortcuts</dd>
+	</dl>
+</aside>`;
+var viewer = html2`<div
+	class="viewer"
+	data-viewer
+	hidden
+	role="dialog"
+	aria-modal="false"
+	aria-label="Evidence viewer"
+>
+	<div class="viewer-bar">
+		<span class="viewer-name" data-viewer-name></span>
+		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
+		<button class="btn" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
+	</div>
+	<div class="viewer-body"><img data-viewer-image alt="" /></div>
+</div>`;
+function layout(context, page) {
+  const theme = context.theme === "system" ? "" : html2` data-theme="${context.theme}"`;
+  return html2`<!doctype html>
+		<html lang="en" ${theme}>
+			<head>
+				<meta charset="utf-8" />
+				<meta name="viewport" content="width=device-width, initial-scale=1" />
+				<meta name="color-scheme" content="light dark" />
+				<title>${page.title} · Checkmate</title>
+				<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+				<link rel="preload" href="/assets/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+				<link rel="stylesheet" href="/assets/style.css" />
+				<script src="/assets/client.js" defer></script>
+			</head>
+			<body data-subjects="${page.subjects.join(",")}" data-cursor="${context.cursor}">
+				<a class="skip" href="#main">Skip to content</a>
+				${header(context, page)}
+				<main id="main" tabindex="-1">${page.body}</main>
+				<footer class="foot">
+					<span>Workspace <code>${context.workspace}</code></span>
+					<span>Press <kbd>?</kbd> for keyboard shortcuts</span>
+				</footer>
+				${context.toast ? html2`<div class="toast" role="status" data-toast>${context.toast}</div>` : ""}
+				<div class="sr-only" aria-live="polite" data-announcer></div>
+				${shortcuts} ${viewer}
+			</body>
+		</html>`;
+}
+function heading(title, sub = null, extra = "") {
+  return html2`<div class="page-head">
+		<div>
+			<h1>${title}</h1>
+			${sub ? html2`<p class="sub">${sub}</p>` : ""}
+		</div>
+		${extra}
+	</div>`;
+}
+function banner(tone2, content) {
+  return html2`<div class="banner ${tone2}" role="${tone2 === "info" ? "status" : "alert"}">${content}</div>`;
+}
+
+// plugin/src/ui/forms.ts
+function emptyState() {
+  return { values: {}, error: null, stale: null, confirm: false };
+}
+function hidden(context, sha256) {
+  return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="sha" value="${sha256}" />`;
+}
+function actorField(context, state) {
+  if (context.actor) return "";
+  return html2`<div class="field-group">
+		<label class="lab" for="actor">Your name</label>
+		<input id="actor" name="actor" required autocomplete="name" value="${state.values.actor ?? ""}" />
+		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
+	</div>`;
+}
+function messages(state) {
+  return html2`${state.stale ? banner("warn", state.stale) : ""}
+	${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}`;
+}
+function rationaleField(state, placeholder) {
+  return html2`<div class="field-group">
+		<label class="lab" for="rationale">Rationale</label>
+		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder}">
+${state.values.rationale ?? ""}</textarea>
+	</div>`;
+}
+function confirmStep(context, verdict, state) {
+  const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
+  return html2`<form method="post" action="${verdict.action}" class="decision-form">
+		${hidden(context, verdict.sha256)}
+		<input type="hidden" name="verdict" value="${choice.value}" />
+		<input type="hidden" name="rationale" value="${state.values.rationale ?? ""}" />
+		${context.actor ? "" : html2`<input type="hidden" name="actor" value="${state.values.actor ?? ""}" />`}
+		<div class="confirm-box">
+			<p class="lab">Confirm</p>
+			<p>${choice.summary}</p>
+			<blockquote>${state.values.rationale ?? ""}</blockquote>
+		</div>
+		<div class="btns">
+			<button class="btn primary" name="confirmed" value="1">${choice.confirm}</button>
+			<button class="btn" name="back" value="1" formnovalidate>Back</button>
+		</div>
+	</form>`;
+}
+function chooseStep(context, verdict, state) {
+  const button = (choice, primary) => html2`<button
+			class="btn${primary ? " primary" : ""}"
+			name="verdict"
+			value="${choice.value}"
+			data-needs-rationale
+			data-confirm-label="${choice.confirm}"
+			data-summary="${choice.summary}"
+		>
+			${choice.label}
+		</button>`;
+  return html2`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
+		${hidden(context, verdict.sha256)} ${actorField(context, state)}
+		${rationaleField(state, "Why do you decide this?")}
+		<div class="confirm-box" data-confirm hidden>
+			<p class="lab">Confirm</p>
+			<p data-confirm-summary></p>
+		</div>
+		<div class="btns" data-choose>${button(verdict.approve, true)} ${button(verdict.reject, false)}</div>
+		<div class="btns" data-confirm-buttons hidden>
+			<button class="btn primary" name="confirmed" value="1" data-confirm-submit>Confirm</button>
+			<button class="btn" type="button" data-confirm-back>Back</button>
+		</div>
+	</form>`;
+}
+function verdictPanel(context, verdict, state) {
+  return html2`<section
+		class="panel decision"
+		id="decide"
+		aria-labelledby="decide-title"
+		data-region="decision"
+		data-stale-message="${verdict.staleMessage}"
+	>
+		<h2 class="lab" id="decide-title">Decision</h2>
+		<p class="subj">${verdict.question}</p>
+		<p class="help">
+			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short(verdict.sha256)}</code>. Your decision
+			is recorded in the log.
+		</p>
+		<div data-stale-slot>${messages(state)}</div>
+		${verdict.intro ?? ""}
+		${state.confirm ? confirmStep(context, verdict, state) : chooseStep(context, verdict, state)}
+	</section>`;
+}
+var kinds = [
+  {
+    value: "clarify",
+    label: "Clarify",
+    help: "Clarify gives the expected behaviour. The agent updates the affected assertions in the next revision."
+  },
+  {
+    value: "accept_assumption",
+    label: "Accept assumption",
+    help: "Accept assumption records your answer as an assumption. Tests run on it, and reports list it."
+  },
+  {
+    value: "defer",
+    label: "Defer",
+    help: "Defer moves the gap out of this scope. The affected tests become deferred and do not run."
+  }
+];
+function gapPanel(context, form, state) {
+  const selected = state.values.kind ?? "clarify";
+  return html2`<section
+		class="panel decision"
+		id="answer"
+		aria-labelledby="answer-title"
+		data-region="decision"
+		data-stale-message="${form.staleMessage}"
+	>
+		<h2 class="lab" id="answer-title">Answer gap</h2>
+		<p class="subj">${form.title}</p>
+		<p class="help">${form.question}</p>
+		<div data-stale-slot>${messages(state)}</div>
+		<form method="post" action="${form.action}" class="decision-form gap-form" data-gap-form>
+			${hidden(context, form.sha256)}
+			<fieldset class="seg-field">
+				<legend class="lab">Kind of answer</legend>
+				<div class="seg">
+					${kinds.map(
+    (kind) => html2`<input
+									type="radio"
+									id="kind-${kind.value}"
+									name="kind"
+									value="${kind.value}"
+									${selected === kind.value ? html2`checked` : ""}
+								/><label for="kind-${kind.value}">${kind.label}</label>`
+  )}
+				</div>
+			</fieldset>
+			${kinds.map((kind) => html2`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
+			<div class="field-group">
+				<label class="lab" for="value">Answer</label>
+				<textarea id="value" name="value" rows="3" required>${state.values.value ?? ""}</textarea>
+			</div>
+			<div class="field-group source-field">
+				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
+				<input
+					id="source"
+					name="source"
+					value="${state.values.source ?? ""}"
+					placeholder="caller://refund-policy#window"
+					data-source
+				/>
+				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>
+			</div>
+			${rationaleField(state, "Why is this the right answer?")} ${actorField(context, state)}
+			<div class="btns">
+				<button class="btn primary" data-needs-rationale>Record answer</button>
+				<a class="btn" href="${form.cancel}">Cancel</a>
+			</div>
+		</form>
+	</section>`;
+}
+function recordPanel(title, content) {
+  return html2`<section class="panel decision" aria-labelledby="decide-title" data-region="decision">
+		<h2 class="lab" id="decide-title">${title}</h2>
+		${content}
+	</section>`;
+}
+
+// plugin/src/ui/lists.ts
+function inboxItems(waiting) {
+  return [
+    ...waiting.gaps.map((gap) => `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`),
+    ...waiting.plans.map((plan) => `/plans/${plan.planId}@${plan.revision}#decide`),
+    ...waiting.results.map((result) => `/runs/${result.runId}#decide`)
+  ];
+}
+function inboxCount(waiting) {
+  return waiting.gaps.length + waiting.plans.length + waiting.results.length;
+}
+var countOrder = ["passed", "failed", "inconclusive", "error", "blocked", "not_run"];
+var countLook = {
+  passed: ["\u2713", "pass"],
+  failed: ["\u2717", "fail"],
+  inconclusive: ["?", "unsure"],
+  error: ["!", "warn"],
+  blocked: ["\u2013", "block"],
+  not_run: ["\u2013", "block"]
+};
+function counts(values) {
+  const shown = countOrder.filter((key) => values[key]);
+  if (!shown.length) return html2`<span class="muted">no outcomes yet</span>`;
+  return html2`<span class="counts"
+		>${shown.map(
+    (key) => html2`<span class="st ${countLook[key][1]}" title="${values[key]} ${words(key)}"
+					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
+						${words(key)}</span
+					></span
+				>`
+  )}</span
+	>`;
+}
+function group(title, items, key) {
+  return html2`<section class="group" aria-labelledby="group-${key}">
+		<h2 class="group-h" id="group-${key}">${title} · ${items.length}</h2>
+		${items.length ? html2`<ul class="items">
+						${items.map((item) => html2`<li>${item}</li>`)}
+					</ul>` : html2`<p class="none">None.</p>`}
+	</section>`;
+}
+function inboxPage(store) {
+  const waiting = inbox(store);
+  const total = inboxCount(waiting);
+  const gaps = waiting.gaps.map(
+    (gap) => html2`<a
+				class="item"
+				href="/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer"
+				data-nav-item
+				data-key="gap:${gap.planId}:${gap.gapId}"
+				data-announce="New gap ${gap.planId} ${gap.gapId}"
+			>
+				<span class="id">${gap.planId} · ${gap.gapId}</span>
+				<span class="what">${gap.question}</span>
+				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
+			</a>`
+  );
+  const plans = waiting.plans.map(
+    (plan) => html2`<a
+				class="item"
+				href="/plans/${plan.planId}@${plan.revision}#decide"
+				data-nav-item
+				data-key="plan:${plan.planId}@${plan.revision}"
+				data-announce="${plan.planId}@${plan.revision} waits for approval"
+			>
+				<span class="id">${plan.planId}@${plan.revision}</span>
+				<span class="what">${plan.summary}</span>
+				<span class="end"><span class="age">${time(plan.since)}</span></span>
+			</a>`
+  );
+  const results = waiting.results.map(
+    (result) => html2`<a
+				class="item"
+				href="/runs/${result.runId}#decide"
+				data-nav-item
+				data-key="run:${result.runId}"
+				data-announce="${result.runId} waits for acceptance"
+			>
+				<span class="id">${result.runId}</span>
+				<span class="what"
+					>${result.planId}@${result.revision} · build <code>${result.build}</code> · ${counts(result.counts)}
+					· coverage ${result.coverage}</span
+				>
+				<span class="end"><span class="age">${time(result.since)}</span></span>
+			</a>`
+  );
+  const sub = total ? `${plural(total, "item")} ${total === 1 ? "waits" : "wait"} for you, oldest first.` : null;
+  const body = total ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Plans to approve", plans, "plans")}
+			${group("Results to accept", results, "results")}` : emptyInbox(store);
+  return {
+    title: "Inbox",
+    section: "inbox",
+    subjects: ["inbox"],
+    body: html2`${heading("Inbox", sub)}
+			<div class="stack" data-region="inbox" data-list>${body}</div>`
+  };
+}
+function emptyInbox(store) {
+  const latest = runList(store).slice(-3).reverse();
+  return html2`<div class="empty">
+		<p class="empty-title">Nothing waits for you.</p>
+		${latest.length ? html2`<p>Latest runs:</p>
+						<ul class="items">
+							${latest.map(
+    (run2) => html2`<li>
+										<a class="item" href="/runs/${run2.runId}" data-nav-item
+											><span class="id">${run2.runId}</span
+											><span class="what"
+												>${run2.planId}@${run2.revision} · build <code>${run2.build}</code></span
+											><span class="end">${pill(run2.acceptance ?? run2.state)}</span></a
+										>
+									</li>`
+  )}
+						</ul>` : ""}
+		<p><a href="/runs">All runs</a></p>
+	</div>`;
+}
+var planShows = [
+  ["all", "All plans"],
+  ["needs_decision", "Open gaps"],
+  ["awaiting_approval", "Awaiting approval"],
+  ["blocked", "Blocked"]
+];
+function options(choices, selected) {
+  return choices.map(
+    ([value2, label]) => html2`<option value="${value2}" ${value2 === selected ? html2`selected` : ""}>${label}</option>`
+  );
+}
+function filterBar(fields, reset, active) {
+  return html2`<form class="filters" method="get" role="search">
+		${fields}
+		<button class="btn">Filter</button>
+		${active ? html2`<a class="btn ghost" href="${reset}">Clear</a>` : ""}
+	</form>`;
+}
+function testSummary(plan) {
+  const count = (readiness) => plan.tests.filter((test) => test.readiness === readiness).length;
+  return html2`${plural(plan.tests.length, "test")}
+		<span class="muted"
+			>· ${count("ready")}
+			ready${count("blocked") ? ` \xB7 ${count("blocked")} blocked` : ""}${count("deferred") ? ` \xB7 ${count("deferred")} deferred` : ""}</span
+		>`;
+}
+function plansPage(store, filters) {
+  const rows = planList(store).filter((row) => {
+    if (filters.q && !row.planId.toLowerCase().includes(filters.q.toLowerCase())) return false;
+    if (filters.show === "needs_decision") return row.openGaps.length > 0;
+    if (filters.show === "awaiting_approval") return row.approval === "pending";
+    if (filters.show === "blocked") return row.blocked.length > 0 || row.openBlockingGaps.length > 0;
+    return true;
+  });
+  const fields = html2`<label class="sr-only" for="q">Search plans by ID</label>
+		<input id="q" type="search" name="q" value="${filters.q}" placeholder="Search by plan ID" data-search />
+		<label class="sr-only" for="show">Show</label>
+		<select id="show" name="show">
+			${options(planShows, filters.show)}
+		</select>`;
+  const table = rows.length ? html2`<div class="scroll">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Plan</th>
+							<th scope="col">Tests</th>
+							<th scope="col">Open gaps</th>
+							<th scope="col">Approval</th>
+							<th scope="col">Blocks</th>
+							<th scope="col">Updated</th>
+						</tr>
+					</thead>
+					<tbody>
+						${rows.map((row) => {
+    const detail = planDetail(store, row.planId);
+    return html2`<tr data-key="plan:${row.planId}" data-nav-row>
+								<td>
+									<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item
+										>${row.planId}@${row.revision}</a
+									>
+								</td>
+								<td>${testSummary(detail.plan)}</td>
+								<td>
+									${row.openGaps.length ? join4(
+      row.openGaps.map(
+        (id2) => html2`<a
+																class="mono"
+																href="/plans/${row.planId}@${row.revision}/gaps/${id2}"
+																>${id2}${row.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
+															>`
+      ),
+      ", "
+    ) : html2`<span class="muted">none</span>`}
+								</td>
+								<td>${pill(row.approval)}</td>
+								<td>
+									${row.blocked.length ? html2`<ul class="plain">
+													${row.blocked.map(
+      (block) => html2`<li>
+																<span class="mono">${block.testId}</span> by
+																<span class="mono">${block.dependency}</span>:
+																${block.cause}
+															</li>`
+    )}
+												</ul>` : html2`<span class="muted">none</span>`}
+								</td>
+								<td class="nowrap">${time(row.since)}</td>
+							</tr>`;
+  })}
+					</tbody>
+				</table>
+			</div>` : html2`<p class="empty-line">No plan matches these filters.</p>`;
+  return {
+    title: "Plans",
+    section: "plans",
+    subjects: ["inbox", ...rows.map((row) => `plan:${row.planId}`)],
+    body: html2`${heading("Plans", "Each plan at its latest revision.")}
+			${filterBar(fields, "/plans", Boolean(filters.q || filters.show !== "all"))}
+			<div data-region="plans" data-list>${table}</div>`
+  };
+}
+var runStatuses = [
+  ["all", "All runs"],
+  ["started", "In progress"],
+  ["pending", "Awaiting acceptance"],
+  ["approved", "Accepted"],
+  ["rejected", "Rejected"]
+];
+function runStatus(row) {
+  if (row.state === "started") return pill("started", "in progress");
+  if (row.acceptance === "approved") return pill("approved", "accepted");
+  if (row.acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(row.acceptance ?? "finalized");
+}
+function runOutcomeCounts(store, runId) {
+  const values = {};
+  for (const test of runDetail(store, runId).tests)
+    if (test.outcome) values[test.outcome] = (values[test.outcome] ?? 0) + 1;
+  return values;
+}
+function runsPage(store, filters) {
+  const rows = runList(store, { planId: filters.plan || void 0, build: filters.build || void 0 }).filter((row) => {
+    if (filters.status === "started") return row.state === "started";
+    if (filters.status === "pending" || filters.status === "approved" || filters.status === "rejected")
+      return row.acceptance === filters.status;
+    return true;
+  }).reverse();
+  const plans = planList(store).map((row) => [row.planId, row.planId]);
+  const fields = html2`<label class="sr-only" for="plan">Plan</label>
+		<select id="plan" name="plan">
+			${options([["", "All plans"], ...plans], filters.plan)}
+		</select>
+		<label class="sr-only" for="build">Build</label>
+		<input id="build" type="search" name="build" value="${filters.build}" placeholder="Build" data-search />
+		<label class="sr-only" for="status">Status</label>
+		<select id="status" name="status">
+			${options(runStatuses, filters.status)}
+		</select>`;
+  const table = rows.length ? html2`<div class="scroll">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Run</th>
+							<th scope="col">Plan</th>
+							<th scope="col">Build</th>
+							<th scope="col">Tests</th>
+							<th scope="col">Completion</th>
+							<th scope="col">Coverage</th>
+							<th scope="col">Status</th>
+							<th scope="col">Started</th>
+						</tr>
+					</thead>
+					<tbody>
+						${rows.map(
+    (row) => html2`<tr data-key="run:${row.runId}" data-nav-row>
+									<td><a class="mono" href="/runs/${row.runId}" data-nav-item>${row.runId}</a></td>
+									<td>
+										<a class="mono" href="/plans/${row.planId}@${row.revision}"
+											>${row.planId}@${row.revision}</a
+										>
+									</td>
+									<td class="mono">${row.build}</td>
+									<td>${counts(runOutcomeCounts(store, row.runId))}</td>
+									<td>
+										${row.completion ? pill(row.completion) : html2`<span class="muted">running</span>`}
+									</td>
+									<td>${row.coverage ? pill(row.coverage) : html2`<span class="muted">–</span>`}</td>
+									<td>${runStatus(row)}</td>
+									<td class="nowrap">${time(row.startedAt)}</td>
+								</tr>`
+  )}
+					</tbody>
+				</table>
+			</div>` : html2`<p class="empty-line">No run matches these filters.</p>`;
+  return {
+    title: "Runs",
+    section: "runs",
+    subjects: ["inbox", ...rows.map((row) => `run:${row.runId}`), ...plans.map(([id2]) => `plan:${id2}`)],
+    body: html2`${heading("Runs", "Newest first.")}
+			${filterBar(fields, "/runs", Boolean(filters.plan || filters.build || filters.status !== "all"))}
+			<div data-region="runs" data-list>${table}</div>`
+  };
+}
+function subjectLink(subject) {
+  const [kind, id2] = subject.split(/:(.*)/);
+  if (kind === "plan") return html2`<a class="mono" href="/plans/${id2}">${subject}</a>`;
+  if (kind === "run") return html2`<a class="mono" href="/runs/${id2}">${subject}</a>`;
+  if (kind === "inbox") return html2`<a class="mono" href="/">${subject}</a>`;
+  return html2`<span class="mono">${subject}</span>`;
+}
+function reasons(response) {
+  const list2 = response?.reasons;
+  return Array.isArray(list2) ? list2.map(String) : [];
+}
+function logPage(store, filters) {
+  const recent = operationLog(store, { subject: filters.subject || void 0, limit: 1e3 });
+  const actors = [...new Set(operationLog(store, { limit: 1e3 }).map((row) => row.actor))].sort();
+  const rows = recent.filter((row) => !filters.actor || row.actor === filters.actor).slice(0, 200);
+  const fields = html2`<label class="sr-only" for="subject">Subject</label>
+		<input
+			id="subject"
+			type="search"
+			name="subject"
+			value="${filters.subject}"
+			placeholder="Subject: plan:checkout"
+			data-search
+		/>
+		<label class="sr-only" for="actor-filter">Actor</label>
+		<select id="actor-filter" name="actor">
+			${options([["", "All actors"], ...actors.map((actor) => [actor, actor])], filters.actor)}
+		</select>`;
+  const table = rows.length ? html2`<div class="scroll">
+				<table class="log">
+					<thead>
+						<tr>
+							<th scope="col">Time</th>
+							<th scope="col">Actor</th>
+							<th scope="col">Command</th>
+							<th scope="col">Status</th>
+							<th scope="col">Subjects</th>
+							<th scope="col">Operation</th>
+						</tr>
+					</thead>
+					<tbody>
+						${rows.map(
+    (row) => html2`<tr data-key="op:${row.rowid}">
+									<td class="nowrap">${time(row.at)}</td>
+									<td>${row.actor}</td>
+									<td>
+										<span class="mono">${row.command}</span>
+										${row.status === "rejected" ? html2`<div class="reason">${reasons(row.response).join(" ")}</div>` : ""}
+									</td>
+									<td>
+										${pill(row.status === "rejected" ? "rejected_operation" : row.status, words(row.status))}
+									</td>
+									<td>
+										${row.subjects.length ? join4(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
+									</td>
+									<td class="mono muted">${row.id}</td>
+								</tr>`
+  )}
+					</tbody>
+				</table>
+			</div>` : html2`<p class="empty-line">No operation matches these filters.</p>`;
+  return {
+    title: "Log",
+    section: "log",
+    subjects: filters.subject ? [filters.subject, "inbox"] : ["*"],
+    body: html2`${heading("Log", "Every write, newest first. The log shows up to 200 operations.")}
+			${filterBar(fields, "/log", Boolean(filters.subject || filters.actor))}
+			<div data-region="log">${table}</div>`
+  };
+}
+
+// plugin/src/ui/plan.ts
+function testLink(planId, revision, reference) {
+  const [owner, id2] = reference.includes(":") ? reference.split(":") : [null, reference];
+  return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision}#${id2}">${reference}</a>`;
+}
+function ids(values, link) {
+  return values.length ? join4(values.map(link), ", ") : html2`<span class="muted">none</span>`;
+}
+function facts(rows) {
+  const shown = rows.filter(([, value2]) => value2 !== false);
+  return html2`<dl class="facts">
+		${shown.map(
+    ([label, value2]) => html2`<div>
+					<dt>${label}</dt>
+					<dd>${value2}</dd>
+				</div>`
+  )}
+	</dl>`;
+}
+function testCard(detail, test) {
+  const { planId, revision } = detail;
+  return html2`<article class="test" id="${test.id}" data-key="test:${test.id}">
+		<header class="test-h">
+			${pill(test.readiness)}
+			<a class="id" href="#${test.id}">${test.id}</a>
+			<h3>${test.title}</h3>
+			<span class="count">${test.capability} · ${plural(test.assertions.length, "assertion")}</span>
+		</header>
+		<div class="test-b">
+			${facts([
+    ["Requirements", ids(test.requirementIds, (id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`)],
+    [
+      "Depends on",
+      test.dependsOn.length > 0 && ids(test.dependsOn, (id2) => testLink(planId, revision, id2))
+    ],
+    [
+      "Gaps",
+      test.gapIds.length > 0 && ids(test.gapIds, (id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`)
+    ],
+    [
+      "Operations",
+      test.operations.length > 0 && html2`<span class="mono">${test.operations.join(", ")}</span>`
+    ],
+    [
+      "Preconditions",
+      test.preconditions.length > 0 && html2`<ul class="plain">
+							${test.preconditions.map((item) => html2`<li>${item}</li>`)}
+						</ul>`
+    ],
+    ["Action", test.action]
+  ])}
+		</div>
+		${test.assertions.length ? html2`<ul class="checklist" aria-label="Assertions of ${test.id}">
+						${test.assertions.map(
+    (assertion) => html2`<li class="asr" id="${test.id}.${assertion.id}">
+									<span class="box" aria-hidden="true"></span>
+									<span class="aid">${assertion.id}</span>
+									<span class="check">${assertion.check}</span>
+									<span class="tag">${words(assertion.oracleKind)}</span>
+								</li>`
+  )}
+					</ul>` : html2`<p class="test-note">No assertions yet. A blocking gap must be answered first.</p>`}
+	</article>`;
+}
+function decisionFor(plan, gap) {
+  return plan.decisions.find((decision) => decision.id === gap.decisionId);
+}
+function gapRow(detail, gap) {
+  const decision = decisionFor(detail.plan, gap);
+  const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id);
+  const answerable = gap.status === "open" && !pending && detail.revision === detail.latestRevision;
+  return html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
+		<div class="gap-h">
+			<span class="id mono">${gap.id}</span>
+			${pill(gap.severity)} ${pill(gap.status)}
+			<span class="gap-refs muted"
+				>${[...gap.requirementIds, ...gap.testIds].length ? `affects ${[...gap.requirementIds, ...gap.testIds].join(", ")}` : "affects the whole plan"}</span
+			>
+		</div>
+		<p class="gap-q">${gap.question}</p>
+		<p class="muted">${gap.consequence}</p>
+		${decision ? html2`<p class="gap-d">
+						${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
+					</p>` : ""}
+		${pending ? html2`<p class="gap-d">
+						${pill("pending", "decision pending")} ${words(pending.kind)}: ${pending.value}
+						<span class="muted">· ${pending.actor} · applies in the next revision</span>
+					</p>` : ""}
+		${answerable ? html2`<p>
+						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
+							>Answer ${gap.id}</a
+						>
+					</p>` : ""}
+	</li>`;
+}
+function requirementsTable(plan) {
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">ID</th>
+					<th scope="col">Requirement</th>
+					<th scope="col">Tests</th>
+					<th scope="col">Coverage</th>
+				</tr>
+			</thead>
+			<tbody>
+				${plan.requirements.map((requirement) => {
+    const coverage2 = plan.coverage.find((row) => row.requirementId === requirement.id);
+    return html2`<tr id="${requirement.id}">
+						<td class="mono">${requirement.id}</td>
+						<td>
+							${requirement.text}
+							<div class="muted small">Source <code>${requirement.source}</code></div>
+						</td>
+						<td>${ids(coverage2?.testIds ?? [], (id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`)}</td>
+						<td>${coverage2 ? pill(coverage2.status) : ""}</td>
+					</tr>`;
+  })}
+			</tbody>
+		</table>
+	</div>`;
+}
+function decisionsList(plan) {
+  if (!plan.decisions.length && !plan.assumptions.length)
+    return html2`<p class="empty-line">No decision applied yet.</p>`;
+  return html2`<ul class="records">
+			${plan.decisions.map(
+    (decision) => html2`<li>
+						<div class="record-h">
+							${pill(decision.kind)} <a class="mono" href="#${decision.gapId}">${decision.gapId}</a>
+							<span class="muted">by ${decision.actor}</span>
+							<span class="mono muted small">${decision.id}</span>
+						</div>
+						<p>${decision.value}</p>
+						<p class="muted small">
+							Rationale:
+							${decision.rationale}${decision.source ? html2` · Source <code>${decision.source}</code>` : ""}
+						</p>
+					</li>`
+  )}
+		</ul>
+		${plan.assumptions.length ? html2`<h3 class="minor">Assumptions</h3>
+						<ul class="plain">
+							${plan.assumptions.map((item) => html2`<li>${item.text}</li>`)}
+						</ul>` : ""}`;
+}
+function changeLine(line) {
+  const arrow = line.indexOf(" \u2192 ");
+  const colon = line.indexOf(": ");
+  if (arrow < 0 || colon < 0 || colon > arrow) return html2`<li><code>${line}</code></li>`;
+  return html2`<li>
+		<code>${line.slice(0, colon)}</code>
+		<span class="was">${line.slice(colon + 2, arrow)}</span>
+		<span aria-hidden="true" class="arrow">→</span><span class="sr-only">changed to</span>
+		<span class="now">${line.slice(arrow + 3)}</span>
+	</li>`;
+}
+function history(store, detail) {
+  const revisions = planHistory(store, detail.planId).reverse();
+  return html2`<ol class="history">
+		${revisions.map(
+    (item) => html2`<li class="${item.revision === detail.revision ? "current" : ""}">
+					<div class="record-h">
+						<a class="mono" href="/plans/${detail.planId}@${item.revision}"
+							>${detail.planId}@${item.revision}</a
+						>
+						<span class="muted">by ${item.actor} · ${time(item.at)}</span>
+						<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+					</div>
+					${item.changes.length ? html2`<ul class="changes">
+									${item.changes.map(changeLine)}
+								</ul>` : html2`<p class="muted small">First revision.</p>`}
+				</li>`
+  )}
+	</ol>`;
+}
+function approvalPanel(context, detail, state) {
+  const subject = `${detail.planId}@${detail.revision}`;
+  const latest = detail.approval.latest;
+  if (detail.approval.policy === "none")
+    return recordPanel("Approval", html2`<p class="help">The target policy does not require plan approval.</p>`);
+  if (latest && !state)
+    return recordPanel(
+      "Approval",
+      html2`<p class="subj">${pill(latest.verdict)} ${subject}</p>
+				<p class="help">
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
+				</p>
+				<blockquote>${latest.rationale}</blockquote>
+				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`
+    );
+  return verdictPanel(
+    context,
+    {
+      action: `/plans/${subject}`,
+      subject,
+      question: `Approve ${subject}?`,
+      sha256: detail.sha256,
+      digestLabel: "Plan",
+      approve: {
+        value: "approve",
+        label: `Approve ${subject}`,
+        confirm: "Confirm approval",
+        summary: `Approve ${subject}. Runs can then use this revision.`
+      },
+      reject: {
+        value: "reject",
+        label: "Reject",
+        confirm: "Confirm rejection",
+        summary: `Reject ${subject}. The agent must revise the plan.`
+      },
+      staleMessage: `${detail.planId} changed. Review it before you decide.`,
+      intro: html2`<p class="help">${planSummaryLine(detail.plan)}</p>`
+    },
+    state ?? emptyState()
+  );
+}
+function planSummaryLine(plan) {
+  const count = (readiness) => plan.tests.filter((test) => test.readiness === readiness).length;
+  const open = plan.gaps.filter((gap) => gap.status === "open").length;
+  return `${plural(plan.tests.length, "test")}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("deferred")} deferred. ${plural(open, "open gap")}.`;
+}
+function newerBanner(detail) {
+  if (detail.revision === detail.latestRevision) return "";
+  return banner(
+    "info",
+    html2`Revision ${detail.latestRevision} is available.
+			<a href="/plans/${detail.planId}@${detail.latestRevision}"
+				>Review ${detail.planId}@${detail.latestRevision}</a
+			>`
+  );
+}
+function side(content) {
+  return html2`<aside class="side" aria-label="Decision">
+		${content}
+		<p class="back"><a href="/">← Back to inbox</a></p>
+	</aside>`;
+}
+function planPage(store, context, planId, revision, state = null) {
+  const detail = planDetail(store, planId, revision);
+  const { plan } = detail;
+  const subject = `${planId}@${revision}`;
+  const meta = html2`<div class="meta">
+		${pill(detail.approval.state)}
+		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
+		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
+	</div>`;
+  const pending = detail.pendingDecisions.length ? banner(
+    "info",
+    html2`${plural(detail.pendingDecisions.length, "decision")}
+				${detail.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
+				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(", ")}.`
+  ) : "";
+  const body = html2`${heading(subject, plan.objective, meta)}
+		<div data-region="banners">${newerBanner(detail)} ${pending}</div>
+		<div class="split">
+			<div class="main-col">
+				<nav class="jump" aria-label="On this page">
+					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
+					><a href="#decisions">Decisions</a><a href="#history">History</a>
+				</nav>
+				<section aria-labelledby="tests" data-region="tests">
+					<h2 id="tests">Tests <span class="n">${plan.tests.length}</span></h2>
+					<div class="stack">${plan.tests.map((test) => testCard(detail, test))}</div>
+				</section>
+				<section aria-labelledby="gaps" data-region="gaps">
+					<h2 id="gaps">Gaps <span class="n">${plan.gaps.length}</span></h2>
+					${plan.gaps.length ? html2`<ul class="gaps">
+									${plan.gaps.map((gap) => gapRow(detail, gap))}
+								</ul>` : html2`<p class="empty-line">No gaps.</p>`}
+				</section>
+				<section aria-labelledby="requirements">
+					<h2 id="requirements">Requirements and coverage</h2>
+					${requirementsTable(plan)}
+				</section>
+				<section aria-labelledby="decisions">
+					<h2 id="decisions">Decisions</h2>
+					${decisionsList(plan)}
+				</section>
+				<section aria-labelledby="history" data-region="history">
+					<h2 id="history">History</h2>
+					${history(store, detail)}
+				</section>
+			</div>
+			${side(approvalPanel(context, detail, state))}
+		</div>`;
+  return { title: subject, section: "plans", subjects: [`plan:${planId}`, "inbox"], body };
+}
+function gapPage(store, context, planId, revision, gapId, state = null) {
+  const detail = planDetail(store, planId, revision);
+  const { plan } = detail;
+  const gap = plan.gaps.find((item) => item.id === gapId);
+  if (!gap) throw new Error(`Unknown gap ${gapId} in ${planId}@${revision}`);
+  const subject = `${planId}@${revision}`;
+  const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id);
+  const decision = decisionFor(plan, gap);
+  const tests = plan.tests.filter((test) => test.gapIds.includes(gap.id));
+  const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id));
+  const latest = detail.revision === detail.latestRevision;
+  let panel;
+  if (state || latest && gap.status === "open" && !pending)
+    panel = gapPanel(
+      context,
+      {
+        action: `/plans/${subject}/gaps/${gap.id}`,
+        cancel: `/plans/${subject}#${gap.id}`,
+        sha256: detail.sha256,
+        title: html2`${planId} · ${gap.id} · ${words(gap.severity)}`,
+        question: gap.question,
+        staleMessage: `${planId} changed. Review it before you answer.`
+      },
+      state ?? emptyState()
+    );
+  else if (pending)
+    panel = recordPanel(
+      "Answer recorded",
+      html2`<p class="subj">${pill(pending.kind)} ${gap.id}</p>
+				<blockquote>${pending.value}</blockquote>
+				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>`
+    );
+  else if (decision)
+    panel = recordPanel(
+      "Decision",
+      html2`<p class="subj">${pill(decision.kind)} ${gap.id}</p>
+				<blockquote>${decision.value}</blockquote>
+				<p class="help">By ${decision.actor}. Rationale: ${decision.rationale}</p>`
+    );
+  else
+    panel = recordPanel(
+      "Answer gap",
+      html2`<p class="help">Answer this gap on the latest revision.</p>
+				<p>
+					<a class="btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
+						>Open ${planId}@${detail.latestRevision}</a
+					>
+				</p>`
+    );
+  const meta = html2`<div class="meta">
+		${pill(gap.severity)} ${pill(gap.status)} <a class="pill" href="/plans/${subject}">${subject}</a>
+	</div>`;
+  const body = html2`${heading(html2`${planId} · ${gap.id}`, gap.question, meta)}
+		<div data-region="banners">${newerBanner(detail)}</div>
+		<div class="split">
+			<div class="main-col">
+				<section aria-labelledby="consequence">
+					<h2 id="consequence">Consequence</h2>
+					<p class="lead">${gap.consequence}</p>
+				</section>
+				${requirements.length ? html2`<section aria-labelledby="gap-requirements">
+								<h2 id="gap-requirements">Requirements</h2>
+								<ul class="records">
+									${requirements.map(
+    (requirement) => html2`<li>
+												<div class="record-h"><span class="mono">${requirement.id}</span></div>
+												<p>${requirement.text}</p>
+												<p class="muted small">Source <code>${requirement.source}</code></p>
+											</li>`
+  )}
+								</ul>
+							</section>` : ""}
+				<section aria-labelledby="gap-tests">
+					<h2 id="gap-tests">Affected tests <span class="n">${tests.length}</span></h2>
+					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard(detail, test))}</div>` : html2`<p class="empty-line">No test names this gap.</p>`}
+				</section>
+			</div>
+			${side(panel)}
+		</div>`;
+  return { title: `${planId} ${gap.id}`, section: "inbox", subjects: [`plan:${planId}`, "inbox"], body };
+}
+
+// plugin/src/ui/run.ts
+var imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var textTypes = ["text/plain", "application/json", "text/markdown"];
+var inlineLimit = 64 * 1024;
+function size(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+function evidenceItem(store, item) {
+  const href = `/evidence/${item.id}`;
+  const caption = html2`<span class="ev-name">${item.name}</span> <span class="muted">${size(item.size)}</span>`;
+  if (imageTypes.includes(item.mediaType))
+    return html2`<figure class="ev ev-image">
+			<a href="${href}" data-view-image data-name="${item.name}">
+				<img src="${href}" alt="Evidence ${item.name}" loading="lazy" />
+			</a>
+			<figcaption>${caption}</figcaption>
+		</figure>`;
+  if (textTypes.includes(item.mediaType) && item.size <= inlineLimit) {
+    const text = new TextDecoder().decode(evidenceBytes(store, item.id).bytes);
+    return html2`<figure class="ev ev-text">
+			<figcaption>${caption} <a href="${href}" download="${item.name}">Download</a></figcaption>
+			<pre tabindex="0">${text}</pre>
+		</figure>`;
+  }
+  return html2`<a class="chip" href="${href}" download="${item.name}">↓ ${item.name} · ${size(item.size)}</a>`;
+}
+function evidenceChips(items) {
+  if (!items.length) return "";
+  return html2`<p class="evidence">
+		${items.map(
+    (item) => html2`<a
+					class="chip"
+					href="/evidence/${item.id}"
+					${imageTypes.includes(item.mediaType) ? html2`data-view-image data-name="${item.name}"` : html2`download="${item.name}"`}
+					>${item.name} · ${size(item.size)}</a
+				>`
+  )}
+	</p>`;
+}
+function evidenceList(store, items) {
+  if (!items.length) return "";
+  return html2`<div class="evidence">${items.map((item) => evidenceItem(store, item))}</div>`;
+}
+function tone(result) {
+  if (result === "failed") return "failed";
+  if (result === "inconclusive") return "unsure";
+  if (result === "not_checked") return "warn";
+  return "";
+}
+function findingRefs(detail, reference) {
+  const findings2 = detail.findings.filter((finding) => finding.assertionIds.includes(reference));
+  if (!findings2.length) return "";
+  return html2` ·
+	${join4(
+    findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
+    ", "
+  )}`;
+}
+function assertionRow(store, detail, test, assertion) {
+  const reference = `${test.testId}.${assertion.assertionId}`;
+  if (!assertion.result)
+    return html2`<li class="asr waiting" id="${reference}" data-key="${reference}">
+			<div class="asr-row">
+				${icon(null)}<span class="aid">${assertion.assertionId}</span>
+				<div class="asr-text">
+					${assertion.check}
+					<div class="obs">No result yet.</div>
+				</div>
+			</div>
+		</li>`;
+  const open = assertion.result !== "passed";
+  return html2`<li
+		class="asr ${tone(assertion.result)}"
+		id="${reference}"
+		data-key="${reference}"
+		data-announce="${reference} ${words(assertion.result)}"
+	>
+		<details ${open ? html2`open` : ""} data-open-key="${reference}">
+			<summary class="asr-row">
+				${icon(assertion.result)}<span class="aid">${assertion.assertionId}</span>
+				<div class="asr-text">
+					${assertion.check}
+					${assertion.observed ? html2`<div class="obs">
+									Observed: <code>${assertion.observed}</code>${findingRefs(detail, reference)}
+								</div>` : ""}
+				</div>
+			</summary>
+			<div class="asr-body">
+				${assertion.reason ? html2`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ""}
+				<p class="muted small">${words(assertion.oracleKind)} · ${words(assertion.result)}</p>
+				${evidenceList(store, assertion.evidence)}
+			</div>
+		</details>
+	</li>`;
+}
+function testState(test, detail) {
+  if (test.outcome) return pill(test.outcome);
+  if (detail.state === "finalized") return pill("not_run");
+  return test.assertions.some((assertion) => assertion.result) ? pill("started", "running") : pill("pending", "waiting");
+}
+function testCard2(store, detail, test) {
+  const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
+  const recorded = test.assertions.filter((assertion) => assertion.result).length;
+  const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
+  return html2`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
+		<header class="test-h">
+			${testState(test, detail)}
+			<a class="id" href="#${test.testId}">${test.testId}</a>
+			<h3>${test.title}</h3>
+			<span class="count"
+				>${passed} of ${test.assertions.length}
+				passed${recorded < test.assertions.length ? ` \xB7 ${test.assertions.length - recorded} without result` : ""}</span
+			>
+		</header>
+		${test.reason ? html2`<p class="test-note">${test.reason}</p>` : ""}
+		${test.evidence.length ? html2`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ""}
+		<ul class="asrs">
+			${test.assertions.map((assertion) => assertionRow(store, detail, test, assertion))}
+		</ul>
+	</article>`;
+}
+function outcomeCounts2(detail) {
+  const values = {};
+  for (const test of detail.tests) if (test.outcome) values[test.outcome] = (values[test.outcome] ?? 0) + 1;
+  return values;
+}
+function strip(detail) {
+  const result = detail.result;
+  return html2`<div class="strip" data-region="summary">
+		<div><small>Completion</small><strong>${result ? words(result.completion) : "running"}</strong></div>
+		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : "\u2013"}</strong></div>
+		<div><small>Tests</small><strong>${counts(outcomeCounts2(detail))}</strong></div>
+		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
+	</div>`;
+}
+function findings(store, detail) {
+  if (!detail.findings.length) return html2`<p class="empty-line">No findings.</p>`;
+  const evidence = detail.tests.flatMap((test) => [
+    ...test.evidence,
+    ...test.assertions.flatMap((assertion) => assertion.evidence)
+  ]);
+  return html2`<div class="stack">
+		${detail.findings.map(
+    (finding) => html2`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
+					<header class="test-h">
+						${pill(finding.type)} <span class="id">${finding.id}</span>
+						<h3>${finding.title}</h3>
+						<span class="count">${pill(finding.severity)}</span>
+					</header>
+					<div class="test-b">
+						<div class="compare">
+							<div>
+								<small>Expected</small>
+								<p>${finding.expected}</p>
+							</div>
+							<div>
+								<small>Observed</small>
+								<p>${finding.observed}</p>
+							</div>
+						</div>
+						${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
+										<ol class="steps">
+											${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
+										</ol>` : ""}
+						<p class="muted small">
+							Assertions
+							${join4(
+      finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
+      ", "
+    )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
+						</p>
+						${evidenceChips(evidence.filter((item) => finding.evidenceIds.includes(item.id)))}
+					</div>
+				</article>`
+  )}
+	</div>`;
+}
+function newGaps(detail) {
+  if (!detail.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
+  return html2`<ul class="gaps">
+		${detail.newGaps.map(
+    (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
+					<div class="gap-h">
+						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
+						<span class="gap-refs muted"
+							>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
+						>
+					</div>
+					<p class="gap-q">${gap.question}</p>
+					<p class="muted">${gap.consequence}</p>
+				</li>`
+  )}
+	</ul>`;
+}
+function coverage(store, detail) {
+  const result = detail.result;
+  if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
+  const plan = planDetail(store, detail.planId, detail.revision).plan;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">ID</th>
+					<th scope="col">Requirement</th>
+					<th scope="col">Tests</th>
+					<th scope="col">Coverage</th>
+				</tr>
+			</thead>
+			<tbody>
+				${result.coverage.requirements.map(
+    (row) => html2`<tr>
+							<td class="mono">${row.requirementId}</td>
+							<td>
+								${plan.requirements.find((item) => item.id === row.requirementId)?.text ?? ""}
+								${row.reason ? html2`<div class="muted small">${row.reason}</div>` : ""}
+							</td>
+							<td class="mono">${row.testIds.join(", ") || "\u2013"}</td>
+							<td>${pill(row.status)}</td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+function cleanup(detail) {
+  const result = detail.result;
+  return html2`<dl class="facts">
+		<div>
+			<dt>Cleanup</dt>
+			<dd>
+				${result ? html2`${pill(result.cleanup.status)} ${result.cleanup.reason}` : html2`<span class="muted">Not finished.</span>`}
+			</dd>
+		</div>
+		<div>
+			<dt>Attempts</dt>
+			<dd>
+				<ul class="plain">
+					${detail.attempts.map(
+    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
+  )}
+				</ul>
+			</dd>
+		</div>
+		<div>
+			<dt>Browser session</dt>
+			<dd class="mono">${detail.browserSession}</dd>
+		</div>
+		<div>
+			<dt>Target</dt>
+			<dd class="mono">${detail.target}</dd>
+		</div>
+		${detail.request.retestOf ? html2`<div>
+						<dt>Retest of</dt>
+						<dd><a class="mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a></dd>
+					</div>` : ""}
+	</dl>`;
+}
+function inconclusiveList(detail) {
+  const rows = detail.tests.flatMap(
+    (test) => test.assertions.filter((assertion) => assertion.result === "inconclusive").map((assertion) => ({
+      reference: `${test.testId}.${assertion.assertionId}`,
+      reason: assertion.reason ?? ""
+    }))
+  );
+  if (!rows.length) return "";
+  return html2`<div class="field-group">
+		<p class="lab">Inconclusive · ${rows.length}</p>
+		<ul class="plist">
+			${rows.map(
+    (row) => html2`<li>
+						<a href="#${row.reference}"><code>${row.reference}</code></a> ${row.reason}
+					</li>`
+  )}
+		</ul>
+	</div>`;
+}
+function decisionPanel(context, detail, state) {
+  const result = detail.result;
+  if (!result)
+    return recordPanel(
+      "Decision",
+      html2`<p class="subj">${detail.runId} is in progress.</p>
+				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
+    );
+  if (result.acceptance === "not_required")
+    return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
+  const latest = result.latestDecision;
+  if (latest && !state)
+    return recordPanel(
+      "Decision",
+      html2`<p class="subj">
+					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail.runId}
+				</p>
+				<p class="help">
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
+				</p>
+				<blockquote>${latest.rationale}</blockquote>`
+    );
+  return verdictPanel(
+    context,
+    {
+      action: `/runs/${detail.runId}`,
+      subject: detail.runId,
+      question: `Accept ${detail.runId}?`,
+      sha256: result.sha256,
+      digestLabel: "Result",
+      approve: {
+        value: "accept",
+        label: `Accept ${detail.runId}`,
+        confirm: "Confirm acceptance",
+        summary: `Accept ${detail.runId} as the record of build ${detail.build}.`
+      },
+      reject: {
+        value: "reject",
+        label: "Reject",
+        confirm: "Confirm rejection",
+        summary: `Reject ${detail.runId}. Dependent plans stay blocked.`
+      },
+      staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
+      intro: inconclusiveList(detail)
+    },
+    state ?? emptyState()
+  );
+}
+function runBadge(detail) {
+  const acceptance = detail.result?.acceptance;
+  if (!acceptance) return pill("started", "in progress");
+  if (acceptance === "approved") return pill("approved", "accepted");
+  if (acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(acceptance);
+}
+function runPage(store, context, runId, state = null) {
+  const detail = runDetail(store, runId);
+  const sub = html2`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
+			>${detail.planId}@${detail.revision}</a
+		>
+		· build <code>${detail.build}</code> · started ${clock(detail.startedAt)} ·
+		${plural(detail.attempts.length, "attempt")}
+		${detail.result ? html2`· finished ${time(detail.result.finishedAt)} ago` : ""}`;
+  const badge = runBadge(detail);
+  const body = html2`${heading(runId, sub, html2`<div class="meta" data-region="state">${badge}</div>`)}
+		<div class="split">
+			<div class="main-col">
+				${strip(detail)}
+				<nav class="jump" aria-label="On this page">
+					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
+					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
+				</nav>
+				<section aria-labelledby="tests" data-region="tests">
+					<h2 id="tests">Tests <span class="n">${detail.tests.length}</span></h2>
+					<div class="stack">${detail.tests.map((test) => testCard2(store, detail, test))}</div>
+				</section>
+				<section aria-labelledby="findings" data-region="findings">
+					<h2 id="findings">Findings <span class="n">${detail.findings.length}</span></h2>
+					${findings(store, detail)}
+				</section>
+				<section aria-labelledby="new-gaps" data-region="new-gaps">
+					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
+					${newGaps(detail)}
+				</section>
+				<section aria-labelledby="coverage" data-region="coverage">
+					<h2 id="coverage">Coverage</h2>
+					${coverage(store, detail)}
+				</section>
+				<section aria-labelledby="cleanup" data-region="cleanup">
+					<h2 id="cleanup">Cleanup and attempts</h2>
+					${cleanup(detail)}
+				</section>
+			</div>
+			<aside class="side" aria-label="Decision">
+				${decisionPanel(context, detail, state)}
+				<p class="back"><a href="/">← Back to inbox</a></p>
+			</aside>
+		</div>`;
+  return { title: runId, section: "runs", subjects: [`run:${runId}`, "inbox"], body };
+}
+
+// plugin/src/ui/server.ts
+var id = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
+var routes = {
+  plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
+  latestPlan: new RegExp(`^/plans/(${id})$`),
+  gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
+  run: new RegExp(`^/runs/(${id})$`),
+  evidence: /^\/evidence\/([0-9A-Z]{26})$/,
+  font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
+};
+var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
+var inlineImages = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var themes = ["system", "light", "dark"];
+var maxForm = 256 * 1024;
+function directory(candidates, file) {
+  for (const candidate of candidates) {
+    const path = fileURLToPath(new URL(candidate, import.meta.url));
+    if (existsSync2(path + file)) return path;
+  }
+  throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
+}
+function assets() {
+  const files = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
+  const fonts = `${files}fonts/`;
+  const read = (name) => readFileSync2(files + name);
+  return {
+    "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
+    "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
+    "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
+    font: (name) => readFileSync2(`${fonts}${name}.woff2`)
+  };
+}
+function securityHeaders() {
+  return {
+    "Content-Security-Policy": contentSecurityPolicy,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "X-Frame-Options": "DENY"
+  };
+}
+function send(res, status, type, body, headers = {}) {
+  res.writeHead(status, { ...securityHeaders(), "Content-Type": type, "Cache-Control": "no-store", ...headers });
+  res.end(body);
+}
+function redirect(res, location, cookies = []) {
+  res.writeHead(303, { ...securityHeaders(), Location: location, "Set-Cookie": cookies });
+  res.end();
+}
+function parseCookies(header2) {
+  const cookies = {};
+  for (const part of (header2 ?? "").split(";")) {
+    const index2 = part.indexOf("=");
+    if (index2 < 0) continue;
+    try {
+      cookies[part.slice(0, index2).trim()] = decodeURIComponent(part.slice(index2 + 1).trim());
+    } catch {
+    }
+  }
+  return cookies;
+}
+function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
+  return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
+}
+function readForm(req) {
+  return new Promise((resolve3, reject) => {
+    const chunks = [];
+    let length = 0;
+    req.on("data", (chunk) => {
+      length += chunk.length;
+      if (length > maxForm) {
+        reject(new Error("The form is too large."));
+        req.destroy();
+      } else chunks.push(chunk);
+    });
+    req.on("end", () => resolve3(new URLSearchParams(Buffer.concat(chunks).toString("utf8"))));
+    req.on("error", reject);
+  });
+}
+function same2(a, b2) {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b2);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+function safeBack(value2) {
+  return value2 && value2.startsWith("/") && !value2.startsWith("//") ? value2 : "/";
+}
+function attachmentName(name) {
+  const plain = name.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+function notFoundError(message) {
+  return /^Unknown|has no revision|not found/i.test(message);
+}
+function plainMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+async function startUi(options2) {
+  const files = assets();
+  const store = openStore(options2.workspace);
+  const watch = openReadOnlyStore(options2.workspace);
+  const csrf = randomBytes2(24).toString("hex");
+  const clients = /* @__PURE__ */ new Set();
+  let port = 0;
+  const latestRowid = (source) => operationLog(source, { limit: 1 })[0]?.rowid ?? 0;
+  const dataVersion = () => Number(watch.db.prepare("PRAGMA data_version").get()?.data_version ?? 0);
+  let version2 = dataVersion();
+  let cursor = latestRowid(watch);
+  function deliver(client, change) {
+    if (change.rowid <= client.last) return;
+    const matched = client.subjects.has("*") ? change.subjects : change.subjects.filter((subject) => client.subjects.has(subject));
+    if (!matched.length && !client.subjects.has("*")) return;
+    client.last = change.rowid;
+    client.res.write(`id: ${change.rowid}
+data: ${matched.join(",") || "*"}
+
+`);
+  }
+  const poll = setInterval(() => {
+    const current = dataVersion();
+    if (current === version2) return;
+    version2 = current;
+    const changes = changesAfter(watch, cursor);
+    if (!changes.length) return;
+    cursor = changes[changes.length - 1].rowid;
+    for (const client of clients) for (const change of changes) deliver(client, change);
+  }, 250);
+  const heartbeat = setInterval(() => {
+    for (const client of clients) client.res.write(": heartbeat\n\n");
+  }, 15e3);
+  function context(request, path = request.url.pathname + request.url.search) {
+    const theme = themes.includes(request.cookies.checkmate_theme) ? request.cookies.checkmate_theme : "system";
+    return {
+      path,
+      csrf,
+      actor: request.cookies.checkmate_actor?.trim() || null,
+      theme,
+      toast: request.cookies.checkmate_toast || null,
+      inboxCount: inboxCount(inbox(store)),
+      cursor: latestRowid(store),
+      workspace: options2.workspace
+    };
+  }
+  function render(request, page, extraCookies = []) {
+    const shown = context(request);
+    const cookies = [...extraCookies];
+    if (shown.toast) cookies.push(cookie("checkmate_toast", "", 0));
+    send(request.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown, page).html, {
+      "Set-Cookie": cookies,
+      Vary: "Cookie"
+    });
+  }
+  function errorPage(request, status, title, message) {
+    render(request, {
+      title,
+      section: null,
+      subjects: ["inbox"],
+      status,
+      body: html2`${heading(title, message)}
+				<p class="actions">
+					<a class="btn primary" href="/">Back to inbox</a> <a class="btn" href="/plans">Plans</a>
+					<a class="btn" href="/runs">Runs</a>
+				</p>`
+    });
+  }
+  function nextItem(flash, actorCookie) {
+    const next = inboxItems(inbox(store))[0] ?? "/";
+    return { location: next, cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)] };
+  }
+  function serveEvidence(request, evidenceId) {
+    let evidence;
+    try {
+      evidence = evidenceBytes(store, evidenceId);
+    } catch {
+      return errorPage(request, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
+    }
+    const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === "text/plain";
+    send(request.res, 200, evidence.mediaType, evidence.bytes, {
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence.name)}`,
+      "Cache-Control": "private, max-age=31536000, immutable"
+    });
+  }
+  function events(request) {
+    const subjects = new Set(
+      (request.url.searchParams.get("subjects") ?? "").split(",").map((subject) => subject.trim()).filter(Boolean)
+    );
+    const header2 = request.req.headers["last-event-id"];
+    const after = Number(header2 ?? request.url.searchParams.get("after") ?? Number.NaN);
+    request.res.writeHead(200, {
+      ...securityHeaders(),
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive"
+    });
+    request.res.write("retry: 2000\n\n");
+    const client = { res: request.res, subjects, last: -1 };
+    if (Number.isInteger(after) && after >= 0) {
+      client.last = after;
+      for (const change of changesAfter(watch, after)) deliver(client, change);
+    } else client.last = cursor;
+    clients.add(client);
+    request.req.on("close", () => clients.delete(client));
+  }
+  function get(request) {
+    const { pathname, searchParams } = request.url;
+    const asset = files[pathname];
+    if (asset && typeof asset === "object")
+      return send(request.res, 200, asset.type, asset.body, { "Cache-Control": "no-cache" });
+    const font = routes.font.exec(pathname);
+    if (font)
+      return send(request.res, 200, "font/woff2", files.font(font[1]), {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      });
+    if (pathname === "/events") return events(request);
+    const evidence = routes.evidence.exec(pathname);
+    if (evidence) return serveEvidence(request, evidence[1]);
+    const shown = context(request);
+    if (pathname === "/") return render(request, inboxPage(store));
+    if (pathname === "/plans")
+      return render(
+        request,
+        plansPage(store, { q: searchParams.get("q") ?? "", show: searchParams.get("show") ?? "all" })
+      );
+    if (pathname === "/runs")
+      return render(
+        request,
+        runsPage(store, {
+          plan: searchParams.get("plan") ?? "",
+          build: searchParams.get("build") ?? "",
+          status: searchParams.get("status") ?? "all"
+        })
+      );
+    if (pathname === "/log")
+      return render(
+        request,
+        logPage(store, { subject: searchParams.get("subject") ?? "", actor: searchParams.get("actor") ?? "" })
+      );
+    if (pathname === "/actor") return render(request, actorPage(shown, safeBack(searchParams.get("back"))));
+    const latest = routes.latestPlan.exec(pathname);
+    if (latest) {
+      const detail = planDetail(store, latest[1]);
+      return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`);
+    }
+    const plan = routes.plan.exec(pathname);
+    if (plan) return render(request, planPage(store, shown, plan[1], Number(plan[2])));
+    const gap = routes.gap.exec(pathname);
+    if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]));
+    const run2 = routes.run.exec(pathname);
+    if (run2) return render(request, runPage(store, shown, run2[1]));
+    return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from the inbox.`);
+  }
+  function actorPage(shown, back) {
+    return {
+      title: "Your name",
+      section: null,
+      subjects: ["inbox"],
+      body: html2`${heading("Your name", "Checkmate records this name with each decision you make in this browser.")}
+				<form method="post" action="/actor" class="panel narrow">
+					<input type="hidden" name="csrf" value="${csrf}" />
+					<input type="hidden" name="back" value="${back}" />
+					<label class="lab" for="actor-name">Name</label>
+					<input id="actor-name" name="actor" required autocomplete="name" value="${shown.actor ?? ""}" />
+					<div class="btns">
+						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
+					</div>
+				</form>`
+    };
+  }
+  function actorFrom(request, form) {
+    const typed = form.get("actor")?.trim() ?? "";
+    const actor = request.cookies.checkmate_actor?.trim() || typed;
+    return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
+  }
+  function values(form, names) {
+    return Object.fromEntries(names.map((name) => [name, form.get(name) ?? ""]));
+  }
+  function refuse(request, page, cookies = []) {
+    const shown = page();
+    render(request, { ...shown, status: shown.status ?? 422 }, cookies);
+  }
+  function answer(request, form, planId, revision, gapId) {
+    const state = {
+      ...emptyState(),
+      values: values(form, ["kind", "value", "source", "rationale", "actor"])
+    };
+    const { actor, cookies } = actorFrom(request, form);
+    const kind = state.values.kind;
+    const page = () => gapPage(store, context(request), planId, revision, gapId, state);
+    const check = (condition, message) => {
+      if (!condition) state.error ??= message;
+    };
+    check(Boolean(actor), "Enter your name. Checkmate records it with your answer.");
+    check(["clarify", "accept_assumption", "defer"].includes(kind), "Choose Clarify, Accept assumption, or Defer.");
+    check(Boolean(state.values.value.trim()), "Write the answer.");
+    check(
+      kind !== "clarify" || Boolean(state.values.source.trim()),
+      "A clarification needs a source. Name where the answer comes from."
+    );
+    check(Boolean(state.values.rationale.trim()), "Write a rationale. Checkmate records it with your answer.");
+    if (state.error) return refuse(request, page, cookies);
+    try {
+      answerGap(store, actor, {
+        planId,
+        gapId,
+        kind,
+        value: state.values.value.trim(),
+        source: kind === "clarify" ? state.values.source.trim() : null,
+        rationale: state.values.rationale.trim(),
+        expectSha256: form.get("sha") ?? ""
+      });
+    } catch (error) {
+      const latest = planDetail(store, planId);
+      if (latest.sha256 !== form.get("sha"))
+        state.stale = html2`<strong>${planId} has a newer revision (${latest.latestRevision}).</strong> Your
+					answer was not recorded. Your text is kept below.
+					<a href="/plans/${planId}@${latest.latestRevision}/gaps/${gapId}"
+						>Review revision ${latest.latestRevision}</a
+					>, then send again.`;
+      else state.error = plainMessage(error);
+      return refuse(request, page, cookies);
+    }
+    const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies);
+    redirect(request.res, next.location, next.cookies);
+  }
+  function verdictState(form) {
+    return { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
+  }
+  function decide(request, form, choices, page, record, staleCheck) {
+    const state = verdictState(form);
+    const { actor, cookies } = actorFrom(request, form);
+    const view = () => page(state);
+    if (form.get("back")) return refuse(request, () => ({ ...view(), status: 200 }), cookies);
+    if (!choices.includes(state.values.verdict)) state.error = "Choose a decision.";
+    else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
+    else if (!state.values.rationale.trim())
+      state.error = "Write a rationale. Checkmate records it with your decision.";
+    if (state.error) return refuse(request, view, cookies);
+    if (form.get("confirmed") !== "1") {
+      state.confirm = true;
+      return refuse(request, () => ({ ...view(), status: 200 }), cookies);
+    }
+    const sha = form.get("sha") ?? "";
+    let flash;
+    try {
+      flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha);
+    } catch (error) {
+      state.stale = staleCheck(sha);
+      if (!state.stale) state.error = plainMessage(error);
+      return refuse(request, view, cookies);
+    }
+    const next = nextItem(flash, cookies);
+    redirect(request.res, next.location, next.cookies);
+  }
+  function decidePlan2(request, form, planId, revision) {
+    const subject = `${planId}@${revision}`;
+    decide(
+      request,
+      form,
+      ["approve", "reject"],
+      (state) => planPage(store, context(request), planId, revision, state),
+      (actor, verdict, rationale, sha) => {
+        const input = { reference: subject, rationale, expectSha256: sha };
+        if (verdict === "approve") approvePlan(store, actor, input);
+        else rejectPlan(store, actor, input);
+        return `${verdict === "approve" ? "Approved" : "Rejected"} ${subject}`;
+      },
+      (sha) => {
+        const detail = planDetail(store, planId, revision);
+        if (detail.sha256 === sha) return null;
+        return html2`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
+					text is kept below. Review the plan, then send again.`;
+      }
+    );
+  }
+  function decideRun(request, form, runId) {
+    decide(
+      request,
+      form,
+      ["accept", "reject"],
+      (state) => runPage(store, context(request), runId, state),
+      (actor, verdict, rationale, sha) => {
+        const input = { runId, rationale, expectSha256: sha };
+        if (verdict === "accept") acceptResult(store, actor, input);
+        else rejectResult(store, actor, input);
+        return `${verdict === "accept" ? "Accepted" : "Rejected"} ${runId}`;
+      },
+      (sha) => {
+        const result = runDetail(store, runId).result;
+        if (result?.sha256 === sha) return null;
+        return html2`<strong>${runId} has a new result.</strong> Your decision was not recorded. Your text is
+					kept below. Review the result, then send again.`;
+      }
+    );
+  }
+  async function post(request) {
+    const origin = request.req.headers.origin;
+    if (origin !== void 0 && origin !== `http://${request.req.headers.host}`)
+      return send(
+        request.res,
+        403,
+        "text/plain; charset=utf-8",
+        "Refused: the request comes from another origin."
+      );
+    const form = await readForm(request.req);
+    if (!same2(form.get("csrf") ?? "", csrf))
+      return errorPage(
+        request,
+        403,
+        "Form expired",
+        "This form came from an earlier start of the UI. Load the page again, then send the form again."
+      );
+    const { pathname } = request.url;
+    if (pathname === "/theme") {
+      const theme = form.get("theme");
+      return redirect(request.res, safeBack(form.get("back")), [
+        cookie("checkmate_theme", themes.includes(theme) ? theme : "system")
+      ]);
+    }
+    if (pathname === "/actor") {
+      const name = form.get("actor")?.trim() ?? "";
+      if (!name)
+        return errorPage(request, 422, "Your name", "Enter a name. Checkmate records it with each decision.");
+      return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name)]);
+    }
+    const gap = routes.gap.exec(pathname);
+    if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3]);
+    const plan = routes.plan.exec(pathname);
+    if (plan) return decidePlan2(request, form, plan[1], Number(plan[2]));
+    const run2 = routes.run.exec(pathname);
+    if (run2) return decideRun(request, form, run2[1]);
+    return errorPage(request, 404, "Page not found", `Checkmate has no form at ${pathname}.`);
+  }
+  async function handle(req, res) {
+    const host = req.headers.host;
+    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)
+      return send(
+        res,
+        421,
+        "text/plain; charset=utf-8",
+        "Refused: unknown host. Open the URL that checkmate ui printed."
+      );
+    const request = {
+      req,
+      res,
+      url: new URL(req.url ?? "/", `http://${host}`),
+      cookies: parseCookies(req.headers.cookie)
+    };
+    try {
+      if (req.method === "GET" || req.method === "HEAD") return get(request);
+      if (req.method === "POST") return await post(request);
+      send(res, 405, "text/plain; charset=utf-8", "Method not allowed.", { Allow: "GET, POST" });
+    } catch (error) {
+      const message = plainMessage(error);
+      if (res.headersSent) return res.end();
+      if (notFoundError(message)) return errorPage(request, 404, "Not found", message);
+      errorPage(request, 500, "Something went wrong", `Checkmate could not finish the request: ${message}`);
+    }
+  }
+  const server = createServer((req, res) => {
+    void handle(req, res);
+  });
+  await new Promise((resolve3, reject) => {
+    server.once("error", reject);
+    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve3());
+  });
+  const address = server.address();
+  port = typeof address === "object" && address ? address.port : 0;
+  return {
+    url: `http://127.0.0.1:${port}/`,
+    close: async () => {
+      clearInterval(poll);
+      clearInterval(heartbeat);
+      for (const client of clients) client.res.end();
+      clients.clear();
+      await new Promise((resolve3) => {
+        server.close(() => resolve3());
+        server.closeAllConnections();
+      });
+      closeStore(watch);
+      closeStore(store);
+    }
+  };
+}
+
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync2, writeFileSync } from "node:fs";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve2 } from "node:path";
 var testFields = [
   "title",
@@ -7437,7 +9544,7 @@ function integer(args, name) {
   requireCondition(/^[0-9]+$/.test(text), `Invalid --${name}: ${text}. Use a whole number.`);
   return Number(text);
 }
-function short(sha256) {
+function short2(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
 var commands = {
@@ -7477,7 +9584,7 @@ var commands = {
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => saveTarget(store, actor, { targetId: value(args, "targetId"), profile: stdin() }),
-    print: (reply) => ({ facts: { sha256: short(reply.data.sha256), recorded: reply.data.recorded } })
+    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), recorded: reply.data.recorded } })
   },
   "target show": {
     positionals: ["reference"],
@@ -7486,7 +9593,7 @@ var commands = {
       const profile = reply.data.profile;
       const approvals = reply.data.approvals;
       return {
-        facts: { sha256: short(reply.data.sha256), ready: profile.readyForLiveExecution },
+        facts: { sha256: short2(reply.data.sha256), ready: profile.readyForLiveExecution },
         lines: [
           ["baseUrl", profile.baseUrl],
           ["environment", profile.environment],
@@ -7532,7 +9639,7 @@ var commands = {
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => savePlan(store, actor, { planId: value(args, "planId"), candidate: stdin() }),
-    print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
   },
   "plan show": {
     positionals: ["reference"],
@@ -7597,7 +9704,7 @@ var commands = {
     print: (reply) => {
       const data = reply.data;
       return {
-        facts: { sha256: short(data.sha256), decisions: data.decisions.length },
+        facts: { sha256: short2(data.sha256), decisions: data.decisions.length },
         lines: [
           ...data.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
           ...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
@@ -7616,7 +9723,7 @@ var commands = {
       delta: stdin(),
       expectSha256: value(args, "expect-sha")
     }),
-    print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
   },
   "plan approve": verdictCommand(
     "reference",
@@ -7637,7 +9744,7 @@ var commands = {
       partial: value(args, "partial"),
       retestOf: value(args, "retest-of") ?? null
     }).reply,
-    print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
   },
   "run begin": {
     positionals: ["runId", "reference"],
@@ -7686,7 +9793,7 @@ var commands = {
     }),
     print: (reply) => ({
       facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
-      lines: reply.data.evidenceIds.map((id) => [id, "evidence"])
+      lines: reply.data.evidenceIds.map((id2) => [id2, "evidence"])
     })
   },
   "run close": {
@@ -7731,7 +9838,7 @@ var commands = {
       cleanupReason: value(args, "cleanup-reason")
     }),
     print: (reply) => ({
-      facts: { coverage: reply.data.coverage, sha256: short(reply.data.sha256) },
+      facts: { coverage: reply.data.coverage, sha256: short2(reply.data.sha256) },
       lines: Object.entries(reply.data.counts)
     })
   },
@@ -7753,7 +9860,7 @@ var commands = {
           evidenceDirectory: data.evidenceDirectory
         },
         lines: [
-          ...data.closed.map((id) => [id, "error"]),
+          ...data.closed.map((id2) => [id2, "error"]),
           ...data.tests.flatMap((test) => [
             [test.testId, "unclosed", test.warning],
             ...test.assertions.map((assertion) => [
@@ -7772,10 +9879,10 @@ var commands = {
     run: (store, args) => {
       const detail = runDetail(store, value(args, "runId"));
       const selected = list(args, "tests");
-      for (const id of selected ?? [])
+      for (const id2 of selected ?? [])
         requireCondition(
-          detail.tests.some((test) => test.testId === id),
-          `Test ${id} is not selected in run ${detail.runId}`
+          detail.tests.some((test) => test.testId === id2),
+          `Test ${id2} is not selected in run ${detail.runId}`
         );
       const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId));
       return completed(detail.runId, { ...detail, tests });
@@ -7922,13 +10029,13 @@ function verdictCommand(positional, decide) {
     required: ["rationale"],
     write: true,
     run: (store, args, { actor }) => decide(store, actor, value(args, positional), value(args, "rationale"), value(args, "expect-sha")),
-    print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short(reply.data.sha256) } })
+    print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short2(reply.data.sha256) } })
   };
 }
 function showPlan(store, args) {
-  const { id, revision } = revisionReference(value(args, "reference"), "plan reference");
-  const detail = planDetail(store, id, revision);
-  const subject = `${id}@${detail.revision}`;
+  const { id: id2, revision } = revisionReference(value(args, "reference"), "plan reference");
+  const detail = planDetail(store, id2, revision);
+  const subject = `${id2}@${detail.revision}`;
   const tests = list(args, "tests");
   const fields = list(args, "fields");
   const gaps = requireChoice(value(args, "gaps") ?? "all", ["open", "all"], "gaps filter (--gaps)");
@@ -7956,7 +10063,7 @@ function showPlan(store, args) {
     ])
   );
   return completed(subject, {
-    planId: id,
+    planId: id2,
     revision: detail.revision,
     sha256: detail.sha256,
     fields: fields ?? ["readiness", "capability", "title"],
@@ -7972,12 +10079,12 @@ function testLines(test) {
   ];
 }
 function printPlan(reply) {
-  const facts = { sha256: short(reply.data.sha256) };
+  const facts2 = { sha256: short2(reply.data.sha256) };
   if (reply.data.fields) {
     const fields = reply.data.fields;
     const tests = reply.data.tests;
     return {
-      facts,
+      facts: facts2,
       lines: tests.flatMap((test) => [
         [test.id, ...fields.filter((field) => field !== "assertions").map((field) => test[field])],
         ...fields.includes("assertions") ? test.assertions.map((assertion) => [
@@ -7990,15 +10097,15 @@ function printPlan(reply) {
   }
   const detail = reply.data;
   const { plan } = detail;
-  const coverage = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
+  const coverage2 = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
   return {
     facts: {
-      ...facts,
+      ...facts2,
       approval: detail.approval.state,
       ...detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}
     },
     lines: [
-      ...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
+      ...plan.requirements.map((requirement) => [requirement.id, coverage2.get(requirement.id), requirement.text]),
       ...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
       ...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
       ...plan.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
@@ -8030,9 +10137,9 @@ function cell(field) {
   return String(field).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 function compact(reply, printed) {
-  const facts = Object.entries(printed.facts ?? {}).filter(([, field]) => field !== void 0).map(([key, field]) => `${key}=${cell(field)}`);
+  const facts2 = Object.entries(printed.facts ?? {}).filter(([, field]) => field !== void 0).map(([key, field]) => `${key}=${cell(field)}`);
   return [
-    [reply.status, reply.subject, ...facts].join(" "),
+    [reply.status, reply.subject, ...facts2].join(" "),
     ...(printed.lines ?? []).map((line) => line.map(cell).join("	")),
     ...reply.reasons.map((reason) => `reason: ${cell(reason)}`)
   ].join("\n");
@@ -8044,10 +10151,10 @@ function format(reply, json, print) {
 }
 var globalFlags = { workspace: "value", json: "switch" };
 function commandName(argv) {
-  const words = argv.slice(0, 2).filter((word) => !word.startsWith("--"));
-  if (words.length === 2 && commands[words.join(" ")]) return words.join(" ");
-  if (commands[words[0]]) return words[0];
-  throw new Error(`Unknown command: ${words.join(" ") || "(none)"}. Run checkmate --help.`);
+  const words2 = argv.slice(0, 2).filter((word) => !word.startsWith("--"));
+  if (words2.length === 2 && commands[words2.join(" ")]) return words2.join(" ");
+  if (commands[words2[0]]) return words2[0];
+  throw new Error(`Unknown command: ${words2.join(" ") || "(none)"}. Run checkmate --help.`);
 }
 function parse(name, tokens) {
   const command = commands[name];
@@ -8101,14 +10208,16 @@ function usage(name) {
     ...command.stdin ? ["< payload.json"] : []
   ].join(" ");
 }
+var uiUsage = "Usage: checkmate ui [--port <value>]";
 function help() {
   return [
     ...Object.keys(commands).map((name) => usage(name).replace("Usage: ", "")),
+    uiUsage.replace("Usage: ", ""),
     "Options for every command: --workspace <path>, --json"
   ].join("\n");
 }
 function version() {
-  return JSON.parse(readFileSync2(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync3(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
   requireCondition(text.trim().length > 0, "Missing JSON payload on standard input");
@@ -8148,11 +10257,53 @@ function run(argv, io) {
     if (store) closeStore(store);
   }
 }
-function main(argv) {
+function uiOptions(tokens, cwd) {
+  const values = {};
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === "--json") continue;
+    const flag = token.startsWith("--") ? token.slice(2) : "";
+    if (!["workspace", "port"].includes(flag)) throw new Error(`Unknown argument ${token} for ui. ${uiUsage}`);
+    const next = tokens[++i];
+    if (next === void 0 || next.startsWith("--")) throw new Error(`Missing value for ${token}`);
+    if (flag in values) throw new Error(`Option ${token} is given twice`);
+    values[flag] = next;
+  }
+  const port = values.port === void 0 ? void 0 : Number(values.port);
+  requireCondition(
+    port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
+    `Invalid --port: ${values.port}. Use 0 to 65535.`
+  );
+  return { workspace: resolve2(cwd, values.workspace ?? "."), port };
+}
+async function serveUi(tokens) {
+  const json = tokens.includes("--json");
+  let options2;
+  try {
+    options2 = uiOptions(tokens, process.cwd());
+  } catch (error) {
+    const reply = { status: "invalid_request", subject: "ui", reasons: [error.message], data: {} };
+    process.stdout.write(format(reply, json) + "\n");
+    process.exitCode = 1;
+    return;
+  }
+  const ui = await startUi(options2);
+  process.stdout.write(
+    format(completed("ui", { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + "\n"
+  );
+  const stop = async () => {
+    await ui.close();
+    process.exit(0);
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+}
+async function main(argv) {
+  if (argv[0] === "ui") return serveUi(argv.slice(1));
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync2(0, "utf8")
+    stdin: () => readFileSync3(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

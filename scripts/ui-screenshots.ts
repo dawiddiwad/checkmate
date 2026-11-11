@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
-import { startUi } from '../cli/src/ui/server.ts'
+import { startUi } from '../plugin/src/ui/server.ts'
 import { human, seedDemo } from './ui-demo.ts'
 
 const output = process.argv[2]

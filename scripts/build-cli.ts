@@ -14,8 +14,6 @@ await build({
 	legalComments: 'none',
 	banner: { js: '#!/usr/bin/env node' },
 })
-await rm(`${root}cli/dist/assets`, { recursive: true, force: true })
-await cp(`${root}cli/src/ui/assets`, `${root}cli/dist/assets`, { recursive: true })
 await rm(`${root}cli/plugin`, { recursive: true, force: true })
 await cp(`${root}plugin`, `${root}cli/plugin`, { recursive: true })
-console.log('Built cli/dist/checkmate.js, copied the UI assets, and copied plugin/ to cli/plugin/.')
+console.log('Built cli/dist/checkmate.js and copied plugin/ to cli/plugin/.')

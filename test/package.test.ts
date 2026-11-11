@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { directory, root } from './support.ts'
@@ -9,7 +10,7 @@ function json(path: string) {
 	return JSON.parse(readFileSync(path, 'utf8'))
 }
 
-test('the npm package runs from node_modules and delegate loads the bundled plugin', (t) => {
+test('the npm package runs from node_modules, serves the UI, and delegate loads the bundled plugin', async (t) => {
 	t.after(() => {
 		rmSync(join(root, 'cli/dist'), { recursive: true, force: true })
 		rmSync(join(root, 'cli/plugin'), { recursive: true, force: true })
@@ -66,4 +67,14 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		'needs_decision checkout-local\nreason: No browser.'
 	)
 	assert.equal(readFileSync(join(project, 'plugin-dir.txt'), 'utf8'), realpathSync(join(installed, 'plugin')))
+	const ui = spawn(join(project, 'node_modules/.bin/checkmate'), ['ui'], { cwd: project, env })
+	try {
+		const [first] = (await once(ui.stdout, 'data')) as [Buffer]
+		const url = /^completed ui url=(\S+)$/m.exec(first.toString())?.[1]
+		assert(url, first.toString())
+		for (const path of ['/', '/assets/style.css', '/assets/fonts/space-grotesk.woff2'])
+			assert.equal((await fetch(new URL(path, url))).status, 200, path)
+	} finally {
+		ui.kill('SIGTERM')
+	}
 })

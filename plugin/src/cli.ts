@@ -28,6 +28,7 @@ import {
 } from './runs.ts'
 import { evidenceBytes, operationLog, planDetail, planList, runDetail, runList } from './views.ts'
 import { exportPlan, exportRun } from './render.ts'
+import { startUi } from './ui/server.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
@@ -819,9 +820,12 @@ function usage(name: string) {
 	].join(' ')
 }
 
+const uiUsage = 'Usage: checkmate ui [--port <value>]'
+
 function help() {
 	return [
 		...Object.keys(commands).map((name) => usage(name).replace('Usage: ', '')),
+		uiUsage.replace('Usage: ', ''),
 		'Options for every command: --workspace <path>, --json',
 	].join('\n')
 }
@@ -870,7 +874,51 @@ export function run(argv: string[], io: Io): Outcome {
 	}
 }
 
-export function main(argv: string[]) {
+function uiOptions(tokens: string[], cwd: string) {
+	const values: Record<string, string> = {}
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]
+		if (token === '--json') continue
+		const flag = token.startsWith('--') ? token.slice(2) : ''
+		if (!['workspace', 'port'].includes(flag)) throw new Error(`Unknown argument ${token} for ui. ${uiUsage}`)
+		const next = tokens[++i]
+		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
+		if (flag in values) throw new Error(`Option ${token} is given twice`)
+		values[flag] = next
+	}
+	const port = values.port === undefined ? undefined : Number(values.port)
+	requireCondition(
+		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
+		`Invalid --port: ${values.port}. Use 0 to 65535.`
+	)
+	return { workspace: resolve(cwd, values.workspace ?? '.'), port }
+}
+
+export async function serveUi(tokens: string[]) {
+	const json = tokens.includes('--json')
+	let options: ReturnType<typeof uiOptions>
+	try {
+		options = uiOptions(tokens, process.cwd())
+	} catch (error) {
+		const reply: Reply = { status: 'invalid_request', subject: 'ui', reasons: [(error as Error).message], data: {} }
+		process.stdout.write(format(reply, json) + '\n')
+		process.exitCode = 1
+		return
+	}
+	const ui = await startUi(options)
+	process.stdout.write(
+		format(completed('ui', { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + '\n'
+	)
+	const stop = async () => {
+		await ui.close()
+		process.exit(0)
+	}
+	process.once('SIGINT', stop)
+	process.once('SIGTERM', stop)
+}
+
+export async function main(argv: string[]) {
+	if (argv[0] === 'ui') return serveUi(argv.slice(1))
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,

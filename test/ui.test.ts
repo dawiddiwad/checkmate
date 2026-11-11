@@ -1,12 +1,12 @@
 import type { TestContext } from 'node:test'
 import type { IncomingHttpHeaders } from 'node:http'
-import type { Ui } from '../cli/src/ui/server.ts'
+import type { Ui } from '../plugin/src/ui/server.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { request } from 'node:http'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { startUi } from '../cli/src/ui/server.ts'
+import { startUi } from '../plugin/src/ui/server.ts'
 import { agent, human, seedDemo } from '../scripts/ui-demo.ts'
 import {
 	answerGap,

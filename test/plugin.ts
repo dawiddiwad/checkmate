@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,8 +42,18 @@ try {
 	await mkdir(workspace)
 	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
-	for (const name of ['setup', 'plan', 'revise', 'execute', 'report'])
+	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'ui'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
+	const ui = spawn(process.execPath, [bundle, 'ui', '--workspace', workspace], { cwd: directory })
+	try {
+		const [first] = (await once(ui.stdout, 'data')) as [Buffer]
+		const url = /^completed ui url=(\S+)$/m.exec(first.toString())?.[1]
+		assert(url, first.toString())
+		for (const path of ['/', '/assets/style.css', '/assets/client.js', '/assets/fonts/inter.woff2'])
+			assert.equal((await fetch(new URL(path, url))).status, 200, path)
+	} finally {
+		ui.kill('SIGTERM')
+	}
 	console.log('The copied plugin bundle runs without npm install, a build step, or development dependencies.')
 } finally {
 	await rm(directory, { recursive: true, force: true })

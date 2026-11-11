@@ -1,15 +1,15 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Store } from '../../../plugin/src/store.ts'
+import type { Store } from '../store.ts'
 import type { Context, Page, Theme } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { closeStore, openReadOnlyStore, openStore } from '../../../plugin/src/store.ts'
-import { answerGap, approvePlan, rejectPlan } from '../../../plugin/src/plans.ts'
-import { acceptResult, rejectResult } from '../../../plugin/src/runs.ts'
-import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../../../plugin/src/views.ts'
+import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
+import { answerGap, approvePlan, rejectPlan } from '../plans.ts'
+import { acceptResult, rejectResult } from '../runs.ts'
+import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
@@ -48,8 +48,8 @@ function directory(candidates: string[], file: string) {
 }
 
 function assets() {
-	const fonts = directory(['../../fonts/', '../fonts/'], 'inter.woff2')
-	const files = directory(['./assets/'], 'style.css')
+	const files = directory(['./assets/', '../src/ui/assets/', '../plugin/src/ui/assets/'], 'style.css')
+	const fonts = `${files}fonts/`
 	const read = (name: string) => readFileSync(files + name)
 	return {
 		'/assets/style.css': { type: 'text/css; charset=utf-8', body: read('style.css') },

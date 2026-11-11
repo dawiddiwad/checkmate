@@ -40,7 +40,7 @@ export default [
 		},
 	},
 	{
-		files: ['cli/src/ui/assets/*.js'],
+		files: ['plugin/src/ui/assets/*.js'],
 		languageOptions: {
 			globals: Object.fromEntries(
 				['document', 'location', 'EventSource', 'DOMParser', 'FormData', 'URLSearchParams', 'CSS'].map(

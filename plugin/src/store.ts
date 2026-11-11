@@ -1,7 +1,7 @@
 import type { SQLInputValue } from 'node:sqlite'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Status =
@@ -227,6 +227,14 @@ export function completed(subject: string, data: Record<string, unknown> = {}): 
 
 export function databasePath(workspace: string) {
 	return join(workspace, '.checkmate', 'checkmate.db')
+}
+
+export function removeTemporaryDirectory(store: Store, name: string) {
+	const temporary = join(store.workspace, '.checkmate', 'tmp')
+	rmSync(join(temporary, name), { recursive: true, force: true })
+	try {
+		rmdirSync(temporary)
+	} catch {}
 }
 
 export function openStore(workspace: string): Store {

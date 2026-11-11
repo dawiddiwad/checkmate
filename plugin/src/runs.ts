@@ -1,6 +1,6 @@
 import type { Gap, Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
-import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
+import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, ulid, write } from './store.ts'
 import type { AssertionResult, ResultTest, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -16,7 +16,7 @@ import {
 } from './contracts.ts'
 import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
 import { targetRevision } from './targets.ts'
-import { mkdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -602,16 +602,9 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 	})
 }
 
-function removeEmptyDirectory(path: string) {
-	try {
-		rmdirSync(path)
-	} catch {}
-}
-
 export function finishRun(store: Store, actor: string | undefined, input: FinishInput) {
 	const reply = finish(store, actor, input)
-	removeEmptyDirectory(join(store.workspace, evidenceDirectory(input.runId)))
-	removeEmptyDirectory(join(store.workspace, '.checkmate/tmp'))
+	removeTemporaryDirectory(store, input.runId)
 	return reply
 }
 

@@ -8,7 +8,7 @@ var __export = (target, all2) => {
 // plugin/src/store.ts
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 var contractVersion = "toolkit-2";
 var schemaVersion = "2";
@@ -219,6 +219,14 @@ function completed(subject, data = {}) {
 }
 function databasePath(workspace) {
   return join(workspace, ".checkmate", "checkmate.db");
+}
+function removeTemporaryDirectory(store, name) {
+  const temporary = join(store.workspace, ".checkmate", "tmp");
+  rmSync(join(temporary, name), { recursive: true, force: true });
+  try {
+    rmdirSync(temporary);
+  } catch {
+  }
 }
 function openStore(workspace) {
   const path = databasePath(workspace);
@@ -5928,6 +5936,11 @@ function showTargetRequest(store, targetId) {
   return completed(targetId, { request: targetRequest(store, targetId) });
 }
 function saveTarget(store, actor, input) {
+  const reply = save(store, actor, input);
+  removeTemporaryDirectory(store, `setup-${input.targetId}`);
+  return reply;
+}
+function save(store, actor, input) {
   return write(store, { actor, command: "target save", subject: input.targetId, input }, (operationId) => {
     const request = targetRequest(store, input.targetId);
     const profile = profileCheck(input.profile);
@@ -6675,7 +6688,7 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync2, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync, realpathSync, rmSync as rmSync2, statSync } from "node:fs";
 import { basename, extname, isAbsolute, join as join2, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes = 32 * 1024 * 1024;
@@ -6923,7 +6936,7 @@ function evidenceFiles(store, runId, name, specs = []) {
   return files;
 }
 function removeFiles(files) {
-  for (const file of files) if (file.path) rmSync(file.path, { force: true });
+  for (const file of files) if (file.path) rmSync2(file.path, { force: true });
 }
 function optionalText(value2, name) {
   return value2 === void 0 ? null : requireText(value2, name);
@@ -7149,16 +7162,9 @@ function recordGap(store, actor, input) {
     };
   });
 }
-function removeEmptyDirectory(path) {
-  try {
-    rmdirSync(path);
-  } catch {
-  }
-}
 function finishRun(store, actor, input) {
   const reply = finish(store, actor, input);
-  removeEmptyDirectory(join2(store.workspace, evidenceDirectory(input.runId)));
-  removeEmptyDirectory(join2(store.workspace, ".checkmate/tmp"));
+  removeTemporaryDirectory(store, input.runId);
   return reply;
 }
 function finish(store, actor, input) {
@@ -9898,7 +9904,7 @@ function editPage(store, context, planId, revision, state = null) {
   const frozen = frozenRevision(store, planId, revision);
   const needsApproval = detail.approval.policy !== "none";
   const next = revision + 1;
-  const save = frozen ? `Save as ${planId}@${next}` : "Save changes";
+  const save2 = frozen ? `Save as ${planId}@${next}` : "Save changes";
   const why = frozen === "run" ? `A run uses ${subject}.` : `${subject} is approved.`;
   const notice = frozen ? banner(
     "warn",
@@ -9922,7 +9928,7 @@ function editPage(store, context, planId, revision, state = null) {
   const messages2 = html2`${shown.stale ? banner("warn", shown.stale) : ""}
 	${shown.error ? html2`<p class="form-error" role="alert">${shown.error}</p>` : ""}`;
   const buttons = (mode) => html2`<div class="btns">
-				<button class="btn primary">${save}</button>
+				<button class="btn primary">${save2}</button>
 				<a class="btn" href="/plans/${subject}">Cancel</a>
 			</div>
 			${actorLine(context, shown, path, mode)}`;

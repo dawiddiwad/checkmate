@@ -62,7 +62,7 @@ The code validates structure and relationships. It cannot prove that an observat
 
 - `run begin` refuses a run ID that exists.
 - `run check` needs a started run, a selected and open test, a known assertion without a result, and passed local prerequisites. A result needs the fields in [Evidence](EVIDENCE.md#assertion-results).
-- Evidence is one non-empty text on standard input, or regular files inside `.checkmate/tmp/<runId>/`, at most 32 MiB each, and listed once. Checkmate deletes each file after the commit.
+- Evidence is one non-empty text on standard input, or regular files inside `.checkmate/tmp/<runId>/`, at most 32 MiB each, and listed once. Checkmate deletes each file after the commit. `run finish` removes `.checkmate/tmp/<runId>/` with its contents.
 - `run close` derives the outcome from the assertion results, or records `blocked`, `not_run`, or `error` with a reason. A test with assertion results can only be closed as `error` by hand.
 - `run finding` checks that a defect names only failed assertions, that the requirements belong to the named tests, and that the evidence belongs to the named assertions or their tests.
 - `run gap` checks that a runtime gap is open, has a new ID, and names known requirements and tests.

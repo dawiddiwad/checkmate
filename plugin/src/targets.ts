@@ -1,6 +1,6 @@
 import type { Profile } from './types.ts'
 import type { Store } from './store.ts'
-import { canonical, completed, digest, execute, one, write } from './store.ts'
+import { canonical, completed, digest, execute, one, removeTemporaryDirectory, write } from './store.ts'
 import {
 	profileCheck,
 	requireChoice,
@@ -105,6 +105,12 @@ export function showTargetRequest(store: Store, targetId: string) {
 }
 
 export function saveTarget(store: Store, actor: string | undefined, input: { targetId: string; profile: unknown }) {
+	const reply = save(store, actor, input)
+	removeTemporaryDirectory(store, `setup-${input.targetId}`)
+	return reply
+}
+
+function save(store: Store, actor: string | undefined, input: { targetId: string; profile: unknown }) {
 	return write(store, { actor, command: 'target save', subject: input.targetId, input }, (operationId) => {
 		const request = targetRequest(store, input.targetId)
 		const profile = profileCheck(input.profile)

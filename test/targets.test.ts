@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { openTarget, saveTarget, showTarget, showTargetRequest, targetRevision } from '../plugin/src/targets.ts'
 import { actor, cli, profile, store, target } from './support.ts'
 
@@ -57,6 +59,16 @@ test('target save checks the profile against the setup request and the revision 
 	assert.equal(second.subject, 'checkout-local@2')
 	assert.equal(targetRevision(opened, 'checkout-local').revision, 2)
 	assert.equal(targetRevision(opened, 'checkout-local', 1).profile.readyForLiveExecution, false)
+})
+
+test('target save removes the setup output directory of the target', (t) => {
+	const opened = store(t)
+	const tmp = join(opened.workspace, '.checkmate', 'tmp')
+	mkdirSync(join(tmp, 'setup-checkout-local'), { recursive: true })
+	writeFileSync(join(tmp, 'setup-checkout-local', 'page.yml'), 'snapshot')
+	mkdirSync(join(tmp, 'run-1'))
+	target(opened)
+	assert.deepEqual(readdirSync(tmp), ['run-1'])
 })
 
 test('target show prints a revision with the default approval policy', (t) => {

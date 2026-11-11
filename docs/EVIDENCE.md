@@ -88,6 +88,7 @@ Use a file only for binary evidence, for example a screenshot or a trace.
 3. The agent gives the path, relative to the workspace, with `--evidence <path>[:kind]`.
 4. Checkmate reads the file, stores the bytes in the database, and records the evidence row in the same transaction as the result.
 5. After the commit, Checkmate deletes the file. A refused command keeps the file, so the agent can send it again.
+6. `run finish` removes `.checkmate/tmp/<runId>/` with its contents, for example the snapshots of Playwright CLI.
 
 Checkmate refuses an evidence path that is absolute, is outside `.checkmate/tmp/<runId>/` after symbolic links are resolved, is not a regular file, or is larger than 32 MiB. The same limit applies to a text. `node:sqlite` reads and writes a BLOB as one buffer, so a larger limit uses too much memory.
 

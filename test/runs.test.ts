@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Store } from '../plugin/src/store.ts'
 import { testOutcome } from '../plugin/src/contracts.ts'
@@ -499,7 +499,7 @@ test('result accept and reject need a finished run and record the result digest'
 	assert.equal(runDetail(opened, 'run-1').result!.acceptance, 'approved')
 })
 
-test('run finish removes an empty evidence directory and keeps one with files', (t) => {
+test('run finish removes the evidence directory of the run with its files', (t) => {
 	const opened = started(t, ['T1'])
 	begin(opened, 'run-2', ['T1'], 'build-2')
 	const tmp = join(opened.workspace, '.checkmate/tmp')
@@ -508,8 +508,10 @@ test('run finish removes an empty evidence directory and keeps one with files', 
 	assert.deepEqual(readdirSync(tmp), ['run-2'])
 	passT1(opened, 'run-2')
 	evidenceFile(opened, 'run-2', 'left.txt')
+	mkdirSync(join(tmp, 'run-2', 'browser'))
+	evidenceFile(opened, 'run-2', 'browser/page.yml')
 	finish(opened, 'run-2')
-	assert.deepEqual(readdirSync(join(tmp, 'run-2')), ['left.txt'])
+	assert.equal(existsSync(tmp), false)
 })
 
 test('run finish removes .checkmate/tmp when no run directory is left', (t) => {

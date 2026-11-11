@@ -15,7 +15,7 @@ Checkmate keeps all state in one SQLite database: `<workspace>/.checkmate/checkm
 - The schema version is 2. Checkmate upgrades a version 1 database when it opens it. It refuses other versions. There is no migration from JSON files.
 - Agents write only through commands. `checkmate query "<sql>"` opens the database read-only.
 
-The database is the only record. Payloads and text evidence go in on standard input. Binary evidence, for example a screenshot, goes in `.checkmate/tmp/<runId>/` for a short time. Checkmate deletes each file after it stores the bytes. Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.
+The database is the only record. Payloads and text evidence go in on standard input. Binary evidence, for example a screenshot, goes in `.checkmate/tmp/<runId>/` for a short time. Checkmate deletes each file after it stores the bytes. `run finish` removes `.checkmate/tmp/<runId>/` with its contents, and `target save` removes `.checkmate/tmp/setup-<targetId>/`. The skills point the output of Playwright CLI into these directories, so no `.playwright-cli/` directory stays in the workspace. Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.
 
 ## Identifiers and references
 

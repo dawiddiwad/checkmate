@@ -41,7 +41,7 @@ The references `browser.md` and `http.md` are optional recipes for the default t
    - `skill`: check that the skill is available in this session.
 7. Record each tool with `reachable` set to the result of the check.
 8. Check the target with a read-only request. Do not run test actions.
-9. For a browser tool, open `about:blank` in a new isolated session with the caller's browser config. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
+9. For a browser tool, open `about:blank` in a new isolated session with the caller's browser config. Put the browser output in `.checkmate/tmp/setup-<targetId>/`. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
 10. Use the caller's running application. Start it only when the caller authorized a startup command.
 11. Write the profile. Use the shape below.
 12. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.

@@ -13,7 +13,8 @@ import {
 	write,
 } from '../plugin/src/store.ts'
 import { closeTest, finishRun, recordGap } from '../plugin/src/runs.ts'
-import { actor, begin, check, directory, failT2, ready, store, target } from './support.ts'
+import { approvePlan, editPlan, planCandidate, planRevision } from '../plugin/src/plans.ts'
+import { actor, begin, check, directory, failT2, plan, ready, revised, store, target } from './support.ts'
 
 test('opening a workspace creates the schema, WAL mode, and the version rows', (t) => {
 	const opened = store(t)
@@ -49,7 +50,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 			.map((row) => ({ ...row })),
 		[
 			{ key: 'contractVersion', value: 'toolkit-2' },
-			{ key: 'schemaVersion', value: '1' },
+			{ key: 'schemaVersion', value: '2' },
 		]
 	)
 	closeStore(opened)
@@ -61,9 +62,9 @@ test('a database with another schema version is refused', (t) => {
 	closeStore(openStore(workspace))
 	const db = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
 	db.exec('DROP TRIGGER meta_update')
-	db.exec("UPDATE meta SET value = '2' WHERE key = 'schemaVersion'")
+	db.exec("UPDATE meta SET value = '3' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 2\. Expected 1/)
+	assert.throws(() => openStore(workspace), /schema version 3\. Expected 2/)
 })
 
 function finishedRun(t: Parameters<typeof store>[0]) {
@@ -198,4 +199,54 @@ test('ULIDs encode the time in Crockford base32 and never decrease in one proces
 	)
 	assert(time >= before && time <= Date.now())
 	assert(ulid(before - 60000) > ids[ids.length - 1])
+})
+
+test('a plan revision row changes only while it is the latest, unapproved, and not run', (t) => {
+	const opened = store(t)
+	target(opened, { approvals: { plan: 'none', result: 'none' } })
+	plan(opened)
+	opened.db.exec("UPDATE plan_revisions SET operation_id = operation_id WHERE plan_id = 'checkout'")
+	assert.throws(
+		() => opened.db.exec("UPDATE plan_revisions SET revision = 5 WHERE plan_id = 'checkout'"),
+		/immutable once approved, run, or revised/
+	)
+	revised(opened)
+	assert.throws(
+		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 1"),
+		/immutable once approved, run, or revised/
+	)
+	opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 2")
+	begin(opened, 'run-1', ['T1'])
+	assert.throws(
+		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 2"),
+		/immutable once approved, run, or revised/
+	)
+	const content = planCandidate(planRevision(opened, 'checkout').plan)
+	const edited = editPlan(opened, actor, { reference: 'checkout@2', candidate: content })
+	assert.deepEqual([edited.subject, edited.data.edit, edited.data.reason], ['checkout@3', 'new_revision', 'run'])
+	approvePlan(opened, actor, { reference: 'checkout@3', rationale: 'Ok.' })
+	assert.throws(
+		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 3"),
+		/immutable once approved, run, or revised/
+	)
+})
+
+test('opening a version 1 database upgrades the plan revision trigger', (t) => {
+	const workspace = directory(t)
+	closeStore(openStore(workspace))
+	const db = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	db.exec(`DROP TRIGGER plan_revisions_update;
+CREATE TRIGGER plan_revisions_update BEFORE UPDATE ON plan_revisions
+	BEGIN SELECT RAISE(ABORT, 'Rows of plan_revisions are immutable'); END;
+DROP TRIGGER meta_update;
+UPDATE meta SET value = '1' WHERE key = 'schemaVersion';
+CREATE TRIGGER meta_update BEFORE UPDATE ON meta
+	BEGIN SELECT RAISE(ABORT, 'Rows of meta are immutable'); END;`)
+	db.close()
+	const opened = store(t, workspace)
+	assert.equal(opened.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '2')
+	assert.throws(() => opened.db.exec("UPDATE meta SET value = 'x'"), /Rows of meta are immutable/)
+	target(opened)
+	plan(opened)
+	opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout'")
 })

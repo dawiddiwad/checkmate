@@ -10,6 +10,7 @@ import {
 	answerGap,
 	approvePlan,
 	diffPlan,
+	editPlan,
 	gate,
 	openPlan,
 	rejectPlan,
@@ -347,6 +348,19 @@ const commands: Record<string, Command> = {
 				expectSha256: value(args, 'expect-sha'),
 			}),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
+	},
+	'plan edit': {
+		positionals: ['reference'],
+		flags: { 'expect-sha': 'value' },
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) =>
+			editPlan(store, actor, {
+				reference: value(args, 'reference')!,
+				candidate: stdin(),
+				expectSha256: value(args, 'expect-sha'),
+			}),
+		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), edit: reply.data.edit } }),
 	},
 	'plan approve': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>
 		approvePlan(store, actor, { reference, rationale, expectSha256 })

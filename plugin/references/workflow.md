@@ -27,6 +27,7 @@ EOF
 - Do not write other files. The database is the only record.
 - Read through the commands. Do not read or change `.checkmate/checkmate.db` directly. `checkmate query "<sql>"` is read-only.
 - A refused write changes nothing. Correct the payload and send it again.
+- Approved records do not change. The caller can edit a plan revision that is not approved with `checkmate plan edit <planId@rev>`. Do not edit a plan unless the caller asks.
 - The contracts are in `${CLAUDE_PLUGIN_ROOT}/contracts/`. Read a schema only when a command refuses a payload.
 
 ## Delegated and same-session stages

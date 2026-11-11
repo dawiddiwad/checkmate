@@ -5,6 +5,9 @@ export { openTarget, saveTarget, showTarget, targetRevision } from './targets.ts
 export {
 	openPlan,
 	savePlan,
+	editPlan,
+	planCandidate,
+	frozenRevision,
 	answerGap,
 	revisePlan,
 	approvePlan,

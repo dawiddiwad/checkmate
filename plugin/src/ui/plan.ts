@@ -238,7 +238,7 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 	const latest = detail.approval.latest
 	if (detail.approval.policy === 'none')
 		return recordPanel('Approval', html`<p class="help">The target policy does not require plan approval.</p>`)
-	if (latest && !state)
+	if (latest && latest.sha256 === detail.sha256 && !state)
 		return recordPanel(
 			'Approval',
 			html`<p class="subj">${pill(latest.verdict)} ${subject}</p>

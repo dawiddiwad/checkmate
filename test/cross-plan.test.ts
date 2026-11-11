@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { Store } from '../plugin/src/store.ts'
 import type { PlanCandidate } from '../plugin/src/types.ts'
-import { approvePlan, gate, latestPlans, planRevision } from '../plugin/src/plans.ts'
+import { approvePlan, editPlan, gate, latestPlans, planCandidate, planRevision } from '../plugin/src/plans.ts'
 import { beginRun, closeTest, finishRun, recordFinding } from '../plugin/src/runs.ts'
 import { dependencyCheck } from '../plugin/src/contracts.ts'
 import { planList } from '../plugin/src/views.ts'
@@ -135,4 +135,17 @@ test('a result that does not need acceptance satisfies a dependency once it pass
 	plan(opened, 'checkout', checkoutCandidate())
 	loginRun(opened, 'login-1', 'b1', 'passed')
 	assert.deepEqual(reasons(opened, 'b1'), [])
+})
+
+test('an edit cannot remove a test that another plan depends on', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened, 'login', loginCandidate(), loginRequest)
+	plan(opened, 'checkout', checkoutCandidate())
+	const content = planCandidate(planRevision(opened, 'login').plan)
+	content.tests[0].id = 'T4'
+	assert.throws(
+		() => editPlan(opened, actor, { reference: 'login@1', candidate: content }),
+		/Unknown test in login:T3: T3 is not in login@1/
+	)
 })

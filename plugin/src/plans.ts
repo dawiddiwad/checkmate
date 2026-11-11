@@ -1,4 +1,4 @@
-import type { Plan, PlanDelta, PlanRequest, Profile } from './types.ts'
+import type { Plan, PlanCandidate, PlanDelta, PlanRequest, Profile } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -170,24 +170,17 @@ export function latestPlans(store: Store) {
 	return new Map(rows.map((row) => [row.plan_id, JSON.parse(row.body) as Plan]))
 }
 
-function storeRevision(store: Store, draft: PlanDraft, operationId: string): Change {
+function checkedRevision(store: Store, draft: PlanDraft) {
 	const plan = planCheck(derivePlan(draft))
 	planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
 	const others = latestPlans(store)
 	others.delete(plan.planId)
 	dependencyCheck(plan, others)
 	const body = canonical(plan)
-	const sha256 = digest(body)
-	execute(
-		store,
-		'INSERT INTO plan_revisions (plan_id, revision, previous_revision, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?, ?)',
-		plan.planId,
-		plan.revision,
-		plan.previousRevision,
-		sha256,
-		body,
-		operationId
-	)
+	return { plan, body, sha256: digest(body) }
+}
+
+function revisionChange(plan: Plan, sha256: string): Change {
 	const blockers = plan.gaps.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
 	return {
 		reply: {
@@ -200,12 +193,108 @@ function storeRevision(store: Store, draft: PlanDraft, operationId: string): Cha
 	}
 }
 
+function storeRevision(store: Store, draft: PlanDraft, operationId: string): Change {
+	const { plan, body, sha256 } = checkedRevision(store, draft)
+	execute(
+		store,
+		'INSERT INTO plan_revisions (plan_id, revision, previous_revision, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?, ?)',
+		plan.planId,
+		plan.revision,
+		plan.previousRevision,
+		sha256,
+		body,
+		operationId
+	)
+	return revisionChange(plan, sha256)
+}
+
+export function planCandidate(plan: Plan): Required<PlanCandidate> {
+	return {
+		requirements: plan.requirements,
+		tests: plan.tests.map(({ readiness, gapIds, ...test }) => test),
+		gaps: plan.gaps,
+	}
+}
+
+export function frozenRevision(store: Store, planId: string, revision: number) {
+	if (one(store, 'SELECT 1 FROM runs WHERE plan_id = ? AND plan_revision = ?', planId, revision)) return 'run'
+	const approved = one(
+		store,
+		"SELECT 1 FROM approvals WHERE subject_kind = 'plan' AND subject_id = ? AND verdict = 'approved'",
+		`${planId}@${revision}`
+	)
+	return approved ? 'approved' : null
+}
+
+export function editPlan(
+	store: Store,
+	actor: string | undefined,
+	input: { reference: string; candidate: unknown; expectSha256?: string }
+) {
+	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) => {
+		const reference = revisionReference(requireText(input.reference, 'plan reference'), 'plan reference')
+		requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
+		const base = planRevision(store, reference.id, reference.revision)
+		const subject = `${reference.id}@${reference.revision}`
+		const latest = planRevision(store, reference.id).plan.revision
+		requireCondition(
+			latest === reference.revision,
+			`${subject} is not the latest revision. Edit ${reference.id}@${latest}.`
+		)
+		expectDigest(base.sha256, input.expectSha256, subject)
+		const candidate = validate('plan-candidate', input.candidate)
+		const frozen = frozenRevision(store, reference.id, reference.revision)
+		const { coverage, tests, ...kept } = structuredClone(base.plan)
+		const draft: PlanDraft = {
+			...kept,
+			...(frozen ? { revision: base.plan.revision + 1, previousRevision: base.plan.revision } : {}),
+			requirements: candidate.requirements ?? kept.requirements,
+			tests: candidate.tests,
+			gaps: candidate.gaps,
+		}
+		for (const decision of pendingDecisions(store, reference.id))
+			requireCondition(
+				draft.gaps.some((gap) => gap.id === decision.gap_id && gap.status === 'open'),
+				`Gap ${decision.gap_id} has a pending decision ${decision.id}. Keep the gap open.`
+			)
+		for (const test of draft.tests) {
+			const before = base.plan.tests.find((item) => item.id === test.id)?.assertions ?? []
+			const used = usedAssertionIds(store, reference.id, test.id)
+			for (const assertion of test.assertions)
+				requireCondition(
+					before.some((item) => item.id === assertion.id) || !used.includes(assertion.id),
+					`Assertion ID ${test.id}.${assertion.id} was used in an earlier revision. Use a new ID.`
+				)
+		}
+		if (frozen) {
+			const change = storeRevision(store, draft, operationId)
+			change.reply.data.edit = 'new_revision'
+			change.reply.data.reason = frozen
+			return change
+		}
+		const { plan, body, sha256 } = checkedRevision(store, draft)
+		execute(
+			store,
+			'UPDATE plan_revisions SET sha256 = ?, body = ?, operation_id = ? WHERE plan_id = ? AND revision = ?',
+			sha256,
+			body,
+			operationId,
+			plan.planId,
+			plan.revision
+		)
+		const change = revisionChange(plan, sha256)
+		change.reply.data.edit = 'in_place'
+		change.reply.data.previousSha256 = base.sha256
+		return change
+	})
+}
+
 export function savePlan(store: Store, actor: string | undefined, input: { planId: string; candidate: unknown }) {
 	return write(store, { actor, command: 'plan save', subject: input.planId, input }, (operationId) => {
 		const { request, target } = planRequest(store, input.planId)
 		requireCondition(
 			!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', input.planId),
-			`Plan ${input.planId} has revision 1. Use gap answer and plan revise to change it.`
+			`Plan ${input.planId} has revision 1. Use plan edit, or gap answer and plan revise, to change it.`
 		)
 		const candidate = validate('plan-candidate', input.candidate)
 		const requirements = candidateRequirements(request, candidate.requirements)
@@ -500,7 +589,13 @@ export function approvalState(
 	policy: 'required' | 'none'
 ) {
 	const latest = latestApproval(store, kind, subject) ?? null
-	return { policy, latest, approved: latest?.verdict === 'approved' && latest.sha256 === sha256 }
+	const current = latest?.sha256 === sha256
+	return {
+		policy,
+		latest,
+		approved: current && latest?.verdict === 'approved',
+		rejected: current && latest?.verdict === 'rejected',
+	}
 }
 
 export function planApproval(store: Store, plan: Plan, sha256: string) {

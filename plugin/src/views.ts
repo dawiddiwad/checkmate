@@ -22,7 +22,7 @@ export type ApprovalLabel = 'approved' | 'rejected' | 'pending' | 'not_required'
 
 export function approvalLabel(state: ApprovalState): ApprovalLabel {
 	if (state.approved) return 'approved'
-	if (state.latest?.verdict === 'rejected') return 'rejected'
+	if (state.rejected) return 'rejected'
 	return state.policy === 'required' ? 'pending' : 'not_required'
 }
 
@@ -65,7 +65,7 @@ export function inbox(store: Store) {
 	const plans = revisions
 		.filter((row) => {
 			const state = planApproval(store, row.plan, row.sha256)
-			return state.policy === 'required' && !state.latest
+			return state.policy === 'required' && !state.approved && !state.rejected
 		})
 		.map((row) => ({
 			planId: row.plan_id,

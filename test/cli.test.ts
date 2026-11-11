@@ -81,7 +81,7 @@ test('compact output starts with the status and subject; --json prints the same 
 	assert.equal(saved.code, 1)
 	assert.deepEqual(saved.lines, [
 		'rejected checkout',
-		'reason: Plan checkout has revision 1. Use gap answer and plan revise to change it.',
+		'reason: Plan checkout has revision 1. Use plan edit, or gap answer and plan revise, to change it.',
 	])
 	const needs = json(workspace, ['run', 'gate', 'checkout@1', '--tests', 'T1', '--build', 'b'])
 	assert.equal(needs.code, 0)
@@ -399,4 +399,22 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 		[body.gaps, body.plans, body.results.map((row: { runId: string }) => row.runId)],
 		[[], [], ['run-1']]
 	)
+})
+
+test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {
+	const workspace = setup(t)
+	const shown = json(workspace, ['plan', 'show', 'checkout@1']).body
+	const content = {
+		requirements: shown.plan.requirements,
+		tests: shown.plan.tests.map(({ readiness, gapIds, ...test }: Record<string, unknown>) => test),
+		gaps: shown.plan.gaps,
+	}
+	content.tests[0].title = 'Edited title'
+	const edited = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
+	assert.equal(edited.code, 0, edited.output)
+	assert.match(edited.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
+	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Edited title')
+	const stale = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
+	assert.equal(stale.code, 1)
+	assert.match(stale.lines[1], /^reason: checkout@1 has digest/)
 })

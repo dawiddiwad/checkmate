@@ -1,7 +1,7 @@
 import type { SQLInputValue } from 'node:sqlite'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Status =
@@ -12,7 +12,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '1'
+const schemaVersion = '2'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -189,22 +189,37 @@ const decisionColumns = [
 	'actor',
 	'operation_id',
 ]
-const triggers = tableNames
-	.map((table) => {
-		const update =
-			table === 'decisions'
-				? `CREATE TRIGGER decisions_update BEFORE UPDATE ON decisions
+function updateTrigger(table: string) {
+	if (table === 'decisions')
+		return `CREATE TRIGGER decisions_update BEFORE UPDATE ON decisions
 	WHEN OLD.applied_revision IS NOT NULL OR NEW.applied_revision IS NULL OR ${decisionColumns
 		.map((column) => `NEW.${column} IS NOT OLD.${column}`)
 		.join(' OR ')}
 	BEGIN SELECT RAISE(ABORT, 'Decisions are immutable. Only applied_revision can change, once, from NULL'); END;`
-				: `CREATE TRIGGER ${table}_update BEFORE UPDATE ON ${table}
+	if (table === 'plan_revisions')
+		return `CREATE TRIGGER plan_revisions_update BEFORE UPDATE ON plan_revisions
+	WHEN NEW.plan_id IS NOT OLD.plan_id OR NEW.revision IS NOT OLD.revision
+		OR NEW.previous_revision IS NOT OLD.previous_revision
+		OR EXISTS (SELECT 1 FROM approvals WHERE subject_kind = 'plan'
+			AND subject_id = OLD.plan_id || '@' || OLD.revision AND verdict = 'approved')
+		OR EXISTS (SELECT 1 FROM runs WHERE plan_id = OLD.plan_id AND plan_revision = OLD.revision)
+		OR EXISTS (SELECT 1 FROM plan_revisions WHERE plan_id = OLD.plan_id AND revision > OLD.revision)
+	BEGIN SELECT RAISE(ABORT, 'Rows of plan_revisions are immutable once approved, run, or revised'); END;`
+	return `CREATE TRIGGER ${table}_update BEFORE UPDATE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
-		return `${update}
+}
+const triggers = tableNames
+	.map(
+		(table) => `${updateTrigger(table)}
 CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
-	})
+	)
 	.join('\n')
+const upgradeFromVersion1 = `DROP TRIGGER plan_revisions_update;
+${updateTrigger('plan_revisions')}
+DROP TRIGGER meta_update;
+UPDATE meta SET value = '${schemaVersion}' WHERE key = 'schemaVersion';
+${updateTrigger('meta')}`
 
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {
 	return { status: 'completed', subject, reasons: [], data }
@@ -229,7 +244,8 @@ export function openStore(workspace: string): Store {
 			const insert = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
-		}
+		} else if (db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value === '1')
+			db.exec(upgradeFromVersion1)
 		db.exec('COMMIT')
 	} catch (error) {
 		db.exec('ROLLBACK')
@@ -241,7 +257,7 @@ export function openStore(workspace: string): Store {
 
 export function openReadOnlyStore(workspace: string): Store {
 	const path = databasePath(workspace)
-	if (!existsSync(path)) closeStore(openStore(workspace))
+	closeStore(openStore(workspace))
 	const db = new DatabaseSync(path, { readOnly: true })
 	db.exec('PRAGMA busy_timeout = 5000')
 	return checkedStore(db, workspace, path)

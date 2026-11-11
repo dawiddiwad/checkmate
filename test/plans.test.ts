@@ -6,8 +6,10 @@ import {
 	answerGap,
 	approvePlan,
 	diffPlan,
+	editPlan,
 	gate,
 	openPlan,
+	planCandidate,
 	planRevision,
 	rejectPlan,
 	revisePlan,
@@ -15,7 +17,7 @@ import {
 	showPending,
 	showPlanRequest,
 } from '../plugin/src/plans.ts'
-import { planDetail, planHistory } from '../plugin/src/views.ts'
+import { inbox, planDetail, planHistory } from '../plugin/src/views.ts'
 import { actor, approved, candidate, plan, planRequest, promotionDelta, revised, store, target } from './support.ts'
 
 function withG3(): PlanCandidate {
@@ -466,5 +468,134 @@ test('a request needs known tool names and refuses drafted requirements when it 
 				candidate: { ...candidate(), requirements: planRequest().requirements },
 			}),
 		/The plan request names the requirements/
+	)
+})
+
+test('plan edit changes an unapproved latest revision in place and records the operation', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const before = planRevision(opened, 'checkout')
+	const content = planCandidate(before.plan)
+	content.tests[0].title = 'Standard order total, edited'
+	content.requirements[0].text = 'A standard order totals 400 PLN.'
+	assert.throws(
+		() => editPlan(opened, 'reviewer', { reference: 'checkout@1', candidate: content, expectSha256: 'ffffffff' }),
+		/checkout@1 has digest [a-f0-9]{64}, not ffffffff/
+	)
+	const edited = editPlan(opened, 'reviewer', {
+		reference: 'checkout@1',
+		candidate: content,
+		expectSha256: before.sha256.slice(0, 8),
+	})
+	assert.equal(edited.status, 'needs_decision')
+	assert.deepEqual(
+		[edited.subject, edited.data.edit, edited.data.previousSha256],
+		['checkout@1', 'in_place', before.sha256]
+	)
+	const after = planRevision(opened, 'checkout', 1)
+	assert.notEqual(after.sha256, before.sha256)
+	assert.equal(after.sha256, edited.data.sha256)
+	assert.equal(after.plan.tests[0].title, 'Standard order total, edited')
+	assert.equal(after.plan.requirements[0].text, 'A standard order totals 400 PLN.')
+	assert.deepEqual(
+		planHistory(opened, 'checkout').map((row) => [row.revision, row.actor]),
+		[[1, 'reviewer']]
+	)
+	const log = opened.db
+		.prepare("SELECT actor, status FROM operations WHERE command = 'plan edit' ORDER BY rowid")
+		.all()
+	assert.deepEqual(
+		log.map((row) => [row.actor, row.status]),
+		[
+			['reviewer', 'rejected'],
+			['reviewer', 'needs_decision'],
+		]
+	)
+	assert.throws(
+		() => approvePlan(opened, actor, { reference: 'checkout@1', rationale: 'Ok.', expectSha256: before.sha256 }),
+		/has digest/
+	)
+	assert.equal(
+		approvePlan(opened, actor, { reference: 'checkout@1', rationale: 'Ok.', expectSha256: after.sha256 }).status,
+		'completed'
+	)
+})
+
+test('editing a rejected revision returns it to pending approval', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	rejectPlan(opened, actor, { reference: 'checkout@1', rationale: 'T1 title is vague.' })
+	assert.equal(planDetail(opened, 'checkout').approval.state, 'rejected')
+	assert.deepEqual(inbox(opened).plans, [])
+	const content = planCandidate(planRevision(opened, 'checkout').plan)
+	content.tests[0].title = 'Standard order total for one item'
+	editPlan(opened, actor, { reference: 'checkout@1', candidate: content })
+	assert.equal(planDetail(opened, 'checkout').approval.state, 'pending')
+	assert.deepEqual(
+		inbox(opened).plans.map((row) => `${row.planId}@${row.revision}`),
+		['checkout@1']
+	)
+})
+
+test('editing an approved revision saves the next revision and keeps the approved one', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	revised(opened)
+	approved(opened)
+	const approvedRevision = planRevision(opened, 'checkout', 2)
+	const content = planCandidate(approvedRevision.plan)
+	content.tests[0].preconditions = ['Fresh cart.']
+	assert.throws(
+		() => editPlan(opened, actor, { reference: 'checkout@1', candidate: content }),
+		/checkout@1 is not the latest revision. Edit checkout@2/
+	)
+	const edited = editPlan(opened, actor, { reference: 'checkout@2', candidate: content })
+	assert.deepEqual([edited.subject, edited.data.edit, edited.data.reason], ['checkout@3', 'new_revision', 'approved'])
+	assert.deepEqual(planRevision(opened, 'checkout', 2), approvedRevision)
+	const third = planRevision(opened, 'checkout', 3).plan
+	assert.deepEqual([third.previousRevision, third.tests[0].preconditions], [2, ['Fresh cart.']])
+	assert.deepEqual(third.decisions, approvedRevision.plan.decisions)
+	assert.equal(planDetail(opened, 'checkout').approval.state, 'pending')
+})
+
+test('plan edit keeps gaps with pending decisions open and refuses reused assertion IDs', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	revised(opened)
+	const base = planCandidate(planRevision(opened, 'checkout').plan)
+	const removed = structuredClone(base)
+	removed.tests[1].assertions = removed.tests[1].assertions.filter((assertion) => assertion.id !== 'A2')
+	editPlan(opened, actor, { reference: 'checkout@2', candidate: removed })
+	const reused = structuredClone(removed)
+	reused.tests[1].assertions.push({ id: 'A2', check: 'Another meaning.', oracleKind: 'deterministic' })
+	editPlan(opened, actor, { reference: 'checkout@2', candidate: reused })
+	const open = structuredClone(reused)
+	open.gaps.push({
+		id: 'G3',
+		severity: 'non_blocking',
+		status: 'open',
+		requirementIds: [],
+		testIds: ['T1'],
+		question: 'Is the label right?',
+		consequence: 'None.',
+		decisionId: null,
+	})
+	editPlan(opened, actor, { reference: 'checkout@2', candidate: open })
+	answerGap(opened, actor, { planId: 'checkout', gapId: 'G3', kind: 'defer', value: 'Later.', rationale: 'Scope.' })
+	assert.throws(
+		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: reused }),
+		/Gap G3 has a pending decision [0-9A-Z]{26}. Keep the gap open/
+	)
+	const renamed = structuredClone(open)
+	renamed.tests[0].assertions[0].id = 'A1x'
+	editPlan(opened, actor, { reference: 'checkout@2', candidate: renamed })
+	renamed.tests[0].assertions[0].id = 'A1'
+	assert.throws(
+		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: renamed }),
+		/Assertion ID T1.A1 was used in an earlier revision. Use a new ID/
 	)
 })

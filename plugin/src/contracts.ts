@@ -245,14 +245,16 @@ export function planTargetCheck(plan: Plan, profile: Profile) {
 	}
 }
 
-// Each cross-plan reference must name a test in the latest revision of that plan,
-// and the test graph of the latest revision of every plan must have no cycle.
+// Each cross-plan reference of every latest plan must name a test in the latest
+// revision of that plan, and the test graph of those plans must have no cycle.
 export function dependencyCheck(plan: Plan, latest: ReadonlyMap<string, Plan>) {
 	const plans = new Map(latest).set(plan.planId, plan)
-	const crossReferences = [
-		...plan.tests.flatMap((test) => test.dependsOn),
-		...plan.gaps.flatMap((gap) => gap.testIds),
-	].filter((id) => id.includes(':'))
+	const crossReferences = [...plans.values()]
+		.flatMap((other) => [
+			...other.tests.flatMap((test) => test.dependsOn),
+			...other.gaps.flatMap((gap) => gap.testIds),
+		])
+		.filter((id) => id.includes(':'))
 	for (const reference of crossReferences) {
 		const { planId, testId } = testReference(reference)
 		const other = plans.get(planId!)

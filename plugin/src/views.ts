@@ -1,7 +1,7 @@
 import type { Plan } from './types.ts'
 import type { Store } from './store.ts'
 import { all, one } from './store.ts'
-import { requireCondition } from './contracts.ts'
+import { requireChoice, requireCondition } from './contracts.ts'
 import { approvalState, dependencyBlock, latestApproval, planApproval, planChanges, planRevision } from './plans.ts'
 import {
 	outcomeCounts,
@@ -100,6 +100,11 @@ function bySince(a: { since: string }, b: { since: string }) {
 	return a.since.localeCompare(b.since)
 }
 
+function testCounts(plan: Plan) {
+	const count = (readiness: string) => plan.tests.filter((test) => test.readiness === readiness).length
+	return { total: plan.tests.length, ready: count('ready'), blocked: count('blocked'), deferred: count('deferred') }
+}
+
 export function planList(store: Store) {
 	return latestRevisions(store).map((row) => {
 		const open = row.plan.gaps.filter((gap) => gap.status === 'open')
@@ -110,6 +115,7 @@ export function planList(store: Store) {
 			since: row.at,
 			openGaps: open.map((gap) => gap.id),
 			openBlockingGaps: open.filter((gap) => gap.severity === 'blocking').map((gap) => gap.id),
+			tests: testCounts(row.plan),
 			approval: approvalLabel(planApproval(store, row.plan, row.sha256)),
 			blocked: row.plan.tests.flatMap((test) =>
 				test.dependsOn
@@ -143,6 +149,17 @@ export function planDetail(store: Store, planId: string, revision: number | null
 		approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
 		pendingDecisions: pending,
 		plan: selected.plan,
+		runs: runList(store, { planId }).map((run) => ({
+			runId: run.runId,
+			revision: run.revision,
+			build: run.build,
+			startedAt: run.startedAt,
+			state: run.state,
+			completion: run.completion,
+			coverage: run.coverage,
+			counts: run.counts,
+			acceptance: run.acceptance,
+		})),
 	}
 }
 
@@ -186,6 +203,13 @@ export function runList(store: Store, filters: { planId?: string; build?: string
 		coverage: row.coverage,
 		sha256: row.sha256,
 		acceptance: row.sha256 ? approvalLabel(resultAcceptance(store, row, row.sha256)) : null,
+		counts: Object.fromEntries(
+			all<{ outcome: string; count: number }>(
+				store,
+				'SELECT outcome, count(*) AS count FROM outcomes WHERE run_id = ? GROUP BY outcome ORDER BY outcome',
+				row.run_id
+			).map((count) => [count.outcome, count.count])
+		) as Record<string, number>,
 	}))
 }
 
@@ -289,7 +313,11 @@ export function operationLog(store: Store, filters: { subject?: string; limit?: 
 		filters.subject ?? null,
 		filters.after ?? 0,
 		limit
-	).map((row) => ({
+	).map(operationRow)
+}
+
+function operationRow(row: OperationRow) {
+	return {
 		rowid: row.rowid,
 		id: row.id,
 		at: row.at,
@@ -299,7 +327,7 @@ export function operationLog(store: Store, filters: { subject?: string; limit?: 
 		subjects: JSON.parse(row.subjects) as string[],
 		arguments: JSON.parse(row.arguments) as unknown,
 		response: JSON.parse(row.response) as unknown,
-	}))
+	}
 }
 
 export function changesAfter(store: Store, rowid: number) {
@@ -339,5 +367,194 @@ export function evidenceBytes(store: Store, id: string) {
 		sha256: row.sha256,
 		size: row.size,
 		bytes: row.bytes,
+	}
+}
+
+export type ListQuery = {
+	limit?: number
+	offset?: number
+	sort?: string
+	direction?: 'asc' | 'desc'
+	q?: string
+	filters?: Record<string, string | undefined>
+}
+export type ListPage<T> = {
+	rows: T[]
+	total: number
+	limit: number
+	offset: number
+	sort: string
+	direction: 'asc' | 'desc'
+}
+type Sortable = string | number | null
+
+const pageSizes = [25, 50, 100]
+
+function listQuery(query: ListQuery, columns: string[], defaults: { sort: string; direction: 'asc' | 'desc' }) {
+	const limit = query.limit ?? 25
+	const offset = query.offset ?? 0
+	const sort = query.sort ?? defaults.sort
+	const direction = query.direction ?? (query.sort ? 'asc' : defaults.direction)
+	requireCondition(pageSizes.includes(limit), `Invalid limit: ${limit}. Use one of: ${pageSizes.join(', ')}.`)
+	requireCondition(Number.isInteger(offset) && offset >= 0, `Invalid offset: ${offset}. Use 0 or more.`)
+	requireChoice(sort, columns, 'sort column')
+	requireChoice(direction, ['asc', 'desc'], 'sort direction')
+	return { limit, offset, sort, direction, q: query.q?.trim().toLowerCase() ?? '' }
+}
+
+function filterValue(filters: ListQuery['filters'], names: Record<string, readonly string[] | null>) {
+	const values: Record<string, string> = {}
+	for (const [name, value] of Object.entries(filters ?? {})) {
+		if (value === undefined || value === '') continue
+		requireCondition(name in names, `Unknown filter: ${name}. Use: ${Object.keys(names).join(', ')}.`)
+		const choices = names[name]
+		if (choices) requireChoice(value, choices, `${name} filter`)
+		values[name] = value
+	}
+	return values
+}
+
+function pageOf<T>(
+	rows: T[],
+	query: ReturnType<typeof listQuery>,
+	columns: Record<string, (row: T) => Sortable>,
+	text: (row: T) => unknown[]
+): ListPage<T> {
+	const matched = query.q
+		? rows.filter((row) =>
+				text(row).some((field) =>
+					String(field ?? '')
+						.toLowerCase()
+						.includes(query.q)
+				)
+			)
+		: rows
+	const key = columns[query.sort]
+	const order = query.direction === 'asc' ? 1 : -1
+	const sorted = [...matched].sort((a, b) => {
+		const x = key(a)
+		const y = key(b)
+		if (x === y) return 0
+		if (x === null) return 1
+		if (y === null) return -1
+		return (x < y ? -1 : 1) * order
+	})
+	return {
+		rows: sorted.slice(query.offset, query.offset + query.limit),
+		total: matched.length,
+		limit: query.limit,
+		offset: query.offset,
+		sort: query.sort,
+		direction: query.direction,
+	}
+}
+
+const planShows = ['all', 'needs_decision', 'awaiting_approval', 'blocked'] as const
+const approvalLabels = ['approved', 'rejected', 'pending', 'not_required'] as const
+
+export function pagedPlans(store: Store, query: ListQuery = {}) {
+	type Row = ReturnType<typeof planList>[number]
+	const columns: Record<string, (row: Row) => Sortable> = {
+		plan: (row) => row.planId,
+		tests: (row) => row.tests.total,
+		gaps: (row) => row.openGaps.length,
+		approval: (row) => row.approval,
+		blocked: (row) => row.blocked.length,
+		updated: (row) => row.since,
+	}
+	const options = listQuery(query, Object.keys(columns), { sort: 'plan', direction: 'asc' })
+	const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels })
+	const rows = planList(store).filter(
+		(row) =>
+			(filters.approval === undefined || row.approval === filters.approval) &&
+			(filters.show !== 'needs_decision' || row.openGaps.length > 0) &&
+			(filters.show !== 'awaiting_approval' || row.approval === 'pending') &&
+			(filters.show !== 'blocked' || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
+	)
+	return pageOf(rows, options, columns, (row) => [
+		`${row.planId}@${row.revision}`,
+		`${row.tests.total} tests ${row.tests.ready} ready ${row.tests.blocked} blocked ${row.tests.deferred} deferred`,
+		...row.openGaps,
+		row.approval,
+		...row.blocked.map((block) => `${block.testId} ${block.dependency} ${block.cause}`),
+		row.since,
+	])
+}
+
+const runStatuses = ['started', 'pending', 'approved', 'rejected', 'not_required'] as const
+
+function runStatus(row: ReturnType<typeof runList>[number]) {
+	return row.state === 'started' ? 'started' : (row.acceptance ?? 'finalized')
+}
+
+export function pagedRuns(store: Store, query: ListQuery = {}) {
+	type Row = ReturnType<typeof runList>[number]
+	const columns: Record<string, (row: Row) => Sortable> = {
+		run: (row) => row.runId,
+		plan: (row) => `${row.planId}@${String(row.revision).padStart(9, '0')}`,
+		build: (row) => row.build,
+		completion: (row) => row.completion,
+		coverage: (row) => row.coverage,
+		status: (row) => runStatus(row),
+		started: (row) => row.startedAt,
+	}
+	const options = listQuery(query, Object.keys(columns), { sort: 'started', direction: 'desc' })
+	const filters = filterValue(query.filters, { plan: null, build: null, status: runStatuses })
+	const rows = runList(store, { planId: filters.plan, build: filters.build }).filter(
+		(row) => filters.status === undefined || runStatus(row) === filters.status
+	)
+	return pageOf(rows, options, columns, (row) => [
+		row.runId,
+		`${row.planId}@${row.revision}`,
+		row.build,
+		...Object.entries(row.counts).map(([outcome, count]) => `${count} ${outcome}`),
+		row.completion,
+		row.coverage,
+		runStatus(row),
+		row.startedAt,
+	])
+}
+
+const logColumns: Record<string, string> = {
+	time: 'rowid',
+	actor: 'actor',
+	command: 'command',
+	status: 'status',
+}
+
+export function pagedOperations(
+	store: Store,
+	query: ListQuery = {}
+): ListPage<ReturnType<typeof operationLog>[number]> {
+	const options = listQuery(query, Object.keys(logColumns), { sort: 'time', direction: 'desc' })
+	const filters = filterValue(query.filters, { subject: null, actor: null, command: null, status: null })
+	const where = `WHERE (:subject IS NULL OR EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = :subject))
+		AND (:actor IS NULL OR actor = :actor) AND (:command IS NULL OR command = :command)
+		AND (:status IS NULL OR status = :status)
+		AND (:q = '' OR instr(lower(at || ' ' || actor || ' ' || command || ' ' || status || ' ' || subjects || ' ' || id
+			|| ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`
+	const parameters = {
+		subject: filters.subject ?? null,
+		actor: filters.actor ?? null,
+		command: filters.command ?? null,
+		status: filters.status ?? null,
+		q: options.q,
+	}
+	const total = (
+		store.db.prepare(`SELECT count(*) AS total FROM operations ${where}`).get(parameters) as { total: number }
+	).total
+	const direction = options.direction === 'asc' ? 'ASC' : 'DESC'
+	const rows = store.db
+		.prepare(
+			`SELECT rowid, * FROM operations ${where} ORDER BY ${logColumns[options.sort]} ${direction}, rowid ${direction} LIMIT :limit OFFSET :offset`
+		)
+		.all({ ...parameters, limit: options.limit, offset: options.offset }) as OperationRow[]
+	return {
+		rows: rows.map(operationRow),
+		total,
+		limit: options.limit,
+		offset: options.offset,
+		sort: options.sort,
+		direction: options.direction,
 	}
 }

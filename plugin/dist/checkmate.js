@@ -7450,6 +7450,10 @@ function inbox(store) {
 function bySince(a, b2) {
   return a.since.localeCompare(b2.since);
 }
+function testCounts(plan) {
+  const count = (readiness) => plan.tests.filter((test) => test.readiness === readiness).length;
+  return { total: plan.tests.length, ready: count("ready"), blocked: count("blocked"), deferred: count("deferred") };
+}
 function planList(store) {
   return latestRevisions(store).map((row) => {
     const open = row.plan.gaps.filter((gap) => gap.status === "open");
@@ -7460,6 +7464,7 @@ function planList(store) {
       since: row.at,
       openGaps: open.map((gap) => gap.id),
       openBlockingGaps: open.filter((gap) => gap.severity === "blocking").map((gap) => gap.id),
+      tests: testCounts(row.plan),
       approval: approvalLabel(planApproval(store, row.plan, row.sha256)),
       blocked: row.plan.tests.flatMap(
         (test) => test.dependsOn.filter((dependency) => dependency.includes(":")).flatMap((dependency) => {
@@ -7486,7 +7491,18 @@ function planDetail(store, planId, revision = null) {
     sha256: selected.sha256,
     approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
     pendingDecisions: pending,
-    plan: selected.plan
+    plan: selected.plan,
+    runs: runList(store, { planId }).map((run2) => ({
+      runId: run2.runId,
+      revision: run2.revision,
+      build: run2.build,
+      startedAt: run2.startedAt,
+      state: run2.state,
+      completion: run2.completion,
+      coverage: run2.coverage,
+      counts: run2.counts,
+      acceptance: run2.acceptance
+    }))
   };
 }
 function planHistory(store, planId) {
@@ -7527,7 +7543,14 @@ function runList(store, filters = {}) {
     completion: row.completion,
     coverage: row.coverage,
     sha256: row.sha256,
-    acceptance: row.sha256 ? approvalLabel(resultAcceptance(store, row, row.sha256)) : null
+    acceptance: row.sha256 ? approvalLabel(resultAcceptance(store, row, row.sha256)) : null,
+    counts: Object.fromEntries(
+      all(
+        store,
+        "SELECT outcome, count(*) AS count FROM outcomes WHERE run_id = ? GROUP BY outcome ORDER BY outcome",
+        row.run_id
+      ).map((count) => [count.outcome, count.count])
+    )
   }));
 }
 function runDetail(store, runId) {
@@ -7613,7 +7636,10 @@ function operationLog(store, filters = {}) {
     filters.subject ?? null,
     filters.after ?? 0,
     limit
-  ).map((row) => ({
+  ).map(operationRow);
+}
+function operationRow(row) {
+  return {
     rowid: row.rowid,
     id: row.id,
     at: row.at,
@@ -7623,7 +7649,7 @@ function operationLog(store, filters = {}) {
     subjects: JSON.parse(row.subjects),
     arguments: JSON.parse(row.arguments),
     response: JSON.parse(row.response)
-  }));
+  };
 }
 function changesAfter(store, rowid) {
   return all(

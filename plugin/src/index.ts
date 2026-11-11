@@ -41,6 +41,9 @@ export {
 	changesAfter,
 	evidenceBytes,
 	approvalLabel,
+	pagedPlans,
+	pagedRuns,
+	pagedOperations,
 } from './views.ts'
 export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
 export { run, main } from './cli.ts'

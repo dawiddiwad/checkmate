@@ -50,8 +50,59 @@
 			},
 			"minItems": 0,
 			"uniqueItems": true
+		},
+		"context": {
+			"type": "object",
+			"properties": {
+				"sources": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				},
+				"instructions": {
+					"type": "string",
+					"minLength": 1
+				}
+			},
+			"required": ["sources"],
+			"additionalProperties": false
+		},
+		"tools": {
+			"type": "array",
+			"items": {
+				"anyOf": [
+					{
+						"type": "string",
+						"minLength": 1
+					},
+					{
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"minLength": 1
+							},
+							"kind": {
+								"enum": ["cli", "mcp", "skill"]
+							},
+							"purpose": {
+								"type": "string",
+								"minLength": 1
+							}
+						},
+						"required": ["name", "kind", "purpose"],
+						"additionalProperties": false
+					}
+				]
+			},
+			"minItems": 0,
+			"uniqueItems": true
 		}
 	},
-	"required": ["objective", "requirements", "sourceContext"],
+	"required": ["objective"],
 	"additionalProperties": false
 }

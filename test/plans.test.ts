@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PlanCandidate } from '../plugin/src/types.ts'
+import type { PlanTool } from '../plugin/src/plans.ts'
 import {
 	answerGap,
 	approvePlan,
@@ -78,6 +79,11 @@ test('plan open needs an existing target revision and refuses a different second
 	)
 	assert.throws(
 		() => openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: { objective: 'x' } }),
+		/A plan request needs requirements or context sources/
+	)
+	assert.throws(
+		() =>
+			openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: { requirements: [] } }),
 		/Invalid plan-request/
 	)
 	assert.equal(
@@ -391,5 +397,74 @@ test('the gate collects every reason in order', (t) => {
 	assert.throws(
 		() => gate(opened, { reference: 'checkout@1', tests: ['T1'], build: 'b', partial: 'run_ready' }),
 		/Invalid partial execution/
+	)
+})
+
+test('a request with context sources and no requirements takes drafted requirements that cite a source', (t) => {
+	const opened = store(t)
+	target(opened)
+	const request = {
+		objective: 'Verify checkout from the ticket.',
+		context: { sources: ['jira:SHOP-12', 'docs/checkout.md'], instructions: 'Read the acceptance criteria.' },
+		tools: ['node', { name: 'jira', kind: 'mcp' as const, purpose: 'Read the ticket.' }],
+	}
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request })
+	const shown = showPlanRequest(opened, 'checkout').data
+	assert.deepEqual(shown.requirements, [])
+	assert.deepEqual(shown.context, request.context)
+	assert.deepEqual(
+		(shown.tools as PlanTool[]).map((tool) => [tool.name, tool.kind]),
+		[
+			['node', 'cli'],
+			['jira', 'mcp'],
+		]
+	)
+	const drafted = [
+		{ id: 'R1', text: 'A standard order totals 400 PLN.', source: 'jira:SHOP-12#ac-1' },
+		{ id: 'R2', text: 'The promotion applies.', source: 'docs/checkout.md#promotion' },
+		{ id: 'R3', text: 'Refunds are allowed.', source: 'docs/checkout.md#refunds' },
+	]
+	const save = (requirements?: typeof drafted) =>
+		savePlan(opened, actor, { planId: 'checkout', candidate: { ...candidate(), requirements } })
+	assert.throws(
+		() => save(),
+		/has no requirements. Draft them from the context sources: jira:SHOP-12, docs\/checkout.md/
+	)
+	assert.throws(
+		() => save([...drafted.slice(1), { ...drafted[0], source: 'memory' }]),
+		/Requirement R1 cites memory, which is not a context source/
+	)
+	assert.equal(save(drafted).status, 'needs_decision')
+	assert.deepEqual(planRevision(opened, 'checkout').plan.requirements, drafted)
+})
+
+test('a request needs known tool names and refuses drafted requirements when it names requirements', (t) => {
+	const opened = store(t)
+	target(opened)
+	const open = (planId: string, tools: unknown[]) =>
+		openPlan(opened, actor, { planId, target: 'checkout-local@1', request: { ...planRequest(), tools } })
+	assert.throws(() => open('a', ['jira']), /Unknown tool jira. The target profile has: playwright-cli, node/)
+	assert.throws(
+		() => open('a', [{ name: 'node', kind: 'cli', purpose: 'x' }]),
+		/Tool node is in the target profile. Name it as a string/
+	)
+	assert.throws(() => open('a', ['node', 'node']), /Invalid plan-request|Duplicate tool name/)
+	open('b', ['playwright-cli'])
+	assert.deepEqual(
+		(showPlanRequest(opened, 'b').data.tools as PlanTool[]).map((tool) => tool.name),
+		['playwright-cli']
+	)
+	open('c', [])
+	assert.deepEqual(
+		(showPlanRequest(opened, 'c').data.tools as PlanTool[]).map((tool) => tool.name),
+		['playwright-cli', 'node']
+	)
+	assert.throws(
+		() =>
+			savePlan(opened, actor, {
+				planId: 'c',
+				candidate: { ...candidate(), requirements: planRequest().requirements },
+			}),
+		/The plan request names the requirements/
 	)
 })

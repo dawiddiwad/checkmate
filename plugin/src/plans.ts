@@ -1,4 +1,4 @@
-import type { Plan, PlanDelta, PlanRequest } from './types.ts'
+import type { Plan, PlanDelta, PlanRequest, Profile } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -21,9 +21,10 @@ import {
 	testReference,
 	validate,
 } from './contracts.ts'
-import { targetRevision } from './targets.ts'
+import { targetRevision, toolCheck } from './targets.ts'
 
 export type PlanRevision = { plan: Plan; sha256: string }
+export type PlanTool = Omit<Profile['tools'][number], 'reachable'> & { reachable?: boolean }
 export type GapAnswer = {
 	planId: string
 	gapId: string
@@ -65,9 +66,28 @@ export function openPlan(
 		const planId = requireIdentifier(input.planId, 'plan ID')
 		const target = revisionReference(requireText(input.target, 'target (--target)'), 'target reference')
 		requireCondition(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`)
-		targetRevision(store, target.id, target.revision)
+		const profile = targetRevision(store, target.id, target.revision).profile
 		const request = validate('plan-request', input.request)
-		index(request.requirements, 'id', 'requirement')
+		requireCondition(
+			request.requirements?.length || request.context?.sources.length,
+			'A plan request needs requirements or context sources'
+		)
+		index(request.requirements ?? [], 'id', 'requirement')
+		for (const tool of request.tools ?? [])
+			if (typeof tool === 'string')
+				requireCondition(
+					profile.tools.some((known) => known.name === tool),
+					`Unknown tool ${tool}. The target profile has: ${profile.tools.map((known) => known.name).join(', ') || 'no tools'}.`
+				)
+			else {
+				toolCheck(tool)
+				requireCondition(
+					!profile.tools.some((known) => known.name === tool.name),
+					`Tool ${tool.name} is in the target profile. Name it as a string.`
+				)
+			}
+		const names = planTools(request, profile).map((tool) => tool.name)
+		requireCondition(new Set(names).size === names.length, 'Duplicate tool name in the plan request')
 		const body = canonical(request)
 		const data = { planId, target: `${target.id}@${target.revision}` }
 		const existing = one<RequestRow>(store, 'SELECT * FROM plan_requests WHERE plan_id = ?', planId)
@@ -100,12 +120,23 @@ export function planRequest(store: Store, planId: string) {
 	return { request, target: targetRevision(store, row.target_id, row.target_revision) }
 }
 
+export function planTools(request: PlanRequest, profile: Profile): PlanTool[] {
+	const named = (request.tools ?? []).filter((tool) => typeof tool === 'string')
+	const added = (request.tools ?? []).filter((tool) => typeof tool !== 'string')
+	const kept = named.length ? profile.tools.filter((tool) => named.includes(tool.name)) : profile.tools
+	return [...kept, ...added]
+}
+
 export function showPlanRequest(store: Store, planId: string) {
 	const { request, target } = planRequest(store, planId)
 	return completed(planId, {
 		planId,
 		target: `${target.profile.targetId}@${target.revision}`,
-		...request,
+		objective: request.objective,
+		requirements: request.requirements ?? [],
+		sourceContext: request.sourceContext ?? [],
+		context: request.context ?? { sources: [] },
+		tools: planTools(request, target.profile),
 		capabilities: target.profile.capabilities,
 		allowedOperations: target.profile.allowedOperations,
 	})
@@ -177,6 +208,7 @@ export function savePlan(store: Store, actor: string | undefined, input: { planI
 			`Plan ${input.planId} has revision 1. Use gap answer and plan revise to change it.`
 		)
 		const candidate = validate('plan-candidate', input.candidate)
+		const requirements = candidateRequirements(request, candidate.requirements)
 		return storeRevision(
 			store,
 			{
@@ -186,7 +218,7 @@ export function savePlan(store: Store, actor: string | undefined, input: { planI
 				previousRevision: null,
 				target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
 				objective: request.objective,
-				requirements: request.requirements,
+				requirements,
 				tests: candidate.tests,
 				gaps: candidate.gaps,
 				assumptions: [],
@@ -195,6 +227,25 @@ export function savePlan(store: Store, actor: string | undefined, input: { planI
 			operationId
 		)
 	})
+}
+
+function candidateRequirements(request: PlanRequest, drafted: Plan['requirements'] | undefined) {
+	if (request.requirements?.length) {
+		requireCondition(!drafted, 'The plan request names the requirements. Do not add requirements to the candidate.')
+		return request.requirements
+	}
+	const sources = request.context?.sources ?? []
+	requireCondition(
+		drafted?.length,
+		`The plan request has no requirements. Draft them from the context sources: ${sources.join(', ')}`
+	)
+	index(drafted, 'id', 'requirement')
+	for (const requirement of drafted)
+		requireCondition(
+			sources.some((source) => requirement.source.startsWith(source)),
+			`Requirement ${requirement.id} cites ${requirement.source}, which is not a context source. Use one of: ${sources.join(', ')}`
+		)
+	return drafted
 }
 
 function pendingDecisions(store: Store, planId: string) {

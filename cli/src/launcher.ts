@@ -232,6 +232,7 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	if (stage === 'plan')
 		return [
 			`Plan: ${subject}. Read the request with \`checkmate plan request ${subject}\`.`,
+			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
 			`Save revision 1 with \`checkmate plan save ${subject}\`. Do not run test actions.`,
 		]
 	if (stage === 'revise')

@@ -3,17 +3,33 @@ import type { Store } from './store.ts'
 import { canonical, completed, digest, execute, one, write } from './store.ts'
 import {
 	profileCheck,
+	requireChoice,
 	requireCondition,
 	requireIdentifier,
+	requireText,
 	revisionReference,
 	same,
 	approvalPolicy,
 } from './contracts.ts'
 
-export type TargetRequest = { targetId: string; baseUrl: string; capabilities: string[]; allowedOperations: string[] }
+export type ToolKind = Profile['tools'][number]['kind']
+export type RequestedTool = { name: string; kind: ToolKind; purpose: string }
+export type TargetRequest = {
+	targetId: string
+	baseUrl: string
+	capabilities: string[]
+	allowedOperations: string[]
+	tools: RequestedTool[]
+}
+
+export const toolKinds = ['cli', 'mcp', 'skill'] as const
 export type TargetRevision = { profile: Profile; revision: number; sha256: string }
 
-export function openTarget(store: Store, actor: string | undefined, input: TargetRequest) {
+export function openTarget(
+	store: Store,
+	actor: string | undefined,
+	input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }
+) {
 	return write(store, { actor, command: 'target open', subject: input.targetId, input }, (operationId) => {
 		const request = targetRequestCheck(input)
 		const existing = one<{ body: string }>(
@@ -42,7 +58,7 @@ export function openTarget(store: Store, actor: string | undefined, input: Targe
 	})
 }
 
-function targetRequestCheck(input: TargetRequest): TargetRequest {
+function targetRequestCheck(input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }): TargetRequest {
 	requireIdentifier(input.targetId, 'target ID')
 	let url: URL
 	try {
@@ -59,11 +75,22 @@ function targetRequestCheck(input: TargetRequest): TargetRequest {
 		list.forEach((item) => requireIdentifier(item, name))
 		requireCondition(new Set(list).size === list.length, `Duplicate item in ${name}`)
 	}
+	const tools = (input.tools ?? []).map((tool) => toolCheck(tool))
+	requireCondition(new Set(tools.map((tool) => tool.name)).size === tools.length, 'Duplicate tool name')
 	return {
 		targetId: input.targetId,
 		baseUrl: input.baseUrl,
 		capabilities: input.capabilities,
 		allowedOperations: input.allowedOperations,
+		tools,
+	}
+}
+
+export function toolCheck(tool: RequestedTool): RequestedTool {
+	return {
+		name: requireText(tool.name, 'tool name').trim(),
+		kind: requireChoice(tool.kind, toolKinds, `kind of tool ${tool.name}`),
+		purpose: requireText(tool.purpose, `purpose of tool ${tool.name}`),
 	}
 }
 
@@ -94,6 +121,21 @@ export function saveTarget(store: Store, actor: string | undefined, input: { tar
 			same(profile.allowedOperations, request.allowedOperations),
 			'Profile allowedOperations differ from the setup request'
 		)
+		for (const requested of request.tools) {
+			const tool = profile.tools.find((tool) => tool.name === requested.name)
+			requireCondition(tool, `Profile has no entry for the requested tool ${requested.name}`)
+			requireCondition(
+				tool.kind === requested.kind,
+				`Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
+			)
+		}
+		const unreachable = profile.tools
+			.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name))
+			.map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`)
+		requireCondition(
+			!unreachable.length || !profile.readyForLiveExecution,
+			`${unreachable.join('. ')}. Set readyForLiveExecution to false.`
+		)
 		const body = canonical(profile)
 		const latest = one<{ revision: number; body: string }>(
 			store,
@@ -103,7 +145,7 @@ export function saveTarget(store: Store, actor: string | undefined, input: { tar
 		const subject = `${profile.targetId}@${profile.revision}`
 		const reasons = profile.readyForLiveExecution
 			? []
-			: ['Target prerequisites are not ready. Inspect the profile.']
+			: [...unreachable, 'Target prerequisites are not ready. Inspect the profile.']
 		const status = profile.readyForLiveExecution ? ('completed' as const) : ('needs_decision' as const)
 		const data = { targetId: profile.targetId, revision: profile.revision, sha256: digest(body) }
 		if (latest && latest.revision === profile.revision) {

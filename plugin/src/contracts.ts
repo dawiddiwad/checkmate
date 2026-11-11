@@ -96,17 +96,14 @@ export function references(ids: string[], map: ReadonlyMap<string, unknown>, nam
 
 export function profileCheck(value: unknown): Profile {
 	const profile = validate('profile', value)
-	const tools = index(profile.tooling, 'capability', 'tool capability')
-	references(profile.capabilities, tools, 'tool for capability')
-	for (const tool of profile.tooling)
-		requireCondition(profile.capabilities.includes(tool.capability), `Unlisted tool capability: ${tool.capability}`)
+	index(profile.tools, 'name', 'tool')
 	const url = new URL(profile.baseUrl)
 	requireCondition(['http:', 'https:'].includes(url.protocol), 'Target must use HTTP or HTTPS')
 	requireCondition(!url.username && !url.password, 'Use credential references, not URL credentials')
-	for (const tool of profile.tooling)
+	for (const tool of profile.tools)
 		requireCondition(
-			!/resolve-and-pin|unknown/i.test(tool.version),
-			`Record the actual version of ${tool.executable}`
+			tool.version === undefined || !/resolve-and-pin|unknown/i.test(tool.version),
+			`Record the actual version of ${tool.name}, or leave version out`
 		)
 	return profile
 }

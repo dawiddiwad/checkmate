@@ -50,9 +50,15 @@ export function profile(): Profile {
 		baseUrl: 'http://127.0.0.1:4173',
 		environment: 'local_fixture',
 		capabilities: ['browser', 'http'],
-		tooling: [
-			{ capability: 'browser', executable: 'playwright-cli', version: '0.1.23' },
-			{ capability: 'http', executable: 'node', version: '24.12.0' },
+		tools: [
+			{
+				name: 'playwright-cli',
+				kind: 'cli',
+				purpose: 'Drive the browser.',
+				version: '0.1.23',
+				reachable: true,
+			},
+			{ name: 'node', kind: 'cli', purpose: 'Send HTTP requests.', version: '24.12.0', reachable: true },
 		],
 		authentication: { kind: 'none', references: [] },
 		allowedOperations: ['sign_in', 'read_catalog', 'create_fixture_order', 'apply_fixture_discount'],

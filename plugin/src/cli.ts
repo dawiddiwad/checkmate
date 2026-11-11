@@ -1,5 +1,7 @@
 import type { Reply, Store } from './store.ts'
-import type { Plan } from './types.ts'
+import type { Plan, Profile } from './types.ts'
+import type { RequestedTool, TargetRequest } from './targets.ts'
+import type { PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
 import { closeStore, completed, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
@@ -88,6 +90,12 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 	})
 }
 
+function toolSpec(spec: string): RequestedTool {
+	const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec)
+	requireCondition(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`)
+	return { name: match[1], kind: match[2] as RequestedTool['kind'], purpose: match[3] }
+}
+
 function short(sha256: unknown) {
 	return typeof sha256 === 'string' ? sha256.slice(0, 8) : sha256
 }
@@ -131,7 +139,7 @@ const commands: Record<string, Command> = {
 	},
 	'target open': {
 		positionals: ['targetId'],
-		flags: { 'base-url': 'value', capabilities: 'list', operations: 'list' },
+		flags: { 'base-url': 'value', capabilities: 'list', operations: 'list', tool: 'repeat' },
 		required: ['base-url', 'capabilities', 'operations'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -140,6 +148,7 @@ const commands: Record<string, Command> = {
 				baseUrl: value(args, 'base-url')!,
 				capabilities: list(args, 'capabilities') ?? [],
 				allowedOperations: list(args, 'operations') ?? [],
+				tools: (list(args, 'tool') ?? []).map(toolSpec),
 			}),
 		print: (reply) => ({ facts: { recorded: reply.data.recorded } }),
 	},
@@ -147,16 +156,13 @@ const commands: Record<string, Command> = {
 		positionals: ['targetId'],
 		run: (store, args) => showTargetRequest(store, value(args, 'targetId')!),
 		print: (reply) => {
-			const request = reply.data.request as {
-				baseUrl: string
-				capabilities: string[]
-				allowedOperations: string[]
-			}
+			const request = reply.data.request as TargetRequest
 			return {
 				lines: [
 					['baseUrl', request.baseUrl],
 					['capabilities', request.capabilities],
 					['operations', request.allowedOperations],
+					...request.tools.map((tool) => ['tool', tool.name, tool.kind, tool.purpose]),
 				],
 			}
 		},
@@ -173,13 +179,7 @@ const commands: Record<string, Command> = {
 		positionals: ['reference'],
 		run: (store, args) => showTarget(store, value(args, 'reference')!),
 		print: (reply) => {
-			const profile = reply.data.profile as {
-				baseUrl: string
-				environment: string
-				capabilities: string[]
-				allowedOperations: string[]
-				readyForLiveExecution: boolean
-			}
+			const profile = reply.data.profile as Profile
 			const approvals = reply.data.approvals as { plan: string; result: string }
 			return {
 				facts: { sha256: short(reply.data.sha256), ready: profile.readyForLiveExecution },
@@ -189,6 +189,14 @@ const commands: Record<string, Command> = {
 					['capabilities', profile.capabilities],
 					['operations', profile.allowedOperations],
 					['approvals', `plan=${approvals.plan}`, `result=${approvals.result}`],
+					...profile.tools.map((tool) => [
+						'tool',
+						tool.name,
+						tool.kind,
+						tool.version ?? '-',
+						tool.reachable ? 'reachable' : 'unreachable',
+						tool.purpose,
+					]),
 				],
 			}
 		},
@@ -211,11 +219,13 @@ const commands: Record<string, Command> = {
 		positionals: ['planId'],
 		run: (store, args) => showPlanRequest(store, value(args, 'planId')!),
 		print: (reply) => {
-			const data = reply.data as {
+			const data = reply.data as ReturnType<typeof showPlanRequest>['data'] & {
 				target: string
 				objective: string
 				requirements: Plan['requirements']
 				sourceContext: Array<{ uri: string; content: string }>
+				context: { sources: string[]; instructions?: string }
+				tools: PlanTool[]
 				capabilities: string[]
 				allowedOperations: string[]
 			}
@@ -224,7 +234,10 @@ const commands: Record<string, Command> = {
 				lines: [
 					['objective', data.objective],
 					...data.requirements.map((requirement) => [requirement.id, requirement.text, requirement.source]),
+					...data.context.sources.map((source) => ['source', source]),
+					...(data.context.instructions ? [['instructions', data.context.instructions]] : []),
 					...data.sourceContext.map((context) => ['context', context.uri, context.content]),
+					...data.tools.map((tool) => ['tool', tool.name, tool.kind, tool.purpose]),
 					['capabilities', data.capabilities],
 					['operations', data.allowedOperations],
 				],

@@ -24,6 +24,11 @@ export type Gap = {
 }
 
 export type PlanCandidate = {
+	requirements?: Array<{
+		id: string
+		text: string
+		source: string
+	}>
 	tests: Array<{
 		id: string
 		title: string
@@ -70,15 +75,27 @@ export type PlanDelta = {
 
 export type PlanRequest = {
 	objective: string
-	requirements: Array<{
+	requirements?: Array<{
 		id: string
 		text: string
 		source: string
 	}>
-	sourceContext: Array<{
+	sourceContext?: Array<{
 		uri: string
 		content: string
 	}>
+	context?: {
+		sources: Array<string>
+		instructions?: string
+	}
+	tools?: Array<
+		| string
+		| {
+				name: string
+				kind: 'cli' | 'mcp' | 'skill'
+				purpose: string
+		  }
+	>
 }
 
 export type Plan = {
@@ -151,10 +168,12 @@ export type Profile = {
 	baseUrl: string
 	environment: string
 	capabilities: Array<string>
-	tooling: Array<{
-		capability: string
-		executable: string
-		version: string
+	tools: Array<{
+		name: string
+		kind: 'cli' | 'mcp' | 'skill'
+		purpose: string
+		version?: string
+		reachable: boolean
 	}>
 	authentication: {
 		kind: 'none' | 'environment' | 'browser_session'

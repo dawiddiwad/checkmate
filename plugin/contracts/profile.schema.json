@@ -31,28 +31,34 @@
 			"minItems": 1,
 			"uniqueItems": true
 		},
-		"tooling": {
+		"tools": {
 			"type": "array",
 			"items": {
 				"type": "object",
 				"properties": {
-					"capability": {
+					"name": {
 						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"minLength": 1
 					},
-					"executable": {
+					"kind": {
+						"enum": ["cli", "mcp", "skill"]
+					},
+					"purpose": {
 						"type": "string",
 						"minLength": 1
 					},
 					"version": {
 						"type": "string",
 						"minLength": 1
+					},
+					"reachable": {
+						"type": "boolean"
 					}
 				},
-				"required": ["capability", "executable", "version"],
+				"required": ["name", "kind", "purpose", "reachable"],
 				"additionalProperties": false
 			},
-			"minItems": 1,
+			"minItems": 0,
 			"uniqueItems": true
 		},
 		"authentication": {
@@ -137,7 +143,7 @@
 		"baseUrl",
 		"environment",
 		"capabilities",
-		"tooling",
+		"tools",
 		"authentication",
 		"allowedOperations",
 		"startup",

@@ -3,6 +3,9 @@
 	"$id": "plan-candidate.schema.json",
 	"type": "object",
 	"properties": {
+		"requirements": {
+			"$ref": "plan.schema.json#/properties/requirements"
+		},
 		"tests": {
 			"type": "array",
 			"items": {

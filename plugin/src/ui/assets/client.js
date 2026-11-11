@@ -475,6 +475,20 @@ if (toast)
 		setTimeout(() => toast.remove(), reducedMotion.matches ? 0 : 320)
 	}, 6000)
 
+function fitHeight(area) {
+	area.style.height = 'auto'
+	area.style.height = `${area.scrollHeight + area.offsetHeight - area.clientHeight}px`
+}
+
+if (!CSS.supports('field-sizing', 'content')) {
+	const areas = [...document.querySelectorAll('.edit-card textarea')]
+	for (const area of areas) {
+		fitHeight(area)
+		area.addEventListener('input', () => fitHeight(area))
+	}
+	window.addEventListener('resize', () => areas.forEach(fitHeight))
+}
+
 document.querySelector('[data-shortcuts-open]').hidden = false
 syncRationale()
 syncSource()

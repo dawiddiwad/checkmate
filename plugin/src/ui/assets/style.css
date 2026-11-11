@@ -1739,6 +1739,7 @@ th a.sort:hover .arrow {
 }
 .edit-card textarea {
 	min-height: 0;
+	field-sizing: content;
 }
 .edit-row {
 	display: grid;

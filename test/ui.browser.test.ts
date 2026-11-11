@@ -302,3 +302,15 @@ test('a filtered list updates live', { skip }, async (t) => {
 	await page.locator('tr[data-key="plan:search"]', { hasText: 'approved' }).waitFor({ timeout: 2000 })
 	assert.match(page.url(), /\/plans\?q=search$/)
 })
+
+test('the plan editor shows a long check in full at phone width', { skip }, async (t) => {
+	const { page, url } = await open(t, { viewport: { width: 390, height: 844 } })
+	await page.goto(url('/plans/search@1/edit'))
+	const check = page.locator('#edit-T1 textarea[name$=".check"]').first()
+	await check.fill(
+		'The result list shows every product whose name or description contains the query, in relevance order.'
+	)
+	const size = await check.evaluate((area) => ({ client: area.clientHeight, scroll: area.scrollHeight }))
+	assert(size.client >= size.scroll, JSON.stringify(size))
+	assert(size.client > 40, JSON.stringify(size))
+})

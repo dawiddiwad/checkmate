@@ -17,7 +17,6 @@ export function liveEnvironment() {
 	assert(token || hostLogin, 'Configure Claude authentication before live tests')
 	process.env.PATH = `${join(root, 'node_modules/.bin')}:${process.env.PATH}`
 	if (token && !hostLogin) process.env.CLAUDE_CONFIG_DIR ??= join(tmpdir(), 'checkmate-live-claude')
-	// The host selects the model. Development runs use Haiku to limit usage.
 	process.env.ANTHROPIC_MODEL ??= 'claude-haiku-5-5'
 }
 

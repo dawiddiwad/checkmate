@@ -23,7 +23,7 @@ The current exporter rendered the files again from the stored plan and result sn
 | `live-run`    | [live-run.md](runs/live-run.md)       | [live-run.html](runs/live-run.html)       | [live-run.json](runs/live-run.json)       | Build `fixture-build-1`. T1 and T2 passed. T3 failed with defect F1. Coverage is partial. Accepted. |
 | `live-retest` | [live-retest.md](runs/live-retest.md) | [live-retest.html](runs/live-retest.html) | [live-retest.json](runs/live-retest.json) | Build `fixture-build-2`, a retest of `live-run`. T2 and T3 passed. Acceptance is pending.           |
 
-In both runs, R3 (refunds) stays uncovered, because its gap is deferred. Completion is `completed` and coverage is `partial`. These are separate fields.
+In both runs, R3 (refunds) stays uncovered, because its gap is deferred. Completion is `completed` and coverage is `partial`. These are separate fields. Checkmate recorded these results before the requirement status `deferred` existed. A new run records R3 as `deferred`, because only a caller decision leaves it open.
 
 ## Notes
 

@@ -13,8 +13,8 @@ For the browser capability, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
 5. Check the target with a read-only request. Do not run test actions.
 6. For `browser`, open `about:blank` in a new isolated session with the caller's browser config. Close that session.
 7. Use the caller's running application. Start it only when the caller authorized a startup command.
-8. Write the profile to `.checkmate/tmp/profile-<targetId>.json`. Use the shape below.
-9. Run `checkmate target save <targetId> < .checkmate/tmp/profile-<targetId>.json`.
+8. Write the profile. Use the shape below.
+9. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.
 10. Return the response of `target save`.
 
 ```json

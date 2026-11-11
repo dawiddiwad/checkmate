@@ -15,8 +15,16 @@ In a skill, `checkmate <command>` means that command line. There is no global np
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read each `reason:` line.
-- Send JSON payloads on standard input: `checkmate plan save <planId> < .checkmate/tmp/<file>.json`.
-- Write payload files and evidence only below `.checkmate/tmp/`. Do not write other files.
+- Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
+
+```sh
+checkmate plan save <planId> <<'EOF'
+{ "tests": [], "gaps": [] }
+EOF
+```
+
+- Send text evidence on standard input with `--evidence -`. Write a file only for binary evidence, for example a screenshot, and only below `.checkmate/tmp/<runId>/`. Checkmate deletes the file after it stores it.
+- Do not write other files. The database is the only record.
 - Read through the commands. Do not read or change `.checkmate/checkmate.db` directly. `checkmate query "<sql>"` is read-only.
 - A refused write changes nothing. Correct the payload and send it again.
 - The contracts are in `${CLAUDE_PLUGIN_ROOT}/contracts/`. Read a schema only when a command refuses a payload.

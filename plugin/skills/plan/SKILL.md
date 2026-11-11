@@ -6,8 +6,8 @@ description: Create revision 1 of a Checkmate test plan from a recorded plan req
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
 
 1. Run `checkmate plan request <planId>`. It prints the objective, requirements, source context, target capabilities, and allowed operations.
-2. Write a candidate with `tests` and `gaps` only to `.checkmate/tmp/plan-<planId>.json`.
-3. Run `checkmate plan save <planId> < .checkmate/tmp/plan-<planId>.json`.
+2. Write a candidate with `tests` and `gaps` only. Use the shape below.
+3. Send the candidate in a heredoc: `checkmate plan save <planId> <<'EOF'`, the JSON, then `EOF`.
 4. If the command refuses the candidate, correct it and run step 3 again.
 5. Return the response of `plan save`. A `needs_decision` status with gap questions is a correct result.
 

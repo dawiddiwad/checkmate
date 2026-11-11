@@ -34,10 +34,10 @@ const maxOutputBytes = 4 * 1024 * 1024
 const defaultTimeoutSeconds = 300
 
 export const minimumRules: Record<Stage, string[]> = {
-	setup: ['Read', 'Write', 'Bash(node *)', 'Bash(playwright-cli *)'],
-	plan: ['Read', 'Write', 'Bash(node *)'],
-	revise: ['Read', 'Write', 'Bash(node *)'],
-	execute: ['Read', 'Write', 'Bash(node *)', 'Bash(playwright-cli *)'],
+	setup: ['Read', 'Bash(node *)', 'Bash(playwright-cli *)'],
+	plan: ['Read', 'Bash(node *)'],
+	revise: ['Read', 'Bash(node *)'],
+	execute: ['Read', 'Bash(node *)', 'Bash(playwright-cli *)'],
 }
 
 const verifiedBy: Record<Stage, { command: string; key: string }> = {
@@ -244,7 +244,7 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run!.plan_id}@${run!.plan_revision}. Target: ${run!.target_id}@${run!.target_revision}. Build: ${run!.application_build}.`,
 		`Selected tests: ${request.selectedTestIds.join(',')}. New blocker policy: ${request.onNewBlocker}.`,
-		`Browser session: ${run!.browser_session}. Evidence directory: .checkmate/tmp/${subject}/.`,
+		`Browser session: ${run!.browser_session}. Send text evidence with \`--evidence -\`. Binary evidence directory: .checkmate/tmp/${subject}/.`,
 		`Read the open tests with \`checkmate run show ${subject}\`. Finish with \`checkmate run finish ${subject}\` before the deadline.`,
 	]
 }

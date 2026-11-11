@@ -16,17 +16,25 @@ Then:
 
 1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result.
 2. Run `checkmate plan show <planId@rev> --tests <T1,T2> --fields dependsOn,preconditions,action,assertions`.
-3. Run `checkmate target show <targetId>` when you need the base URL or tooling.
+3. Run `checkmate target show <targetId>` when you need the base URL or the tools.
 
 ## For each selected test
 
 Run prerequisites first. A local `dependsOn` test must pass before the dependent test starts.
 
 1. Do the action of the test with the target's tools. Do not write maintained automation. Do not change the application.
-2. For each assertion, write the evidence file first in `.checkmate/tmp/<runId>/`, for example `.checkmate/tmp/<runId>/T1-A1.txt`. Use one new file for each assertion. Checkmate deletes the file after it stores it.
-3. Record the assertion: `checkmate run check <runId> <testId> <assertionId> --result <result> --observed "<what you saw>" --evidence .checkmate/tmp/<runId>/T1-A1.txt`. Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
-4. When each assertion has a result, run `checkmate run close <runId> <testId>`. Checkmate calculates the outcome.
-5. For a test that you did not start, run `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure.
+2. For each assertion, record the result with text evidence on standard input. Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
+
+```sh
+checkmate run check <runId> T1 A1 --result passed --observed "<what you saw>" --evidence - <<'EOF'
+<the page text or the JSON exchange that shows the observation>
+EOF
+```
+
+3. Checkmate stores JSON text as `application/json` and other text as `text/plain`. Add a kind when it is not an observation, for example `--evidence -:http_exchange`.
+4. For binary evidence, for example a screenshot, write one new file in `.checkmate/tmp/<runId>/`. Add `--evidence .checkmate/tmp/<runId>/T1-A1.png`. Checkmate deletes the file after it stores it. You can give one text and one or more files.
+5. When each assertion has a result, run `checkmate run close <runId> <testId>`. Checkmate calculates the outcome.
+6. For a test that you did not start, run `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure.
 
 ## Assertion results
 
@@ -40,7 +48,7 @@ Compare with the exact check text. Do not change the check. Do not call a tool f
 
 ## Findings and gaps
 
-Write each finding to `.checkmate/tmp/<runId>/finding-<id>.json` and run `checkmate run finding <runId> < <file>`:
+Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSON, then `EOF`. Use this shape:
 
 ```json
 {
@@ -59,7 +67,7 @@ Write each finding to `.checkmate/tmp/<runId>/finding-<id>.json` and run `checkm
 
 - Give every field of the example. `requirementIds` are the requirements of the named tests.
 - A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
-- For new ambiguity, write a gap with `"status": "open"` and a new ID. Run `checkmate run gap <runId> < <file>`.
+- For new ambiguity, write a gap with `"status": "open"` and a new ID. Send it in a heredoc: `checkmate run gap <runId> <<'EOF'`, the JSON, then `EOF`.
 - After a new blocking gap, stop further actions when the run policy is `return_to_caller`. Close the remaining tests as `blocked`.
 
 ## Finish

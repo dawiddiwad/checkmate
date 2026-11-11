@@ -25,6 +25,6 @@ A browser config can select an installed executable:
 - Check that the selected executable exists. Do not assume that every host has this path.
 - Use a new session. Do not use `close-all`, `kill-all`, or a shared persistent browser profile.
 - Close the session at the end of the stage, also after a failure.
-- Write a short text observation, for example `.checkmate/tmp/<runId>/T1-A1.txt`, when page text is the evidence.
+- When page text is the evidence, send a short excerpt of the snapshot with `--evidence -`. Do not write a text file.
 - Save only relevant observations and screenshots. Do not save pages that show credentials.
 - Checkmate does not sanitize screenshots or page text.

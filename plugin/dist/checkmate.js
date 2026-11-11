@@ -6405,6 +6405,28 @@ function beginRun(store, actor, input) {
     mkdirSync2(join2(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
+var evidenceKinds = ["observation", "http_exchange", "screenshot", "trace"];
+function textEvidence(input, name) {
+  requireCondition(
+    typeof input.text === "string" && input.text.trim().length > 0,
+    "Missing evidence text on standard input"
+  );
+  const bytes = Buffer.from(input.text, "utf8");
+  requireCondition(bytes.length <= maxEvidenceBytes, "Evidence text exceeds 32 MiB");
+  let json = true;
+  try {
+    JSON.parse(input.text);
+  } catch {
+    json = false;
+  }
+  return {
+    path: null,
+    name: `${name}.${json ? "json" : "txt"}`,
+    kind: requireChoice(input.kind ?? "observation", evidenceKinds, "evidence kind"),
+    mediaType: json ? "application/json" : "text/plain",
+    bytes
+  };
+}
 function readEvidence(store, runId, spec) {
   const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec);
   const name = match ? match[1] : spec;
@@ -6463,11 +6485,17 @@ function storeEvidence(store, runId, testId, assertionId, files, operationId) {
     return id2;
   });
 }
-function evidenceFiles(store, runId, specs = []) {
-  const files = specs.map((spec) => readEvidence(store, runId, spec));
-  const paths = files.map((file) => file.path);
+function evidenceFiles(store, runId, name, specs = []) {
+  const files = specs.map(
+    (spec) => typeof spec === "string" ? readEvidence(store, runId, spec) : textEvidence(spec, name)
+  );
+  const paths = files.flatMap((file) => file.path ?? []);
   requireCondition(new Set(paths).size === paths.length, "An evidence file is listed twice");
+  requireCondition(files.length - paths.length <= 1, "Give one evidence text on standard input");
   return files;
+}
+function removeFiles(files) {
+  for (const file of files) if (file.path) rmSync(file.path, { force: true });
 }
 function optionalText(value2, name) {
   return value2 === void 0 ? null : requireText(value2, name);
@@ -6501,11 +6529,11 @@ function checkAssertion(store, actor, input) {
     );
     const observed = optionalText(input.observed, "observation (--observed)");
     const reason = optionalText(input.reason, "reason (--reason)");
-    files = evidenceFiles(store, input.runId, input.evidence);
+    files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
     if (result !== "not_checked")
       requireCondition(
         observed && files.length > 0,
-        `${result === "inconclusive" ? "An" : "A"} ${result} result needs an observation (--observed) and one or more evidence files (--evidence)`
+        `${result === "inconclusive" ? "An" : "A"} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`
       );
     if (result === "inconclusive")
       requireCondition(
@@ -6539,7 +6567,7 @@ function checkAssertion(store, actor, input) {
       subjects: [`run:${input.runId}`]
     };
   });
-  for (const file of files) rmSync(file.path, { force: true });
+  removeFiles(files);
   return reply;
 }
 function closeTest(store, actor, input) {
@@ -6574,7 +6602,7 @@ function closeTest(store, actor, input) {
         outcome === "error" || !input.evidence?.length,
         "--evidence applies only with --outcome error"
       );
-      files = evidenceFiles(store, input.runId, input.evidence);
+      files = evidenceFiles(store, input.runId, test.id, input.evidence);
     }
     execute(
       store,
@@ -6593,7 +6621,7 @@ function closeTest(store, actor, input) {
       subjects: [`run:${input.runId}`]
     };
   });
-  for (const file of files) rmSync(file.path, { force: true });
+  removeFiles(files);
   return reply;
 }
 function recordFinding(store, actor, input) {
@@ -6626,9 +6654,9 @@ function recordFinding(store, actor, input) {
           test.requirementIds.includes(requirementId),
           `Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
         );
-    const evidence = new Map(runEvidence(store, input.runId).map((row) => [row.id, row]));
+    const evidence2 = new Map(runEvidence(store, input.runId).map((row) => [row.id, row]));
     for (const id2 of finding.evidenceIds) {
-      const row = evidence.get(id2);
+      const row = evidence2.get(id2);
       requireCondition(row, `Unknown evidence in finding ${finding.id}: ${id2}`);
       requireCondition(
         testIds.includes(row.test_id) && (row.assertion_id === null || finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)),
@@ -6760,7 +6788,7 @@ function finishRun(store, actor, input) {
         );
       }
     }
-    const evidence = runEvidence(store, input.runId);
+    const evidence2 = runEvidence(store, input.runId);
     const tests = run2.plan.tests.map((test) => {
       const closed = outcomes.get(test.id);
       if (!closed)
@@ -6779,7 +6807,7 @@ function finishRun(store, actor, input) {
             result: row.result,
             observed: row.observed,
             reason: row.reason,
-            evidenceIds: evidence.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id).map((item) => item.id)
+            evidenceIds: evidence2.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id).map((item) => item.id)
           };
         })
       };
@@ -6800,7 +6828,7 @@ function finishRun(store, actor, input) {
       tests,
       findings: findings2,
       newGaps: newGaps2,
-      evidence: evidence.map((row) => ({
+      evidence: evidence2.map((row) => ({
         id: row.id,
         testId: row.test_id,
         assertionId: row.assertion_id,
@@ -7085,7 +7113,7 @@ function runDetail(store, runId) {
   const run2 = runState(store, runId);
   const outcomes = runOutcomes(store, runId);
   const results = runAssertions(store, runId);
-  const evidence = runEvidence(store, runId).map((row) => ({
+  const evidence2 = runEvidence(store, runId).map((row) => ({
     id: row.id,
     testId: row.test_id,
     assertionId: row.assertion_id,
@@ -7108,7 +7136,7 @@ function runDetail(store, runId) {
       title: test.title,
       outcome: closed?.outcome ?? null,
       reason: closed?.reason ?? null,
-      evidence: evidence.filter((item) => item.testId === test.id && item.assertionId === null),
+      evidence: evidence2.filter((item) => item.testId === test.id && item.assertionId === null),
       assertions: test.assertions.map((assertion) => {
         const row = results.get(`${test.id}.${assertion.id}`);
         return {
@@ -7118,7 +7146,7 @@ function runDetail(store, runId) {
           result: row?.result ?? null,
           observed: row?.observed ?? null,
           reason: row?.reason ?? null,
-          evidence: evidence.filter(
+          evidence: evidence2.filter(
             (item) => item.testId === test.id && item.assertionId === assertion.id
           )
         };
@@ -7271,8 +7299,8 @@ function html(report) {
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${escapeHtml(report.title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#1d2330}table{border-collapse:collapse;width:100%;margin:.5rem 0 1.5rem}th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid #d5dae3}th{font-weight:600;background:#f3f5f8}.note{color:#5b6475}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f8;padding:1rem}details{margin-top:2rem}summary{cursor:pointer;font-weight:600}</style>` + parts.join("") + "</html>\n";
 }
 function resultReport(result, sha256) {
-  const evidence = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files = (ids2) => join3(ids2.map((id2) => `${evidence.get(id2)?.name ?? id2} (${id2})`));
+  const evidence2 = new Map(result.evidence.map((entry) => [entry.id, entry]));
+  const files = (ids2) => join3(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
   const blocks = [
     {
       table: ["Field", "Value"],
@@ -8815,7 +8843,7 @@ function strip(detail) {
 }
 function findings(store, detail) {
   if (!detail.findings.length) return html2`<p class="empty-line">No findings.</p>`;
-  const evidence = detail.tests.flatMap((test) => [
+  const evidence2 = detail.tests.flatMap((test) => [
     ...test.evidence,
     ...test.assertions.flatMap((assertion) => assertion.evidence)
   ]);
@@ -8849,7 +8877,7 @@ function findings(store, detail) {
       ", "
     )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
 						</p>
-						${evidenceChips(evidence.filter((item) => finding.evidenceIds.includes(item.id)))}
+						${evidenceChips(evidence2.filter((item) => finding.evidenceIds.includes(item.id)))}
 					</div>
 				</article>`
   )}
@@ -9225,15 +9253,15 @@ data: ${matched.join(",") || "*"}
     return { location: next, cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)] };
   }
   function serveEvidence(request, evidenceId) {
-    let evidence;
+    let evidence2;
     try {
-      evidence = evidenceBytes(store, evidenceId);
+      evidence2 = evidenceBytes(store, evidenceId);
     } catch {
       return errorPage(request, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
     }
-    const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === "text/plain";
-    send(request.res, 200, evidence.mediaType, evidence.bytes, {
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence.name)}`,
+    const inline = inlineImages.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
+    send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
       "Cache-Control": "private, max-age=31536000, immutable"
     });
   }
@@ -9269,8 +9297,8 @@ data: ${matched.join(",") || "*"}
         "Cache-Control": "public, max-age=31536000, immutable"
       });
     if (pathname === "/events") return events(request);
-    const evidence = routes.evidence.exec(pathname);
-    if (evidence) return serveEvidence(request, evidence[1]);
+    const evidence2 = routes.evidence.exec(pathname);
+    if (evidence2) return serveEvidence(request, evidence2[1]);
     const shown = context(request);
     if (pathname === "/") return render(request, inboxPage(store));
     if (pathname === "/plans")
@@ -9568,6 +9596,12 @@ function integer(args, name) {
   requireCondition(/^[0-9]+$/.test(text), `Invalid --${name}: ${text}. Use a whole number.`);
   return Number(text);
 }
+function evidence(args, context) {
+  return list(args, "evidence")?.map((spec) => {
+    const match = /^-(?::(.+))?$/.exec(spec);
+    return match ? { text: context.text(), kind: match[1] } : spec;
+  });
+}
 function short2(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
@@ -9806,14 +9840,14 @@ var commands = {
     flags: { result: "value", observed: "value", reason: "value", evidence: "repeat" },
     required: ["result"],
     write: true,
-    run: (store, args, { actor }) => checkAssertion(store, actor, {
+    run: (store, args, context) => checkAssertion(store, context.actor, {
       runId: value(args, "runId"),
       testId: value(args, "testId"),
       assertionId: value(args, "assertionId"),
       result: value(args, "result"),
       observed: value(args, "observed"),
       reason: value(args, "reason"),
-      evidence: list(args, "evidence")
+      evidence: evidence(args, context)
     }),
     print: (reply) => ({
       facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
@@ -9824,12 +9858,12 @@ var commands = {
     positionals: ["runId", "testId"],
     flags: { outcome: "value", reason: "value", evidence: "repeat" },
     write: true,
-    run: (store, args, { actor }) => closeTest(store, actor, {
+    run: (store, args, context) => closeTest(store, context.actor, {
       runId: value(args, "runId"),
       testId: value(args, "testId"),
       outcome: value(args, "outcome"),
       reason: value(args, "reason"),
-      evidence: list(args, "evidence")
+      evidence: evidence(args, context)
     }),
     print: (reply) => ({
       facts: { [String(reply.data.testId)]: reply.data.outcome },
@@ -9974,10 +10008,10 @@ var commands = {
     flags: { out: "value" },
     required: ["out"],
     run: (store, args) => {
-      const evidence = evidenceBytes(store, value(args, "evidenceId"));
-      const out = writeOutput(store, value(args, "out"), evidence.bytes);
-      const { bytes, ...data } = evidence;
-      return completed(evidence.id, { ...data, out });
+      const evidence2 = evidenceBytes(store, value(args, "evidenceId"));
+      const out = writeOutput(store, value(args, "out"), evidence2.bytes);
+      const { bytes, ...data } = evidence2;
+      return completed(evidence2.id, { ...data, out });
     },
     print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } })
   },
@@ -10271,7 +10305,7 @@ function run(argv, io) {
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
-    const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()) });
+    const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin });
     const code = reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
     return { code, output: format(reply, json, command.print) };
   } catch (error) {

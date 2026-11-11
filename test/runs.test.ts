@@ -98,7 +98,7 @@ test('a check names a selected test, a known assertion, and passed prerequisites
 	)
 	assert.throws(
 		() => checkAssertion(opened, actor, { ...base, result: 'passed', observed: '400 PLN' }),
-		/A passed result needs an observation \(--observed\) and one or more evidence files/
+		/A passed result needs an observation \(--observed\) and one or more evidence items/
 	)
 	assert.throws(
 		() =>
@@ -127,7 +127,7 @@ test('a check names a selected test, a known assertion, and passed prerequisites
 				observed: 'A total.',
 				reason: 'The quote does not list discounts.',
 			}),
-		/An inconclusive result needs an observation \(--observed\) and one or more evidence files/
+		/An inconclusive result needs an observation \(--observed\) and one or more evidence items/
 	)
 	assert.throws(
 		() => checkAssertion(opened, actor, { ...base, result: 'not_checked' }),

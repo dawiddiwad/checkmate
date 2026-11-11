@@ -345,3 +345,19 @@ test('without --actor and CHECKMATE_ACTOR, a write records the git user name, el
 		['G1', 'Repo User'],
 	])
 })
+
+test('payload commands read a shell heredoc on standard input', (t) => {
+	const workspace = directory(t)
+	const value = profile()
+	const checkmate = `node ${JSON.stringify(join(root, 'plugin/bin/checkmate.ts'))}`
+	const script = [
+		`${checkmate} target open checkout-local --base-url ${value.baseUrl} --capabilities ${value.capabilities.join(',')} --operations ${value.allowedOperations.join(',')}`,
+		`${checkmate} target save checkout-local <<'EOF'\n${JSON.stringify(value, null, 2)}\nEOF`,
+	].join('\n')
+	const output = execFileSync('sh', ['-c', script], {
+		cwd: workspace,
+		env: { ...process.env, CHECKMATE_ACTOR: 'tester' },
+		encoding: 'utf8',
+	})
+	assert.match(output, /^completed checkout-local@1 sha256=[a-f0-9]{8} recorded=true$/m)
+})

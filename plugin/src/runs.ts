@@ -70,6 +70,7 @@ export type BeginInput = {
 	timeoutSeconds?: number
 	retestOf?: string | null
 }
+export type EvidenceInput = string | { text: string; kind?: string }
 export type CheckInput = {
 	runId: string
 	testId: string
@@ -77,9 +78,15 @@ export type CheckInput = {
 	result: string
 	observed?: string
 	reason?: string
-	evidence?: string[]
+	evidence?: EvidenceInput[]
 }
-export type CloseInput = { runId: string; testId: string; outcome?: string; reason?: string; evidence?: string[] }
+export type CloseInput = {
+	runId: string
+	testId: string
+	outcome?: string
+	reason?: string
+	evidence?: EvidenceInput[]
+}
 export type FinishInput = { runId: string; completion: string; cleanup: string; cleanupReason: string }
 export type ResumeInput = { runId: string; error?: string[]; reason?: string }
 export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string }
@@ -252,7 +259,31 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 	return reply
 }
 
-type EvidenceFile = { path: string; name: string; kind: string; mediaType: string; bytes: Buffer }
+type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
+
+const evidenceKinds = ['observation', 'http_exchange', 'screenshot', 'trace'] as const
+
+function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
+	requireCondition(
+		typeof input.text === 'string' && input.text.trim().length > 0,
+		'Missing evidence text on standard input'
+	)
+	const bytes = Buffer.from(input.text, 'utf8')
+	requireCondition(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
+	let json = true
+	try {
+		JSON.parse(input.text)
+	} catch {
+		json = false
+	}
+	return {
+		path: null,
+		name: `${name}.${json ? 'json' : 'txt'}`,
+		kind: requireChoice(input.kind ?? 'observation', evidenceKinds, 'evidence kind'),
+		mediaType: json ? 'application/json' : 'text/plain',
+		bytes,
+	}
+}
 
 function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
@@ -321,11 +352,18 @@ function storeEvidence(
 	})
 }
 
-function evidenceFiles(store: Store, runId: string, specs: string[] = []) {
-	const files = specs.map((spec) => readEvidence(store, runId, spec))
-	const paths = files.map((file) => file.path)
+function evidenceFiles(store: Store, runId: string, name: string, specs: EvidenceInput[] = []) {
+	const files = specs.map((spec) =>
+		typeof spec === 'string' ? readEvidence(store, runId, spec) : textEvidence(spec, name)
+	)
+	const paths = files.flatMap((file) => file.path ?? [])
 	requireCondition(new Set(paths).size === paths.length, 'An evidence file is listed twice')
+	requireCondition(files.length - paths.length <= 1, 'Give one evidence text on standard input')
 	return files
+}
+
+function removeFiles(files: EvidenceFile[]) {
+	for (const file of files) if (file.path) rmSync(file.path, { force: true })
 }
 
 function optionalText(value: string | undefined, name: string) {
@@ -362,11 +400,11 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 		)
 		const observed = optionalText(input.observed, 'observation (--observed)')
 		const reason = optionalText(input.reason, 'reason (--reason)')
-		files = evidenceFiles(store, input.runId, input.evidence)
+		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
 		if (result !== 'not_checked')
 			requireCondition(
 				observed && files.length > 0,
-				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence files (--evidence)`
+				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`
 			)
 		if (result === 'inconclusive')
 			requireCondition(
@@ -400,7 +438,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			subjects: [`run:${input.runId}`],
 		}
 	})
-	for (const file of files) rmSync(file.path, { force: true })
+	removeFiles(files)
 	return reply
 }
 
@@ -439,7 +477,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 				outcome === 'error' || !input.evidence?.length,
 				'--evidence applies only with --outcome error'
 			)
-			files = evidenceFiles(store, input.runId, input.evidence)
+			files = evidenceFiles(store, input.runId, test.id, input.evidence)
 		}
 		execute(
 			store,
@@ -458,7 +496,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 			subjects: [`run:${input.runId}`],
 		}
 	})
-	for (const file of files) rmSync(file.path, { force: true })
+	removeFiles(files)
 	return reply
 }
 

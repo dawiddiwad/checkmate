@@ -1,5 +1,6 @@
 import type { Reply, Store } from './store.ts'
 import type { Plan } from './types.ts'
+import type { EvidenceInput } from './runs.ts'
 import { closeStore, completed, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
@@ -35,7 +36,7 @@ import { dirname, resolve } from 'node:path'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch'
 type Args = Record<string, string | string[] | boolean>
-type Context = { actor: string | undefined; stdin: () => unknown }
+type Context = { actor: string | undefined; stdin: () => unknown; text: () => string }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
 	positionals: string[]
@@ -78,6 +79,13 @@ function integer(args: Args, name: string) {
 	if (text === undefined) return undefined
 	requireCondition(/^[0-9]+$/.test(text), `Invalid --${name}: ${text}. Use a whole number.`)
 	return Number(text)
+}
+
+function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
+	return list(args, 'evidence')?.map((spec) => {
+		const match = /^-(?::(.+))?$/.exec(spec)
+		return match ? { text: context.text(), kind: match[1] } : spec
+	})
 }
 
 function short(sha256: unknown) {
@@ -352,15 +360,15 @@ const commands: Record<string, Command> = {
 		flags: { result: 'value', observed: 'value', reason: 'value', evidence: 'repeat' },
 		required: ['result'],
 		write: true,
-		run: (store, args, { actor }) =>
-			checkAssertion(store, actor, {
+		run: (store, args, context) =>
+			checkAssertion(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				assertionId: value(args, 'assertionId')!,
 				result: value(args, 'result')!,
 				observed: value(args, 'observed'),
 				reason: value(args, 'reason'),
-				evidence: list(args, 'evidence'),
+				evidence: evidence(args, context),
 			}),
 		print: (reply) => ({
 			facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
@@ -371,13 +379,13 @@ const commands: Record<string, Command> = {
 		positionals: ['runId', 'testId'],
 		flags: { outcome: 'value', reason: 'value', evidence: 'repeat' },
 		write: true,
-		run: (store, args, { actor }) =>
-			closeTest(store, actor, {
+		run: (store, args, context) =>
+			closeTest(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				outcome: value(args, 'outcome'),
 				reason: value(args, 'reason'),
-				evidence: list(args, 'evidence'),
+				evidence: evidence(args, context),
 			}),
 		print: (reply) => ({
 			facts: { [String(reply.data.testId)]: reply.data.outcome },
@@ -864,7 +872,7 @@ export function run(argv: string[], io: Io): Outcome {
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
-		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()) })
+		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin })
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		return { code, output: format(reply, json, command.print) }
 	} catch (error) {

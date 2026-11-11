@@ -121,6 +121,12 @@ A requirement is `tested` when it has one or more planned tests, no deferred or 
 
 A `completed` run with failed tests is a correct result. The process exit code of `run finish` is 0 for `completed` and 1 for `interrupted` or `operational_error`. An exit code is not a release decision. Result acceptance is a caller record. It is not a release decision by Checkmate.
 
+## Reviewer feedback
+
+Accepting or rejecting a result records a separate verdict and rationale. It does not change the finished result, its evidence, or the assertion outcomes. Read `checkmate run show <runId> --json` and inspect `result.latestDecision` for the current feedback. The command's top-level `reasons` array is separate and can be empty even when a rejection rationale is present.
+
+For an authorized repeat, read that rationale before choosing tools or evidence. Link the new run to the prior one with `--retest-of <runId>`. A request for full-page screenshots requires screenshot captures; a text file describing a page is not a screenshot. The prior evidence remains available, and the new result needs its own acceptance decision.
+
 ## Resume
 
 A crash or a deadline does not finalize a run. The run stays `started`, and recorded results stay.

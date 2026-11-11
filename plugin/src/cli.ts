@@ -4,6 +4,7 @@ import { closeStore, completed, openReadOnlyStore, openStore, resolveActor } fro
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
 import {
+	type Approval,
 	answerGap,
 	approvePlan,
 	diffPlan,
@@ -294,7 +295,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: { sha256: short(data.sha256), decisions: data.decisions.length },
 				lines: [
-					...data.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+					...data.decisions.map((decision) => decisionLine(decision)),
 					...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 					...data.tests.flatMap(testLines),
 				],
@@ -519,8 +520,10 @@ const commands: Record<string, Command> = {
 					completion: detail.result?.completion,
 					coverage: detail.result?.coverage.status,
 					acceptance: detail.result?.acceptance,
+					...(detail.request.retestOf ? { retestOf: detail.request.retestOf } : {}),
 				},
 				lines: [
+					...approvalLines('result decision', detail.result?.latestDecision),
 					...detail.tests.flatMap((test) => [
 						[test.testId, test.outcome ?? 'open', test.title, ...(test.reason ? [test.reason] : [])],
 						...test.assertions.map((assertion) => [
@@ -701,7 +704,11 @@ function showPlan(store: Store, args: Args) {
 	return completed(subject, {
 		planId: id,
 		revision: detail.revision,
+		latestRevision: detail.latestRevision,
 		sha256: detail.sha256,
+		approval: detail.approval,
+		pendingDecisions: detail.pendingDecisions,
+		decisions: detail.plan.decisions,
 		fields: fields ?? ['readiness', 'capability', 'title'],
 		tests: picked,
 	})
@@ -716,26 +723,59 @@ function testLines(test: Plan['tests'][number]) {
 	]
 }
 
+function approvalLines(label: string, decision: Approval | null | undefined) {
+	return decision
+		? [[label, decision.verdict, `actor=${decision.actor}`, `at=${decision.at}`, `rationale=${decision.rationale}`]]
+		: []
+}
+
+function decisionLine(
+	decision: {
+		id: string
+		gapId: string
+		kind: string
+		value: string
+		rationale: string
+		source: string | null
+		actor: string
+	},
+	pending = false
+) {
+	return [
+		decision.id,
+		decision.gapId,
+		`${pending ? 'pending ' : ''}${decision.kind}`,
+		decision.value,
+		`rationale=${decision.rationale}`,
+		`source=${decision.source ?? '-'}`,
+		`actor=${decision.actor}`,
+	]
+}
+
 function printPlan(reply: Reply): Printed {
 	const facts = { sha256: short(reply.data.sha256) }
+	const detail = reply.data as ReturnType<typeof planDetail>
+	const approval = approvalLines('plan decision', detail.approval.latest)
 	if (reply.data.fields) {
 		const fields = reply.data.fields as string[]
 		const tests = reply.data.tests as Array<Record<string, unknown>>
 		return {
 			facts,
-			lines: tests.flatMap((test) => [
-				[test.id, ...fields.filter((field) => field !== 'assertions').map((field) => test[field])],
-				...(fields.includes('assertions')
-					? (test.assertions as Plan['tests'][number]['assertions']).map((assertion) => [
-							`${test.id}.${assertion.id}`,
-							assertion.oracleKind,
-							assertion.check,
-						])
-					: []),
-			]),
+			lines: [
+				...approval,
+				...tests.flatMap((test) => [
+					[test.id, ...fields.filter((field) => field !== 'assertions').map((field) => test[field])],
+					...(fields.includes('assertions')
+						? (test.assertions as Plan['tests'][number]['assertions']).map((assertion) => [
+								`${test.id}.${assertion.id}`,
+								assertion.oracleKind,
+								assertion.check,
+							])
+						: []),
+				]),
+			],
 		}
 	}
-	const detail = reply.data as ReturnType<typeof planDetail>
 	const { plan } = detail
 	const coverage = new Map(plan.coverage.map((row) => [row.requirementId, row.status]))
 	return {
@@ -745,16 +785,12 @@ function printPlan(reply: Reply): Printed {
 			...(detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}),
 		},
 		lines: [
+			...approval,
 			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
 			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
 			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-			...plan.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
-			...detail.pendingDecisions.map((decision) => [
-				decision.id,
-				decision.gapId,
-				`pending ${decision.kind}`,
-				decision.value,
-			]),
+			...plan.decisions.map((decision) => decisionLine(decision)),
+			...detail.pendingDecisions.map((decision) => decisionLine(decision, true)),
 		],
 	}
 }

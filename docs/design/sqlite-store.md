@@ -447,7 +447,7 @@ The rules in `stages.ts` move to the new commands. They do not change in meaning
 - A runtime gap is new and open.
 - `completed` is not possible with an `error` outcome, a failed cleanup, or a selected test that was not run without a cause.
 - Completion, test outcomes, and coverage stay separate fields.
-- A retest is a new run with a new build. The prior run does not change.
+- A retest is a new run linked to the prior run. It needs a different build unless the prior result's latest decision is `rejected`. A repeat to correct rejected evidence can use the same application build. The prior run does not change.
 
 ## 11. Command interface
 

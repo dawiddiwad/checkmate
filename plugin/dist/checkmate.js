@@ -6187,7 +6187,10 @@ function gate(store, input) {
   if (!target.profile.readyForLiveExecution)
     reasons2.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`);
   const approval = planApproval(store, plan, revision.sha256);
-  if (approval.policy === "required" && !approval.approved) reasons2.push(`Plan ${subject} is not approved`);
+  if (approval.policy === "required" && !approval.approved)
+    reasons2.push(
+      `Plan ${subject} is not approved${approval.latest?.verdict === "rejected" ? `: ${approval.latest.rationale}` : ""}`
+    );
   if (partial === "wait_for_resolution") {
     for (const gap of plan.gaps)
       if (gap.status === "open" && gap.severity === "blocking") reasons2.push(`Open blocking gap: ${gap.id}`);
@@ -6235,8 +6238,8 @@ function retestCheck(store, runId, plan, build) {
     `Retest scope changed: ${runId} ran plan ${previous.plan_id} on ${previous.target_id}@${previous.target_revision}`
   );
   requireCondition(
-    previous.application_build !== build,
-    `Retest needs a new build. Run ${runId} used build ${build}.`
+    previous.application_build !== build || latestApproval(store, "result", runId)?.verdict === "rejected",
+    `Retest needs a new build unless its result was rejected. Run ${runId} used build ${build}.`
   );
 }
 function dependencyBlock(store, reference, build) {
@@ -6258,8 +6261,9 @@ function dependencyBlock(store, reference, build) {
   if (!result) return build === null ? "no finalized result" : `no finalized result for build ${build}`;
   if (result.outcome !== "passed") return `latest result ${result.run_id} shows ${result.outcome}`;
   const policy = approvalPolicy(targetRevision(store, result.target_id, result.target_revision).profile).result;
-  if (policy === "required" && !approvalState(store, "result", result.run_id, result.sha256, policy).approved)
-    return `result ${result.run_id} is not accepted`;
+  const approval = approvalState(store, "result", result.run_id, result.sha256, policy);
+  if (policy === "required" && !approval.approved)
+    return `result ${result.run_id} is not accepted${approval.latest?.verdict === "rejected" ? `: ${approval.latest.rationale}` : ""}`;
   for (const [owner, plan] of latestPlans(store)) {
     const open = plan.gaps.filter((gap2) => gap2.status === "open" && gap2.severity === "blocking");
     const test = plan.tests.find((test2) => test2.id === testId);
@@ -7169,9 +7173,17 @@ function planDetail(store, planId, revision = null) {
   const approval = planApproval(store, selected.plan, selected.sha256);
   const pending = latest.plan.revision === selected.plan.revision ? all(
     store,
-    "SELECT id, gap_id, kind, value, actor FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
+    "SELECT id, gap_id, kind, value, rationale, source, actor FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind, value: row.value, actor: row.actor })) : [];
+  ).map((row) => ({
+    id: row.id,
+    gapId: row.gap_id,
+    kind: row.kind,
+    value: row.value,
+    rationale: row.rationale,
+    source: row.source,
+    actor: row.actor
+  })) : [];
   return {
     planId,
     revision: selected.plan.revision,
@@ -7948,7 +7960,7 @@ var commands = {
       return {
         facts: { sha256: short(data.sha256), decisions: data.decisions.length },
         lines: [
-          ...data.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+          ...data.decisions.map((decision) => decisionLine(decision)),
           ...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
           ...data.tests.flatMap(testLines)
         ]
@@ -8160,9 +8172,11 @@ var commands = {
           build: detail.build,
           completion: detail.result?.completion,
           coverage: detail.result?.coverage.status,
-          acceptance: detail.result?.acceptance
+          acceptance: detail.result?.acceptance,
+          ...detail.request.retestOf ? { retestOf: detail.request.retestOf } : {}
         },
         lines: [
+          ...approvalLines("result decision", detail.result?.latestDecision),
           ...detail.tests.flatMap((test) => [
             [test.testId, test.outcome ?? "open", test.title, ...test.reason ? [test.reason] : []],
             ...test.assertions.map((assertion) => [
@@ -8329,7 +8343,11 @@ function showPlan(store, args) {
   return completed(subject, {
     planId: id2,
     revision: detail.revision,
+    latestRevision: detail.latestRevision,
     sha256: detail.sha256,
+    approval: detail.approval,
+    pendingDecisions: detail.pendingDecisions,
+    decisions: detail.plan.decisions,
     fields: fields ?? ["readiness", "capability", "title"],
     tests: picked
   });
@@ -8342,24 +8360,42 @@ function testLines(test) {
     ...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.oracleKind, assertion.check])
   ];
 }
+function approvalLines(label, decision) {
+  return decision ? [[label, decision.verdict, `actor=${decision.actor}`, `at=${decision.at}`, `rationale=${decision.rationale}`]] : [];
+}
+function decisionLine(decision, pending = false) {
+  return [
+    decision.id,
+    decision.gapId,
+    `${pending ? "pending " : ""}${decision.kind}`,
+    decision.value,
+    `rationale=${decision.rationale}`,
+    `source=${decision.source ?? "-"}`,
+    `actor=${decision.actor}`
+  ];
+}
 function printPlan(reply) {
   const facts2 = { sha256: short(reply.data.sha256) };
+  const detail = reply.data;
+  const approval = approvalLines("plan decision", detail.approval.latest);
   if (reply.data.fields) {
     const fields = reply.data.fields;
     const tests = reply.data.tests;
     return {
       facts: facts2,
-      lines: tests.flatMap((test) => [
-        [test.id, ...fields.filter((field) => field !== "assertions").map((field) => test[field])],
-        ...fields.includes("assertions") ? test.assertions.map((assertion) => [
-          `${test.id}.${assertion.id}`,
-          assertion.oracleKind,
-          assertion.check
-        ]) : []
-      ])
+      lines: [
+        ...approval,
+        ...tests.flatMap((test) => [
+          [test.id, ...fields.filter((field) => field !== "assertions").map((field) => test[field])],
+          ...fields.includes("assertions") ? test.assertions.map((assertion) => [
+            `${test.id}.${assertion.id}`,
+            assertion.oracleKind,
+            assertion.check
+          ]) : []
+        ])
+      ]
     };
   }
-  const detail = reply.data;
   const { plan } = detail;
   const coverage2 = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
   return {
@@ -8369,16 +8405,12 @@ function printPlan(reply) {
       ...detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}
     },
     lines: [
+      ...approval,
       ...plan.requirements.map((requirement) => [requirement.id, coverage2.get(requirement.id), requirement.text]),
       ...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
       ...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-      ...plan.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
-      ...detail.pendingDecisions.map((decision) => [
-        decision.id,
-        decision.gapId,
-        `pending ${decision.kind}`,
-        decision.value
-      ])
+      ...plan.decisions.map((decision) => decisionLine(decision)),
+      ...detail.pendingDecisions.map((decision) => decisionLine(decision, true))
     ]
   };
 }
@@ -9437,12 +9469,20 @@ function gapRow(detail, gap) {
 			</summary>
 			<p class="muted">${gap.consequence}</p>
 			${decision ? html2`<p class="gap-d">
-							${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
-						</p>` : ""}
+								${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
+							</p>
+							<p class="help">
+								Rationale:
+								${decision.rationale}${decision.source ? html2` · Source <code>${decision.source}</code>` : ""}
+							</p>` : ""}
 			${pending ? html2`<p class="gap-d">
-							${pill("pending", "decision pending")} ${words(pending.kind)}: ${pending.value}
-							<span class="muted">· ${pending.actor} · applies in the next revision</span>
-						</p>` : ""}
+								${pill("pending", "decision pending")} ${words(pending.kind)}: ${pending.value}
+								<span class="muted">· ${pending.actor} · applies in the next revision</span>
+							</p>
+							<p class="help">
+								Rationale:
+								${pending.rationale}${pending.source ? html2` · Source <code>${pending.source}</code>` : ""}
+							</p>` : ""}
 			${answerable ? html2`<p>
 							<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
 								>Answer ${gap.id}</a
@@ -9543,22 +9583,19 @@ function approvalPanel(context, detail, state) {
   const latest = detail.approval.latest;
   if (detail.approval.policy === "none")
     return recordPanel("Approval", html2`<p class="help">The target policy does not require plan approval.</p>`);
-  if (latest && !state)
-    return recordPanel(
-      "Approval",
-      html2`<p class="subj">${pill(latest.verdict)} ${subject}</p>
+  const recorded = latest ? html2`<p class="lab">Current decision</p>
+				<p class="subj">${pill(latest.verdict)} ${subject}</p>
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`
-    );
+				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}` : "";
   return verdictPanel(
     context,
     {
       action: `/plans/${subject}`,
       subject,
-      question: `Approve ${subject}?`,
+      question: latest ? `Change decision for ${subject}?` : `Approve ${subject}?`,
       sha256: detail.sha256,
       digestLabel: "Plan",
       approve: {
@@ -9574,7 +9611,8 @@ function approvalPanel(context, detail, state) {
         summary: `Reject ${subject}. The agent must revise the plan.`
       },
       staleMessage: `${detail.planId} changed. Review it before you decide.`,
-      intro: html2`<p class="help">${planSummaryLine(detail.plan)}</p>`
+      intro: html2`${recorded}
+				<p class="help">${planSummaryLine(detail.plan)}</p>`
     },
     state ?? emptyState()
   );
@@ -9688,14 +9726,21 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
       "Answer recorded",
       html2`<p class="subj">${pill(pending.kind)} ${gap.id}</p>
 				<blockquote>${pending.value}</blockquote>
-				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>`
+				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>
+				<p class="help">
+					Rationale:
+					${pending.rationale}${pending.source ? html2` · Source <code>${pending.source}</code>` : ""}
+				</p>`
     );
   else if (decision)
     panel = recordPanel(
       "Decision",
       html2`<p class="subj">${pill(decision.kind)} ${gap.id}</p>
 				<blockquote>${decision.value}</blockquote>
-				<p class="help">By ${decision.actor}. Rationale: ${decision.rationale}</p>`
+				<p class="help">
+					By ${decision.actor}. Rationale:
+					${decision.rationale}${decision.source ? html2` · Source <code>${decision.source}</code>` : ""}
+				</p>`
     );
   else
     panel = recordPanel(
@@ -10029,23 +10074,20 @@ function decisionPanel(context, detail, state) {
   if (result.acceptance === "not_required")
     return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
   const latest = result.latestDecision;
-  if (latest && !state)
-    return recordPanel(
-      "Decision",
-      html2`<p class="subj">
+  const recorded = latest ? html2`<p class="lab">Current decision</p>
+				<p class="subj">
 					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail.runId}
 				</p>
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
-				<blockquote>${latest.rationale}</blockquote>`
-    );
+				<blockquote>${latest.rationale}</blockquote>` : "";
   return verdictPanel(
     context,
     {
       action: `/runs/${detail.runId}`,
       subject: detail.runId,
-      question: `Accept ${detail.runId}?`,
+      question: latest ? `Change decision for ${detail.runId}?` : `Accept ${detail.runId}?`,
       sha256: result.sha256,
       digestLabel: "Result",
       approve: {
@@ -10061,7 +10103,7 @@ function decisionPanel(context, detail, state) {
         summary: `Reject ${detail.runId}. Dependent plans stay blocked.`
       },
       staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
-      intro: inconclusiveList(detail)
+      intro: html2`${recorded}${inconclusiveList(detail)}`
     },
     state ?? emptyState()
   );

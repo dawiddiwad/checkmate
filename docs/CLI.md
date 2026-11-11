@@ -20,16 +20,18 @@ Run commands from the caller's workspace, or add `--workspace <path>`. Put optio
 checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--timeout <seconds>] [--workspace <path>] [--json]
 ```
 
-| Stage     | Subject    | Before the call                              | The parent checks after the call                       |
-| --------- | ---------- | -------------------------------------------- | ------------------------------------------------------ |
-| `setup`   | `targetId` | `checkmate target open`                      | The worker saved a profile for the target.             |
-| `plan`    | `planId`   | `checkmate plan open`, with no revision      | Revision 1 exists.                                     |
-| `revise`  | `planId`   | One or more decisions from `gap answer`      | A new revision exists and no pending decision remains. |
-| `execute` | `runId`    | `checkmate run begin` (the run is `started`) | The run is finalized.                                  |
+| Stage     | Subject    | Before the call                                 | The parent checks after the call                       |
+| --------- | ---------- | ----------------------------------------------- | ------------------------------------------------------ |
+| `setup`   | `targetId` | `checkmate target open`                         | The worker saved a profile for the target.             |
+| `plan`    | `planId`   | `checkmate plan open`, with no revision         | Revision 1 exists.                                     |
+| `revise`  | `planId`   | Pending gap answers or a rejected plan approval | A new revision exists and no pending decision remains. |
+| `execute` | `runId`    | `checkmate run begin` (the run is `started`)    | The run is finalized.                                  |
 
 `delegate` starts one fresh `claude -p` session with the bundled plugin (`--plugin-dir`), JSON output, a response schema, `--permission-prompts none`, and `--no-session-persistence`. The worker writes to the database through the plugin CLI.
 
 The parent does not trust the worker's words. It requires a structured response for the same subject. Then it reads the database and returns the response of the recorded command. A worker that reports `completed` without the recorded change gives `operational_error`. A worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons.
+
+For `revise`, pending gap answers select `plan revise`. With no pending gap answers, a rejected latest approval selects `plan edit`; the worker reads its rationale and saves the requested correction. If both apply, the worker keeps the original rejection feedback after the gap revision, then edits any remaining correction or returns `needs_decision` with the outstanding reason. The parent verifies the saved revision. Neither path approves the new revision.
 
 Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list because the worker cannot answer permission prompts. Permit the bundled Node.js command for database access and the host tools that the stage needs. For example, a host that uses Playwright CLI can permit `Bash(playwright-cli *)`; another host can use its browser connector instead.
 
@@ -72,6 +74,19 @@ Agents can record caller decisions directly:
 - `result accept <runId>` and `result reject <runId>` record result decisions.
 
 Each decision needs a rationale. Approval applies to one revision. A new revision needs its own approval.
+
+Read the rationale when a caller asks about a decision or requests follow-up work:
+
+| Command                              | Current decision                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `plan show <planId@revision> --json` | `approval.latest`: verdict, rationale, actor, time, and digest         |
+| `run show <runId> --json`            | `result.latestDecision`: verdict, rationale, actor, time, and digest   |
+| `plan pending <planId> --json`       | Pending gap answers: kind, value, rationale, and source                |
+| `plan show <planId> --json`          | Applied answers in `plan.decisions`, linked by each gap's `decisionId` |
+
+The response's `status` and `reasons` describe the command operation. They are separate from the stored approval or acceptance decision. For example, `run show` can return `status: completed`, `reasons: []`, and a rejected result with a nonempty `result.latestDecision.rationale`. Do not interpret an empty `reasons` array as missing reviewer feedback.
+
+Rejection records feedback; it does not execute tests, reopen a finished run, or approve a corrected plan. Read [Workflow](WORKFLOW.md#after-a-review-decision) before selecting the next command. A gap has clarification, assumption, and deferral decisions; it has no separate approve/reject command.
 
 Pass JSON payloads on standard input, for example with a here-document or a pipe. Do not keep generated request, candidate, delta, or finding JSON files in the workspace. The database stores these records. Existing caller-owned requirement files can still be used as input.
 

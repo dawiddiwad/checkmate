@@ -1,17 +1,27 @@
 ---
 name: revise
-description: Apply recorded caller decisions to a Checkmate plan. Write a delta for the affected tests and save the next revision with plan revise.
+description: Apply recorded gap decisions or correct a rejected Checkmate plan. Save a new revision for caller review.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
 
-1. Run `checkmate plan pending <planId>`. It prints each pending decision, then the affected gaps and tests with their assertions.
-2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
-3. For each decision, find the change in the affected tests that the decision value requires.
-4. Run `checkmate plan request <planId>` for the current context and tool instructions.
-5. Send the delta directly to `checkmate plan revise <planId> --expect-sha <SHA from plan pending>` on standard input. Use the shape below. Do not save a JSON file.
-6. If the command refuses the delta, correct it and run step 5 again.
-7. Read `checkmate plan show <planId>` again. Return the response of `plan revise`.
+1. Run `checkmate plan show <planId> --json` and `checkmate plan pending <planId> --json`. Read the current approval verdict and rationale, each pending gap answer's value and rationale, and the affected gaps and tests. If rejected, retain that revision reference and rationale until the correction is addressed or reported as outstanding.
+2. Run `checkmate plan request <planId>` for the current context and tool instructions.
+3. If gap decisions are pending, follow **Pending gap decisions** below. Otherwise, if the current approval is rejected, follow **Rejected plan**. If neither applies, return `needs_decision` with the missing decision. Do not say there is no reason merely because there is no pending gap answer.
+
+## Rejected plan
+
+1. Use the rejection rationale read at the start. Apply only the correction the caller requested. Start from the latest saved objective, requirements, and tests. If the correction is unclear, return `needs_decision` with the recorded rationale and the missing detail, even if you already saved a gap revision.
+2. Send the full `objective`, `requirements`, and `tests` directly to `checkmate plan edit <planId> --expect-sha <SHA from plan show>` on standard input. Do not invent a gap answer or create another plan.
+3. Read `checkmate plan show <planId> --json` again. Return the response of `plan edit`. The new revision needs its own approval. Do not approve it or run test actions.
+
+## Pending gap decisions
+
+1. For each decision, find the change in the affected tests that the decision value requires.
+2. Send the delta directly to `checkmate plan revise <planId> --expect-sha <SHA from plan pending>` on standard input. Use the shape below. Do not save a JSON file.
+3. If the command refuses the delta, correct it and run step 2 again.
+4. Read `checkmate plan show <planId> --json` again. If the original revision was rejected, check its saved rationale against the new revision. If it still needs a correction, follow **Rejected plan** with the new digest. If you cannot determine the correction, return `needs_decision` with the original rationale and the outstanding detail. Do not lose rejection feedback because the new revision has no approval yet.
+5. Return the response of the final write only when the gap answers and any requested rejection correction are addressed. The new revision needs its own approval. Do not approve it or run test actions.
 
 ```json
 {

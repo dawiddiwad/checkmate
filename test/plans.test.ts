@@ -338,7 +338,7 @@ test('the gate needs an approval of the exact revision, and a new revision needs
 	assert.deepEqual(gate(opened, gateInput).reply.reasons, ['Plan checkout@2 is not approved'])
 	rejectPlan(opened, actor, { reference: 'checkout@2', rationale: 'Not yet.' })
 	assert.equal(planDetail(opened, 'checkout').approval.state, 'rejected')
-	assert.deepEqual(gate(opened, gateInput).reply.reasons, ['Plan checkout@2 is not approved'])
+	assert.deepEqual(gate(opened, gateInput).reply.reasons, ['Plan checkout@2 is not approved: Not yet.'])
 	assert.throws(
 		() => approvePlan(opened, actor, { reference: 'checkout@2', rationale: 'Ok.', expectSha256: 'abcdef12' }),
 		/checkout@2 has digest/

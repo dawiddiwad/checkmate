@@ -130,11 +130,27 @@ export function planDetail(store: Store, planId: string, revision: number | null
 	const approval = planApproval(store, selected.plan, selected.sha256)
 	const pending =
 		latest.plan.revision === selected.plan.revision
-			? all<{ id: string; gap_id: string; kind: string; value: string; actor: string }>(
+			? all<{
+					id: string
+					gap_id: string
+					kind: string
+					value: string
+					rationale: string
+					source: string | null
+					actor: string
+				}>(
 					store,
-					'SELECT id, gap_id, kind, value, actor FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
+					'SELECT id, gap_id, kind, value, rationale, source, actor FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
 					planId
-				).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind, value: row.value, actor: row.actor }))
+				).map((row) => ({
+					id: row.id,
+					gapId: row.gap_id,
+					kind: row.kind,
+					value: row.value,
+					rationale: row.rationale,
+					source: row.source,
+					actor: row.actor,
+				}))
 			: []
 	return {
 		planId,

@@ -342,23 +342,22 @@ function decisionPanel(context: Context, detail: Detail, state: FormState | null
 	if (result.acceptance === 'not_required')
 		return recordPanel('Decision', html`<p class="help">The target policy does not require result acceptance.</p>`)
 	const latest = result.latestDecision
-	if (latest && !state)
-		return recordPanel(
-			'Decision',
-			html`<p class="subj">
+	const recorded = latest
+		? html`<p class="lab">Current decision</p>
+				<p class="subj">
 					${pill(latest.verdict, latest.verdict === 'approved' ? 'accepted' : 'rejected')} ${detail.runId}
 				</p>
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>`
-		)
+		: ''
 	return verdictPanel(
 		context,
 		{
 			action: `/runs/${detail.runId}`,
 			subject: detail.runId,
-			question: `Accept ${detail.runId}?`,
+			question: latest ? `Change decision for ${detail.runId}?` : `Accept ${detail.runId}?`,
 			sha256: result.sha256,
 			digestLabel: 'Result',
 			approve: {
@@ -374,7 +373,7 @@ function decisionPanel(context: Context, detail: Detail, state: FormState | null
 				summary: `Reject ${detail.runId}. Dependent plans stay blocked.`,
 			},
 			staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
-			intro: inconclusiveList(detail),
+			intro: html`${recorded}${inconclusiveList(detail)}`,
 		},
 		state ?? emptyState()
 	)

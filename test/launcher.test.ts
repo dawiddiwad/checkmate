@@ -4,7 +4,8 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { delegate, minimumRules, resumeReason, worker } from '../cli/src/launcher.ts'
 import { closeStore, openStore, resolveActor } from '../plugin/src/store.ts'
-import { answerGap, openPlan } from '../plugin/src/plans.ts'
+import { answerGap, approvePlan, openPlan, rejectPlan } from '../plugin/src/plans.ts'
+import { planDetail } from '../plugin/src/views.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
 import type { TestContext } from 'node:test'
 
@@ -167,6 +168,7 @@ reply({ status, subject, reasons })`
 test('delegate revise needs every pending decision applied', async (t) => {
 	const workspace = planned(t)
 	const opened = store(t, workspace)
+	rejectPlan(opened, actor, { reference: 'checkout@1', rationale: 'Apply the recorded refund decision.' })
 	answerGap(opened, actor, {
 		planId: 'checkout',
 		gapId: 'G2',
@@ -188,6 +190,151 @@ reply({ status, subject, reasons })`
 	})
 	assert.equal(revised.status, 'needs_decision', revised.reasons.join('; '))
 	assert.equal(revised.subject, 'checkout@2')
+})
+
+test('delegate revise corrects a rejected plan without pending gaps and verifies the saved edit', async (t) => {
+	const workspace = planned(t)
+	const opened = store(t, workspace)
+	const before = planDetail(opened, 'checkout')
+	rejectPlan(opened, actor, { reference: 'checkout@1', rationale: 'Include the audit requirement in the objective.' })
+	closeStore(opened)
+	const liar = claude(workspace, `reply({ status: 'completed', subject: 'checkout', reasons: [] })`)
+	const lied = await delegate(workspace, 'revise', 'checkout', { allowedTools: rules, pluginRoot, claude: liar })
+	assert.equal(lied.status, 'operational_error')
+	assert.match(lied.reasons[0], /no plan edit for checkout was recorded/)
+	const edits = claude(
+		workspace,
+		`const assert = require('node:assert/strict')
+const prompt = require('node:fs').readFileSync(0, 'utf8')
+assert.match(prompt, /approval.latest.rationale/)
+assert.match(prompt, /plan edit checkout --expect-sha/)
+assert.match(prompt, /Do not answer gaps, approve the new revision, or run test actions/)
+const current = JSON.parse(checkmate(['plan', 'show', 'checkout', '--json']))
+assert.equal(current.approval.latest.rationale, 'Include the audit requirement in the objective.')
+const { objective, requirements, tests } = current.plan
+const payload = JSON.stringify({ objective: objective + ' Include the audit requirement.', requirements, tests })
+const { status, subject, reasons } = JSON.parse(checkmate(['plan', 'edit', 'checkout', '--expect-sha', current.sha256, '--json'], payload))
+reply({ status, subject, reasons })`
+	)
+	const revised = await delegate(workspace, 'revise', 'checkout', { allowedTools: rules, pluginRoot, claude: edits })
+	assert.equal(revised.status, 'needs_decision', revised.reasons.join('; '))
+	assert.equal(revised.subject, 'checkout@2')
+	const after = store(t, workspace)
+	const detail = planDetail(after, 'checkout')
+	assert.equal(detail.revision, 2)
+	assert.equal(detail.approval.state, 'pending')
+	assert.equal(detail.approval.latest, null)
+	assert.equal(detail.plan.objective, `${before.plan.objective} Include the audit requirement.`)
+	assert.deepEqual(planDetail(after, 'checkout', 1).plan, before.plan)
+	assert.deepEqual(detail.pendingDecisions, [])
+	assert.equal(after.db.prepare('SELECT count(*) AS count FROM approvals').get()!.count, 1)
+	assert.equal(after.db.prepare('SELECT count(*) AS count FROM runs').get()!.count, 0)
+	assert.equal(
+		after.db.prepare('SELECT operation_id FROM plan_revisions WHERE revision = 2').get()!.operation_id,
+		revised.operation
+	)
+	closeStore(after)
+	await assert.rejects(
+		delegate(workspace, 'revise', 'checkout', { allowedTools: rules, pluginRoot, claude: '/does-not-exist' }),
+		/no pending decision or rejected approval/
+	)
+})
+
+test('delegate revise does not act on a rejection superseded by approval', async (t) => {
+	const workspace = planned(t)
+	const opened = store(t, workspace)
+	rejectPlan(opened, actor, { reference: 'checkout@1', rationale: 'Check the requirement.' })
+	approvePlan(opened, actor, { reference: 'checkout@1', rationale: 'The requirement is correct.' })
+	closeStore(opened)
+	await assert.rejects(
+		delegate(workspace, 'revise', 'checkout', { allowedTools: rules, pluginRoot, claude: '/does-not-exist' }),
+		/no pending decision or rejected approval/
+	)
+})
+
+test('delegate revise applies gaps then corrects an unrelated rejection and returns the last revision', async (t) => {
+	const workspace = planned(t)
+	const opened = store(t, workspace)
+	rejectPlan(opened, actor, {
+		reference: 'checkout@1',
+		rationale: 'T1 must verify that the order identifier is visible.',
+	})
+	answerGap(opened, actor, {
+		planId: 'checkout',
+		gapId: 'G2',
+		kind: 'defer',
+		value: 'Later.',
+		source: null,
+		rationale: 'Refunds are out of scope.',
+	})
+	closeStore(opened)
+	const edits = claude(
+		workspace,
+		`const assert = require('node:assert/strict')
+const prompt = require('node:fs').readFileSync(0, 'utf8')
+assert.match(prompt, /plan show checkout@1 --json/)
+assert.match(prompt, /After applying gaps, check the new revision against that original rejection/)
+const original = JSON.parse(checkmate(['plan', 'show', 'checkout@1', '--json']))
+checkmate(['plan', 'revise', 'checkout', '--expect-sha', original.sha256, '--json'], JSON.stringify({ tests: {} }))
+const current = JSON.parse(checkmate(['plan', 'show', 'checkout', '--json']))
+assert.equal(current.revision, 2)
+assert.equal(current.approval.latest, null)
+const { objective, requirements, tests } = current.plan
+tests.find(test => test.id === 'T1').assertions.push({ id: 'A3', check: 'The order identifier is visible.', oracleKind: 'agent_observation' })
+const { status, subject, reasons } = JSON.parse(checkmate(['plan', 'edit', 'checkout', '--expect-sha', current.sha256, '--json'], JSON.stringify({ objective, requirements, tests })))
+reply({ status, subject, reasons })`
+	)
+	const revised = await delegate(workspace, 'revise', 'checkout', { allowedTools: rules, pluginRoot, claude: edits })
+	assert.equal(revised.subject, 'checkout@3')
+	const after = store(t, workspace)
+	const detail = planDetail(after, 'checkout')
+	assert.equal(detail.approval.state, 'pending')
+	assert.deepEqual(detail.pendingDecisions, [])
+	assert.equal(detail.plan.gaps.find((gap) => gap.id === 'G2')!.status, 'deferred')
+	assert.equal(
+		detail.plan.tests.find((test) => test.id === 'T1')!.assertions.at(-1)!.check,
+		'The order identifier is visible.'
+	)
+	assert.equal(planDetail(after, 'checkout', 2).plan.tests.find((test) => test.id === 'T1')!.assertions.length, 2)
+	assert.equal(
+		after.db.prepare('SELECT operation_id FROM plan_revisions WHERE revision = 3').get()!.operation_id,
+		revised.operation
+	)
+	assert.equal(after.db.prepare('SELECT count(*) AS count FROM approvals').get()!.count, 1)
+	assert.equal(after.db.prepare('SELECT count(*) AS count FROM runs').get()!.count, 0)
+})
+
+test('delegate revise retains outstanding rejection feedback after saving a gap revision', async (t) => {
+	const workspace = planned(t)
+	const opened = store(t, workspace)
+	const rationale = 'T1 must verify the audit field.'
+	rejectPlan(opened, actor, { reference: 'checkout@1', rationale })
+	answerGap(opened, actor, {
+		planId: 'checkout',
+		gapId: 'G2',
+		kind: 'defer',
+		value: 'Later.',
+		source: null,
+		rationale: 'Refunds are out of scope.',
+	})
+	closeStore(opened)
+	const revises = claude(
+		workspace,
+		`const current = JSON.parse(checkmate(['plan', 'show', 'checkout', '--json']))
+const { subject } = JSON.parse(checkmate(['plan', 'revise', 'checkout', '--expect-sha', current.sha256, '--json'], JSON.stringify({ tests: {} })))
+reply({ status: 'needs_decision', subject, reasons: [current.approval.latest.rationale + ' The expected audit value is missing.'] })`
+	)
+	const revised = await delegate(workspace, 'revise', 'checkout', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: revises,
+	})
+	assert.equal(revised.status, 'needs_decision')
+	assert.equal(revised.subject, 'checkout@2')
+	assert(revised.operation)
+	assert(revised.reasons.includes(rationale + ' The expected audit value is missing.'))
+	assert(revised.reasons.includes('G1: Does the promotion stack with loyalty?'))
+	assert.equal(new Set(revised.reasons).size, revised.reasons.length)
 })
 
 test('a deadline kills the worker group, keeps the run started, and closes the browser once', async (t) => {

@@ -399,6 +399,40 @@ test('a retest is a new run with a new build of a finished run with the same pla
 	assert.equal(runResult(opened, 'run-1')!.sha256, before)
 })
 
+test('a rejected result permits a linked evidence retry on the same build until accepted again', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	passT1(opened)
+	finish(opened)
+	const original = runResult(opened, 'run-1')!
+	rejectResult(opened, actor, { runId: 'run-1', rationale: 'Capture full-page screenshots.' })
+	assert.equal(
+		beginRun(opened, actor, {
+			runId: 'evidence-retry',
+			reference: 'checkout@2',
+			tests: ['T1'],
+			build: 'build-1',
+			retestOf: 'run-1',
+		}).status,
+		'completed'
+	)
+	assert.equal(runDetail(opened, 'evidence-retry').request.retestOf, 'run-1')
+	assert.deepEqual(runResult(opened, 'run-1'), original)
+	accept(opened, 'run-1')
+	assert.throws(
+		() =>
+			beginRun(opened, actor, {
+				runId: 'accepted-retry',
+				reference: 'checkout@2',
+				tests: ['T1'],
+				build: 'build-1',
+				retestOf: 'run-1',
+			}),
+		/Retest needs a new build/
+	)
+})
+
 test('findings name recorded assertions, matching requirements, and evidence of those assertions', (t) => {
 	const opened = started(t)
 	const passed = check(opened, 'run-1', 'T1.A1', 'passed')

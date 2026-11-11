@@ -17,6 +17,26 @@ Before you answer a Checkmate question or take an action, read the relevant curr
 
 After a write, read the saved subject again before you summarize it. Use the returned revision and SHA for a decision or edit. If a stale-write check fails, read again and reassess the change.
 
+## Caller decisions and rejections
+
+Read the decision record before explaining an approval, rejection, or gap answer:
+
+| Subject            | Read                                      | Decision fields                                                 |
+| ------------------ | ----------------------------------------- | --------------------------------------------------------------- |
+| Plan               | `checkmate plan show <planId@rev> --json` | `approval.latest.verdict`, `rationale`, `actor`, and `at`       |
+| Run result         | `checkmate run show <runId> --json`       | `result.latestDecision.verdict`, `rationale`, `actor`, and `at` |
+| Pending gap answer | `checkmate plan pending <planId> --json`  | Each decision's `kind`, `value`, `rationale`, and `source`      |
+| Applied gap answer | `checkmate plan show <planId> --json`     | `plan.decisions` and the gap's `decisionId` and `status`        |
+
+The command's `status` and `reasons` describe the command operation. They do not contain the caller's decision rationale. An empty `reasons` array does not mean that the caller gave no reason. Do not make that claim from a list or a compact summary; read the fields above.
+
+State the caller's rationale and what it requires before proposing the next action. A rejection alone does not authorize execution, a scope change, or a new application build. Use any explicit follow-up authorization already given by the caller. If the needed action or scope is unclear, ask for that decision; a delegated stage returns `needs_decision`.
+
+- A plan rejection applies to that revision. Read its rationale. Apply pending gap decisions with `plan revise`; use `plan edit` for other authorized corrections. When both apply, retain the rejection feedback across the gap revision. Address any remaining requested correction or report it as outstanding with `needs_decision`. Do not invent a gap decision or create another plan to bypass a rejection. A changed revision needs its own approval.
+- A result rejection does not change the recorded observations or reopen the finished run. For an authorized repeat, use a new run ID linked with `--retest-of <rejectedRunId>`. Read the prior rationale and change the execution or evidence collection as requested. Do not repeat the rejected approach unchanged. Use the actual application build. A different build is required unless the prior result's latest decision is `rejected`; correcting rejected evidence can use the same build. Never invent a different build ID or drop the prior-run link to bypass a gate.
+- A gap answer is `clarify`, `accept_assumption`, or `defer`; there is no gap approve/reject command. Read the exact answer and rationale. The answer stays pending until `plan revise` applies it. A rejected plan or run does not defer its gaps automatically.
+- Acceptance means the caller accepts the recorded assessment. It does not mean that failed tests passed. Read current gap status from the saved plan before referring to a gap in a finding or summary.
+
 ## Commands and storage
 
 - Commands select the actor from the caller's configured identity. Use `--actor` or `CHECKMATE_ACTOR` only for an explicit override.

@@ -115,4 +115,27 @@ Plans, Runs, and Log start with the newest entries. Select 25, 50, or 100 rows p
 
 A finished run offers HTML and JSON downloads. Use Print / Save PDF for a PDF from the browser. Reports are exports; the database remains authoritative.
 
-After a fix, begin a new run with a new build and `--retest-of <priorRunId>`. Select the changed tests and their prerequisites. Unselected requirements stay uncovered in that retest. The original result and its evidence remain available.
+After a fix, begin a new run with the actual build and `--retest-of <priorRunId>`. A different build is required unless the prior result's latest decision is `rejected`. An authorized repeat to correct rejected evidence can use the same build. Select the changed tests and their prerequisites. Unselected requirements stay uncovered in that retest. The original result and its evidence remain available.
+
+## After a review decision
+
+Claude first reads the exact subject with `plan show --json` or `run show --json`. It reads the verdict and rationale from `approval.latest` or `result.latestDecision`. The command's top-level `reasons` array reports command problems, not reviewer feedback.
+
+| Decision                             | Next step                                                                                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plan approved                        | Execute only the approved revision and the scope the caller authorized.                                                                                         |
+| Plan rejected                        | State the rationale. Apply pending gap answers with `plan revise`, or make other authorized corrections with `plan edit`. Request approval of the new revision. |
+| Result accepted                      | Keep the observations and outcomes. Acceptance does not turn failed tests into passes.                                                                          |
+| Result rejected                      | State the rationale and the change it requires. If the caller authorizes a repeat, create a new run linked with `--retest-of`; keep the rejected result intact. |
+| Gap clarified or assumption accepted | Read the value, rationale, and source. Apply the pending answer with `plan revise`, then review the new revision.                                               |
+| Gap deferred                         | Apply the pending answer with `plan revise`. Affected scope stays deferred and does not become tested coverage.                                                 |
+
+A rejection by itself does not authorize another execution. Use any explicit follow-up instruction already given by the caller. If the required action is unclear, ask for that decision instead of repeating the first run. Do not invent a build ID or create an unrelated run to bypass retest validation.
+
+If a rejected plan also has pending gap answers, apply the answers first. Keep the original rejection rationale through that revision. Make any remaining authorized correction with `plan edit`, or report the outstanding correction with `needs_decision`.
+
+Evidence feedback must change the next capture. For example, if the rationale requests full-page screenshots, the authorized repeat must capture actual full-page screenshots with the host's browser tool. Text observations alone do not meet that request. If the required tool cannot capture them, report the missing capability.
+
+Gap answers stay pending until applied. There is no separate gap rejection command. A rejected plan or run does not automatically defer its gaps or erase their answers.
+
+The review UI shows the current verdict and rationale. You can change that decision with a new rationale and confirmation; the previous decision stays in history. Pending and applied gap answers also show their rationale and source.

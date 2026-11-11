@@ -117,16 +117,24 @@ function gapRow(detail: Detail, gap: Gap) {
 			${
 				decision
 					? html`<p class="gap-d">
-							${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
-						</p>`
+								${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
+							</p>
+							<p class="help">
+								Rationale:
+								${decision.rationale}${decision.source ? html` · Source <code>${decision.source}</code>` : ''}
+							</p>`
 					: ''
 			}
 			${
 				pending
 					? html`<p class="gap-d">
-							${pill('pending', 'decision pending')} ${words(pending.kind)}: ${pending.value}
-							<span class="muted">· ${pending.actor} · applies in the next revision</span>
-						</p>`
+								${pill('pending', 'decision pending')} ${words(pending.kind)}: ${pending.value}
+								<span class="muted">· ${pending.actor} · applies in the next revision</span>
+							</p>
+							<p class="help">
+								Rationale:
+								${pending.rationale}${pending.source ? html` · Source <code>${pending.source}</code>` : ''}
+							</p>`
 					: ''
 			}
 			${
@@ -248,22 +256,21 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 	const latest = detail.approval.latest
 	if (detail.approval.policy === 'none')
 		return recordPanel('Approval', html`<p class="help">The target policy does not require plan approval.</p>`)
-	if (latest && !state)
-		return recordPanel(
-			'Approval',
-			html`<p class="subj">${pill(latest.verdict)} ${subject}</p>
+	const recorded = latest
+		? html`<p class="lab">Current decision</p>
+				<p class="subj">${pill(latest.verdict)} ${subject}</p>
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
 				${latest.sha256 !== detail.sha256 ? banner('warn', 'This decision was for another digest.') : ''}`
-		)
+		: ''
 	return verdictPanel(
 		context,
 		{
 			action: `/plans/${subject}`,
 			subject,
-			question: `Approve ${subject}?`,
+			question: latest ? `Change decision for ${subject}?` : `Approve ${subject}?`,
 			sha256: detail.sha256,
 			digestLabel: 'Plan',
 			approve: {
@@ -279,7 +286,8 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 				summary: `Reject ${subject}. The agent must revise the plan.`,
 			},
 			staleMessage: `${detail.planId} changed. Review it before you decide.`,
-			intro: html`<p class="help">${planSummaryLine(detail.plan)}</p>`,
+			intro: html`${recorded}
+				<p class="help">${planSummaryLine(detail.plan)}</p>`,
 		},
 		state ?? emptyState()
 	)
@@ -421,14 +429,21 @@ export function gapPage(
 			'Answer recorded',
 			html`<p class="subj">${pill(pending.kind)} ${gap.id}</p>
 				<blockquote>${pending.value}</blockquote>
-				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>`
+				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>
+				<p class="help">
+					Rationale:
+					${pending.rationale}${pending.source ? html` · Source <code>${pending.source}</code>` : ''}
+				</p>`
 		)
 	else if (decision)
 		panel = recordPanel(
 			'Decision',
 			html`<p class="subj">${pill(decision.kind)} ${gap.id}</p>
 				<blockquote>${decision.value}</blockquote>
-				<p class="help">By ${decision.actor}. Rationale: ${decision.rationale}</p>`
+				<p class="help">
+					By ${decision.actor}. Rationale:
+					${decision.rationale}${decision.source ? html` · Source <code>${decision.source}</code>` : ''}
+				</p>`
 		)
 	else
 		panel = recordPanel(

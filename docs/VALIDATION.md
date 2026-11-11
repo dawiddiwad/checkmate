@@ -54,7 +54,7 @@ Checkmate validates structure and relationships. It cannot prove that an observa
 3. With `wait_for_resolution`, no blocking gap is open.
 4. Each selected test exists, is ready, uses a capability and allowed operations of the target, has one or more assertions, and has its local prerequisites in the selection.
 5. Each cross-plan dependency has a finalized `passed` result for the same build, accepted when required, and no open blocking gap applies to it.
-6. A retest names a finished run of the same plan and target, with a different build.
+6. A retest names a finished run of the same plan and target. It needs a different build unless the prior result's latest decision is `rejected`.
 
 ### Runs (`plugin/src/runs.ts`)
 
@@ -85,28 +85,32 @@ Checkmate validates structure and relationships. It cannot prove that an observa
 
 Run the fast suite with `npm test` (`node --test test/*.test.ts`). It uses temporary workspaces. It needs no network and no Claude credential.
 
-| File                      | Covers                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`      | Schema creation, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs.                           |
-| `test/targets.test.ts`    | Setup requests, profile checks, revision order, default approval policy.                                                           |
-| `test/plans.test.ts`      | Plan save, plan rules, decisions, delta revise, refused deltas, concurrent revise, approval, gate reasons.                         |
-| `test/cross-plan.test.ts` | Missing plans and tests, cycles, blocks by result, acceptance, and open gaps in other plans.                                       |
-| `test/runs.test.ts`       | Outcome derivation, checks, closes, findings, runtime gaps, finish rules, inconclusive coverage, resume, retest, result decisions. |
-| `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                                        |
-| `test/views.test.ts`      | The inbox and the approval policy.                                                                                                 |
-| `test/cli.test.ts`        | Compact and JSON output, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, operation log, export.                   |
-| `test/launcher.test.ts`   | Worker output checks, database checks after a worker, deadlines, browser cleanup. It uses a fake Claude CLI.                       |
-| `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture. It needs Chromium.                                                       |
-| `test/package.test.ts`    | `npm pack` and install of `@xoxoai/checkmate`, run from `node_modules`, `delegate` loads the bundled plugin.                       |
-| `test/release.test.ts`    | Version rules and the version files of the plugin, marketplace, root package, and CLI package.                                     |
-| `test/ui.test.ts`         | UI pages, escaping, rationale and confirm steps, stale digests, Host and Origin checks, evidence types, live events.               |
-| `test/ui.browser.test.ts` | The UI in a real browser: keyboard, forms, confirm in place, live updates, dark mode, no JavaScript.                               |
+| File                               | Covers                                                                                                                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test/store.test.ts`               | Schema creation, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs.                                             |
+| `test/targets.test.ts`             | Setup requests, profile checks, revision order, default approval policy.                                                                             |
+| `test/plans.test.ts`               | Plan save, plan rules, decisions, delta revise, refused deltas, concurrent revise, approval, gate reasons.                                           |
+| `test/cross-plan.test.ts`          | Missing plans and tests, cycles, blocks by result, acceptance, and open gaps in other plans.                                                         |
+| `test/runs.test.ts`                | Outcome derivation, checks, closes, findings, runtime gaps, finish rules, inconclusive coverage, resume, retest, result decisions.                   |
+| `test/evidence.test.ts`            | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                                                          |
+| `test/views.test.ts`               | The inbox and the approval policy.                                                                                                                   |
+| `test/cli.test.ts`                 | Compact and JSON output, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, operation log, export.                                     |
+| `test/decision-paths.test.ts`      | Plan and result decision changes, rationale in CLI and UI reads, gap clarification/assumption/deferral, stale digests, gates, and immutable history. |
+| `test/launcher.test.ts`            | Worker output checks, database checks after a worker, deadlines, browser cleanup. It uses a fake Claude CLI.                                         |
+| `test/tools.test.ts`               | A real browser and HTTP API against the checkout fixture. It needs Chromium.                                                                         |
+| `test/package.test.ts`             | `npm pack` and install of `@xoxoai/checkmate`, run from `node_modules`, `delegate` loads the bundled plugin.                                         |
+| `test/release.test.ts`             | Version rules and the version files of the plugin, marketplace, root package, and CLI package.                                                       |
+| `test/ui.test.ts`                  | UI pages, escaping, rationale and confirm steps, stale digests, Host and Origin checks, evidence types, live events.                                 |
+| `test/ui.browser.test.ts`          | The UI in a real browser: keyboard, forms, confirm in place, live updates, dark mode, no JavaScript.                                                 |
+| `test/decision-ui.browser.test.ts` | Plan and result decisions changed in a real browser, with fresh rationale, confirmation, preserved snapshots, and decision history.                  |
 
 Other checks:
 
 - `node test/plugin.ts` copies `plugin/` outside the repository and runs the bundled CLI without npm install.
 - `npm run phase:verify` runs type generation checks, the bundle check, TypeScript, lint, formatting, `npm test`, and the plugin check.
-- `npm run test:live` runs `test/live.ts` and `test/live-session.ts` with an authenticated Claude Code CLI. Read [Development](DEVELOPMENT.md) for the setup.
+- `npm run test:live` runs `test/live.ts`, `test/live-session.ts`, `test/live-decisions.ts`, and `test/live-mixed-decision.ts` with an authenticated Claude Code CLI. Read [Development](DEVELOPMENT.md) for the setup.
+- `test/live-decisions.ts` checks rejection summaries, plan corrections in one session and through delegation, accepted assumptions, and explicit approval/acceptance. A same-build retry must preserve the rejected run and store a full-page PNG of the local fixture, checked at 1280 × 2400 pixels.
+- `test/live-mixed-decision.ts` checks a rejected plan with an unrelated pending gap answer. The worker must apply the gap, correct the original rejection, and return the final revision for approval without executing tests.
 
 ## Live run
 

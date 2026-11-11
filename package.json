@@ -9,7 +9,7 @@
 	"scripts": {
 		"test": "node --test test/*.test.ts",
 		"test:tools": "node --test test/tools.test.ts",
-		"test:live": "node test/live.ts && node test/live-session.ts",
+		"test:live": "node test/live.ts && node test/live-session.ts && node test/live-decisions.ts && node test/live-mixed-decision.ts",
 		"type:check": "node scripts/generate-types.ts --check && node scripts/generate-validators.ts --check && node scripts/build-plugin.ts --check && tsc --noEmit",
 		"lint:check": "eslint plugin cli scripts test",
 		"format:check": "prettier . --check",

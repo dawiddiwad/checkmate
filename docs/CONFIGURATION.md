@@ -290,7 +290,7 @@ A runtime gap is open, has no decision, and has an ID that is new in the plan an
 - `wait_for_resolution` refuses a run when the plan has an open blocking gap.
 - `ready_only` permits a selection of ready tests. It does not make a blocked test ready.
 - Include local prerequisite tests in the same selection. A cross-plan dependency needs the latest finalized result for the same build to show `passed`. When result acceptance is required, the result must also be accepted.
-- A retest needs a new run ID and a new build. The prior run does not change.
+- A retest needs a new run ID and `--retest-of <priorRunId>`. A different build is required unless the prior result's latest decision is `rejected`. Use the actual application build; a repeat to correct rejected evidence can keep that build. The prior run does not change.
 
 ## Environment variables
 

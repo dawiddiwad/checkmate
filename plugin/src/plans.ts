@@ -518,7 +518,10 @@ export function gate(store: Store, input: GateInput) {
 	if (!target.profile.readyForLiveExecution)
 		reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`)
 	const approval = planApproval(store, plan, revision.sha256)
-	if (approval.policy === 'required' && !approval.approved) reasons.push(`Plan ${subject} is not approved`)
+	if (approval.policy === 'required' && !approval.approved)
+		reasons.push(
+			`Plan ${subject} is not approved${approval.latest?.verdict === 'rejected' ? `: ${approval.latest.rationale}` : ''}`
+		)
 	if (partial === 'wait_for_resolution')
 		for (const gap of plan.gaps)
 			if (gap.status === 'open' && gap.severity === 'blocking') reasons.push(`Open blocking gap: ${gap.id}`)
@@ -574,8 +577,8 @@ function retestCheck(store: Store, runId: string, plan: Plan, build: string) {
 		`Retest scope changed: ${runId} ran plan ${previous.plan_id} on ${previous.target_id}@${previous.target_revision}`
 	)
 	requireCondition(
-		previous.application_build !== build,
-		`Retest needs a new build. Run ${runId} used build ${build}.`
+		previous.application_build !== build || latestApproval(store, 'result', runId)?.verdict === 'rejected',
+		`Retest needs a new build unless its result was rejected. Run ${runId} used build ${build}.`
 	)
 }
 
@@ -601,8 +604,9 @@ export function dependencyBlock(store: Store, reference: string, build: string |
 	if (!result) return build === null ? 'no finalized result' : `no finalized result for build ${build}`
 	if (result.outcome !== 'passed') return `latest result ${result.run_id} shows ${result.outcome}`
 	const policy = approvalPolicy(targetRevision(store, result.target_id, result.target_revision).profile).result
-	if (policy === 'required' && !approvalState(store, 'result', result.run_id, result.sha256, policy).approved)
-		return `result ${result.run_id} is not accepted`
+	const approval = approvalState(store, 'result', result.run_id, result.sha256, policy)
+	if (policy === 'required' && !approval.approved)
+		return `result ${result.run_id} is not accepted${approval.latest?.verdict === 'rejected' ? `: ${approval.latest.rationale}` : ''}`
 	for (const [owner, plan] of latestPlans(store)) {
 		const open = plan.gaps.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
 		const test = plan.tests.find((test) => test.id === testId)

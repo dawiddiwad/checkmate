@@ -1,5 +1,5 @@
 import type { Status, Store } from '../../plugin/src/index.ts'
-import { closeStore, openStore, targetRevision, validate } from '../../plugin/src/index.ts'
+import { closeStore, openStore, planDetail, targetRevision, validate } from '../../plugin/src/index.ts'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -199,31 +199,47 @@ function checkSubject(store: Store, stage: Stage, subject: string) {
 	}
 	if (stage === 'revise') {
 		if (!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', subject)) refuse(`Unknown plan: ${subject}`)
-		if (!pendingDecisions(store, subject))
-			refuse(`Plan ${subject} has no pending decision. Record one with \`checkmate gap answer\`.`)
+		if (!pendingDecisions(store, subject)) {
+			if (planDetail(store, subject).approval.latest?.verdict === 'rejected') return 'plan edit'
+			refuse(`Plan ${subject} has no pending decision or rejected approval. Record a decision first.`)
+		}
 	}
 	if (stage === 'execute') startedRun(store, subject)
+	return verifiedBy[stage].command
 }
 
-function verify(store: Store, stage: Stage, subject: string, after: number): Verified | null {
-	const { command, key } = verifiedBy[stage]
+function verify(
+	store: Store,
+	stage: Stage,
+	subject: string,
+	after: number,
+	command: string,
+	rejectedPlan: string | null
+): Verified | null {
+	const { key } = verifiedBy[stage]
 	const row = one<{ id: string; response: string }>(
 		store,
-		`SELECT id, response FROM operations WHERE rowid > ? AND command = ? AND status != 'rejected' AND json_extract(arguments, '$.${key}') = ? ORDER BY rowid DESC LIMIT 1`,
+		`SELECT id, response FROM operations WHERE rowid > ? AND command IN (?, ?) AND status != 'rejected' AND json_extract(arguments, '$.${key}') = ? ORDER BY rowid DESC LIMIT 1`,
 		after,
 		command,
+		rejectedPlan ? 'plan edit' : command,
 		subject
 	)
 	if (!row) return null
 	if (stage === 'plan' && !one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ? AND revision = 1', subject))
 		return null
-	if (stage === 'revise' && pendingDecisions(store, subject)) return null
+	if (
+		stage === 'revise' &&
+		(pendingDecisions(store, subject) ||
+			!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ? AND operation_id = ?', subject, row.id))
+	)
+		return null
 	if (stage === 'execute' && !one(store, 'SELECT 1 FROM results WHERE run_id = ?', subject)) return null
 	const reply = JSON.parse(row.response) as WorkerResponse
 	return { operation: row.id, reply: { status: reply.status, subject: reply.subject, reasons: reply.reasons } }
 }
 
-function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
+function stagePrompt(stage: Stage, subject: string, run: RunRow | null, command: string, rejectedPlan: string | null) {
 	if (stage === 'setup')
 		return [
 			`Target: ${subject}. Read the setup request with \`checkmate target request ${subject}\`.`,
@@ -236,8 +252,24 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 		]
 	if (stage === 'revise')
 		return [
-			`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
-			`Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`,
+			`Plan: ${subject}. Read \`checkmate plan show ${subject} --json\` and \`checkmate plan pending ${subject} --json\`.`,
+			...(command === 'plan edit'
+				? [
+						'Read approval.latest.rationale. Correct the rejected plan as requested in that rationale.',
+						`Save the next revision with \`checkmate plan edit ${subject} --expect-sha <current SHA>\`. Send objective, requirements, and tests on standard input.`,
+					]
+				: [
+						`Apply the pending gap decisions with \`checkmate plan revise ${subject} --expect-sha <current SHA>\`.`,
+					]),
+			...(rejectedPlan && command === 'plan revise'
+				? [
+						`Read and retain approval.latest.rationale from \`checkmate plan show ${rejectedPlan} --json\` before applying gaps.`,
+						`After applying gaps, check the new revision against that original rejection. Use \`checkmate plan edit ${subject} --expect-sha <new SHA>\` for any remaining authorized correction. Send objective, requirements, and tests on standard input.`,
+						'If the remaining correction needs clarification, return needs_decision with the original rationale and the missing detail, even if the gap revision was saved.',
+					]
+				: []),
+			'Do not answer gaps, approve the new revision, or run test actions.',
+			'Return the response for the last saved revision, with any outstanding decision reason.',
 		]
 	const request = JSON.parse(run!.request) as { selectedTestIds: string[]; onNewBlocker: string }
 	return [
@@ -249,11 +281,19 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	]
 }
 
-function prompt(stage: Stage, subject: string, workspace: string, run: RunRow | null, timeoutSeconds: number) {
+function prompt(
+	stage: Stage,
+	subject: string,
+	workspace: string,
+	run: RunRow | null,
+	timeoutSeconds: number,
+	command: string,
+	rejectedPlan: string | null
+) {
 	return [
 		`This is a delegated Checkmate ${stage} stage. Use the checkmate:${stage} skill from the loaded plugin.`,
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. Checkmate selects the caller identity unless an explicit actor override is configured.`,
-		...stagePrompt(stage, subject, run),
+		...stagePrompt(stage, subject, run, command, rejectedPlan),
 		`Deadline: ${timeoutSeconds} seconds from now.`,
 		'Write to the database only through Checkmate commands. Do not ask the caller. Do not wait for the caller.',
 		'Read the current database state before each decision. Chat memory and previous worker summaries can be stale.',
@@ -288,15 +328,17 @@ export async function delegate(
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`)
 	if (!options.allowedTools.length)
 		refuse(`delegate needs --allow rules. Minimum for ${stage}: ${minimumRules[stage].join(', ')}`)
-	const { after, run, browserTool } = withStore(workspace, (store) => {
-		checkSubject(store, stage, subject)
+	const { after, run, browserTool, command, rejectedPlan } = withStore(workspace, (store) => {
+		const command = checkSubject(store, stage, subject)
+		const plan = stage === 'revise' ? planDetail(store, subject) : null
+		const rejectedPlan = plan?.approval.latest?.verdict === 'rejected' ? `${subject}@${plan.revision}` : null
 		const run = stage === 'execute' ? startedRun(store, subject) : null
 		const browserTool = run
 			? targetRevision(store, run.target_id, run.target_revision).profile.tooling.find(
 					(tool) => tool.capability === 'browser'
 				)?.executable
 			: undefined
-		return { after: lastOperation(store), run, browserTool }
+		return { after: lastOperation(store), run, browserTool, command, rejectedPlan }
 	})
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
 	const timeoutSeconds = options.timeoutSeconds ?? run?.deadline_seconds ?? defaultTimeoutSeconds
@@ -305,7 +347,7 @@ export async function delegate(
 	try {
 		claimed = await worker(options.claude ?? 'claude', workerArgs(pluginRoot, options.allowedTools), {
 			cwd: workspace,
-			prompt: prompt(stage, subject, workspace, run, timeoutSeconds),
+			prompt: prompt(stage, subject, workspace, run, timeoutSeconds, command, rejectedPlan),
 			timeoutSeconds,
 		})
 		if (!subjectMatches(claimed.subject, subject))
@@ -317,23 +359,24 @@ export async function delegate(
 		run && (browserTool === 'playwright-cli' || options.playwright)
 			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
 			: null
-	const verified = withStore(workspace, (store) => verify(store, stage, subject, after))
+	const verified = withStore(workspace, (store) => verify(store, stage, subject, after, command, rejectedPlan))
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
 	if (failure) {
 		const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
 		return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }
 	}
-	if (verified)
+	if (verified) {
+		const outstanding = rejectedPlan && claimed?.status === 'needs_decision' ? claimed.reasons : []
 		return {
 			...verified.reply,
-			reasons: [...verified.reply.reasons, ...(cleanup ? [cleanup] : [])],
+			...(outstanding.length ? { status: 'needs_decision' as const } : {}),
+			reasons: [...new Set([...verified.reply.reasons, ...outstanding, ...(cleanup ? [cleanup] : [])])],
 			operation: verified.operation,
 		}
+	}
 	if (!run && claimed!.status === 'needs_decision' && claimed!.reasons.length)
 		return { status: 'needs_decision', subject, reasons: claimed!.reasons, operation: null }
-	const missing = run
-		? `run ${subject} is not finished`
-		: `no ${verifiedBy[stage].command} for ${subject} was recorded`
+	const missing = run ? `run ${subject} is not finished` : `no ${command} for ${subject} was recorded`
 	return {
 		status: 'operational_error',
 		subject,

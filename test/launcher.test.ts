@@ -164,7 +164,7 @@ reply({ status, subject, reasons })`
 	assert.deepEqual(operation, { id: saved.operation, actor: 'claude:plan' })
 })
 
-test('the delegated prompt tells the worker not to ask or wait for the caller', async (t) => {
+test('the delegated prompt names the plugin CLI and tells the worker not to ask or wait for the caller', async (t) => {
 	const workspace = directory(t)
 	const opened = store(t, workspace)
 	target(opened)
@@ -179,6 +179,9 @@ reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
 	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
 	assert.match(prompt, /Do not ask the caller\. Do not wait for the caller\./)
 	assert.doesNotMatch(prompt, /person/)
+	assert(
+		prompt.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
+	)
 })
 
 test('delegate revise needs every pending decision applied', async (t) => {

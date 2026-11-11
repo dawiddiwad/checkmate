@@ -250,10 +250,18 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	]
 }
 
-function prompt(stage: Stage, subject: string, workspace: string, run: RunRow | null, timeoutSeconds: number) {
+function prompt(
+	stage: Stage,
+	subject: string,
+	workspace: string,
+	pluginRoot: string,
+	run: RunRow | null,
+	timeoutSeconds: number
+) {
 	return [
 		`This is a delegated Checkmate ${stage} stage. Use the checkmate:${stage} skill from the loaded plugin.`,
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. CHECKMATE_ACTOR is set.`,
+		`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`,
 		...stagePrompt(stage, subject, run),
 		`Deadline: ${timeoutSeconds} seconds from now.`,
 		'Write to the database only through Checkmate commands. Do not ask the caller. Do not wait for the caller.',
@@ -298,7 +306,7 @@ export async function delegate(
 	try {
 		claimed = await worker(options.claude ?? 'claude', workerArgs(pluginRoot, options.allowedTools), {
 			cwd: workspace,
-			prompt: prompt(stage, subject, workspace, run, timeoutSeconds),
+			prompt: prompt(stage, subject, workspace, pluginRoot, run, timeoutSeconds),
 			timeoutSeconds,
 			env: { ...process.env, CHECKMATE_ACTOR: `claude:${stage}` },
 		})

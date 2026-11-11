@@ -105,7 +105,9 @@ test('paged lists sort, filter by text and dropdown, and report the total', (t) 
 	const opened = store(t)
 	ready(opened)
 	for (const id of ['alpha', 'beta', 'gamma']) plan(opened, id)
+	t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-01-01T00:00:00Z') })
 	for (let i = 1; i <= 30; i++) begin(opened, `run-${String(i).padStart(2, '0')}`, ['T1'], i % 2 ? 'odd' : 'even')
+	t.mock.timers.reset()
 	const plans = pagedPlans(opened, { sort: 'plan', direction: 'desc', limit: 25 })
 	assert.deepEqual(
 		plans.rows.map((row) => row.planId),
@@ -127,6 +129,7 @@ test('paged lists sort, filter by text and dropdown, and report the total', (t) 
 	const first = pagedRuns(opened)
 	assert.deepEqual([first.total, first.rows.length, first.sort, first.direction], [30, 25, 'started', 'desc'])
 	assert.equal(first.rows[0].runId, 'run-30')
+	assert.equal(pagedRuns(opened, { direction: 'asc' }).rows[0].runId, 'run-01')
 	const second = pagedRuns(opened, { offset: 25, sort: 'run', direction: 'asc', limit: 25 })
 	assert.deepEqual(
 		second.rows.map((row) => row.runId),

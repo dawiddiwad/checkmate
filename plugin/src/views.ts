@@ -431,10 +431,11 @@ function pageOf<T>(
 		: rows
 	const key = columns[query.sort]
 	const order = query.direction === 'asc' ? 1 : -1
+	const position = new Map(matched.map((row, index) => [row, index]))
 	const sorted = [...matched].sort((a, b) => {
 		const x = key(a)
 		const y = key(b)
-		if (x === y) return 0
+		if (x === y) return (position.get(a)! - position.get(b)!) * order
 		if (x === null) return 1
 		if (y === null) return -1
 		return (x < y ? -1 : 1) * order

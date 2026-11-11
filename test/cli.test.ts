@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { candidate, cli, directory, json, planRequest, profile, promotionDelta, root } from './support.ts'
 import type { TestContext } from 'node:test'
@@ -163,20 +165,8 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 	])
 })
 
-test('writes need an actor; parse errors are invalid requests', (t) => {
+test('--actor names the writer; parse errors are invalid requests', (t) => {
 	const workspace = setup(t)
-	const noActor = cli(
-		workspace,
-		['gap', 'answer', 'checkout', 'G2', '--kind', 'defer', '--value', 'x', '--rationale', 'y'],
-		undefined,
-		{
-			CHECKMATE_ACTOR: '',
-		}
-	)
-	assert.deepEqual(noActor.lines, [
-		'rejected checkout',
-		'reason: A write needs an actor. Use --actor <name> or set CHECKMATE_ACTOR.',
-	])
 	const named = json(workspace, [
 		'gap',
 		'answer',
@@ -326,4 +316,32 @@ test('--version and --help need no workspace', () => {
 	const help = cli('/nonexistent', ['--help']).output
 	assert.match(help, /^checkmate init$/m)
 	assert.match(help, /checkmate run check <runId> <testId> <assertionId> --result <value> \[--observed <value>\]/)
+})
+
+test('without --actor and CHECKMATE_ACTOR, a write records the git user name, else the login name', (t) => {
+	const workspace = setup(t)
+	const env = {
+		CHECKMATE_ACTOR: '',
+		PATH: process.env.PATH!,
+		GIT_CONFIG_GLOBAL: '/dev/null',
+		GIT_CONFIG_NOSYSTEM: '1',
+	}
+	const answer = (gap: string) =>
+		cli(
+			workspace,
+			['gap', 'answer', 'checkout', gap, '--kind', 'defer', '--value', 'x', '--rationale', 'y'],
+			undefined,
+			env
+		)
+	assert.equal(answer('G2').code, 0)
+	execFileSync('git', ['init', '-q'], { cwd: workspace, env })
+	execFileSync('git', ['config', 'user.name', 'Repo User'], { cwd: workspace, env })
+	assert.equal(answer('G1').code, 0)
+	const actors = json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions.map(
+		(decision: { gapId: string; actor: string }) => [decision.gapId, decision.actor]
+	)
+	assert.deepEqual(actors, [
+		['G2', userInfo().username],
+		['G1', 'Repo User'],
+	])
 })

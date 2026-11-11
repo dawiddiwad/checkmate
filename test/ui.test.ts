@@ -69,7 +69,7 @@ async function start(t: TestContext) {
 	const workspace = directory(t)
 	seedDemo(workspace)
 	seedPayload(workspace)
-	const ui = await startUi({ workspace })
+	const ui = await startUi({ workspace, defaultActor: '' })
 	t.after(() => ui.close())
 	return { ui, workspace, port: new URL(ui.url).port }
 }
@@ -237,6 +237,34 @@ test('a gap answer asks for a name once and refuses a stale digest with the type
 		read(workspace, (store) => planDetail(store, 'xss').pendingDecisions[0].actor),
 		'reviewer'
 	)
+})
+
+test('the UI prefills the default actor and records it without a name cookie', async (t) => {
+	const workspace = directory(t)
+	seedDemo(workspace)
+	seedPayload(workspace)
+	const ui = await startUi({ workspace, defaultActor: 'git-user' })
+	t.after(() => ui.close())
+	const page = (await call(ui, '/plans/xss@1/gaps/G1')).body
+	assert.doesNotMatch(page, /name="actor" required/)
+	assert.match(page, /actor: git-user/)
+	assert.match((await call(ui, '/actor')).body, /value="git-user"/)
+	const done = await call(ui, '/plans/xss@1/gaps/G1', {
+		form: {
+			csrf: field(page, 'csrf'),
+			sha: field(page, 'sha'),
+			kind: 'defer',
+			value: 'Later.',
+			rationale: 'Scope.',
+		},
+	})
+	assert.equal(done.status, 303)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'xss').pendingDecisions[0].actor),
+		'git-user'
+	)
+	const named = await call(ui, '/plans/xss@1', { headers: { Cookie: 'checkmate_actor=reviewer' } })
+	assert.match(named.body, /actor: reviewer/)
 })
 
 test('the server refuses another host, another origin, and a missing form token', async (t) => {

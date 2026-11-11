@@ -10,6 +10,7 @@ import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import { answerGap, approvePlan, rejectPlan } from '../plans.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
+import { defaultActor } from '../actor.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
@@ -17,7 +18,7 @@ import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from 
 import { gapPage, planPage } from './plan.ts'
 import { runPage } from './run.ts'
 
-export type UiOptions = { workspace: string; port?: number }
+export type UiOptions = { workspace: string; port?: number; defaultActor?: string }
 export type Ui = { url: string; close(): Promise<void> }
 
 type Request = { req: IncomingMessage; res: ServerResponse; url: URL; cookies: Record<string, string> }
@@ -144,6 +145,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const store = openStore(options.workspace)
 	const watch = openReadOnlyStore(options.workspace)
 	const csrf = randomBytes(24).toString('hex')
+	const fallbackActor = options.defaultActor ?? defaultActor(options.workspace, process.env) ?? ''
 	const clients = new Set<Client>()
 	let port = 0
 
@@ -182,7 +184,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return {
 			path,
 			csrf,
-			actor: request.cookies.checkmate_actor?.trim() || null,
+			actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
 			theme,
 			toast: request.cookies.checkmate_toast || null,
 			inboxCount: inboxCount(inbox(store)),
@@ -328,7 +330,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function actorFrom(request: Request, form: URLSearchParams) {
 		const typed = form.get('actor')?.trim() ?? ''
-		const actor = request.cookies.checkmate_actor?.trim() || typed
+		const actor = request.cookies.checkmate_actor?.trim() || typed || fallbackActor
 		return { actor, cookies: typed ? [cookie('checkmate_actor', typed)] : [] }
 	}
 

@@ -29,6 +29,7 @@ import {
 import { evidenceBytes, operationLog, planDetail, planList, runDetail, runList } from './views.ts'
 import { exportPlan, exportRun } from './render.ts'
 import { startUi } from './ui/server.ts'
+import { defaultActor } from './actor.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
@@ -862,7 +863,7 @@ export function run(argv: string[], io: Io): Outcome {
 	let store: Store | undefined
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
-		const actor = value(args, 'actor') ?? io.env.CHECKMATE_ACTOR
+		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()) })
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		return { code, output: format(reply, json, command.print) }

@@ -7493,6 +7493,29 @@ import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
 import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// plugin/src/actor.ts
+import { execFileSync } from "node:child_process";
+import { userInfo } from "node:os";
+function defaultActor(workspace, env) {
+  const named = env.CHECKMATE_ACTOR?.trim();
+  if (named) return named;
+  try {
+    const name = execFileSync("git", ["config", "user.name"], {
+      cwd: workspace,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (name) return name;
+  } catch {
+  }
+  try {
+    return userInfo().username;
+  } catch {
+    return void 0;
+  }
+}
+
 // plugin/src/ui/html.ts
 var entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 function escape(text) {
@@ -9133,6 +9156,7 @@ async function startUi(options2) {
   const store = openStore(options2.workspace);
   const watch = openReadOnlyStore(options2.workspace);
   const csrf = randomBytes2(24).toString("hex");
+  const fallbackActor = options2.defaultActor ?? defaultActor(options2.workspace, process.env) ?? "";
   const clients = /* @__PURE__ */ new Set();
   let port = 0;
   const latestRowid = (source) => operationLog(source, { limit: 1 })[0]?.rowid ?? 0;
@@ -9166,7 +9190,7 @@ data: ${matched.join(",") || "*"}
     return {
       path,
       csrf,
-      actor: request.cookies.checkmate_actor?.trim() || null,
+      actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
       theme,
       toast: request.cookies.checkmate_toast || null,
       inboxCount: inboxCount(inbox(store)),
@@ -9301,7 +9325,7 @@ data: ${matched.join(",") || "*"}
   }
   function actorFrom(request, form) {
     const typed = form.get("actor")?.trim() ?? "";
-    const actor = request.cookies.checkmate_actor?.trim() || typed;
+    const actor = request.cookies.checkmate_actor?.trim() || typed || fallbackActor;
     return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
   }
   function values(form, names) {
@@ -10246,7 +10270,7 @@ function run(argv, io) {
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
-    const actor = value(args, "actor") ?? io.env.CHECKMATE_ACTOR;
+    const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()) });
     const code = reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
     return { code, output: format(reply, json, command.print) };

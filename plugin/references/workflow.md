@@ -11,7 +11,7 @@ In a skill, `checkmate <command>` means that command line. There is no global np
 
 ## Commands
 
-- Every write needs an actor. Commands read `CHECKMATE_ACTOR`. If it is not set, add `--actor claude`.
+- Every write records an actor. Commands read `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name. If `CHECKMATE_ACTOR` is not set, add `--actor claude`. Else Checkmate records your write with the name of the person.
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read each `reason:` line.

@@ -5,6 +5,8 @@ description: Set up a Checkmate target profile from a recorded setup request. Ch
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
 
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+
 ## Tools
 
 A target profile lists the tools that the stages can use. Each tool has a `name`, a `kind`, and a `purpose`:

@@ -2,7 +2,7 @@
 
 Checkmate has one command set with two entry points:
 
-- **Plugin.** In Claude Code, the skills run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. The plugin has every command, `ui` included. It has no npm dependencies.
+- **Plugin.** In Claude Code, the skills run `node "<plugin root>/dist/checkmate.js" <command>` with the absolute plugin path. Claude Code puts the path into a skill when it loads the skill. The plugin has every command, `ui` included. It has no npm dependencies.
 - **npm CLI.** The package `@xoxoai/checkmate` installs the `checkmate` command. It contains the plugin and adds `delegate`.
 
 Run commands from the application workspace, or add `--workspace <path>`. Put options after the command name, for example `checkmate plan list --workspace ../app`. The database is `<workspace>/.checkmate/checkmate.db`. Run `checkmate --help` for every command and option.

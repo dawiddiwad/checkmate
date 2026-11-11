@@ -5,6 +5,8 @@ description: Create revision 1 of a Checkmate test plan from a recorded plan req
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
 
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+
 ## Plan request
 
 The caller records the request with `checkmate plan open <planId> --target <targetId@rev>` and a JSON payload on standard input. The request has these parts:

@@ -5,6 +5,8 @@ description: Execute an approved Checkmate plan revision. Record each assertion 
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
 
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+
 Use the tools of the plan. `checkmate plan request <planId>` lists them. Each tool has a name, a kind (`cli`, `mcp`, or `skill`), and a purpose. The host gives the permission to use a tool. The references `browser.md` and `http.md` are optional recipes for `playwright-cli` and `node`. Read one only when the plan uses that tool.
 
 ## Start

@@ -56,7 +56,7 @@ cli/                   npm package @xoxoai/checkmate
   plugin/              exact copy of plugin/ at the same version, copied at pack time
 ```
 
-The plugin contains the complete core. A plugin user can do every stage inside Claude Code without the npm package. The skills run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`.
+The plugin contains the complete core. A plugin user can do every stage inside Claude Code without the npm package. The skills run `node "<plugin root>/dist/checkmate.js" <command>` with the absolute plugin path.
 
 The plugin also contains the review UI (`checkmate ui`, `/checkmate:ui`). The npm CLI adds `delegate`. It also exposes every core command. `delegate` starts `claude -p --plugin-dir <cli>/plugin`, so the CLI and plugin versions are always the same.
 

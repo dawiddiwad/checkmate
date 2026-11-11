@@ -1,13 +1,13 @@
 # Stage rules
 
 Checkmate keeps targets, plans, decisions, runs, and evidence in `.checkmate/checkmate.db` in the caller's workspace.
-Run every command from the caller's workspace:
+Run every command from the caller's workspace with the absolute path of the plugin CLI:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>
+node "<plugin root>/dist/checkmate.js" <command>
 ```
 
-In a skill, `checkmate <command>` means that command line. A plugin session has no global `checkmate` command.
+The skill that told you to read this file names the plugin root. A delegated prompt names the full command. In a skill, `checkmate <command>` means that command line. Write the absolute path. Do not write a shell variable, for example `${CLAUDE_PLUGIN_ROOT}`, in its place. The shell can leave it empty, and the permission check can refuse the command. A plugin session has no global `checkmate` command.
 
 The caller is the person or the agent that owns the request. The caller answers gaps, approves plans, and accepts results.
 
@@ -42,7 +42,7 @@ EOF
 - Do not write other files. The database is the only record. The one exception is an export that the caller asks for with `export --out <path>`.
 - Use the commands to read and write. Do not open `.checkmate/checkmate.db` directly.
 - A refused write changes nothing. Correct the payload and send it again.
-- The contracts are in `${CLAUDE_PLUGIN_ROOT}/contracts/`. Read a schema only when a command refuses a payload.
+- The contracts are in `<plugin root>/contracts/`. Read a schema only when a command refuses a payload.
 
 ## Actor
 

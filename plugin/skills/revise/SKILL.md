@@ -5,6 +5,8 @@ description: Apply recorded caller decisions to a Checkmate plan. Write a delta 
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
 
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+
 1. Run `checkmate plan pending <planId>`. It prints each pending decision, then the affected gaps and tests with their assertions.
 2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
 3. For each decision, find the change in the affected tests that the decision value requires.

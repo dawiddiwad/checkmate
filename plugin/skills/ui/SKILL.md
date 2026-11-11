@@ -5,12 +5,14 @@ description: Start the Checkmate review UI for the workspace in the background a
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
 
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+
 The review UI is for a human. In the UI, the human answers gaps, edits and approves plans, accepts results, and downloads reports. The plugin contains the UI. The npm CLI is not necessary.
 
 1. If a UI of this workspace already runs in this session, give its URL again and go to step 3. Else start the UI from the caller's workspace as a background command. Use the background option of the shell tool:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" ui
+checkmate ui
 ```
 
 2. Read the first output line. It is `completed ui url=<url>`.

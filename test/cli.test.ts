@@ -361,3 +361,42 @@ test('payload commands read a shell heredoc on standard input', (t) => {
 	})
 	assert.match(output, /^completed checkout-local@1 sha256=[a-f0-9]{8} recorded=true$/m)
 })
+
+test('inbox lists gaps to answer, plans to approve, and results to accept', (t) => {
+	const workspace = setup(t)
+	const first = cli(workspace, ['inbox'])
+	assert.equal(first.code, 0)
+	assert.equal(first.lines[0], 'completed inbox gaps=2 plans=1 results=0')
+	assert.deepEqual(first.lines.slice(1, 3), [
+		'checkout@1/G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
+		'checkout@1/G2\tgap\tblocking\tWhich orders qualify for refunds?',
+	])
+	assert.match(
+		first.lines[3],
+		/^checkout@1\tplan\t[a-f0-9]{8}\t3 tests: 1 ready, 2 blocked, 0 deferred; 2 open gaps$/
+	)
+	revise(workspace)
+	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])
+	cli(workspace, ['run', 'begin', 'run-1', 'checkout@2', '--tests', 'T1', '--build', 'b1'])
+	cli(workspace, [
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'interrupted',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'Closed.',
+	])
+	const later = cli(workspace, ['inbox'])
+	assert.deepEqual(later.lines, [
+		'completed inbox gaps=0 plans=0 results=1',
+		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1,not_run=2',
+	])
+	const body = json(workspace, ['inbox']).body
+	assert.deepEqual(
+		[body.gaps, body.plans, body.results.map((row: { runId: string }) => row.runId)],
+		[[], [], ['run-1']]
+	)
+})

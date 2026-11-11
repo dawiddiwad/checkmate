@@ -9610,6 +9610,38 @@ var commands = {
     positionals: [],
     run: (store) => completed(".checkmate/checkmate.db", { path: store.path })
   },
+  inbox: {
+    positionals: [],
+    run: (store) => completed("inbox", inbox(store)),
+    print: (reply) => {
+      const waiting = reply.data;
+      return {
+        facts: { gaps: waiting.gaps.length, plans: waiting.plans.length, results: waiting.results.length },
+        lines: [
+          ...waiting.gaps.map((gap) => [
+            `${gap.planId}@${gap.revision}/${gap.gapId}`,
+            "gap",
+            gap.severity,
+            gap.question
+          ]),
+          ...waiting.plans.map((plan) => [
+            `${plan.planId}@${plan.revision}`,
+            "plan",
+            short2(plan.sha256),
+            plan.summary
+          ]),
+          ...waiting.results.map((result) => [
+            result.runId,
+            "result",
+            `${result.planId}@${result.revision}`,
+            result.build,
+            result.coverage,
+            Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`)
+          ])
+        ]
+      };
+    }
+  },
   "target open": {
     positionals: ["targetId"],
     flags: { "base-url": "value", capabilities: "list", operations: "list" },

@@ -27,7 +27,7 @@ import {
 	rejectResult,
 	resumeRun,
 } from './runs.ts'
-import { evidenceBytes, operationLog, planDetail, planList, runDetail, runList } from './views.ts'
+import { evidenceBytes, inbox, operationLog, planDetail, planList, runDetail, runList } from './views.ts'
 import { exportPlan, exportRun } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
@@ -96,6 +96,38 @@ const commands: Record<string, Command> = {
 	init: {
 		positionals: [],
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
+	},
+	inbox: {
+		positionals: [],
+		run: (store) => completed('inbox', inbox(store)),
+		print: (reply) => {
+			const waiting = reply.data as ReturnType<typeof inbox>
+			return {
+				facts: { gaps: waiting.gaps.length, plans: waiting.plans.length, results: waiting.results.length },
+				lines: [
+					...waiting.gaps.map((gap) => [
+						`${gap.planId}@${gap.revision}/${gap.gapId}`,
+						'gap',
+						gap.severity,
+						gap.question,
+					]),
+					...waiting.plans.map((plan) => [
+						`${plan.planId}@${plan.revision}`,
+						'plan',
+						short(plan.sha256),
+						plan.summary,
+					]),
+					...waiting.results.map((result) => [
+						result.runId,
+						'result',
+						`${result.planId}@${result.revision}`,
+						result.build,
+						result.coverage,
+						Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`),
+					]),
+				],
+			}
+		},
 	},
 	'target open': {
 		positionals: ['targetId'],

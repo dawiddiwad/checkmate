@@ -197,7 +197,7 @@ test('finish completes a run with coverage, defects, and not_run for unselected 
 	assert.deepEqual(result.findings[0].testIds, ['T2'])
 	assert.deepEqual(
 		result.coverage.requirements.map((row) => row.status),
-		['tested', 'tested', 'uncovered']
+		['tested', 'tested', 'deferred']
 	)
 	assert.equal(result.coverage.status, 'partial')
 	assert.equal(result.attempts, 1)
@@ -270,6 +270,22 @@ test('finish refuses an error outcome for a completed run and accepts it as an o
 	const finished = finish(opened, 'run-1', 'operational_error')
 	assert.equal(finished.status, 'operational_error')
 	assert.equal(runResult(opened, 'run-1')!.result.coverage.status, 'partial')
+})
+
+test('a requirement that only a deferred decision leaves open is deferred; a missing check is uncovered', (t) => {
+	const opened = started(t, ['T1'])
+	passT1(opened)
+	finish(opened)
+	const { result } = runResult(opened, 'run-1')!
+	assert.deepEqual(
+		result.coverage.requirements.map((row) => [row.requirementId, row.status, row.reason]),
+		[
+			['R1', 'tested', null],
+			['R2', 'uncovered', 'At least one required check or decision is missing.'],
+			['R3', 'deferred', 'A caller decision deferred the missing checks.'],
+		]
+	)
+	assert.equal(result.coverage.status, 'partial')
 })
 
 test('an inconclusive test does not cover its requirement and does not prevent completion', (t) => {

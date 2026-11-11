@@ -294,25 +294,31 @@ export function testOutcome(results: AssertionResult[]): 'passed' | 'failed' | '
 
 export function resultCoverage(plan: Plan, tests: ResultTest[], newGaps: Gap[]): Result['coverage'] {
 	const outcomes = new Map(tests.map((test) => [test.testId, test.outcome]))
+	const conclusive = (test: Plan['tests'][number]) => ['passed', 'failed'].includes(outcomes.get(test.id) ?? '')
 	const requirements = plan.requirements.map((requirement) => {
 		const planned = plan.tests.filter((test) => test.requirementIds.includes(requirement.id))
-		const seen = planned.map((test) => outcomes.get(test.id))
-		const unresolved = [...plan.gaps, ...newGaps].some(
-			(gap) =>
-				(gap.requirementIds.includes(requirement.id) || (!gap.requirementIds.length && !gap.testIds.length)) &&
-				(gap.status === 'deferred' || (gap.status === 'open' && gap.severity === 'blocking'))
+		const gaps = [...plan.gaps, ...newGaps].filter(
+			(gap) => gap.requirementIds.includes(requirement.id) || (!gap.requirementIds.length && !gap.testIds.length)
 		)
-		const tested =
-			planned.length > 0 && !unresolved && seen.every((outcome) => outcome === 'passed' || outcome === 'failed')
+		const blocking = gaps.some((gap) => gap.status === 'open' && gap.severity === 'blocking')
+		const deferredGap = gaps.some((gap) => gap.status === 'deferred')
+		const tested = planned.length > 0 && !blocking && !deferredGap && planned.every(conclusive)
+		const deferred =
+			!tested &&
+			!blocking &&
+			(deferredGap || planned.some((test) => test.readiness === 'deferred')) &&
+			planned.every((test) => test.readiness === 'deferred' || conclusive(test))
 		return {
 			requirementId: requirement.id,
-			status: tested ? ('tested' as const) : ('uncovered' as const),
+			status: tested ? ('tested' as const) : deferred ? ('deferred' as const) : ('uncovered' as const),
 			testIds: planned.map((test) => test.id),
 			reason: tested
 				? null
-				: seen.includes('inconclusive')
-					? 'An assertion is inconclusive.'
-					: 'At least one required check or decision is missing.',
+				: deferred
+					? 'A caller decision deferred the missing checks.'
+					: planned.some((test) => outcomes.get(test.id) === 'inconclusive')
+						? 'An assertion is inconclusive.'
+						: 'At least one required check or decision is missing.',
 		}
 	})
 	const executed = ['passed', 'failed', 'error', 'inconclusive']

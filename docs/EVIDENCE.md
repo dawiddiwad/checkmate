@@ -134,7 +134,7 @@ These are three separate fields. Do not combine them.
 - a cause for each selected test that is `blocked` or `not_run`: a prerequisite that did not pass, a blocked cross-plan dependency, or a new blocking gap,
 - a defect finding for each failed assertion.
 
-A requirement is `tested` when it has one or more planned tests, no deferred or open blocking gap applies to it, and each of its tests is `passed` or `failed`. Else it is `uncovered` with a reason. Coverage is `complete` when every requirement is tested. It is `partial` when one or more tests ran. Else it is `not_executed`. A narrow retest keeps the requirements of unselected tests uncovered.
+A requirement is `tested` when it has one or more planned tests, no deferred or open blocking gap applies to it, and each of its tests is `passed` or `failed`. It is `deferred` when only a caller decision leaves it open: a deferred gap applies to it or to one of its tests, no open blocking gap applies to it, and each of its other tests is `passed` or `failed`. Else it is `uncovered` with a reason. Coverage is `complete` when every requirement is tested. It is `partial` when one or more tests ran. Else it is `not_executed`. A narrow retest keeps the requirements of unselected tests uncovered.
 
 A `completed` run with failed tests is a correct result. The process exit code of `run finish` is 0 for `completed` and 1 for `interrupted` or `operational_error`. An exit code is not a release decision. Result acceptance is a caller record. It is not a release decision by Checkmate.
 

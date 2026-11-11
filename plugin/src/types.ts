@@ -273,7 +273,7 @@ export type Result = {
 		status: 'complete' | 'partial' | 'not_executed'
 		requirements: Array<{
 			requirementId: string
-			status: 'tested' | 'uncovered'
+			status: 'tested' | 'deferred' | 'uncovered'
 			testIds: Array<string>
 			reason: string | null
 		}>

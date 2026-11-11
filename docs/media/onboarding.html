@@ -2,431 +2,165 @@
 <html lang="en">
 <meta charset="utf-8" />
 <title>Checkmate onboarding</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=block" />
-<link rel="stylesheet" href="style.css" />
 <style>
-	main { width: 700px; height: 1244px; position: relative; overflow: hidden; }
-	.scene { position: absolute; inset: 0; opacity: 0; }
-	.cam { position: absolute; left: 50px; right: 50px; top: 100px; }
-	h1 { font-size: 46px; line-height: 57px; font-weight: 500; letter-spacing: -0.6px; margin: 0; }
-	.label { font: 14px var(--mono); letter-spacing: 3px; color: var(--faint); text-transform: uppercase; }
-	.card { background: var(--card); border: 1px solid var(--line); border-radius: 3px; }
-	.inner { background: var(--card-strong); border-radius: 3px; }
-	.chip { font: 18px var(--mono); color: var(--blue); background: var(--blue-bg); border: 1px solid #1d2a40; border-radius: 2px; padding: 12px 0; text-align: center; }
+	@font-face { font-family: 'Space Grotesk'; src: url('../../cli/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
+	@font-face { font-family: 'Inter'; src: url('../../cli/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
+	@font-face { font-family: 'JetBrains Mono'; src: url('../../cli/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
+	:root {
+		--bg: #f6f7f5; --surface: #ffffff; --ink: #1b2420; --muted: #5b6862; --line: #dde3df;
+		--accent: #2c6150; --accent-soft: #e3efea; --code-bg: #eef1ef;
+		--pass: #23704f; --pass-soft: #e1f0e8; --fail: #b3362c; --fail-soft: #f8e4e1; --warn: #8a5a12;
+		--display: 'Space Grotesk', sans-serif; --body: 'Inter', sans-serif; --mono: 'JetBrains Mono', monospace;
+	}
+	* { box-sizing: border-box; }
+	html, body { margin: 0; background: var(--bg); }
+	main { width: 640px; height: 400px; position: relative; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body); }
+	.scene { position: absolute; inset: 0; opacity: 0; padding: 26px 28px; }
+	h1 { font: 600 27px/34px var(--display); letter-spacing: -0.3px; margin: 0 0 20px; }
+	.card { background: var(--surface); border: 2px solid var(--line); border-radius: 10px; overflow: hidden; }
 	.mono { font-family: var(--mono); }
-	.line { font: 19px/30px var(--mono); white-space: pre; }
-	.say { font-size: 22px; line-height: 33px; }
-	.sub { font-size: 30px; line-height: 40px; }
-	.dim { color: var(--muted); }
-	.faint { color: var(--faint); }
-	.blue { color: var(--blue); }
-	.ok { color: var(--green); }
-	.bad { color: #f0735a; }
-	.warn { color: var(--amber); }
-	.teal { color: #5fd3c8; }
-	.tags { display: flex; gap: 10px; }
-	.tags span { font: 14px var(--mono); color: var(--faint); background: var(--card-strong); padding: 6px 10px; border-radius: 2px; }
-	.grow { overflow: hidden; }
-	.row { padding: 0 22px; display: flex; align-items: center; gap: 18px; }
-	.stripe { border-left: 3px solid; }
-	svg { position: absolute; overflow: visible; }
+	.muted { color: var(--muted); }
+	.pass { color: var(--pass); }
+	.fail { color: var(--fail); }
+	.accent { color: var(--accent); }
+
+	/* terminal */
+	.term { padding: 18px 20px; font: 500 19px/32px var(--mono); }
+	.term .prompt { color: var(--muted); }
+
+	/* inbox */
+	.bar { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 2px solid var(--line); font: 600 19px var(--display); }
+	.markrow { display: flex; gap: 4px; }
+	.markrow i { width: 13px; height: 13px; border: 2px solid var(--ink); display: block; }
+	.markrow i.on { background: var(--ink); }
+	.tab { background: var(--accent-soft); color: var(--accent); border-radius: 7px; padding: 4px 10px; display: flex; align-items: center; gap: 8px; }
+	.count { background: var(--accent); color: #fff; border-radius: 999px; font: 600 14px/22px var(--body); min-width: 22px; text-align: center; }
+	.live { margin-left: auto; font: 500 16px var(--mono); color: var(--pass); }
+	.group { padding: 14px 18px 0; font: 500 14px var(--mono); letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+	.row { margin: 10px 18px 0; border: 2px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+	.row.focus { border-color: var(--accent); }
+	.line { display: flex; align-items: center; gap: 12px; font: 500 19px/28px var(--mono); }
+	.q { font: 400 19px/28px var(--body); margin-top: 2px; }
+	.pill { font: 500 15px/24px var(--mono); padding: 0 10px; border-radius: 999px; }
+	.pill.fail { background: var(--fail-soft); }
+	.pill.pass { background: var(--pass-soft); }
+	.pill.accent { background: var(--accent-soft); }
+	.right { margin-left: auto; }
+	.toast { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--accent); color: #fff; font: 500 19px/26px var(--mono); padding: 9px 18px; border-radius: 8px; white-space: nowrap; }
+
+	/* run */
+	.runhead { padding: 12px 18px; border-bottom: 2px solid var(--line); font: 600 21px var(--display); display: flex; gap: 12px; align-items: baseline; }
+	.runhead span { font: 500 17px var(--mono); color: var(--muted); }
+	.check { display: flex; gap: 14px; padding: 9px 18px; font: 500 19px/28px var(--mono); border-bottom: 2px solid var(--line); }
+	.check:last-child { border-bottom: 0; }
+	.check.bad { background: var(--fail-soft); }
+
+	/* end */
+	.end { display: flex; align-items: center; justify-content: center; gap: 18px; height: 100%; font: 600 46px var(--display); }
+	.end .markrow { gap: 8px; }
+	.end .markrow i { width: 34px; height: 34px; border-width: 4px; }
 </style>
 <main>
 
-<!-- 1 · title: the checkerboard builds diagonally, then the name, then the blue square -->
-<section class="scene" data-start="0" data-length="5">
-	<div id="board" style="position: absolute; left: 150px; top: 216px; width: 400px; height: 400px; display: grid; grid-template-columns: repeat(6, 1fr)"></div>
-	<div style="position: absolute; left: 46px; top: 728px">
-		<div style="font-size: 76px; font-weight: 500; letter-spacing: -1.5px; color: #eaedf2" data-in="1.6">Checkmate</div>
-		<div style="font-size: 27px; line-height: 40px; margin-top: 18px; color: rgb(165, 169, 179)" data-in="2.2">QA workflows<br />for running acceptance scenarios</div>
+<section class="scene" data-start="0" data-length="2.8">
+	<h1>1. Claude writes a plan</h1>
+	<div class="card term">
+		<div data-in="0.2"><span class="prompt">$</span> checkmate plan open checkout <span class="muted">…</span></div>
+		<div data-in="0.7"><span class="prompt">$</span> checkmate delegate plan checkout <span class="muted">…</span></div>
+		<div style="height: 14px"></div>
+		<div data-in="1.3" class="accent">needs_decision checkout@1</div>
+		<div data-in="1.5">reason: G1: Does the promotion stack</div>
+		<div data-in="1.5">&nbsp; with loyalty?</div>
 	</div>
 </section>
 
-<!-- 2 · the problem, then the third option opens between the two cards -->
-<section class="scene" data-start="5" data-length="13">
-	<div class="cam" style="top: 84px" data-cam="7.5:-196">
-		<div class="card" style="padding: 26px 28px; height: 452px; position: relative" data-dim="7.6">
-			<div class="label">scripted e2e</div>
-			<div style="margin-top: 22px">
-				<div class="line faint" data-in="0.6"><span class="bad" data-strike="3.8">await page.click('#add-to-cart')</span></div>
-				<div class="line dim" data-in="1.0">expect(total).toBe('240 PLN')</div>
-				<div style="height: 18px"></div>
-				<div class="line bad" data-in="3.8">×  the selector changed</div>
-				<div class="line bad" data-in="4.3">×  the wait timed out</div>
-				<div class="line bad" data-in="4.8">×  the test needs repair again</div>
-			</div>
-			<div class="tags" style="position: absolute; left: 28px; bottom: 26px" data-in="5.5"><span>brittle</span><span>high maintenance</span><span>no adaptation</span></div>
+<section class="scene" data-start="2.8" data-length="3.2">
+	<h1>2. A person answers the gap and approves</h1>
+	<div class="card" style="padding-bottom: 16px">
+		<div class="bar">
+			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
+			<span>checkmate</span>
+			<span class="tab">Inbox <span class="count">2</span></span>
+			<span class="live">● Live</span>
 		</div>
-		<div class="grow" data-grow="7.5">
-			<div style="padding-top: 64px"></div>
-			<div class="card" style="background: var(--blue-bg); border-color: #24365e; padding: 30px 28px 34px; text-align: center">
-				<div class="label blue" style="color: var(--blue)" data-in="7.9">the third option</div>
-				<div style="font-size: 48px; font-weight: 500; margin-top: 14px" data-in="7.9">Checkmate</div>
-				<div class="blue" style="font-size: 30px; margin-top: 6px" data-in="8.1">QA workflows for Claude</div>
-				<div style="margin-top: 26px; display: inline-block; text-align: left">
-					<div class="line" data-in="8.6"><span class="blue">✓</span> tests like an agent</div>
-					<div class="line" data-in="9.1"><span class="blue">✓</span> asks before it guesses</div>
-					<div class="line" data-in="9.6"><span class="blue">✓</span> reports with evidence</div>
+		<div style="position: relative">
+			<div data-in="0" data-out="1.6">
+				<div class="group">Gaps to answer · 1</div>
+				<div class="row focus">
+					<div class="line">checkout · G1 <span class="pill fail right">● blocking</span></div>
+					<div class="q">Does the promotion stack with loyalty?</div>
+					<div class="line accent" data-in="0.8">Clarify: 240 PLN</div>
 				</div>
 			</div>
-		</div>
-		<div style="height: 168px" data-shrink="7.5" data-to="64"></div>
-		<div class="card" style="padding: 26px 28px; height: 452px; position: relative" data-dim="7.6">
-			<div class="label">agent + tools</div>
-			<div style="margin-top: 22px" class="say">
-				<div data-in="1.6">→ clicks through checkout</div>
-				<div data-in="2.0">→ reads a total</div>
-				<div data-in="2.4">→ decides that it looks right</div>
+			<div data-in="1.8" style="position: absolute; inset: 0 0 auto">
+				<div class="group">Plans to approve · 1</div>
+				<div class="row focus"><div class="line">checkout@2</div></div>
 			</div>
-			<div class="warn" style="font-size: 26px; font-style: italic; margin-top: 30px" data-in="5.5">"it seemed to work"</div>
-			<div class="tags" style="position: absolute; left: 28px; bottom: 26px" data-in="6.6"><span>no plan</span><span>no evidence</span><span>no audit trail</span></div>
 		</div>
+	</div>
+	<div class="toast" data-in="1.0" data-out="1.6">Answered checkout · G1</div>
+	<div class="toast" data-in="2.3">Approved checkout@2</div>
+</section>
+
+<section class="scene" data-start="6" data-length="3.1">
+	<h1>3. Claude runs the tests, records evidence</h1>
+	<div class="card">
+		<div class="runhead">run-7 <span>checkout@2</span></div>
+		<div class="check" data-in="0.4"><span>T1.A1</span><span class="pass">✓ passed</span></div>
+		<div class="check" data-in="0.8"><span>T2.A1</span><span class="pass">✓ passed</span></div>
+		<div class="check bad" data-in="1.2" style="flex-wrap: wrap; row-gap: 0"><span>T3.A1</span><span class="fail">✗ failed</span><span style="width: 100%" class="fail">totalPLN 220; expected 240</span></div>
+		<div class="check" data-in="1.9"><span class="pill fail">✗ defect</span><span>F1</span></div>
 	</div>
 </section>
 
-<!-- 3 · requirements in, questions out: the plan marks what it cannot assert -->
-<section class="scene" data-start="18" data-length="12">
-	<div class="cam">
-		<h1>Requirements in.<br /><span class="blue">Questions</span> out.</h1>
-		<div class="label" style="margin: 44px 0 14px" data-in="0.3">plan-request.json</div>
-		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.4"><span class="mono faint" style="font-size: 18px; width: 34px">R1</span><span class="say" style="font-size: 21px">A standard order totals 400 PLN.</span></div>
-		<div class="card row" style="height: 64px; margin-bottom: 10px" data-in="0.8"><span class="mono faint" style="font-size: 18px; width: 34px">R2</span><span class="say" style="font-size: 21px">A 40% promotion applies at checkout.</span></div>
-		<div class="card row" style="height: 64px" data-in="1.2"><span class="mono faint" style="font-size: 18px; width: 34px">R3</span><span class="say" style="font-size: 21px">Refunds follow the eligibility rules.</span></div>
-		<div class="mono blue" style="text-align: center; font-size: 20px; margin: 22px 0" data-in="2.0">↓ /checkmate:plan</div>
-		<div class="label" style="margin-bottom: 14px" data-in="2.6">plans/checkout/v1.json</div>
-		<div class="card row" style="height: 64px; margin-bottom: 10px; justify-content: space-between" data-in="2.8"><span class="mono" style="font-size: 19px">T1 standard checkout</span><span class="mono ok" style="font-size: 18px">ready</span></div>
-		<div class="card row" style="height: 64px; margin-bottom: 10px; justify-content: space-between" data-in="3.2" data-hl="4.4-6.4"><span class="mono" style="font-size: 19px">T2 promotion + loyalty</span><span class="mono warn" style="font-size: 18px">blocked</span></div>
-		<div class="card row" style="height: 64px; justify-content: space-between" data-in="3.6" data-hl="6.4-8.4"><span class="mono" style="font-size: 19px">T3 refund eligibility</span><span class="mono warn" style="font-size: 18px">blocked</span></div>
-		<div style="height: 22px"></div>
-		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px; margin-bottom: 10px" data-in="5.0">
-			<div class="mono warn" style="font-size: 16px">G1 · blocking · T2</div>
-			<div class="say" style="margin-top: 6px">Does the promotion stack with loyalty?</div>
+<section class="scene" data-start="9.1" data-length="1.8">
+	<h1>4. A person accepts the result</h1>
+	<div class="card" style="padding-bottom: 16px">
+		<div class="bar">
+			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
+			<span>checkmate</span>
+			<span class="tab">Inbox <span class="count">1</span></span>
+			<span class="live">● Live</span>
 		</div>
-		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px" data-in="7.0">
-			<div class="mono warn" style="font-size: 16px">G2 · blocking · T3</div>
-			<div class="say" style="margin-top: 6px">Which orders can be refunded, and by whom?</div>
+		<div class="group">Results to accept · 1</div>
+		<div class="row focus">
+			<div class="line">run-7 <span class="muted">checkout@2</span> <span class="pill pass right">✓ 2</span><span class="pill fail">✗ 1</span></div>
 		</div>
-		<div class="say dim" style="margin-top: 30px" data-in="9.0">An unknown expected result is a blocking gap. Planning takes <span style="color: var(--text)">no test action</span>.</div>
 	</div>
+	<div class="toast" data-in="0.7">Accepted run-7</div>
 </section>
 
-<!-- 4 · the caller decides: the highlight picks a decision, the plan gets a new revision -->
-<section class="scene" data-start="30" data-length="11">
-	<div class="cam">
-		<h1>The caller <span class="blue">decides</span>.</h1>
-		<div class="card stripe" style="border-left-color: var(--amber); padding: 18px 22px; margin-top: 44px" data-in="0.3">
-			<div class="mono warn" style="font-size: 16px">G1 · blocking</div>
-			<div class="say" style="margin-top: 6px">Does the promotion stack with loyalty?</div>
-		</div>
-		<div class="label" style="text-align: center; margin: 30px 0 14px" data-in="0.9">decision</div>
-		<div class="card stripe row" style="border-left-color: var(--blue); height: 64px; margin-bottom: 10px" data-in="1.0" data-hl="1.6-2.2,3.4-99"><span class="mono blue" style="font-size: 19px; width: 96px">clarify</span><span class="say" style="font-size: 20px">state the expected result</span></div>
-		<div class="card stripe row" style="border-left-color: var(--amber); height: 64px; margin-bottom: 10px" data-in="1.2" data-hl="2.2-2.8"><span class="mono warn" style="font-size: 19px; width: 96px">accept</span><span class="say" style="font-size: 20px">record a visible assumption</span></div>
-		<div class="card stripe row" style="border-left-color: #5fd3c8; height: 64px" data-in="1.4" data-hl="2.8-3.4"><span class="mono teal" style="font-size: 19px; width: 96px">defer</span><span class="say" style="font-size: 20px">keep the coverage open</span></div>
-		<div class="grow" data-grow="3.8">
-			<div style="padding-top: 22px"></div>
-			<div class="card" style="background: var(--blue-bg); border-color: #2c4a8c; padding: 20px 24px">
-				<div class="mono blue" style="font-size: 16px">D1 · clarify · G1</div>
-				<div class="say" style="margin-top: 8px">Promotion replaces loyalty.<br />Expected total: 240 PLN.</div>
-				<div class="mono faint" style="font-size: 15px; margin-top: 10px">actor and source recorded</div>
-			</div>
-			<div class="card row" style="height: 60px; margin-top: 10px" data-in="5.4"><span class="mono teal" style="font-size: 17px; width: 160px">D2 · defer</span><span class="say dim" style="font-size: 19px">refunds stay uncovered</span></div>
-		</div>
-		<div class="mono" style="font-size: 19px; margin-top: 34px; display: flex; align-items: center; gap: 16px">
-			<div class="card" style="padding: 14px 18px" data-in="6.6" data-dim="7.6">v1.json<div class="faint" style="font-size: 14px; margin-top: 4px">kept unchanged</div></div>
-			<div class="faint" data-in="7.2">→</div>
-			<div class="card blue" style="padding: 14px 18px; background: var(--blue-bg); border-color: #2c4a8c; flex: 1" data-in="7.4">v2.json<div style="font-size: 14px; margin-top: 4px; opacity: 0.8">T2 ready · T3 deferred</div></div>
-		</div>
-		<div class="say dim" style="margin-top: 30px" data-in="8.6">Generated text never authorizes a decision. Each decision names <span style="color: var(--text)">its actor</span>.</div>
-	</div>
-</section>
-
-<!-- 5 · test with real tools: the commands run, then expected meets observed -->
-<section class="scene" data-start="41" data-length="11">
-	<div class="cam">
-		<h1>Test with <span class="blue">real tools</span>.</h1>
-		<div class="card" style="margin-top: 44px; padding: 22px 24px" data-in="0.3">
-			<div class="label">browser · playwright-cli</div>
-			<div style="margin-top: 14px">
-				<div class="line dim" style="font-size: 17px" data-in="0.6">open http://127.0.0.1:4173</div>
-				<div class="line dim" style="font-size: 17px" data-in="1.0">click "Complete checkout"</div>
-				<div class="line" style="font-size: 17px" data-in="1.4">→ Order confirmed: 400 PLN  <span class="ok">T1 passed</span></div>
-			</div>
-		</div>
-		<div class="card" style="margin-top: 12px; padding: 22px 24px" data-in="2.0">
-			<div class="label">http · node fetch</div>
-			<div style="margin-top: 14px">
-				<div class="line dim" style="font-size: 17px" data-in="2.3">GET /quote?promotion=true&amp;loyalty=true</div>
-				<div class="line" style="font-size: 17px" data-in="2.8">→ 200 { "totalPLN": 220 }</div>
-			</div>
-		</div>
-		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px">
-			<div class="card" style="padding: 22px 24px" data-in="3.8">
-				<div class="label">expected</div>
-				<div style="font-size: 76px; font-weight: 500; letter-spacing: -2px; margin-top: 8px">240</div>
-				<div class="mono dim" style="font-size: 16px">PLN · from plan v2</div>
-			</div>
-			<div class="card" style="padding: 22px 24px" data-in="4.6" style="border-color: #5a2a33">
-				<div class="label">observed</div>
-				<div class="bad" style="font-size: 76px; font-weight: 500; letter-spacing: -2px; margin-top: 8px">220</div>
-				<div class="mono dim" style="font-size: 16px">PLN · T2 failed</div>
-			</div>
-		</div>
-		<div class="card" style="margin-top: 12px; padding: 22px 24px" data-in="6.0">
-			<div class="label">saved in runs/run-1/evidence/</div>
-			<div style="margin-top: 14px">
-				<div class="line" style="font-size: 17px" data-in="6.3"><span class="ok">✓</span> T1.txt  <span class="dim">Order confirmed: 400 PLN</span></div>
-				<div class="line" style="font-size: 17px" data-in="6.7"><span class="ok">✓</span> T2.txt  <span class="dim">HTTP 200; totalPLN = 220</span></div>
-			</div>
-		</div>
-		<div class="say dim" style="margin-top: 30px" data-in="7.8">Each verdict copies the plan's expected result and <span style="color: var(--text)">cites what the run saw</span>.</div>
-	</div>
-</section>
-
-<!-- 6 · a failure is a finding: the defect builds line by line, errors stay separate -->
-<section class="scene" data-start="52" data-length="10">
-	<div class="cam">
-		<h1>A failure is a<br /><span class="blue">finding</span>.</h1>
-		<div class="card stripe" style="border-left-color: #f0735a; margin-top: 44px; padding: 24px 26px" data-in="0.3">
-			<div class="mono bad" style="font-size: 17px">F1 · defect · T2 · R2</div>
-			<div class="sub" style="margin-top: 8px" data-in="0.6">Promotion stacks with loyalty</div>
-			<div class="line dim" style="font-size: 17px; margin-top: 14px" data-in="1.0">expected  240 PLN</div>
-			<div class="line" style="font-size: 17px" data-in="1.2">observed  <span class="bad">220 PLN</span></div>
-			<div class="label" style="margin-top: 22px" data-in="1.8">reproduction</div>
-			<div class="say" style="font-size: 20px; margin-top: 8px">
-				<div data-in="2.0">1. Add a 400 PLN item with 20 PLN loyalty.</div>
-				<div data-in="2.4">2. Apply the 40% promotion.</div>
-				<div data-in="2.8">3. Read the quote total.</div>
-			</div>
-			<div class="line faint" style="font-size: 16px; margin-top: 18px" data-in="3.4">evidence/T2.txt  sha256 86f68eb0…</div>
-		</div>
-		<div class="label" style="margin: 34px 0 14px" data-in="5.0">not a defect</div>
-		<div class="card stripe row" style="border-left-color: var(--amber); height: 72px; margin-bottom: 10px" data-in="5.2"><span class="mono warn" style="font-size: 18px; width: 190px">error</span><span class="say" style="font-size: 19px">a timeout or a denied tool</span></div>
-		<div class="card stripe row" style="border-left-color: #5fd3c8; height: 72px" data-in="5.8"><span class="mono teal" style="font-size: 18px; width: 190px">potential_issue</span><span class="say" style="font-size: 19px">an inference, not an observation</span></div>
-		<div class="say dim" style="margin-top: 30px" data-in="7.2">A pass or a failure without saved evidence <span style="color: var(--text)">does not save</span>.</div>
-	</div>
-</section>
-
-<!-- 7 · one JSON result, three separate answers: bands and rows light together -->
-<section class="scene" data-start="62" data-length="11">
-	<div class="cam">
-		<h1>One JSON result.<br />Three <span class="blue">separate answers</span>.</h1>
-		<div class="card" style="margin-top: 44px; padding: 26px 0" data-in="0.3">
-			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.5">{</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.65">  "runId": "run-1",</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.8" data-band="2.4">  "completion": "completed",</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="0.95" data-band="3.8">  "tests": [ passed, failed, not_run ],</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.1" data-band="5.2" data-band-color="amber">  "coverage": { "status": "partial" },</div>
-			<div class="line dim" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.25">  "findings": [ … ], "evidence": [ … ]</div>
-			<div class="line" style="padding: 0 26px; font-size: 18px; line-height: 36px" data-in="1.4">}</div>
-		</div>
-		<div style="margin-top: 26px">
-			<div class="card row" style="height: 84px; margin-bottom: 10px; justify-content: space-between" data-in="2.4" data-hl="2.4-3.8"><span><span class="mono" style="font-size: 19px">completion</span><div class="dim" style="font-size: 17px; margin-top: 2px">Did the run finish?</div></span><span class="mono ok" style="font-size: 18px">completed</span></div>
-			<div class="card row" style="height: 84px; margin-bottom: 10px; justify-content: space-between" data-in="3.8" data-hl="3.8-5.2"><span><span class="mono" style="font-size: 19px">outcomes</span><div class="dim" style="font-size: 17px; margin-top: 2px">What passed or failed?</div></span><span class="mono bad" style="font-size: 18px">1 failed</span></div>
-			<div class="card row" style="height: 84px; justify-content: space-between" data-in="5.2" data-hl="5.2-6.8"><span><span class="mono" style="font-size: 19px">coverage</span><div class="dim" style="font-size: 17px; margin-top: 2px">What is still untested?</div></span><span class="mono warn" style="font-size: 18px">R3 uncovered</span></div>
-		</div>
-		<div class="say dim" style="margin-top: 30px" data-in="7.4">A completed run can hold a defect. <span style="color: var(--text)">An exit code is not a release decision.</span></div>
-	</div>
-</section>
-
-<!-- 8 · fix the app, retest in a new run: the first run dims but stays -->
-<section class="scene" data-start="73" data-length="11">
-	<div class="cam">
-		<h1>Fix the app.<br /><span class="blue">Retest</span> in a new run.</h1>
-		<div class="card" style="margin-top: 44px; padding: 22px 24px" data-in="0.3" data-dim="5.6">
-			<div class="line" data-in="0.4">runs/run-1/  <span class="faint">build 1</span></div>
-			<div class="line dim" style="font-size: 17px" data-in="0.7">├─ evidence/T2.txt</div>
-			<div class="line dim" style="font-size: 17px" data-in="0.9">└─ result.json   <span class="bad">T2 failed · 220 PLN</span></div>
-		</div>
-		<div class="mono faint" style="text-align: center; font-size: 19px; margin: 24px 0" data-in="2.0">↓ caller fixes the app</div>
-		<div class="card" style="padding: 22px 24px; background: var(--blue-bg); border-color: #2c4a8c" data-in="3.2">
-			<div class="line" data-in="3.3">runs/run-2/  <span class="faint">build 2 · retestOf run-1</span></div>
-			<div class="line dim" style="font-size: 17px" data-in="3.7">├─ evidence/T2.txt</div>
-			<div class="line dim" style="font-size: 17px" data-in="4.1">└─ result.json   <span class="ok">T2 passed · 240 PLN</span></div>
-		</div>
-		<div class="label" style="margin: 36px 0 16px" data-in="5.6">written once</div>
-		<div class="mono" style="font-size: 18px">
-			<div class="card" style="width: 300px; margin-left: 60px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="5.8">write a temporary file</div>
-			<div class="card" style="width: 300px; margin: 10px 0 0 110px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="6.2">sync</div>
-			<div class="card" style="width: 300px; margin: 10px 0 0 160px; padding: 11px 0; text-align: center; border-radius: 20px" data-in="6.6">link to its final name</div>
-			<div class="card blue" style="width: 300px; margin: 10px 0 0 210px; padding: 11px 0; text-align: center; border-radius: 20px; background: var(--blue-bg); border-color: #2c4a8c" data-in="7.0">never overwrite</div>
-		</div>
-		<div class="say dim" style="margin-top: 34px" data-in="8.2">Refund checks stay deferred, so coverage stays <span class="warn">partial</span>.</div>
-	</div>
-</section>
-
-<!-- 9 · who owns what: three owners, the middle one is the layer -->
-<section class="scene" data-start="84" data-length="10">
-	<div class="cam">
-		<h1>Who <span class="blue">owns</span> what.</h1>
-		<div class="card" style="margin-top: 50px; padding: 26px 28px" data-in="0.4">
-			<div class="mono" style="font-size: 24px">Claude Code</div>
-			<div class="say dim" style="margin-top: 8px">Model, tools, authentication, and permissions.</div>
-		</div>
-		<div class="card" style="margin-top: 14px; padding: 26px 28px; background: var(--blue-bg); border-color: #2c4a8c" data-in="1.4">
-			<div class="mono blue" style="font-size: 24px">Checkmate</div>
-			<div class="say dim" style="margin-top: 8px">Workflows, contracts, checks, evidence, and reports.</div>
-		</div>
-		<div class="card" style="margin-top: 14px; padding: 26px 28px" data-in="2.4">
-			<div class="mono" style="font-size: 24px">Caller</div>
-			<div class="say dim" style="margin-top: 8px">Scope, decisions, fixes, and the release.</div>
-		</div>
-		<div class="label" style="text-align: center; margin: 52px 0 18px" data-in="4.0">adaptive · judgement-based</div>
-		<div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
-			<div class="card blue" style="width: 300px; text-align: center; padding: 14px 0; font-size: 21px; background: var(--blue-bg); border-color: #2c4a8c" data-in="4.2">Checkmate</div>
-			<div class="card say" style="width: 420px; text-align: center; padding: 14px 0; font-size: 19px" data-in="4.6">Scripted E2E tests</div>
-			<div class="card say" style="width: 500px; text-align: center; padding: 14px 0; font-size: 19px" data-in="5.0">API &amp; integration tests</div>
-			<div class="card say" style="width: 580px; text-align: center; padding: 14px 0; font-size: 19px" data-in="5.4">Unit tests</div>
-		</div>
-		<div class="label" style="text-align: center; margin-top: 18px" data-in="5.8">deterministic · fast · certain</div>
-		<div class="say dim" style="margin-top: 30px; text-align: center" data-in="7.0">A layer on top, not a migration target.</div>
-	</div>
-</section>
-
-<!-- 10 · closing -->
-<section class="scene" data-start="94" data-length="9" data-fade-out="0.8">
-	<div style="position: absolute; left: 0; right: 0; top: 270px; text-align: center">
-		<div id="mark" style="display: inline-grid; grid-template-columns: repeat(4, 20px); grid-auto-rows: 20px; gap: 6px"></div>
-		<div style="font-size: 68px; font-weight: 500; letter-spacing: -1px; margin-top: 22px">Checkmate</div>
-		<div class="mono" style="font-size: 20px; line-height: 42px; margin-top: 40px">
-			<div data-in="0.6">requirements</div>
-			<div class="faint" data-in="1.0">↓</div>
-			<div data-in="1.1">plan with open gaps</div>
-			<div class="faint" data-in="1.5">↓</div>
-			<div data-in="1.6">caller decisions</div>
-			<div class="faint" data-in="2.0">↓</div>
-			<div data-in="2.1">checked evidence</div>
-			<div class="faint" data-in="2.5">↓</div>
-			<div class="blue" data-in="2.6">one result</div>
-		</div>
-		<div class="card mono" style="display: inline-block; margin-top: 64px; padding: 16px 26px; font-size: 18px; line-height: 30px; text-align: left" data-in="3.8">/plugin marketplace add dawiddiwad/checkmate<br />/plugin install checkmate@checkmate</div>
+<section class="scene" data-start="10.9" data-length="1.6">
+	<div class="end">
+		<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
+		<span>checkmate</span>
 	</div>
 </section>
 
 </main>
 <script>
-	// Build the checkerboard and the small mark.
-	const board = document.getElementById('board')
-	for (let i = 0; i < 36; i++) {
-		const cell = document.createElement('div')
-		cell.dataset.cell = i
-		board.append(cell)
-	}
-	const mark = document.getElementById('mark')
-	for (let i = 0; i < 4; i++) {
-		const cell = document.createElement('div')
-		cell.style.background = i === 2 ? 'var(--blue)' : '#2a303b'
-		mark.append(cell)
-	}
-
-	const clamp = (value) => Math.min(1, Math.max(0, value))
-	const ramp = (time, start, length) => clamp((time - start) / length)
-	const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
-	const mix = (a, b, k) => `rgb(${a.map((value, i) => Math.round(value + (b[i] - value) * k)).join(',')})`
-	const color = { card: [18, 23, 31], line: [31, 37, 48], chip: [22, 31, 46], blueLine: [59, 98, 196], text: [232, 235, 240], blue: [91, 138, 253], amberBand: [46, 38, 20], amberLine: [231, 180, 82] }
-
+	const fade = 0.25
 	const scenes = [...document.querySelectorAll('.scene')]
-	// Measure natural heights once, with every element expanded. Call this after the fonts load.
-	window.measure = () => {
-		for (const element of document.querySelectorAll('[data-grow], [data-shrink]')) element.dataset.height = element.offsetHeight
-	}
+	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 
-	// The checkerboard builds bright along the diagonal with the target cell dark.
-	// When the blue square lights, the rest of the board dims to its final shade.
-	function renderBoard(time) {
-		const build = { light: [41, 43, 49], dark: [24, 27, 34], target: [18, 23, 31] }
-		const rest = { light: [26, 29, 34], dark: [19, 22, 26], target: [89, 133, 240] }
-		const settle = ease(ramp(time, 2.2, 0.4))
-		for (const cell of board.children) {
-			const i = Number(cell.dataset.cell), row = Math.floor(i / 6), column = i % 6
-			const kind = i === 15 ? 'target' : (row + column) % 2 ? 'dark' : 'light'
-			const shown = ease(ramp(time, 0.2 + (row + column) * 0.045, 0.25))
-			const final = build[kind].map((value, k) => value + (rest[kind][k] - value) * settle)
-			const rgb = final.map((value, k) => [15, 18, 23][k] + (value - [15, 18, 23][k]) * shown)
-			cell.style.background = `rgb(${rgb.map(Math.round).join(',')})`
-		}
-	}
-
-	function renderScene(scene, time) {
-		for (const element of scene.querySelectorAll('[data-in]')) element.style.opacity = ramp(time, Number(element.dataset.in), 0.35)
-		// The inner card of a framed card shows before its frame.
-		for (const frame of scene.querySelectorAll('[data-frame]')) {
-			const k = ramp(time, Number(frame.dataset.in), 0.35)
-			frame.style.opacity = 1
-			frame.style.background = mix([15, 18, 23], color.card, k)
-			frame.style.borderColor = mix([15, 18, 23], [36, 52, 92], k)
-		}
-		for (const element of scene.querySelectorAll('[data-grow]')) {
-			const k = ease(ramp(time, Number(element.dataset.grow), 0.8))
-			element.style.height = `${Number(element.dataset.height) * k}px`
-		}
-		for (const element of scene.querySelectorAll('[data-shrink]')) {
-			const k = ease(ramp(time, Number(element.dataset.shrink), 0.7))
-			const to = Number(element.dataset.to ?? 0)
-			const from = Number(element.dataset.height)
-			element.style.height = `${from + (to - from) * k}px`
-			if (!element.dataset.to) element.style.opacity = 1 - ramp(time, Number(element.dataset.shrink), 0.3)
-		}
-		for (const element of scene.querySelectorAll('[data-dim]')) {
-			const k = ramp(time, Number(element.dataset.dim), 0.5)
-			const shown = element.dataset.in ? ramp(time, Number(element.dataset.in), 0.35) : 1
-			element.style.opacity = shown * (1 - 0.55 * k)
-		}
-		for (const element of scene.querySelectorAll('[data-hl]')) {
-			const k = Math.max(...element.dataset.hl.split(',').map((range) => {
-				const [from, to] = range.split('-').map(Number)
-				return ramp(time, from, 0.25) * (1 - ramp(time, to, 0.25))
-			}))
-			element.style.background = mix(color.card, color.chip, k)
-			element.style.borderColor = mix(color.line, color.blueLine, k)
-			element.style.color = mix(color.text, color.blue, k)
-		}
-		for (const element of scene.querySelectorAll('[data-band]')) {
-			const k = ramp(time, Number(element.dataset.band), 0.35)
-			const amber = element.dataset.bandColor === 'amber'
-			element.style.background = mix(color.card, amber ? color.amberBand : color.chip, k)
-			element.style.boxShadow = `inset 3px 0 0 ${mix(color.card, amber ? color.amberLine : color.blue, k)}`
-			element.style.color = mix([154, 163, 178], amber ? [240, 205, 140] : [170, 195, 255], k)
-		}
-		for (const element of scene.querySelectorAll('[data-strike]')) {
-			const k = ease(ramp(time, Number(element.dataset.strike), 0.4))
-			element.style.backgroundImage = 'linear-gradient(currentColor, currentColor)'
-			element.style.backgroundRepeat = 'no-repeat'
-			element.style.backgroundPosition = '0 55%'
-			element.style.backgroundSize = `${k * 100}% 2px`
-			element.style.color = k > 0 ? '#c25a45' : ''
-		}
-		for (const element of scene.querySelectorAll('[data-draw]')) {
-			const k = ease(ramp(time, Number(element.dataset.draw), 1.2))
-			const path = element.querySelector('path')
-			path.style.strokeDasharray = 1
-			path.style.strokeDashoffset = 1 - k
-		}
-		// The camera eases between positions: "time:y" pairs.
-		for (const camera of scene.querySelectorAll('[data-cam]')) {
-			let y = 0
-			for (const step of camera.dataset.cam.split(',')) {
-				const [at, to] = step.split(':').map(Number)
-				y += (to - y) * ease(ramp(time, at, 1.0))
-			}
-			camera.style.transform = `translateY(${y}px)`
-		}
-	}
-
-	window.DURATION = 103
-	// Show the frame at a time in seconds. The renderer calls this for each frame.
+	window.DURATION = 12.5
+	// The renderer calls measure() once before the first frame. Nothing needs measuring here.
+	window.measure = () => {}
+	// Show the frame at a time in seconds. Scenes cross-fade; elements fade in at data-in and out at data-out.
 	window.renderFrame = (time) => {
-		renderBoard(time)
 		for (const scene of scenes) {
 			const start = Number(scene.dataset.start)
-			const length = Number(scene.dataset.length)
+			const end = start + Number(scene.dataset.length)
+			const last = scene === scenes.at(-1)
+			scene.style.opacity = start === 0 ? (last ? 1 : 1 - ramp(time, end, fade)) : ramp(time, start, fade) * (last ? 1 : 1 - ramp(time, end, fade))
 			const local = time - start
-			const fadeIn = start === 0 ? 1 : ramp(local, -0.1, 0.2)
-			const fadeOut = scene.dataset.fadeOut
-				? 1 - ramp(local, length - Number(scene.dataset.fadeOut), Number(scene.dataset.fadeOut))
-				: 1 - ramp(local, length - 0.1, 0.2)
-			scene.style.opacity = Math.min(fadeIn, fadeOut)
-			if (scene.style.opacity > 0) renderScene(scene, local)
+			for (const element of scene.querySelectorAll('[data-in]')) {
+				const shown = ramp(local, Number(element.dataset.in), fade)
+				const hidden = element.dataset.out ? ramp(local, Number(element.dataset.out), fade) : 0
+				element.style.opacity = shown * (1 - hidden)
+			}
 		}
 	}
+	window.renderFrame(0)
 </script>
 </html>

@@ -69,15 +69,16 @@ The GitHub Actions token needs write access to repository contents. Repository r
 
 `docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. Both use `docs/media/style.css`. The animation is an illustrated workflow. It is not a live test recording.
 
-Keep the style: dark background, one blue accent word in each heading, monospace labels, and thin card borders. The animation uses a small timeline in `onboarding.html`: elements fade in, grow, dim, and highlight at set times. Prettier does not format these pages, because their text keeps exact whitespace.
+The infographic keeps its dark style. The onboarding animation uses the review UI style: a light background, the green accent, flat cards, and short factual captions. It uses a small timeline in `onboarding.html`. Keep it short and flat, so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
 
 Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and the overview:
 
 ```sh
 node scripts/render-onboarding.ts
+node scripts/render-onboarding.ts --only onboarding
 ```
 
-Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The pages load Space Grotesk and JetBrains Mono from Google Fonts. This command updates `docs/img/onboarding.gif` and `docs/img/checkmate-infographic.png`. It does not build the plugin.
+Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The first command updates `docs/img/onboarding.gif` and `docs/img/checkmate-infographic.png`. The second command updates only the GIF. The infographic loads its fonts from Google Fonts. The animation loads them from `cli/fonts/`. It does not build the plugin.
 
 Keep the labels in both images consistent with the workflow.
 

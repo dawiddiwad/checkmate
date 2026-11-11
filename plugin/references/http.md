@@ -1,6 +1,8 @@
 # HTTP recipe
 
-Use the project's HTTP tool or Node.js `fetch`. Use an explicit timeout.
+Use this recipe when the plan lists the `node` tool for HTTP. For another HTTP tool, use the same rules for evidence.
+
+Use Node.js `fetch` with an explicit timeout.
 Resolve credentials from the profile's environment references. Do not save their values.
 Run the script from the workspace. It prints the exchange. It writes no file:
 

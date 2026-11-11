@@ -3,8 +3,21 @@ name: setup
 description: Set up a Checkmate target profile from a recorded setup request. Check tools and access. Save the profile with target save.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-For the browser capability, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
+
+## Tools
+
+A target profile lists the tools that the stages can use. Each tool has a `name`, a `kind`, and a `purpose`:
+
+- `cli`: a command on the `PATH`, for example `playwright-cli` or `node`.
+- `mcp`: an MCP server that the host session loads.
+- `skill`: a Claude Code skill that the host session loads.
+
+The caller names tools with `checkmate target open ... --tool <name>:<kind>:<purpose>`. Checkmate records each tool and whether it was reachable at setup. The host gives the permission to use a tool. Checkmate does not.
+
+The references `browser.md` and `http.md` are optional recipes for the default tools `playwright-cli` and `node`. Read one only when the profile uses that tool.
+
+## Steps
 
 1. Run `checkmate target request <targetId>`. It prints the base URL, capabilities, allowed operations, and requested tools.
 2. Run `checkmate target show <targetId>`. If a profile exists, keep its local choices. Save a new revision only for a change.
@@ -17,11 +30,11 @@ For the browser capability, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
    - `skill`: check that the skill is available in this session.
 7. Record each tool with `reachable` set to the result of the check.
 8. Check the target with a read-only request. Do not run test actions.
-9. For `browser`, open `about:blank` in a new isolated session with the caller's browser config. Close that session.
+9. For a browser tool, open `about:blank` in a new isolated session with the caller's browser config. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
 10. Use the caller's running application. Start it only when the caller authorized a startup command.
 11. Write the profile. Use the shape below.
 12. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.
-13. Return the response of `target save`.
+13. Return the response of `target save`. In the same session, report to the caller in the format of `workflow.md`: a table of the tools, then `Done:` and `Next:`. The next step is usually `checkmate plan open <planId> --target <targetId>@<revision>`.
 
 ```json
 {

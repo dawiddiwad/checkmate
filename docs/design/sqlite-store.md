@@ -86,7 +86,8 @@ CREATE TABLE operations (
   command TEXT NOT NULL,
   arguments TEXT NOT NULL,        -- JSON: flags and stdin payload
   status TEXT NOT NULL,           -- completed | needs_decision | rejected | error
-  response TEXT NOT NULL          -- JSON
+  response TEXT NOT NULL,         -- JSON
+  subjects TEXT NOT NULL          -- JSON array of changed subjects, for example ["plan:checkout", "run:run-7", "inbox"]
 ) STRICT;
 
 CREATE TABLE blobs (
@@ -550,9 +551,38 @@ The navigation shows the number of inbox items. An empty inbox says `Nothing wai
 - **Diff.** The history shows field changes, for example `T2.A2 check: "totalPLN equals 220." → "totalPLN equals 240."`. It does not show raw JSON Patch.
 - **Stable links.** Each URL identifies one object and can be shared on the same host, for example `/plans/checkout@2#T2`.
 - **Keyboard.** `/` focuses search. `j` and `k` move in a list. `Enter` opens the item. `Esc` closes the evidence viewer. `?` shows the shortcuts.
-- **Live state.** While a run is `started`, the run page and the inbox count refresh every 5 seconds. The refresh stops when the page is hidden.
+- **Live updates.** Each page shows changes to its items when another process writes them. Section "Live updates" below gives the rules.
 - **Errors.** An error message says what went wrong and what to do next. It does not show a stack trace.
 - **Narrow screens.** The layout becomes one column. Tables scroll inside their container.
+
+### Live updates
+
+The CLI, a delegated worker, and the UI are different processes. SQLite does not tell one process about a write by another process. The UI server detects changes and sends them to the browser.
+
+**Change detection**
+
+- The server keeps one read connection. Every 250 ms, it reads `PRAGMA data_version`. The value changes only when another connection commits. The read is cheap and does not scan tables.
+- When the value changes, the server reads the operations after its last cursor: `SELECT id, subjects FROM operations WHERE id > ? ORDER BY id`. ULIDs sort by time, so the operation ID is the cursor.
+- Each write command records the subjects it changed in `operations.subjects`. Examples: `plan:checkout`, `run:run-7`, `inbox`. The command sets them in the same transaction as the change.
+
+**Delivery**
+
+- The browser opens one Server-Sent Events stream: `GET /events?subjects=run:run-7,inbox`. Each page subscribes to its own subjects and to `inbox`, for the navigation count.
+- Each event has the operation ID as its `id` and the changed subjects as data. The server sends only events for the subscribed subjects.
+- The browser reconnects automatically. It sends `Last-Event-ID`, and the server sends the events after that ID. No change is lost while the connection is down.
+- The server sends a comment line every 15 seconds, so proxies and the browser keep the stream open.
+- Server-Sent Events use `node:http` only. They need no dependency and no WebSocket.
+
+**Page update**
+
+- On an event, the page loads its own URL again in the background and replaces the changed regions. It does not reload the full page. Scroll position and focus stay.
+- A changed row shows a short highlight. With `prefers-reduced-motion`, the row shows a static marker instead.
+- An `aria-live="polite"` region announces changes, for example `T2 closed: failed`.
+- A form with typed text is never replaced. If its subject changed, a banner says so above the form, for example `run-7 has a new result. Review it before you decide.` The stale digest check (above) still refuses an action on old data.
+- A plan revision does not change, so its page does not change. When a newer revision exists, a banner says `Revision 3 is available` with a link. The page does not move to the new revision automatically.
+- In the inbox, new items appear in their group. When an item disappears, focus moves to the next item.
+- The header shows the connection state: `● Live`, or `○ Reconnecting…` while the stream is down.
+- Without JavaScript, pages work but do not update. A reload shows the current state.
 
 ### Security
 
@@ -592,7 +622,7 @@ The skills keep their stages. The instructions change:
 - Evidence: blob deduplication, size limit, export bytes equal input bytes.
 - CLI: compact and JSON output, `--fields`, `--expect-sha`, read-only `query` refuses writes.
 - Operation log: one row per command, refused writes recorded.
-- UI: each action uses the core function, rationale required, stale digest refused with typed text kept, post-redirect-get, Host and Origin checks, escaping, pages work without JavaScript, keyboard navigation, contrast in both themes.
+- UI: each action uses the core function, rationale required, stale digest refused with typed text kept, post-redirect-get, Host and Origin checks, escaping, pages work without JavaScript, keyboard navigation, contrast in both themes. Live updates: a write by another process sends an event within 1 second, only subscribed subjects receive it, `Last-Event-ID` replays missed events, a form with typed text is not replaced, a plan revision page shows a newer-revision banner, the connection state shows a reconnect.
 - Packaging: the npm package runs from `node_modules`, `delegate` loads the bundled plugin, and the plugin and CLI versions are equal.
 - Live: one plan, revise, approve, execute, resume, and accept cycle with Claude Code.
 
@@ -604,7 +634,7 @@ The skills keep their stages. The instructions change:
 4. Runs: begin, check, close, finding, gap, finish, resume, and evidence blobs.
 5. Export and the report views.
 6. Skills update.
-7. npm CLI: bundle, `delegate`, `ui` with local fonts.
+7. npm CLI: bundle, `delegate`, `ui` with local fonts and live updates.
 8. Documentation: README, CONFIGURATION, CLI, EVIDENCE, architecture wiki.
 
 Each step keeps `npm run phase:verify` green. The JSON file code is removed when step 4 is complete.

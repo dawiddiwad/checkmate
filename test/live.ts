@@ -195,7 +195,7 @@ try {
 			cwd: workspace,
 			timeoutSeconds: 420,
 			env: { ...process.env, CHECKMATE_ACTOR: 'claude:same-session' },
-			prompt: 'Use the checkmate:plan skill in this session for plan same-session. This is not a delegated stage. Save revision 1 with the Checkmate CLI and return the response of plan save. Do not execute tests.',
+			prompt: 'Use the checkmate:plan skill in this session. Plan ID: same-session. Its plan request is recorded. Read it with `plan request same-session`. This is not a delegated stage. Save revision 1 with the Checkmate CLI and return the response of plan save. Do not execute tests.',
 		})
 	)
 	assert.equal(latestPlan('same-session').revision, 1)

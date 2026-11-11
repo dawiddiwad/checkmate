@@ -291,9 +291,17 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 			0
 		)
 	}
-	assert.match(readFileSync(join(workspace, 'report.md'), 'utf8'), /^# Test result: run-1/)
+	assert.match(readFileSync(join(workspace, 'report.md'), 'utf8'), /^# Test report: run-1/)
 	assert.match(readFileSync(join(workspace, 'plan.html'), 'utf8'), /<title>Test plan: checkout revision 2<\/title>/)
-	assert.equal(JSON.parse(readFileSync(join(workspace, 'report.json'), 'utf8')).completion, 'interrupted')
+	assert.equal(JSON.parse(readFileSync(join(workspace, 'report.json'), 'utf8')).result.completion, 'interrupted')
+	const printed = cli(workspace, ['export', 'run', 'run-1', '--format', 'md'])
+	assert.equal(printed.code, 0)
+	assert.equal(printed.output + '\n', readFileSync(join(workspace, 'report.md'), 'utf8'))
+	assert.equal(
+		cli(workspace, ['export', 'plan', 'checkout@2', '--format', 'html']).output + '\n',
+		readFileSync(join(workspace, 'plan.html'), 'utf8')
+	)
+	assert.equal(json(workspace, ['export', 'run', 'run-1', '--format', 'json']).body.format, 'json')
 	assert.match(
 		cli(workspace, ['export', 'run', 'run-1', '--format', 'pdf', '--out', 'x.pdf']).lines[1],
 		/Invalid format/

@@ -7655,17 +7655,50 @@ function evidenceBytes(store, id2) {
 
 // plugin/src/render.ts
 var formats = ["md", "html", "json"];
+var maxInlineImage = 512 * 1024;
+var maxInlineText = 16 * 1024;
+var inlineImages = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var inlineTexts = ["text/plain", "application/json", "text/markdown"];
+var tones = {
+  passed: "pass",
+  approved: "pass",
+  completed: "pass",
+  complete: "pass",
+  tested: "pass",
+  resolved: "pass",
+  failed: "fail",
+  rejected: "fail",
+  operational_error: "fail",
+  error: "warn",
+  inconclusive: "warn",
+  interrupted: "warn",
+  partial: "warn",
+  pending: "warn",
+  open: "warn",
+  blocking: "warn",
+  uncovered: "warn",
+  blocked: "muted",
+  not_run: "muted",
+  not_checked: "muted",
+  deferred: "muted",
+  not_executed: "muted"
+};
 var none = "\u2014";
 var join3 = (values) => values.length ? values.join(", ") : none;
 function markdownText(value2) {
   return value2.replace(/\\/g, "\\\\").replace(/([|[\]*_`])/g, "\\$1").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, " ");
 }
+function fence(text, language = "") {
+  const ticks = "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((match) => match[0].length + 1)));
+  return `${ticks}${language}
+${text}
+${ticks}`;
+}
 function jsonFence(value2) {
-  const json = JSON.stringify(value2, null, 2);
-  const fence = "`".repeat(Math.max(3, ...[...json.matchAll(/`+/g)].map((match) => match[0].length + 1)));
-  return `${fence}json
-${json}
-${fence}`;
+  return fence(JSON.stringify(value2, null, 2), "json");
+}
+function indent(text) {
+  return text.split("\n").map((line) => `  ${line}`).join("\n");
 }
 function markdown(report) {
   const parts = [`# ${markdownText(report.title)}`, markdownText(report.note)];
@@ -7684,6 +7717,19 @@ function markdown(report) {
       parts.push(
         block.list.map((item, i) => `${block.numbered ? `${i + 1}.` : "-"} ${markdownText(item)}`).join("\n")
       );
+    else if ("stats" in block)
+      parts.push(
+        block.stats.map((stat) => `- **${markdownText(stat.label)}:** ${markdownText(stat.value)}`).join("\n")
+      );
+    else if ("evidence" in block)
+      parts.push(
+        block.evidence.map(
+          (item) => [
+            `- ${markdownText(item.label)}: ${markdownText(item.name)} (${item.mediaType}, ${item.size} bytes)`,
+            ...item.text === void 0 ? [] : ["", indent(fence(item.text))]
+          ].join("\n")
+        ).join("\n")
+      );
     else
       parts.push(`<details>
 <summary>Complete JSON record</summary>
@@ -7700,35 +7746,105 @@ function escapeHtml(value2) {
     (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]
   );
 }
+var styles = `
+:root{--ink:#1b2130;--muted:#5d6678;--line:#dde2ea;--soft:#f4f6f9;--accent:#3b4fd8;
+--pass:#1f7a4d;--pass-bg:#e5f4ec;--fail:#b42318;--fail-bg:#fdecea;--warn:#9a5b00;--warn-bg:#fdf3e1;--muted-bg:#eef0f4}
+*{box-sizing:border-box}
+body{font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:#fff;margin:0}
+main{max-width:72rem;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+header{border-bottom:3px solid var(--accent);padding-bottom:1rem;margin-bottom:1.5rem}
+h1{font-size:1.8rem;line-height:1.2;margin:0 0 .4rem}
+h2{font-size:1.2rem;margin:2.2rem 0 .7rem;padding-bottom:.3rem;border-bottom:1px solid var(--line)}
+h3{font-size:1rem;margin:1.4rem 0 .5rem}
+.note{color:var(--muted);margin:0}
+table{border-collapse:collapse;width:100%;margin:.4rem 0 1.2rem;font-size:.92rem}
+th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+th{font-weight:600;background:var(--soft);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+tbody tr:nth-child(even) td{background:#fafbfc}
+.pill{display:inline-block;padding:.05rem .5rem;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
+.pass{color:var(--pass);background:var(--pass-bg)}.fail{color:var(--fail);background:var(--fail-bg)}
+.warn{color:var(--warn);background:var(--warn-bg)}.muted{color:var(--muted);background:var(--muted-bg)}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr));gap:.6rem;margin:1rem 0 1.5rem}
+.stat{border:1px solid var(--line);border-radius:.5rem;padding:.6rem .8rem}
+.stat b{display:block;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+.stat span{font-size:1.05rem;font-weight:600;overflow-wrap:anywhere}
+.evidence{display:grid;grid-template-columns:repeat(auto-fill,minmax(16rem,1fr));gap:1rem;margin:.5rem 0 1.5rem}
+figure{margin:0;border:1px solid var(--line);border-radius:.5rem;padding:.6rem;break-inside:avoid}
+figure img{display:block;max-width:100%;height:auto;border-radius:.3rem}
+figcaption{font-size:.82rem;color:var(--muted);margin-top:.4rem;overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--soft);padding:.8rem;border-radius:.4rem;font-size:.82rem;margin:0}
+details{margin-top:2.5rem}summary{cursor:pointer;font-weight:600}
+@page{size:A4;margin:16mm 14mm}
+@media print{
+body{font-size:10.5pt}main{max-width:none;padding:0}
+h2{break-after:avoid}h3{break-after:avoid}tr,figure,.stat{break-inside:avoid}thead{display:table-header-group}
+tbody tr:nth-child(even) td{background:none}details{display:none}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+`;
+function cell(value2) {
+  const tone2 = tones[value2];
+  return tone2 ? `<span class="pill ${tone2}">${escapeHtml(value2)}</span>` : escapeHtml(value2);
+}
+function figure(item) {
+  const body = item.image ? `<img src="${item.image}" alt="${escapeHtml(item.name)}">` : item.text !== void 0 ? `<pre>${escapeHtml(item.text)}</pre>` : "";
+  return `<figure>${body}<figcaption>${escapeHtml(item.label)} \xB7 ${escapeHtml(item.name)} \xB7 ${escapeHtml(item.mediaType)} \xB7 ${item.size} bytes</figcaption></figure>`;
+}
 function html(report) {
-  const parts = [`<h1>${escapeHtml(report.title)}</h1>`, `<p class="note">${escapeHtml(report.note)}</p>`];
+  const parts = [
+    `<header><h1>${escapeHtml(report.title)}</h1><p class="note">${escapeHtml(report.note)}</p></header>`
+  ];
   for (const block of report.blocks) {
     if ("heading" in block) parts.push(`<h${block.level ?? 2}>${escapeHtml(block.heading)}</h${block.level ?? 2}>`);
     else if ("text" in block) parts.push(`<p>${escapeHtml(block.text)}</p>`);
     else if ("table" in block)
       parts.push(
-        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row) => `<tr>${row.map((value2) => `<td>${escapeHtml(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row) => `<tr>${row.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
       );
     else if ("list" in block) {
       const tag = block.numbered ? "ol" : "ul";
       parts.push(`<${tag}>${block.list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</${tag}>`);
-    } else
+    } else if ("stats" in block)
+      parts.push(
+        `<div class="stats">${block.stats.map(
+          (stat) => `<div class="stat"><b>${escapeHtml(stat.label)}</b><span>${cell(stat.value)}</span></div>`
+        ).join("")}</div>`
+      );
+    else if ("evidence" in block) parts.push(`<div class="evidence">${block.evidence.map(figure).join("")}</div>`);
+    else
       parts.push(
         `<details><summary>Complete JSON record</summary><pre>${escapeHtml(JSON.stringify(block.record, null, 2))}</pre></details>`
       );
   }
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${escapeHtml(report.title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#1d2330}table{border-collapse:collapse;width:100%;margin:.5rem 0 1.5rem}th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid #d5dae3}th{font-weight:600;background:#f3f5f8}.note{color:#5b6475}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f8;padding:1rem}details{margin-top:2rem}summary{cursor:pointer;font-weight:600}</style>` + parts.join("") + "</html>\n";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><title>${escapeHtml(report.title)}</title><style>${styles.trim()}</style></head><body><main>` + parts.join("") + "</main></body></html>\n";
 }
-function resultReport(result, sha256) {
+function runDocument(report) {
+  const { result, sha256, acceptance, plan } = report;
   const evidence2 = new Map(result.evidence.map((entry) => [entry.id, entry]));
   const files = (ids2) => join3(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
+  const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
+  const assertions = result.tests.flatMap((test) => test.assertions);
   const blocks = [
+    {
+      stats: [
+        { label: "Completion", value: result.completion },
+        { label: "Coverage", value: result.coverage.status },
+        { label: "Acceptance", value: acceptance.state },
+        { label: "Selected tests", value: String(result.selectedTestIds.length) },
+        ...Object.entries(counts2).map(([outcome, count]) => ({ label: outcome, value: String(count) })),
+        {
+          label: "Assertions passed",
+          value: `${assertions.filter((assertion) => assertion.result === "passed").length} of ${assertions.length}`
+        },
+        { label: "Findings", value: String(result.findings.length) },
+        { label: "New gaps", value: String(result.newGaps.length) }
+      ]
+    },
+    { heading: "Summary" },
     {
       table: ["Field", "Value"],
       rows: [
-        ["Completion", result.completion],
-        ["Coverage", result.coverage.status],
         ["Run", result.runId],
+        ["Objective", plan.objective],
         ["Application build", result.applicationBuild],
         ["Plan", `${result.plan.planId}@${result.plan.revision}`],
         ["Target profile", `${result.target.targetId}@${result.target.revision}`],
@@ -7736,13 +7852,34 @@ function resultReport(result, sha256) {
         ["Finished", result.finishedAt],
         ["Attempts", String(result.attempts)],
         ["Retest of", result.retestOf ?? none],
+        ["Cleanup", `${result.cleanup.status}: ${result.cleanup.reason}`],
         ["Result digest", sha256]
       ]
     },
+    { heading: "Acceptance" },
+    acceptance.latest ? {
+      table: ["Verdict", "Actor", "At", "Rationale", "Digest"],
+      rows: [
+        [
+          acceptance.latest.verdict,
+          acceptance.latest.actor,
+          acceptance.latest.at,
+          acceptance.latest.rationale,
+          acceptance.latest.sha256
+        ]
+      ]
+    } : {
+      text: acceptance.state === "not_required" ? "The target policy does not require acceptance." : "No decision yet."
+    },
     { heading: "Tests" },
     {
-      table: ["Test", "Outcome", "Reason"],
-      rows: result.tests.map((test) => [test.testId, test.outcome, test.reason ?? none])
+      table: ["Test", "Outcome", "Assertions", "Reason"],
+      rows: result.tests.filter((test) => result.selectedTestIds.includes(test.testId)).map((test) => [
+        test.testId,
+        test.outcome,
+        `${test.assertions.filter((assertion) => assertion.result === "passed").length} of ${test.assertions.length} passed`,
+        test.reason ?? none
+      ])
     },
     { heading: "Assertions" },
     {
@@ -7790,9 +7927,41 @@ function resultReport(result, sha256) {
         join3(gap.testIds)
       ])
     });
+  blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
+  if (!plan.gaps.length) blocks.push({ text: "The plan has no gaps." });
+  else
+    blocks.push({
+      table: ["Gap", "Severity", "Status", "Question", "Decision", "Value", "Actor", "Rationale"],
+      rows: plan.gaps.map((gap) => {
+        const decision = plan.decisions.find((item) => item.id === gap.decisionId);
+        return [
+          gap.id,
+          gap.severity,
+          gap.status,
+          gap.question,
+          decision?.kind ?? none,
+          decision?.value ?? none,
+          decision?.actor ?? none,
+          decision?.rationale ?? none
+        ];
+      })
+    });
+  if (plan.assumptions.length)
+    blocks.push({
+      list: plan.assumptions.map((assumption) => `Assumption ${assumption.decisionId}: ${assumption.text}`)
+    });
   blocks.push({ heading: "Evidence" });
   if (!result.evidence.length) blocks.push({ text: "No evidence." });
-  else
+  else {
+    blocks.push({
+      evidence: result.evidence.map((entry) => ({
+        label: entry.assertionId ? `${entry.testId}.${entry.assertionId}` : entry.testId,
+        name: entry.name,
+        mediaType: entry.mediaType,
+        size: entry.size,
+        ...report.inline[entry.id]
+      }))
+    });
     blocks.push({
       table: ["Evidence", "Assertion", "Kind", "Name", "Media type", "Size", "SHA-256"],
       rows: result.evidence.map((entry) => [
@@ -7805,24 +7974,24 @@ function resultReport(result, sha256) {
         entry.sha256
       ])
     });
+  }
   blocks.push(
     { heading: "Coverage" },
     {
-      table: ["Requirement", "Status", "Tests", "Reason"],
+      table: ["Requirement", "Text", "Status", "Tests", "Reason"],
       rows: result.coverage.requirements.map((row) => [
         row.requirementId,
+        plan.requirements.find((requirement) => requirement.id === row.requirementId)?.text ?? none,
         row.status,
         join3(row.testIds),
         row.reason ?? none
       ])
     },
-    { heading: "Cleanup" },
-    { text: `${result.cleanup.status}: ${result.cleanup.reason}` },
     { record: result }
   );
   return {
-    title: `Test result: ${result.runId}`,
-    note: "Generated from the Checkmate database. Completion, test outcomes, and coverage are separate. Use checkmate evidence get to read evidence.",
+    title: `Test report: ${result.runId}`,
+    note: `${result.plan.planId}@${result.plan.revision} on build ${result.applicationBuild}. Generated from the Checkmate database. Completion, test outcomes, and coverage are separate.`,
     blocks
   };
 }
@@ -7921,19 +8090,39 @@ function rendered(report, record, format2) {
 function renderPlan(plan, sha256, format2) {
   return rendered(planReport(plan, sha256), plan, format2);
 }
-function renderResult(result, sha256, format2) {
-  return rendered(resultReport(result, sha256), result, format2);
+function renderRun(report, format2) {
+  const { inline, ...record } = report;
+  return rendered(runDocument(report), record, format2);
 }
 function exportPlan(store, reference, format2) {
   const { id: id2, revision } = revisionReference(reference, "plan reference");
   const selected = planRevision(store, id2, revision);
   return renderPlan(selected.plan, selected.sha256, requireChoice(format2, formats, "format (--format)"));
 }
-function exportRun(store, runId, format2) {
-  runState(store, runId);
+function runReport(store, runId) {
+  const run2 = runState(store, runId);
   const finished = runResult(store, runId);
   requireCondition(finished, `Run ${runId} has no result. Finish it before you export it.`);
-  return renderResult(finished.result, finished.sha256, requireChoice(format2, formats, "format (--format)"));
+  const state = resultAcceptance(store, run2.row, finished.sha256);
+  const { planId, revision, objective, requirements, gaps, decisions, assumptions } = run2.plan;
+  const inline = {};
+  for (const entry of finished.result.evidence) {
+    const image = inlineImages.includes(entry.mediaType) && entry.size <= maxInlineImage;
+    const text = inlineTexts.includes(entry.mediaType) && entry.size <= maxInlineText;
+    if (!image && !text) continue;
+    const bytes = Buffer.from(evidenceBytes(store, entry.id).bytes);
+    inline[entry.id] = image ? { image: `data:${entry.mediaType};base64,${bytes.toString("base64")}` } : { text: bytes.toString("utf8") };
+  }
+  return {
+    result: finished.result,
+    sha256: finished.sha256,
+    acceptance: { state: approvalLabel(state), latest: state.latest },
+    plan: { planId, revision, objective, requirements, gaps, decisions, assumptions },
+    inline
+  };
+}
+function exportRun(store, runId, format2) {
+  return renderRun(runReport(store, runId), requireChoice(format2, formats, "format (--format)"));
 }
 
 // plugin/src/ui/server.ts
@@ -9515,7 +9704,7 @@ var routes = {
   font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
-var inlineImages = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var inlineImages2 = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 var themes = ["system", "light", "dark"];
 var maxForm = 256 * 1024;
 function directory(candidates, file) {
@@ -9680,7 +9869,7 @@ data: ${matched.join(",") || "*"}
     } catch {
       return errorPage(request, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
     }
-    const inline = inlineImages.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
+    const inline = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
     send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
       "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
       "Cache-Control": "private, max-age=31536000, immutable"
@@ -10189,9 +10378,9 @@ var commands = {
       facts: { count: reply.data.plans.length },
       lines: reply.data.plans.map((plan) => [
         `${plan.planId}@${plan.revision}`,
-        `gaps=${cell(plan.openBlockingGaps)}`,
+        `gaps=${cell2(plan.openBlockingGaps)}`,
         `approval=${plan.approval}`,
-        `blocked=${cell(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`
+        `blocked=${cell2(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`
       ])
     })
   },
@@ -10498,28 +10687,8 @@ var commands = {
     },
     print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } })
   },
-  "export plan": {
-    positionals: ["reference"],
-    flags: { format: "value", out: "value" },
-    required: ["format", "out"],
-    run: (store, args) => {
-      const reference = value(args, "reference");
-      const out = writeOutput(store, value(args, "out"), exportPlan(store, reference, value(args, "format")));
-      return completed(reference, { out, format: value(args, "format") });
-    },
-    print: (reply) => ({ facts: { out: reply.data.out } })
-  },
-  "export run": {
-    positionals: ["runId"],
-    flags: { format: "value", out: "value" },
-    required: ["format", "out"],
-    run: (store, args) => {
-      const runId = value(args, "runId");
-      const out = writeOutput(store, value(args, "out"), exportRun(store, runId, value(args, "format")));
-      return completed(runId, { out, format: value(args, "format") });
-    },
-    print: (reply) => ({ facts: { out: reply.data.out } })
-  },
+  "export plan": exportCommand("reference", exportPlan),
+  "export run": exportCommand("runId", exportRun),
   log: {
     positionals: [],
     flags: { subject: "value", limit: "value" },
@@ -10563,6 +10732,22 @@ var commands = {
     }
   }
 };
+function exportCommand(positional, render) {
+  return {
+    positionals: [positional],
+    flags: { format: "value", out: "value" },
+    required: ["format"],
+    run: (store, args) => {
+      const subject = value(args, positional);
+      const format2 = value(args, "format");
+      const content = render(store, subject, format2);
+      const out = value(args, "out");
+      if (out === void 0) return completed(subject, { format: format2, content });
+      return completed(subject, { format: format2, out: writeOutput(store, out, content) });
+    },
+    print: (reply) => ({ facts: { out: reply.data.out } })
+  };
+}
 function verdictCommand(positional, decide) {
   return {
     positionals: [positional],
@@ -10671,18 +10856,18 @@ function writeOutput(store, out, content) {
   }
   return out;
 }
-function cell(field) {
+function cell2(field) {
   if (field === null || field === void 0) return "-";
-  if (Array.isArray(field)) return field.length ? field.map(cell).join(",") : "-";
+  if (Array.isArray(field)) return field.length ? field.map(cell2).join(",") : "-";
   if (typeof field === "object") return JSON.stringify(field);
   return String(field).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 function compact(reply, printed) {
-  const facts2 = Object.entries(printed.facts ?? {}).filter(([, field]) => field !== void 0).map(([key, field]) => `${key}=${cell(field)}`);
+  const facts2 = Object.entries(printed.facts ?? {}).filter(([, field]) => field !== void 0).map(([key, field]) => `${key}=${cell2(field)}`);
   return [
     [reply.status, reply.subject, ...facts2].join(" "),
-    ...(printed.lines ?? []).map((line) => line.map(cell).join("	")),
-    ...reply.reasons.map((reason) => `reason: ${cell(reason)}`)
+    ...(printed.lines ?? []).map((line) => line.map(cell2).join("	")),
+    ...reply.reasons.map((reason) => `reason: ${cell2(reason)}`)
   ].join("\n");
 }
 function format(reply, json, print) {
@@ -10790,6 +10975,8 @@ function run(argv, io) {
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin });
     const code = reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
+    if (!json && typeof reply.data.content === "string")
+      return { code, output: reply.data.content.replace(/\n$/, "") };
     return { code, output: format(reply, json, command.print) };
   } catch (error) {
     const reply = { status: "rejected", subject, reasons: [error.message], data: {} };

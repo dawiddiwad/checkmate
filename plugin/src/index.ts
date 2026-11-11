@@ -42,5 +42,5 @@ export {
 	evidenceBytes,
 	approvalLabel,
 } from './views.ts'
-export { renderPlan, renderResult, exportPlan, exportRun } from './render.ts'
+export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
 export { run, main } from './cli.ts'

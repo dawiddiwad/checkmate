@@ -604,28 +604,8 @@ const commands: Record<string, Command> = {
 		},
 		print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } }),
 	},
-	'export plan': {
-		positionals: ['reference'],
-		flags: { format: 'value', out: 'value' },
-		required: ['format', 'out'],
-		run: (store, args) => {
-			const reference = value(args, 'reference')!
-			const out = writeOutput(store, value(args, 'out')!, exportPlan(store, reference, value(args, 'format')!))
-			return completed(reference, { out, format: value(args, 'format') })
-		},
-		print: (reply) => ({ facts: { out: reply.data.out } }),
-	},
-	'export run': {
-		positionals: ['runId'],
-		flags: { format: 'value', out: 'value' },
-		required: ['format', 'out'],
-		run: (store, args) => {
-			const runId = value(args, 'runId')!
-			const out = writeOutput(store, value(args, 'out')!, exportRun(store, runId, value(args, 'format')!))
-			return completed(runId, { out, format: value(args, 'format') })
-		},
-		print: (reply) => ({ facts: { out: reply.data.out } }),
-	},
+	'export plan': exportCommand('reference', exportPlan),
+	'export run': exportCommand('runId', exportRun),
 	log: {
 		positionals: [],
 		flags: { subject: 'value', limit: 'value' },
@@ -669,6 +649,23 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
+}
+
+function exportCommand(positional: string, render: (store: Store, subject: string, format: string) => string): Command {
+	return {
+		positionals: [positional],
+		flags: { format: 'value', out: 'value' },
+		required: ['format'],
+		run: (store, args) => {
+			const subject = value(args, positional)!
+			const format = value(args, 'format')!
+			const content = render(store, subject, format)
+			const out = value(args, 'out')
+			if (out === undefined) return completed(subject, { format, content })
+			return completed(subject, { format, out: writeOutput(store, out, content) })
+		},
+		print: (reply) => ({ facts: { out: reply.data.out } }),
+	}
 }
 
 function verdictCommand(
@@ -933,6 +930,8 @@ export function run(argv: string[], io: Io): Outcome {
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin })
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
+		if (!json && typeof reply.data.content === 'string')
+			return { code, output: reply.data.content.replace(/\n$/, '') }
 		return { code, output: format(reply, json, command.print) }
 	} catch (error) {
 		const reply: Reply = { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }

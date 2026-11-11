@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Store } from '../plugin/src/store.ts'
 import { testOutcome } from '../plugin/src/contracts.ts'
 import {
@@ -495,4 +497,24 @@ test('result accept and reject need a finished run and record the result digest'
 	assert.equal(accepted.data.sha256, runResult(opened, 'run-1')!.sha256)
 	assert.deepEqual(inbox(opened).results, [])
 	assert.equal(runDetail(opened, 'run-1').result!.acceptance, 'approved')
+})
+
+test('run finish removes an empty evidence directory and keeps one with files', (t) => {
+	const opened = started(t, ['T1'])
+	begin(opened, 'run-2', ['T1'], 'build-2')
+	const tmp = join(opened.workspace, '.checkmate/tmp')
+	passT1(opened)
+	finish(opened)
+	assert.deepEqual(readdirSync(tmp), ['run-2'])
+	passT1(opened, 'run-2')
+	evidenceFile(opened, 'run-2', 'left.txt')
+	finish(opened, 'run-2')
+	assert.deepEqual(readdirSync(join(tmp, 'run-2')), ['left.txt'])
+})
+
+test('run finish removes .checkmate/tmp when no run directory is left', (t) => {
+	const opened = started(t, ['T1'])
+	passT1(opened)
+	finish(opened)
+	assert.equal(existsSync(join(opened.workspace, '.checkmate/tmp')), false)
 })

@@ -6675,7 +6675,7 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync2, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { basename, extname, isAbsolute, join as join2, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes = 32 * 1024 * 1024;
@@ -7149,7 +7149,19 @@ function recordGap(store, actor, input) {
     };
   });
 }
+function removeEmptyDirectory(path) {
+  try {
+    rmdirSync(path);
+  } catch {
+  }
+}
 function finishRun(store, actor, input) {
+  const reply = finish(store, actor, input);
+  removeEmptyDirectory(join2(store.workspace, evidenceDirectory(input.runId)));
+  removeEmptyDirectory(join2(store.workspace, ".checkmate/tmp"));
+  return reply;
+}
+function finish(store, actor, input) {
   return write(store, { actor, command: "run finish", subject: input.runId, input }, (operationId, at) => {
     const run2 = startedRun(store, input.runId);
     const completion = requireChoice(
@@ -7716,10 +7728,11 @@ function pageOf(rows, query, columns, text) {
   ) : rows;
   const key = columns[query.sort];
   const order = query.direction === "asc" ? 1 : -1;
+  const position = new Map(matched.map((row, index2) => [row, index2]));
   const sorted2 = [...matched].sort((a, b2) => {
     const x = key(a);
     const y = key(b2);
-    if (x === y) return 0;
+    if (x === y) return (position.get(a) - position.get(b2)) * order;
     if (x === null) return 1;
     if (y === null) return -1;
     return (x < y ? -1 : 1) * order;
@@ -10494,7 +10507,7 @@ data: ${matched.join(",") || "*"}
       csrf,
       actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
       theme,
-      toast: request.cookies.checkmate_toast || null,
+      toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" ? request.cookies.checkmate_toast || null : null,
       inboxCount: inboxCount(inbox(store)),
       cursor: latestRowid(store),
       workspace: options2.workspace

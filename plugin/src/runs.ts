@@ -16,7 +16,7 @@ import {
 } from './contracts.ts'
 import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
 import { targetRevision } from './targets.ts'
-import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -602,7 +602,20 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 	})
 }
 
+function removeEmptyDirectory(path: string) {
+	try {
+		rmdirSync(path)
+	} catch {}
+}
+
 export function finishRun(store: Store, actor: string | undefined, input: FinishInput) {
+	const reply = finish(store, actor, input)
+	removeEmptyDirectory(join(store.workspace, evidenceDirectory(input.runId)))
+	removeEmptyDirectory(join(store.workspace, '.checkmate/tmp'))
+	return reply
+}
+
+function finish(store: Store, actor: string | undefined, input: FinishInput) {
 	return write(store, { actor, command: 'run finish', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
 		const completion = requireChoice(

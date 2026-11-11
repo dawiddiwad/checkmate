@@ -14,6 +14,8 @@ import {
 	closeStore,
 	openPlan,
 	openStore,
+	operationLog,
+	planCandidate,
 	planDetail,
 	revisePlan,
 	runDetail,
@@ -79,7 +81,7 @@ type Reply = { status: number; headers: IncomingHttpHeaders; body: string }
 function call(
 	ui: Ui,
 	path: string,
-	options: { method?: string; form?: Record<string, string>; headers?: Record<string, string> } = {}
+	options: { method?: string; form?: Record<string, string> | URLSearchParams; headers?: Record<string, string> } = {}
 ): Promise<Reply> {
 	const url = new URL(path, ui.url)
 	const body = options.form ? new URLSearchParams(options.form).toString() : undefined
@@ -406,5 +408,224 @@ test('live events reach subscribed streams only and replay after Last-Event-ID',
 	assert.deepEqual(
 		replayed.map((event) => event.id),
 		events.map((event) => event.id)
+	)
+})
+
+function rowKeys(body: string, prefix: string) {
+	return [...body.matchAll(new RegExp(`data-key="${prefix}:([^"]+)" data-nav-row`, 'g'))].map((match) => match[1])
+}
+
+test('lists page, sort, and filter on the server with the state in the URL', async (t) => {
+	const { ui } = await start(t)
+	const plans = (await call(ui, '/plans')).body
+	assert.deepEqual(rowKeys(plans, 'plan'), ['xss', 'search', 'checkout', 'account', 'login'])
+	assert.match(plans, /aria-sort="descending">\s*<a class="sort on" href="\/plans\?dir=asc"/)
+	assert.match(plans, /href="\/plans\?sort=plan&amp;dir=asc" data-list-link/)
+	const byName = (await call(ui, '/plans?sort=plan&dir=asc')).body
+	assert.deepEqual(rowKeys(byName, 'plan'), ['account', 'checkout', 'login', 'search', 'xss'])
+	assert.match(byName, /aria-sort="ascending"/)
+	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
+	assert.deepEqual(rowKeys((await call(ui, '/plans?approval=approved&q=check')).body, 'plan'), ['checkout'])
+	assert.deepEqual(rowKeys((await call(ui, '/runs')).body, 'run'), ['run-8', 'run-7', 'run-3'])
+	assert.deepEqual(rowKeys((await call(ui, '/runs?q=fixture-build-3')).body, 'run'), ['run-8'])
+	assert.deepEqual(rowKeys((await call(ui, '/runs?plan=login&status=started')).body, 'run'), ['run-8'])
+	const ignored = await call(ui, '/runs?status=bogus&size=7&sort=nothing&page=-2')
+	assert.equal(ignored.status, 200)
+	assert.equal(rowKeys(ignored.body, 'run').length, 3)
+	const log = (await call(ui, '/log')).body
+	const total = Number(/Showing 1–25 of (\d+) operations/.exec(log)?.[1])
+	assert(total > 50)
+	assert.equal((log.match(/<tr data-key="op:/g) ?? []).length, 25)
+	assert.match(log, /href="\/log\?page=2" rel="next"/)
+	assert.match(log, /<option value="25" selected>25 rows<\/option>/)
+	const bigger = (await call(ui, '/log?size=50&page=2')).body
+	assert.match(bigger, new RegExp(`Showing 51–${total} of ${total} operations`))
+	assert.match(bigger, /href="\/log\?size=50" rel="prev"/)
+	assert.match((await call(ui, '/log?page=99')).body, /Page 3 of 3/)
+	const filtered = (await call(ui, '/log?subject=run:run-7&actor=qa-lead')).body
+	assert.equal((filtered.match(/<tr data-key="op:/g) ?? []).length, 0)
+	assert.match(filtered, /No operation matches these filters/)
+	assert.match(filtered, /href="\/log" data-list-clear>Clear</)
+	const oldest = (await call(ui, '/log?sort=time&dir=asc')).body
+	assert.match(oldest, /<span class="mono">target open<\/span>/)
+	assert.match(oldest, /name="dir" value="asc" data-default="desc"/)
+})
+
+test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
+	const { ui } = await start(t)
+	const checkout = (await call(ui, '/plans/checkout@2')).body
+	assert.match(checkout, /<h2 id="runs">Runs <span class="n">1<\/span><\/h2>/)
+	assert.match(checkout, /<a class="mono" href="\/runs\/run-7">run-7<\/a>/)
+	assert.match(checkout, /awaiting acceptance/)
+	assert.match(checkout, /<li class="gap" id="G2"/)
+	assert.match(checkout, /<li class="gap closed" id="G1"[^>]*>\s*<details data-open-key="gap:G1">/)
+	assert.match(checkout, /<li class="gap closed" id="G3"/)
+	assert(checkout.indexOf('id="G2"') < checkout.indexOf('id="G1"'))
+	const account = (await call(ui, '/plans/account@7')).body
+	const entries = (body: string) => (body.match(/data-open-key="revision:/g) ?? []).length
+	assert.equal(entries(account), 6)
+	assert.match(account, /<details open data-open-key="revision:7">/)
+	assert.match(account, /<details\s+data-open-key="revision:6">/)
+	assert.match(account, /data-history-more="\/plans\/account@7\/history"/)
+	assert.match(account, /Show full history · 1 earlier revision/)
+	const fragment = await call(ui, '/plans/account@7/history')
+	assert.equal(fragment.headers['content-type'], 'text/html; charset=utf-8')
+	assert.doesNotMatch(fragment.body, /<html/)
+	assert.equal(entries(fragment.body), 7)
+	assert.doesNotMatch(fragment.body, /data-history-more/)
+	assert.equal(entries((await call(ui, '/plans/account@7?history=all')).body), 7)
+	assert.doesNotMatch((await call(ui, '/plans/login@1')).body, /data-history-more/)
+})
+
+test('a finished run downloads its report as HTML, Markdown, or JSON', async (t) => {
+	const { ui } = await start(t)
+	const page = (await call(ui, '/runs/run-7')).body
+	for (const format of ['html', 'md', 'json'])
+		assert.match(page, new RegExp(`href="/runs/run-7/report.${format}" download`))
+	assert.match(page, /print to PDF/)
+	const html = await call(ui, '/runs/run-7/report.html')
+	assert.equal(html.status, 200)
+	assert.equal(html.headers['content-type'], 'text/html; charset=utf-8')
+	assert.match(String(html.headers['content-disposition']), /^attachment; filename="run-7-report.html"/)
+	assert.match(html.body, /^<!doctype html>/i)
+	assert.match(html.body, /@media print/)
+	assert.match(html.body, /The promotion stacks with the loyalty credit/)
+	const markdown = await call(ui, '/runs/run-7/report.md')
+	assert.equal(markdown.headers['content-type'], 'text/markdown; charset=utf-8')
+	assert.match(String(markdown.headers['content-disposition']), /filename="run-7-report.md"/)
+	assert.match(markdown.body, /^# /)
+	const json = await call(ui, '/runs/run-7/report.json')
+	assert.equal(json.headers['content-type'], 'application/json; charset=utf-8')
+	assert.equal(JSON.parse(json.body).result.runId, 'run-7')
+	assert.doesNotMatch((await call(ui, '/runs/run-8')).body, /report\.html/)
+	assert.equal((await call(ui, '/runs/run-8/report.html')).status, 409)
+	assert.equal((await call(ui, '/runs/nothing/report.html')).status, 404)
+	const plan = await call(ui, '/plans/checkout@2/export.json')
+	assert.match(String(plan.headers['content-disposition']), /^attachment; filename="checkout-2-plan.json"/)
+	assert.equal(JSON.parse(plan.body).planId, 'checkout')
+})
+
+function unescape(text: string) {
+	return text
+		.replaceAll('&quot;', '"')
+		.replaceAll('&#39;', "'")
+		.replaceAll('&lt;', '<')
+		.replaceAll('&gt;', '>')
+		.replaceAll('&amp;', '&')
+}
+
+function editForm(page: string, changes: Record<string, string>) {
+	const form: Record<string, string> = {}
+	const editor = page.slice(page.indexOf('data-edit-form'), page.indexOf('class="edit-json"'))
+	for (const match of editor.matchAll(/<input[^>]*name="([^"]+)" value="([^"]*)"/g)) form[match[1]] = match[2]
+	for (const match of editor.matchAll(/<textarea[^>]*name="([^"]+)"[^>]*>\n?([^<]*)<\/textarea/g))
+		form[match[1]] = match[2]
+	for (const match of editor.matchAll(/<select[^>]*name="([^"]+)"[\s\S]*?<option\s+value="([^"]+)"\s+selected/g))
+		form[match[1]] = match[2]
+	for (const name of Object.keys(form)) form[name] = unescape(form[name])
+	return { ...form, ...changes }
+}
+
+function formBody(form: Record<string, string>, covers: string[]) {
+	const body = new URLSearchParams(form)
+	for (const cover of covers) body.append('cover', cover)
+	return body
+}
+
+test('an unapproved plan changes in place and an approved plan gets a new revision', async (t) => {
+	const { ui, workspace } = await start(t)
+	const search = (await call(ui, '/plans/search@1/edit', { headers: actorCookie })).body
+	assert.match(search, /Edits change this revision in place/)
+	assert.match(search, /Saving as <strong>qa-lead<\/strong>/)
+	assert.match(search, /name="cover"\s+value="T1 S1"[^>]*checked/)
+	const form = editForm(search, {
+		'r0.text': 'Search returns matching products first.',
+		't0.operations': 'read_catalog',
+	})
+	const saved = await call(ui, '/plans/search@1/edit', {
+		form: formBody(form, ['T1 S1', 'T2 S2']),
+		headers: actorCookie,
+	})
+	assert.equal(saved.status, 303)
+	assert.equal(saved.headers.location, '/plans/search@1')
+	assert.match(decodeURIComponent(String(saved.headers['set-cookie'])), /Saved search@1 in place/)
+	const after = read(workspace, (store) => planDetail(store, 'search'))
+	assert.equal(after.latestRevision, 1)
+	assert.equal(after.plan.requirements[0].text, 'Search returns matching products first.')
+	assert.notEqual(after.sha256, form.sha)
+	const stale = await call(ui, '/plans/search@1/edit', {
+		form: formBody({ ...form, 't0.title': 'Lost update' }, ['T1 S1', 'T2 S2']),
+		headers: actorCookie,
+	})
+	assert.equal(stale.status, 422)
+	assert.match(stale.body, /search changed after you opened the editor/)
+	assert.match(stale.body, /value="Lost update"/)
+	assert.notEqual(
+		read(workspace, (store) => planDetail(store, 'search').plan.tests[0].title),
+		'Lost update'
+	)
+
+	const checkout = (await call(ui, '/plans/checkout@2/edit', { headers: actorCookie })).body
+	assert.match(checkout, /A run uses checkout@2\. Saving creates revision 3, which needs approval/)
+	assert.match(checkout, />Save as checkout@3</)
+	const fields = editForm(checkout, { 't3.title': 'Promotion banner on every width', 't3.a1.kind': 'deterministic' })
+	const covers = ['T1 R1', 'T2 R2', 'T3 R3', 'T4 R4', 'T4 R2']
+	const uncovered = await call(ui, '/plans/checkout@2/edit', {
+		form: formBody(fields, ['T1 R1', 'T2 R2', 'T3 R3']),
+		headers: actorCookie,
+	})
+	assert.equal(uncovered.status, 422)
+	assert.match(uncovered.body, /class="form-error"/)
+	assert.match(uncovered.body, /value="Promotion banner on every width"/)
+	const next = await call(ui, '/plans/checkout@2/edit', {
+		form: formBody(fields, covers),
+		headers: actorCookie,
+	})
+	assert.equal(next.status, 303)
+	assert.equal(next.headers.location, '/plans/checkout@3')
+	assert.match(decodeURIComponent(String(next.headers['set-cookie'])), /Saved checkout@3\. It needs approval\./)
+	const revised = read(workspace, (store) => planDetail(store, 'checkout'))
+	assert.equal(revised.latestRevision, 3)
+	assert.equal(revised.approval.state, 'pending')
+	assert.deepEqual(revised.plan.tests[3].requirementIds, ['R2', 'R4'])
+	assert.equal(revised.plan.tests[3].assertions[1].oracleKind, 'deterministic')
+	const log = read(workspace, (store) => operationLog(store, { limit: 1 })[0])
+	assert.equal(log.command, 'plan edit')
+	assert.equal(log.actor, human)
+	const old = (await call(ui, '/plans/checkout@2/edit')).body
+	assert.match(old, /Only the latest revision can change/)
+	assert.doesNotMatch((await call(ui, '/plans/checkout@2')).body, /\/edit"/)
+})
+
+test('the JSON editor reports invalid JSON and contract errors and keeps the text', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/search@1/edit')).body
+	const base = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), mode: 'json' }
+	const broken = await call(ui, '/plans/search@1/edit', {
+		form: { ...base, json: '{"tests": [', actor: 'reviewer' },
+	})
+	assert.equal(broken.status, 422)
+	assert.match(broken.body, /The JSON is not valid/)
+	assert.match(broken.body, /<details class="edit-json" open>/)
+	assert.match(broken.body, /\{&quot;tests&quot;: \[<\/textarea/)
+	const invalid = await call(ui, '/plans/search@1/edit', {
+		form: { ...base, json: '{"tests": [], "gaps": [], "extra": 1}', actor: 'reviewer' },
+	})
+	assert.equal(invalid.status, 422)
+	assert.match(invalid.body, /class="form-error"/)
+	const candidate = read(workspace, (store) => planCandidate(planDetail(store, 'search').plan))
+	candidate.tests[1].assertions.push({ id: 'A2', check: 'Popular items show.', oracleKind: 'agent_observation' })
+	const done = await call(ui, '/plans/search@1/edit', {
+		form: { ...base, json: JSON.stringify(candidate), actor: 'reviewer' },
+	})
+	assert.equal(done.status, 303)
+	assert.match(String(done.headers['set-cookie']), /checkmate_actor=reviewer/)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').plan.tests[1].assertions.length),
+		2
+	)
+	assert.equal(
+		read(workspace, (store) => operationLog(store, { limit: 1 })[0].actor),
+		'reviewer'
 	)
 })

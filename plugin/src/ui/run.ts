@@ -4,7 +4,7 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { clock, html, icon, join, pill, plural, short, time, words } from './html.ts'
-import { heading } from './layout.ts'
+import { downloads, heading } from './layout.ts'
 import { emptyState, recordPanel, verdictPanel } from './forms.ts'
 import { counts } from './lists.ts'
 
@@ -397,7 +397,18 @@ export function runPage(store: Store, context: Context, runId: string, state: Fo
 		${plural(detail.attempts.length, 'attempt')}
 		${detail.result ? html`· finished ${time(detail.result.finishedAt)} ago` : ''}`
 	const badge = runBadge(detail)
-	const body: Html = html`${heading(runId, sub, html`<div class="meta" data-region="state">${badge}</div>`)}
+	const report = detail.result
+		? downloads(
+				'Download report',
+				`/runs/${runId}/report`,
+				'The HTML report is self-contained and print-ready. Open it and print to PDF.'
+			)
+		: html`<span class="muted small">The report is ready when the run finishes.</span>`
+	const body: Html = html`${heading(
+			runId,
+			sub,
+			html`<div class="meta" data-region="state">${badge} <span class="head-actions">${report}</span></div>`
+		)}
 		<div class="split">
 			<div class="main-col">
 				${strip(detail)}

@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Store } from '../store.ts'
 import type { Context, Page, Theme } from './layout.ts'
 import type { FormState } from './forms.ts'
+import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
-import { answerGap, approvePlan, rejectPlan } from '../plans.ts'
+import { answerGap, approvePlan, editPlan, planCandidate, rejectPlan } from '../plans.ts'
+import { exportPlan, exportRun } from '../render.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
 import { defaultActor } from '../actor.ts'
@@ -15,7 +17,8 @@ import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
-import { gapPage, planPage } from './plan.ts'
+import { gapPage, planHistoryList, planPage } from './plan.ts'
+import { candidateFromForm, candidateJson, editPage } from './edit.ts'
 import { runPage } from './run.ts'
 
 export type UiOptions = { workspace: string; port?: number; defaultActor?: string }
@@ -30,13 +33,22 @@ const routes = {
 	plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
 	latestPlan: new RegExp(`^/plans/(${id})$`),
 	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
+	edit: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/edit$`),
+	history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
+	planExport: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/export\\.(html|md|json)$`),
 	run: new RegExp(`^/runs/(${id})$`),
+	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json)$`),
 	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
 }
 const contentSecurityPolicy =
 	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
 const inlineImages = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const documentTypes: Record<string, string> = {
+	html: 'text/html; charset=utf-8',
+	md: 'text/markdown; charset=utf-8',
+	json: 'application/json; charset=utf-8',
+}
 const themes: Theme[] = ['system', 'light', 'dark']
 const maxForm = 256 * 1024
 
@@ -236,6 +248,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 	}
 
+	function download(request: Request, body: string, format: string, name: string) {
+		send(request.res, 200, documentTypes[format], body, {
+			'Content-Disposition': `attachment; ${attachmentName(name)}`,
+		})
+	}
+
 	function events(request: Request) {
 		const subjects = new Set(
 			(request.url.searchParams.get('subjects') ?? '')
@@ -276,25 +294,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
 		if (pathname === '/') return render(request, inboxPage(store))
-		if (pathname === '/plans')
-			return render(
-				request,
-				plansPage(store, { q: searchParams.get('q') ?? '', show: searchParams.get('show') ?? 'all' })
-			)
-		if (pathname === '/runs')
-			return render(
-				request,
-				runsPage(store, {
-					plan: searchParams.get('plan') ?? '',
-					build: searchParams.get('build') ?? '',
-					status: searchParams.get('status') ?? 'all',
-				})
-			)
-		if (pathname === '/log')
-			return render(
-				request,
-				logPage(store, { subject: searchParams.get('subject') ?? '', actor: searchParams.get('actor') ?? '' })
-			)
+		if (pathname === '/plans') return render(request, plansPage(store, searchParams))
+		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
+		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		const latest = routes.latestPlan.exec(pathname)
 		if (latest) {
@@ -302,7 +304,36 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`)
 		}
 		const plan = routes.plan.exec(pathname)
-		if (plan) return render(request, planPage(store, shown, plan[1], Number(plan[2])))
+		if (plan)
+			return render(
+				request,
+				planPage(store, shown, plan[1], Number(plan[2]), null, searchParams.get('history') === 'all')
+			)
+		const edit = routes.edit.exec(pathname)
+		if (edit) return render(request, editPage(store, shown, edit[1], Number(edit[2])))
+		const history = routes.history.exec(pathname)
+		if (history) {
+			const detail = planDetail(store, history[1], Number(history[2]))
+			return send(request.res, 200, 'text/html; charset=utf-8', planHistoryList(store, detail, true).html)
+		}
+		const planExport = routes.planExport.exec(pathname)
+		if (planExport) {
+			const [, planId, revision, format] = planExport
+			const body = exportPlan(store, `${planId}@${revision}`, format)
+			return download(request, body, format, `${planId}-${revision}-plan.${format}`)
+		}
+		const report = routes.report.exec(pathname)
+		if (report) {
+			const [, runId, format] = report
+			if (!runDetail(store, runId).result)
+				return errorPage(
+					request,
+					409,
+					'Report not ready',
+					`${runId} is in progress. The report is ready when it finishes.`
+				)
+			return download(request, exportRun(store, runId, format), format, `${runId}-report.${format}`)
+		}
 		const gap = routes.gap.exec(pathname)
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
 		const run = routes.run.exec(pathname)
@@ -469,6 +500,57 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		)
 	}
 
+	function saveEdit(request: Request, form: URLSearchParams, planId: string, revision: number) {
+		const { actor, cookies } = actorFrom(request, form)
+		const subject = `${planId}@${revision}`
+		const detail = planDetail(store, planId, revision)
+		const base = planCandidate(detail.plan)
+		const mode = form.get('mode') === 'json' ? 'json' : 'form'
+		const sha = form.get('sha') ?? ''
+		const state: EditState = {
+			mode,
+			candidate: base,
+			json: form.get('json') ?? '',
+			actor: form.get('actor') ?? '',
+			error: null,
+			stale: null,
+		}
+		const page = () => editPage(store, context(request), planId, revision, state)
+		let candidate: unknown
+		if (mode === 'json') {
+			try {
+				candidate = JSON.parse(state.json)
+			} catch (error) {
+				state.error = `The JSON is not valid: ${plainMessage(error)}`
+			}
+		} else {
+			state.candidate = candidateFromForm(base, form)
+			state.json = candidateJson(state.candidate)
+			candidate = state.candidate
+		}
+		if (!actor) state.error ??= 'Enter your name. Checkmate records it with the edit.'
+		if (state.error) return refuse(request, page, cookies)
+		let saved
+		try {
+			saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data
+		} catch (error) {
+			const latest = planDetail(store, planId)
+			if (latest.latestRevision !== revision || latest.sha256 !== sha)
+				state.stale = html`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
+					saved. Your text is kept below.
+					<a href="/plans/${planId}@${latest.latestRevision}/edit">Open the latest version</a>, then edit
+					again.`
+			else state.error = plainMessage(error)
+			return refuse(request, page, cookies)
+		}
+		const saving = `${planId}@${saved.revision}`
+		const flash =
+			saved.edit === 'in_place'
+				? `Saved ${saving} in place`
+				: `Saved ${saving}${planDetail(store, planId).approval.policy === 'none' ? '' : '. It needs approval.'}`
+		redirect(request.res, `/plans/${saving}`, [...cookies, cookie('checkmate_toast', flash, 60)])
+	}
+
 	async function post(request: Request) {
 		const origin = request.req.headers.origin
 		if (origin !== undefined && origin !== `http://${request.req.headers.host}`)
@@ -499,6 +581,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				return errorPage(request, 422, 'Your name', 'Enter a name. Checkmate records it with each decision.')
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
+		const edit = routes.edit.exec(pathname)
+		if (edit) return saveEdit(request, form, edit[1], Number(edit[2]))
 		const gap = routes.gap.exec(pathname)
 		if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3])
 		const plan = routes.plan.exec(pathname)

@@ -5,8 +5,9 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { planDetail, planHistory } from '../views.ts'
 import { html, join, pill, plural, short, time, words } from './html.ts'
-import { banner, heading } from './layout.ts'
+import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
+import { counts, runStatus } from './lists.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]
@@ -96,20 +97,13 @@ function gapRow(detail: Detail, gap: Gap) {
 	const decision = decisionFor(detail.plan, gap)
 	const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id)
 	const answerable = gap.status === 'open' && !pending && detail.revision === detail.latestRevision
-	return html`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
-		<div class="gap-h">
-			<span class="id mono">${gap.id}</span>
-			${pill(gap.severity)} ${pill(gap.status)}
-			<span class="gap-refs muted"
-				>${
-					[...gap.requirementIds, ...gap.testIds].length
-						? `affects ${[...gap.requirementIds, ...gap.testIds].join(', ')}`
-						: 'affects the whole plan'
-				}</span
-			>
-		</div>
-		<p class="gap-q">${gap.question}</p>
-		<p class="muted">${gap.consequence}</p>
+	const affects = [...gap.requirementIds, ...gap.testIds]
+	const head = html`<span class="id mono">${gap.id}</span>
+		${pill(gap.severity)} ${pill(gap.status)}
+		<span class="gap-refs muted"
+			>${affects.length ? `affects ${affects.join(', ')}` : 'affects the whole plan'}</span
+		>`
+	const content = html`<p class="muted">${gap.consequence}</p>
 		${
 			decision
 				? html`<p class="gap-d">
@@ -133,8 +127,67 @@ function gapRow(detail: Detail, gap: Gap) {
 						>
 					</p>`
 				: ''
-		}
+		}`
+	if (gap.status === 'open')
+		return html`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
+			<div class="gap-h">${head}</div>
+			<p class="gap-q">${gap.question}</p>
+			${content}
+		</li>`
+	return html`<li class="gap closed" id="${gap.id}" data-key="gap:${gap.id}">
+		<details data-open-key="gap:${gap.id}">
+			<summary>
+				<span class="gap-h">${head}</span>
+				<span class="gap-q">${gap.question}</span>
+			</summary>
+			<div class="gap-b">${content}</div>
+		</details>
 	</li>`
+}
+
+function gapsList(detail: Detail) {
+	const gaps = detail.plan.gaps
+	if (!gaps.length) return html`<p class="empty-line">No gaps.</p>`
+	const open = gaps.filter((gap) => gap.status === 'open')
+	const closed = gaps.filter((gap) => gap.status !== 'open')
+	return html`<ul class="gaps">
+		${[...open, ...closed].map((gap) => gapRow(detail, gap))}
+	</ul>`
+}
+
+function runsTable(detail: Detail) {
+	if (!detail.runs.length) return html`<p class="empty-line">No run uses this plan yet.</p>`
+	return html`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Run</th>
+					<th scope="col">Revision</th>
+					<th scope="col">Build</th>
+					<th scope="col">Tests</th>
+					<th scope="col">Completion</th>
+					<th scope="col">Acceptance</th>
+					<th scope="col">Started</th>
+				</tr>
+			</thead>
+			<tbody>
+				${[...detail.runs].reverse().map(
+					(run) =>
+						html`<tr data-key="run:${run.runId}">
+							<td><a class="mono" href="/runs/${run.runId}">${run.runId}</a></td>
+							<td>
+								<a class="mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>
+							</td>
+							<td class="mono">${run.build}</td>
+							<td>${counts(run.counts)}</td>
+							<td>${run.completion ? pill(run.completion) : html`<span class="muted">running</span>`}</td>
+							<td>${runStatus(run)}</td>
+							<td class="nowrap">${time(run.startedAt)}</td>
+						</tr>`
+				)}
+			</tbody>
+		</table>
+	</div>`
 }
 
 function requirementsTable(plan: Plan) {
@@ -208,29 +261,56 @@ function changeLine(line: string) {
 	</li>`
 }
 
-function history(store: Store, detail: Detail) {
+const historyShown = 6
+
+export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 	const revisions = planHistory(store, detail.planId).reverse()
-	return html`<ol class="history">
-		${revisions.map(
-			(item) =>
-				html`<li class="${item.revision === detail.revision ? 'current' : ''}">
-					<div class="record-h">
-						<a class="mono" href="/plans/${detail.planId}@${item.revision}"
-							>${detail.planId}@${item.revision}</a
-						>
-						<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-						<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
-					</div>
-					${
-						item.changes.length
-							? html`<ul class="changes">
-									${item.changes.map(changeLine)}
-								</ul>`
-							: html`<p class="muted small">First revision.</p>`
-					}
-				</li>`
-		)}
-	</ol>`
+	const shown = all ? revisions : revisions.slice(0, historyShown)
+	const hidden = revisions.length - shown.length
+	const subject = `${detail.planId}@${detail.revision}`
+	return html`<div class="history-wrap" data-history>
+		<ol class="history${hidden ? ' clipped' : ''}">
+			${shown.map(
+				(item, index) =>
+					html`<li class="${item.revision === detail.revision ? 'current' : ''}">
+						<details ${index === 0 ? html`open` : ''} data-open-key="revision:${item.revision}">
+							<summary class="record-h">
+								<span class="mono rev">${detail.planId}@${item.revision}</span>
+								<span class="muted">by ${item.actor} · ${time(item.at)}</span>
+								<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+								<span class="muted small"
+									>${item.changes.length ? plural(item.changes.length, 'change') : 'first revision'}</span
+								>
+							</summary>
+							<div class="history-b">
+								${
+									item.changes.length
+										? html`<ul class="changes">
+												${item.changes.map(changeLine)}
+											</ul>`
+										: html`<p class="muted small">First revision.</p>`
+								}
+								<p class="small">
+									<a href="/plans/${detail.planId}@${item.revision}"
+										>Open ${detail.planId}@${item.revision}</a
+									>
+								</p>
+							</div>
+						</details>
+					</li>`
+			)}
+		</ol>
+		${
+			hidden
+				? html`<a
+						class="history-more"
+						href="/plans/${subject}?history=all#history"
+						data-history-more="/plans/${subject}/history"
+						><span class="btn small">Show full history · ${plural(hidden, 'earlier revision')}</span></a
+					>`
+				: ''
+		}
+	</div>`
 }
 
 function approvalPanel(context: Context, detail: Detail, state: FormState | null) {
@@ -304,15 +384,21 @@ export function planPage(
 	context: Context,
 	planId: string,
 	revision: number,
-	state: FormState | null = null
+	state: FormState | null = null,
+	allHistory = false
 ): Page {
 	const detail = planDetail(store, planId, revision)
 	const { plan } = detail
 	const subject = `${planId}@${revision}`
+	const latest = detail.revision === detail.latestRevision
 	const meta = html`<div class="meta">
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
+		<span class="head-actions">
+			${latest ? html`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
+			${downloads('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}
+		</span>
 	</div>`
 	const pending = detail.pendingDecisions.length
 		? banner(
@@ -328,25 +414,29 @@ export function planPage(
 			<div class="main-col">
 				<nav class="jump" aria-label="On this page">
 					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
-					><a href="#decisions">Decisions</a><a href="#history">History</a>
+					><a href="#runs">Runs</a><a href="#decisions">Decisions</a><a href="#history">History</a>
 				</nav>
 				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Tests <span class="n">${plan.tests.length}</span></h2>
+					<h2 id="tests">
+						Tests <span class="n">${plan.tests.length}</span>
+						${latest ? html`<a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}
+					</h2>
 					<div class="stack">${plan.tests.map((test) => testCard(detail, test))}</div>
 				</section>
 				<section aria-labelledby="gaps" data-region="gaps">
 					<h2 id="gaps">Gaps <span class="n">${plan.gaps.length}</span></h2>
-					${
-						plan.gaps.length
-							? html`<ul class="gaps">
-									${plan.gaps.map((gap) => gapRow(detail, gap))}
-								</ul>`
-							: html`<p class="empty-line">No gaps.</p>`
-					}
+					${gapsList(detail)}
 				</section>
 				<section aria-labelledby="requirements">
-					<h2 id="requirements">Requirements and coverage</h2>
+					<h2 id="requirements">
+						Requirements and coverage
+						${latest ? html`<a class="h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ''}
+					</h2>
 					${requirementsTable(plan)}
+				</section>
+				<section aria-labelledby="runs" data-region="plan-runs">
+					<h2 id="runs">Runs <span class="n">${detail.runs.length}</span></h2>
+					${runsTable(detail)}
 				</section>
 				<section aria-labelledby="decisions">
 					<h2 id="decisions">Decisions</h2>
@@ -354,12 +444,17 @@ export function planPage(
 				</section>
 				<section aria-labelledby="history" data-region="history">
 					<h2 id="history">History</h2>
-					${history(store, detail)}
+					${planHistoryList(store, detail, allHistory)}
 				</section>
 			</div>
 			${side(approvalPanel(context, detail, state))}
 		</div>`
-	return { title: subject, section: 'plans', subjects: [`plan:${planId}`, 'inbox'], body }
+	return {
+		title: subject,
+		section: 'plans',
+		subjects: [`plan:${planId}`, 'inbox', ...detail.runs.map((run) => `run:${run.runId}`)],
+		body,
+	}
 }
 
 export function gapPage(

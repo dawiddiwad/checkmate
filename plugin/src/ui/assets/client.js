@@ -159,7 +159,12 @@ document.addEventListener('keydown', (event) => {
 	const target = event.target
 	const typing = target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
 	if (event.key === 'Escape') {
-		if (closeViewer() || (!shortcuts.hidden && toggleShortcuts(false))) event.preventDefault()
+		const menu = document.querySelector('details[data-menu][open]')
+		if (menu) {
+			menu.open = false
+			menu.querySelector('summary').focus()
+			event.preventDefault()
+		} else if (closeViewer() || (!shortcuts.hidden && toggleShortcuts(false))) event.preventDefault()
 		else if (typing) target.blur()
 		return
 	}
@@ -350,6 +355,119 @@ document.addEventListener('visibilitychange', () => {
 	}
 })
 
+const listForm = document.querySelector('[data-list-form]')
+let typingTimer = null
+let listTicket = 0
+
+function listUrl(form) {
+	const params = new URLSearchParams()
+	for (const field of form.elements) {
+		if (!field.name || field.value === '' || field.value === (field.dataset.default ?? '')) continue
+		params.set(field.name, field.value)
+	}
+	const query = params.toString()
+	return form.getAttribute('action') + (query ? `?${query}` : '')
+}
+
+function syncListForm(url) {
+	const params = new URL(url, location.href).searchParams
+	for (const field of listForm.elements) {
+		if (!field.name || field === document.activeElement) continue
+		field.value = params.get(field.name) ?? field.dataset.default ?? ''
+	}
+}
+
+async function showList(url, mode) {
+	clearTimeout(typingTimer)
+	const ticket = ++listTicket
+	try {
+		const response = await fetch(url, { cache: 'no-store' })
+		if (ticket !== listTicket) return
+		if (!response.ok) return void location.assign(url)
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		const region = document.querySelector('[data-list-region]')
+		const replacement = fresh.querySelector('[data-list-region]')
+		if (!region || !replacement) return void location.assign(url)
+		if (mode === 'push') window.history.pushState(null, '', url)
+		if (mode === 'replace') window.history.replaceState(null, '', url)
+		region.replaceWith(document.importNode(replacement, true))
+		served.set(replacement.dataset.region, replacement.cloneNode(true))
+		document.title = fresh.title
+		syncListForm(url)
+	} catch {
+		location.assign(url)
+	}
+}
+
+if (listForm) {
+	listForm.querySelector('[data-list-submit]').hidden = true
+	listForm.addEventListener('input', (event) => {
+		if (event.target.type !== 'search') return
+		clearTimeout(typingTimer)
+		typingTimer = setTimeout(() => showList(listUrl(listForm), 'replace'), 250)
+	})
+	listForm.addEventListener('change', (event) => {
+		if (event.target.tagName === 'SELECT') showList(listUrl(listForm), 'push')
+	})
+	listForm.addEventListener('submit', (event) => {
+		event.preventDefault()
+		showList(listUrl(listForm), 'push')
+	})
+	window.addEventListener('popstate', () => showList(location.href, null))
+}
+
+function plainClick(event) {
+	return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0
+}
+
+document.addEventListener('click', (event) => {
+	if (!plainClick(event)) return
+	const link = event.target.closest('a[data-list-link]')
+	if (link && listForm) {
+		event.preventDefault()
+		return void showList(link.href, 'push')
+	}
+	const clear = event.target.closest('[data-list-clear]')
+	if (clear && listForm) {
+		event.preventDefault()
+		for (const field of listForm.elements) if (field.name) field.value = field.dataset.default ?? ''
+		return void showList(clear.href, 'push')
+	}
+	const more = event.target.closest('[data-history-more]')
+	if (more) {
+		event.preventDefault()
+		return void showHistory(more)
+	}
+	for (const menu of document.querySelectorAll('details[data-menu][open]'))
+		if (!menu.contains(event.target)) menu.open = false
+})
+
+async function showHistory(link) {
+	link.setAttribute('aria-busy', 'true')
+	try {
+		const response = await fetch(link.dataset.historyMore, { cache: 'no-store' })
+		if (!response.ok) return void location.assign(link.href)
+		const fragment = document.createRange().createContextualFragment(await response.text())
+		const list = link.closest('[data-history]')
+		const shown = list.querySelectorAll('ol.history > li').length
+		list.replaceWith(fragment)
+		const entries = document.querySelectorAll('[data-history] ol.history > li')
+		entries[shown]?.querySelector('summary')?.focus()
+		announce(`Showing ${entries.length} revisions`)
+	} catch {
+		location.assign(link.href)
+	}
+}
+
+function openTarget() {
+	if (!location.hash) return
+	const target = document.getElementById(decodeURIComponent(location.hash.slice(1)))
+	const details = target?.closest('details')
+	if (details && !details.open) details.open = true
+}
+
+window.addEventListener('hashchange', openTarget)
+
 const toast = document.querySelector('[data-toast]')
 if (toast)
 	setTimeout(() => {
@@ -360,6 +478,7 @@ if (toast)
 document.querySelector('[data-shortcuts-open]').hidden = false
 syncRationale()
 syncSource()
+openTarget()
 if (location.hash === '#decide' || location.hash === '#answer')
 	document.querySelector(`${location.hash} textarea, ${location.hash} input:not([type="hidden"])`)?.focus({
 		preventScroll: false,

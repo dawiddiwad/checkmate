@@ -11,10 +11,13 @@ import {
 	checkAssertion,
 	closeStore,
 	closeTest,
+	editPlan,
 	finishRun,
 	openPlan,
 	openStore,
 	openTarget,
+	planCandidate,
+	planDetail,
 	recordFinding,
 	recordGap,
 	revisePlan,
@@ -522,6 +525,54 @@ function seedCheckoutRun(store: Store) {
 	})
 }
 
+const accountRequest: PlanRequest = {
+	objective: 'Verify that a customer can change the account profile.',
+	requirements: [{ id: 'P1', text: 'A customer can change the display name.', source: 'brief://accounts#profile' }],
+	sourceContext: [{ uri: 'brief://accounts', content: 'The profile page edits the display name.' }],
+}
+
+const accountCandidate: PlanCandidate = {
+	tests: [
+		{
+			id: 'T1',
+			title: 'Change the display name',
+			requirementIds: ['P1'],
+			capability: 'browser',
+			operations: ['sign_in'],
+			dependsOn: [],
+			preconditions: ['Signed in as anna@example.test.'],
+			action: 'Open the profile page and save a new display name.',
+			assertions: [{ id: 'A1', check: 'The header shows the new name.', oracleKind: 'deterministic' }],
+		},
+	],
+	gaps: [],
+}
+
+const accountTitles = [
+	'Change the display name',
+	'Change the display name and reload',
+	'Change the display name on the profile page',
+	'Save a new display name',
+	'Save a new display name and reload',
+	'Save a new display name from the profile page',
+	'Save a new display name and see it in the header',
+]
+
+function seedAccount(store: Store) {
+	minutesAgo(3000)
+	openPlan(store, agent, { planId: 'account', target: 'shop-local@1', request: accountRequest })
+	savePlan(store, agent, { planId: 'account', candidate: accountCandidate })
+	for (const [index, title] of accountTitles.slice(1).entries()) {
+		const revision = index + 1
+		minutesAgo(2900 - index * 100)
+		approvePlan(store, human, { reference: `account@${revision}`, rationale: 'The check is clear.' })
+		const candidate = planCandidate(planDetail(store, 'account').plan)
+		candidate.tests[0].title = title
+		editPlan(store, agent, { reference: `account@${revision}`, candidate })
+	}
+	approvePlan(store, human, { reference: `account@${accountTitles.length}`, rationale: 'The check is clear.' })
+}
+
 function seedSearch(store: Store) {
 	minutesAgo(50)
 	openPlan(store, agent, { planId: 'search', target: 'shop-local@1', request: searchRequest })
@@ -552,6 +603,7 @@ export function seedDemo(workspace: string) {
 		})
 		saveTarget(store, agent, { targetId: value.targetId, profile: value })
 		seedLogin(store)
+		seedAccount(store)
 		seedCheckout(store)
 		seedLoginRun(store)
 		seedRevision(store)

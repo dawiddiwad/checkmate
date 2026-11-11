@@ -182,3 +182,17 @@ export function heading(title: Html | string, sub: Html | string | null = null, 
 export function banner(tone: 'warn' | 'info' | 'fail', content: Html | string) {
 	return html`<div class="banner ${tone}" role="${tone === 'info' ? 'status' : 'alert'}">${content}</div>`
 }
+
+export function downloads(label: string, base: string, note: string) {
+	const item = (format: string, name: string, hint: string) =>
+		html`<a href="${base}.${format}" download data-download="${format}"
+			>${name} <span class="muted small">${hint}</span></a
+		>`
+	return html`<details class="menu" data-menu>
+		<summary class="btn small" title="${note}">${label}</summary>
+		<div class="menu-list">
+			${item('html', 'HTML', 'print-ready')} ${item('md', 'Markdown', '.md')} ${item('json', 'JSON', 'data')}
+			<p class="menu-note">${note}</p>
+		</div>
+	</details>`
+}

@@ -49,8 +49,10 @@ After each step, Claude shows a short table, what it did (`Done:`), and what you
 Another agent, a CI job, or a script can give QA work to Checkmate with the npm CLI. The CLI contains the plugin and adds `delegate`. Each delegated stage runs in a new Claude Code session, so the `claude` command must be installed and logged in.
 
 ```bash
-npm i -g @xoxoai/checkmate
+npm i -g @xoxoai/checkmate@^0.7.0
 ```
+
+The workflow on this page needs version 0.7.0 or later of the npm CLI. The plugin does not use the npm CLI.
 
 ```bash
 checkmate target open shop --base-url http://127.0.0.1:4173 --capabilities browser,http \

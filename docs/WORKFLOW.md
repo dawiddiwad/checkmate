@@ -65,7 +65,7 @@ After each stage, Claude reports in one format: a Markdown table of the plans, t
 
 ## From an agent or a script
 
-Use the npm CLI (`npm i -g @xoxoai/checkmate`) when an agent, a CI job, or a script gives QA work to Checkmate. The agent is the caller. It opens each subject, delegates the stage, and makes the decisions. `delegate` needs the `claude` command, installed and logged in.
+Use the npm CLI, version 0.7.0 or later (`npm i -g @xoxoai/checkmate@^0.7.0`), when an agent, a CI job, or a script gives QA work to Checkmate. The agent is the caller. It opens each subject, delegates the stage, and makes the decisions. `delegate` needs the `claude` command, installed and logged in.
 
 Read line 1 of each response: `<status> <subject>`. `completed` and `needs_decision` exit with 0. `needs_decision` means that the caller must decide or give input, for example for open gaps or a refused gate. Read the `reason:` lines. [CLI](CLI.md#output-and-exit-codes) lists every status.
 

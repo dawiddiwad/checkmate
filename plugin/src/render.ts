@@ -142,7 +142,8 @@ h2{font-size:1.2rem;margin:2.2rem 0 .7rem;padding-bottom:.3rem;border-bottom:1px
 h3{font-size:1rem;margin:1.4rem 0 .5rem}
 .note{color:var(--muted);margin:0}
 table{border-collapse:collapse;width:100%;margin:.4rem 0 1.2rem;font-size:.92rem}
-th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:break-word}
+.token{word-break:break-all}
 th{font-weight:600;background:var(--soft);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
 tbody tr:nth-child(even) td{background:#fafbfc}
 .pill{display:inline-block;padding:.05rem .5rem;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
@@ -168,7 +169,11 @@ tbody tr:nth-child(even) td{background:none}details{display:none}
 
 function cell(value: string) {
 	const tone = tones[value]
-	return tone ? `<span class="pill ${tone}">${escapeHtml(value)}</span>` : escapeHtml(value)
+	if (tone) return `<span class="pill ${tone}">${escapeHtml(value)}</span>`
+	return value
+		.split(/(\s+)/)
+		.map((part) => (part.length > 24 ? `<span class="token">${escapeHtml(part)}</span>` : escapeHtml(part)))
+		.join('')
 }
 
 function figure(item: EvidenceItem) {

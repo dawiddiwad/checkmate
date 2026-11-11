@@ -48,7 +48,7 @@ function reported(t: Parameters<typeof store>[0]) {
 	return opened
 }
 
-test('the HTML report is self-contained, prints cleanly, and inlines small evidence', (t) => {
+test('the HTML report is self-contained, prints cleanly, keeps words whole, and inlines small evidence', (t) => {
 	const opened = reported(t)
 	const page = exportRun(opened, 'run-1', 'html')
 	assert.match(page, /^<!doctype html>/)
@@ -77,6 +77,9 @@ test('the HTML report is self-contained, prints cleanly, and inlines small evide
 	assert.match(page, /<span class="pill pass">approved<\/span>/)
 	assert.match(page, /<td>T2\.A2<\/td><td><span class="pill fail">failed<\/span><\/td>/)
 	assert.match(page, /Promotion replaces loyalty\. Expected total is 240 PLN\./)
+	assert.match(page, /th,td\{[^}]*overflow-wrap:break-word\}/)
+	assert.doesNotMatch(page, /th,td\{[^}]*anywhere/)
+	assert.match(page, /<td><span class="token">[0-9a-f]{64}<\/span><\/td>/)
 })
 
 test('the Markdown and JSON reports carry the same summary, decisions, and acceptance', (t) => {

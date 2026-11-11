@@ -7942,7 +7942,8 @@ h2{font-size:1.2rem;margin:2.2rem 0 .7rem;padding-bottom:.3rem;border-bottom:1px
 h3{font-size:1rem;margin:1.4rem 0 .5rem}
 .note{color:var(--muted);margin:0}
 table{border-collapse:collapse;width:100%;margin:.4rem 0 1.2rem;font-size:.92rem}
-th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:break-word}
+.token{word-break:break-all}
 th{font-weight:600;background:var(--soft);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
 tbody tr:nth-child(even) td{background:#fafbfc}
 .pill{display:inline-block;padding:.05rem .5rem;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
@@ -7967,7 +7968,8 @@ tbody tr:nth-child(even) td{background:none}details{display:none}
 `;
 function cell(value2) {
   const tone2 = tones[value2];
-  return tone2 ? `<span class="pill ${tone2}">${escapeHtml(value2)}</span>` : escapeHtml(value2);
+  if (tone2) return `<span class="pill ${tone2}">${escapeHtml(value2)}</span>`;
+  return value2.split(/(\s+)/).map((part) => part.length > 24 ? `<span class="token">${escapeHtml(part)}</span>` : escapeHtml(part)).join("");
 }
 function figure(item) {
   const body = item.image ? `<img src="${item.image}" alt="${escapeHtml(item.name)}">` : item.text !== void 0 ? `<pre>${escapeHtml(item.text)}</pre>` : "";

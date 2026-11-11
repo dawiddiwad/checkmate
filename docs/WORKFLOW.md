@@ -69,13 +69,15 @@ Use the npm CLI (`npm i -g @xoxoai/checkmate`) when an agent, a CI job, or a scr
 
 Read line 1 of each response: `<status> <subject>`. `completed` and `needs_decision` exit with 0. `needs_decision` means that the caller must decide or give input, for example for open gaps or a refused gate. Read the `reason:` lines. [CLI](CLI.md#output-and-exit-codes) lists every status.
 
+Give each delegated stage at least `--allow Read --allow Bash`. A prefix rule such as `Bash(node *)` is not sufficient: the permission check of Claude Code blocks the heredoc that sends a JSON payload. [CLI](CLI.md#delegated-stages) has the details. The host owns the permissions.
+
 Set up the target with its tools: `--tool <name>:<cli|mcp|skill>:<purpose>`. When no tool is named for a capability, the setup stage adds `playwright-cli` for `browser` and `node` for `http`. This example reads the requirements from a Jira ticket through the `jira` MCP server of the host:
 
 ```sh
 checkmate target open checkout-local --base-url "$BASE_URL" --capabilities browser,http \
   --operations read_catalog,create_fixture_order,apply_fixture_discount \
   --tool "playwright-cli:cli:Drive the browser." --tool "jira:mcp:Read the acceptance criteria."
-checkmate delegate setup checkout-local --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate delegate setup checkout-local --allow Read --allow Bash
 ```
 
 Open the plan with its sources and instructions, then delegate the plan stage. Allow the tools that read the sources. `mcp__jira` allows every tool of the `jira` server. The worker uses the MCP servers of the host configuration:
@@ -87,7 +89,7 @@ checkmate plan open checkout --target checkout-local@1 <<'EOF'
   "context": { "sources": ["jira:SHOP-12"], "instructions": "Use the acceptance criteria only." }
 }
 EOF
-checkmate delegate plan checkout --allow Read --allow "Bash(node *)" --allow mcp__jira
+checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 ```
 
 A plan with gaps gives `needs_decision` with one `reason:` line for each open blocking gap. This is a correct result.
@@ -101,7 +103,7 @@ checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
   --rationale "Product owner decision."
 checkmate gap answer checkout G2 --kind defer \
   --value "Refunds are out of scope for this release." --rationale "Product owner decision."
-checkmate delegate revise checkout --allow Read --allow "Bash(node *)"
+checkmate delegate revise checkout --allow Read --allow Bash
 checkmate plan show checkout@2
 checkmate plan approve checkout@2 --rationale "Tests and assertions match the brief."
 ```
@@ -110,7 +112,7 @@ Execute, then accept or reject the result:
 
 ```sh
 checkmate run begin run-1 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
-checkmate delegate execute run-1 --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate delegate execute run-1 --allow Read --allow Bash
 checkmate run show run-1
 checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before release."
 checkmate export run run-1 --format html --out reports/run-1.html
@@ -150,7 +152,7 @@ A retest is a new run of the same plan on a new build. The first run does not ch
 
 ```sh
 checkmate run begin run-2 checkout@2 --tests T2,T3 --build "$NEW_SHA" --retest-of run-1
-checkmate delegate execute run-2 --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate delegate execute run-2 --allow Read --allow Bash
 ```
 
 A narrow retest keeps the requirements of the tests that it did not select uncovered.

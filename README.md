@@ -55,24 +55,26 @@ npm i -g @xoxoai/checkmate
 ```bash
 checkmate target open shop --base-url http://127.0.0.1:4173 --capabilities browser,http \
   --operations read_catalog,create_order
-checkmate delegate setup shop --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate delegate setup shop --allow Read --allow Bash
 
 checkmate plan open checkout --target shop@1 <<'EOF'
 { "objective": "Verify checkout totals.", "context": { "sources": ["docs/checkout.md"] } }
 EOF
-checkmate delegate plan checkout --allow Read --allow "Bash(node *)"
+checkmate delegate plan checkout --allow Read --allow Bash
 
 checkmate inbox
 checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
   --value "The promotion replaces the loyalty discount." --rationale "Product decision."
-checkmate delegate revise checkout --allow Read --allow "Bash(node *)"
+checkmate delegate revise checkout --allow Read --allow Bash
 checkmate plan approve checkout@2 --rationale "Tests match the brief."
 
 checkmate run begin run-1 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
-checkmate delegate execute run-1 --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate delegate execute run-1 --allow Read --allow Bash
 checkmate result accept run-1 --rationale "The defect in T3 is real."
 checkmate export run run-1 --format md
 ```
+
+Give each delegated stage at least `--allow Read --allow Bash`. The worker sends JSON on standard input with a heredoc, and the permission check of Claude Code blocks that heredoc under a prefix rule such as `Bash(node *)`. The host still owns the permissions. Add rules for other tools, for example `--allow mcp__jira`.
 
 Each command prints `<status> <subject>` on line 1. `needs_decision` exits with 0, so read the status, not only the exit code. `delegate` does not trust the worker's summary. It reads the recorded change from the database. A Claude sub-agent that has the plugin can run the same stages with the skills. [Workflow](docs/WORKFLOW.md) has each step and each mode, and an example with a Jira source.
 

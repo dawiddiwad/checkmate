@@ -77,14 +77,15 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 The parent does not trust the worker's summary. It requires a structured response for the same subject. Then it reads the database and returns the response of the recorded command, with `operation=<id>` on line 1. A worker that reports `completed` without the recorded change gives `operational_error`. In setup, plan, and revise, a worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons, for example a source that it cannot read. In execute, a run that is not finished gives `operational_error`.
 
-Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list, because the worker cannot answer permission prompts. The worker writes no files, so it does not need `Write`. Give at least these rules:
+Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list, because the worker cannot answer permission prompts. Give at least `Read` and `Bash` for each stage:
 
-| Stage              | Minimum rules                                    |
-| ------------------ | ------------------------------------------------ |
-| `setup`, `execute` | `Read`, `Bash(node *)`, `Bash(playwright-cli *)` |
-| `plan`, `revise`   | `Read`, `Bash(node *)`                           |
+```sh
+checkmate delegate plan checkout --allow Read --allow Bash
+```
 
-Add rules for the tools of the target or the plan. `mcp__jira` allows every tool of the `jira` MCP server, and `mcp__jira__get_issue` allows one tool. The worker loads the MCP servers of the host configuration. An execute stage that saves screenshots with another tool can need `Write` for `.checkmate/tmp/<runId>/`. The launcher does not add a permission bypass. It keeps the host configuration, model, and authentication. Use a trusted workspace.
+The worker sends JSON payloads to the plugin CLI on standard input with a heredoc. The permission check of Claude Code blocks a heredoc that contains JSON when the rule is a prefix rule, for example `Bash(node *)`. Thus a prefix rule is not sufficient. `Bash` lets the worker run any shell command in the workspace. The worker writes no payload files, so it does not need `Write`.
+
+Add rules for the tools of the target or the plan. `mcp__jira` allows every tool of the `jira` MCP server, and `mcp__jira__get_issue` allows one tool. The worker loads the MCP servers of the host configuration. An execute stage that saves screenshots with another tool can need `Write` for `.checkmate/tmp/<runId>/`. The launcher does not add a permission bypass. The host owns the permissions, the configuration, the model, and the authentication. Use a trusted workspace.
 
 `--timeout <seconds>` sets the deadline. Without it, setup, planning, and revision use 300 seconds. Execution uses the deadline that `run begin` recorded. At the deadline, the launcher stops the worker's process group. It also stops the worker on SIGINT or SIGTERM, and when the worker output exceeds 4 MiB.
 

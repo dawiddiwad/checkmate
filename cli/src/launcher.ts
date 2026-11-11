@@ -33,12 +33,7 @@ type Verified = { operation: string; reply: WorkerResponse }
 const maxOutputBytes = 4 * 1024 * 1024
 const defaultTimeoutSeconds = 300
 
-export const minimumRules: Record<Stage, string[]> = {
-	setup: ['Read', 'Bash(node *)', 'Bash(playwright-cli *)'],
-	plan: ['Read', 'Bash(node *)'],
-	revise: ['Read', 'Bash(node *)'],
-	execute: ['Read', 'Bash(node *)', 'Bash(playwright-cli *)'],
-}
+export const minimumRules = ['Read', 'Bash']
 
 const verifiedBy: Record<Stage, { command: string; key: string }> = {
 	setup: { command: 'target save', key: 'targetId' },
@@ -293,8 +288,7 @@ export async function delegate(
 ): Promise<DelegateResponse> {
 	workspace = resolve(workspace)
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`)
-	if (!options.allowedTools.length)
-		refuse(`delegate needs --allow rules. Minimum for ${stage}: ${minimumRules[stage].join(', ')}`)
+	if (!options.allowedTools.length) refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`)
 	const { after, run } = withStore(workspace, (store) => {
 		checkSubject(store, stage, subject)
 		return { after: lastOperation(store), run: stage === 'execute' ? startedRun(store, subject) : null }

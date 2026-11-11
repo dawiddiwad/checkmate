@@ -8,7 +8,7 @@ import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
 import type { TestContext } from 'node:test'
 
-const rules = ['Read', 'Write', 'Bash(node *)']
+const rules = ['Read', 'Bash']
 const pluginRoot = join(root, 'plugin')
 
 function executable(workspace: string, name: string, code: string) {
@@ -97,7 +97,7 @@ test('delegate refuses an empty allow list and an unknown subject before it star
 	const missing = '/does-not-exist'
 	await assert.rejects(
 		delegate(workspace, 'execute', 'run-1', { allowedTools: [], claude: missing }),
-		new RegExp(`Minimum for execute: ${minimumRules.execute.join(', ').replace(/[()*]/g, '\\$&')}`)
+		new RegExp(`Minimum: ${minimumRules.join(', ')}$`)
 	)
 	await assert.rejects(
 		delegate(workspace, 'setup', 'other', { allowedTools: rules, pluginRoot, claude: missing }),

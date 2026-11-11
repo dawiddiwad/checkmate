@@ -15,7 +15,7 @@ Checkmate is a Claude Code plugin and a CLI for evidence-based QA. Claude tests 
 
 ## Use it in Claude Code
 
-You need only the plugin and Node.js 24.12.0 or later.
+You need the plugin, Node.js 24.12.0 or later, and the tools that your tests use. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`. You do not need the npm CLI.
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
@@ -32,7 +32,7 @@ Then ask Claude in your application workspace:
 
 1. `setup` checks the tools and the target, and saves profile `shop@1`.
 2. `plan` reads the sources and writes the tests. Each unclear requirement becomes a gap.
-3. `ui` starts the review UI and prints its URL. Answer the gaps, edit and approve the plan, and accept results there.
+3. `ui` starts the review UI and prints its URL. Open the URL. Answer the gaps, edit and approve the plan, accept results, and download reports there.
 
 Continue in the same session:
 
@@ -46,7 +46,7 @@ After each step, Claude shows a short table, what it did (`Done:`), and what you
 
 ## Use it from an agent or a script
 
-Another agent, a CI job, or a script can give QA work to Checkmate with the npm CLI. The CLI contains the plugin and adds `delegate`. Each delegated stage runs in a new Claude Code session.
+Another agent, a CI job, or a script can give QA work to Checkmate with the npm CLI. The CLI contains the plugin and adds `delegate`. Each delegated stage runs in a new Claude Code session, so the `claude` command must be installed and logged in.
 
 ```bash
 npm i -g @xoxoai/checkmate
@@ -74,7 +74,7 @@ checkmate result accept run-1 --rationale "The defect in T3 is real."
 checkmate export run run-1 --format md
 ```
 
-`delegate` does not trust the worker's summary. It reads the recorded change from the database. A Claude sub-agent that has the plugin can run the same stages with the skills. [Workflow](docs/WORKFLOW.md) has each step and each mode.
+Each command prints `<status> <subject>` on line 1. `needs_decision` exits with 0, so read the status, not only the exit code. `delegate` does not trust the worker's summary. It reads the recorded change from the database. A Claude sub-agent that has the plugin can run the same stages with the skills. [Workflow](docs/WORKFLOW.md) has each step and each mode, and an example with a Jira source.
 
 <details>
 <summary>Screenshots</summary>

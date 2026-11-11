@@ -5,9 +5,9 @@ description: Start the Checkmate review UI for the workspace in the background a
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
 
-The review UI is for a human. In the UI, the human answers gaps, edits and approves plans, and accepts results. The plugin contains the UI. The npm CLI is not necessary.
+The review UI is for a human. In the UI, the human answers gaps, edits and approves plans, accepts results, and downloads reports. The plugin contains the UI. The npm CLI is not necessary.
 
-1. Start the UI from the caller's workspace as a background command. Use the background option of the shell tool:
+1. If a UI of this workspace already runs in this session, give its URL again and go to step 3. Else start the UI from the caller's workspace as a background command. Use the background option of the shell tool:
 
 ```sh
 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" ui
@@ -20,5 +20,5 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" ui
 
 - Add `--port <port>` only when the human asks for a port. The default is a free port.
 - The UI listens on `127.0.0.1` only. Do not expose it on another interface.
-- The UI writes to the database only when the human submits a form. Each form records the actor name. The UI fills in the same default actor as the commands: `CHECKMATE_ACTOR`, then the git user name, then the login name. The human can change it.
+- The UI writes to the database only when the human submits a form. Each form records the actor name. The UI fills in the same default actor as the commands: `CHECKMATE_ACTOR`, then the git user name, then the login name. The human can change it with `actor: <name>` in the header.
 - If the first line starts with `invalid_request` or `rejected`, return the `reason:` lines. Do not start a second UI.

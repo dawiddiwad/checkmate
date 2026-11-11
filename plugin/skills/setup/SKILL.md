@@ -43,7 +43,7 @@ The references `browser.md` and `http.md` are optional recipes for the default t
 10. Use the caller's running application. Start it only when the caller authorized a startup command.
 11. Write the profile. Use the shape below.
 12. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.
-13. Return the response of `target save`. In the same session, report to the caller in the format of `workflow.md`: a table of the tools, then `Done:` and `Next:`. The next step is usually `checkmate plan open <planId> --target <targetId>@<revision>`.
+13. Return the response of `target save`. In the same session, report to the caller in the format of `workflow.md`: a table of the tools, then `Done:` and `Next:`. The next step is usually a plan: `/checkmate:plan <planId> for <targetId>@<revision>` with the objective and the sources. When `readyForLiveExecution` is `false`, name the missing tool or check instead.
 
 ```json
 {

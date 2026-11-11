@@ -10,7 +10,10 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. Each to
 ## Start
 
 - Delegated stage, or a sub-agent that gets a run ID: the parent has begun the run. The prompt names the run ID, plan revision, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
-- Same session, new run: run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. Stop when it does not print `completed`. Then run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build>` once. Add `--retest-of <runId>` for a retest.
+- Same session, new run:
+  1. Run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. When it does not print `completed`, stop and report the `reason:` lines to the caller.
+  2. Use the caller's run ID. When the caller gives none, run `checkmate run list` and use the next free `run-<n>`.
+  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build>` once. Add `--retest-of <runId>` for a retest. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
 - Same session, stalled run: run `checkmate run resume <runId>`. Check only the assertions that it lists. The caller decides about tests marked `Actions may have occurred`.
 
 Then:
@@ -69,12 +72,12 @@ Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSO
 - Give every field of the example. `requirementIds` are the requirements of the named tests.
 - A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
 - For new ambiguity, write a gap with `"status": "open"` and a new ID. Send it in a heredoc: `checkmate run gap <runId> <<'EOF'`, the JSON, then `EOF`.
-- After a new blocking gap, stop further actions when the run policy is `return_to_caller`. Close the remaining tests as `blocked`.
+- After a new blocking gap, apply the new blocker policy of the run. A delegated prompt names it. Else read `request.onNewBlocker` from `checkmate run show <runId> --json`. `return_to_caller`: stop further actions, and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect, and close the affected tests as `blocked`.
 
 ## Finish
 
-1. Close the browser session: `playwright-cli -s=<browserSession> close`.
-2. Run `checkmate run finish <runId> --completion <completion> --cleanup <status> --cleanup-reason "<text>"`.
+1. When the run used a browser, close the browser session: `playwright-cli -s=<browserSession> close`.
+2. Run `checkmate run finish <runId> --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
    - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail.
    - `operational_error`: a tool, access, or cleanup failure stopped the run.
    - `interrupted`: the deadline is near. Finish before the deadline.

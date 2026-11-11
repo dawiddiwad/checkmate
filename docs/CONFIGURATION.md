@@ -268,6 +268,8 @@ Checkmate builds the next revision from the latest revision, the pending decisio
 
 The caller can change the latest plan revision directly. Send a full candidate (`tests`, `gaps`, and optional `requirements`) to `checkmate plan edit <planId@rev>`. Without `requirements`, the revision keeps its requirements.
 
+To start from the current revision, run `checkmate plan show <planId@rev> --json`. Copy `plan.requirements`, `plan.tests`, and `plan.gaps`. Remove `readiness` and `gapIds` from each test. Checkmate sets them. The `Edit as JSON` field of the review UI shows the same candidate.
+
 | Revision state             | Effect                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------- |
 | No approval and no run     | The revision changes in place. It gets a new digest. The operation log records the edit. |
@@ -321,7 +323,7 @@ A runtime gap is open, has no decision, and has an ID that is new in the plan an
 
 ## Execution policy
 
-`run gate` and `run begin` take these flags:
+`run begin` takes these flags. `run gate` takes the same flags except `--on-new-blocker` and `--timeout`. It checks the gate and records nothing.
 
 | Flag               | Values                                      | Default               |
 | ------------------ | ------------------------------------------- | --------------------- |
@@ -329,11 +331,12 @@ A runtime gap is open, has no decision, and has an ID that is new in the plan an
 | `--build`          | The application build identity.             | Required.             |
 | `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution` |
 | `--on-new-blocker` | `return_to_caller`, `continue_independent`  | `return_to_caller`    |
-| `--timeout`        | 1 to 3600 seconds (`run begin` only).       | 600                   |
+| `--timeout`        | 1 to 3600 seconds.                          | 600                   |
 | `--retest-of`      | A finished run of the same plan and target. | None.                 |
 
 - `wait_for_resolution` refuses a run when the plan has an open blocking gap.
 - `ready_only` permits a selection of ready tests. It does not make a blocked test ready.
+- `--on-new-blocker` tells the execute stage what to do after it records a new blocking gap. `return_to_caller`: stop and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect. Checkmate records the policy. The agent applies it.
 - Include local prerequisite tests in the same selection. A cross-plan dependency needs the latest finalized result for the same build to show `passed`. When result acceptance is required, the result must also be accepted.
 - A retest needs a new run ID and a new build. The prior run does not change.
 

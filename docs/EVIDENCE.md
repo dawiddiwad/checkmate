@@ -162,7 +162,7 @@ checkmate export plan checkout@2 --format json
 - A JSON plan export is the stored plan revision. A plan view shows the requirements and coverage, tests and readiness, assertions, gaps, decisions, and assumptions.
 - The renderer escapes untrusted text for Markdown and HTML. The HTML has a Content Security Policy that blocks scripts and remote resources.
 - An export is a view. The database is the authority. Do not edit an export to change a verdict.
-- The review UI run page offers the same report as an HTML, JSON, or Markdown download.
+- The review UI offers the same exports as downloads: `Download report` on the run page of a finished run, and `Export` on the plan page.
 
 [docs/examples](examples/README.md) contains exports from a live run.
 

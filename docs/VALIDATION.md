@@ -88,23 +88,23 @@ The code validates structure and relationships. It cannot prove that an observat
 
 Run the fast suite with `npm test` (`node --test test/*.test.ts`). It uses temporary workspaces. It needs no network and no Claude credential.
 
-| File                      | Covers                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`      | Schema creation, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs.                           |
-| `test/targets.test.ts`    | Setup requests, profile checks, revision order, default approval policy.                                                           |
-| `test/plans.test.ts`      | Plan save, plan rules, decisions, delta revise, refused deltas, concurrent revise, approval, gate reasons.                         |
-| `test/cross-plan.test.ts` | Missing plans and tests, cycles, blocks by result, acceptance, and open gaps in other plans.                                       |
-| `test/runs.test.ts`       | Outcome derivation, checks, closes, findings, runtime gaps, finish rules, inconclusive coverage, resume, retest, result decisions. |
-| `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                                        |
-| `test/views.test.ts`      | The inbox, the approval policy, the runs of a plan, and the plan, run, and log lists.                                              |
-| `test/render.test.ts`     | Self-contained HTML with a print layout and inline evidence. Markdown and JSON with the same summary and acceptance.               |
-| `test/cli.test.ts`        | Compact and JSON output, `inbox`, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, stdin, log, export.             |
-| `test/launcher.test.ts`   | Worker output checks, database checks after a worker, deadlines, browser cleanup. It uses a fake Claude CLI.                       |
-| `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture. It needs Chromium.                                                       |
-| `test/package.test.ts`    | `npm pack` and install of `@xoxoai/checkmate`, run from `node_modules`, `delegate` loads the bundled plugin.                       |
-| `test/release.test.ts`    | Version rules and the version files of the plugin, marketplace, root package, and CLI package.                                     |
-| `test/ui.test.ts`         | UI pages, escaping, rationale and confirm steps, stale digests, Host and Origin checks, evidence types, live events.               |
-| `test/ui.browser.test.ts` | The UI in a real browser: keyboard, forms, confirm in place, live updates, dark mode, no JavaScript.                               |
+| File                      | Covers                                                                                                                                                                                                                                             |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test/store.test.ts`      | Schema creation, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs.                                                                                                                                           |
+| `test/targets.test.ts`    | Setup requests, profile checks, revision order, default approval policy.                                                                                                                                                                           |
+| `test/plans.test.ts`      | Plan save, plan rules, decisions, delta revise, refused deltas, concurrent revise, approval, gate reasons.                                                                                                                                         |
+| `test/cross-plan.test.ts` | Missing plans and tests, cycles, blocks by result, acceptance, and open gaps in other plans.                                                                                                                                                       |
+| `test/runs.test.ts`       | Outcome derivation, checks, closes, findings, runtime gaps, finish rules, inconclusive coverage, resume, retest, result decisions.                                                                                                                 |
+| `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                                                                                                                                                        |
+| `test/views.test.ts`      | The inbox, the approval policy, the runs of a plan, and the plan, run, and log lists.                                                                                                                                                              |
+| `test/render.test.ts`     | Self-contained HTML with a print layout and inline evidence. Markdown and JSON with the same summary and acceptance.                                                                                                                               |
+| `test/cli.test.ts`        | Compact and JSON output, `inbox`, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, stdin, log, export.                                                                                                                             |
+| `test/launcher.test.ts`   | Worker output checks, database checks after a worker, deadlines, browser cleanup. It uses a fake Claude CLI.                                                                                                                                       |
+| `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture. It needs Chromium.                                                                                                                                                                       |
+| `test/package.test.ts`    | `npm pack` and install of `@xoxoai/checkmate`, run from `node_modules`, `delegate` loads the bundled plugin.                                                                                                                                       |
+| `test/release.test.ts`    | Version rules and the version files of the plugin, marketplace, root package, and CLI package.                                                                                                                                                     |
+| `test/ui.test.ts`         | UI pages, escaping, rationale and confirm steps, actor prefill, stale digests, Host and Origin checks, evidence types, live events, list paging, sorting, and filters, folded gaps and history, report downloads, plan edits, and the JSON editor. |
+| `test/ui.browser.test.ts` | The UI in a real browser: keyboard, forms, confirm in place, live updates, dark mode, no JavaScript, live list filters, full history, report download, and plan edit.                                                                              |
 
 Other checks:
 

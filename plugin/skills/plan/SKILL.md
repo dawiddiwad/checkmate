@@ -31,6 +31,7 @@ A request needs `requirements` or `context.sources`. When it has only sources, y
      ```
 
    - Use the caller's requirements when the caller gives them. Else give the sources only. Ask the caller for a missing objective or source.
+   - When a source needs a tool that the target profile does not list, for example a Jira MCP server, add it as an object: `"tools": [{ "name": "jira", "kind": "mcp", "purpose": "Read the ticket." }]`. Do not add tool names as strings unless the caller selects tools. A string limits the plan to the named profile tools.
    - In a delegated stage or a sub-agent, do not record a request. Return `needs_decision` with the reason.
 
 2. If the request has context sources, read each source with the listed tools. Follow the instructions. Do not use other sources. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.

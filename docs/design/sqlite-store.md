@@ -462,7 +462,7 @@ The rules in `stages.ts` move to the new commands. They do not change in meaning
 - The default output is compact text. The first line is the status. Each item is one line with the ID first and tab-separated fields.
 - `--json` prints the same data as JSON for programs.
 - A command prints only what the caller asked for. It does not repeat complete documents.
-- `--fields` selects fields. `--tests`, `--gaps`, and `--requirements` select items.
+- `--fields` selects fields. `--tests` and `--gaps` select items.
 
 ```text
 $ checkmate plan show checkout@2 --tests T2 --fields readiness,assertions
@@ -497,7 +497,7 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 | `result accept`, `result reject`                                                                        | plugin  | Result gate.                                 |
 | `evidence get <id> --out <file>`                                                                        | plugin  | Write evidence bytes to a file for viewing.  |
 | `export plan\|run <id> --format md\|html\|json [--out <file>]`                                          | plugin  | Print a view, or write it to a new file.     |
-| `log [--subject <id>]`                                                                                  | plugin  | Read the operation log.                      |
+| `log [--subject <s>]`                                                                                   | plugin  | Read the operation log.                      |
 | `query "<sql>"`                                                                                         | plugin  | Read-only SQL. The database opens read-only. |
 | `delegate <stage> ... --allow <rule>...`                                                                | npm     | Run a stage in a new Claude Code session.    |
 | `ui [--port <n>]`                                                                                       | plugin  | Start the local review UI.                   |
@@ -533,14 +533,15 @@ The UI has one job: show the human what waits for a decision, and let them decid
 
 ### Pages
 
-| Page  | URL                 | Content                                                                                                                                  |
-| ----- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Inbox | `/`                 | Items that wait for a human, oldest first, in three groups: gaps to answer, plans to approve, results to accept. This is the start page. |
-| Plans | `/plans`            | All plans with status, open gaps, approval, and blocks. Filters and search by ID.                                                        |
-| Plan  | `/plans/checkout@2` | Tests with their assertions, gaps, requirements and coverage, decisions, and history with a diff for each revision.                      |
-| Runs  | `/runs`             | All runs with plan, build, completion, coverage, and acceptance. Filters by plan, build, and status.                                     |
-| Run   | `/runs/run-7`       | Summary, each test with its assertion results and evidence, findings, new gaps, coverage, and cleanup.                                   |
-| Log   | `/log`              | The operation log. Filters by subject and actor.                                                                                         |
+| Page  | URL                      | Content                                                                                                                                                                                                                         |
+| ----- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inbox | `/`                      | Items that wait for a human, oldest first, in three groups: gaps to answer, plans to approve, results to accept. This is the start page.                                                                                        |
+| Plans | `/plans`                 | All plans with status, open gaps, approval, and blocks. Filters and search by ID. Lists show 25, 50, or 100 rows for each page and sort by column.                                                                              |
+| Plan  | `/plans/checkout@2`      | Tests with their assertions, gaps, requirements and coverage, the runs of the plan, decisions, and history with a diff for each revision. An `Export` menu downloads the plan from `/plans/checkout@2/export.<html\|md\|json>`. |
+| Edit  | `/plans/checkout@2/edit` | Forms for requirements, tests, assertions, and the coverage matrix, and a JSON editor for added or removed items. It calls the core function of `plan edit`.                                                                    |
+| Runs  | `/runs`                  | All runs with plan, build, completion, coverage, and acceptance. Filters by plan, build, and status.                                                                                                                            |
+| Run   | `/runs/run-7`            | Summary, each test with its assertion results and evidence, findings, new gaps, coverage, and cleanup. A finished run downloads its report from `/runs/run-7/report.<html\|md\|json>`.                                          |
+| Log   | `/log`                   | The operation log. Filters by subject and actor.                                                                                                                                                                                |
 
 The navigation shows the number of inbox items. An empty inbox says `Nothing waits for you.` and links to the latest runs.
 
@@ -571,13 +572,13 @@ The CLI, a delegated worker, and the UI are different processes. SQLite does not
 **Change detection**
 
 - The server keeps one read connection. Every 250 ms, it reads `PRAGMA data_version`. The value changes only when another connection commits. The read is cheap and does not scan tables.
-- When the value changes, the server reads the operations after its last cursor: `SELECT id, subjects FROM operations WHERE id > ? ORDER BY id`. ULIDs sort by time, so the operation ID is the cursor.
+- When the value changes, the server reads the operations after its last cursor: `SELECT rowid, id, subjects FROM operations WHERE rowid > ? ORDER BY rowid`. The `rowid` is the commit order. ULIDs from two processes in the same millisecond can sort out of commit order, so they are not the cursor.
 - Each write command records the subjects it changed in `operations.subjects`. Examples: `plan:checkout`, `run:run-7`, `inbox`. The command sets them in the same transaction as the change.
 
 **Delivery**
 
 - The browser opens one Server-Sent Events stream: `GET /events?subjects=run:run-7,inbox`. Each page subscribes to its own subjects and to `inbox`, for the navigation count.
-- Each event has the operation ID as its `id` and the changed subjects as data. The server sends only events for the subscribed subjects.
+- Each event has the operation `rowid` as its `id` and the changed subjects as data. The server sends only events for the subscribed subjects.
 - The browser reconnects automatically. It sends `Last-Event-ID`, and the server sends the events after that ID. No change is lost while the connection is down.
 - The server sends a comment line every 15 seconds, so proxies and the browser keep the stream open.
 - Server-Sent Events use `node:http` only. They need no dependency and no WebSocket.

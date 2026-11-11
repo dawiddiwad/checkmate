@@ -22,14 +22,14 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
 | Which runs exist?                        | `checkmate run list [--plan <planId>]`                      |
 | What did a run record?                   | `checkmate run show <runId>`                                |
-| What changed, and who changed it?        | `checkmate log [--subject <id>]`                            |
+| What changed, and who changed it?        | `checkmate log [--subject plan:<planId>\|run:<runId>]`      |
 | Anything else                            | `checkmate query "<sql>"` (read-only, SQLite `SELECT` only) |
 
 ## Commands
 
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
-- Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read each `reason:` line.
+- Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read the status on line 1, not only the exit code. Read each `reason:` line.
 - Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
 
 ```sh
@@ -39,7 +39,7 @@ EOF
 ```
 
 - Send text evidence on standard input with `--evidence -`. Write a file only for binary evidence, for example a screenshot, and only in `.checkmate/tmp/<runId>/`. Checkmate deletes the file after it stores it.
-- Do not write other files. The database is the only record.
+- Do not write other files. The database is the only record. The one exception is an export that the caller asks for with `export --out <path>`.
 - Use the commands to read and write. Do not open `.checkmate/checkmate.db` directly.
 - A refused write changes nothing. Correct the payload and send it again.
 - The contracts are in `${CLAUDE_PLUGIN_ROOT}/contracts/`. Read a schema only when a command refuses a payload.

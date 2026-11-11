@@ -11,7 +11,7 @@ Checkmate is a Claude Code plugin and a CLI for evidence-based QA. Claude tests 
 - Each requirement maps to tests with explicit assertions.
 - Each assertion result needs saved evidence.
 - A question that the requirements do not answer becomes a gap. The caller answers it: you, or the agent that delegated the work.
-- A plan runs only after the caller approves it. A result counts only after the caller accepts it.
+- By default, a plan runs only after the caller approves it, and a result counts only after the caller accepts it.
 
 ## Use it in Claude Code
 

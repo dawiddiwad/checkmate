@@ -6,45 +6,75 @@
 
 #
 
-Checkmate is a Claude Code plugin and a CLI. Claude tests a running application with real tools, such as a browser or HTTP. Checkmate stores the plan, the decisions, and the results, and checks that they are consistent. Each requirement maps to tests with explicit assertions. Each assertion result needs saved evidence. A question that the requirements do not answer becomes a gap, and a person decides it.
+Checkmate is a Claude Code plugin and a CLI for evidence-based QA. Claude tests a running application with real tools, for example a browser or HTTP. Checkmate stores the plan, the decisions, and the results in one SQLite database, and checks that they are consistent.
 
-## Who uses it
+- Each requirement maps to tests with explicit assertions.
+- Each assertion result needs saved evidence.
+- A question that the requirements do not answer becomes a gap. The caller answers it: you, or the agent that delegated the work.
+- A plan runs only after the caller approves it. A result counts only after the caller accepts it.
 
-- **An agent or CI job** runs `checkmate delegate`. Each stage runs in a new Claude Code session.
-- **A person in Claude Code** runs the `/checkmate:` skills.
-- **A person reviewing** runs `checkmate ui`. The inbox lists the gaps to answer, the plans to approve, and the results to accept. It updates when an agent writes.
+## Use it in Claude Code
 
-You can use one of these or all of them on the same workspace.
-
-## Install
+You need only the plugin and Node.js 24.12.0 or later.
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
 ```
 
+Then ask Claude in your application workspace:
+
+```text
+/checkmate:setup shop at http://127.0.0.1:4173 with browser and http, operations read_catalog and create_order
+/checkmate:plan checkout for shop@1 from docs/checkout.md
+/checkmate:ui
+```
+
+1. `setup` checks the tools and the target, and saves profile `shop@1`.
+2. `plan` reads the sources and writes the tests. Each unclear requirement becomes a gap.
+3. `ui` starts the review UI and prints its URL. Answer the gaps, edit and approve the plan, and accept results there.
+
+Continue in the same session:
+
+```text
+/checkmate:revise checkout
+/checkmate:execute checkout@2 tests T1,T2,T3 build 1.4.0
+/checkmate:report run-1 as html in reports/run-1.html
+```
+
+After each step, Claude shows a short table, what it did (`Done:`), and what you must decide (`Next:`). Ask "what waits for me?" at any time. Claude reads the database, not its memory.
+
+## Use it from an agent or a script
+
+Another agent, a CI job, or a script can give QA work to Checkmate with the npm CLI. The CLI contains the plugin and adds `delegate`. Each delegated stage runs in a new Claude Code session.
+
 ```bash
 npm i -g @xoxoai/checkmate
 ```
 
-Use Node.js 24.12.0 or later. The npm CLI contains the plugin and adds `delegate` and `ui`.
-
-## Usage
-
 ```bash
-checkmate plan open checkout --target shop@1 < requirements.json
-checkmate delegate plan checkout --allow Read --allow Write --allow "Bash(node *)"
-checkmate ui
+checkmate target open shop --base-url http://127.0.0.1:4173 --capabilities browser,http \
+  --operations read_catalog,create_order
+checkmate delegate setup shop --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+
+checkmate plan open checkout --target shop@1 <<'EOF'
+{ "objective": "Verify checkout totals.", "context": { "sources": ["docs/checkout.md"] } }
+EOF
+checkmate delegate plan checkout --allow Read --allow "Bash(node *)"
+
+checkmate inbox
+checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
+  --value "The promotion replaces the loyalty discount." --rationale "Product decision."
+checkmate delegate revise checkout --allow Read --allow "Bash(node *)"
+checkmate plan approve checkout@2 --rationale "Tests match the brief."
+
+checkmate run begin run-1 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
+checkmate delegate execute run-1 --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate result accept run-1 --rationale "The defect in T3 is real."
+checkmate export run run-1 --format md
 ```
 
-Claude writes the plan. Unclear requirements become gaps in the inbox. After a person answers them and approves the plan, run it:
-
-```bash
-checkmate run begin run-7 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
-checkmate delegate execute run-7 --allow Read --allow Write --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
-```
-
-The result goes to the inbox for acceptance. [Workflow](docs/WORKFLOW.md) has every step, from target setup to a retest.
+`delegate` does not trust the worker's summary. It reads the recorded change from the database. A Claude sub-agent that has the plugin can run the same stages with the skills. [Workflow](docs/WORKFLOW.md) has each step and each mode.
 
 <details>
 <summary>Screenshots</summary>
@@ -62,10 +92,9 @@ The plans and runs of that live run are in [examples](docs/examples/README.md).
 
 - Stages: setup, plan, revise, execute, report. Gap answers, plan approvals, and result acceptance are records with an actor and a rationale.
 - A test passes only when all its assertions pass. `inconclusive` means that the evidence cannot show the answer.
-- Everything is in `.checkmate/checkmate.db`. Saved rows do not change. A run can continue after a crash.
-- `delegate` reads the result from the database. It does not use the worker's summary.
-
-Checkmate checks structure, relationships, and evidence files. It cannot prove that an observation is true. Claude Code owns the model, tools, and permissions.
+- Everything is in `.checkmate/checkmate.db`: requests, plans, decisions, runs, and evidence bytes. Payloads go in on standard input. No other file stays.
+- Approved plans and finished runs do not change. A run can continue after a crash.
+- The host (Claude Code) owns the model, authentication, tools, and permissions. Checkmate records which tools a stage uses and validates the records. It cannot prove that an observation is true.
 
 ## Docs
 
@@ -74,7 +103,7 @@ Checkmate checks structure, relationships, and evidence files. It cannot prove t
 [Configuration](docs/CONFIGURATION.md)  
 [Evidence and outcomes](docs/EVIDENCE.md)  
 [Validation](docs/VALIDATION.md)  
-[Dev](docs/DEVELOPMENT.md)
+[Development](docs/DEVELOPMENT.md)
 
 ## License
 

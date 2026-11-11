@@ -22,6 +22,17 @@ A request needs `requirements` or `context.sources`. When it has only sources, y
 ## Steps
 
 1. Run `checkmate plan request <planId>`. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations.
+   - If it refuses with `Unknown plan`, and you are in the same session, record the request from the caller's message. Run `checkmate target show <targetId>` for the latest target revision. Then send the request in a heredoc:
+
+     ```sh
+     checkmate plan open <planId> --target <targetId@rev> <<'EOF'
+     { "objective": "<from the caller>", "context": { "sources": ["docs/checkout.md"] } }
+     EOF
+     ```
+
+   - Use the caller's requirements when the caller gives them. Else give the sources only. Ask the caller for a missing objective or source.
+   - In a delegated stage or a sub-agent, do not record a request. Return `needs_decision` with the reason.
+
 2. If the request has context sources, read each source with the listed tools. Follow the instructions. Do not use other sources. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.
 3. If the request has no requirements, write them from the sources. Give each requirement an `id`, a `text`, and a `source` that starts with the context source, for example `jira:SHOP-12#ac-1`. Add `requirements` to the candidate.
 4. Write a candidate with `tests` and `gaps`, and with `requirements` only from step 3. Use the shape below.

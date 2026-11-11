@@ -1,93 +1,141 @@
 # Workflow
 
-This example tests a local checkout. Run the `checkmate` commands in the application workspace. Run the `/checkmate:` skills in Claude Code in the same workspace.
+Checkmate has five stages: setup, plan, revise, execute, and report. Between the stages, the caller makes decisions.
 
-1. Set your name for the record:
+- The **caller** owns the request. The caller answers gaps, approves plans, and accepts results. The caller can be a person in Claude Code or an agent that delegates QA work.
+- The **actor** is the name that Checkmate records with each write. Commands use `--actor`, then `CHECKMATE_ACTOR`, then `git config user.name`, then the login name. `delegate` records its workers as `claude:<stage>`.
+- The **host** is Claude Code. It owns the model, authentication, tools, and permissions.
 
-   ```sh
-   export CHECKMATE_ACTOR=qa-lead
-   ```
+All state is in `.checkmate/checkmate.db` in the application workspace. Run the commands and the skills in that workspace.
 
-2. Open a target and set it up:
+## In Claude Code
 
-   ```sh
-   checkmate target open checkout-local --base-url http://127.0.0.1:4173 \
-     --capabilities browser,http --operations read_catalog,create_fixture_order,apply_fixture_discount
-   ```
+Use this path when you work in Claude Code with the plugin. You do not need the npm CLI.
 
-   ```text
-   /checkmate:setup checkout-local
-   ```
-
-   The skill checks the tools and the target, and saves profile `checkout-local@1`.
-
-3. Open a plan and let Claude write it. `plan-request.json` has the objective, requirements, and source context ([example](CONFIGURATION.md#plan-request)).
-
-   ```sh
-   checkmate plan open checkout --target checkout-local@1 < plan-request.json
-   ```
+1. Set up the target. Give the base URL, the capabilities, and the operations that tests can do. You can name tools, for example an MCP server:
 
    ```text
-   /checkmate:plan checkout
+   /checkmate:setup checkout-local at http://127.0.0.1:4173, capabilities browser and http,
+   operations read_catalog, create_fixture_order, apply_fixture_discount
    ```
 
-   The result is `needs_decision` when a requirement is unclear. Each unclear item is an open blocking gap, for example `G1: Does the 40 percent promotion stack with the 20 PLN loyalty discount?`
+   Claude records the request, checks each tool and the target, and saves profile `checkout-local@1`.
 
-4. Answer the gaps, and let Claude apply the decisions:
+2. Plan. Give the objective and the requirements, or the sources to read:
 
-   ```sh
-   checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
-     --value "The promotion replaces the loyalty discount. The quote total is 240 PLN." \
-     --rationale "Product owner decision."
-   checkmate gap answer checkout G2 --kind defer \
-     --value "Refunds are out of scope for this release." --rationale "Product owner decision."
+   ```text
+   /checkmate:plan checkout for checkout-local@1. Objective: verify checkout totals. Source: docs/checkout.md
    ```
+
+   Claude writes revision 1. Each unclear requirement becomes an open blocking gap, for example `G1: Does the 40 percent promotion stack with the 20 PLN loyalty discount?`
+
+3. Open the review UI:
+
+   ```text
+   /checkmate:ui
+   ```
+
+   Answer the gaps in the UI. You can also tell Claude the answer, for example "Answer G1: the promotion replaces the loyalty discount. The total is 240 PLN. Source: product decision."
+
+4. Apply the decisions:
 
    ```text
    /checkmate:revise checkout
    ```
 
-5. Read and approve the new revision:
+   Claude writes revision 2. Read it in the UI, edit it if necessary, and approve it.
 
-   ```sh
-   checkmate plan show checkout@2 --fields readiness,assertions
-   checkmate plan approve checkout@2 --rationale "Tests and assertions match the brief."
-   ```
-
-6. Execute the plan:
+5. Execute:
 
    ```text
    /checkmate:execute checkout@2, tests T1,T2,T3, build fixture-build-1, run ID run-1
    ```
 
-   In the same session, the skill runs `checkmate run gate` and `checkmate run begin`. Then it records each assertion with evidence, closes each test, records findings, and finishes the run.
+   Claude checks the gate, begins the run, records each assertion with evidence, closes each test, records findings, and finishes the run.
 
-7. Review and accept the result:
+6. Accept or reject the result in the UI.
 
-   ```sh
-   checkmate run show run-1
-   checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before release."
+7. Export the report:
+
+   ```text
+   /checkmate:report run-1 as html in reports/run-1.html
    ```
 
-   You can also make every decision in the review UI:
+After each stage, Claude reports in one format: a Markdown table of the plans, tests, gaps, or runs; a `Done:` line; and a `Next:` line with the decision, who makes it, and the command or UI action. Before Claude answers a question about the state, it reads the database with `inbox`, `plan list`, `plan show`, `run list`, or `run show`.
 
-   ```sh
-   checkmate ui
-   ```
+## From an agent or a script
 
-## CI and scripts
-
-`checkmate delegate` runs one stage in a fresh Claude Code session. Open the subject first, then delegate:
+Use the npm CLI (`npm i -g @xoxoai/checkmate`) when an agent, a CI job, or a script gives QA work to Checkmate. The agent is the caller. It opens each subject, delegates the stage, and makes the decisions.
 
 ```sh
 checkmate target open checkout-local --base-url "$BASE_URL" --capabilities browser,http \
   --operations read_catalog,create_fixture_order,apply_fixture_discount
-checkmate delegate setup checkout-local --allow Read --allow Write --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
-checkmate plan open checkout --target checkout-local@1 < plan-request.json
-checkmate delegate plan checkout --allow Read --allow Write --allow "Bash(node *)"
-# A human answers the gaps and approves checkout@2.
-checkmate run begin run-7 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
-checkmate delegate execute run-7 --allow Read --allow Write --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate delegate setup checkout-local --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+
+checkmate plan open checkout --target checkout-local@1 <<'EOF'
+{
+  "objective": "Verify checkout totals and identify missing acceptance decisions.",
+  "context": { "sources": ["docs/checkout.md"], "instructions": "Use section 2 only." }
+}
+EOF
+checkmate delegate plan checkout --allow Read --allow "Bash(node *)"
 ```
 
-The parent does not trust the worker's words. It reads the database and returns the recorded result. Read [CLI](CLI.md) for the stages, permissions, and deadlines.
+Then read what waits for a decision, and decide:
+
+```sh
+checkmate inbox
+checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
+  --value "The promotion replaces the loyalty discount. The quote total is 240 PLN." \
+  --rationale "Product owner decision."
+checkmate gap answer checkout G2 --kind defer \
+  --value "Refunds are out of scope for this release." --rationale "Product owner decision."
+checkmate delegate revise checkout --allow Read --allow "Bash(node *)"
+checkmate plan show checkout@2
+checkmate plan approve checkout@2 --rationale "Tests and assertions match the brief."
+```
+
+Execute, then accept or reject the result:
+
+```sh
+checkmate run begin run-1 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
+checkmate delegate execute run-1 --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate run show run-1
+checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before release."
+checkmate export run run-1 --format json
+```
+
+`delegate` does not trust the worker's summary. It reads the database and returns the response of the recorded command. Read [CLI](CLI.md) for the permissions and deadlines.
+
+## Sub-agents in Claude Code
+
+A parent agent in Claude Code can give a stage to a sub-agent that has the Checkmate plugin. The sub-agent uses the stage skill and the plugin CLI to write to the database. It does not ask the caller. It returns `{ status, subject, reasons }`.
+
+Give the sub-agent the stage and the subject, for example: "Delegated Checkmate plan stage for plan `checkout`. Use the checkmate:plan skill." For execute, begin the run first and give the run ID.
+
+The parent checks the result in the database with `inbox`, `plan show`, or `run show`. When the parent is the caller, it makes the decisions with the same commands as an external agent.
+
+## Decisions
+
+| Decision          | Command                                                  | In the UI          |
+| ----------------- | -------------------------------------------------------- | ------------------ |
+| Answer a gap      | `checkmate gap answer <planId> <gapId> --kind ...`       | Inbox or plan page |
+| Change a plan     | `checkmate plan edit <planId@rev>` with a full candidate | Plan page          |
+| Approve or reject | `checkmate plan approve\|reject <planId@rev>`            | Plan page          |
+| Accept or reject  | `checkmate result accept\|reject <runId>`                | Run page           |
+
+- `checkmate inbox` lists the gaps to answer, the plans to approve, and the results to accept.
+- A gap answer is a pending decision. The revise stage applies it and writes the next revision.
+- `plan edit` changes the latest revision. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision.
+- A gap answer, an approval, and a result decision need a rationale. Add `--expect-sha <digest>` to stop the decision when the snapshot changed.
+
+## Retest
+
+A retest is a new run of the same plan on a new build. The first run does not change.
+
+```sh
+checkmate run begin run-2 checkout@2 --tests T2,T3 --build "$NEW_SHA" --retest-of run-1
+checkmate delegate execute run-2 --allow Read --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+```
+
+A narrow retest keeps the requirements of the tests that it did not select uncovered.

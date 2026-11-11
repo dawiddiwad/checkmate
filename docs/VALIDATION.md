@@ -1,10 +1,10 @@
 # Validation
 
-This page says what Checkmate checks, how the tests are organized, and what a live run showed. Contract version: `toolkit-2`.
+This page lists the rules that the code applies, how the tests are organized, and what a live run showed. Contract version: `toolkit-2`.
 
 ## What the code checks
 
-Checkmate checks structure and relationships. It cannot prove that an observation is true.
+The code validates structure and relationships. It cannot prove that an observation is true.
 
 ### Payload shape
 
@@ -14,7 +14,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 | ---------------------------- | --------------------------------- |
 | `profile.schema.json`        | `target save`                     |
 | `plan-request.schema.json`   | `plan open`                       |
-| `plan-candidate.schema.json` | `plan save`                       |
+| `plan-candidate.schema.json` | `plan save`, `plan edit`          |
 | `plan-delta.schema.json`     | `plan revise`                     |
 | `plan.schema.json`           | each stored plan revision         |
 | `finding.schema.json`        | `run finding`                     |
@@ -26,11 +26,14 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 
 - The setup request has an HTTP or HTTPS URL and non-empty, unique capabilities and operations. A second `target open` with other values is refused.
 - A profile has the same target ID, URL, capabilities, and operations as the request.
-- A profile has one tool for each capability, the actual tool versions, and no credentials in the URL.
+- A profile has an entry with the same name and kind for each requested tool, and no credentials in the URL.
+- A profile with a requested tool that is not reachable cannot be ready for live execution.
 - A profile revision is the latest revision plus 1. An identical save changes nothing.
 
 ### Plans (`plugin/src/contracts.ts`, `plugin/src/plans.ts`)
 
+- A plan request has requirements or context sources. A tool name in the request names a profile tool. A new tool object does not use the name of a profile tool.
+- Without requirements in the request, the candidate has requirements, and the source of each starts with a context source. With requirements in the request, the candidate has none.
 - IDs are unique: requirements, tests, gaps, decisions, assertions in a test, and coverage rows.
 - Each reference names a known requirement, test, or gap.
 - Each requirement has one or more tests or gaps.
@@ -41,6 +44,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 - `gap answer` needs an open gap in the latest revision, a known kind, a value, and a rationale. A gap has one pending decision.
 - `plan revise` needs one or more pending decisions. A delta changes only `action`, `preconditions`, and `assertions` of affected tests. A removed assertion ID cannot come back. A new assertion has a check and an oracle kind.
 - A concurrent revise of the same plan fails on the primary key.
+- `plan edit` names the latest revision. It changes the revision in place only when the revision has no approval and no run. Else it saves the next revision. A gap with a pending decision stays open. A used assertion ID cannot come back.
 - `plan approve` and `plan reject` need a revision reference and a rationale. `--expect-sha` stops a decision on a changed snapshot.
 
 ### Gate (`plugin/src/plans.ts`)
@@ -58,7 +62,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 
 - `run begin` refuses a run ID that exists.
 - `run check` needs a started run, a selected and open test, a known assertion without a result, and passed local prerequisites. A result needs the fields in [Evidence](EVIDENCE.md#assertion-results).
-- Evidence files are regular files inside `.checkmate/tmp/<runId>/`, at most 32 MiB each, and listed once.
+- Evidence is one non-empty text on standard input, or regular files inside `.checkmate/tmp/<runId>/`, at most 32 MiB each, and listed once. Checkmate deletes each file after the commit.
 - `run close` derives the outcome from the assertion results, or records `blocked`, `not_run`, or `error` with a reason. A test with assertion results can only be closed as `error` by hand.
 - `run finding` checks that a defect names only failed assertions, that the requirements belong to the named tests, and that the evidence belongs to the named assertions or their tests.
 - `run gap` checks that a runtime gap is open, has a new ID, and names known requirements and tests.
@@ -68,10 +72,11 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 ### Store (`plugin/src/store.ts`)
 
 - Every write runs in one `BEGIN IMMEDIATE` transaction with its operation row. A refused write rolls back and records a `rejected` operation row.
-- Triggers refuse `UPDATE` and `DELETE` on every table. A decision can set `applied_revision` once.
+- Triggers refuse `UPDATE` and `DELETE` on every table. A decision can set `applied_revision` once. A plan revision without an approval and without a run can change its body and digest.
+- The schema version is 2. A version 1 database is upgraded when it is opened. Other versions are refused.
 - Foreign keys are on. WAL mode lets a reader see committed writes while a writer holds the lock.
 - Each snapshot body is canonical JSON. Its digest is the SHA-256 of that text.
-- A write without an actor is refused.
+- A write without an actor is refused. The default actor is `CHECKMATE_ACTOR`, then the git user name, then the login name.
 
 ### Delegation (`cli/src/launcher.ts`)
 
@@ -91,8 +96,9 @@ Run the fast suite with `npm test` (`node --test test/*.test.ts`). It uses tempo
 | `test/cross-plan.test.ts` | Missing plans and tests, cycles, blocks by result, acceptance, and open gaps in other plans.                                       |
 | `test/runs.test.ts`       | Outcome derivation, checks, closes, findings, runtime gaps, finish rules, inconclusive coverage, resume, retest, result decisions. |
 | `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                                        |
-| `test/views.test.ts`      | The inbox and the approval policy.                                                                                                 |
-| `test/cli.test.ts`        | Compact and JSON output, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, operation log, export.                   |
+| `test/views.test.ts`      | The inbox, the approval policy, the runs of a plan, and the plan, run, and log lists.                                              |
+| `test/render.test.ts`     | Self-contained HTML with a print layout and inline evidence. Markdown and JSON with the same summary and acceptance.               |
+| `test/cli.test.ts`        | Compact and JSON output, `inbox`, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, stdin, log, export.             |
 | `test/launcher.test.ts`   | Worker output checks, database checks after a worker, deadlines, browser cleanup. It uses a fake Claude CLI.                       |
 | `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture. It needs Chromium.                                                       |
 | `test/package.test.ts`    | `npm pack` and install of `@xoxoai/checkmate`, run from `node_modules`, `delegate` loads the bundled plugin.                       |

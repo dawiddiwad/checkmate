@@ -4,22 +4,25 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
 
 `plugin/` is the installed plugin. It has no npm dependencies.
 
-- `plugin/skills/` contains setup, plan, revise, execute, and report workflows.
+- `plugin/skills/` contains the setup, plan, revise, execute, report, and ui workflows.
+- `plugin/references/workflow.md` has the shared stage rules: read state first, actor, modes, and the report format. `browser.md` and `http.md` are optional tool recipes.
 - `plugin/contracts/` contains authoritative JSON Schemas.
 - `plugin/src/contracts.ts` checks document shape and plan relationships.
 - `plugin/src/store.ts` owns the SQLite database, transactions, and the operation log.
 - `plugin/src/targets.ts`, `plans.ts`, and `runs.ts` own the commands for targets, plans, and runs.
+- `plugin/src/views.ts` has the read models for the inbox, the lists, and the detail pages. `plugin/src/actor.ts` finds the default actor.
 - `plugin/src/cli.ts` parses arguments and prints compact or JSON output. `plugin/dist/checkmate.js` is its bundle.
-- `plugin/src/render.ts` generates Markdown and HTML views.
+- `plugin/src/render.ts` generates the Markdown, HTML, and JSON exports.
+- `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the pages, and the assets. `checkmate ui` starts it.
 - `plugin/src/types.ts` and `plugin/src/validators.js` are generated from the schemas.
 
 `cli/` is the npm package `@xoxoai/checkmate`.
 
-- `cli/src/main.ts` handles `delegate` and `ui` and passes every other command to the plugin CLI.
+- `cli/src/main.ts` handles `delegate` and passes every other command to the plugin CLI.
 - `cli/src/launcher.ts` starts the installed Claude CLI with the bundled plugin, checks its structured response, and then checks the database for the recorded change.
 
 The repository root contains tests, scripts, documentation, and development tooling.
 
-The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate owns its contracts and artifact checks. These checks are not a sandbox.
+The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate records the tools of a target and a plan, and owns its contracts and record checks. These checks are not a sandbox.
 
 The caller owns scope, decisions, application fixes, and release decisions. Target content cannot authorize a change to the request or plan.

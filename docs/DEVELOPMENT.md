@@ -69,7 +69,7 @@ The GitHub Actions token needs write access to repository contents. Repository r
 
 `docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. Both use `docs/media/style.css`. The animation is an illustrated workflow. It is not a live test recording.
 
-The infographic keeps its dark style. The onboarding animation uses the review UI style: a light background, the green accent, flat cards, and short factual captions. It uses a small timeline in `onboarding.html`. Keep it short and flat, so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
+The infographic keeps its dark style. The onboarding animation uses the review UI style: a light background, the green accent, flat cards, and short factual captions. It uses a small timeline in `onboarding.html`: each scene has `data-start` and `data-length` in seconds, and `window.DURATION` is the total. Give each scene enough time to read, about 4 to 6 seconds. Keep the scenes flat, so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
 
 Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and the overview:
 
@@ -78,8 +78,10 @@ node scripts/render-onboarding.ts
 node scripts/render-onboarding.ts --only onboarding
 ```
 
-Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The first command updates `docs/img/onboarding.gif` and `docs/img/checkmate-infographic.png`. The second command updates only the GIF. The infographic loads its fonts from Google Fonts. The animation loads them from `cli/fonts/`. It does not build the plugin.
+Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The first command updates `docs/img/onboarding.gif` and `docs/img/checkmate-infographic.png`. The second command updates only the GIF. The infographic loads its fonts from Google Fonts. The animation loads them from `plugin/src/ui/assets/fonts/`. The script does not build the plugin.
 
-Keep the labels in both images consistent with the workflow.
+Keep the labels in both images consistent with the workflow. Use "caller" for the person or agent that decides.
 
-`docs/examples/` contains exports from a live run. Do not edit them by hand. To update them, run `npm run test:live`, then export the plans and runs from the printed workspace with `checkmate export`. Read `docs/examples/README.md`.
+`docs/examples/` contains exports from a live run. Do not edit them by hand. To update them, run `npm run test:live`, then export the plans and runs from the printed workspace with `checkmate export --out`. Read `docs/examples/README.md`.
+
+`scripts/ui-demo.ts` seeds a demo workspace. `node scripts/ui-screenshots.ts <directory>` captures review UI screenshots of that workspace. It needs `CHECKMATE_BROWSER_EXECUTABLE`.

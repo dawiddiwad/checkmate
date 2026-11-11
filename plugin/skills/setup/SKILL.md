@@ -20,6 +20,15 @@ The references `browser.md` and `http.md` are optional recipes for the default t
 ## Steps
 
 1. Run `checkmate target request <targetId>`. It prints the base URL, capabilities, allowed operations, and requested tools.
+   - If it refuses with `Unknown target`, and you are in the same session, record the request from the caller's message:
+
+     ```sh
+     checkmate target open <targetId> --base-url <url> --capabilities browser,http \
+       --operations read_catalog,create_fixture_order --tool "playwright-cli:cli:Drive the browser."
+     ```
+
+   - Give `--tool` once for each tool that the caller names. Ask the caller for a missing base URL, capability, or operation. Do not invent operations.
+   - In a delegated stage or a sub-agent, do not record a request. Return `needs_decision` with the reason.
 2. Run `checkmate target show <targetId>`. If a profile exists, keep its local choices. Save a new revision only for a change.
 3. Read the project instructions, for example `AGENTS.md`. Source code is optional.
 4. Check Node.js 24.12.0 or later.

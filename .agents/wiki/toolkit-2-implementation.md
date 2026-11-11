@@ -18,7 +18,7 @@ plugin/src/cli.ts        argument parsing, command table, compact and JSON outpu
 plugin/src/index.ts      public exports for cli/
 plugin/bin/checkmate.ts  development entry: imports cli.ts main
 plugin/dist/checkmate.js generated bundle (esbuild) of plugin/bin/checkmate.ts. Committed. Skills run it.
-cli/                     npm package @xoxoai/checkmate: delegate, ui, and every core command
+cli/                     npm package @xoxoai/checkmate: delegate and every core command
 ```
 
 Remove `plugin/src/files.ts`, `plugin/src/stages.ts`, `plugin/src/launcher.ts` (moves to `cli/src/launcher.ts`), and the
@@ -79,7 +79,7 @@ Test reference pattern `^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9
 | Schema                    | Used by                       | Shape                                                                                                       |
 | ------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `profile.schema.json`     | `target save` stdin, snapshot | toolkit-1 profile plus `approvals: { plan: required|none, result: required|none }` (optional, default both required) |
-| `plan-request.schema.json`| `plan open` stdin             | `{ objective, requirements: [{id,text,source}], sourceContext: [{uri,content}] }`                           |
+| `plan-request.schema.json`| `plan open` stdin             | `{ objective, requirements?, sourceContext?, context?: {sources, instructions?}, tools? }`                  |
 | `plan-candidate.schema.json` | `plan save` stdin          | `{ tests: [test without readiness and gapIds], gaps: [gap] }`                                               |
 | `plan-delta.schema.json`  | `plan revise` stdin           | `{ tests: { <testId>: { action?, preconditions?, assertions?: { <assertionId>: {check?, oracleKind?} | null } } } }` |
 | `plan.schema.json`        | snapshot                      | see below                                                                                                    |
@@ -191,7 +191,7 @@ Errors print `rejected <subject>` and `reason: <message>` (or JSON) and exit 1. 
 | `plan approve <planId@rev> --rationale <text>` / `plan reject …` | Approval row with the revision digest. Accept `--expect-sha`. |
 | `run gate <planId@rev> --tests T1,T2 --build <b> [--partial wait_for_resolution|ready_only] [--retest-of <runId>]` | Gate without side effects. `completed` or `needs_decision` with reasons. |
 | `run begin <runId> <planId@rev> --tests T1,T2 --build <b> [--partial …] [--on-new-blocker return_to_caller|continue_independent] [--timeout <s>] [--retest-of <runId>]` | Gate, then insert run and attempt 1. Print `startedAt`, `browserSession`, `deadlineSeconds`. Defaults: partial `wait_for_resolution`, on-new-blocker `return_to_caller`, timeout 600. |
-| `run check <runId> <testId> <assertionId> --result passed|failed|inconclusive|not_checked [--observed <text>] [--reason <text>] [--evidence <path>[:kind]]…` | Rules in design section 7 and 9. Evidence paths are relative to the workspace and must be inside `.checkmate/tmp/<runId>/`. Kind defaults from extension: `.png/.jpg/.jpeg/.webp` screenshot, `.json` http_exchange, `.zip/.trace` trace, else observation. Max 32 MiB each. Delete the file after the commit. |
+| `run check <runId> <testId> <assertionId> --result passed|failed|inconclusive|not_checked [--observed <text>] [--reason <text>] [--evidence -[:kind]] [--evidence <path>[:kind]]…` | Rules in design section 7 and 9. `-` reads one text from stdin. Evidence paths are relative to the workspace and must be inside `.checkmate/tmp/<runId>/`. Kind defaults from extension: `.png/.jpg/.jpeg/.webp` screenshot, `.json` http_exchange, `.zip/.trace` trace, else observation. Max 32 MiB each. Delete the file after the commit. |
 | `run close <runId> <testId> [--outcome blocked|not_run|error --reason <text>]` | Derive outcome, or record the given one. Print the outcome. |
 | `run finding <runId> < finding.json` | Check and store. A defect names only failed assertions. Evidence IDs belong to the named assertions or their tests. |
 | `run gap <runId> < gap.json` | New, open, unknown ID, references exist in the plan. |
@@ -200,7 +200,7 @@ Errors print `rejected <subject>` and `reason: <message>` (or JSON) and exit 1. 
 | `run show <runId> [--tests …]` / `run list [--plan <id>] [--build <b>]` | Read. |
 | `result accept <runId> --rationale <text>` / `result reject …` | Approval row with the result digest. |
 | `evidence get <evidenceId> --out <path>` | Write the bytes. |
-| `export plan <planId@rev>|run <runId> --format md|html|json --out <path>` | Render. |
+| `export plan <planId@rev>|run <runId> --format md|html|json [--out <path>]` | Render to stdout, or to a new file. |
 | `log [--subject <s>] [--limit <n>]` | Operation log, newest first. Default limit 50. |
 | `query "<sql>"` | Read-only connection. Rows as TSV with a header, or JSON. |
 

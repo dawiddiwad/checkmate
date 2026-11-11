@@ -1,49 +1,51 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "result.schema.json",
 	"type": "object",
 	"properties": {
 		"contractVersion": {
-			"const": "toolkit-1"
-		},
-		"requestId": {
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"const": "toolkit-2"
 		},
 		"runId": {
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 		},
-		"completion": {
-			"enum": ["completed", "interrupted", "operational_error"]
-		},
 		"plan": {
 			"type": "object",
 			"properties": {
-				"path": {
+				"planId": {
 					"type": "string",
-					"minLength": 1
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"revision": {
+					"type": "integer",
+					"minimum": 1
 				},
 				"sha256": {
 					"type": "string",
 					"pattern": "^[a-f0-9]{64}$"
 				}
 			},
-			"required": ["path", "sha256"],
+			"required": ["planId", "revision", "sha256"],
 			"additionalProperties": false
 		},
 		"target": {
 			"type": "object",
 			"properties": {
-				"path": {
+				"targetId": {
 					"type": "string",
-					"minLength": 1
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"revision": {
+					"type": "integer",
+					"minimum": 1
 				},
 				"sha256": {
 					"type": "string",
 					"pattern": "^[a-f0-9]{64}$"
 				}
 			},
-			"required": ["path", "sha256"],
+			"required": ["targetId", "revision", "sha256"],
 			"additionalProperties": false
 		},
 		"applicationBuild": {
@@ -59,6 +61,17 @@
 			"minItems": 1,
 			"uniqueItems": true
 		},
+		"retestOf": {
+			"anyOf": [
+				{
+					"type": "string",
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				{
+					"type": "null"
+				}
+			]
+		},
 		"startedAt": {
 			"type": "string",
 			"format": "date-time"
@@ -66,6 +79,13 @@
 		"finishedAt": {
 			"type": "string",
 			"format": "date-time"
+		},
+		"attempts": {
+			"type": "integer",
+			"minimum": 1
+		},
+		"completion": {
+			"enum": ["completed", "interrupted", "operational_error"]
 		},
 		"tests": {
 			"type": "array",
@@ -77,48 +97,7 @@
 						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 					},
 					"outcome": {
-						"enum": ["passed", "failed", "blocked", "not_run", "error"]
-					},
-					"expected": {
-						"anyOf": [
-							{
-								"type": "string",
-								"minLength": 1
-							},
-							{
-								"type": "null"
-							}
-						]
-					},
-					"observed": {
-						"anyOf": [
-							{
-								"type": "string",
-								"minLength": 1
-							},
-							{
-								"type": "null"
-							}
-						]
-					},
-					"assertionKind": {
-						"anyOf": [
-							{
-								"enum": ["deterministic", "agent_observation"]
-							},
-							{
-								"type": "null"
-							}
-						]
-					},
-					"evidenceIds": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-						},
-						"minItems": 0,
-						"uniqueItems": true
+						"enum": ["passed", "failed", "inconclusive", "blocked", "not_run", "error"]
 					},
 					"reason": {
 						"anyOf": [
@@ -130,13 +109,233 @@
 								"type": "null"
 							}
 						]
+					},
+					"assertions": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"assertionId": {
+									"type": "string",
+									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+								},
+								"check": {
+									"type": "string",
+									"minLength": 1
+								},
+								"oracleKind": {
+									"enum": ["deterministic", "agent_observation"]
+								},
+								"result": {
+									"enum": ["passed", "failed", "inconclusive", "not_checked"]
+								},
+								"observed": {
+									"anyOf": [
+										{
+											"type": "string",
+											"minLength": 1
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"reason": {
+									"anyOf": [
+										{
+											"type": "string",
+											"minLength": 1
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"evidenceIds": {
+									"type": "array",
+									"items": {
+										"type": "string",
+										"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+									},
+									"minItems": 0,
+									"uniqueItems": true
+								}
+							},
+							"required": ["assertionId", "check", "oracleKind", "result", "observed", "reason", "evidenceIds"],
+							"additionalProperties": false
+						},
+						"minItems": 0,
+						"uniqueItems": true
 					}
 				},
-				"required": ["testId", "outcome", "expected", "observed", "assertionKind", "evidenceIds", "reason"],
+				"required": ["testId", "outcome", "reason", "assertions"],
 				"additionalProperties": false
 			},
 			"minItems": 1,
 			"uniqueItems": true
+		},
+		"findings": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"type": {
+						"enum": ["defect", "potential_issue"]
+					},
+					"severity": {
+						"enum": ["low", "medium", "high", "critical"]
+					},
+					"requirementIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"title": {
+						"type": "string",
+						"minLength": 1
+					},
+					"expected": {
+						"type": "string",
+						"minLength": 1
+					},
+					"observed": {
+						"type": "string",
+						"minLength": 1
+					},
+					"reproduction": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"evidenceIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"testIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"assertionIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					}
+				},
+				"required": [
+					"id",
+					"type",
+					"severity",
+					"requirementIds",
+					"title",
+					"expected",
+					"observed",
+					"reproduction",
+					"evidenceIds",
+					"testIds",
+					"assertionIds"
+				],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"newGaps": {
+			"type": "array",
+			"items": {
+				"$ref": "gap.schema.json"
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"evidence": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"testId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"assertionId": {
+						"anyOf": [
+							{
+								"type": "string",
+								"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"kind": {
+						"enum": ["observation", "http_exchange", "screenshot", "trace"]
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1
+					},
+					"mediaType": {
+						"type": "string",
+						"minLength": 1
+					},
+					"sha256": {
+						"type": "string",
+						"pattern": "^[a-f0-9]{64}$"
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0
+					}
+				},
+				"required": ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"cleanup": {
+			"type": "object",
+			"properties": {
+				"status": {
+					"enum": ["completed", "failed", "not_applicable"]
+				},
+				"reason": {
+					"type": "string",
+					"minLength": 1
+				}
+			},
+			"required": ["status", "reason"],
+			"additionalProperties": false
 		},
 		"coverage": {
 			"type": "object",
@@ -186,221 +385,26 @@
 			},
 			"required": ["status", "requirements"],
 			"additionalProperties": false
-		},
-		"findings": {
-			"type": "array",
-			"items": {
-				"type": "object",
-				"properties": {
-					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-					},
-					"type": {
-						"enum": ["defect", "potential_issue"]
-					},
-					"severity": {
-						"enum": ["low", "medium", "high", "critical"]
-					},
-					"testIds": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-						},
-						"minItems": 1,
-						"uniqueItems": true
-					},
-					"requirementIds": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-						},
-						"minItems": 1,
-						"uniqueItems": true
-					},
-					"title": {
-						"type": "string",
-						"minLength": 1
-					},
-					"expected": {
-						"type": "string",
-						"minLength": 1
-					},
-					"observed": {
-						"type": "string",
-						"minLength": 1
-					},
-					"reproduction": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"minLength": 1
-						},
-						"minItems": 1,
-						"uniqueItems": true
-					},
-					"evidenceIds": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-						},
-						"minItems": 1,
-						"uniqueItems": true
-					}
-				},
-				"required": [
-					"id",
-					"type",
-					"severity",
-					"testIds",
-					"requirementIds",
-					"title",
-					"expected",
-					"observed",
-					"reproduction",
-					"evidenceIds"
-				],
-				"additionalProperties": false
-			},
-			"minItems": 0,
-			"uniqueItems": true
-		},
-		"newGaps": {
-			"type": "array",
-			"items": {
-				"type": "object",
-				"properties": {
-					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-					},
-					"severity": {
-						"enum": ["blocking", "non_blocking"]
-					},
-					"status": {
-						"enum": ["open", "resolved", "deferred"]
-					},
-					"requirementIds": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-						},
-						"minItems": 0,
-						"uniqueItems": true
-					},
-					"testIds": {
-						"type": "array",
-						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-						},
-						"minItems": 0,
-						"uniqueItems": true
-					},
-					"question": {
-						"type": "string",
-						"minLength": 1
-					},
-					"consequence": {
-						"type": "string",
-						"minLength": 1
-					},
-					"decisionId": {
-						"anyOf": [
-							{
-								"type": "string",
-								"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-							},
-							{
-								"type": "null"
-							}
-						]
-					}
-				},
-				"required": ["id", "severity", "status", "requirementIds", "testIds", "question", "consequence", "decisionId"],
-				"additionalProperties": false
-			},
-			"minItems": 0,
-			"uniqueItems": true
-		},
-		"evidence": {
-			"type": "array",
-			"items": {
-				"type": "object",
-				"properties": {
-					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-					},
-					"kind": {
-						"enum": ["observation", "http_exchange", "screenshot", "trace"]
-					},
-					"path": {
-						"type": "string",
-						"minLength": 1
-					},
-					"sha256": {
-						"type": "string",
-						"pattern": "^[a-f0-9]{64}$"
-					}
-				},
-				"required": ["id", "kind", "path", "sha256"],
-				"additionalProperties": false
-			},
-			"minItems": 0,
-			"uniqueItems": true
-		},
-		"cleanup": {
-			"type": "object",
-			"properties": {
-				"status": {
-					"enum": ["completed", "failed", "not_applicable"]
-				},
-				"reason": {
-					"type": "string",
-					"minLength": 1
-				}
-			},
-			"required": ["status", "reason"],
-			"additionalProperties": false
-		},
-		"retestOf": {
-			"type": "object",
-			"properties": {
-				"path": {
-					"type": "string",
-					"minLength": 1
-				},
-				"sha256": {
-					"type": "string",
-					"pattern": "^[a-f0-9]{64}$"
-				}
-			},
-			"required": ["path", "sha256"],
-			"additionalProperties": false
 		}
 	},
 	"required": [
 		"contractVersion",
-		"requestId",
 		"runId",
-		"completion",
 		"plan",
 		"target",
 		"applicationBuild",
 		"selectedTestIds",
+		"retestOf",
 		"startedAt",
 		"finishedAt",
+		"attempts",
+		"completion",
 		"tests",
-		"coverage",
 		"findings",
 		"newGaps",
 		"evidence",
-		"cleanup"
+		"cleanup",
+		"coverage"
 	],
 	"additionalProperties": false
 }

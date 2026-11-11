@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { cp, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { root } from './support.ts'
@@ -20,6 +20,7 @@ try {
 		'.claude-plugin',
 		'bin',
 		'contracts',
+		'dist',
 		'package.json',
 		'references',
 		'skills',
@@ -32,19 +33,17 @@ try {
 	const project = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 	assert.equal(manifest.version, project.version)
 	assert.equal(entry.version, project.version)
-	assert.equal(
-		execFileSync(process.execPath, [join(source, 'bin/checkmate.ts'), '--version'], { encoding: 'utf8' }).trim(),
-		manifest.version
-	)
-	const validated = execFileSync(
-		process.execPath,
-		[join(source, 'bin/checkmate.ts'), 'validate', 'request', 'plan-request.json'],
-		{ cwd: join(root, 'docs/examples'), encoding: 'utf8' }
-	)
-	assert.equal(JSON.parse(validated).valid, true)
+	const bundle = join(source, 'dist/checkmate.js')
+	const checkmate = (args: string[], cwd = directory) =>
+		execFileSync(process.execPath, [bundle, ...args], { cwd, encoding: 'utf8' }).trim()
+	assert.equal(checkmate(['--version']), manifest.version)
+	const workspace = join(directory, 'workspace')
+	await mkdir(workspace)
+	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
+	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
 	for (const name of ['setup', 'plan', 'revise', 'execute', 'report'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
-	console.log('The copied plugin runs without npm install, a build step, or development dependencies.')
+	console.log('The copied plugin bundle runs without npm install, a build step, or development dependencies.')
 } finally {
 	await rm(directory, { recursive: true, force: true })
 }

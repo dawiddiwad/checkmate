@@ -1,207 +1,273 @@
 import type { TestContext } from 'node:test'
-import type {
-	ExecuteRequest,
-	Observation,
-	Plan,
-	PlanRequest,
-	Profile,
-	Reference,
-	Response,
-	ReviseRequest,
-	SetupRequest,
-} from '../plugin/src/types.ts'
-import type { PlanCandidate } from '../plugin/src/contracts.ts'
+import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
+import type { Store } from '../plugin/src/store.ts'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { publish, readDocument, readReference } from '../plugin/src/files.ts'
-import { setup, savePlan, beginRun } from '../plugin/src/stages.ts'
-
-export type Prepared = {
-	profile: Profile
-	target: Reference
-	plan: Plan
-	planRequest: PlanRequest
-	setupRequest: SetupRequest
-	base: Reference
-}
-export type Revised = { request: ReviseRequest; candidate: PlanCandidate; plan: Plan; reference: Reference }
+import { closeStore, openStore } from '../plugin/src/store.ts'
+import { openTarget, saveTarget } from '../plugin/src/targets.ts'
+import { answerGap, approvePlan, openPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
+import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
+import { run } from '../plugin/src/cli.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
-// The artifact of a response that must have one.
-export function artifact(response: Response): Reference {
-	assert(response.artifact, JSON.stringify(response))
-	return response.artifact
-}
-// A pinned document, read as a known contract type.
-export async function load<T>(workspace: string, reference: Reference): Promise<T> {
-	return (await readReference(workspace, reference)) as T
-}
+export const actor = 'tester'
+
 export async function sandbox(t?: TestContext) {
-	const directory = await mkdtemp(join(tmpdir(), 'checkmate-test-'))
-	t?.after(() => rm(directory, { recursive: true, force: true }))
-	return directory
+	return directory(t)
 }
-export async function fixtureJson<T>(name: string): Promise<T> {
-	return JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8')) as T
+
+export function directory(t?: TestContext) {
+	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
+	t?.after(() => rmSync(path, { recursive: true, force: true }))
+	return path
 }
-export async function prepare(workspace: string, baseUrl = 'http://127.0.0.1:4173'): Promise<Prepared> {
-	const profile: Profile = {
-		contractVersion: 'toolkit-1',
+
+export function store(t: TestContext, workspace = directory(t)): Store {
+	const opened = openStore(workspace)
+	t.after(() => {
+		if (opened.db.isOpen) closeStore(opened)
+	})
+	return opened
+}
+
+export function cli(workspace: string, args: string[], stdin: unknown = undefined, env: Record<string, string> = {}) {
+	const outcome = run([...args, '--workspace', workspace], {
+		cwd: workspace,
+		env: { CHECKMATE_ACTOR: actor, ...env },
+		stdin: () => (stdin === undefined ? '' : typeof stdin === 'string' ? stdin : JSON.stringify(stdin)),
+	})
+	return { ...outcome, lines: outcome.output.split('\n') }
+}
+
+export function json(workspace: string, args: string[], stdin?: unknown) {
+	const outcome = cli(workspace, [...args, '--json'], stdin)
+	return { code: outcome.code, body: JSON.parse(outcome.output) }
+}
+
+export function profile(overrides: Partial<Profile> = {}): Profile {
+	return {
+		contractVersion: 'toolkit-2',
 		targetId: 'checkout-local',
 		revision: 1,
-		baseUrl,
+		baseUrl: 'http://127.0.0.1:4173',
 		environment: 'local_fixture',
 		capabilities: ['browser', 'http'],
 		tooling: [
 			{ capability: 'browser', executable: 'playwright-cli', version: '0.1.23' },
-			{ capability: 'http', executable: 'node', version: process.version },
+			{ capability: 'http', executable: 'node', version: '24.12.0' },
 		],
 		authentication: { kind: 'none', references: [] },
 		allowedOperations: ['read_catalog', 'create_fixture_order', 'apply_fixture_discount'],
 		startup: { owner: 'caller', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
-	}
-	const setupRequest: SetupRequest = {
-		contractVersion: 'toolkit-1',
-		requestId: 'setup-1',
-		caller: 'test-caller',
-		operation: 'setup',
-		profilePath: 'profile.json',
-		targetId: profile.targetId,
-		baseUrl,
-		capabilities: profile.capabilities,
-		allowedOperations: profile.allowedOperations,
-	}
-	const target = artifact(await setup(workspace, setupRequest, profile))
-	const plan = await fixtureJson<PlanCandidate>('plan')
-	plan.target = target
-	const planRequest = await fixtureJson<PlanRequest>('plan-request')
-	planRequest.target = target
-	const base = artifact(await savePlan(workspace, planRequest, plan))
-	return { profile, target, plan: await load<Plan>(workspace, base), planRequest, setupRequest, base }
-}
-export async function revised(workspace: string, prepared: Prepared): Promise<Revised> {
-	const decisions = await fixtureJson<ReviseRequest['decisions']>('decisions')
-	const request: ReviseRequest = {
-		contractVersion: 'toolkit-1',
-		requestId: 'revise-1',
-		caller: 'test-caller',
-		operation: 'revise',
-		basePlan: prepared.base,
-		baseRevision: 1,
-		decisions,
-	}
-	const { coverage, ...plan } = structuredClone(prepared.plan)
-	plan.revision = 2
-	plan.previousRevision = 1
-	plan.decisions = decisions
-	plan.gaps[0].status = 'resolved'
-	plan.gaps[0].decisionId = 'D1'
-	plan.gaps[1].status = 'deferred'
-	plan.gaps[1].decisionId = 'D2'
-	plan.tests[1].readiness = 'ready'
-	plan.tests[1].expected = 'HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.'
-	plan.tests[2].readiness = 'deferred'
-	const reference = artifact(await savePlan(workspace, request, plan))
-	return { request, candidate: plan, plan: await load<Plan>(workspace, reference), reference }
-}
-export function executeRequest(
-	prepared: Prepared,
-	revision: { reference: Reference },
-	overrides: Partial<ExecuteRequest> = {}
-): ExecuteRequest {
-	return {
-		contractVersion: 'toolkit-1',
-		requestId: 'execute-1',
-		caller: 'test-caller',
-		operation: 'execute',
-		runId: 'run-1',
-		plan: revision.reference,
-		target: prepared.target,
-		selectedTestIds: ['T1', 'T2'],
-		partialExecution: 'wait_for_resolution',
-		timeoutSeconds: 180,
-		onNewBlocker: 'return_to_caller',
-		applicationBuild: 'fixture-build-1',
-		outputDirectory: 'runs/run-1',
 		...overrides,
 	}
 }
-export async function observation(
-	workspace: string,
-	request: ExecuteRequest,
-	plan: PlanCandidate,
-	total = 220,
-	begin = true
-): Promise<Observation> {
-	if (begin) await beginRun(workspace, request)
-	const { value } = await readDocument(workspace, `${request.outputDirectory}/invocation.json`)
-	const invocation = value as { startedAt: string }
-	const evidence: Observation['evidence'] = []
-	const tests: Observation['tests'] = []
-	for (const test of plan.tests) {
-		const selected = request.selectedTestIds.includes(test.id)
-		const failed = test.id === 'T2' && total !== 240
-		const observed = test.id === 'T1' ? 'Order confirmed: 400 PLN' : `HTTP 200; totalPLN = ${total}`
-		if (selected) {
-			await publish(workspace, `${request.outputDirectory}/evidence/${test.id}.txt`, observed)
-			evidence.push({ id: `E-${test.id}`, kind: 'observation', path: `evidence/${test.id}.txt` })
-		}
-		tests.push({
-			testId: test.id,
-			outcome: selected ? (failed ? 'failed' : 'passed') : 'not_run',
-			expected: test.expected,
-			observed: selected ? observed : null,
-			assertionKind: selected ? test.oracleKind : null,
-			evidenceIds: selected ? [`E-${test.id}`] : [],
-			reason: selected
-				? failed
-					? 'Observed total differs from expected total.'
-					: null
-				: 'Test was not selected or was deferred.',
-		})
-	}
+
+export function target(store: Store, overrides: Partial<Profile> = {}) {
+	const value = profile(overrides)
+	openTarget(store, actor, {
+		targetId: value.targetId,
+		baseUrl: value.baseUrl,
+		capabilities: value.capabilities,
+		allowedOperations: value.allowedOperations,
+	})
+	return saveTarget(store, actor, { targetId: value.targetId, profile: value })
+}
+
+export function planRequest(): PlanRequest {
 	return {
-		contractVersion: 'toolkit-1',
-		requestId: request.requestId,
-		runId: request.runId,
-		completion: 'completed',
-		plan: request.plan,
-		target: request.target,
-		applicationBuild: request.applicationBuild,
-		selectedTestIds: request.selectedTestIds,
-		startedAt: invocation.startedAt,
-		tests,
-		findings: tests.some((test) => test.outcome === 'failed')
-			? [
-					{
-						id: 'F1',
-						type: 'defect',
-						severity: 'medium',
-						testIds: ['T2'],
-						requirementIds: ['R2'],
-						title: 'Promotion stacks with loyalty',
-						expected: '240 PLN',
-						observed: `${total} PLN`,
-						reproduction: [
-							'Create a 400 PLN cart with 20 PLN loyalty.',
-							'Apply a 40 percent promotion.',
-							'Read the quote total.',
-						],
-						evidenceIds: ['E-T2'],
-					},
-				]
-			: [],
-		newGaps: [],
-		evidence,
-		cleanup: { status: 'completed', reason: 'No live resources in this unit fixture.' },
-		...(request.retestOf ? { retestOf: request.retestOf } : {}),
+		objective: 'Verify checkout and identify missing acceptance decisions.',
+		requirements: [
+			{ id: 'R1', text: 'A standard order for a 400 PLN item has a total of 400 PLN.', source: 'brief#standard' },
+			{ id: 'R2', text: 'A 40 percent promotion applies; stacking is unspecified.', source: 'brief#promotion' },
+			{ id: 'R3', text: 'Refund eligibility is unspecified.', source: 'brief#refund' },
+		],
+		sourceContext: [{ uri: 'brief', content: 'One item at 400 PLN. Promotion is 40 percent.' }],
 	}
 }
-export async function write(workspace: string, name: string, value: unknown) {
-	await writeFile(join(workspace, name), JSON.stringify(value, null, 2) + '\n')
+
+export function candidate(): PlanCandidate {
+	return {
+		tests: [
+			{
+				id: 'T1',
+				title: 'Standard order total',
+				requirementIds: ['R1'],
+				capability: 'browser',
+				operations: ['create_fixture_order'],
+				dependsOn: [],
+				preconditions: ['Fresh cart with one 400 PLN item.'],
+				action: 'Complete checkout and read the confirmation.',
+				assertions: [
+					{ id: 'A1', check: 'The confirmation shows 400 PLN.', oracleKind: 'agent_observation' },
+					{ id: 'A2', check: 'The order has one item.', oracleKind: 'deterministic' },
+				],
+			},
+			{
+				id: 'T2',
+				title: 'Promotion quote',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['apply_fixture_discount'],
+				dependsOn: ['T1'],
+				preconditions: ['Cart with 400 PLN and 20 PLN loyalty.'],
+				action: 'Apply the promotion and read the quote.',
+				assertions: [{ id: 'A1', check: 'The response status is HTTP 200.', oracleKind: 'deterministic' }],
+			},
+			{
+				id: 'T3',
+				title: 'Refund eligibility',
+				requirementIds: ['R3'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Request a refund.',
+				assertions: [],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: ['T2'],
+				question: 'Does the promotion stack with loyalty?',
+				consequence: 'No expected quote total.',
+				decisionId: null,
+			},
+			{
+				id: 'G2',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R3'],
+				testIds: ['T3'],
+				question: 'Which orders qualify for refunds?',
+				consequence: 'Refund acceptance cannot be asserted.',
+				decisionId: null,
+			},
+		],
+	}
+}
+
+export function plan(store: Store, planId = 'checkout', value: PlanCandidate = candidate(), request = planRequest()) {
+	openPlan(store, actor, { planId, target: 'checkout-local@1', request })
+	return savePlan(store, actor, { planId, candidate: value })
+}
+
+export const promotionDelta = {
+	tests: {
+		T2: {
+			assertions: {
+				A2: { check: 'totalPLN equals 240.', oracleKind: 'deterministic' as const },
+			},
+		},
+	},
+}
+
+export function revised(store: Store, planId = 'checkout') {
+	answerGap(store, actor, {
+		planId,
+		gapId: 'G1',
+		kind: 'clarify',
+		value: 'Promotion replaces loyalty. Expected total is 240 PLN.',
+		source: 'decisions#promotion',
+		rationale: 'Product decision.',
+	})
+	answerGap(store, actor, {
+		planId,
+		gapId: 'G2',
+		kind: 'defer',
+		value: 'Do not check refunds in this scope.',
+		rationale: 'Out of scope.',
+	})
+	return revisePlan(store, actor, { planId, delta: promotionDelta })
+}
+
+export function approved(store: Store, planId = 'checkout', revision = 2) {
+	return approvePlan(store, actor, { reference: `${planId}@${revision}`, rationale: 'Reviewed.' })
+}
+
+export function ready(store: Store, overrides: Partial<Profile> = {}) {
+	target(store, overrides)
+	plan(store)
+	revised(store)
+	approved(store)
+}
+
+export function evidenceFile(store: Store, runId: string, name: string, content: string | Uint8Array = name) {
+	const directory = join(store.workspace, '.checkmate', 'tmp', runId)
+	mkdirSync(directory, { recursive: true })
+	writeFileSync(join(directory, name), content)
+	return `.checkmate/tmp/${runId}/${name}`
+}
+
+export function begin(store: Store, runId = 'run-1', tests = ['T1', 'T2'], build = 'build-1', extra = {}) {
+	const reply = beginRun(store, actor, { runId, reference: 'checkout@2', tests, build, ...extra })
+	assert.equal(reply.status, 'completed', reply.reasons.join('; '))
+	return reply
+}
+
+export function check(
+	store: Store,
+	runId: string,
+	reference: string,
+	result: 'passed' | 'failed' | 'inconclusive' | 'not_checked',
+	extra: { reason?: string; observed?: string } = {}
+) {
+	const [testId, assertionId] = reference.split('.')
+	const withEvidence = result !== 'not_checked'
+	return checkAssertion(store, actor, {
+		runId,
+		testId,
+		assertionId,
+		result,
+		observed: withEvidence ? (extra.observed ?? `Observed ${reference}`) : extra.observed,
+		reason: extra.reason ?? (result === 'inconclusive' || result === 'not_checked' ? 'Reason given.' : undefined),
+		evidence: withEvidence ? [evidenceFile(store, runId, `${reference}-${Math.random()}.txt`)] : [],
+	})
+}
+
+export function passRun(store: Store, runId: string, build: string, tests = ['T1']) {
+	begin(store, runId, tests, build)
+	for (const testId of tests) {
+		for (const assertionId of ['A1', 'A2']) check(store, runId, `${testId}.${assertionId}`, 'passed')
+		closeTest(store, actor, { runId, testId })
+	}
+	return finishRun(store, actor, {
+		runId,
+		completion: 'completed',
+		cleanup: 'completed',
+		cleanupReason: 'Closed the browser.',
+	})
+}
+
+export function failT2(store: Store, runId: string) {
+	const reply = check(store, runId, 'T2.A2', 'failed', { observed: 'totalPLN is 220' })
+	recordFinding(store, actor, {
+		runId,
+		finding: {
+			id: 'F1',
+			type: 'defect',
+			severity: 'medium',
+			assertionIds: ['T2.A2'],
+			requirementIds: ['R2'],
+			title: 'Promotion stacks with loyalty',
+			expected: '240 PLN',
+			observed: '220 PLN',
+			reproduction: ['Apply the promotion.'],
+			evidenceIds: reply.data.evidenceIds as string[],
+		},
+	})
+	return reply
+}
+
+export function accept(store: Store, runId: string) {
+	return acceptResult(store, actor, { runId, rationale: 'Looks right.' })
 }

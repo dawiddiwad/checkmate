@@ -8,6 +8,7 @@ test-reports
 TODO
 coverage
 dist
+!plugin/dist/
 /schemas/
 **.tgz
 __pycache__/
@@ -24,3 +25,7 @@ app-docs
 .checkmate/candidates/
 .checkmate/run-ids/
 .playwright/
+
+# npm CLI build output and its plugin copy, created at pack time
+cli/dist/
+cli/plugin/

@@ -1,9 +1,10 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "profile.schema.json",
 	"type": "object",
 	"properties": {
 		"contractVersion": {
-			"const": "toolkit-1"
+			"const": "toolkit-2"
 		},
 		"targetId": {
 			"type": "string",
@@ -114,6 +115,19 @@
 		},
 		"readyForLiveExecution": {
 			"type": "boolean"
+		},
+		"approvals": {
+			"type": "object",
+			"properties": {
+				"plan": {
+					"enum": ["required", "none"]
+				},
+				"result": {
+					"enum": ["required", "none"]
+				}
+			},
+			"required": ["plan", "result"],
+			"additionalProperties": false
 		}
 	},
 	"required": [

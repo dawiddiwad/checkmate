@@ -1,17 +1,21 @@
 import type { Plan, Result } from './types.ts'
+import type { Store } from './store.ts'
+import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
+import { planRevision } from './plans.ts'
+import { runResult, runState } from './runs.ts'
 
 // A report is a list of blocks. Markdown and HTML render the same blocks,
 // so both views always show the same content.
-type Link = { text: string; link: string }
-type Cell = string | Link[]
 type Block =
 	| { heading: string; level?: 2 | 3 }
 	| { text: string }
-	| { table: string[]; rows: Cell[][] }
+	| { table: string[]; rows: string[][] }
 	| { list: string[]; numbered?: boolean }
 	| { record: unknown }
 type Report = { title: string; note: string; blocks: Block[] }
+export type Format = 'md' | 'html' | 'json'
 
+const formats = ['md', 'html', 'json'] as const
 const none = '—'
 const join = (values: string[]) => (values.length ? values.join(', ') : none)
 
@@ -23,16 +27,14 @@ function markdownText(value: string) {
 		.replace(/>/g, '&gt;')
 		.replace(/\r?\n/g, ' ')
 }
+
 function jsonFence(value: unknown) {
 	const json = JSON.stringify(value, null, 2)
 	const fence = '`'.repeat(Math.max(3, ...[...json.matchAll(/`+/g)].map((match) => match[0].length + 1)))
 	return `${fence}json\n${json}\n${fence}`
 }
+
 function markdown(report: Report) {
-	const cell = (value: Cell) =>
-		typeof value === 'string'
-			? markdownText(value)
-			: value.map((link) => `[${markdownText(link.text)}](${encodeURI(link.link)})`).join(', ')
 	const parts = [`# ${markdownText(report.title)}`, markdownText(report.note)]
 	for (const block of report.blocks) {
 		if ('heading' in block) parts.push(`${'#'.repeat(block.level ?? 2)} ${markdownText(block.heading)}`)
@@ -42,7 +44,7 @@ function markdown(report: Report) {
 				[
 					`| ${block.table.map(markdownText).join(' | ')} |`,
 					`| ${block.table.map(() => '---').join(' | ')} |`,
-					...block.rows.map((row) => `| ${row.map(cell).join(' | ')} |`),
+					...block.rows.map((row) => `| ${row.map(markdownText).join(' | ')} |`),
 				].join('\n')
 			)
 		else if ('list' in block)
@@ -61,13 +63,8 @@ function escapeHtml(value: string) {
 		(character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!
 	)
 }
+
 function html(report: Report) {
-	const cell = (value: Cell) =>
-		typeof value === 'string'
-			? escapeHtml(value)
-			: value
-					.map((link) => `<a href="${escapeHtml(encodeURI(link.link))}">${escapeHtml(link.text)}</a>`)
-					.join(', ')
 	const parts = [`<h1>${escapeHtml(report.title)}</h1>`, `<p class="note">${escapeHtml(report.note)}</p>`]
 	for (const block of report.blocks) {
 		if ('heading' in block) parts.push(`<h${block.level ?? 2}>${escapeHtml(block.heading)}</h${block.level ?? 2}>`)
@@ -75,7 +72,7 @@ function html(report: Report) {
 		else if ('table' in block)
 			parts.push(
 				`<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join('')}</tr></thead><tbody>${block.rows
-					.map((row) => `<tr>${row.map((value) => `<td>${cell(value)}</td>`).join('')}</tr>`)
+					.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`)
 					.join('')}</tbody></table>`
 			)
 		else if ('list' in block) {
@@ -99,16 +96,9 @@ function html(report: Report) {
 	)
 }
 
-function resultReport(result: Result): Report {
+function resultReport(result: Result, sha256: string): Report {
 	const evidence = new Map(result.evidence.map((entry) => [entry.id, entry]))
-	// Evidence paths are relative to the run directory, where the report is saved.
-	const links = (ids: string[]): Cell => {
-		const files = ids.flatMap((id) => {
-			const entry = evidence.get(id)
-			return entry ? [{ text: entry.path, link: entry.path }] : []
-		})
-		return files.length ? files : none
-	}
+	const files = (ids: string[]) => join(ids.map((id) => `${evidence.get(id)?.name ?? id} (${id})`))
 	const blocks: Block[] = [
 		{
 			table: ['Field', 'Value'],
@@ -117,24 +107,34 @@ function resultReport(result: Result): Report {
 				['Coverage', result.coverage.status],
 				['Run', result.runId],
 				['Application build', result.applicationBuild],
-				['Plan', result.plan.path],
-				['Target profile', result.target.path],
+				['Plan', `${result.plan.planId}@${result.plan.revision}`],
+				['Target profile', `${result.target.targetId}@${result.target.revision}`],
 				['Started', result.startedAt],
 				['Finished', result.finishedAt],
-				...(result.retestOf ? [['Retest of', result.retestOf.path]] : []),
+				['Attempts', String(result.attempts)],
+				['Retest of', result.retestOf ?? none],
+				['Result digest', sha256],
 			],
 		},
 		{ heading: 'Tests' },
 		{
-			table: ['Test', 'Outcome', 'Expected', 'Observed', 'Reason', 'Evidence'],
-			rows: result.tests.map((test) => [
-				test.testId,
-				test.outcome,
-				test.expected ?? none,
-				test.observed ?? none,
-				test.reason ?? none,
-				links(test.evidenceIds),
-			]),
+			table: ['Test', 'Outcome', 'Reason'],
+			rows: result.tests.map((test) => [test.testId, test.outcome, test.reason ?? none]),
+		},
+		{ heading: 'Assertions' },
+		{
+			table: ['Assertion', 'Result', 'Oracle', 'Check', 'Observed', 'Reason', 'Evidence'],
+			rows: result.tests.flatMap((test) =>
+				test.assertions.map((assertion) => [
+					`${test.testId}.${assertion.assertionId}`,
+					assertion.result,
+					assertion.oracleKind,
+					assertion.check,
+					assertion.observed ?? none,
+					assertion.reason ?? none,
+					files(assertion.evidenceIds),
+				])
+			),
 		},
 		{ heading: 'Findings' },
 	]
@@ -144,14 +144,14 @@ function resultReport(result: Result): Report {
 		blocks.push({
 			table: ['Field', 'Value'],
 			rows: [
-				['Tests', join(finding.testIds)],
+				['Assertions', join(finding.assertionIds)],
 				['Requirements', join(finding.requirementIds)],
-				['Expected', finding.expected ?? none],
-				['Observed', finding.observed ?? none],
-				['Evidence', links(finding.evidenceIds)],
+				['Expected', finding.expected],
+				['Observed', finding.observed],
+				['Evidence', files(finding.evidenceIds)],
 			],
 		})
-		if (finding.reproduction.length) blocks.push({ list: finding.reproduction, numbered: true })
+		blocks.push({ list: finding.reproduction, numbered: true })
 	}
 	blocks.push({ heading: 'New gaps' })
 	if (!result.newGaps.length) blocks.push({ text: 'No new gaps.' })
@@ -165,6 +165,21 @@ function resultReport(result: Result): Report {
 				gap.consequence,
 				join(gap.requirementIds),
 				join(gap.testIds),
+			]),
+		})
+	blocks.push({ heading: 'Evidence' })
+	if (!result.evidence.length) blocks.push({ text: 'No evidence.' })
+	else
+		blocks.push({
+			table: ['Evidence', 'Assertion', 'Kind', 'Name', 'Media type', 'Size', 'SHA-256'],
+			rows: result.evidence.map((entry) => [
+				entry.id,
+				entry.assertionId ? `${entry.testId}.${entry.assertionId}` : entry.testId,
+				entry.kind,
+				entry.name,
+				entry.mediaType,
+				String(entry.size),
+				entry.sha256,
 			]),
 		})
 	blocks.push(
@@ -184,12 +199,12 @@ function resultReport(result: Result): Report {
 	)
 	return {
 		title: `Test result: ${result.runId}`,
-		note: 'Generated from result.json. Completion, test outcomes, and coverage are separate. Edit the JSON record, not this view.',
+		note: 'Generated from the Checkmate database. Completion, test outcomes, and coverage are separate. Use checkmate evidence get to read evidence.',
 		blocks,
 	}
 }
 
-function planReport(plan: Plan): Report {
+function planReport(plan: Plan, sha256: string): Report {
 	const coverage = new Map(plan.coverage.map((row) => [row.requirementId, row.status]))
 	const blocks: Block[] = [
 		{
@@ -198,7 +213,9 @@ function planReport(plan: Plan): Report {
 				['Plan', plan.planId],
 				['Revision', String(plan.revision)],
 				['Previous revision', plan.previousRevision === null ? none : String(plan.previousRevision)],
-				['Target', `${plan.targetId} (${plan.target.path})`],
+				['Target', `${plan.target.targetId}@${plan.target.revision}`],
+				['Objective', plan.objective],
+				['Plan digest', sha256],
 			],
 		},
 		{ heading: 'Requirements' },
@@ -213,16 +230,27 @@ function planReport(plan: Plan): Report {
 		},
 		{ heading: 'Tests' },
 		{
-			table: ['Test', 'Readiness', 'Requirements', 'Depends on', 'Action', 'Expected', 'Oracle'],
+			table: ['Test', 'Title', 'Readiness', 'Requirements', 'Depends on', 'Preconditions', 'Action'],
 			rows: plan.tests.map((test) => [
 				test.id,
+				test.title,
 				test.readiness,
 				join(test.requirementIds),
 				join(test.dependsOn),
+				join(test.preconditions),
 				test.action,
-				test.expected ?? none,
-				test.oracleKind,
 			]),
+		},
+		{ heading: 'Assertions' },
+		{
+			table: ['Assertion', 'Oracle', 'Check'],
+			rows: plan.tests.flatMap((test) =>
+				test.assertions.map((assertion) => [
+					`${test.id}.${assertion.id}`,
+					assertion.oracleKind,
+					assertion.check,
+				])
+			),
 		},
 		{ heading: 'Gaps' },
 	]
@@ -260,15 +288,33 @@ function planReport(plan: Plan): Report {
 	blocks.push({ record: plan })
 	return {
 		title: `Test plan: ${plan.planId} revision ${plan.revision}`,
-		note: 'Generated from the saved JSON plan. Save a new plan revision to change it.',
+		note: 'Generated from the Checkmate database. Record a decision and revise the plan to change it.',
 		blocks,
 	}
 }
 
-export function renderPlan(plan: Plan) {
-	return markdown(planReport(plan))
+function rendered(report: Report, record: unknown, format: Format) {
+	if (format === 'json') return JSON.stringify(record, null, 2) + '\n'
+	return format === 'md' ? markdown(report) : html(report)
 }
-export function renderResult(result: Result) {
-	const report = resultReport(result)
-	return { md: markdown(report), html: html(report) }
+
+export function renderPlan(plan: Plan, sha256: string, format: Format) {
+	return rendered(planReport(plan, sha256), plan, format)
+}
+
+export function renderResult(result: Result, sha256: string, format: Format) {
+	return rendered(resultReport(result, sha256), result, format)
+}
+
+export function exportPlan(store: Store, reference: string, format: string) {
+	const { id, revision } = revisionReference(reference, 'plan reference')
+	const selected = planRevision(store, id, revision)
+	return renderPlan(selected.plan, selected.sha256, requireChoice(format, formats, 'format (--format)'))
+}
+
+export function exportRun(store: Store, runId: string, format: string) {
+	runState(store, runId)
+	const finished = runResult(store, runId)
+	requireCondition(finished, `Run ${runId} has no result. Finish it before you export it.`)
+	return renderResult(finished.result, finished.sha256, requireChoice(format, formats, 'format (--format)'))
 }

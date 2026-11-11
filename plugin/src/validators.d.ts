@@ -2,14 +2,12 @@
 export type Validator = ((value: unknown) => boolean) & {
 	errors?: Array<{ instancePath: string; message?: string }> | null
 }
-export const executeRequest: Validator
-export const observation: Validator
+export const finding: Validator
+export const gap: Validator
 export const plan: Validator
 export const planCandidate: Validator
+export const planDelta: Validator
 export const planRequest: Validator
 export const profile: Validator
-export const reportRequest: Validator
 export const response: Validator
 export const result: Validator
-export const reviseRequest: Validator
-export const setupRequest: Validator

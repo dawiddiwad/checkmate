@@ -9,12 +9,13 @@
 	"scripts": {
 		"test": "node --test test/*.test.ts",
 		"test:tools": "node --test test/tools.test.ts",
-		"test:live": "node test/live.ts && node test/live-session.ts",
-		"type:check": "node scripts/generate-types.ts --check && node scripts/generate-validators.ts --check && tsc --noEmit",
+		"test:live": "node test/legacy/live.ts && node test/legacy/live-session.ts",
+		"type:check": "node scripts/generate-types.ts --check && node scripts/generate-validators.ts --check && node scripts/build-plugin.ts --check && tsc --noEmit",
 		"lint:check": "eslint plugin scripts test",
 		"format:check": "prettier . --check",
 		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.ts",
-		"generate": "node scripts/generate-types.ts && node scripts/generate-validators.ts"
+		"generate": "node scripts/generate-types.ts && node scripts/generate-validators.ts",
+		"build": "npm run generate && node scripts/build-plugin.ts"
 	},
 	"devDependencies": {
 		"@anthropic-ai/claude-code": "2.1.319",

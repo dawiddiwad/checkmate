@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFile, writeFile, appendFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
-import { requireCondition } from '../plugin/src/files.ts'
+import { requireCondition } from '../plugin/src/contracts.ts'
 
 function parts(version: string): number[] {
 	requireCondition(/^\d+\.\d+\.\d+$/.test(version), 'Use a stable three-part release version')

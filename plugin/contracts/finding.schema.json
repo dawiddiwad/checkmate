@@ -1,0 +1,78 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "finding.schema.json",
+	"type": "object",
+	"properties": {
+		"id": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"type": {
+			"enum": ["defect", "potential_issue"]
+		},
+		"severity": {
+			"enum": ["low", "medium", "high", "critical"]
+		},
+		"assertionIds": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"requirementIds": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"title": {
+			"type": "string",
+			"minLength": 1
+		},
+		"expected": {
+			"type": "string",
+			"minLength": 1
+		},
+		"observed": {
+			"type": "string",
+			"minLength": 1
+		},
+		"reproduction": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"minLength": 1
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"evidenceIds": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		}
+	},
+	"required": [
+		"id",
+		"type",
+		"severity",
+		"assertionIds",
+		"requirementIds",
+		"title",
+		"expected",
+		"observed",
+		"reproduction",
+		"evidenceIds"
+	],
+	"additionalProperties": false
+}

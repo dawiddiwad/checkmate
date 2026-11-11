@@ -1,18 +1,53 @@
 ---
 name: plan
-description: Create a test plan from requirements or an exploratory objective. Record explicit oracles, coverage, and gaps before execution.
+description: Create revision 1 of a Checkmate test plan from a recorded plan request. Write tests with explicit assertions, and gaps for unknown behavior.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/plan-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/plan.schema.json`. The plan candidate uses the plan schema without `coverage`.
 
-1. Read the request and the pinned target profile. Check the profile digest.
-2. Preserve every declared requirement and its source. Do not broaden the declared scope.
-3. Create tests with requirement IDs, capability, permitted operations, prerequisites, action, expected result, and oracle kind.
-4. Record unknown expected behavior, missing access, and unsupported tools as gaps. An unknown oracle is blocking. Scope each gap with care. A gap applies to the tests it names and to every test of the requirements it names. To block only one test, name that test and leave the requirement list empty. A global access gap has empty requirement and test lists.
-5. Do not set test readiness. `save-plan` sets it from the gaps: an open blocking gap blocks a test, and a deferred gap defers it. A test that no such gap applies to is ready, and needs an explicit expected result. Do not invent caller decisions or accepted assumptions.
-6. Do not write `coverage`. `save-plan` calculates coverage from the tests and gaps. Never mark a planned test as passed.
-7. Write revision 1 with `previousRevision: null`, empty `decisions`, and empty `assumptions`. Copy the target reference from the request.
-8. Publish with `checkmate save-plan`, unless the parent requested a candidate only. Return blocking questions to the caller.
+1. Run `checkmate plan request <planId>`. It prints the objective, requirements, source context, target capabilities, and allowed operations.
+2. Write a candidate with `tests` and `gaps` only to `.checkmate/tmp/plan-<planId>.json`.
+3. Run `checkmate plan save <planId> < .checkmate/tmp/plan-<planId>.json`.
+4. If the command refuses the candidate, correct it and run step 3 again.
+5. Return the response of `plan save`. A `needs_decision` status with gap questions is a correct result.
 
-Do not run test actions during planning. Do not silently omit a requirement. Use a scoped exploratory objective when a full requirement inventory is unavailable.
+```json
+{
+	"tests": [
+		{
+			"id": "T1",
+			"title": "Standard order total",
+			"requirementIds": ["R1"],
+			"capability": "browser",
+			"operations": ["create_fixture_order"],
+			"dependsOn": [],
+			"preconditions": ["Fresh cart with one item."],
+			"action": "Complete checkout and read the confirmation.",
+			"assertions": [{ "id": "A1", "check": "The confirmation shows 400 PLN.", "oracleKind": "agent_observation" }]
+		}
+	],
+	"gaps": [
+		{
+			"id": "G1",
+			"severity": "blocking",
+			"status": "open",
+			"requirementIds": [],
+			"testIds": ["T2"],
+			"question": "Does the promotion stack with the loyalty discount?",
+			"consequence": "The expected total is unknown.",
+			"decisionId": null
+		}
+	]
+}
+```
+
+Rules:
+
+- Cover every requirement with one or more tests. Do not add requirements. Do not broaden the scope.
+- Give each test one or more `requirementIds` and one or more `operations`. Use only the target capabilities and allowed operations.
+- An assertion is one check with a known expected value. Use `deterministic` for an exact value. Use `agent_observation` for a judgment.
+- Do not write an assertion with an unknown expected value. Write an open blocking gap for it. A test with only unknown checks has `"assertions": []`.
+- A gap applies to the tests in `testIds` and to every test of the requirements in `requirementIds`. To block one test, name the test and leave `requirementIds` empty.
+- Do not write `readiness`, `gapIds`, `coverage`, decisions, or assumptions. Checkmate calculates them.
+- Do not run test actions during planning. Do not open the application.
+- Do not answer a gap. The caller decides with `checkmate gap answer`.

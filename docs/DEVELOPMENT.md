@@ -9,15 +9,15 @@ npm run phase:verify
 npm run test:live
 ```
 
-`phase:verify` checks types, lint, formatting, contracts, launcher failures, browser/API integration, release version updates, documentation examples, and a clean plugin install. It does not need a Claude credential.
+`phase:verify` checks types, lint, formatting, contracts, launcher failures, the npm package install, release version updates, and a clean plugin install. It does not need a Claude credential.
 
 The browser test requires a Chromium executable. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is not `/usr/bin/chromium`. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable cache directory.
 
-`test:live` requires an authenticated Claude Code CLI. Set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. The test fails when authentication is unavailable. It does not silently skip.
+`test:live` requires an authenticated Claude Code CLI. Set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. With a token and without `CHECKMATE_USE_HOST_LOGIN=1`, the test uses a temporary `CLAUDE_CONFIG_DIR`. With a host login, it keeps the default configuration. The test fails when authentication is unavailable. It does not silently skip.
 
-`test:live` sets the host model with `ANTHROPIC_MODEL`. The default is `sonnet` to limit usage. To use a different model, set `ANTHROPIC_MODEL` before you run the test. Checkmate does not select a model. The launcher passes the environment to Claude Code without changes.
+`test:live` sets the host model with `ANTHROPIC_MODEL`. The default is `claude-haiku-5-5` to limit usage. To use a different model, set `ANTHROPIC_MODEL` before you run the test. Checkmate does not select a model. The launcher passes the environment to Claude Code without changes.
 
-The live test uses an isolated local fixture and permits Read, Write, Edit, and Bash in that temporary workspace. It checks setup, planning gaps, default blocking, explicit partial execution, revision, defect detection, retest, and a skill invoked within one session. It records stage durations and saves artifacts in the printed temporary directory. It does not change product code or send fixture data to a production service.
+The live test uses an isolated local fixture and permits Read, Write, Edit, and Bash in that temporary workspace. `test/live.ts` checks delegated setup, planning gaps, caller decisions, revision, approval, execution with a defect, result acceptance, a retest on a new build, and a plan skill in one session. `test/live-session.ts` checks execution in one session and a permission denial. Each test writes stage, duration, and status to standard output and to `measurements.json` in the workspace. The workspace stays after the test. Its path is printed. It does not change product code or send fixture data to a production service.
 
 The normal CI job runs on Ubuntu with Node.js 24. The live job runs only when selected in a manual workflow dispatch. Configure a repository secret for Claude authentication before that run. Do not expose secrets to untrusted pull requests.
 

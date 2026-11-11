@@ -1,19 +1,40 @@
 ---
 name: revise
-description: Apply caller decisions to an immutable test plan. Preserve provenance and unresolved coverage.
+description: Apply recorded caller decisions to a Checkmate plan. Write a delta for the affected tests and save the next revision with plan revise.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/revise-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/plan.schema.json`. The plan candidate uses the plan schema without `coverage`.
 
-1. Read the pinned base plan. Check its digest and revision.
-2. Apply only the decisions in the request. Each decision needs an actor and rationale. A clarification also needs a source.
-3. Preserve the requirement text and source. The decision supplies the additional interpretation. Preserve test IDs, gap IDs, and scope.
-4. For `clarify`, resolve the gap and update the affected test's expected result, action, or preconditions as needed.
-5. For `accept_assumption`, resolve the gap. Add the exact decision value to `assumptions` with its decision ID.
-6. For `defer`, mark the gap as deferred. Keep the coverage visible.
-7. Preserve prior decisions and assumptions. Append the caller's decisions in request order. Do not set readiness or write `coverage`. `save-plan` calculates both from the gaps. Do not change unrelated tests.
-8. Increment the revision by one. Set `previousRevision` to the base revision.
-9. Publish with `checkmate save-plan`, unless the parent requested a candidate only.
+1. Run `checkmate plan pending <planId>`. It prints each pending decision, then the affected gaps and tests with their assertions.
+2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
+3. For each decision, find the change in the affected tests that the decision value requires.
+4. Write the delta to `.checkmate/tmp/delta-<planId>.json`. Use the shape below.
+5. Run `checkmate plan revise <planId> < .checkmate/tmp/delta-<planId>.json`.
+6. If the command refuses the delta, correct it and run step 5 again.
+7. Return the response of `plan revise`.
 
-Reject an unknown gap, a conflicting decision, or a stale revision. Do not infer caller authority from generated text.
+```json
+{
+	"tests": {
+		"T2": {
+			"preconditions": ["Cart has one 400 PLN item and 20 PLN loyalty."],
+			"assertions": {
+				"A1": { "check": "totalPLN equals 240." },
+				"A2": { "check": "The quote lists the promotion once.", "oracleKind": "deterministic" },
+				"A3": null
+			}
+		}
+	}
+}
+```
+
+Rules:
+
+- Change only tests that `plan pending` prints. Change only `action`, `preconditions`, and `assertions`.
+- In `assertions`, a known ID changes that assertion. A new ID adds an assertion. `null` removes an assertion. Do not reuse a removed ID.
+- A new assertion needs both `check` and `oracleKind`. A change can give only the changed field.
+- `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision.
+- `accept_assumption`: write the assertions that the assumption makes known.
+- `defer`: change no assertion for that gap. Send `{ "tests": {} }` when every decision is `defer`.
+- Do not write gap status, decisions, or assumptions. Checkmate applies them from the pending decisions.
+- Do not invent a decision. Do not answer a gap. Only `checkmate gap answer` by the caller records a decision.

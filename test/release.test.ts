@@ -14,14 +14,24 @@ test('first plugin release keeps 0.7.0; later merges get one patch', () => {
 	assert.throws(() => releaseVersion('invalid', []), /three-part/)
 })
 
+test('the plugin, marketplace, root package, and CLI package have one version', async () => {
+	const read = async (path: string) => JSON.parse(await readFile(join(root, path), 'utf8'))
+	const version = (await read('package.json')).version
+	assert.equal((await read('cli/package.json')).version, version)
+	assert.equal((await read('plugin/.claude-plugin/plugin.json')).version, version)
+	assert.equal((await read('.claude-plugin/marketplace.json')).plugins[0].version, version)
+})
+
 test('release preparation updates all version files without touching npm', async (t) => {
 	const workspace = await sandbox(t)
 	execFileSync('git', ['init', '-q', workspace])
 	await mkdir(join(workspace, 'plugin/.claude-plugin'), { recursive: true })
 	await mkdir(join(workspace, '.claude-plugin'))
+	await mkdir(join(workspace, 'cli'))
 	const paths = [
 		'package.json',
 		'package-lock.json',
+		'cli/package.json',
 		'plugin/.claude-plugin/plugin.json',
 		'.claude-plugin/marketplace.json',
 	]

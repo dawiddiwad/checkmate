@@ -1,23 +1,74 @@
 ---
 name: execute
-description: Execute a pinned Checkmate plan with direct tools. Record observations and evidence. Preserve blocked and omitted coverage.
+description: Execute an approved Checkmate plan revision. Record each assertion result with evidence, close each test, record findings and gaps, and finish the run.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/contracts/execute-request.schema.json` and `${CLAUDE_PLUGIN_ROOT}/contracts/observation.schema.json`.
 Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/references/http.md` as needed.
 
-1. Read the request, plan, and profile. Run `checkmate gate`. Stop if the gate does not return `completed`.
-2. In the current session, run `checkmate begin` once. In a delegated stage, the parent has already done this. Read `invocation.json` in the output directory. Use its exact `startedAt` and `browserSession`.
-3. Run only selected ready tests. Run prerequisite tests first. A failed prerequisite prevents dependent test actions.
-4. Use the target's tools directly. Do not generate maintained automation. Do not modify the application.
-5. Compare each observation with the plan's exact expected result. Copy that expected result and oracle kind into the observation document.
-6. Save evidence files in `<outputDirectory>/evidence/`. Record each file's ID, kind, and path. Write the path relative to the output directory. For `outputDirectory: runs/run-1`, save `runs/run-1/evidence/T1.txt` and record `"path": "evidence/T1.txt"`. The finalizer records the SHA-256 digest of each file. A pass or failure needs actual evidence.
-7. Record an observed mismatch as `failed` with a `defect` finding. Use `error` for a tool or access failure. Use `potential_issue` for an inference. Do not call a tool error a product defect.
-8. Record new ambiguity as an open gap. Stop further actions if `onNewBlocker` is `return_to_caller`. Otherwise continue only independent tests. Record blocked dependent tests.
-9. Include each selected test exactly once. Give each blocked, not-run, or erroneous test a reason. You can omit an unselected test. The finalizer records it as `not_run`.
-10. Close only this run's browser session. Record cleanup status. A tool or cleanup error requires `completion: operational_error`. A deadline requires `completion: interrupted`.
-11. Write the observation document. Do not include `coverage` or `finishedAt`. The finalizer calculates coverage and records the finish time. Copy request identity, pinned references, selected IDs, build identity, and any `retestOf` reference exactly.
-12. Publish with `checkmate finalize`, unless the parent requested a candidate only. Return its response.
+## Start
 
-A retest is a new run with a new build identity. Keep the prior run unchanged. A narrow retest does not establish full coverage.
+- Delegated stage: the parent has begun the run. The prompt names the run ID, plan revision, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
+- Same session, new run: run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. Stop when it does not print `completed`. Then run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build>` once. Add `--retest-of <runId>` for a retest.
+- Same session, stalled run: run `checkmate run resume <runId>`. Check only the assertions that it lists. The caller decides about tests marked `Actions may have occurred`.
+
+Then:
+
+1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result.
+2. Run `checkmate plan show <planId@rev> --tests <T1,T2> --fields dependsOn,preconditions,action,assertions`.
+3. Run `checkmate target show <targetId>` when you need the base URL or tooling.
+
+## For each selected test
+
+Run prerequisites first. A local `dependsOn` test must pass before the dependent test starts.
+
+1. Do the action of the test with the target's tools. Do not write maintained automation. Do not change the application.
+2. For each assertion, write the evidence file first in `.checkmate/tmp/<runId>/`, for example `.checkmate/tmp/<runId>/T1-A1.txt`. Use one new file for each assertion. Checkmate deletes the file after it stores it.
+3. Record the assertion: `checkmate run check <runId> <testId> <assertionId> --result <result> --observed "<what you saw>" --evidence .checkmate/tmp/<runId>/T1-A1.txt`. Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
+4. When each assertion has a result, run `checkmate run close <runId> <testId>`. Checkmate calculates the outcome.
+5. For a test that you did not start, run `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure.
+
+## Assertion results
+
+- `passed`: you observed the target, and the observation meets the check. Needs `--observed` and `--evidence`.
+- `failed`: you observed the target, and the observation contradicts the check. Needs `--observed` and `--evidence`. Each failed assertion needs a defect finding.
+- `inconclusive`: you checked the assertion, but the evidence cannot show whether the check is met. Needs `--observed`, `--evidence`, and `--reason` that says what is missing. It is not a defect.
+- `not_checked`: you did not check the assertion, for example because an earlier step failed or a tool failed. Needs `--reason` only. The test outcome becomes `error`.
+
+After a failed assertion, check the other assertions that you can still check. Record the others as `not_checked`.
+Compare with the exact check text. Do not change the check. Do not call a tool failure a product defect.
+
+## Findings and gaps
+
+Write each finding to `.checkmate/tmp/<runId>/finding-<id>.json` and run `checkmate run finding <runId> < <file>`:
+
+```json
+{
+	"id": "F1",
+	"type": "defect",
+	"severity": "medium",
+	"assertionIds": ["T2.A1"],
+	"requirementIds": ["R2"],
+	"title": "Promotion stacks with loyalty",
+	"expected": "totalPLN equals 240.",
+	"observed": "totalPLN is 220.",
+	"reproduction": ["GET /quote?promotion=true&loyalty=true"],
+	"evidenceIds": ["<evidence ID printed by run check>"]
+}
+```
+
+- Give every field of the example. `requirementIds` are the requirements of the named tests.
+- A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
+- For new ambiguity, write a gap with `"status": "open"` and a new ID. Run `checkmate run gap <runId> < <file>`.
+- After a new blocking gap, stop further actions when the run policy is `return_to_caller`. Close the remaining tests as `blocked`.
+
+## Finish
+
+1. Close the browser session: `playwright-cli -s=<browserSession> close`.
+2. Run `checkmate run finish <runId> --completion <completion> --cleanup <status> --cleanup-reason "<text>"`.
+   - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail.
+   - `operational_error`: a tool, access, or cleanup failure stopped the run.
+   - `interrupted`: the deadline is near. Finish before the deadline.
+3. Return the response of `run finish`.
+
+A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage.

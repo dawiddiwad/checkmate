@@ -7,7 +7,8 @@ export default [
 			'node_modules/**',
 			'dist/**',
 			'plugin/dist/**',
-			'test/legacy/**',
+			'cli/dist/**',
+			'cli/plugin/**',
 			'**/*.d.ts',
 			'plugin/src/validators.js',
 		],
@@ -35,6 +36,16 @@ export default [
 					'clearTimeout',
 					'structuredClone',
 				].map((name) => [name, 'readonly'])
+			),
+		},
+	},
+	{
+		files: ['cli/src/ui/assets/*.js'],
+		languageOptions: {
+			globals: Object.fromEntries(
+				['document', 'location', 'EventSource', 'DOMParser', 'FormData', 'URLSearchParams', 'CSS'].map(
+					(name) => [name, 'readonly']
+				)
 			),
 		},
 	},

@@ -2,20 +2,21 @@
 
 Use the project's HTTP tool or Node.js `fetch`. Use an explicit timeout.
 Resolve credentials from the profile's environment references. Do not save their values.
+Run the script from the workspace:
 
-```js
-const started = performance.now()
+```sh
+node --input-type=module -e '
+import { writeFileSync } from "node:fs"
+const url = "http://127.0.0.1:4173/quote?promotion=true"
 const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
 const body = await response.json()
-const observation = {
-	method: 'GET',
-	path: new URL(url).pathname,
-	status: response.status,
-	totalPLN: body.totalPLN,
-	durationMs: Math.round(performance.now() - started),
-}
+const exchange = { method: "GET", path: new URL(url).pathname, status: response.status, totalPLN: body.totalPLN }
+writeFileSync(".checkmate/tmp/<runId>/T2-A1.json", JSON.stringify(exchange))
+console.log(JSON.stringify(exchange))
+'
 ```
 
-Save only the fields needed for the assertion. Do not save request headers, cookies, query credentials, or a full response by default.
-Compare the observed value with the approved expected value. A timeout or failed connection is an operational error.
-Do not retry a request that can change application state without caller authorization.
+- Save only the fields that the assertion needs. Do not save request headers, cookies, query credentials, or a full response.
+- Compare the observed value with the exact check of the assertion.
+- A timeout or a failed connection is a tool failure, not a product defect.
+- Do not repeat a request that can change application state without caller authorization.

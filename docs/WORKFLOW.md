@@ -141,7 +141,7 @@ The plugin has no global `checkmate` command. Its CLI is `node <plugin root>/dis
 | Approve or reject | `checkmate plan approve\|reject <planId@rev>`            | Plan page          |
 | Accept or reject  | `checkmate result accept\|reject <runId>`                | Run page           |
 
-- `checkmate inbox` lists the gaps to answer, the plans to approve, and the results to accept.
+- `checkmate inbox` lists the gaps to answer, the plans to approve, and the results to accept. It also lists the plan requests that have no revision yet. Run the plan stage for them.
 - A gap answer is a pending decision. The revise stage applies it and writes the next revision.
 - `plan edit` changes the latest revision. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. [Configuration](CONFIGURATION.md#plan-edit) shows how to get the current candidate.
 - A gap answer, an approval, and a result decision need a rationale. Add `--expect-sha <digest>` to stop the decision when the snapshot changed.

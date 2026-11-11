@@ -456,6 +456,26 @@ test('lists page, sort, and filter on the server with the state in the URL', asy
 	assert.match(oldest, /name="dir" value="asc" data-default="desc"/)
 })
 
+test('the inbox and the plan list show a plan request without a revision', async (t) => {
+	const { ui, workspace } = await start(t)
+	const store = openStore(workspace)
+	openPlan(store, agent, {
+		planId: 'draft',
+		target: 'shop-local@1',
+		request: { objective: `Draft ${payload}`, context: { sources: ['brief://draft'] } },
+	})
+	closeStore(store)
+	const home = (await call(ui, '/')).body
+	assert.match(home, /Plans to draft · 1/)
+	assert.match(home, /data-key="request:draft"/)
+	assert.match(home, /Draft &lt;script&gt;/)
+	assert.match(home, /<code>\/checkmate:plan draft<\/code>/)
+	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
+	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
+	assert.match(plans, /<span class="mono">draft<\/span><\/td>\s*<td><span class="muted">no revision yet<\/span>/)
+	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
+})
+
 test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
 	const { ui } = await start(t)
 	const checkout = (await call(ui, '/plans/checkout@2')).body

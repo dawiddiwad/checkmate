@@ -19,8 +19,8 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 | Output    | `export plan`, `export run`, `evidence get`, `ui`                                                       |
 | npm only  | `delegate`                                                                                              |
 
-- `inbox` lists the open gaps without a pending decision, the plans that wait for approval, and the results that wait for acceptance. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, or `<runId>`. The second field is `gap`, `plan`, or `result`.
-- `plan list` takes `--needs-decision`, `--awaiting-approval`, and `--blocked`. `run list` takes `--plan` and `--build`.
+- `inbox` lists the open gaps without a pending decision, the plans that wait for approval, the results that wait for acceptance, and the plan requests that have no revision yet. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `plan`, `result`, or `requested`. A requested plan waits for the plan stage.
+- `plan list` shows each plan at its latest revision, and each plan request without a revision as `<planId> status=requested`. It takes `--needs-decision`, `--awaiting-approval`, and `--blocked`. `run list` takes `--plan` and `--build`.
 - `plan show <planId@rev>` takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`. A plan ID without a revision shows the latest revision. `run show <runId>` takes `--tests`.
 - `log` lists the operation log, newest first. It takes `--subject` and `--limit <n>` (default 50). A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`.
 - `query "<sql>"` runs one SQL statement on a read-only connection.
@@ -101,7 +101,7 @@ checkmate ui [--workspace <path>] [--port <n>]
 
 In Claude Code, run `/checkmate:ui`. The command prints the local URL on `127.0.0.1`. It runs until SIGINT or SIGTERM. The UI writes to the database only when a human submits a form. Each page updates when another process writes.
 
-- **Inbox** (`/`): the gaps to answer, the plans to approve, and the results to accept. After a decision, the UI opens the next item.
+- **Inbox** (`/`): the gaps to answer, the plans to approve, the results to accept, and the plans to draft. After a decision, the UI opens the next item.
 - **Plans, Runs, and Log:** 25, 50, or 100 rows for each page. Click a column header to sort. The search field filters while you type. The URL keeps the list state.
 - **Plan** (`/plans/<planId>@<rev>`): tests, gaps, requirements and coverage, runs of the plan, decisions, and history. Approve or reject the revision here. `Export` downloads the plan as HTML, Markdown, or JSON. Resolved and deferred gaps are folded below the open gaps. The history shows the latest revision open and five earlier revisions folded. `Show full history` loads the rest.
 - **Plan editor** (`/plans/<planId>@<rev>/edit`, `Edit plan` on the plan page): forms for the requirements, the tests, the assertions, and the coverage. `Edit as JSON` adds or removes requirements, tests, assertions, and gaps. The rules of `plan edit` apply. Only the latest revision can change.

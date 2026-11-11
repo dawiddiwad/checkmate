@@ -109,7 +109,7 @@ export function openPlan(
 			body,
 			operationId
 		)
-		return { reply: completed(planId, { ...data, recorded: true }), subjects: [`plan:${planId}`] }
+		return { reply: completed(planId, { ...data, recorded: true }), subjects: [`plan:${planId}`, 'inbox'] }
 	})
 }
 

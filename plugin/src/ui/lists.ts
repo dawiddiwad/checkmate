@@ -17,7 +17,7 @@ export function inboxItems(waiting: Waiting) {
 }
 
 export function inboxCount(waiting: Waiting) {
-	return waiting.gaps.length + waiting.plans.length + waiting.results.length
+	return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.requests.length
 }
 
 const countOrder = ['passed', 'failed', 'inconclusive', 'error', 'blocked', 'not_run'] as const
@@ -106,10 +106,21 @@ export function inboxPage(store: Store): Page {
 				<span class="end"><span class="age">${time(result.since)}</span></span>
 			</a>`
 	)
+	const requests = waiting.requests.map(
+		(request) =>
+			html`<div class="item" data-key="request:${request.planId}">
+				<span class="id">${request.planId}</span>
+				<span class="what"
+					>${request.objective} · target <code>${request.target}</code> · run
+					<code>/checkmate:plan ${request.planId}</code></span
+				>
+				<span class="end">${pill('requested')} <span class="age">${time(request.since)}</span></span>
+			</div>`
+	)
 	const sub = total ? `${plural(total, 'item')} ${total === 1 ? 'waits' : 'wait'} for you, oldest first.` : null
 	const body = total
 		? html`${group('Gaps to answer', gaps, 'gaps')} ${group('Plans to approve', plans, 'plans')}
-			${group('Results to accept', results, 'results')}`
+			${group('Results to accept', results, 'results')} ${group('Plans to draft', requests, 'requests')}`
 		: emptyInbox(store)
 	return {
 		title: 'Inbox',
@@ -373,7 +384,19 @@ function testSummary(tests: PlanRow['tests']) {
 		>`
 }
 
+function requestedPlanRow(row: PlanRow) {
+	return html`<tr data-key="plan:${row.planId}" data-nav-row>
+		<td><span class="mono">${row.planId}</span></td>
+		<td><span class="muted">no revision yet</span></td>
+		<td><span class="muted">none</span></td>
+		<td>${pill('requested')}</td>
+		<td><span class="muted">none</span></td>
+		<td class="nowrap">${time(row.since)}</td>
+	</tr>`
+}
+
 function planRow(row: PlanRow) {
+	if (row.status === 'requested') return requestedPlanRow(row)
 	return html`<tr data-key="plan:${row.planId}" data-nav-row>
 		<td>
 			<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item>${row.planId}@${row.revision}</a>
@@ -394,7 +417,7 @@ function planRow(row: PlanRow) {
 					: html`<span class="muted">none</span>`
 			}
 		</td>
-		<td>${pill(row.approval)}</td>
+		<td>${pill(row.approval ?? row.status)}</td>
 		<td>
 			${
 				row.blocked.length

@@ -234,7 +234,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 			['plan approve', 'completed', ['plan:checkout', 'inbox']],
 			['plan approve', 'rejected', []],
 			['plan save', 'needs_decision', ['plan:checkout', 'inbox']],
-			['plan open', 'completed', ['plan:checkout']],
+			['plan open', 'completed', ['plan:checkout', 'inbox']],
 			['target save', 'completed', ['target:checkout-local']],
 			['target open', 'completed', ['target:checkout-local']],
 		]
@@ -378,7 +378,7 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 	const workspace = setup(t)
 	const first = cli(workspace, ['inbox'])
 	assert.equal(first.code, 0)
-	assert.equal(first.lines[0], 'completed inbox gaps=2 plans=1 results=0')
+	assert.equal(first.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=0')
 	assert.deepEqual(first.lines.slice(1, 3), [
 		'checkout@1/G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
 		'checkout@1/G2\tgap\tblocking\tWhich orders qualify for refunds?',
@@ -403,7 +403,7 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 	])
 	const later = cli(workspace, ['inbox'])
 	assert.deepEqual(later.lines, [
-		'completed inbox gaps=0 plans=0 results=1',
+		'completed inbox gaps=0 plans=0 results=1 requests=0',
 		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1,not_run=2',
 	])
 	const body = json(workspace, ['inbox']).body
@@ -411,6 +411,20 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 		[body.gaps, body.plans, body.results.map((row: { runId: string }) => row.runId)],
 		[[], [], ['run-1']]
 	)
+})
+
+test('inbox and plan list show a plan request without a revision', (t) => {
+	const workspace = setup(t)
+	const request = { objective: 'Draft later.', requirements: [{ id: 'R1', text: 'Later.', source: 'brief#1' }] }
+	cli(workspace, ['plan', 'open', 'later', '--target', 'checkout-local@1'], request)
+	const waiting = cli(workspace, ['inbox'])
+	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=1')
+	assert.equal(waiting.lines.at(-1), 'later\trequested\tcheckout-local@1\tDraft later.')
+	const plans = cli(workspace, ['plan', 'list'])
+	assert.equal(plans.lines[0], 'completed plans count=2')
+	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
+	assert.equal(plans.lines[2], 'later\tstatus=requested')
+	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 })
 
 test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {

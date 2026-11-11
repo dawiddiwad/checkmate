@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { answerGap, revisePlan } from '../plugin/src/plans.ts'
+import { answerGap, openPlan, revisePlan } from '../plugin/src/plans.ts'
 import {
 	changesAfter,
 	inbox,
@@ -12,7 +12,19 @@ import {
 	planList,
 	runList,
 } from '../plugin/src/views.ts'
-import { actor, approved, begin, passRun, plan, promotionDelta, ready, revised, store, target } from './support.ts'
+import {
+	actor,
+	approved,
+	begin,
+	passRun,
+	plan,
+	planRequest,
+	promotionDelta,
+	ready,
+	revised,
+	store,
+	target,
+} from './support.ts'
 
 test('the inbox lists open gaps without a decision, plans to approve, and results to accept', (t) => {
 	const opened = store(t)
@@ -71,6 +83,30 @@ test('the inbox lists open gaps without a decision, plans to approve, and result
 	assert.deepEqual(
 		planList(opened).map((row) => [row.planId, row.revision, row.approval, row.openGaps]),
 		[['checkout', 2, 'approved', []]]
+	)
+})
+
+test('a plan request without a revision is in the inbox and the plan list until plan save', (t) => {
+	const opened = store(t)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	assert.deepEqual(
+		inbox(opened).requests.map((row) => [row.planId, row.target, row.objective]),
+		[['checkout', 'checkout-local@1', planRequest().objective]]
+	)
+	assert.deepEqual(
+		planList(opened).map((row) => [row.planId, row.status, row.revision, row.approval]),
+		[['checkout', 'requested', null, null]]
+	)
+	assert.deepEqual(
+		pagedPlans(opened).rows.map((row) => row.status),
+		['requested']
+	)
+	plan(opened)
+	assert.deepEqual(inbox(opened).requests, [])
+	assert.deepEqual(
+		planList(opened).map((row) => [row.planId, row.status, row.revision]),
+		[['checkout', 'drafted', 1]]
 	)
 })
 

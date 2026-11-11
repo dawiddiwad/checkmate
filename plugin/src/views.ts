@@ -19,6 +19,18 @@ import type { RunRow } from './runs.ts'
 type RevisionRow = { plan_id: string; revision: number; sha256: string; body: string; at: string; actor: string }
 type ApprovalState = ReturnType<typeof approvalState>
 export type ApprovalLabel = 'approved' | 'rejected' | 'pending' | 'not_required'
+export type PlanListRow = {
+	planId: string
+	status: 'requested' | 'drafted'
+	revision: number | null
+	sha256: string | null
+	since: string
+	openGaps: string[]
+	openBlockingGaps: string[]
+	tests: { total: number; ready: number; blocked: number; deferred: number }
+	approval: ApprovalLabel | null
+	blocked: Array<{ testId: string; dependency: string; cause: string }>
+}
 
 export function approvalLabel(state: ApprovalState): ApprovalLabel {
 	if (state.approved) return 'approved'
@@ -32,6 +44,20 @@ function latestRevisions(store: Store) {
 		`SELECT p.plan_id, p.revision, p.sha256, p.body, o.at, o.actor FROM latest_plans p
 		JOIN operations o ON o.id = p.operation_id ORDER BY p.plan_id`
 	).map((row) => ({ ...row, plan: JSON.parse(row.body) as Plan }))
+}
+
+function requestedPlans(store: Store) {
+	return all<{ plan_id: string; target_id: string; target_revision: number; body: string; at: string }>(
+		store,
+		`SELECT r.plan_id, r.target_id, r.target_revision, r.body, o.at FROM plan_requests r
+		JOIN operations o ON o.id = r.operation_id
+		WHERE NOT EXISTS (SELECT 1 FROM plan_revisions p WHERE p.plan_id = r.plan_id) ORDER BY r.plan_id`
+	).map((row) => ({
+		planId: row.plan_id,
+		target: `${row.target_id}@${row.target_revision}`,
+		objective: (JSON.parse(row.body) as { objective: string }).objective,
+		since: row.at,
+	}))
 }
 
 function planSummary(plan: Plan) {
@@ -93,7 +119,7 @@ export function inbox(store: Store) {
 			sha256: row.sha256,
 			since: row.finished_at,
 		}))
-	return { gaps, plans, results }
+	return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) }
 }
 
 function bySince(a: { since: string }, b: { since: string }) {
@@ -105,11 +131,12 @@ function testCounts(plan: Plan) {
 	return { total: plan.tests.length, ready: count('ready'), blocked: count('blocked'), deferred: count('deferred') }
 }
 
-export function planList(store: Store) {
-	return latestRevisions(store).map((row) => {
+export function planList(store: Store): PlanListRow[] {
+	const drafted = latestRevisions(store).map((row): PlanListRow => {
 		const open = row.plan.gaps.filter((gap) => gap.status === 'open')
 		return {
 			planId: row.plan_id,
+			status: 'drafted',
 			revision: row.revision,
 			sha256: row.sha256,
 			since: row.at,
@@ -127,6 +154,19 @@ export function planList(store: Store) {
 			),
 		}
 	})
+	const requested = requestedPlans(store).map((request): PlanListRow => ({
+		planId: request.planId,
+		status: 'requested',
+		revision: null,
+		sha256: null,
+		since: request.since,
+		openGaps: [],
+		openBlockingGaps: [],
+		tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
+		approval: null,
+		blocked: [],
+	}))
+	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
 }
 
 export function planDetail(store: Store, planId: string, revision: number | null = null) {
@@ -459,7 +499,7 @@ export function pagedPlans(store: Store, query: ListQuery = {}) {
 		plan: (row) => row.planId,
 		tests: (row) => row.tests.total,
 		gaps: (row) => row.openGaps.length,
-		approval: (row) => row.approval,
+		approval: (row) => row.approval ?? row.status,
 		blocked: (row) => row.blocked.length,
 		updated: (row) => row.since,
 	}
@@ -473,7 +513,8 @@ export function pagedPlans(store: Store, query: ListQuery = {}) {
 			(filters.show !== 'blocked' || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
 	)
 	return pageOf(rows, options, columns, (row) => [
-		`${row.planId}@${row.revision}`,
+		row.revision === null ? row.planId : `${row.planId}@${row.revision}`,
+		row.status,
 		`${row.tests.total} tests ${row.tests.ready} ready ${row.tests.blocked} blocked ${row.tests.deferred} deferred`,
 		...row.openGaps,
 		row.approval,

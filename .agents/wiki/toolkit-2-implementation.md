@@ -265,9 +265,10 @@ In order, collect every reason (do not stop at the first):
 
 Export plain functions over a `Store`. The UI and the CLI use the same functions.
 
-- `inbox(store)`: `{ gaps: [{planId, revision, gapId, question, severity, since}], plans: [{planId, revision, sha256, since, summary}], results: [{runId, planId, revision, build, counts, coverage, sha256, since}] }`.
+- `inbox(store)`: `{ gaps: [{planId, revision, gapId, question, severity, since}], plans: [{planId, revision, sha256, since, summary}], results: [{runId, planId, revision, build, counts, coverage, sha256, since}], requests: [{planId, target, objective, since}] }`.
   Gaps: open gaps of latest revisions without a pending decision. Plans: latest revisions with approval policy
-  required and no approval row. Results: finalized runs with result policy required and no approval row.
+  required and no approval row. Results: finalized runs with result policy required and no approval row. Requests:
+  plan requests without a revision. `planList` also lists them with `status: 'requested'` and `revision: null`.
 - `planList(store)`, `planDetail(store, planId, revision?)`, `planHistory(store, planId)` (revisions with operation,
   actor, time, field changes against the previous revision), `runList(store, filters)`, `runDetail(store, runId)`
   (works for started runs: shows recorded assertion results and closed tests), `operationLog(store, {subject, limit, after})`,

@@ -6075,7 +6075,7 @@ function openPlan(store, actor, input) {
       body,
       operationId
     );
-    return { reply: completed(planId, { ...data, recorded: true }), subjects: [`plan:${planId}`] };
+    return { reply: completed(planId, { ...data, recorded: true }), subjects: [`plan:${planId}`, "inbox"] };
   });
 }
 function planRequest(store, planId) {
@@ -7421,6 +7421,19 @@ function latestRevisions(store) {
 		JOIN operations o ON o.id = p.operation_id ORDER BY p.plan_id`
   ).map((row) => ({ ...row, plan: JSON.parse(row.body) }));
 }
+function requestedPlans(store) {
+  return all(
+    store,
+    `SELECT r.plan_id, r.target_id, r.target_revision, r.body, o.at FROM plan_requests r
+		JOIN operations o ON o.id = r.operation_id
+		WHERE NOT EXISTS (SELECT 1 FROM plan_revisions p WHERE p.plan_id = r.plan_id) ORDER BY r.plan_id`
+  ).map((row) => ({
+    planId: row.plan_id,
+    target: `${row.target_id}@${row.target_revision}`,
+    objective: JSON.parse(row.body).objective,
+    since: row.at
+  }));
+}
 function planSummary(plan) {
   const count = (readiness) => plan.tests.filter((test) => test.readiness === readiness).length;
   const open = plan.gaps.filter((gap) => gap.status === "open").length;
@@ -7470,7 +7483,7 @@ function inbox(store) {
     sha256: row.sha256,
     since: row.finished_at
   }));
-  return { gaps, plans, results };
+  return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) };
 }
 function bySince(a, b2) {
   return a.since.localeCompare(b2.since);
@@ -7480,10 +7493,11 @@ function testCounts(plan) {
   return { total: plan.tests.length, ready: count("ready"), blocked: count("blocked"), deferred: count("deferred") };
 }
 function planList(store) {
-  return latestRevisions(store).map((row) => {
+  const drafted = latestRevisions(store).map((row) => {
     const open = row.plan.gaps.filter((gap) => gap.status === "open");
     return {
       planId: row.plan_id,
+      status: "drafted",
       revision: row.revision,
       sha256: row.sha256,
       since: row.at,
@@ -7499,6 +7513,19 @@ function planList(store) {
       )
     };
   });
+  const requested = requestedPlans(store).map((request) => ({
+    planId: request.planId,
+    status: "requested",
+    revision: null,
+    sha256: null,
+    since: request.since,
+    openGaps: [],
+    openBlockingGaps: [],
+    tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
+    approval: null,
+    blocked: []
+  }));
+  return [...drafted, ...requested].sort((a, b2) => a.planId.localeCompare(b2.planId));
 }
 function planDetail(store, planId, revision = null) {
   const selected = planRevision(store, planId, revision);
@@ -7759,7 +7786,7 @@ function pagedPlans(store, query = {}) {
     plan: (row) => row.planId,
     tests: (row) => row.tests.total,
     gaps: (row) => row.openGaps.length,
-    approval: (row) => row.approval,
+    approval: (row) => row.approval ?? row.status,
     blocked: (row) => row.blocked.length,
     updated: (row) => row.since
   };
@@ -7769,7 +7796,8 @@ function pagedPlans(store, query = {}) {
     (row) => (filters.approval === void 0 || row.approval === filters.approval) && (filters.show !== "needs_decision" || row.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row.approval === "pending") && (filters.show !== "blocked" || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
   );
   return pageOf(rows, options2, columns, (row) => [
-    `${row.planId}@${row.revision}`,
+    row.revision === null ? row.planId : `${row.planId}@${row.revision}`,
+    row.status,
     `${row.tests.total} tests ${row.tests.ready} ready ${row.tests.blocked} blocked ${row.tests.deferred} deferred`,
     ...row.openGaps,
     row.approval,
@@ -8785,7 +8813,7 @@ function inboxItems(waiting) {
   ];
 }
 function inboxCount(waiting) {
-  return waiting.gaps.length + waiting.plans.length + waiting.results.length;
+  return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.requests.length;
 }
 var countOrder = ["passed", "failed", "inconclusive", "error", "blocked", "not_run"];
 var countLook = {
@@ -8862,9 +8890,19 @@ function inboxPage(store) {
 				<span class="end"><span class="age">${time(result.since)}</span></span>
 			</a>`
   );
+  const requests = waiting.requests.map(
+    (request) => html2`<div class="item" data-key="request:${request.planId}">
+				<span class="id">${request.planId}</span>
+				<span class="what"
+					>${request.objective} · target <code>${request.target}</code> · run
+					<code>/checkmate:plan ${request.planId}</code></span
+				>
+				<span class="end">${pill("requested")} <span class="age">${time(request.since)}</span></span>
+			</div>`
+  );
   const sub = total ? `${plural(total, "item")} ${total === 1 ? "waits" : "wait"} for you, oldest first.` : null;
   const body = total ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Plans to approve", plans, "plans")}
-			${group("Results to accept", results, "results")}` : emptyInbox(store);
+			${group("Results to accept", results, "results")} ${group("Plans to draft", requests, "requests")}` : emptyInbox(store);
   return {
     title: "Inbox",
     section: "inbox",
@@ -9069,7 +9107,18 @@ function testSummary(tests) {
 			ready${tests.blocked ? ` \xB7 ${tests.blocked} blocked` : ""}${tests.deferred ? ` \xB7 ${tests.deferred} deferred` : ""}</span
 		>`;
 }
+function requestedPlanRow(row) {
+  return html2`<tr data-key="plan:${row.planId}" data-nav-row>
+		<td><span class="mono">${row.planId}</span></td>
+		<td><span class="muted">no revision yet</span></td>
+		<td><span class="muted">none</span></td>
+		<td>${pill("requested")}</td>
+		<td><span class="muted">none</span></td>
+		<td class="nowrap">${time(row.since)}</td>
+	</tr>`;
+}
 function planRow(row) {
+  if (row.status === "requested") return requestedPlanRow(row);
   return html2`<tr data-key="plan:${row.planId}" data-nav-row>
 		<td>
 			<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item>${row.planId}@${row.revision}</a>
@@ -9085,7 +9134,7 @@ function planRow(row) {
     ", "
   ) : html2`<span class="muted">none</span>`}
 		</td>
-		<td>${pill(row.approval)}</td>
+		<td>${pill(row.approval ?? row.status)}</td>
 		<td>
 			${row.blocked.length ? html2`<ul class="plain">
 							${row.blocked.map(
@@ -10983,7 +11032,12 @@ var commands = {
     print: (reply) => {
       const waiting = reply.data;
       return {
-        facts: { gaps: waiting.gaps.length, plans: waiting.plans.length, results: waiting.results.length },
+        facts: {
+          gaps: waiting.gaps.length,
+          plans: waiting.plans.length,
+          results: waiting.results.length,
+          requests: waiting.requests.length
+        },
         lines: [
           ...waiting.gaps.map((gap) => [
             `${gap.planId}@${gap.revision}/${gap.gapId}`,
@@ -11004,6 +11058,12 @@ var commands = {
             result.build,
             result.coverage,
             Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`)
+          ]),
+          ...waiting.requests.map((request) => [
+            request.planId,
+            "requested",
+            request.target,
+            request.objective
           ])
         ]
       };
@@ -11128,12 +11188,14 @@ var commands = {
     },
     print: (reply) => ({
       facts: { count: reply.data.plans.length },
-      lines: reply.data.plans.map((plan) => [
-        `${plan.planId}@${plan.revision}`,
-        `gaps=${cell2(plan.openBlockingGaps)}`,
-        `approval=${plan.approval}`,
-        `blocked=${cell2(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`
-      ])
+      lines: reply.data.plans.map(
+        (plan) => plan.status === "requested" ? [plan.planId, "status=requested"] : [
+          `${plan.planId}@${plan.revision}`,
+          `gaps=${cell2(plan.openBlockingGaps)}`,
+          `approval=${plan.approval}`,
+          `blocked=${cell2(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`
+        ]
+      )
     })
   },
   "plan diff": {

@@ -112,7 +112,12 @@ const commands: Record<string, Command> = {
 		print: (reply) => {
 			const waiting = reply.data as ReturnType<typeof inbox>
 			return {
-				facts: { gaps: waiting.gaps.length, plans: waiting.plans.length, results: waiting.results.length },
+				facts: {
+					gaps: waiting.gaps.length,
+					plans: waiting.plans.length,
+					results: waiting.results.length,
+					requests: waiting.requests.length,
+				},
 				lines: [
 					...waiting.gaps.map((gap) => [
 						`${gap.planId}@${gap.revision}/${gap.gapId}`,
@@ -133,6 +138,12 @@ const commands: Record<string, Command> = {
 						result.build,
 						result.coverage,
 						Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`),
+					]),
+					...waiting.requests.map((request) => [
+						request.planId,
+						'requested',
+						request.target,
+						request.objective,
 					]),
 				],
 			}
@@ -273,12 +284,16 @@ const commands: Record<string, Command> = {
 		},
 		print: (reply) => ({
 			facts: { count: (reply.data.plans as unknown[]).length },
-			lines: (reply.data.plans as ReturnType<typeof planList>).map((plan) => [
-				`${plan.planId}@${plan.revision}`,
-				`gaps=${cell(plan.openBlockingGaps)}`,
-				`approval=${plan.approval}`,
-				`blocked=${cell(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`,
-			]),
+			lines: (reply.data.plans as ReturnType<typeof planList>).map((plan) =>
+				plan.status === 'requested'
+					? [plan.planId, 'status=requested']
+					: [
+							`${plan.planId}@${plan.revision}`,
+							`gaps=${cell(plan.openBlockingGaps)}`,
+							`approval=${plan.approval}`,
+							`blocked=${cell(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`,
+						]
+			),
 		}),
 	},
 	'plan diff': {

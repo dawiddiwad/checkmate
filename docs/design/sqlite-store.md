@@ -1,15 +1,16 @@
 # Design: SQLite store and npm CLI
 
-Status: draft for review. Contract version: `toolkit-2`.
+Status: draft for review. Contract version: `toolkit-2`. All open questions of the first draft are resolved in section 3.
 
 ## 1. Goals
 
 - Replace the JSON files with one SQLite database.
 - Keep plans, decisions, approvals, runs, outcomes, evidence, and the operation log in the database.
-- Make runs resumable. Record each test outcome when the agent finishes the test.
+- Make runs resumable. Record each assertion result when the agent checks it.
+- Give each test an explicit list of assertions. One failed assertion fails the test.
 - Reduce tokens. Agents read only the fields they need and write only the changes.
 - Support hundreds of plans. Plans can depend on other plans and can block other plans.
-- Let a human approve plans and accept results in a local UI.
+- Let a human approve plans and accept results in a local UI that is simple, elegant, and easy to use.
 - Ship a self-contained Claude Code plugin and a separate npm CLI that starts Claude Code with that plugin.
 
 ## 2. Non-goals
@@ -22,18 +23,23 @@ Status: draft for review. Contract version: `toolkit-2`.
 
 ## 3. Decisions
 
-| Topic                 | Decision                                                                                       |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                    |
-| Human gate            | A human approves a plan revision before execution and accepts a result after execution.        |
-| Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only). |
-| Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                              |
-| Dependency rule       | The latest finalized result for the same application build must show `passed`.                 |
-| Evidence              | Evidence bytes are BLOBs in the database. Each blob is content-addressed by SHA-256.           |
-| Audit                 | Each command records one operation row with the actor, the arguments, and the response.        |
-| Views                 | Markdown and HTML are on-demand exports. The UI reads the database directly.                   |
-| Interface             | CLI flags for small writes. JSON on stdin for structured payloads. Compact output.             |
-| Merge                 | Not built now. The schema keeps a later merge possible (section 13).                           |
+| Topic                 | Decision                                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                                           |
+| Human gate            | A human approves a plan revision before execution and accepts a result after execution.                               |
+| Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only).                        |
+| Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                                                     |
+| Dependency rule       | The latest finalized result for the same application build must show `passed`.                                        |
+| Evidence              | Evidence bytes are BLOBs in the database. Each blob is content-addressed by SHA-256.                                  |
+| Audit                 | Each command records one operation row with the actor, the arguments, and the response.                               |
+| Views                 | Markdown and HTML are on-demand exports. The UI reads the database directly.                                          |
+| Interface             | CLI flags for small writes. JSON on stdin for structured payloads. Compact output.                                    |
+| Assertions            | Each test has a list of assertions. A test passes only when all assertions pass. One failed assertion fails the test. |
+| Approval default      | The profile requires plan approval and result acceptance by default.                                                  |
+| Evidence size         | The limit is 32 MiB for one evidence file.                                                                            |
+| Resume                | `run resume` can record stalled tests as `error` in one step.                                                         |
+| Package name          | The npm package is `@xoxoai/checkmate`.                                                                               |
+| Merge                 | Not built now. The schema keeps a later merge possible (section 14).                                                  |
 
 ## 4. Package layout
 
@@ -168,13 +174,25 @@ CREATE TABLE run_attempts (
   PRIMARY KEY (run_id, attempt)
 ) STRICT;
 
+CREATE TABLE assertion_results (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  test_id TEXT NOT NULL,
+  assertion_id TEXT NOT NULL,
+  attempt INTEGER NOT NULL,
+  result TEXT NOT NULL,           -- passed | failed | not_checked
+  observed TEXT,                  -- required for passed and failed
+  reason TEXT,                    -- required for not_checked
+  recorded_at TEXT NOT NULL,
+  operation_id TEXT NOT NULL REFERENCES operations(id),
+  PRIMARY KEY (run_id, test_id, assertion_id)
+) STRICT;
+
 CREATE TABLE outcomes (
   run_id TEXT NOT NULL REFERENCES runs(run_id),
   test_id TEXT NOT NULL,
   attempt INTEGER NOT NULL,
   outcome TEXT NOT NULL,          -- passed | failed | blocked | not_run | error
-  observed TEXT,
-  reason TEXT,
+  reason TEXT,                    -- required for blocked, not_run, and error
   recorded_at TEXT NOT NULL,
   operation_id TEXT NOT NULL REFERENCES operations(id),
   PRIMARY KEY (run_id, test_id)
@@ -184,6 +202,7 @@ CREATE TABLE evidence (
   id TEXT PRIMARY KEY,            -- ULID
   run_id TEXT NOT NULL REFERENCES runs(run_id),
   test_id TEXT NOT NULL,
+  assertion_id TEXT,              -- NULL for evidence of the whole test, for example an error screenshot
   kind TEXT NOT NULL,
   name TEXT NOT NULL,             -- original file name, for export
   media_type TEXT NOT NULL,
@@ -194,7 +213,7 @@ CREATE TABLE evidence (
 CREATE TABLE findings (
   id TEXT NOT NULL,
   run_id TEXT NOT NULL REFERENCES runs(run_id),
-  body TEXT NOT NULL,             -- JSON: type, severity, tests, requirements, reproduction, evidence IDs
+  body TEXT NOT NULL,             -- JSON: type, severity, tests, assertions, requirements, reproduction, evidence IDs
   operation_id TEXT NOT NULL REFERENCES operations(id),
   PRIMARY KEY (run_id, id)
 ) STRICT;
@@ -248,7 +267,53 @@ CREATE TRIGGER plan_revisions_immutable BEFORE UPDATE ON plan_revisions
 BEGIN SELECT RAISE(ABORT, 'Plan revisions are immutable'); END;
 ```
 
-## 7. Plans
+## 7. Tests and assertions
+
+A test has one action and a list of assertions. An assertion is one thing that the agent must check. It replaces the single `expected` field and the single `oracleKind` field of `toolkit-1`.
+
+```json
+{
+	"id": "T2",
+	"requirementIds": ["R2"],
+	"capability": "http",
+	"operations": ["create_fixture_order", "apply_fixture_discount"],
+	"dependsOn": ["login:T3"],
+	"preconditions": ["Cart has one 400 PLN item and 20 PLN loyalty."],
+	"action": "Apply the 40 percent promotion and read the quote.",
+	"assertions": [
+		{ "id": "A1", "check": "The response status is HTTP 200.", "oracleKind": "deterministic" },
+		{ "id": "A2", "check": "totalPLN equals 240.", "oracleKind": "deterministic" },
+		{ "id": "A3", "check": "The quote does not list the loyalty discount.", "oracleKind": "agent_observation" }
+	]
+}
+```
+
+### Plan rules
+
+- A ready test has one or more assertions.
+- An assertion ID is unique in its test. An assertion is referenced as `<testId>.<assertionId>`, for example `T2.A2`.
+- Each assertion has a non-empty `check` and an `oracleKind`: `deterministic` or `agent_observation`.
+- An unknown expected result is a blocking gap. A test with such a gap is blocked. Do not write an assertion with an unknown expected result.
+- A revision can add, change, or remove assertions only in a test that a decision affects. A revision cannot reuse the ID of a removed assertion.
+
+### Run rules
+
+- The agent records one result for each assertion: `passed`, `failed`, or `not_checked`.
+- `passed` and `failed` need an observation and one or more evidence files.
+- `not_checked` needs a reason, for example `Stopped after A1 failed: the quote was not created.`
+- After a failed assertion, the agent continues with the assertions that it can still check. The agent records the others as `not_checked`.
+- Checkmate calculates the test outcome from the assertion results. The agent does not set it:
+
+| Assertion results                        | Test outcome |
+| ---------------------------------------- | ------------ |
+| All `passed`                             | `passed`     |
+| One or more `failed`                     | `failed`     |
+| None `failed`, one or more `not_checked` | `error`      |
+
+- A test that the agent did not start has no assertion results. The agent records it as `blocked`, `not_run`, or `error` with a reason.
+- Each failed assertion is in a `defect` finding. A finding names its assertions, for example `"assertionIds": ["T2.A2"]`. A defect names one or more failed assertions.
+
+## 8. Plans
 
 ### Create
 
@@ -257,7 +322,7 @@ BEGIN SELECT RAISE(ABORT, 'Plan revisions are immutable'); END;
 3. The skill writes a candidate and runs `checkmate plan save <planId> < candidate.json`.
 4. Checkmate sets readiness and coverage, checks the candidate, and stores revision 1.
 
-The rules from `toolkit-1` stay: requirements and sources do not change, the first revision has no decisions or assumptions, and a ready test needs an expected result, a capability of the target, and permitted operations.
+The rules from `toolkit-1` stay: requirements and sources do not change, the first revision has no decisions or assumptions, and a ready test needs one or more assertions, a capability of the target, and permitted operations.
 
 ### Decide and revise
 
@@ -269,13 +334,21 @@ The decision and its implementation are separate steps. The caller has the autho
 
 ```json
 {
-	"tests": { "T2": { "expected": "HTTP 200 and totalPLN equals 240.", "preconditions": ["Cart has 20 PLN loyalty."] } },
+	"tests": {
+		"T2": {
+			"preconditions": ["Cart has 20 PLN loyalty."],
+			"assertions": {
+				"A2": { "check": "totalPLN equals 240." },
+				"A4": { "check": "The quote lists the promotion once.", "oracleKind": "deterministic" }
+			}
+		}
+	},
 	"gaps": { "G1": { "status": "resolved" }, "G2": { "status": "deferred" } },
 	"assumptions": []
 }
 ```
 
-4. Checkmate builds the next revision from the latest revision, the delta, and the pending decisions. It appends the decisions, sets `decisionId` on each gap, recalculates readiness and coverage, and checks the result. A delta can change only the fields that `toolkit-1` lets a revision change: `expected`, `action`, `preconditions`, and `oracleKind` of affected tests, and the status of decided gaps. Checkmate refuses other changes.
+4. Checkmate builds the next revision from the latest revision, the delta, and the pending decisions. It appends the decisions, sets `decisionId` on each gap, recalculates readiness and coverage, and checks the result. A delta can change only the `action`, `preconditions`, and `assertions` of affected tests, and the status of decided gaps. In `assertions`, a known ID changes that assertion, a new ID adds an assertion, and `null` removes an assertion. Checkmate refuses other changes.
 5. Checkmate marks the decisions as applied.
 
 A revision needs a base. Checkmate uses the latest revision in the same transaction. A concurrent revision fails with the primary key. This replaces the `readdir` check.
@@ -303,7 +376,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 - The gate reports each block with its cause, for example `Blocked by login:T3: no passed result for build fixture-build-1`.
 - `checkmate plan list --blocked` shows plans with blocked tests and the cause.
 
-## 8. Runs
+## 9. Runs
 
 ### State machine
 
@@ -324,18 +397,24 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 
 1. `checkmate run gate <planId@rev> --tests T1,T2 --build <build>` checks the gate without side effects.
 2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|run_ready] [--on-new-blocker return_to_caller|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
-3. For each test, the agent runs `checkmate run record <runId> <testId> --outcome <outcome> [--observed <text>] [--reason <text>] [--evidence <file>[:kind]]...`.
-   - Checkmate copies `expected` and `assertionKind` from the plan. The agent does not send them.
+3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence <file>[:kind]]...`.
+   - The agent does not send the check text or the oracle kind. Checkmate copies them from the plan.
    - Checkmate reads each evidence file, stores the bytes as a blob, and records the evidence row. The agent writes evidence files to `.checkmate/tmp/<runId>/` first. Checkmate deletes each file after it stores it.
-   - Checkmate checks the rules for one test now: the test is selected and ready, a verdict has an observation and evidence, and a prerequisite passed before a verdict.
-   - An outcome is final. A second `record` for the same test fails.
-4. `checkmate run finding <runId> < finding.json` and `checkmate run gap <runId> < gap.json` record findings and new gaps.
-5. `checkmate run finish <runId> --completion <completion> --cleanup <status> --cleanup-reason <text>` checks the rules for the whole run (section 9), adds `not_run` for unselected tests, calculates coverage, and stores the result.
+   - Checkmate checks the rules for one assertion now: the test is selected and ready, its prerequisites passed, and a `passed` or `failed` result has an observation and evidence.
+   - An assertion result is final. A second `check` for the same assertion fails.
+4. When the agent has a result for each assertion of a test, it runs `checkmate run close <runId> <testId>`. Checkmate calculates the test outcome (section 7) and prints it.
+   - For a test that the agent did not start, the agent runs `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason <text>`.
+   - A tool failure during a test is `--outcome error`. The assertion results that the agent recorded before the failure stay.
+   - A test outcome is final. A second `close` for the same test fails.
+5. `checkmate run finding <runId> < finding.json` and `checkmate run gap <runId> < gap.json` record findings and new gaps.
+6. `checkmate run finish <runId> --completion <completion> --cleanup <status> --cleanup-reason <text>` checks the rules for the whole run (section 10), adds `not_run` for unselected tests, calculates coverage, and stores the result.
 
 ### Resume
 
-- `checkmate run resume <runId>` lists the selected tests that have no outcome and records a new attempt.
-- Checkmate does not repeat a test automatically. An agent can have done actions of a test that had no outcome when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The caller decides to run it or to record it as `error`.
+- `checkmate run resume <runId>` records a new attempt. It lists each selected test that is not closed, with the assertions that have no result.
+- Recorded assertion results stay. The agent checks only the assertions that have no result.
+- Checkmate does not repeat a test automatically. An agent can have done actions of a test that was not closed when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The caller decides to continue it or to record it as `error`.
+- `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error` and records the new attempt in one step.
 - A deadline or a worker failure in `delegate` does not finalize the run with `error` for every test, as `toolkit-1` does. The run stays `started`. Recorded outcomes stay. The response tells the caller to resume or finish.
 
 ### Result acceptance
@@ -343,20 +422,20 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 - `checkmate result accept <runId> --actor <name> --rationale <text>` and `checkmate result reject ...` record an approval with the result digest.
 - Acceptance is a caller record. It is not a release decision by Checkmate.
 
-## 9. Rules kept from toolkit-1
+## 10. Rules kept from toolkit-1
 
 The rules in `stages.ts` move to the new commands. They do not change in meaning:
 
 - Revisions are immutable and linear. A revision cannot change requirements, sources, test inventory, gap inventory, unrelated tests, or prior decisions and assumptions.
-- A verdict needs an observation and evidence. The expected result and assertion kind match the plan.
+- A `passed` or `failed` assertion result needs an observation and evidence. The check text and oracle kind come from the plan.
 - A failed assertion needs a defect finding. A defect needs a failed assertion.
-- A finding's requirements and evidence match its tests.
+- A finding's requirements and evidence match its tests and assertions.
 - A runtime gap is new and open.
 - `completed` is not possible with an `error` outcome, a failed cleanup, or a selected test that was not run without a cause.
 - Completion, test outcomes, and coverage stay separate fields.
 - A retest is a new run with a new build. The prior run does not change.
 
-## 10. Command interface
+## 11. Command interface
 
 ### Output
 
@@ -366,9 +445,12 @@ The rules in `stages.ts` move to the new commands. They do not change in meaning
 - `--fields` selects fields. `--tests`, `--gaps`, and `--requirements` select items.
 
 ```text
-$ checkmate plan show checkout@2 --tests T2 --fields readiness,expected
+$ checkmate plan show checkout@2 --tests T2 --fields readiness,assertions
 completed checkout@2 sha256=2f9c2ef0
-T2	ready	HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.
+T2	ready
+T2.A1	deterministic	The response status is HTTP 200.
+T2.A2	deterministic	totalPLN equals 240.
+T2.A3	agent_observation	The quote does not list the loyalty discount.
 ```
 
 ### Common options
@@ -380,49 +462,93 @@ T2	ready	HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.
 
 ### Commands
 
-| Command                                                                                     | Package | Purpose                                      |
-| ------------------------------------------------------------------------------------------- | ------- | -------------------------------------------- |
-| `init`                                                                                      | plugin  | Create the database.                         |
-| `target save < profile.json`, `target show <id@rev>`                                        | plugin  | Store and read a target profile.             |
-| `plan open`, `plan request`, `plan save`                                                    | plugin  | Create a plan.                               |
-| `plan show`, `plan list`, `plan diff <id> <a> <b>`                                          | plugin  | Read plans. `diff` prints a JSON Patch.      |
-| `gap answer`, `plan pending`, `plan revise`                                                 | plugin  | Decide and revise.                           |
-| `plan approve`, `plan reject`                                                               | plugin  | Plan gate.                                   |
-| `run gate`, `run begin`, `run record`, `run finding`, `run gap`, `run finish`, `run resume` | plugin  | Execute.                                     |
-| `run show`, `run list`                                                                      | plugin  | Read runs.                                   |
-| `result accept`, `result reject`                                                            | plugin  | Result gate.                                 |
-| `evidence get <id> --out <file>`                                                            | plugin  | Write evidence bytes to a file for viewing.  |
-| `export plan\|run <id> --format md\|html\|json --out <file>`                                | plugin  | Generate views.                              |
-| `log [--subject <id>]`                                                                      | plugin  | Read the operation log.                      |
-| `query "<sql>"`                                                                             | plugin  | Read-only SQL. The database opens read-only. |
-| `delegate <stage> ... --allow <rule>...`                                                    | npm     | Run a stage in a new Claude Code session.    |
-| `ui [--port <n>]`                                                                           | npm     | Start the local review UI.                   |
+| Command                                                                                                 | Package | Purpose                                      |
+| ------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------- |
+| `init`                                                                                                  | plugin  | Create the database.                         |
+| `target save < profile.json`, `target show <id@rev>`                                                    | plugin  | Store and read a target profile.             |
+| `plan open`, `plan request`, `plan save`                                                                | plugin  | Create a plan.                               |
+| `plan show`, `plan list`, `plan diff <id> <a> <b>`                                                      | plugin  | Read plans. `diff` prints a JSON Patch.      |
+| `gap answer`, `plan pending`, `plan revise`                                                             | plugin  | Decide and revise.                           |
+| `plan approve`, `plan reject`                                                                           | plugin  | Plan gate.                                   |
+| `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume` | plugin  | Execute.                                     |
+| `run show`, `run list`                                                                                  | plugin  | Read runs.                                   |
+| `result accept`, `result reject`                                                                        | plugin  | Result gate.                                 |
+| `evidence get <id> --out <file>`                                                                        | plugin  | Write evidence bytes to a file for viewing.  |
+| `export plan\|run <id> --format md\|html\|json --out <file>`                                            | plugin  | Generate views.                              |
+| `log [--subject <id>]`                                                                                  | plugin  | Read the operation log.                      |
+| `query "<sql>"`                                                                                         | plugin  | Read-only SQL. The database opens read-only. |
+| `delegate <stage> ... --allow <rule>...`                                                                | npm     | Run a stage in a new Claude Code session.    |
+| `ui [--port <n>]`                                                                                       | npm     | Start the local review UI.                   |
 
 ### Operation log and replay
 
 Each command records one `operations` row in the same transaction as its change. A refused write records its row in a separate transaction, so the log also shows refusals. The row has the flags and the stdin payload. `checkmate log` shows the history of a plan or run. The plan history and the operation log together give the "who changed what, when, and why" view. `plan diff` gives the change itself.
 
-## 11. Evidence
+## 12. Evidence
 
+- Evidence belongs to one assertion, or to the whole test when it shows an error.
 - Evidence bytes are BLOBs in `blobs`. The key is the SHA-256 of the bytes. Equal files are stored once.
 - The maximum size of one evidence file is 32 MiB. `node:sqlite` reads and writes a BLOB as one buffer, so a larger limit uses too much memory.
 - The media type comes from the file extension. Unknown extensions use `application/octet-stream`.
 - `evidence get` and the UI give the bytes back. The UI serves them with the stored media type and `Content-Disposition: attachment` for types other than images and plain text.
 - Checkmate does not sanitize evidence. The caller owns what an agent captures and how long the database keeps it. Do not capture credentials, cookies, authorization headers, or full transcripts.
 
-## 12. UI
+## 13. Review UI
 
 `checkmate ui` starts a server with `node:http`. It listens only on `127.0.0.1`. It has no external resources and no npm dependencies.
 
-- Pages: plans list (status, open gaps, approval, blocks), plan revision (requirements, tests, gaps, decisions, diff to the previous revision), run (outcomes, evidence, findings, coverage), and operation log.
-- Actions: answer a gap, approve or reject a plan revision, and accept or reject a result.
+The UI has one job: show the human what waits for a decision, and let them decide with full context. It is calm, minimal, and fast. It looks like the design document: the four-square mark, the same fonts, and the same colors.
+
+### Visual language
+
+- **Mark.** Four squares in a row. The third square is filled. It appears in the page header.
+- **Type.** Space Grotesk for headings, Inter for text, and JetBrains Mono for IDs, digests, builds, and code. The npm package includes the WOFF2 files. All three fonts use the SIL Open Font License 1.1. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
+- **Color.** Neutral greys with a green tint, one deep-green accent, and white or near-black surfaces. Status colors (passed, failed, blocked, warning) are separate from the accent. The UI follows the system light or dark setting. A toggle in the header overrides it.
+- **Status in form and text.** Each status has an icon, a word, and a color, for example `✓ passed` and `✗ failed`. Color is never the only signal.
+- **Restraint.** Borders mark separate objects only. No shadows on lists. No animation except a short fade for toasts. The UI respects `prefers-reduced-motion`.
+- **Accessibility.** Contrast meets WCAG 2.2 AA in both themes. Each control has a label and a visible focus ring. Pages use landmarks and headings in order.
+
+### Pages
+
+| Page  | URL                 | Content                                                                                                                                  |
+| ----- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Inbox | `/`                 | Items that wait for a human, oldest first, in three groups: gaps to answer, plans to approve, results to accept. This is the start page. |
+| Plans | `/plans`            | All plans with status, open gaps, approval, and blocks. Filters and search by ID.                                                        |
+| Plan  | `/plans/checkout@2` | Tests with their assertions, gaps, requirements and coverage, decisions, and history with a diff for each revision.                      |
+| Runs  | `/runs`             | All runs with plan, build, completion, coverage, and acceptance. Filters by plan, build, and status.                                     |
+| Run   | `/runs/run-7`       | Summary, each test with its assertion results and evidence, findings, new gaps, coverage, and cleanup.                                   |
+| Log   | `/log`              | The operation log. Filters by subject and actor.                                                                                         |
+
+The navigation shows the number of inbox items. An empty inbox says `Nothing waits for you.` and links to the latest runs.
+
+### Interaction rules
+
+- **Server-rendered HTML and plain forms.** Each page works without JavaScript. A small script adds keyboard shortcuts, the evidence viewer, and the inbox count refresh.
+- **Post, redirect, get.** A form posts, the server redirects, and the browser loads the result. A reload does not send the form again.
+- **One primary action for each page.** The decision panel is on the right on a wide screen and at the bottom on a narrow screen. It shows the subject (`checkout@2`), the digest, and the action buttons.
+- **A rationale is required.** The action button stays disabled until the rationale field has text.
+- **Confirm in place.** The first click on `Approve checkout@2` changes the panel to a short summary and a `Confirm` button. The UI does not use modal dialogs.
+- **Queue flow.** After an action, the UI shows a toast (`Approved checkout@2`) and opens the next inbox item. `Back to inbox` is always one click away.
+- **Gap answer form.** A segmented control selects `Clarify`, `Accept assumption`, or `Defer`. Help text below the control says what each kind does. The source field is shown and required for `Clarify` only.
+- **Stale data.** Each form sends the digest of the snapshot on the page. If the snapshot changed, Checkmate refuses the action. The UI keeps the typed text and shows a banner: `checkout has a newer revision (3). Your decision was not recorded. Review revision 3.`
+- **Evidence.** Images show as thumbnails and open in a viewer. Text shows inline in monospace. Other types download.
+- **Assertion results.** A run page shows each assertion as one row: the icon, the check text, and the observation. A failed row opens by default. Passed rows stay closed.
+- **Diff.** The history shows field changes, for example `T2.A2 check: "totalPLN equals 220." → "totalPLN equals 240."`. It does not show raw JSON Patch.
+- **Stable links.** Each URL identifies one object and can be shared on the same host, for example `/plans/checkout@2#T2`.
+- **Keyboard.** `/` focuses search. `j` and `k` move in a list. `Enter` opens the item. `Esc` closes the evidence viewer. `?` shows the shortcuts.
+- **Live state.** While a run is `started`, the run page and the inbox count refresh every 5 seconds. The refresh stops when the page is hidden.
+- **Errors.** An error message says what went wrong and what to do next. It does not show a stack trace.
+- **Narrow screens.** The layout becomes one column. Tables scroll inside their container.
+
+### Security
+
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
 - The UI asks for the actor name once and keeps it in a cookie.
-- Each form sends the digest of the snapshot the person saw. Checkmate refuses the action if the snapshot changed.
 - The server escapes all stored text. Plan and evidence text is untrusted data.
 - The server checks the `Host` and `Origin` headers and uses a random per-start token in each form. This blocks a write from another web page in the same browser.
+- The server sends a strict Content Security Policy: same origin only, no inline script, no remote resources.
 
-## 13. Later: merge of databases
+## 14. Later: merge of databases
 
 Not built now. These design choices keep it possible:
 
@@ -432,45 +558,39 @@ Not built now. These design choices keep it possible:
 
 A later `checkmate merge <other.db>` attaches the other database and inserts missing rows. Equal rows have the same key and digest. A conflict is the same key with a different digest, for example two different revisions with the same number of the same plan. The command stops and reports each conflict. The caller decides. Runs do not conflict, because run IDs are unique.
 
-## 14. Skills
+## 15. Skills
 
 The skills keep their stages. The instructions change:
 
 - Skills read through `plan show`, `plan request`, `plan pending`, and `run resume`. They do not read files.
 - `revise` writes a delta. It does not write a full plan.
-- `execute` runs `run record` after each test. It does not write one observation at the end.
+- `execute` runs `run check` after each assertion and `run close` after each test. It does not write one observation at the end.
 - `report` runs `export`.
 - A delegated stage writes to the database through the same commands. The parent does not publish a candidate. The parent reads the operation log and the result.
 
-## 15. Tests
+## 16. Tests
 
 - Store: schema creation, immutability triggers, foreign keys, WAL with two connections.
 - Plans: create, delta revise, refused deltas, concurrent revise, approval required by the gate, new revision needs new approval.
 - Cross-plan: missing plan or test, cycle refused, block by missing result, block by failed result, block by unaccepted result, block by open gap in another plan.
-- Runs: one test recorded at a time, second record refused, resume after a stopped worker, finish rules, retest rules.
+- Assertions: a ready test without assertions refused, outcome calculated from assertion results, one failed assertion fails the test, `not_checked` without a failure gives `error`, failed assertion without a defect refused, assertion delta add, change, and remove.
+- Runs: one assertion recorded at a time, second check refused, second close refused, resume keeps recorded assertions, `resume --error`, finish rules, retest rules.
 - Evidence: blob deduplication, size limit, export bytes equal input bytes.
 - CLI: compact and JSON output, `--fields`, `--expect-sha`, read-only `query` refuses writes.
 - Operation log: one row per command, refused writes recorded.
-- UI: each action uses the core function, stale digest refused, Host and Origin checks, escaping.
+- UI: each action uses the core function, rationale required, stale digest refused with typed text kept, post-redirect-get, Host and Origin checks, escaping, pages work without JavaScript, keyboard navigation, contrast in both themes.
 - Packaging: the npm package runs from `node_modules`, `delegate` loads the bundled plugin, and the plugin and CLI versions are equal.
 - Live: one plan, revise, approve, execute, resume, and accept cycle with Claude Code.
 
-## 16. Implementation order
+## 17. Implementation order
 
 1. Store: schema, triggers, canonical JSON, digests, operation log.
 2. Targets and plans: create, show, delta revise, decisions, diff.
 3. Approvals and the gate, with cross-plan dependencies.
-4. Runs: begin, record, finding, gap, finish, resume, and evidence blobs.
+4. Runs: begin, check, close, finding, gap, finish, resume, and evidence blobs.
 5. Export and the report views.
 6. Skills update.
-7. npm CLI: bundle, `delegate`, `ui`.
+7. npm CLI: bundle, `delegate`, `ui` with local fonts.
 8. Documentation: README, CONFIGURATION, CLI, EVIDENCE, architecture wiki.
 
 Each step keeps `npm run phase:verify` green. The JSON file code is removed when step 4 is complete.
-
-## 17. Open questions
-
-1. Should the profile's approval policy default to `required` for both plans and results, or `none`?
-2. Is 32 MiB a sufficient limit for one evidence file? A screen video can be larger.
-3. Should `run resume` let the caller mark a stalled test as `error` in one step, or should the caller use `run record`?
-4. Is the npm package name `@xoxoai/checkmate` correct for the public package?

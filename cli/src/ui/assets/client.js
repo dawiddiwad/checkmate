@@ -286,9 +286,11 @@ async function refresh() {
 	if (refreshing) return void (again = true)
 	refreshing = true
 	try {
-		const response = await fetch(location.pathname + location.search, { cache: 'no-store' })
+		const path = location.pathname + location.search
+		const response = await fetch(path, { cache: 'no-store' })
 		if (!response.ok) return
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		if (path !== location.pathname + location.search || filterRequest || filterTimer) return
 		const messages = []
 		for (const region of [...document.querySelectorAll('[data-region]')]) {
 			const name = region.dataset.region
@@ -366,3 +368,101 @@ if (location.hash === '#decide' || location.hash === '#answer')
 	})
 else if (body.dataset.subjects === 'inbox' && navItems().length) navItems()[0].focus({ preventScroll: true })
 connect()
+
+let filterTimer = null
+let filterRequest = null
+
+function filterUrl(form) {
+	const url = new URL(location.pathname, location.origin)
+	url.search = new URLSearchParams(new FormData(form)).toString()
+	return url
+}
+
+async function filterList(url, push = true) {
+	clearTimeout(filterTimer)
+	filterTimer = null
+	filterRequest?.abort()
+	const request = new window.AbortController()
+	filterRequest = request
+	try {
+		const response = await fetch(url, { cache: 'no-store', signal: request.signal })
+		if (!response.ok) throw new Error('Could not load the list.')
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		if (request.signal.aborted) return
+		const form = document.querySelector('[data-list-filters]')
+		const replacement = fresh.querySelector('[data-list-filters]')
+		if (!form || !replacement) return
+		for (const field of form.elements) {
+			const next = replacement.elements.namedItem(field.name)
+			if (next && field.value !== next.value) field.value = next.value
+		}
+		const clear = form.querySelector('[data-list-link]')
+		const nextClear = replacement.querySelector('[data-list-link]')
+		if (clear && !nextClear) clear.remove()
+		else if (!clear && nextClear) form.append(document.importNode(nextClear, true))
+		for (const region of document.querySelectorAll('[data-list][data-region]')) {
+			const next = fresh.querySelector(`[data-region="${region.dataset.region}"]`)
+			if (!next) continue
+			replaceRegion(region, next, served.get(region.dataset.region))
+			served.set(region.dataset.region, next.cloneNode(true))
+		}
+		if (push) window.history.pushState(null, '', url)
+		announce(document.querySelector('[data-list-count]')?.textContent)
+	} catch (error) {
+		if (error.name !== 'AbortError') announce('Could not load the list. Use Filter to try again.')
+	} finally {
+		if (filterRequest === request) filterRequest = null
+	}
+}
+
+document.addEventListener('input', (event) => {
+	const form = event.target.closest('[data-list-filters]')
+	if (!form || event.target.tagName !== 'INPUT') return
+	filterRequest?.abort()
+	clearTimeout(filterTimer)
+	filterTimer = setTimeout(() => filterList(filterUrl(form)), 250)
+})
+
+document.addEventListener('change', (event) => {
+	const form = event.target.closest('[data-list-filters]')
+	if (form && event.target.tagName === 'SELECT') filterList(filterUrl(form))
+})
+
+document.addEventListener('submit', (event) => {
+	if (!event.target.matches('[data-list-filters]')) return
+	event.preventDefault()
+	filterList(filterUrl(event.target))
+})
+
+document.addEventListener('click', (event) => {
+	const link = event.target.closest('[data-list-link]')
+	if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
+	event.preventDefault()
+	filterList(new URL(link.href))
+})
+
+window.addEventListener('popstate', () => {
+	if (document.querySelector('[data-list-filters]')) filterList(new URL(location.href), false)
+})
+
+document.addEventListener('click', async (event) => {
+	if (!(event.target instanceof window.Element)) return
+	if (event.target.closest('[data-print-report]')) window.print()
+	const link = event.target.closest('[data-history-more]')
+	if (!link) return
+	event.preventDefault()
+	if (link.getAttribute('aria-busy') === 'true') return
+	link.setAttribute('aria-busy', 'true')
+	try {
+		const response = await fetch(link.href, { cache: 'no-store' })
+		if (!response.ok) throw new Error('Could not load history. Try again.')
+		const region = link.closest('[data-region="history"]')
+		const content = document.createElement('div')
+		content.innerHTML = await response.text()
+		region.querySelector('.history').replaceWith(...content.children)
+		link.remove()
+	} catch {
+		link.textContent = 'Could not load history. Try again.'
+		link.removeAttribute('aria-busy')
+	}
+})

@@ -1,12 +1,13 @@
 import type { Reply, Store } from './store.ts'
 import type { Plan } from './types.ts'
-import { closeStore, completed, openReadOnlyStore, openStore } from './store.ts'
+import { closeStore, completed, openReadOnlyStore, openStore, resolveActor } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
 import {
 	answerGap,
 	approvePlan,
 	diffPlan,
+	editPlan,
 	gate,
 	openPlan,
 	rejectPlan,
@@ -89,7 +90,13 @@ const commands: Record<string, Command> = {
 	},
 	'target open': {
 		positionals: ['targetId'],
-		flags: { 'base-url': 'value', capabilities: 'list', operations: 'list' },
+		flags: {
+			'base-url': 'value',
+			capabilities: 'list',
+			operations: 'list',
+			'context-instructions': 'value',
+			'tool-instructions': 'value',
+		},
 		required: ['base-url', 'capabilities', 'operations'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -98,6 +105,8 @@ const commands: Record<string, Command> = {
 				baseUrl: value(args, 'base-url')!,
 				capabilities: list(args, 'capabilities') ?? [],
 				allowedOperations: list(args, 'operations') ?? [],
+				contextInstructions: value(args, 'context-instructions'),
+				toolInstructions: value(args, 'tool-instructions'),
 			}),
 		print: (reply) => ({ facts: { recorded: reply.data.recorded } }),
 	},
@@ -109,12 +118,16 @@ const commands: Record<string, Command> = {
 				baseUrl: string
 				capabilities: string[]
 				allowedOperations: string[]
+				contextInstructions?: string
+				toolInstructions?: string
 			}
 			return {
 				lines: [
 					['baseUrl', request.baseUrl],
 					['capabilities', request.capabilities],
 					['operations', request.allowedOperations],
+					['contextInstructions', request.contextInstructions],
+					['toolInstructions', request.toolInstructions],
 				],
 			}
 		},
@@ -136,6 +149,8 @@ const commands: Record<string, Command> = {
 				environment: string
 				capabilities: string[]
 				allowedOperations: string[]
+				contextInstructions?: string
+				toolInstructions?: string
 				readyForLiveExecution: boolean
 			}
 			const approvals = reply.data.approvals as { plan: string; result: string }
@@ -146,6 +161,8 @@ const commands: Record<string, Command> = {
 					['environment', profile.environment],
 					['capabilities', profile.capabilities],
 					['operations', profile.allowedOperations],
+					['contextInstructions', profile.contextInstructions],
+					['toolInstructions', profile.toolInstructions],
 					['approvals', `plan=${approvals.plan}`, `result=${approvals.result}`],
 				],
 			}
@@ -176,6 +193,8 @@ const commands: Record<string, Command> = {
 				sourceContext: Array<{ uri: string; content: string }>
 				capabilities: string[]
 				allowedOperations: string[]
+				contextInstructions?: string
+				toolInstructions?: string
 			}
 			return {
 				facts: { target: data.target },
@@ -185,6 +204,8 @@ const commands: Record<string, Command> = {
 					...data.sourceContext.map((context) => ['context', context.uri, context.content]),
 					['capabilities', data.capabilities],
 					['operations', data.allowedOperations],
+					['contextInstructions', data.contextInstructions],
+					['toolInstructions', data.toolInstructions],
 				],
 			}
 		},
@@ -291,6 +312,28 @@ const commands: Record<string, Command> = {
 				delta: stdin(),
 				expectSha256: value(args, 'expect-sha'),
 			}),
+		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
+	},
+	'plan edit': {
+		positionals: ['planId'],
+		flags: { 'expect-sha': 'value' },
+		required: ['expect-sha'],
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) => {
+			const payload = stdin() as { objective: string; requirements: Plan['requirements']; tests: Plan['tests'] }
+			requireCondition(
+				payload && typeof payload === 'object' && !Array.isArray(payload),
+				'Plan edit needs an object with objective, requirements, and tests'
+			)
+			return editPlan(store, actor, {
+				planId: value(args, 'planId')!,
+				expectSha256: value(args, 'expect-sha')!,
+				objective: payload.objective,
+				requirements: payload.requirements,
+				tests: payload.tests,
+			})
+		},
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
 	},
 	'plan approve': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>
@@ -822,6 +865,7 @@ function usage(name: string) {
 function help() {
 	return [
 		...Object.keys(commands).map((name) => usage(name).replace('Usage: ', '')),
+		'checkmate ui [--port <n>] [--workspace <path>]',
 		'Options for every command: --workspace <path>, --json',
 	].join('\n')
 }
@@ -858,7 +902,7 @@ export function run(argv: string[], io: Io): Outcome {
 	let store: Store | undefined
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
-		const actor = value(args, 'actor') ?? io.env.CHECKMATE_ACTOR
+		const actor = command.write ? resolveActor(workspace, value(args, 'actor'), io.env) : undefined
 		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()) })
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		return { code, output: format(reply, json, command.print) }

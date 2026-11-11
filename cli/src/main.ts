@@ -1,15 +1,13 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
 import { main as core, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
-import { startUi } from './ui/server.ts'
+import { runUi } from './ui/command.ts'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 type Parsed = { positionals: string[]; values: Record<string, string>; allow: string[]; json: boolean }
 
 const delegateUsage =
 	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> --allow <rule>... [--timeout <seconds>]'
-const uiUsage = 'checkmate ui [--port <n>]'
 
 function version() {
 	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string
@@ -17,7 +15,7 @@ function version() {
 
 function help() {
 	const commands = coreRun(['--help'], { cwd: process.cwd(), env: {}, stdin: () => '' }).output.split('\n')
-	return [...commands.slice(0, -1), delegateUsage, uiUsage, commands.at(-1)].join('\n')
+	return [...commands.slice(0, -1), delegateUsage, commands.at(-1)].join('\n')
 }
 
 function parse(tokens: string[], options: string[]): Parsed {
@@ -93,28 +91,6 @@ async function runDelegate(tokens: string[]) {
 	} catch (error) {
 		refuse('rejected', subject, error, json)
 	}
-}
-
-async function runUi(tokens: string[]) {
-	const json = tokens.includes('--json')
-	let parsed: Parsed
-	try {
-		parsed = parse(tokens, ['workspace', 'port'])
-		if (parsed.positionals.length) throw new Error(`Usage: ${uiUsage}`)
-	} catch (error) {
-		return refuse('invalid_request', 'ui', error, json)
-	}
-	const port = parsed.values.port === undefined ? undefined : Number(parsed.values.port)
-	if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port <= 65535))
-		return refuse('invalid_request', 'ui', new Error(`Invalid --port: ${parsed.values.port}`), json)
-	const ui = await startUi({ workspace: resolve(parsed.values.workspace ?? '.'), port })
-	process.stdout.write((json ? JSON.stringify({ status: 'completed', subject: 'ui', url: ui.url }) : ui.url) + '\n')
-	const stop = async () => {
-		await ui.close()
-		process.exit(0)
-	}
-	process.once('SIGINT', stop)
-	process.once('SIGTERM', stop)
 }
 
 const argv = process.argv.slice(2)

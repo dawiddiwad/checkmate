@@ -1,10 +1,10 @@
 # Validation
 
-This page says what Checkmate checks, how the tests are organized, and what a live run showed. Contract version: `toolkit-2`.
+This page says what Checkmate validates, how the tests are organized, and what a live run showed. Contract version: `toolkit-2`.
 
 ## What the code checks
 
-Checkmate checks structure and relationships. It cannot prove that an observation is true.
+Checkmate validates structure and relationships. It cannot prove that an observation is true.
 
 ### Payload shape
 
@@ -26,7 +26,8 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 
 - The setup request has an HTTP or HTTPS URL and non-empty, unique capabilities and operations. A second `target open` with other values is refused.
 - A profile has the same target ID, URL, capabilities, and operations as the request.
-- A profile has one tool for each capability, the actual tool versions, and no credentials in the URL.
+- A profile has one host tool for each capability and no credentials in the URL. Setup records an actual version, or `host-managed` when a connector exposes none.
+- Optional setup and plan instructions guide context gathering and tool use. Native permissions remain with the host.
 - A profile revision is the latest revision plus 1. An identical save changes nothing.
 
 ### Plans (`plugin/src/contracts.ts`, `plugin/src/plans.ts`)
@@ -41,6 +42,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 - `gap answer` needs an open gap in the latest revision, a known kind, a value, and a rationale. A gap has one pending decision.
 - `plan revise` needs one or more pending decisions. A delta changes only `action`, `preconditions`, and `assertions` of affected tests. A removed assertion ID cannot come back. A new assertion has a check and an oracle kind.
 - A concurrent revise of the same plan fails on the primary key.
+- UI edits create a new revision, preserve existing run snapshots, and derive readiness and coverage again. Pending decisions must be applied first. A stale digest refuses the edit.
 - `plan approve` and `plan reject` need a revision reference and a rationale. `--expect-sha` stops a decision on a changed snapshot.
 
 ### Gate (`plugin/src/plans.ts`)
@@ -58,7 +60,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 
 - `run begin` refuses a run ID that exists.
 - `run check` needs a started run, a selected and open test, a known assertion without a result, and passed local prerequisites. A result needs the fields in [Evidence](EVIDENCE.md#assertion-results).
-- Evidence files are regular files inside `.checkmate/tmp/<runId>/`, at most 32 MiB each, and listed once.
+- Evidence captures are regular files inside the run's temporary directory, at most 32 MiB each, and listed once. Durable evidence is stored as database BLOBs.
 - `run close` derives the outcome from the assertion results, or records `blocked`, `not_run`, or `error` with a reason. A test with assertion results can only be closed as `error` by hand.
 - `run finding` checks that a defect names only failed assertions, that the requirements belong to the named tests, and that the evidence belongs to the named assertions or their tests.
 - `run gap` checks that a runtime gap is open, has a new ID, and names known requirements and tests.
@@ -71,7 +73,7 @@ Checkmate checks structure and relationships. It cannot prove that an observatio
 - Triggers refuse `UPDATE` and `DELETE` on every table. A decision can set `applied_revision` once.
 - Foreign keys are on. WAL mode lets a reader see committed writes while a writer holds the lock.
 - Each snapshot body is canonical JSON. Its digest is the SHA-256 of that text.
-- A write without an actor is refused.
+- Writes record an explicit actor or the workspace Git/operating-system user.
 
 ### Delegation (`cli/src/launcher.ts`)
 

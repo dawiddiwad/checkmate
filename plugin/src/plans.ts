@@ -106,6 +106,8 @@ export function showPlanRequest(store: Store, planId: string) {
 		planId,
 		target: `${target.profile.targetId}@${target.revision}`,
 		...request,
+		contextInstructions: request.contextInstructions ?? target.profile.contextInstructions ?? '',
+		toolInstructions: [target.profile.toolInstructions, request.toolInstructions].filter(Boolean).join('\n'),
 		capabilities: target.profile.capabilities,
 		allowedOperations: target.profile.allowedOperations,
 	})
@@ -329,6 +331,47 @@ export function revisePlan(
 			execute(store, 'UPDATE decisions SET applied_revision = ? WHERE id = ?', draft.revision, decision.id)
 		change.reply.data.applied = decisions.map((decision) => decision.id)
 		return change
+	})
+}
+
+export type PlanEdit = {
+	planId: string
+	expectSha256: string
+	objective: string
+	requirements: Plan['requirements']
+	tests: Plan['tests']
+}
+
+export function editPlan(store: Store, actor: string | undefined, input: PlanEdit) {
+	return write(store, { actor, command: 'plan edit', subject: input.planId, input }, (operationId) => {
+		const base = planRevision(store, input.planId)
+		requireText(input.expectSha256, 'expected plan digest')
+		expectDigest(base.sha256, input.expectSha256, `${input.planId}@${base.plan.revision}`)
+		requireCondition(
+			!pendingDecisions(store, input.planId).length,
+			'Apply pending gap decisions with plan revise before editing.'
+		)
+		const { coverage, ...draft } = structuredClone(base.plan)
+		draft.objective = requireText(input.objective, 'objective')
+		draft.requirements = input.requirements
+		draft.tests = input.tests
+		draft.revision++
+		draft.previousRevision = base.plan.revision
+		const checked = planCheck(derivePlan(draft))
+		for (const test of checked.tests) {
+			const previous = base.plan.tests.find((item) => item.id === test.id)
+			const used = usedAssertionIds(store, input.planId, test.id)
+			for (const assertion of test.assertions)
+				requireCondition(
+					!used.includes(assertion.id) || previous?.assertions.some((item) => item.id === assertion.id),
+					`Assertion ID ${test.id}.${assertion.id} was used in an earlier revision. Use a new ID.`
+				)
+		}
+		requireCondition(
+			!same({ ...base.plan, revision: checked.revision, previousRevision: checked.previousRevision }, checked),
+			'No changes to save.'
+		)
+		return storeRevision(store, checked, operationId)
 	})
 }
 
@@ -574,6 +617,20 @@ export function dependencyBlock(store: Store, reference: string, build: string |
 
 export function planChanges(before: Plan, after: Plan): string[] {
 	const lines: string[] = []
+	if (before.objective !== after.objective)
+		lines.push(`objective: ${JSON.stringify(before.objective)} → ${JSON.stringify(after.objective)}`)
+	for (const requirement of after.requirements) {
+		const previous = before.requirements.find((item) => item.id === requirement.id)
+		if (!same(previous, requirement))
+			lines.push(
+				`${requirement.id} requirement: ${JSON.stringify(previous ?? null)} → ${JSON.stringify(requirement)}`
+			)
+	}
+	for (const requirement of before.requirements)
+		if (!after.requirements.some((item) => item.id === requirement.id))
+			lines.push(`${requirement.id} requirement removed`)
+	for (const test of before.tests)
+		if (!after.tests.some((item) => item.id === test.id)) lines.push(`${test.id} removed`)
 	const fields = (prefix: string, a: object, b: object, skip: string[] = []) => {
 		const x = a as Record<string, unknown>
 		const y = b as Record<string, unknown>

@@ -9,7 +9,15 @@ import { fileURLToPath } from 'node:url'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { openTarget, saveTarget } from '../plugin/src/targets.ts'
 import { answerGap, approvePlan, openPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
-import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
+import {
+	beginRun,
+	checkAssertion,
+	closeTest,
+	finishRun,
+	acceptResult,
+	recordFinding,
+	evidenceDirectory,
+} from '../plugin/src/runs.ts'
 import { run } from '../plugin/src/cli.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
@@ -28,7 +36,12 @@ export function directory(t?: TestContext) {
 export function store(t: TestContext, workspace = directory(t)): Store {
 	const opened = openStore(workspace)
 	t.after(() => {
-		if (opened.db.isOpen) closeStore(opened)
+		if (opened.db.isOpen) {
+			const runs = opened.db.prepare('SELECT run_id FROM runs').all()
+			for (const row of runs)
+				rmSync(evidenceDirectory(String(row.run_id), opened.workspace), { recursive: true, force: true })
+			closeStore(opened)
+		}
 	})
 	return opened
 }
@@ -202,10 +215,10 @@ export function ready(store: Store, overrides: Partial<Profile> = {}) {
 }
 
 export function evidenceFile(store: Store, runId: string, name: string, content: string | Uint8Array = name) {
-	const directory = join(store.workspace, '.checkmate', 'tmp', runId)
+	const directory = evidenceDirectory(runId, store.workspace)
 	mkdirSync(directory, { recursive: true })
 	writeFileSync(join(directory, name), content)
-	return `.checkmate/tmp/${runId}/${name}`
+	return join(directory, name)
 }
 
 export function begin(store: Store, runId = 'run-1', tests = ['T1', 'T2'], build = 'build-1', extra = {}) {

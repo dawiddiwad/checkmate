@@ -1602,3 +1602,100 @@ summary.asr-row:focus-visible {
 		box-shadow: inset 3px 0 0 var(--accent);
 	}
 }
+
+.pagination {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 1rem;
+	flex-wrap: wrap;
+	padding: 1rem 0;
+	color: var(--muted);
+}
+
+.pagination > :first-child {
+	margin-right: auto;
+}
+
+.gap summary,
+.history summary {
+	cursor: pointer;
+}
+.gap summary .gap-q {
+	display: block;
+	margin: 0.7rem 0;
+}
+.gap-closed {
+	color: var(--muted);
+	background: var(--surface);
+}
+.gap-closed .pill {
+	filter: grayscale(1);
+}
+.history summary .record-h {
+	display: inline-flex;
+}
+.history details:not([open]) summary {
+	padding-bottom: 0.5rem;
+}
+.history-more {
+	position: relative;
+	width: 100%;
+	margin-top: 0.5rem;
+}
+.history-more::before {
+	content: '';
+	position: absolute;
+	pointer-events: none;
+	height: 3rem;
+	bottom: 100%;
+	left: 0;
+	right: 0;
+	background: linear-gradient(transparent, var(--bg));
+}
+.plan-editor {
+	max-width: 60rem;
+}
+.plan-editor input:not([type='checkbox']),
+.plan-editor textarea,
+.plan-editor select {
+	width: 100%;
+}
+.edit-card {
+	border: 1px solid var(--line);
+	border-radius: 0.6rem;
+	padding: 1.2rem;
+	margin: 1rem 0;
+}
+.edit-card legend {
+	font-weight: 600;
+	padding: 0 0.5rem;
+}
+@media print {
+	.bar,
+	.rail,
+	.side,
+	.jump,
+	.report-actions,
+	dialog,
+	.toast,
+	[data-live],
+	.footer {
+		display: none !important;
+	}
+	.split {
+		display: block;
+	}
+	body {
+		background: white;
+		color: black;
+	}
+	.test,
+	.finding,
+	tr {
+		break-inside: avoid;
+	}
+	.ev-text pre {
+		max-height: none;
+	}
+}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { delegate, minimumRules, resumeReason, worker } from '../cli/src/launcher.ts'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import { closeStore, openStore, resolveActor } from '../plugin/src/store.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
 import type { TestContext } from 'node:test'
@@ -161,7 +161,7 @@ reply({ status, subject, reasons })`
 		workspace,
 		"SELECT id, actor FROM operations WHERE command = 'plan save' AND status != 'rejected'"
 	)
-	assert.deepEqual(operation, { id: saved.operation, actor: 'claude:plan' })
+	assert.deepEqual(operation, { id: saved.operation, actor: resolveActor(workspace) })
 })
 
 test('delegate revise needs every pending decision applied', async (t) => {
@@ -248,8 +248,9 @@ test('an execute worker that finishes the run through the plugin CLI completes t
 	const finishes = claude(
 		workspace,
 		`const fs = require('node:fs')
-fs.writeFileSync('.checkmate/tmp/run-1/a2.txt', 'one item')
-checkmate(['run', 'check', 'run-1', 'T1', 'A2', '--result', 'passed', '--observed', 'One item.', '--evidence', '.checkmate/tmp/run-1/a2.txt'])
+const evidence = JSON.parse(checkmate(['run', 'show', 'run-1', '--json'])).evidenceDirectory + '/a2.txt'
+fs.writeFileSync(evidence, 'one item')
+checkmate(['run', 'check', 'run-1', 'T1', 'A2', '--result', 'passed', '--observed', 'One item.', '--evidence', evidence])
 checkmate(['run', 'close', 'run-1', 'T1'])
 const { status, subject, reasons } = JSON.parse(checkmate(['run', 'finish', 'run-1', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'Closed the browser.', '--json']))
 reply({ status, subject, reasons })`
@@ -273,7 +274,7 @@ reply({ status, subject, reasons })`
 		query<{ actor: string }>(workspace, "SELECT actor FROM operations WHERE command = 'run finish'").map(
 			(row) => row.actor
 		),
-		['claude:execute']
+		[resolveActor(workspace)]
 	)
 	assert.equal(readFileSync(join(workspace, 'closed.log'), 'utf8'), `-s=${session} close\n`)
 })

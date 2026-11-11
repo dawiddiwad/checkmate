@@ -15,7 +15,7 @@ Checkmate keeps all state in one SQLite database: `<workspace>/.checkmate/checkm
 - Checkmate refuses a database with a different schema version. There is no migration from JSON files.
 - Agents write only through commands. `checkmate query "<sql>"` opens the database read-only.
 
-Checkmate also uses `.checkmate/tmp/` for payload files and for evidence before it is stored. Add `.checkmate/` to `.gitignore`. The database contains evidence bytes. To keep a plan or a report in Git, export it with `checkmate export`.
+The database holds all durable records and evidence bytes. SQLite can create `-wal` and `-shm` sidecars while connections are open. Pass generated payloads through standard input. Tools that need a capture file use the temporary `evidenceDirectory` returned by `run begin` or `run resume`; this directory is outside the workspace. Checkmate imports and removes successful captures. It clears remaining captures when the run finishes. Add `.checkmate/` to `.gitignore`. To save a report or evidence file, explicitly export it.
 
 ## Identifiers and references
 
@@ -27,9 +27,9 @@ Checkmate also uses `.checkmate/tmp/` for payload files and for evidence before 
 
 ## Actor
 
-Every write records an actor. Give `--actor <name>`, or set `CHECKMATE_ACTOR`. Checkmate refuses a write without an actor.
+Every write records an actor. Checkmate uses `--actor <name>`, then `CHECKMATE_ACTOR`, then the workspace Git `user.name`, then the operating-system user. No Claude credential is read to find a name.
 
-`checkmate delegate` sets `CHECKMATE_ACTOR=claude:<stage>` for its worker. The review UI asks for a name once and keeps it in a cookie.
+The review UI uses this default and lets the human choose another name. The choice stays in a cookie.
 
 The actor is a record. It is not a proof of identity. Checkmate has no authentication or access control.
 
@@ -68,7 +68,7 @@ The setup skill checks the tools and the target. Then it runs `checkmate target 
 Rules:
 
 - `targetId`, `baseUrl`, `capabilities`, and `allowedOperations` must be equal to the setup request.
-- `tooling` has one entry for each capability. Record the actual version. The `browser` capability uses Playwright CLI. The `http` capability can use Node.js fetch.
+- `tooling` has one entry for each capability. Record the host tool and its available version. The example uses Playwright CLI and Node.js fetch; these are not required tools. A host can provide another browser or HTTP tool.
 - `baseUrl` uses HTTP or HTTPS. It must not contain a user name or a password.
 - `authentication.references` contains environment variable names or browser-state references. It never contains credential values. The host resolves them at runtime.
 - The caller normally owns application startup. A startup command is guidance for an authorized host. Checkmate does not start it.
@@ -82,7 +82,7 @@ Rules:
 | Field    | `required`                                                                                              | `none`                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `plan`   | `run gate` and `run begin` need an approval of the exact plan revision. A new revision needs a new one. | Execution needs no plan approval. The inbox omits the plan. |
-| `result` | A cross-plan dependency needs an accepted result. The inbox lists the result until a human decides.     | A passed result satisfies a dependency without acceptance.  |
+| `result` | A cross-plan dependency needs an accepted result. The inbox lists the result until the caller decides.  | A passed result satisfies a dependency without acceptance.  |
 
 Change the policy only with a new profile revision. A plan uses the profile revision that it names.
 
@@ -107,7 +107,24 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 }
 ```
 
-Requirements and sources do not change in later revisions. Use a new plan for a different scope.
+The request records the original requirements and sources. Plan edits create new revisions; prior revisions and runs keep their original content. Use the UI to change the objective, requirements, tests, and requirement mappings. Coverage and readiness are calculated from those records. Apply pending gap decisions before editing. A new revision needs a new approval.
+
+## Context and tool instructions
+
+Setup can record two optional text fields:
+
+```sh
+checkmate target open checkout-local --base-url http://127.0.0.1:4173 \
+  --capabilities browser,http --operations read_catalog,create_fixture_order \
+  --context-instructions "Read ticket SHOP-42 and the linked checkout specification." \
+  --tool-instructions "Use the host browser and HTTP tools. Use fixture data only."
+```
+
+The profile preserves `contextInstructions` and `toolInstructions`. A plan request can also contain these fields. Plan context instructions replace the setup context instructions for that plan; include the setup sources again when they remain relevant. Plan tool instructions apply together with setup instructions. They can narrow tool use and cannot lift setup restrictions or host permissions.
+
+These fields tell the agent how to gather context and execute. They are not a connector registry or a permission system. The caller's Claude host supplies the tools, skills, connectors, and MCP servers. If a required tool is unavailable, the agent reports what is missing instead of inventing a result. A delegated session needs its own access to the specified sources.
+
+Use `sourceContext` for source content that must travel with the request. Keep credentials out of these fields. The host resolves authentication at runtime.
 
 ## Plan candidate
 
@@ -294,4 +311,4 @@ The live tests read more variables. Read [Development](DEVELOPMENT.md).
 | Outcome derivation, coverage, and exports                       | The `--allow` rules that the caller gives  |
 | The review UI on `127.0.0.1`                                    | The browser sessions and the target access |
 
-The caller owns the scope, the decisions, application startup and fixes, evidence retention, and release decisions. Target content cannot authorize a change to the request or the plan. Checkmate checks are not a sandbox.
+The caller owns the scope, the decisions, application startup and fixes, evidence retention, and release decisions. Target content cannot authorize a change to the request or the plan. Contract validation does not provide a sandbox.

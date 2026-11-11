@@ -6,16 +6,18 @@ import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { closeStore, openReadOnlyStore, openStore } from '../../../plugin/src/store.ts'
-import { answerGap, approvePlan, rejectPlan } from '../../../plugin/src/plans.ts'
+import { closeStore, openReadOnlyStore, openStore, resolveActor } from '../../../plugin/src/store.ts'
+import { answerGap, approvePlan, rejectPlan, editPlan } from '../../../plugin/src/plans.ts'
 import { acceptResult, rejectResult } from '../../../plugin/src/runs.ts'
 import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../../../plugin/src/views.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
-import { gapPage, planPage } from './plan.ts'
+import { gapPage, planPage, history } from './plan.ts'
 import { runPage } from './run.ts'
+import { editPage, planEditValues } from './edit.ts'
+import { exportRun } from '../../../plugin/src/render.ts'
 
 export type UiOptions = { workspace: string; port?: number }
 export type Ui = { url: string; close(): Promise<void> }
@@ -26,6 +28,9 @@ type Change = ReturnType<typeof changesAfter>[number]
 
 const id = '[A-Za-z0-9][A-Za-z0-9_-]{0,95}'
 const routes = {
+	edit: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/edit$`),
+	history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
+	report: new RegExp(`^/runs/(${id})/report\\.(html|json)$`),
 	plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
 	latestPlan: new RegExp(`^/plans/(${id})$`),
 	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
@@ -48,7 +53,7 @@ function directory(candidates: string[], file: string) {
 }
 
 function assets() {
-	const fonts = directory(['../../fonts/', '../fonts/'], 'inter.woff2')
+	const fonts = directory(['./assets/fonts/', '../../fonts/', '../fonts/'], 'inter.woff2')
 	const files = directory(['./assets/'], 'style.css')
 	const read = (name: string) => readFileSync(files + name)
 	return {
@@ -182,7 +187,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return {
 			path,
 			csrf,
-			actor: request.cookies.checkmate_actor?.trim() || null,
+			actor: resolveActor(options.workspace, request.cookies.checkmate_actor?.trim()),
 			theme,
 			toast: request.cookies.checkmate_toast || null,
 			inboxCount: inboxCount(inbox(store)),
@@ -277,12 +282,17 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/plans')
 			return render(
 				request,
-				plansPage(store, { q: searchParams.get('q') ?? '', show: searchParams.get('show') ?? 'all' })
+				plansPage(store, {
+					...listFilters(searchParams),
+					q: searchParams.get('q') ?? '',
+					show: searchParams.get('show') ?? 'all',
+				})
 			)
 		if (pathname === '/runs')
 			return render(
 				request,
 				runsPage(store, {
+					...listFilters(searchParams),
 					plan: searchParams.get('plan') ?? '',
 					build: searchParams.get('build') ?? '',
 					status: searchParams.get('status') ?? 'all',
@@ -291,9 +301,38 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/log')
 			return render(
 				request,
-				logPage(store, { subject: searchParams.get('subject') ?? '', actor: searchParams.get('actor') ?? '' })
+				logPage(store, {
+					...listFilters(searchParams),
+					subject: searchParams.get('subject') ?? '',
+					actor: searchParams.get('actor') ?? '',
+				})
 			)
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
+		const report = routes.report.exec(pathname)
+		if (report) {
+			if (!runDetail(store, report[1]).result)
+				return errorPage(request, 409, 'Run in progress', 'Finish the run before downloading its report.')
+			return send(
+				request.res,
+				200,
+				report[2] === 'json' ? 'application/json; charset=utf-8' : 'text/html; charset=utf-8',
+				exportRun(store, report[1], report[2]),
+				{
+					'Content-Disposition': `attachment; ${attachmentName(`${report[1]}.${report[2]}`)}`,
+					'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+				}
+			)
+		}
+		const edit = routes.edit.exec(pathname)
+		if (edit) return render(request, editPage(store, shown, edit[1], Number(edit[2])))
+		const fullHistory = routes.history.exec(pathname)
+		if (fullHistory)
+			return send(
+				request.res,
+				200,
+				'text/html; charset=utf-8',
+				history(store, planDetail(store, fullHistory[1], Number(fullHistory[2])), true).html
+			)
 		const latest = routes.latestPlan.exec(pathname)
 		if (latest) {
 			const detail = planDetail(store, latest[1])
@@ -328,7 +367,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function actorFrom(request: Request, form: URLSearchParams) {
 		const typed = form.get('actor')?.trim() ?? ''
-		const actor = request.cookies.checkmate_actor?.trim() || typed
+		const actor = resolveActor(options.workspace, request.cookies.checkmate_actor?.trim() || typed)
 		return { actor, cookies: typed ? [cookie('checkmate_actor', typed)] : [] }
 	}
 
@@ -497,6 +536,30 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				return errorPage(request, 422, 'Your name', 'Enter a name. Checkmate records it with each decision.')
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
+		const edit = routes.edit.exec(pathname)
+		if (edit) {
+			const planId = edit[1]
+			const revision = Number(edit[2])
+			const { actor, cookies } = actorFrom(request, form)
+			try {
+				const detail = planDetail(store, planId, revision)
+				const reply = editPlan(store, actor, {
+					planId,
+					expectSha256: form.get('sha') ?? '',
+					...planEditValues(detail.plan, form),
+				})
+				return redirect(request.res, `/plans/${reply.subject}`, [
+					...cookies,
+					cookie('checkmate_toast', `Saved ${reply.subject}`, 60),
+				])
+			} catch (error) {
+				return render(
+					request,
+					editPage(store, context(request), planId, revision, form, plainMessage(error)),
+					cookies
+				)
+			}
+		}
 		const gap = routes.gap.exec(pathname)
 		if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3])
 		const plan = routes.plan.exec(pathname)
@@ -557,5 +620,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			closeStore(watch)
 			closeStore(store)
 		},
+	}
+}
+
+function listFilters(params: URLSearchParams) {
+	return {
+		q: params.get('q') ?? '',
+		page: Number(params.get('page')),
+		size: Number(params.get('size')),
+		order: params.get('order') ?? 'desc',
 	}
 }

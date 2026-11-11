@@ -87,10 +87,10 @@ function html(report: Report) {
 		'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">' +
 		`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">` +
 		`<title>${escapeHtml(report.title)}</title>` +
-		'<style>body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#1d2330}' +
+		'<style>:root{color-scheme:light}html{background:#f5f7f6}body{font:15px/1.65 system-ui,sans-serif;max-width:80rem;margin:3rem auto;padding:2.5rem 3rem;color:#1c3027;background:white;border:1px solid #dce6df;border-radius:14px;box-shadow:0 16px 50px #152c2310}h1{font-size:2.1rem;letter-spacing:-.04em;border-top:5px solid #2c6150;padding-top:1.25rem}h2{margin-top:2.5rem;font-size:1.25rem;color:#2c6150}h3{font-size:1rem}td{overflow-wrap:anywhere}thead{display:table-header-group}tr{break-inside:avoid}' +
 		'table{border-collapse:collapse;width:100%;margin:.5rem 0 1.5rem}th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid #d5dae3}' +
 		'th{font-weight:600;background:#f3f5f8}.note{color:#5b6475}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f8;padding:1rem}' +
-		'details{margin-top:2rem}summary{cursor:pointer;font-weight:600}</style>' +
+		'details{margin-top:2rem}summary{cursor:pointer;font-weight:600}@media(max-width:700px){body{margin:0;padding:1rem;border:0;border-radius:0}table{font-size:12px}}@media print{html{background:white}body{margin:0;padding:0;border:0;box-shadow:none;max-width:none;font-size:10pt}h2,h3{break-after:avoid}details{display:none}}</style>' +
 		parts.join('') +
 		'</html>\n'
 	)
@@ -288,7 +288,7 @@ function planReport(plan: Plan, sha256: string): Report {
 	blocks.push({ record: plan })
 	return {
 		title: `Test plan: ${plan.planId} revision ${plan.revision}`,
-		note: 'Generated from the Checkmate database. Record a decision and revise the plan to change it.',
+		note: 'Generated from the Checkmate database. Save a new revision to change this plan.',
 		blocks,
 	}
 }

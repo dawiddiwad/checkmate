@@ -201,10 +201,10 @@ test('a decision needs a rationale, a confirm step, and redirects to the next in
 	assert.equal(approval.latest?.actor, human)
 })
 
-test('a gap answer asks for a name once and refuses a stale digest with the typed text kept', async (t) => {
+test('a gap answer resolves the actor and refuses a stale digest with the typed text kept', async (t) => {
 	const { ui, workspace } = await start(t)
 	const page = (await call(ui, '/plans/xss@1/gaps/G1')).body
-	assert.match(page, /name="actor"/)
+	assert.doesNotMatch(page, /name="actor"/)
 	const form = {
 		csrf: field(page, 'csrf'),
 		sha: field(page, 'sha'),
@@ -378,5 +378,85 @@ test('live events reach subscribed streams only and replay after Last-Event-ID',
 	assert.deepEqual(
 		replayed.map((event) => event.id),
 		events.map((event) => event.id)
+	)
+})
+
+test('run reports download from SQLite and plan detail links runs', async (t) => {
+	const { ui } = await start(t)
+	const plan = await call(ui, '/plans/checkout@2')
+	assert.match(plan.body, /href="\/runs\/run-7"/)
+	assert.match(plan.body, /class="gap gap-closed"[^>]*>\s*<details data-open-key="gap:[^"]*"\s*>/)
+	assert.match(plan.body, /href="\/plans\/checkout@2\/edit"/)
+	const htmlReport = await call(ui, '/runs/run-7/report.html')
+	assert.equal(htmlReport.status, 200)
+	assert.match(String(htmlReport.headers['content-disposition']), /attachment; filename="run-7.html"/)
+	assert.match(htmlReport.body, /Test result: run-7/)
+	assert.match(htmlReport.body, /@media print/)
+	const jsonReport = await call(ui, '/runs/run-7/report.json')
+	assert.equal(jsonReport.status, 200)
+	assert.equal(JSON.parse(jsonReport.body).runId, 'run-7')
+	assert.equal((await call(ui, '/runs/run-8/report.html')).status, 409)
+})
+
+test('UI edits save a revision, retain invalid input, and refuse stale changes', async (t) => {
+	const { ui, workspace } = await start(t)
+	const detail = read(workspace, (store) => planDetail(store, 'search'))
+	const page = await call(ui, '/plans/search@1/edit', { headers: actorCookie })
+	assert.equal(page.status, 200)
+	const form: Record<string, string> = {
+		csrf: field(page.body, 'csrf'),
+		sha: field(page.body, 'sha'),
+		objective: 'Reviewed search.',
+	}
+	for (const item of detail.plan.requirements) {
+		form[`requirement.${item.id}.text`] = item.text
+		form[`requirement.${item.id}.source`] = item.source
+	}
+	for (const test of detail.plan.tests) {
+		form[`test.${test.id}.title`] = test.title
+		form[`test.${test.id}.action`] = test.action
+		form[`test.${test.id}.requirements`] = test.requirementIds.join(',')
+		form[`test.${test.id}.dependsOn`] = test.dependsOn.join(',')
+		form[`test.${test.id}.operations`] = test.operations.join(',')
+		form[`test.${test.id}.preconditions`] = test.preconditions.join('\n')
+		for (const assertion of test.assertions) {
+			form[`test.${test.id}.${assertion.id}.check`] = assertion.check
+			form[`test.${test.id}.${assertion.id}.oracle`] = assertion.oracleKind
+		}
+	}
+	const invalid = await call(ui, '/plans/search@1/edit', {
+		form: { ...form, 'test.T1.requirements': 'missing' },
+		headers: actorCookie,
+	})
+	assert.equal(invalid.status, 422)
+	assert.match(invalid.body, /Reviewed search\./)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').revision),
+		1
+	)
+	assert.equal(
+		(await call(ui, '/plans/search@1/edit', { form: { ...form, csrf: 'wrong' }, headers: actorCookie })).status,
+		403
+	)
+	const saved = await call(ui, '/plans/search@1/edit', { form, headers: actorCookie })
+	assert.equal(saved.status, 303)
+	assert.equal(saved.headers.location, '/plans/search@2')
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').plan.objective),
+		'Reviewed search.'
+	)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search', 1).plan.objective),
+		detail.plan.objective
+	)
+	const stale = await call(ui, '/plans/search@1/edit', {
+		form: { ...form, objective: 'Stale text kept.' },
+		headers: actorCookie,
+	})
+	assert.equal(stale.status, 422)
+	assert.match(stale.body, /Stale text kept\./)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').revision),
+		2
 	)
 })

@@ -3,7 +3,7 @@ import type { Plan } from '../../../plugin/src/types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
-import { planDetail, planHistory } from '../../../plugin/src/views.ts'
+import { planDetail, planHistory, runList } from '../../../plugin/src/views.ts'
 import { html, join, pill, plural, short, time, words } from './html.ts'
 import { banner, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
@@ -96,44 +96,49 @@ function gapRow(detail: Detail, gap: Gap) {
 	const decision = decisionFor(detail.plan, gap)
 	const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id)
 	const answerable = gap.status === 'open' && !pending && detail.revision === detail.latestRevision
-	return html`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
-		<div class="gap-h">
-			<span class="id mono">${gap.id}</span>
-			${pill(gap.severity)} ${pill(gap.status)}
-			<span class="gap-refs muted"
-				>${
-					[...gap.requirementIds, ...gap.testIds].length
-						? `affects ${[...gap.requirementIds, ...gap.testIds].join(', ')}`
-						: 'affects the whole plan'
-				}</span
-			>
-		</div>
-		<p class="gap-q">${gap.question}</p>
-		<p class="muted">${gap.consequence}</p>
-		${
-			decision
-				? html`<p class="gap-d">
-						${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
-					</p>`
-				: ''
-		}
-		${
-			pending
-				? html`<p class="gap-d">
-						${pill('pending', 'decision pending')} ${words(pending.kind)}: ${pending.value}
-						<span class="muted">· ${pending.actor} · applies in the next revision</span>
-					</p>`
-				: ''
-		}
-		${
-			answerable
-				? html`<p>
-						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
-							>Answer ${gap.id}</a
-						>
-					</p>`
-				: ''
-		}
+	const closed = gap.status !== 'open'
+	return html`<li class="gap${closed ? ' gap-closed' : ''}" id="${gap.id}" data-key="gap:${gap.id}">
+		<details data-open-key="gap:${gap.id}" ${closed ? '' : html`open`}>
+			<summary>
+				<div class="gap-h">
+					<span class="id mono">${gap.id}</span>
+					${pill(gap.severity)} ${pill(gap.status)}
+					<span class="gap-refs muted"
+						>${
+							[...gap.requirementIds, ...gap.testIds].length
+								? `affects ${[...gap.requirementIds, ...gap.testIds].join(', ')}`
+								: 'affects the whole plan'
+						}</span
+					>
+				</div>
+				<span class="gap-q">${gap.question}</span>
+			</summary>
+			<p class="muted">${gap.consequence}</p>
+			${
+				decision
+					? html`<p class="gap-d">
+							${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
+						</p>`
+					: ''
+			}
+			${
+				pending
+					? html`<p class="gap-d">
+							${pill('pending', 'decision pending')} ${words(pending.kind)}: ${pending.value}
+							<span class="muted">· ${pending.actor} · applies in the next revision</span>
+						</p>`
+					: ''
+			}
+			${
+				answerable
+					? html`<p>
+							<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
+								>Answer ${gap.id}</a
+							>
+						</p>`
+					: ''
+			}
+		</details>
 	</li>`
 }
 
@@ -208,29 +213,34 @@ function changeLine(line: string) {
 	</li>`
 }
 
-function history(store: Store, detail: Detail) {
-	const revisions = planHistory(store, detail.planId).reverse()
+export function history(store: Store, detail: Detail, full = false) {
+	const revisions = planHistory(store, detail.planId, full ? undefined : 6).reverse()
 	return html`<ol class="history">
-		${revisions.map(
-			(item) =>
-				html`<li class="${item.revision === detail.revision ? 'current' : ''}">
-					<div class="record-h">
-						<a class="mono" href="/plans/${detail.planId}@${item.revision}"
-							>${detail.planId}@${item.revision}</a
-						>
-						<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-						<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
-					</div>
-					${
-						item.changes.length
-							? html`<ul class="changes">
-									${item.changes.map(changeLine)}
-								</ul>`
-							: html`<p class="muted small">First revision.</p>`
-					}
-				</li>`
-		)}
-	</ol>`
+			${revisions.map(
+				(item, index) =>
+					html`<li class="${item.revision === detail.revision ? 'current' : ''}">
+						<details data-open-key="revision:${item.revision}" ${index === 0 ? html`open` : ''}>
+							<summary>
+								<div class="record-h">
+									<a class="mono" href="/plans/${detail.planId}@${item.revision}"
+										>${detail.planId}@${item.revision}</a
+									>
+									<span class="muted">by ${item.actor} · ${time(item.at)}</span>
+									<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+								</div>
+							</summary>
+							${
+								item.changes.length
+									? html`<ul class="changes">
+											${item.changes.map(changeLine)}
+										</ul>`
+									: html`<p class="muted small">First revision.</p>`
+							}
+						</details>
+					</li>`
+			)}
+		</ol>
+		${!full && detail.latestRevision > 6 ? html`<a class="history-more btn" href="/plans/${detail.planId}@${detail.revision}/history" data-history-more>Show full history</a>` : ''}`
 }
 
 function approvalPanel(context: Context, detail: Detail, state: FormState | null) {
@@ -322,13 +332,15 @@ export function planPage(
 				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(', ')}.`
 			)
 		: ''
+	const runs = runList(store, { planId }).slice().reverse()
 	const body = html`${heading(subject, plan.objective, meta)}
+		${revision === detail.latestRevision ? html`<p class="actions"><a class="btn" href="/plans/${subject}/edit">Edit plan, tests and requirements</a></p>` : ''}
 		<div data-region="banners">${newerBanner(detail)} ${pending}</div>
 		<div class="split">
 			<div class="main-col">
 				<nav class="jump" aria-label="On this page">
 					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
-					><a href="#decisions">Decisions</a><a href="#history">History</a>
+					><a href="#decisions">Decisions</a><a href="#plan-runs">Runs</a><a href="#history">History</a>
 				</nav>
 				<section aria-labelledby="tests" data-region="tests">
 					<h2 id="tests">Tests <span class="n">${plan.tests.length}</span></h2>
@@ -351,6 +363,16 @@ export function planPage(
 				<section aria-labelledby="decisions">
 					<h2 id="decisions">Decisions</h2>
 					${decisionsList(plan)}
+				</section>
+				<section aria-labelledby="plan-runs" data-region="plan-runs">
+					<h2 id="plan-runs">Runs <span class="n">${runs.length}</span></h2>
+					${
+						runs.length
+							? html`<ul class="records">
+									${runs.map((run) => html`<li><a class="mono" href="/runs/${run.runId}">${run.runId}</a> <span class="muted">· revision ${run.revision} · ${run.build} · ${time(run.startedAt)}</span> ${pill(run.completion ?? run.state)}</li>`)}
+								</ul>`
+							: html`<p class="empty-line">No runs yet.</p>`
+					}
 				</section>
 				<section aria-labelledby="history" data-region="history">
 					<h2 id="history">History</h2>

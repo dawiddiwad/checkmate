@@ -50,6 +50,14 @@
 			},
 			"minItems": 0,
 			"uniqueItems": true
+		},
+		"contextInstructions": {
+			"type": "string",
+			"minLength": 1
+		},
+		"toolInstructions": {
+			"type": "string",
+			"minLength": 1
 		}
 	},
 	"required": ["objective", "requirements", "sourceContext"],

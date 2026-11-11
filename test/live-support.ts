@@ -22,10 +22,13 @@ export function liveEnvironment() {
 
 export function liveWorkspace(baseUrl: string) {
 	const workspace = mkdtempSync(join(tmpdir(), 'checkmate-live-'))
+	const toolOutput = mkdtempSync(join(tmpdir(), 'checkmate-live-browser-'))
 	mkdirSync(join(workspace, '.playwright'))
 	writeFileSync(
 		join(workspace, '.playwright/cli.config.json'),
 		JSON.stringify({
+			outputDir: toolOutput,
+			outputMode: 'stdout',
 			browser: {
 				browserName: 'chromium',
 				launchOptions: {
@@ -41,7 +44,7 @@ export function liveWorkspace(baseUrl: string) {
 			'# Fixture workspace',
 			'',
 			`The checkout fixture runs at ${baseUrl}. The caller owns the server. Do not change its code.`,
-			'The browser config is `.playwright/cli.config.json`. Use `open --idle-timeout=30000`.',
+			'The caller provides playwright-cli for browser actions and node fetch for HTTP. The browser config is `.playwright/cli.config.json`. Use `open --idle-timeout=30000`.',
 			'The page `/` has one 400 PLN item. Its checkout button creates an order and shows the total.',
 			'GET /quote?promotion=true&loyalty=true returns the quote for a cart with the promotion and 20 PLN loyalty.',
 			'GET /health is read-only. Use only /health during setup and planning.',

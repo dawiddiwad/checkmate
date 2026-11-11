@@ -163,20 +163,18 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 	])
 })
 
-test('writes need an actor; parse errors are invalid requests', (t) => {
+test('writes infer an actor and allow an override; parse errors are invalid requests', (t) => {
 	const workspace = setup(t)
 	const noActor = cli(
 		workspace,
-		['gap', 'answer', 'checkout', 'G2', '--kind', 'defer', '--value', 'x', '--rationale', 'y'],
+		['gap', 'answer', 'checkout', 'G1', '--kind', 'defer', '--value', 'x', '--rationale', 'y'],
 		undefined,
 		{
 			CHECKMATE_ACTOR: '',
 		}
 	)
-	assert.deepEqual(noActor.lines, [
-		'rejected checkout',
-		'reason: A write needs an actor. Use --actor <name> or set CHECKMATE_ACTOR.',
-	])
+	assert.equal(noActor.code, 0, noActor.output)
+	assert.ok(json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions[0].actor)
 	const named = json(workspace, [
 		'gap',
 		'answer',
@@ -192,7 +190,12 @@ test('writes need an actor; parse errors are invalid requests', (t) => {
 		'reviewer',
 	])
 	assert.equal(named.code, 0)
-	assert.equal(json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions[0].actor, 'reviewer')
+	assert.equal(
+		json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions.find(
+			(decision: { gapId: string }) => decision.gapId === 'G2'
+		).actor,
+		'reviewer'
+	)
 	const cases: Array<[string[], string]> = [
 		[['deploy'], 'Unknown command: deploy. Run checkmate --help.'],
 		[
@@ -276,7 +279,7 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	])
 	assert.match(
 		begun.lines[0],
-		/^completed run-1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
+		/^completed run-1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\S+checkmate-evidence-[a-f0-9]+-run-1[/\\]$/
 	)
 	const finished = cli(workspace, [
 		'run',

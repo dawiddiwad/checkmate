@@ -2,7 +2,7 @@
 
 Use the project's HTTP tool or Node.js `fetch`. Use an explicit timeout.
 Resolve credentials from the profile's environment references. Do not save their values.
-Run the script from the workspace:
+This is an optional recipe. Use the `evidenceDirectory` returned by `run show --json` in place of the placeholder. Run the script from the workspace:
 
 ```sh
 node --input-type=module -e '
@@ -11,7 +11,7 @@ const url = "http://127.0.0.1:4173/quote?promotion=true"
 const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
 const body = await response.json()
 const exchange = { method: "GET", path: new URL(url).pathname, status: response.status, totalPLN: body.totalPLN }
-writeFileSync(".checkmate/tmp/<runId>/T2-A1.json", JSON.stringify(exchange))
+writeFileSync("<evidenceDirectory>/T2-A1.json", JSON.stringify(exchange))
 console.log(JSON.stringify(exchange))
 '
 ```

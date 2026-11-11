@@ -16,9 +16,10 @@ import {
 } from './contracts.ts'
 import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
 import { targetRevision } from './targets.ts'
-import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
-import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
+import { basename, extname, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
 
 export type RunRow = {
 	run_id: string
@@ -109,8 +110,9 @@ const mediaTypes: Record<string, string> = {
 	'.zip': 'application/zip',
 }
 
-export function evidenceDirectory(runId: string) {
-	return `.checkmate/tmp/${runId}/`
+export function evidenceDirectory(runId: string, workspace: string) {
+	requireIdentifier(runId, 'run ID')
+	return join(tmpdir(), `checkmate-evidence-${digest(resolve(workspace)).slice(0, 16)}-${runId}`) + sep
 }
 
 export function runState(store: Store, runId: string): RunState {
@@ -241,14 +243,14 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 					startedAt: at,
 					browserSession,
 					deadlineSeconds: timeoutSeconds,
-					evidenceDirectory: evidenceDirectory(runId),
+					evidenceDirectory: evidenceDirectory(runId, store.workspace),
 				}),
 				subjects: [`run:${runId}`, `plan:${plan.planId}`],
 			}
 		}
 	)
 	if (reply.status === 'completed')
-		mkdirSync(join(store.workspace, evidenceDirectory(input.runId)), { recursive: true })
+		mkdirSync(evidenceDirectory(input.runId, store.workspace), { recursive: true, mode: 0o700 })
 	return reply
 }
 
@@ -257,22 +259,21 @@ type EvidenceFile = { path: string; name: string; kind: string; mediaType: strin
 function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
 	const name = match ? match[1] : spec
-	requireCondition(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
-	const directory = evidenceDirectory(runId)
-	let root: string
+	requireCondition(name, 'Evidence path is empty')
+	const directory = evidenceDirectory(runId, store.workspace)
+	const legacy = join(store.workspace, '.checkmate', 'tmp', runId)
+	const roots = [directory, legacy].filter(existsSync).map((path) => realpathSync(path))
 	let real: string
-	try {
-		root = realpathSync(join(store.workspace, directory))
-	} catch {
-		throw new Error(`Evidence directory ${directory} does not exist`)
-	}
 	const path = resolve(store.workspace, name)
 	try {
 		real = realpathSync(path)
 	} catch {
 		throw new Error(`Evidence file not found: ${name}`)
 	}
-	requireCondition(real.startsWith(root + sep), `Evidence file must be inside ${directory}: ${name}`)
+	requireCondition(
+		roots.some((root) => real.startsWith(root + sep)),
+		`Evidence file must be inside ${directory}: ${name}`
+	)
 	const stats = statSync(real)
 	requireCondition(stats.isFile(), `Evidence must be a file: ${name}`)
 	requireCondition(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`)
@@ -319,6 +320,18 @@ function storeEvidence(
 		)
 		return id
 	})
+}
+
+function removeImportedEvidence(store: Store, runId: string, files: EvidenceFile[]) {
+	for (const file of files) rmSync(file.path, { force: true })
+	for (const directory of [
+		join(store.workspace, '.checkmate', 'tmp', runId),
+		join(store.workspace, '.checkmate', 'tmp'),
+	]) {
+		try {
+			rmdirSync(directory)
+		} catch {}
+	}
 }
 
 function evidenceFiles(store: Store, runId: string, specs: string[] = []) {
@@ -400,7 +413,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			subjects: [`run:${input.runId}`],
 		}
 	})
-	for (const file of files) rmSync(file.path, { force: true })
+	removeImportedEvidence(store, input.runId, files)
 	return reply
 }
 
@@ -458,7 +471,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 			subjects: [`run:${input.runId}`],
 		}
 	})
-	for (const file of files) rmSync(file.path, { force: true })
+	removeImportedEvidence(store, input.runId, files)
 	return reply
 }
 
@@ -565,7 +578,7 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 }
 
 export function finishRun(store: Store, actor: string | undefined, input: FinishInput) {
-	return write(store, { actor, command: 'run finish', subject: input.runId, input }, (operationId, at) => {
+	const reply = write(store, { actor, command: 'run finish', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
 		const completion = requireChoice(
 			input.completion,
@@ -720,6 +733,8 @@ export function finishRun(store: Store, actor: string | undefined, input: Finish
 			subjects: [`run:${input.runId}`, `plan:${run.plan.planId}`, 'inbox'],
 		}
 	})
+	rmSync(evidenceDirectory(input.runId, store.workspace), { recursive: true, force: true })
+	return reply
 }
 
 export function outcomeCounts(tests: ResultTest[]) {
@@ -729,58 +744,64 @@ export function outcomeCounts(tests: ResultTest[]) {
 }
 
 export function resumeRun(store: Store, actor: string | undefined, input: ResumeInput) {
-	return write(store, { actor, command: 'run resume', subject: input.runId, input }, (operationId, at, actor) => {
-		const run = startedRun(store, input.runId)
-		const stalled = input.error ?? []
-		requireCondition(stalled.length > 0 || input.reason === undefined, '--reason applies only with --error')
-		const reason = stalled.length ? requireText(input.reason, 'reason (--reason) for --error') : null
-		const attempt = currentAttempt(store, input.runId) + 1
-		execute(
-			store,
-			'INSERT INTO run_attempts (run_id, attempt, started_at, actor) VALUES (?, ?, ?, ?)',
-			input.runId,
-			attempt,
-			at,
-			actor
-		)
-		for (const testId of stalled) {
-			selectedTest(run, testId)
-			requireOpen(store, input.runId, testId)
+	const reply = write(
+		store,
+		{ actor, command: 'run resume', subject: input.runId, input },
+		(operationId, at, actor) => {
+			const run = startedRun(store, input.runId)
+			const stalled = input.error ?? []
+			requireCondition(stalled.length > 0 || input.reason === undefined, '--reason applies only with --error')
+			const reason = stalled.length ? requireText(input.reason, 'reason (--reason) for --error') : null
+			const attempt = currentAttempt(store, input.runId) + 1
 			execute(
 				store,
-				'INSERT INTO outcomes (run_id, test_id, attempt, outcome, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO run_attempts (run_id, attempt, started_at, actor) VALUES (?, ?, ?, ?)',
 				input.runId,
-				testId,
 				attempt,
-				'error',
-				reason,
 				at,
-				operationId
+				actor
 			)
+			for (const testId of stalled) {
+				selectedTest(run, testId)
+				requireOpen(store, input.runId, testId)
+				execute(
+					store,
+					'INSERT INTO outcomes (run_id, test_id, attempt, outcome, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+					input.runId,
+					testId,
+					attempt,
+					'error',
+					reason,
+					at,
+					operationId
+				)
+			}
+			const outcomes = runOutcomes(store, input.runId)
+			const results = runAssertions(store, input.runId)
+			const tests = run.plan.tests
+				.filter((test) => run.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id))
+				.map((test) => ({
+					testId: test.id,
+					warning: 'Actions may have occurred',
+					recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
+					assertions: test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`)),
+				}))
+			return {
+				reply: completed(input.runId, {
+					runId: input.runId,
+					attempt,
+					browserSession: run.row.browser_session,
+					deadlineSeconds: run.row.deadline_seconds,
+					evidenceDirectory: evidenceDirectory(input.runId, store.workspace),
+					closed: stalled,
+					tests,
+				}),
+				subjects: [`run:${input.runId}`],
+			}
 		}
-		const outcomes = runOutcomes(store, input.runId)
-		const results = runAssertions(store, input.runId)
-		const tests = run.plan.tests
-			.filter((test) => run.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id))
-			.map((test) => ({
-				testId: test.id,
-				warning: 'Actions may have occurred',
-				recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
-				assertions: test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`)),
-			}))
-		return {
-			reply: completed(input.runId, {
-				runId: input.runId,
-				attempt,
-				browserSession: run.row.browser_session,
-				deadlineSeconds: run.row.deadline_seconds,
-				evidenceDirectory: evidenceDirectory(input.runId),
-				closed: stalled,
-				tests,
-			}),
-			subjects: [`run:${input.runId}`],
-		}
-	})
+	)
+	mkdirSync(evidenceDirectory(input.runId, store.workspace), { recursive: true, mode: 0o700 })
+	return reply
 }
 
 export function acceptResult(store: Store, actor: string | undefined, input: ResultVerdict) {

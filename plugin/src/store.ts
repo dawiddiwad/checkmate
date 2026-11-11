@@ -3,6 +3,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { userInfo } from 'node:os'
 
 export type Status =
 	'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected' | 'invalid_request'
@@ -272,13 +274,27 @@ export function execute(store: Store, sql: string, ...parameters: SQLInputValue[
 	store.db.prepare(sql).run(...parameters)
 }
 
+export function resolveActor(workspace: string, explicit?: string, env = process.env): string {
+	const requested = explicit?.trim() || env.CHECKMATE_ACTOR?.trim()
+	if (requested) return requested
+	try {
+		const name = execFileSync('git', ['config', 'user.name'], {
+			cwd: workspace,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+			timeout: 1000,
+		}).trim()
+		if (name) return name
+	} catch {}
+	return env.USER?.trim() || env.USERNAME?.trim() || userInfo().username
+}
+
 export function write(
 	store: Store,
 	operation: Operation,
 	change: (operationId: string, at: string, actor: string) => Change
 ) {
-	const actor = operation.actor?.trim()
-	if (!actor) throw new Error('A write needs an actor. Use --actor <name> or set CHECKMATE_ACTOR.')
+	const actor = resolveActor(store.workspace, operation.actor)
 	const id = ulid()
 	const at = new Date().toISOString()
 	store.db.exec('BEGIN IMMEDIATE')

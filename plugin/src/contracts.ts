@@ -252,10 +252,12 @@ export function planTargetCheck(plan: Plan, profile: Profile) {
 // and the test graph of the latest revision of every plan must have no cycle.
 export function dependencyCheck(plan: Plan, latest: ReadonlyMap<string, Plan>) {
 	const plans = new Map(latest).set(plan.planId, plan)
-	const crossReferences = [
-		...plan.tests.flatMap((test) => test.dependsOn),
-		...plan.gaps.flatMap((gap) => gap.testIds),
-	].filter((id) => id.includes(':'))
+	const crossReferences = [...plans.values()]
+		.flatMap((current) => [
+			...current.tests.flatMap((test) => test.dependsOn),
+			...current.gaps.flatMap((gap) => gap.testIds),
+		])
+		.filter((id) => id.includes(':'))
 	for (const reference of crossReferences) {
 		const { planId, testId } = testReference(reference)
 		const other = plans.get(planId!)

@@ -6,45 +6,48 @@
 
 #
 
-Checkmate is a Claude Code plugin and a CLI. Claude tests a running application with real tools, such as a browser or HTTP. Checkmate stores the plan, the decisions, and the results, and checks that they are consistent. Each requirement maps to tests with explicit assertions. Each assertion result needs saved evidence. A question that the requirements do not answer becomes a gap, and a person decides it.
+Checkmate helps Claude test a running application with the tools in its host. It stores requirements, plans, decisions, results, and evidence in one SQLite database. Each requirement maps to tests with explicit assertions. When the requirements do not give an answer, Claude records a gap for the caller to decide.
 
 ## Who uses it
 
-- **An agent or CI job** runs `checkmate delegate`. Each stage runs in a new Claude Code session.
-- **A person in Claude Code** runs the `/checkmate:` skills.
-- **A person reviewing** runs `checkmate ui`. The inbox lists the gaps to answer, the plans to approve, and the results to accept. It updates when an agent writes.
+- **A caller in Claude Code** uses the `/checkmate:` skills. The caller can be a human or an agent.
+- **An agent or CI job** uses the CLI. `checkmate delegate` runs a stage in a fresh Claude Code session.
+- **A human reviewing** opens `/checkmate:ui` or `checkmate ui`. The inbox shows gaps to answer, plans to approve, and results to accept. It updates when an agent writes.
 
-You can use one of these or all of them on the same workspace.
+All three use the same workspace database.
 
-## Install
+## Start in Claude Code
+
+Use Node.js 24.12.0 or later. Install the plugin:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
 ```
 
-```bash
-npm i -g @xoxoai/checkmate
+Tell Claude the target URL, permitted operations, and context sources. Ask it to open a target request named `shop` and run setup. Then ask it to open a plan request named `checkout` from your requirements. The skills use those saved IDs:
+
+```text
+/checkmate:setup shop
+/checkmate:plan checkout
+/checkmate:ui
 ```
 
-Use Node.js 24.12.0 or later. The npm CLI contains the plugin and adds `delegate` and `ui`.
+The plugin includes the database commands and review UI. You do not need to install the npm CLI to use it. Give Claude the context sources, permitted operations, and tool instructions during setup. A plan can add context or narrow the tool instructions.
 
-## Usage
+Answer the gaps and approve the plan before execution. Review the results and their evidence before acceptance. [Workflow](docs/WORKFLOW.md) explains these steps and retests.
+
+## CLI for agents and scripts
+
+The optional npm CLI adds `delegate` and a shell command for the same database operations. This toolkit CLI release is not published yet. [Build and install it from the checkout](docs/DEVELOPMENT.md#plugin-layout), then run:
 
 ```bash
 checkmate plan open checkout --target shop@1 < requirements.json
-checkmate delegate plan checkout --allow Read --allow Write --allow "Bash(node *)"
+checkmate delegate plan checkout --allow Read --allow "Bash(node *)"
 checkmate ui
 ```
 
-Claude writes the plan. Unclear requirements become gaps in the inbox. After a person answers them and approves the plan, run it:
-
-```bash
-checkmate run begin run-7 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
-checkmate delegate execute run-7 --allow Read --allow Write --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
-```
-
-The result goes to the inbox for acceptance. [Workflow](docs/WORKFLOW.md) has every step, from target setup to a retest.
+Create the target profile first. After the caller resolves gaps and approves the plan, begin a run and delegate execution with the permissions its tools need. [CLI](docs/CLI.md) explains delegation, permissions, and direct decision commands.
 
 <details>
 <summary>Screenshots</summary>
@@ -60,12 +63,14 @@ The plans and runs of that live run are in [examples](docs/examples/README.md).
 
 ## How it works
 
-- Stages: setup, plan, revise, execute, report. Gap answers, plan approvals, and result acceptance are records with an actor and a rationale.
-- A test passes only when all its assertions pass. `inconclusive` means that the evidence cannot show the answer.
-- Everything is in `.checkmate/checkmate.db`. Saved rows do not change. A run can continue after a crash.
-- `delegate` reads the result from the database. It does not use the worker's summary.
+- Stages: setup, plan, revise, execute, report. Decisions record an actor and a rationale.
+- Skills read current database records before each task. Chat memory and exported reports are not the source of truth.
+- A test passes when all its assertions pass. `inconclusive` means the evidence cannot establish the answer.
+- Durable data, including screenshots, stays in `.checkmate/checkmate.db`. A run can continue after a crash. Reports are files only when you export them.
+- The UI supports plan edits, linked runs, and HTML or JSON report downloads. Print a report to save a PDF.
+- `delegate` verifies the worker's result against the database.
 
-Checkmate checks structure, relationships, and evidence files. It cannot prove that an observation is true. Claude Code owns the model, tools, and permissions.
+Checkmate validates structure, relationships, and evidence records. It cannot prove that an observation is true. Claude Code owns the model, tools, authentication, and permissions.
 
 ## Docs
 
@@ -74,7 +79,7 @@ Checkmate checks structure, relationships, and evidence files. It cannot prove t
 [Configuration](docs/CONFIGURATION.md)  
 [Evidence and outcomes](docs/EVIDENCE.md)  
 [Validation](docs/VALIDATION.md)  
-[Dev](docs/DEVELOPMENT.md)
+[Development](docs/DEVELOPMENT.md)
 
 ## License
 

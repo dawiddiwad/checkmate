@@ -398,6 +398,7 @@ export function runPage(store: Store, context: Context, runId: string, state: Fo
 		${detail.result ? html`· finished ${time(detail.result.finishedAt)} ago` : ''}`
 	const badge = runBadge(detail)
 	const body: Html = html`${heading(runId, sub, html`<div class="meta" data-region="state">${badge}</div>`)}
+		${detail.result ? html`<div class="report-actions actions"><a class="btn primary" href="/runs/${runId}/report.html" download>Download HTML report</a><a class="btn" href="/runs/${runId}/report.json" download>Download JSON</a><button type="button" class="btn" data-print-report>Print / Save PDF</button></div>` : ''}
 		<div class="split">
 			<div class="main-col">
 				${strip(detail)}

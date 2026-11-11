@@ -1,7 +1,20 @@
+import type { ListOptions } from '../../../plugin/src/views.ts'
 import type { Store } from '../../../plugin/src/store.ts'
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
-import { inbox, operationLog, planDetail, planList, runDetail, runList } from '../../../plugin/src/views.ts'
+import {
+	inbox,
+	listOptions,
+	listTimestamp,
+	operationActors,
+	operationLogPage,
+	planDetail,
+	planList,
+	planListPage,
+	runDetail,
+	runList,
+	runListPage,
+} from '../../../plugin/src/views.ts'
 import { html, join, pill, plural, time, words } from './html.ts'
 import { heading } from './layout.ts'
 
@@ -145,7 +158,7 @@ function emptyInbox(store: Store) {
 	</div>`
 }
 
-export type PlanFilters = { q: string; show: string }
+export type PlanFilters = ListOptions & { q: string; show: string }
 
 const planShows = [
 	['all', 'All plans'],
@@ -161,10 +174,10 @@ function options(choices: string[][], selected: string) {
 }
 
 function filterBar(fields: Html, reset: string, active: boolean) {
-	return html`<form class="filters" method="get" role="search">
+	return html`<form class="filters" method="get" role="search" data-list-filters>
 		${fields}
 		<button class="btn">Filter</button>
-		${active ? html`<a class="btn ghost" href="${reset}">Clear</a>` : ''}
+		${active ? html`<a class="btn ghost" href="${reset}" data-list-link>Clear</a>` : ''}
 	</form>`
 }
 
@@ -180,15 +193,10 @@ function testSummary(plan: ReturnType<typeof planDetail>['plan']) {
 }
 
 export function plansPage(store: Store, filters: PlanFilters): Page {
-	const rows = planList(store).filter((row) => {
-		if (filters.q && !row.planId.toLowerCase().includes(filters.q.toLowerCase())) return false
-		if (filters.show === 'needs_decision') return row.openGaps.length > 0
-		if (filters.show === 'awaiting_approval') return row.approval === 'pending'
-		if (filters.show === 'blocked') return row.blocked.length > 0 || row.openBlockingGaps.length > 0
-		return true
-	})
-	const fields = html`<label class="sr-only" for="q">Search plans by ID</label>
-		<input id="q" type="search" name="q" value="${filters.q}" placeholder="Search by plan ID" data-search />
+	const result = planListPage(store, filters)
+	const { rows } = result
+	const fields = html`<label class="sr-only" for="q">Search plans</label>
+		<input id="q" type="search" name="q" value="${filters.q}" placeholder="Search all columns" data-search />
 		<label class="sr-only" for="show">Show</label>
 		<select id="show" name="show">
 			${options(planShows, filters.show)}
@@ -203,12 +211,12 @@ export function plansPage(store: Store, filters: PlanFilters): Page {
 							<th scope="col">Open gaps</th>
 							<th scope="col">Approval</th>
 							<th scope="col">Blocks</th>
-							<th scope="col">Updated</th>
+							${sortHeading('Updated', '/plans', filters)}
 						</tr>
 					</thead>
 					<tbody>
 						${rows.map((row) => {
-							const detail = planDetail(store, row.planId)
+							const detail = row
 							return html`<tr data-key="plan:${row.planId}" data-nav-row>
 								<td>
 									<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item
@@ -250,7 +258,7 @@ export function plansPage(store: Store, filters: PlanFilters): Page {
 											: html`<span class="muted">none</span>`
 									}
 								</td>
-								<td class="nowrap">${time(row.since)}</td>
+								<td class="nowrap">${time(row.since, listTimestamp(row.since))}</td>
 							</tr>`
 						})}
 					</tbody>
@@ -260,14 +268,14 @@ export function plansPage(store: Store, filters: PlanFilters): Page {
 	return {
 		title: 'Plans',
 		section: 'plans',
-		subjects: ['inbox', ...rows.map((row) => `plan:${row.planId}`)],
+		subjects: ['*'],
 		body: html`${heading('Plans', 'Each plan at its latest revision.')}
-			${filterBar(fields, '/plans', Boolean(filters.q || filters.show !== 'all'))}
-			<div data-region="plans" data-list>${table}</div>`,
+			${filterBar(html`${fields}${pageSize(filters)}`, '/plans', Boolean(filters.q || filters.show !== 'all'))}
+			<div data-region="plans" data-list>${table}${pagination('/plans', filters, result)}</div>`,
 	}
 }
 
-export type RunFilters = { plan: string; build: string; status: string }
+export type RunFilters = ListOptions & { plan: string; build: string; status: string }
 
 const runStatuses = [
 	['all', 'All runs'],
@@ -292,16 +300,10 @@ export function runOutcomeCounts(store: Store, runId: string) {
 }
 
 export function runsPage(store: Store, filters: RunFilters): Page {
-	const rows = runList(store, { planId: filters.plan || undefined, build: filters.build || undefined })
-		.filter((row) => {
-			if (filters.status === 'started') return row.state === 'started'
-			if (filters.status === 'pending' || filters.status === 'approved' || filters.status === 'rejected')
-				return row.acceptance === filters.status
-			return true
-		})
-		.reverse()
+	const result = runListPage(store, filters)
+	const { rows } = result
 	const plans = planList(store).map((row) => [row.planId, row.planId])
-	const fields = html`<label class="sr-only" for="plan">Plan</label>
+	const fields = html`${searchField(filters.q)}<label class="sr-only" for="plan">Plan</label>
 		<select id="plan" name="plan">
 			${options([['', 'All plans'], ...plans], filters.plan)}
 		</select>
@@ -323,7 +325,7 @@ export function runsPage(store: Store, filters: RunFilters): Page {
 							<th scope="col">Completion</th>
 							<th scope="col">Coverage</th>
 							<th scope="col">Status</th>
-							<th scope="col">Started</th>
+							${sortHeading('Started', '/runs', filters)}
 						</tr>
 					</thead>
 					<tbody>
@@ -337,13 +339,13 @@ export function runsPage(store: Store, filters: RunFilters): Page {
 										>
 									</td>
 									<td class="mono">${row.build}</td>
-									<td>${counts(runOutcomeCounts(store, row.runId))}</td>
+									<td>${counts(row.counts)}</td>
 									<td>
 										${row.completion ? pill(row.completion) : html`<span class="muted">running</span>`}
 									</td>
 									<td>${row.coverage ? pill(row.coverage) : html`<span class="muted">–</span>`}</td>
 									<td>${runStatus(row)}</td>
-									<td class="nowrap">${time(row.startedAt)}</td>
+									<td class="nowrap">${time(row.startedAt, listTimestamp(row.startedAt))}</td>
 								</tr>`
 						)}
 					</tbody>
@@ -353,14 +355,14 @@ export function runsPage(store: Store, filters: RunFilters): Page {
 	return {
 		title: 'Runs',
 		section: 'runs',
-		subjects: ['inbox', ...rows.map((row) => `run:${row.runId}`), ...plans.map(([id]) => `plan:${id}`)],
-		body: html`${heading('Runs', 'Newest first.')}
-			${filterBar(fields, '/runs', Boolean(filters.plan || filters.build || filters.status !== 'all'))}
-			<div data-region="runs" data-list>${table}</div>`,
+		subjects: ['*'],
+		body: html`${heading('Runs', 'Test execution and results.')}
+			${filterBar(html`${fields}${pageSize(filters)}`, '/runs', Boolean(filters.q || filters.plan || filters.build || filters.status !== 'all'))}
+			<div data-region="runs" data-list>${table}${pagination('/runs', filters, result)}</div>`,
 	}
 }
 
-export type LogFilters = { subject: string; actor: string }
+export type LogFilters = ListOptions & { subject: string; actor: string }
 
 export function subjectLink(subject: string) {
 	const [kind, id] = subject.split(/:(.*)/)
@@ -376,10 +378,10 @@ function reasons(response: unknown) {
 }
 
 export function logPage(store: Store, filters: LogFilters): Page {
-	const recent = operationLog(store, { subject: filters.subject || undefined, limit: 1000 })
-	const actors = [...new Set(operationLog(store, { limit: 1000 }).map((row) => row.actor))].sort()
-	const rows = recent.filter((row) => !filters.actor || row.actor === filters.actor).slice(0, 200)
-	const fields = html`<label class="sr-only" for="subject">Subject</label>
+	const result = operationLogPage(store, filters)
+	const actors = operationActors(store)
+	const { rows } = result
+	const fields = html`${searchField(filters.q)}<label class="sr-only" for="subject">Subject</label>
 		<input
 			id="subject"
 			type="search"
@@ -397,7 +399,7 @@ export function logPage(store: Store, filters: LogFilters): Page {
 				<table class="log">
 					<thead>
 						<tr>
-							<th scope="col">Time</th>
+							${sortHeading('Time', '/log', filters)}
 							<th scope="col">Actor</th>
 							<th scope="col">Command</th>
 							<th scope="col">Status</th>
@@ -409,7 +411,7 @@ export function logPage(store: Store, filters: LogFilters): Page {
 						${rows.map(
 							(row) =>
 								html`<tr data-key="op:${row.rowid}">
-									<td class="nowrap">${time(row.at)}</td>
+									<td class="nowrap">${time(row.at, listTimestamp(row.at))}</td>
 									<td>${row.actor}</td>
 									<td>
 										<span class="mono">${row.command}</span>
@@ -435,9 +437,59 @@ export function logPage(store: Store, filters: LogFilters): Page {
 	return {
 		title: 'Log',
 		section: 'log',
-		subjects: filters.subject ? [filters.subject, 'inbox'] : ['*'],
-		body: html`${heading('Log', 'Every write, newest first. The log shows up to 200 operations.')}
-			${filterBar(fields, '/log', Boolean(filters.subject || filters.actor))}
-			<div data-region="log">${table}</div>`,
+		subjects: ['*'],
+		body: html`${heading('Log', 'Every recorded write.')}
+			${filterBar(html`${fields}${pageSize(filters)}`, '/log', Boolean(filters.q || filters.subject || filters.actor))}
+			<div data-region="log" data-list>${table}${pagination('/log', filters, result)}</div>`,
 	}
+}
+
+function listUrl(path: string, filters: object, changes: Record<string, string | number>) {
+	const params = new URLSearchParams()
+	for (const [key, value] of Object.entries({ ...filters, ...changes }))
+		if (value !== undefined && value !== '') params.set(key, String(value))
+	return `${path}?${params}`
+}
+
+function searchField(query = '') {
+	return html`<label class="sr-only" for="q">Search all columns</label>
+		<input id="q" name="q" type="search" value="${query}" placeholder="Search all columns" data-search />`
+}
+
+function pageSize(filters: ListOptions) {
+	const selected = listOptions(filters)
+	return html`<label for="size">Rows</label>
+		<select id="size" name="size">
+			${options(
+				['25', '50', '100'].map((size) => [size, size]),
+				String(selected.size)
+			)}
+		</select>
+		<input type="hidden" name="order" value="${selected.order}" />`
+}
+
+function sortHeading(label: string, path: string, filters: ListOptions) {
+	const ascending = filters.order === 'asc'
+	return html`<th scope="col" aria-sort="${ascending ? 'ascending' : 'descending'}">
+		<a
+			href="${listUrl(path, filters, { order: ascending ? 'desc' : 'asc', page: 1 })}"
+			data-list-link
+			aria-label="Sort ${label.toLowerCase()} ${ascending ? 'newest' : 'oldest'} first"
+			>${label} ${ascending ? '↑' : '↓'}</a
+		>
+	</th>`
+}
+
+function pagination(
+	path: string,
+	filters: ListOptions,
+	result: { page: number; pages: number; size: number; total: number }
+) {
+	const { page, pages, size, total } = result
+	return html`<nav class="pagination" aria-label="Pagination">
+		<span data-list-count>${total ? (page - 1) * size + 1 : 0}–${Math.min(page * size, total)} of ${total}</span>
+		<span>Page ${page} of ${pages}</span>
+		${page > 1 ? html`<a class="btn" href="${listUrl(path, filters, { page: page - 1 })}" data-list-link>Previous</a>` : ''}
+		${page < pages ? html`<a class="btn" href="${listUrl(path, filters, { page: page + 1 })}" data-list-link>Next</a>` : ''}
+	</nav>`
 }

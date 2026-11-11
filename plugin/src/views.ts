@@ -4,6 +4,7 @@ import { all, one } from './store.ts'
 import { requireCondition } from './contracts.ts'
 import { approvalState, dependencyBlock, latestApproval, planApproval, planChanges, planRevision } from './plans.ts'
 import {
+	evidenceDirectory,
 	outcomeCounts,
 	resultAcceptance,
 	runAssertions,
@@ -146,16 +147,18 @@ export function planDetail(store: Store, planId: string, revision: number | null
 	}
 }
 
-export function planHistory(store: Store, planId: string) {
+export function planHistory(store: Store, planId: string, limit?: number) {
+	if (limit !== undefined) requireCondition(Number.isInteger(limit) && limit > 0, 'Invalid history limit')
 	planRevision(store, planId)
 	const rows = all<RevisionRow & { operation_id: string }>(
 		store,
 		`SELECT p.plan_id, p.revision, p.sha256, p.body, p.operation_id, o.at, o.actor FROM plan_revisions p
-		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision`,
-		planId
-	)
+		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision DESC LIMIT ?`,
+		planId,
+		limit === undefined ? -1 : limit + 1
+	).reverse()
 	const plans = rows.map((row) => JSON.parse(row.body) as Plan)
-	return rows.map((row, i) => ({
+	const history = rows.map((row, i) => ({
 		revision: row.revision,
 		sha256: row.sha256,
 		operationId: row.operation_id,
@@ -163,6 +166,7 @@ export function planHistory(store: Store, planId: string) {
 		at: row.at,
 		changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i]),
 	}))
+	return limit === undefined ? history : history.slice(-limit)
 }
 
 export function runList(store: Store, filters: { planId?: string; build?: string } = {}) {
@@ -244,6 +248,7 @@ export function runDetail(store: Store, runId: string) {
 		build: run.row.application_build,
 		startedAt: run.row.started_at,
 		browserSession: run.row.browser_session,
+		evidenceDirectory: evidenceDirectory(runId, store.workspace),
 		deadlineSeconds: run.row.deadline_seconds,
 		request: run.request,
 		state: finished ? ('finalized' as const) : ('started' as const),
@@ -340,4 +345,136 @@ export function evidenceBytes(store: Store, id: string) {
 		size: row.size,
 		bytes: row.bytes,
 	}
+}
+
+export type ListOptions = { q?: string; page?: number; size?: number; order?: string }
+
+export function listTimestamp(iso: string) {
+	return `${new Date(iso).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
+export function listOptions(options: ListOptions = {}) {
+	return {
+		q: options.q?.trim() ?? '',
+		page: Number.isSafeInteger(options.page) && options.page! > 0 ? options.page! : 1,
+		size: [25, 50, 100].includes(options.size ?? 0) ? options.size! : 25,
+		order: options.order === 'asc' ? 'asc' : 'desc',
+	}
+}
+
+function pageRows<T>(rows: T[], options: ListOptions) {
+	const selected = listOptions(options)
+	const total = rows.length
+	const pages = Math.max(1, Math.ceil(total / selected.size))
+	const page = Math.min(selected.page, pages)
+	return { ...selected, total, pages, page, rows: rows.slice((page - 1) * selected.size, page * selected.size) }
+}
+
+function matchesQuery(query: string | undefined, values: unknown[]) {
+	const text = values.flat(Infinity).join(' ').replace(/_/g, ' ').toLowerCase()
+	return !query || text.includes(query.trim().replace(/_/g, ' ').toLowerCase())
+}
+
+export function planListPage(store: Store, options: ListOptions & { show?: string } = {}) {
+	const rows = planList(store).map((row) => ({ ...row, plan: planRevision(store, row.planId).plan }))
+	const filtered = rows.filter((row) => {
+		if (options.show === 'needs_decision' && !row.openGaps.length) return false
+		if (options.show === 'awaiting_approval' && row.approval !== 'pending') return false
+		if (options.show === 'blocked' && !row.blocked.length && !row.openBlockingGaps.length) return false
+		const count = (readiness: string) => row.plan.tests.filter((test) => test.readiness === readiness).length
+		return matchesQuery(options.q, [
+			`${row.planId}@${row.revision}`,
+			`${row.plan.tests.length} ${row.plan.tests.length === 1 ? 'test' : 'tests'}`,
+			`${count('ready')} ready`,
+			count('blocked') ? `${count('blocked')} blocked` : '',
+			count('deferred') ? `${count('deferred')} deferred` : '',
+			row.openGaps.length ? row.openGaps : 'none',
+			row.approval,
+			row.blocked.length
+				? row.blocked.map((block) => `${block.testId} by ${block.dependency}: ${block.cause}`)
+				: 'none',
+			row.since,
+			listTimestamp(row.since),
+		])
+	})
+	filtered.sort((a, b) => a.since.localeCompare(b.since) || a.planId.localeCompare(b.planId))
+	if (options.order !== 'asc') filtered.reverse()
+	return pageRows(filtered, options)
+}
+
+export function runListPage(
+	store: Store,
+	options: ListOptions & { plan?: string; build?: string; status?: string } = {}
+) {
+	const rows = runList(store, { planId: options.plan || undefined, build: options.build || undefined }).map((row) => {
+		const counts: Record<string, number> = {}
+		for (const test of runOutcomes(store, row.runId).values())
+			counts[test.outcome] = (counts[test.outcome] ?? 0) + 1
+		return { ...row, counts }
+	})
+	const filtered = rows.filter((row) => {
+		if (options.status === 'started' && row.state !== 'started') return false
+		if (['pending', 'approved', 'rejected'].includes(options.status ?? '') && row.acceptance !== options.status)
+			return false
+		const status =
+			row.state === 'started'
+				? 'in progress'
+				: row.acceptance === 'approved'
+					? 'accepted'
+					: row.acceptance === 'pending'
+						? 'awaiting acceptance'
+						: row.acceptance
+		return matchesQuery(options.q, [
+			row.runId,
+			`${row.planId}@${row.revision}`,
+			row.build,
+			Object.entries(row.counts).map(([outcome, count]) => `${count} ${outcome}`),
+			Object.keys(row.counts).length ? '' : 'no outcomes yet',
+			row.completion ?? 'running',
+			row.coverage,
+			status,
+			row.startedAt,
+			listTimestamp(row.startedAt),
+		])
+	})
+	filtered.sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId))
+	if (options.order !== 'asc') filtered.reverse()
+	return pageRows(filtered, options)
+}
+
+export function operationLogPage(store: Store, options: ListOptions & { subject?: string; actor?: string } = {}) {
+	const selected = listOptions(options)
+	const where = `WHERE (? = '' OR EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?))
+		AND (? = '' OR actor = ?)
+		AND (? = '' OR instr(lower(at || ' ' || strftime('%Y-%m-%d %H:%M UTC', at) || ' ' || actor || ' ' || command || ' ' || status || ' ' || replace(status, '_', ' ') || ' ' || CASE WHEN subjects = '[]' THEN 'none' ELSE subjects END || ' ' || id || ' ' || coalesce(json_extract(response, '$.reasons'), '')), lower(?)) > 0)`
+	const args = [
+		options.subject ?? '',
+		options.subject ?? '',
+		options.actor ?? '',
+		options.actor ?? '',
+		selected.q,
+		selected.q,
+	]
+	const total = Number(
+		one<{ total: number }>(store, `SELECT count(*) AS total FROM operations ${where}`, ...args)!.total
+	)
+	const pages = Math.max(1, Math.ceil(total / selected.size))
+	const page = Math.min(selected.page, pages)
+	const rows = all<OperationRow>(
+		store,
+		`SELECT rowid, * FROM operations ${where} ORDER BY at ${selected.order}, rowid ${selected.order} LIMIT ? OFFSET ?`,
+		...args,
+		selected.size,
+		(page - 1) * selected.size
+	).map((row) => ({
+		...row,
+		subjects: JSON.parse(row.subjects) as string[],
+		arguments: JSON.parse(row.arguments) as unknown,
+		response: JSON.parse(row.response) as unknown,
+	}))
+	return { ...selected, total, pages, page, rows }
+}
+
+export function operationActors(store: Store) {
+	return all<{ actor: string }>(store, 'SELECT DISTINCT actor FROM operations ORDER BY actor').map((row) => row.actor)
 }

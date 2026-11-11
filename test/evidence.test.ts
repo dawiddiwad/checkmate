@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkAssertion } from '../plugin/src/runs.ts'
+import { checkAssertion, closeTest, evidenceDirectory, finishRun, resumeRun } from '../plugin/src/runs.ts'
 import { evidenceBytes, runDetail } from '../plugin/src/views.ts'
-import { actor, begin, cli, evidenceFile, ready, store } from './support.ts'
+import { actor, begin, check, cli, evidenceFile, ready, store } from './support.ts'
 
 function started(t: Parameters<typeof store>[0]) {
 	const opened = store(t)
@@ -29,7 +29,7 @@ test('evidence is stored once per digest, the file is deleted, and the bytes com
 	const quote = evidenceFile(opened, 'run-1', 'quote.json', '{"totalPLN":400}')
 	const one = checkAssertion(opened, actor, { ...passed([first, `${quote}:observation`]), assertionId: 'A1' })
 	const two = checkAssertion(opened, actor, { ...passed([copy]), assertionId: 'A2' })
-	for (const path of [first, copy, quote]) assert.equal(existsSync(join(opened.workspace, path)), false, path)
+	for (const path of [first, copy, quote]) assert.equal(existsSync(path), false, path)
 	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM blobs').get()!.n, 2)
 	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM evidence').get()!.n, 3)
 	const [screenshot, observation] = one.data.evidenceIds as string[]
@@ -53,31 +53,91 @@ test('evidence is stored once per digest, the file is deleted, and the bytes com
 	assert.equal(runDetail(opened, 'run-1').tests[0].assertions[0].evidence.length, 2)
 })
 
-test('evidence must be a file inside .checkmate/tmp/<runId>/ and at most 32 MiB', (t) => {
+test('evidence must be a file inside the run staging directory and at most 32 MiB', (t) => {
 	const opened = started(t)
+	const directory = evidenceDirectory('run-1', opened.workspace)
 	const attempt = (path: string) => () => checkAssertion(opened, actor, { ...passed([path]), assertionId: 'A1' })
 	writeFileSync(join(opened.workspace, 'outside.txt'), 'x')
-	assert.throws(attempt('outside.txt'), /Evidence file must be inside .checkmate\/tmp\/run-1\/: outside.txt/)
-	assert.throws(attempt('.checkmate/tmp/run-1/../../../outside.txt'), /must be inside/)
-	assert.throws(attempt(join(opened.workspace, 'outside.txt')), /Evidence path must be relative to the workspace/)
-	evidenceFile(opened, 'run-2', 'other.txt')
-	assert.throws(attempt('.checkmate/tmp/run-2/other.txt'), /must be inside .checkmate\/tmp\/run-1\//)
-	assert.throws(
-		attempt('.checkmate/tmp/run-1/missing.txt'),
-		/Evidence file not found: .checkmate\/tmp\/run-1\/missing.txt/
-	)
-	symlinkSync(join(opened.workspace, 'outside.txt'), join(opened.workspace, '.checkmate/tmp/run-1/link.txt'))
-	assert.throws(attempt('.checkmate/tmp/run-1/link.txt'), /must be inside/)
-	assert.throws(attempt('.checkmate/tmp/run-1'), /must be inside|must be a file/)
+	assert.throws(attempt('outside.txt'), /Evidence file must be inside/)
+	assert.throws(attempt(join(opened.workspace, 'outside.txt')), /Evidence file must be inside/)
+	const other = evidenceFile(opened, 'run-2', 'other.txt')
+	assert.throws(attempt(other), /must be inside/)
+	assert.throws(attempt(join(directory, 'missing.txt')), /Evidence file not found/)
+	symlinkSync(join(opened.workspace, 'outside.txt'), join(directory, 'link.txt'))
+	assert.throws(attempt(join(directory, 'link.txt')), /must be inside/)
+	assert.throws(attempt(directory), /must be inside|must be a file/)
 	const large = evidenceFile(opened, 'run-1', 'large.zip', '')
-	truncateSync(join(opened.workspace, large), 32 * 1024 * 1024 + 1)
-	assert.throws(attempt(large), /Evidence file exceeds 32 MiB: .checkmate\/tmp\/run-1\/large.zip/)
-	assert.equal(existsSync(join(opened.workspace, large)), true)
+	truncateSync(large, 32 * 1024 * 1024 + 1)
+	assert.throws(attempt(large), /Evidence file exceeds 32 MiB/)
+	assert.equal(existsSync(large), true)
 	const listed = evidenceFile(opened, 'run-1', 'twice.txt')
 	assert.throws(
 		() => checkAssertion(opened, actor, { ...passed([listed, listed]), assertionId: 'A1' }),
 		/An evidence file is listed twice/
 	)
-	assert.equal(existsSync(join(opened.workspace, listed)), true)
+	assert.equal(existsSync(listed), true)
 	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM evidence').get()!.n, 0)
+})
+
+test('a run leaves only SQLite files in the workspace and finalization removes staging', (t) => {
+	const opened = started(t)
+	const directory = evidenceDirectory('run-1', opened.workspace)
+	assert.ok(!directory.startsWith(opened.workspace + '/'))
+	check(opened, 'run-1', 'T1.A1', 'passed')
+	check(opened, 'run-1', 'T1.A2', 'passed')
+	const leftover = evidenceFile(opened, 'run-1', 'unused-capture.txt')
+	const resumed = resumeRun(opened, actor, { runId: 'run-1' })
+	assert.equal(resumed.data.evidenceDirectory, directory)
+	assert.equal(existsSync(leftover), true)
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	finishRun(opened, actor, { runId: 'run-1', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	assert.equal(existsSync(directory), false)
+	assert.deepEqual(readdirSync(opened.workspace), ['.checkmate'])
+	assert.ok(
+		readdirSync(join(opened.workspace, '.checkmate')).every((name) => /^checkmate\.db(?:-wal|-shm)?$/.test(name))
+	)
+	assert.equal(runDetail(opened, 'run-1').tests[0].assertions[0].evidence.length, 1)
+})
+
+test('the same run ID in different workspaces has separate staging', (t) => {
+	const first = started(t)
+	const second = started(t)
+	const firstDirectory = evidenceDirectory('run-1', first.workspace)
+	const secondDirectory = evidenceDirectory('run-1', second.workspace)
+	assert.notEqual(firstDirectory, secondDirectory)
+	const file = evidenceFile(second, 'run-1', 'other-workspace.txt')
+	assert.throws(() => checkAssertion(first, actor, { ...passed([file]), assertionId: 'A1' }), /must be inside/)
+})
+
+test('legacy staged captures can be imported without removing other pending files', (t) => {
+	const opened = started(t)
+	const directory = join(opened.workspace, '.checkmate', 'tmp', 'run-1')
+	mkdirSync(directory, { recursive: true })
+	const first = join(directory, 'old.txt')
+	const second = join(directory, 'pending.txt')
+	writeFileSync(first, 'Old observation')
+	writeFileSync(second, 'Pending observation')
+	checkAssertion(opened, actor, { ...passed(['.checkmate/tmp/run-1/old.txt']), assertionId: 'A1' })
+	assert.equal(existsSync(first), false)
+	assert.equal(existsSync(second), true)
+	checkAssertion(opened, actor, { ...passed(['.checkmate/tmp/run-1/pending.txt']), assertionId: 'A2' })
+	assert.equal(existsSync(join(opened.workspace, '.checkmate', 'tmp')), false)
+	assert.equal(runDetail(opened, 'run-1').tests[0].assertions[0].evidence.length, 1)
+})
+
+test('rejected finalization preserves unrecorded captures for retry', (t) => {
+	const opened = started(t)
+	const path = evidenceFile(opened, 'run-1', 'pending.txt')
+	assert.throws(
+		() =>
+			finishRun(opened, actor, {
+				runId: 'run-1',
+				completion: 'completed',
+				cleanup: 'completed',
+				cleanupReason: 'Done.',
+			}),
+		/Selected tests are not closed/
+	)
+	assert.equal(existsSync(path), true)
+	assert.equal(runDetail(opened, 'run-1').state, 'started')
 })

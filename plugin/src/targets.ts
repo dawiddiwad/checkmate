@@ -10,7 +10,14 @@ import {
 	approvalPolicy,
 } from './contracts.ts'
 
-export type TargetRequest = { targetId: string; baseUrl: string; capabilities: string[]; allowedOperations: string[] }
+export type TargetRequest = {
+	targetId: string
+	baseUrl: string
+	capabilities: string[]
+	allowedOperations: string[]
+	contextInstructions?: string
+	toolInstructions?: string
+}
 export type TargetRevision = { profile: Profile; revision: number; sha256: string }
 
 export function openTarget(store: Store, actor: string | undefined, input: TargetRequest) {
@@ -59,7 +66,12 @@ function targetRequestCheck(input: TargetRequest): TargetRequest {
 		list.forEach((item) => requireIdentifier(item, name))
 		requireCondition(new Set(list).size === list.length, `Duplicate item in ${name}`)
 	}
+	for (const name of ['contextInstructions', 'toolInstructions'] as const)
+		if (input[name] !== undefined)
+			requireCondition(typeof input[name] === 'string' && input[name]!.trim().length > 0, `Invalid ${name}`)
 	return {
+		...(input.contextInstructions === undefined ? {} : { contextInstructions: input.contextInstructions }),
+		...(input.toolInstructions === undefined ? {} : { toolInstructions: input.toolInstructions }),
 		targetId: input.targetId,
 		baseUrl: input.baseUrl,
 		capabilities: input.capabilities,
@@ -80,7 +92,11 @@ export function showTargetRequest(store: Store, targetId: string) {
 export function saveTarget(store: Store, actor: string | undefined, input: { targetId: string; profile: unknown }) {
 	return write(store, { actor, command: 'target save', subject: input.targetId, input }, (operationId) => {
 		const request = targetRequest(store, input.targetId)
-		const profile = profileCheck(input.profile)
+		const profile = {
+			...profileCheck(input.profile),
+			...(request.contextInstructions === undefined ? {} : { contextInstructions: request.contextInstructions }),
+			...(request.toolInstructions === undefined ? {} : { toolInstructions: request.toolInstructions }),
+		}
 		requireCondition(
 			profile.targetId === request.targetId,
 			`Profile targetId ${profile.targetId} differs from ${request.targetId}`

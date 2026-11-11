@@ -4,6 +4,7 @@ import type { Store } from '../plugin/src/store.ts'
 import { testOutcome } from '../plugin/src/contracts.ts'
 import {
 	beginRun,
+	evidenceDirectory,
 	checkAssertion,
 	closeTest,
 	finishRun,
@@ -133,13 +134,9 @@ test('a check names a selected test, a known assertion, and passed prerequisites
 		() => checkAssertion(opened, actor, { ...base, result: 'not_checked' }),
 		/A not_checked result needs a reason/
 	)
-	assert.throws(
-		() => checkAssertion(opened, undefined, { ...base, result: 'not_checked', reason: 'x' }),
-		/needs an actor/
-	)
 	assert.equal(
-		checkAssertion(opened, actor, { ...base, result: 'not_checked', reason: 'Stopped after a tool failure.' }).data
-			.result,
+		checkAssertion(opened, undefined, { ...base, result: 'not_checked', reason: 'Stopped after a tool failure.' })
+			.data.result,
 		'not_checked'
 	)
 })
@@ -351,7 +348,7 @@ test('run begin runs the gate and refuses an existing run ID', (t) => {
 	const begun = begin(opened)
 	assert.equal(begun.data.deadlineSeconds, 600)
 	assert.match(String(begun.data.browserSession), /^cm-/)
-	assert.equal(begun.data.evidenceDirectory, '.checkmate/tmp/run-1/')
+	assert.equal(begun.data.evidenceDirectory, evidenceDirectory('run-1', opened.workspace))
 	assert.throws(() => begin(opened), /Run run-1 exists/)
 	assert.throws(
 		() =>

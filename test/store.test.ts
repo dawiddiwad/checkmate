@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import {
 	canonical,
 	closeStore,
@@ -9,6 +10,7 @@ import {
 	execute,
 	openReadOnlyStore,
 	openStore,
+	resolveActor,
 	ulid,
 	write,
 } from '../plugin/src/store.ts'
@@ -198,4 +200,22 @@ test('ULIDs encode the time in Crockford base32 and never decrease in one proces
 	)
 	assert(time >= before && time <= Date.now())
 	assert(ulid(before - 60000) > ids[ids.length - 1])
+})
+
+test('actor defaults to repository identity and supports caller overrides', (t) => {
+	const workspace = directory(t)
+	execFileSync('git', ['init', '--quiet', workspace])
+	execFileSync('git', ['-C', workspace, 'config', 'user.name', 'Repository Tester'])
+	assert.equal(
+		resolveActor(workspace, '  Explicit Actor  ', { CHECKMATE_ACTOR: 'Environment Actor' }),
+		'Explicit Actor'
+	)
+	assert.equal(resolveActor(workspace, undefined, { CHECKMATE_ACTOR: 'Environment Actor' }), 'Environment Actor')
+	assert.equal(resolveActor(workspace, '', { USER: 'system-user' }), 'Repository Tester')
+	const opened = store(t, workspace)
+	write(opened, { actor: undefined, command: 'test', subject: 'actor', input: null }, (_id, _at, actor) => ({
+		reply: { status: 'completed', subject: 'actor', reasons: [], data: { actor } },
+		subjects: [],
+	}))
+	assert.equal(opened.db.prepare('SELECT actor FROM operations').get()!.actor, 'Repository Tester')
 })

@@ -69,24 +69,24 @@ can change what waits for a human (gaps, plan revisions, approvals, finished run
 
 ## Actor
 
-Every write needs an actor: `--actor <name>`, else `CHECKMATE_ACTOR`. A write without an actor is refused.
+Every write records an actor. Resolve `--actor <name>`, `CHECKMATE_ACTOR`, workspace Git `user.name`, then the operating-system user. The UI uses this default and permits a human override. Do not inspect Claude credentials to infer an identity.
 
 ## Contracts (JSON Schema, draft-07, `plugin/contracts/`)
 
 `contractVersion` is `toolkit-2` everywhere. Identifier pattern `^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$` (ID).
 Test reference pattern `^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$` (local or `plan:test`).
 
-| Schema                    | Used by                       | Shape                                                                                                       |
-| ------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `profile.schema.json`     | `target save` stdin, snapshot | toolkit-1 profile plus `approvals: { plan: required|none, result: required|none }` (optional, default both required) |
-| `plan-request.schema.json`| `plan open` stdin             | `{ objective, requirements: [{id,text,source}], sourceContext: [{uri,content}] }`                           |
-| `plan-candidate.schema.json` | `plan save` stdin          | `{ tests: [test without readiness and gapIds], gaps: [gap] }`                                               |
-| `plan-delta.schema.json`  | `plan revise` stdin           | `{ tests: { <testId>: { action?, preconditions?, assertions?: { <assertionId>: {check?, oracleKind?} | null } } } }` |
-| `plan.schema.json`        | snapshot                      | see below                                                                                                    |
-| `finding.schema.json`     | `run finding` stdin           | `{ id, type: defect|potential_issue, severity, assertionIds: ["T2.A2"], requirementIds, title, expected, observed, reproduction, evidenceIds }` |
-| `gap.schema.json`         | `run gap` stdin, inside plan  | toolkit-1 gap (`testIds` items use the test reference pattern)                                               |
-| `result.schema.json`      | snapshot                      | see below                                                                                                    |
-| `response.schema.json`    | delegated worker output       | `{ status: completed|needs_decision|interrupted|operational_error|rejected, subject, reasons: [string] }`    |
+| Schema                       | Used by                       | Shape                                                                                                |
+| ---------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `profile.schema.json`        | `target save` stdin, snapshot | toolkit-1 profile plus `approvals: { plan: required                                                  | none, result: required                                                                                                      | none }` (optional, default both required) |
+| `plan-request.schema.json`   | `plan open` stdin             | `{ objective, requirements: [{id,text,source}], sourceContext: [{uri,content}] }`                    |
+| `plan-candidate.schema.json` | `plan save` stdin             | `{ tests: [test without readiness and gapIds], gaps: [gap] }`                                        |
+| `plan-delta.schema.json`     | `plan revise` stdin           | `{ tests: { <testId>: { action?, preconditions?, assertions?: { <assertionId>: {check?, oracleKind?} | null } } } }`                                                                                                               |
+| `plan.schema.json`           | snapshot                      | see below                                                                                            |
+| `finding.schema.json`        | `run finding` stdin           | `{ id, type: defect                                                                                  | potential_issue, severity, assertionIds: ["T2.A2"], requirementIds, title, expected, observed, reproduction, evidenceIds }` |
+| `gap.schema.json`            | `run gap` stdin, inside plan  | toolkit-1 gap (`testIds` items use the test reference pattern)                                       |
+| `result.schema.json`         | snapshot                      | see below                                                                                            |
+| `response.schema.json`       | delegated worker output       | `{ status: completed                                                                                 | needs_decision                                                                                                              | interrupted                               | operational_error | rejected, subject, reasons: [string] }` |
 
 Plan snapshot:
 
@@ -114,9 +114,22 @@ Plan snapshot:
 			"assertions": [{ "id": "A1", "check": "…", "oracleKind": "deterministic" }]
 		}
 	],
-	"gaps": [{ "id": "G1", "severity": "blocking", "status": "resolved", "requirementIds": ["R2"], "testIds": [], "question": "…", "consequence": "…", "decisionId": "01J…" }],
+	"gaps": [
+		{
+			"id": "G1",
+			"severity": "blocking",
+			"status": "resolved",
+			"requirementIds": ["R2"],
+			"testIds": [],
+			"question": "…",
+			"consequence": "…",
+			"decisionId": "01J…"
+		}
+	],
 	"assumptions": [{ "decisionId": "01J…", "text": "…" }],
-	"decisions": [{ "id": "01J…", "gapId": "G1", "kind": "clarify", "actor": "…", "rationale": "…", "value": "…", "source": "…" }],
+	"decisions": [
+		{ "id": "01J…", "gapId": "G1", "kind": "clarify", "actor": "…", "rationale": "…", "value": "…", "source": "…" }
+	],
 	"coverage": [{ "requirementId": "R1", "testIds": ["T1"], "status": "planned" }]
 }
 ```
@@ -147,15 +160,37 @@ Result snapshot:
 			"outcome": "failed",
 			"reason": null,
 			"assertions": [
-				{ "assertionId": "A1", "check": "…", "oracleKind": "deterministic", "result": "passed", "observed": "…", "reason": null, "evidenceIds": ["01J…"] }
+				{
+					"assertionId": "A1",
+					"check": "…",
+					"oracleKind": "deterministic",
+					"result": "passed",
+					"observed": "…",
+					"reason": null,
+					"evidenceIds": ["01J…"]
+				}
 			]
 		}
 	],
-	"findings": [ "finding with derived testIds" ],
+	"findings": ["finding with derived testIds"],
 	"newGaps": [],
-	"evidence": [{ "id": "01J…", "testId": "T2", "assertionId": "A1", "kind": "http_exchange", "name": "quote.json", "mediaType": "application/json", "sha256": "…", "size": 123 }],
+	"evidence": [
+		{
+			"id": "01J…",
+			"testId": "T2",
+			"assertionId": "A1",
+			"kind": "http_exchange",
+			"name": "quote.json",
+			"mediaType": "application/json",
+			"sha256": "…",
+			"size": 123
+		}
+	],
 	"cleanup": { "status": "completed", "reason": "…" },
-	"coverage": { "status": "partial", "requirements": [{ "requirementId": "R1", "status": "tested", "testIds": ["T1"], "reason": null }] }
+	"coverage": {
+		"status": "partial",
+		"requirements": [{ "requirementId": "R1", "status": "tested", "testIds": ["T1"], "reason": null }]
+	}
 }
 ```
 
@@ -172,37 +207,37 @@ tab-separated. Then `reason: <text>` lines. `--json` prints `{ "status", "subjec
 Errors print `rejected <subject>` and `reason: <message>` (or JSON) and exit 1. Unknown command or bad flags:
 `invalid_request` and exit 1.
 
-| Command | Behavior |
-| --- | --- |
-| `init` | Create the database. Print `completed .checkmate/checkmate.db`. |
-| `target open <targetId> --base-url <url> --capabilities a,b --operations x,y` | Record the setup request. Refuse a second open with different values. Identical open is a no-op `completed`. |
-| `target request <targetId>` | Print the setup request. |
-| `target save <targetId> < profile.json` | Check the profile (toolkit-1 profile rules, plus: targetId, baseUrl, capabilities, allowedOperations equal the request). Revision must be latest+1, or equal to the latest with identical content (idempotent). Status `completed` when `readyForLiveExecution`, else `needs_decision` with reasons. |
-| `target show <targetId[@rev]>` | Print the profile summary. `--json` prints the profile. |
-| `plan open <planId> --target <targetId@rev> < request.json` | Record the plan request. The target revision must exist. |
-| `plan request <planId>` | Print objective, requirements, source context, and the target capabilities and allowed operations. |
-| `plan save <planId> < candidate.json` | Build revision 1 from request + candidate. Set gapIds, readiness, coverage. Check rules. Refuse when revision 1 exists. Status `needs_decision` with one reason per open blocking gap (`G1: <question>`), else `completed`. |
-| `plan show <planId[@rev]> [--tests T1,T2] [--fields f1,f2] [--gaps open|all]` | Default latest revision. Lines: requirements, tests (`T1  ready  browser  <title>`), with `--fields assertions` one line per assertion (`T1.A1  deterministic  <check>`), gaps, decisions, approval state. |
-| `plan list [--needs-decision] [--awaiting-approval] [--blocked]` | One line per plan: id@rev, open blocking gaps, approval, blocked cross-plan tests. |
-| `plan diff <planId> <a> <b>` | JSON Patch (RFC 6902) from rev a to rev b, plus field lines (`T2.A2 check: "x" → "y"`). |
-| `gap answer <planId> <gapId> --kind clarify|accept_assumption|defer --value <text> [--source <uri>] --rationale <text>` | Decision against the latest revision. Gap must be open there. Clarify needs a source. One pending decision per gap. |
-| `plan pending <planId>` | Pending decisions, and only the affected tests (with assertions) and gaps. |
-| `plan revise <planId> < delta.json` | Build latest+1: append pending decisions in recorded order, set gap status (`clarify`/`accept_assumption` → resolved, `defer` → deferred) and decisionId, add assumptions for `accept_assumption`, apply the delta to affected tests only, recalculate gapIds/readiness/coverage, check rules, mark decisions applied. Needs at least one pending decision. |
-| `plan approve <planId@rev> --rationale <text>` / `plan reject …` | Approval row with the revision digest. Accept `--expect-sha`. |
-| `run gate <planId@rev> --tests T1,T2 --build <b> [--partial wait_for_resolution|ready_only] [--retest-of <runId>]` | Gate without side effects. `completed` or `needs_decision` with reasons. |
-| `run begin <runId> <planId@rev> --tests T1,T2 --build <b> [--partial …] [--on-new-blocker return_to_caller|continue_independent] [--timeout <s>] [--retest-of <runId>]` | Gate, then insert run and attempt 1. Print `startedAt`, `browserSession`, `deadlineSeconds`. Defaults: partial `wait_for_resolution`, on-new-blocker `return_to_caller`, timeout 600. |
-| `run check <runId> <testId> <assertionId> --result passed|failed|inconclusive|not_checked [--observed <text>] [--reason <text>] [--evidence <path>[:kind]]…` | Rules in design section 7 and 9. Evidence paths are relative to the workspace and must be inside `.checkmate/tmp/<runId>/`. Kind defaults from extension: `.png/.jpg/.jpeg/.webp` screenshot, `.json` http_exchange, `.zip/.trace` trace, else observation. Max 32 MiB each. Delete the file after the commit. |
-| `run close <runId> <testId> [--outcome blocked|not_run|error --reason <text>]` | Derive outcome, or record the given one. Print the outcome. |
-| `run finding <runId> < finding.json` | Check and store. A defect names only failed assertions. Evidence IDs belong to the named assertions or their tests. |
-| `run gap <runId> < gap.json` | New, open, unknown ID, references exist in the plan. |
-| `run finish <runId> --completion completed|interrupted|operational_error --cleanup completed|failed|not_applicable --cleanup-reason <text>` | Rules in design section 10. For interrupted/operational_error, unclosed selected tests are stored as `error` with reason `Run stopped before the test closed. Actions may have occurred.` |
-| `run resume <runId> [--error T3,T4 --reason <text>]` | New attempt. List unclosed tests and their assertions without results. |
-| `run show <runId> [--tests …]` / `run list [--plan <id>] [--build <b>]` | Read. |
-| `result accept <runId> --rationale <text>` / `result reject …` | Approval row with the result digest. |
-| `evidence get <evidenceId> --out <path>` | Write the bytes. |
-| `export plan <planId@rev>|run <runId> --format md|html|json --out <path>` | Render. |
-| `log [--subject <s>] [--limit <n>]` | Operation log, newest first. Default limit 50. |
-| `query "<sql>"` | Read-only connection. Rows as TSV with a header, or JSON. |
+| Command                                                                                                    | Behavior                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`                                                                                                     | Create the database. Print `completed .checkmate/checkmate.db`.                                                                                                                                                                                                                                                                                             |
+| `target open <targetId> --base-url <url> --capabilities a,b --operations x,y`                              | Record the setup request. Refuse a second open with different values. Identical open is a no-op `completed`.                                                                                                                                                                                                                                                |
+| `target request <targetId>`                                                                                | Print the setup request.                                                                                                                                                                                                                                                                                                                                    |
+| `target save <targetId> < profile.json`                                                                    | Check the profile (toolkit-1 profile rules, plus: targetId, baseUrl, capabilities, allowedOperations equal the request). Revision must be latest+1, or equal to the latest with identical content (idempotent). Status `completed` when `readyForLiveExecution`, else `needs_decision` with reasons.                                                        |
+| `target show <targetId[@rev]>`                                                                             | Print the profile summary. `--json` prints the profile.                                                                                                                                                                                                                                                                                                     |
+| `plan open <planId> --target <targetId@rev> < request.json`                                                | Record the plan request. The target revision must exist.                                                                                                                                                                                                                                                                                                    |
+| `plan request <planId>`                                                                                    | Print objective, requirements, source context, and the target capabilities and allowed operations.                                                                                                                                                                                                                                                          |
+| `plan save <planId> < candidate.json`                                                                      | Build revision 1 from request + candidate. Set gapIds, readiness, coverage. Check rules. Refuse when revision 1 exists. Status `needs_decision` with one reason per open blocking gap (`G1: <question>`), else `completed`.                                                                                                                                 |
+| `plan show <planId[@rev]> [--tests T1,T2] [--fields f1,f2] [--gaps open                                    | all]`                                                                                                                                                                                                                                                                                                                                                       | Default latest revision. Lines: requirements, tests (`T1  ready  browser  <title>`), with `--fields assertions` one line per assertion (`T1.A1  deterministic  <check>`), gaps, decisions, approval state. |
+| `plan list [--needs-decision] [--awaiting-approval] [--blocked]`                                           | One line per plan: id@rev, open blocking gaps, approval, blocked cross-plan tests.                                                                                                                                                                                                                                                                          |
+| `plan diff <planId> <a> <b>`                                                                               | JSON Patch (RFC 6902) from rev a to rev b, plus field lines (`T2.A2 check: "x" → "y"`).                                                                                                                                                                                                                                                                     |
+| `gap answer <planId> <gapId> --kind clarify                                                                | accept_assumption                                                                                                                                                                                                                                                                                                                                           | defer --value <text> [--source <uri>] --rationale <text>`                                                                                                                                                  | Decision against the latest revision. Gap must be open there. Clarify needs a source. One pending decision per gap. |
+| `plan pending <planId>`                                                                                    | Pending decisions, and only the affected tests (with assertions) and gaps.                                                                                                                                                                                                                                                                                  |
+| `plan revise <planId> < delta.json`                                                                        | Build latest+1: append pending decisions in recorded order, set gap status (`clarify`/`accept_assumption` → resolved, `defer` → deferred) and decisionId, add assumptions for `accept_assumption`, apply the delta to affected tests only, recalculate gapIds/readiness/coverage, check rules, mark decisions applied. Needs at least one pending decision. |
+| `plan approve <planId@rev> --rationale <text>` / `plan reject …`                                           | Approval row with the revision digest. Accept `--expect-sha`.                                                                                                                                                                                                                                                                                               |
+| `run gate <planId@rev> --tests T1,T2 --build <b> [--partial wait_for_resolution                            | ready_only] [--retest-of <runId>]`                                                                                                                                                                                                                                                                                                                          | Gate without side effects. `completed` or `needs_decision` with reasons.                                                                                                                                   |
+| `run begin <runId> <planId@rev> --tests T1,T2 --build <b> [--partial …] [--on-new-blocker return_to_caller | continue_independent] [--timeout <s>] [--retest-of <runId>]`                                                                                                                                                                                                                                                                                                | Gate, then insert run and attempt 1. Print `startedAt`, `browserSession`, `evidenceDirectory`, `deadlineSeconds`. Defaults: partial `wait_for_resolution`, on-new-blocker `return_to_caller`, timeout 600. |
+| `run check <runId> <testId> <assertionId> --result passed                                                  | failed                                                                                                                                                                                                                                                                                                                                                      | inconclusive                                                                                                                                                                                               | not_checked [--observed <text>] [--reason <text>] [--evidence <path>[:kind]]…`                                      | Rules in design section 7 and 9. Evidence paths must be inside the absolute temporary `evidenceDirectory` returned by `run begin` or `run resume`. This directory is outside the workspace. Durable evidence stays in SQLite; no per-run JSON snapshot is saved. Kind defaults from extension: `.png/.jpg/.jpeg/.webp` screenshot, `.json` http_exchange, `.zip/.trace` trace, else observation. Max 32 MiB each. Delete each capture after the commit. Keep rejected captures for retry. Clear remaining captures when the run finishes. |
+| `run close <runId> <testId> [--outcome blocked                                                             | not_run                                                                                                                                                                                                                                                                                                                                                     | error --reason <text>]`                                                                                                                                                                                    | Derive outcome, or record the given one. Print the outcome.                                                         |
+| `run finding <runId> < finding.json`                                                                       | Check and store. A defect names only failed assertions. Evidence IDs belong to the named assertions or their tests.                                                                                                                                                                                                                                         |
+| `run gap <runId> < gap.json`                                                                               | New, open, unknown ID, references exist in the plan.                                                                                                                                                                                                                                                                                                        |
+| `run finish <runId> --completion completed                                                                 | interrupted                                                                                                                                                                                                                                                                                                                                                 | operational_error --cleanup completed                                                                                                                                                                      | failed                                                                                                              | not_applicable --cleanup-reason <text>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Rules in design section 10. For interrupted/operational_error, unclosed selected tests are stored as `error` with reason `Run stopped before the test closed. Actions may have occurred.` |
+| `run resume <runId> [--error T3,T4 --reason <text>]`                                                       | New attempt. List unclosed tests and their assertions without results.                                                                                                                                                                                                                                                                                      |
+| `run show <runId> [--tests …]` / `run list [--plan <id>] [--build <b>]`                                    | Read.                                                                                                                                                                                                                                                                                                                                                       |
+| `result accept <runId> --rationale <text>` / `result reject …`                                             | Approval row with the result digest.                                                                                                                                                                                                                                                                                                                        |
+| `evidence get <evidenceId> --out <path>`                                                                   | Write the bytes.                                                                                                                                                                                                                                                                                                                                            |
+| `export plan <planId@rev>                                                                                  | run <runId> --format md                                                                                                                                                                                                                                                                                                                                     | html                                                                                                                                                                                                       | json --out <path>`                                                                                                  | Render.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `log [--subject <s>] [--limit <n>]`                                                                        | Operation log, newest first. Default limit 50.                                                                                                                                                                                                                                                                                                              |
+| `query "<sql>"`                                                                                            | Read-only connection. Rows as TSV with a header, or JSON.                                                                                                                                                                                                                                                                                                   |
 
 ## Gate rules
 
@@ -240,3 +275,17 @@ Export plain functions over a `Store`. The UI and the CLI use the same functions
 `node --test test/*.test.ts` must stay fast (no network, no browser, no Claude). Use temporary workspaces.
 Cover the cases listed in design section 16. Remove toolkit-1 tests and fixtures that no longer apply. Keep
 `test/fixture.ts` (the checkout fixture server) and adapt `test/live.ts` later.
+
+## Caller workflows and review UI
+
+The plugin bundles `ui` and its assets. `/checkmate:ui` does not require the npm CLI. The npm CLI adds `delegate`.
+
+Skills reread the database before each task and after writes. Generated JSON payloads go through standard input. Exports are created only on request. Setup and plan records can include `contextInstructions` and `toolInstructions`. Plan context overrides setup context; plan tool instructions combine with setup restrictions. These instructions do not grant native host permissions or transfer chat-only tools into a fresh delegated process.
+
+The UI edits objective, requirements, and test content by creating a new immutable plan revision. Coverage and readiness are derived. Pending decisions must be applied first; a stale digest refuses the edit. Existing runs remain pinned to their original revision.
+
+Plan details link runs. Resolved and deferred gaps are collapsed and muted. History expands the latest change, collapses five older changes, and fetches the rest only on request. Refresh restores the default view.
+
+Plans, Runs, and Log paginate at 25, 50, or 100 rows. Their timestamp columns sort newest or oldest first. Dynamic text searches match displayed columns through database queries; dropdown and clear-filter changes apply automatically.
+
+Finished runs offer HTML and JSON downloads. PDF uses browser printing. Do not claim a server PDF renderer exists.

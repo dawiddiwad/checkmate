@@ -8,6 +8,7 @@ import {
 	answerGap,
 	approvePlan,
 	beginRun,
+	evidenceDirectory,
 	checkAssertion,
 	closeStore,
 	closeTest,
@@ -318,10 +319,10 @@ export function pageShot(variant: 'confirmation' | 'banner' | 'account') {
 }
 
 function evidence(store: Store, runId: string, name: string, content: string | Buffer) {
-	const directory = join(store.workspace, '.checkmate', 'tmp', runId)
+	const directory = evidenceDirectory(runId, store.workspace)
 	mkdirSync(directory, { recursive: true })
 	writeFileSync(join(directory, name), content)
-	return `.checkmate/tmp/${runId}/${name}`
+	return join(directory, name)
 }
 
 function check(

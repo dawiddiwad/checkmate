@@ -31,7 +31,7 @@ npm run generate
 
 `plugin/src/types.ts` contains the contract types. `plugin/src/validators.js` contains the validators. Ajv compiles each schema to standalone code, and esbuild bundles the Ajv runtime helpers into the same file. Do not edit the generated files. `npm run type:check` fails when a generated file differs from the schemas.
 
-The plan candidate validator uses the plan schema without `coverage`. The generator derives it. There is no separate schema file.
+`plan-candidate.schema.json` defines the initial candidate. `plan-delta.schema.json` defines the changes used to apply gap decisions. Keep both consistent with `plan.schema.json`.
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success results.
 
@@ -47,7 +47,9 @@ Run `plugin/bin/checkmate.ts` with Node.js. The runtime uses erasable TypeScript
 
 The marketplace source is `./plugin`. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tooling outside it.
 
-The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
+The plugin bundles the review UI and its local assets as well as the database commands. Its runtime imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
+
+To build an installable CLI locally, run `npm pack ./cli`, then install the generated tarball with `npm install -g <tarball>`.
 
 The root package is private. It installs development dependencies and runs development commands. The npm CLI package is `cli/` (`@xoxoai/checkmate`). Its `prepack` script runs `scripts/build-cli.ts`, which bundles `cli/src/main.ts` and copies `plugin/` into the package. The release workflow does not publish it yet.
 
@@ -67,9 +69,9 @@ The GitHub Actions token needs write access to repository contents. Repository r
 
 ## Documentation media
 
-`docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. Both use `docs/media/style.css`. The animation is an illustrated workflow. It is not a live test recording.
+`docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. The infographic uses `docs/media/style.css`; the animation defines its styles inline. The animation is an illustrated workflow. It is not a live test recording.
 
-The infographic keeps its dark style. The onboarding animation uses the review UI style: a light background, the green accent, flat cards, and short factual captions. It uses a small timeline in `onboarding.html`. Keep it short and flat, so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
+The infographic keeps its dark style. The onboarding animation uses the review UI style: a light background, the green accent, flat cards, and short factual captions. It uses a small timeline in `onboarding.html`. The scenes hold for 5 to 8 seconds so callers have time to read; the complete animation is 27.5 seconds. Keep the graphics flat so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
 
 Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and the overview:
 

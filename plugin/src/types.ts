@@ -79,6 +79,8 @@ export type PlanRequest = {
 		uri: string
 		content: string
 	}>
+	contextInstructions?: string
+	toolInstructions?: string
 }
 
 export type Plan = {
@@ -171,6 +173,8 @@ export type Profile = {
 		plan: 'required' | 'none'
 		result: 'required' | 'none'
 	}
+	contextInstructions?: string
+	toolInstructions?: string
 }
 
 export type Response = {

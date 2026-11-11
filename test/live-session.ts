@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Measurement } from './live-support.ts'
 import { worker, workerArgs } from '../cli/src/launcher.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
@@ -46,6 +48,17 @@ try {
 	assert.equal(denied.status, 'needs_decision', JSON.stringify(denied))
 	assert.equal(app.actions(), 0)
 	assert.deepEqual(checkmate(workspace, ['run', 'list']).runs, [])
+
+	const current = await measure(measurements, 'fresh-database-summary', () =>
+		worker('claude', workerArgs(pluginRoot, allowedTools), {
+			cwd: workspace,
+			timeoutSeconds: 180,
+			env,
+			prompt: 'Prior conversation summary: checkout is at revision 1 with an unanswered promotion gap. The caller now asks for the current checkout plan. Use checkmate:report to read the latest plan from the database. This is a summary request, not an export. Return status, subject, and reasons from the fresh plan show response.',
+		})
+	)
+	assert.equal(current.subject, 'checkout@2', JSON.stringify(current))
+	assert.equal(existsSync(join(workspace, 'reports')), false, 'A summary created an unrequested export')
 
 	const executed = await measure(measurements, 'same-session-execute', () =>
 		worker('claude', workerArgs(pluginRoot, allowedTools), {

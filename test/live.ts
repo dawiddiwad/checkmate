@@ -27,7 +27,7 @@ const request = {
 		{ id: 'R1', text: 'A standard order for one 400 PLN item has a total of 400 PLN.', source: 'brief#standard' },
 		{
 			id: 'R2',
-			text: 'A 40 percent promotion applies to the order. The brief does not say if it stacks with the 20 PLN loyalty discount.',
+			text: 'A 40 percent promotion applies to the checkout quote. The brief does not say if it stacks with the 20 PLN loyalty discount.',
 			source: 'brief#promotion',
 		},
 		{
@@ -41,6 +41,11 @@ const request = {
 			uri: 'brief',
 			content:
 				'The shop sells one item at 400 PLN. A loyal customer has a 20 PLN loyalty discount. A 40 percent promotion exists. Refunds exist.',
+		},
+		{
+			uri: 'fixture-interfaces',
+			content:
+				'The browser page supports standard checkout only. Discount scenarios use HTTP GET /quote?promotion=true&loyalty=true for promotion with loyalty, or loyalty=false for promotion alone. The quote request is the apply_fixture_discount operation. There are no promotion controls in the browser and no promotion parameters on POST /order. Verify R2 through the quote API. Use /health only before execution.',
 		},
 	],
 }
@@ -82,8 +87,13 @@ try {
 		'browser,http',
 		'--operations',
 		'read_catalog,create_fixture_order,apply_fixture_discount',
+		'--context-instructions',
+		'Read AGENTS.md for fixture behavior and the sourceContext in the plan request for acceptance criteria.',
+		'--tool-instructions',
+		'Use the caller-provided playwright-cli with .playwright/cli.config.json for browser actions, and node fetch for HTTP. During setup, only GET /health is authorized, including browser navigation. Do not click checkout, request /quote, or execute test actions before an approved run. During planning, gather context only; do not access the application.',
 	])
 	assert.equal((await stage('setup', 'setup', 'checkout-local')).status, 'completed')
+	assert.equal(app.actions(), 0, 'Setup executed a fixture action')
 	const target = checkmate(workspace, ['target', 'show', 'checkout-local'])
 	assert.equal(target.profile.readyForLiveExecution, true)
 
@@ -92,9 +102,10 @@ try {
 	assert.equal(app.actions(), 0, 'Planning executed a fixture action')
 	const first = latestPlan('checkout')
 	for (const requirement of ['R2', 'R3'])
-		assert(
-			testsOf(first, requirement).some((test) => test.readiness === 'blocked'),
-			`No ${requirement} test is blocked`
+		assert.equal(
+			first.coverage.find((row) => row.requirementId === requirement)?.status,
+			'blocked',
+			`${requirement} must stay blocked until the caller decides`
 		)
 
 	const blocking = first.gaps.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
@@ -195,7 +206,7 @@ try {
 			cwd: workspace,
 			timeoutSeconds: 420,
 			env: { ...process.env, CHECKMATE_ACTOR: 'claude:same-session' },
-			prompt: 'Use the checkmate:plan skill in this session for plan same-session. This is not a delegated stage. Save revision 1 with the Checkmate CLI and return the response of plan save. Do not execute tests.',
+			prompt: 'Use the checkmate:plan skill in this session. The exact plan ID is "same-session". This is not a delegated stage. Read the recorded request for this ID, save its revision 1 with the Checkmate CLI, and return the response of plan save. Do not execute tests.',
 		})
 	)
 	assert.equal(latestPlan('same-session').revision, 1)

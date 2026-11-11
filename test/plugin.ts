@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,8 +41,37 @@ try {
 	await mkdir(workspace)
 	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
-	for (const name of ['setup', 'plan', 'revise', 'execute', 'report'])
+	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'ui'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
+	const server = spawn(process.execPath, [bundle, 'ui', '--port', '0'], {
+		cwd: workspace,
+		stdio: ['ignore', 'pipe', 'pipe'],
+	})
+	try {
+		const url = await new Promise<string>((resolve, reject) => {
+			const timeout = setTimeout(() => reject(new Error('Plugin UI did not start')), 10000)
+			server.once('error', reject)
+			server.once('exit', (code) => reject(new Error(`Plugin UI exited: ${code}`)))
+			server.stdout.once('data', (data) => {
+				clearTimeout(timeout)
+				resolve(String(data).trim())
+			})
+		})
+		const page = await fetch(url)
+		assert.equal(page.status, 200)
+		assert.match(await page.text(), /Checkmate/)
+		for (const path of ['/assets/style.css', '/assets/client.js', '/assets/fonts/inter.woff2']) {
+			const response = await fetch(new URL(path, url))
+			assert.equal(response.status, 200, path)
+			assert.ok((await response.arrayBuffer()).byteLength > 0)
+		}
+	} finally {
+		if (server.exitCode === null) {
+			const stopped = new Promise<void>((resolve) => server.once('exit', () => resolve()))
+			server.kill('SIGTERM')
+			await stopped
+		}
+	}
 	console.log('The copied plugin bundle runs without npm install, a build step, or development dependencies.')
 } finally {
 	await rm(directory, { recursive: true, force: true })

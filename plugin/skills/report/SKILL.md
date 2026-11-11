@@ -5,7 +5,7 @@ description: Export a Checkmate plan revision or run result as Markdown, HTML, o
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
 
-1. Choose the subject: a plan revision `<planId@rev>` or a run `<runId>`.
+1. Read the requested subject with `checkmate plan show <planId@rev>` or `checkmate run show <runId>`. Use the fresh database result. If the caller asks only for a summary, present the current result and stop. Continue below only when the caller asks for a file.
 2. Choose a new output path, for example `reports/<runId>.html`. The command refuses an existing file.
 3. Run one command:
 

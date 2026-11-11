@@ -393,3 +393,75 @@ test('the gate collects every reason in order', (t) => {
 		/Invalid partial execution/
 	)
 })
+
+test('editing preserves old plans, derives coverage, and requires a fresh digest', async (t) => {
+	const { editPlan } = await import('../plugin/src/plans.ts')
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const before = planRevision(opened, 'checkout')
+	const tests = structuredClone(before.plan.tests)
+	tests[0].title = 'Revised title'
+	tests[0].requirementIds = ['R1', 'R2']
+	const requirements = structuredClone(before.plan.requirements)
+	requirements[0].text = 'The reviewed requirement.'
+	const input = {
+		planId: 'checkout',
+		expectSha256: before.sha256,
+		objective: 'Reviewed objective.',
+		requirements,
+		tests,
+	}
+	const reply = editPlan(opened, actor, input)
+	assert.equal(reply.subject, 'checkout@2')
+	const after = planRevision(opened, 'checkout')
+	assert.equal(after.plan.objective, 'Reviewed objective.')
+	assert.equal(after.plan.requirements[0].text, 'The reviewed requirement.')
+	assert(after.plan.coverage.find((row) => row.requirementId === 'R2')!.testIds.includes('T1'))
+	assert.deepEqual(planRevision(opened, 'checkout', 1), before)
+	assert.equal(planDetail(opened, 'checkout').approval.state, 'pending')
+	assert.throws(() => editPlan(opened, actor, input), /changed|digest/i)
+	assert.throws(
+		() =>
+			editPlan(opened, actor, {
+				...input,
+				expectSha256: after.sha256,
+				tests: [{ ...tests[0], requirementIds: ['missing'] }, ...tests.slice(1)],
+			}),
+		/Unknown requirement/i
+	)
+	assert.equal(planRevision(opened, 'checkout').plan.revision, 2)
+	assert(planHistory(opened, 'checkout')[1].changes.some((line) => line.startsWith('objective:')))
+	assert.deepEqual(planHistory(opened, 'checkout', 1), planHistory(opened, 'checkout').slice(-1))
+	answerGap(opened, actor, { planId: 'checkout', gapId: 'G1', kind: 'defer', value: 'Later', rationale: 'Scope' })
+	assert.throws(() => editPlan(opened, actor, { ...input, expectSha256: after.sha256 }), /pending gap decisions/)
+})
+
+test('editing cannot reuse a retired assertion ID', async (t) => {
+	const { editPlan } = await import('../plugin/src/plans.ts')
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const original = planRevision(opened, 'checkout')
+	const tests = structuredClone(original.plan.tests)
+	tests[0].assertions[0].id = 'A99'
+	editPlan(opened, actor, {
+		planId: 'checkout',
+		expectSha256: original.sha256,
+		objective: original.plan.objective,
+		requirements: original.plan.requirements,
+		tests,
+	})
+	const current = planRevision(opened, 'checkout')
+	assert.throws(
+		() =>
+			editPlan(opened, actor, {
+				planId: 'checkout',
+				expectSha256: current.sha256,
+				objective: original.plan.objective,
+				requirements: original.plan.requirements,
+				tests: original.plan.tests,
+			}),
+		/earlier revision/
+	)
+})

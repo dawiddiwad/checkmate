@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { chromium } from 'playwright-core'
+import { evidenceDirectory } from '../plugin/src/runs.ts'
 import { startUi } from '../cli/src/ui/server.ts'
 import { human, seedDemo } from '../scripts/ui-demo.ts'
 import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
@@ -135,7 +136,7 @@ test('a run page updates live and keeps typed text', { skip }, async (t) => {
 	await page.goto(url('/runs/run-8'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 	await page.locator('[data-key="T1.A2"] .obs', { hasText: 'No result yet.' }).waitFor()
-	const evidence = join(workspace, '.checkmate', 'tmp', 'run-8')
+	const evidence = evidenceDirectory('run-8', workspace)
 	mkdirSync(evidence, { recursive: true })
 	writeFileSync(join(evidence, 'cookie.txt'), 'Set-Cookie: sid=x; HttpOnly\n')
 	await checkmate(workspace, [
@@ -149,7 +150,7 @@ test('a run page updates live and keeps typed text', { skip }, async (t) => {
 		'--observed',
 		'HttpOnly flag present',
 		'--evidence',
-		'.checkmate/tmp/run-8/cookie.txt',
+		join(evidence, 'cookie.txt'),
 	])
 	await page.locator('[data-key="T1.A2"]', { hasText: 'HttpOnly flag present' }).waitFor({ timeout: 2000 })
 	await page.locator('[aria-live="polite"]', { hasText: 'T1.A2 passed' }).waitFor({ state: 'attached' })

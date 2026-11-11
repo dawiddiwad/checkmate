@@ -62,7 +62,7 @@
 </style>
 <main>
 
-<section class="scene" data-start="0" data-length="2.8">
+<section class="scene" data-start="0" data-length="6">
 	<h1>1. Claude writes a plan</h1>
 	<div class="card term">
 		<div data-in="0.2"><span class="prompt">$</span> checkmate plan open checkout <span class="muted">…</span></div>
@@ -74,8 +74,8 @@
 	</div>
 </section>
 
-<section class="scene" data-start="2.8" data-length="3.2">
-	<h1>2. A person answers the gap and approves</h1>
+<section class="scene" data-start="6" data-length="8">
+	<h1>2. The caller answers the gap and approves</h1>
 	<div class="card" style="padding-bottom: 16px">
 		<div class="bar">
 			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
@@ -84,7 +84,7 @@
 			<span class="live">● Live</span>
 		</div>
 		<div style="position: relative">
-			<div data-in="0" data-out="1.6">
+			<div data-in="0" data-out="3.8">
 				<div class="group">Gaps to answer · 1</div>
 				<div class="row focus">
 					<div class="line">checkout · G1 <span class="pill fail right">● blocking</span></div>
@@ -92,17 +92,17 @@
 					<div class="line accent" data-in="0.8">Clarify: 240 PLN</div>
 				</div>
 			</div>
-			<div data-in="1.8" style="position: absolute; inset: 0 0 auto">
+			<div data-in="4.1" style="position: absolute; inset: 0 0 auto">
 				<div class="group">Plans to approve · 1</div>
 				<div class="row focus"><div class="line">checkout@2</div></div>
 			</div>
 		</div>
 	</div>
-	<div class="toast" data-in="1.0" data-out="1.6">Answered checkout · G1</div>
-	<div class="toast" data-in="2.3">Approved checkout@2</div>
+	<div class="toast" data-in="1.0" data-out="3.8">Answered checkout · G1</div>
+	<div class="toast" data-in="5.2">Approved checkout@2</div>
 </section>
 
-<section class="scene" data-start="6" data-length="3.1">
+<section class="scene" data-start="14" data-length="6">
 	<h1>3. Claude runs the tests, records evidence</h1>
 	<div class="card">
 		<div class="runhead">run-7 <span>checkout@2</span></div>
@@ -113,8 +113,8 @@
 	</div>
 </section>
 
-<section class="scene" data-start="9.1" data-length="1.8">
-	<h1>4. A person accepts the result</h1>
+<section class="scene" data-start="20" data-length="5">
+	<h1>4. The caller accepts the result</h1>
 	<div class="card" style="padding-bottom: 16px">
 		<div class="bar">
 			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
@@ -130,7 +130,7 @@
 	<div class="toast" data-in="0.7">Accepted run-7</div>
 </section>
 
-<section class="scene" data-start="10.9" data-length="1.6">
+<section class="scene" data-start="25" data-length="2.5">
 	<div class="end">
 		<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
 		<span>checkmate</span>
@@ -143,7 +143,7 @@
 	const scenes = [...document.querySelectorAll('.scene')]
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 
-	window.DURATION = 12.5
+	window.DURATION = 27.5
 	// The renderer calls measure() once before the first frame. Nothing needs measuring here.
 	window.measure = () => {}
 	// Show the frame at a time in seconds. Scenes cross-fade; elements fade in at data-in and out at data-out.

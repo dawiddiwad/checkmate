@@ -10,7 +10,7 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 - Give each test an explicit list of assertions. One failed assertion fails the test.
 - Reduce tokens. Agents read only the fields they need and write only the changes.
 - Support hundreds of plans. Plans can depend on other plans and can block other plans.
-- Let a human approve plans and accept results in a local UI that is simple, elegant, and easy to use.
+- Let a caller approve plans and accept results in a local UI that is simple, elegant, and easy to use.
 - Ship a self-contained Claude Code plugin and a separate npm CLI that starts Claude Code with that plugin.
 
 ## 2. Non-goals
@@ -19,14 +19,14 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 - No shared database for many hosts. One host writes to one database.
 - No `toolkit-1` compatibility and no importer.
 - No authentication or access control. The `actor` field is a record. It is not a proof of identity.
-- No proof that an observation is true. Checkmate checks structure and relationships only.
+- No proof that an observation is true. Checkmate validates structure and relationships only.
 
 ## 3. Decisions
 
 | Topic                 | Decision                                                                                                                                                         |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                                                                                      |
-| Human gate            | A human approves a plan revision before execution and accepts a result after execution.                                                                          |
+| Caller gate           | A caller approves a plan revision before execution and accepts a result after execution.                                                                         |
 | Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only).                                                                   |
 | Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                                                                                                |
 | Dependency rule       | The latest finalized result for the same application build must show `passed`.                                                                                   |
@@ -46,7 +46,7 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 
 ```text
 plugin/                Claude Code plugin. Self-contained. No npm dependencies.
-  skills/              setup, plan, revise, execute, report
+  skills/              setup, plan, revise, execute, report, ui
   contracts/           JSON Schemas for toolkit-2 payloads
   src/                 core: store, rules, commands
   dist/checkmate.js    one bundled file, generated at release
@@ -57,7 +57,7 @@ cli/                   npm package @xoxoai/checkmate
 
 The plugin contains the complete core. A plugin user can do every stage inside Claude Code without the npm package. The skills run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`.
 
-The npm CLI adds `delegate` and `ui`. It also exposes every core command. `delegate` starts `claude -p --plugin-dir <cli>/plugin`, so the CLI and plugin versions are always the same.
+The npm CLI adds `delegate`. The plugin also includes `ui`, local assets, and fonts. It also exposes every core command. `delegate` starts `claude -p --plugin-dir <cli>/plugin`, so the CLI and plugin versions are always the same.
 
 Node.js does not strip TypeScript types for files in `node_modules`. A `.ts` entry point fails in an npm install. For this reason, the release builds one JavaScript bundle with esbuild. The bundle has no runtime dependencies. Source stays in TypeScript. Plugin users do not build anything.
 
@@ -296,7 +296,7 @@ A test has one action and a list of assertions. An assertion is one thing that t
 - An assertion ID is unique in its test. An assertion is referenced as `<testId>.<assertionId>`, for example `T2.A2`.
 - Each assertion has a non-empty `check` and an `oracleKind`: `deterministic` or `agent_observation`.
 - An unknown expected result is a blocking gap. A test with such a gap is blocked. Do not write an assertion with an unknown expected result.
-- A revision can add, change, or remove assertions only in a test that a decision affects. A revision cannot reuse the ID of a removed assertion.
+- A decision revision can add, change, or remove assertions only in a test that a decision affects. A plan edit can change the objective, requirements, and test content. Both create a new immutable revision and recalculate readiness and coverage. A revision cannot reuse the ID of a removed assertion.
 
 ### Run rules
 
@@ -413,8 +413,8 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|run_ready] [--on-new-blocker return_to_caller|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
 3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence <file>[:kind]]...`.
    - The agent does not send the check text or the oracle kind. Checkmate copies them from the plan.
-   - Checkmate reads each evidence file, stores the bytes as a blob, and records the evidence row. The agent writes evidence files to `.checkmate/tmp/<runId>/` first. Checkmate deletes each file after it stores it.
-   - Checkmate checks the rules for one assertion now: the test is selected and ready, its prerequisites passed, and a `passed` or `failed` result has an observation and evidence.
+   - Checkmate reads each evidence file, stores the bytes as a blob, and records the evidence row. When a tool needs a capture file, the agent uses the absolute temporary `evidenceDirectory` returned by `run begin` or `run resume`. Checkmate removes each capture after import and clears remaining captures when the run finishes. Durable evidence stays in SQLite; no per-run JSON file is saved.
+   - Checkmate enforces the rules for one assertion now: the test is selected and ready, its prerequisites passed, and a `passed` or `failed` result has an observation and evidence.
    - An assertion result is final. A second `check` for the same assertion fails.
 4. When the agent has a result for each assertion of a test, it runs `checkmate run close <runId> <testId>`. Checkmate calculates the test outcome (section 7) and prints it.
    - For a test that the agent did not start, the agent runs `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason <text>`.
@@ -440,7 +440,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 
 The rules in `stages.ts` move to the new commands. They do not change in meaning:
 
-- Revisions are immutable and linear. A revision cannot change requirements, sources, test inventory, gap inventory, unrelated tests, or prior decisions and assumptions.
+- Revisions are immutable and linear. A gap-decision revision changes only affected tests and applies the pending decisions. An explicit plan edit can update requirements and test content while preserving decision history. Existing runs remain pinned to their original revision.
 - A `passed`, `failed`, or `inconclusive` assertion result needs an observation and evidence. An `inconclusive` result also needs a reason. The check text and oracle kind come from the plan.
 - A failed assertion needs a defect finding. A defect needs a failed assertion.
 - A finding's requirements and evidence match its tests and assertions.
@@ -470,7 +470,7 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 ### Common options
 
 - `--workspace <path>`: the directory that contains `.checkmate/`. The default is the current directory.
-- `--actor <name>`: required for every write. `CHECKMATE_ACTOR` sets a default.
+- `--actor <name>`: overrides `CHECKMATE_ACTOR`, the workspace Git user name, and the operating-system user, in that order.
 - `--expect-sha <digest>`: stop if the referenced snapshot differs.
 - `--json`: JSON output.
 
@@ -492,7 +492,7 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 | `log [--subject <id>]`                                                                                  | plugin  | Read the operation log.                      |
 | `query "<sql>"`                                                                                         | plugin  | Read-only SQL. The database opens read-only. |
 | `delegate <stage> ... --allow <rule>...`                                                                | npm     | Run a stage in a new Claude Code session.    |
-| `ui [--port <n>]`                                                                                       | npm     | Start the local review UI.                   |
+| `ui [--port <n>]`                                                                                       | plugin  | Start the local review UI.                   |
 
 ### Operation log and replay
 
@@ -527,7 +527,7 @@ The UI has one job: show the human what waits for a decision, and let them decid
 | Page  | URL                 | Content                                                                                                                                  |
 | ----- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Inbox | `/`                 | Items that wait for a human, oldest first, in three groups: gaps to answer, plans to approve, results to accept. This is the start page. |
-| Plans | `/plans`            | All plans with status, open gaps, approval, and blocks. Filters and search by ID.                                                        |
+| Plans | `/plans`            | All plans with status, open gaps, approval, and blocks. Paginated filters and search across displayed columns.                           |
 | Plan  | `/plans/checkout@2` | Tests with their assertions, gaps, requirements and coverage, decisions, and history with a diff for each revision.                      |
 | Runs  | `/runs`             | All runs with plan, build, completion, coverage, and acceptance. Filters by plan, build, and status.                                     |
 | Run   | `/runs/run-7`       | Summary, each test with its assertion results and evidence, findings, new gaps, coverage, and cleanup.                                   |
@@ -548,7 +548,11 @@ The navigation shows the number of inbox items. An empty inbox says `Nothing wai
 - **Stale data.** Each form sends the digest of the snapshot on the page. If the snapshot changed, Checkmate refuses the action. The UI keeps the typed text and shows a banner: `checkout has a newer revision (3). Your decision was not recorded. Review revision 3.`
 - **Evidence.** Images show as thumbnails and open in a viewer. Text shows inline in monospace. Other types download.
 - **Assertion results.** A run page shows each assertion as one row: the icon, the check text, and the observation. Failed and inconclusive rows open by default. Passed rows stay closed.
-- **Diff.** The history shows field changes, for example `T2.A2 check: "totalPLN equals 220." → "totalPLN equals 240."`. It does not show raw JSON Patch.
+- **Diff.** History expands the latest change and shows five earlier changes collapsed. A faded control loads the remaining history on request. Refresh resets this view. Field changes use readable values instead of raw JSON Patch.
+- **Editing.** A plan edit creates a new revision. Coverage follows requirement mappings. A stale digest or pending gap decision refuses the save. The plan page links its runs.
+- **Lists.** Plans, Runs, and Log use 25 rows by default, with 50 and 100 available. Their Updated, Started, and Time columns sort newest first and can reverse. Search covers displayed columns in the database. Search, dropdowns, and clearing filters update results automatically.
+- **Closed gaps.** Resolved and deferred gaps are collapsed and muted.
+- **Reports.** Finished runs offer HTML and JSON downloads and browser printing to PDF.
 - **Stable links.** Each URL identifies one object and can be shared on the same host, for example `/plans/checkout@2#T2`.
 - **Keyboard.** `/` focuses search. `j` and `k` move in a list. `Enter` opens the item. `Esc` closes the evidence viewer. `?` shows the shortcuts.
 - **Live updates.** Each page shows changes to its items when another process writes them. Section "Live updates" below gives the rules.
@@ -587,7 +591,7 @@ The CLI, a delegated worker, and the UI are different processes. SQLite does not
 ### Security
 
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
-- The UI asks for the actor name once and keeps it in a cookie.
+- The UI defaults to the inferred actor. A human can change the name; the choice stays in a cookie.
 - The server escapes all stored text. Plan and evidence text is untrusted data.
 - The server checks the `Host` and `Origin` headers and uses a random per-start token in each form. This blocks a write from another web page in the same browser.
 - The server sends a strict Content Security Policy: same origin only, no inline script, no remote resources.
@@ -606,10 +610,11 @@ A later `checkmate merge <other.db>` attaches the other database and inserts mis
 
 The skills keep their stages. The instructions change:
 
-- Skills read through `plan show`, `plan request`, `plan pending`, and `run resume`. They do not read files.
+- Skills read the relevant database records before each task and after writes. They do not use chat memory or exports as current state.
+- Setup records context and tool instructions. Plan context instructions can override setup context; tool instructions combine with setup restrictions. The host supplies tools and permissions. No separate connector registry is required.
 - `revise` writes a delta. It does not write a full plan.
 - `execute` runs `run check` after each assertion and `run close` after each test. It does not write one observation at the end.
-- `report` runs `export`.
+- `report` reads the current run or plan. It runs `export` only when the caller requests a file.
 - A delegated stage writes to the database through the same commands. The parent does not publish a candidate. The parent reads the operation log and the result.
 
 ## 16. Tests

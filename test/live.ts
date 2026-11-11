@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plan } from '../plugin/src/types.ts'
 import type { Measurement } from './live-support.ts'
@@ -185,6 +185,8 @@ try {
 	)
 	assert.equal(retest.result.coverage.status, 'partial')
 	assert.equal(checkmate(workspace, ['run', 'show', 'live-run']).result.completion, 'completed')
+	assert.deepEqual(readdirSync(join(workspace, '.checkmate')), ['checkmate.db'])
+	assert.equal(existsSync(join(workspace, '.playwright-cli')), false)
 
 	checkmate(workspace, ['export', 'run', 'live-run', '--format', 'html', '--out', 'reports/live-run.html'])
 	assert.match(readFileSync(join(workspace, 'reports/live-run.html'), 'utf8'), /live-run/)

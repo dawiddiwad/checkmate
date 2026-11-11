@@ -3,12 +3,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
+import { minimumRules } from '../cli/src/launcher.ts'
 import { root } from './support.ts'
 
 export type Measurement = { stage: string; durationMs: number; status: string }
 
 export const pluginRoot = join(root, 'plugin')
-export const allowedTools = ['Read', 'Write', 'Edit', 'Bash']
+export const allowedTools = minimumRules
 
 export function liveEnvironment() {
 	const token = process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY

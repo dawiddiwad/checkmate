@@ -49,7 +49,7 @@ The marketplace source is `./plugin`. Claude Code copies only that directory int
 
 The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
 
-The root package is private. npm is used only to install development dependencies and run development commands. Do not add npm build or publish jobs. The last npm package version is `0.6.7`.
+The root package is private. It installs development dependencies and runs development commands. The npm CLI package is `cli/` (`@xoxoai/checkmate`). Its `prepack` script runs `scripts/build-cli.ts`, which bundles `cli/src/main.ts` and copies `plugin/` into the package. The release workflow does not publish it yet.
 
 ## GitHub releases
 
@@ -81,4 +81,4 @@ Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. Th
 
 Keep the labels in both images consistent with the workflow.
 
-The JSON examples contain file digests. Keep the referenced bytes unchanged, or regenerate all dependent references. The tests check the examples against the schemas and verify the evidence digests.
+`docs/examples/` contains exports from a live run. Do not edit them by hand. To update them, run `npm run test:live`, then export the plans and runs from the printed workspace with `checkmate export`. Read `docs/examples/README.md`.

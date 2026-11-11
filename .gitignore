@@ -21,9 +21,8 @@ app-docs
 .humanlayer/tasks/
 
 # Local run state
-.checkmate/runs/
-.checkmate/candidates/
-.checkmate/run-ids/
+.checkmate/checkmate.db*
+.checkmate/tmp/
 .playwright/
 
 # npm CLI build output and its plugin copy, created at pack time

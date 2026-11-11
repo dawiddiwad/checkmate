@@ -1,0 +1,179 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Test result: live-run</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#1d2330}table{border-collapse:collapse;width:100%;margin:.5rem 0 1.5rem}th,td{padding:.45rem .6rem;text-align:left;vertical-align:top;border-bottom:1px solid #d5dae3}th{font-weight:600;background:#f3f5f8}.note{color:#5b6475}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f8;padding:1rem}details{margin-top:2rem}summary{cursor:pointer;font-weight:600}</style><h1>Test result: live-run</h1><p class="note">Generated from the Checkmate database. Completion, test outcomes, and coverage are separate. Use checkmate evidence get to read evidence.</p><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Completion</td><td>completed</td></tr><tr><td>Coverage</td><td>partial</td></tr><tr><td>Run</td><td>live-run</td></tr><tr><td>Application build</td><td>fixture-build-1</td></tr><tr><td>Plan</td><td>checkout@2</td></tr><tr><td>Target profile</td><td>checkout-local@1</td></tr><tr><td>Started</td><td>2026-11-11T12:40:47.717Z</td></tr><tr><td>Finished</td><td>2026-11-11T12:41:29.370Z</td></tr><tr><td>Attempts</td><td>1</td></tr><tr><td>Retest of</td><td>—</td></tr><tr><td>Result digest</td><td>ebf419350e0f97cf2676fce3e88e51005501138d7649432f217cf23e54b9ab47</td></tr></tbody></table><h2>Tests</h2><table><thead><tr><th>Test</th><th>Outcome</th><th>Reason</th></tr></thead><tbody><tr><td>T1</td><td>passed</td><td>—</td></tr><tr><td>T2</td><td>passed</td><td>—</td></tr><tr><td>T3</td><td>failed</td><td>—</td></tr><tr><td>T4</td><td>not_run</td><td>Test was not selected.</td></tr></tbody></table><h2>Assertions</h2><table><thead><tr><th>Assertion</th><th>Result</th><th>Oracle</th><th>Check</th><th>Observed</th><th>Reason</th><th>Evidence</th></tr></thead><tbody><tr><td>T1.A1</td><td>passed</td><td>deterministic</td><td>The order total is 400 PLN.</td><td>Order confirmed: 400 PLN shown after Complete checkout</td><td>—</td><td>T1-A1.txt (01M75A0MHETEGDTJKJA4R95CGZ)</td></tr><tr><td>T2.A1</td><td>passed</td><td>deterministic</td><td>The quoted total is 240 PLN.</td><td>GET /quote?promotion=true status 200 totalPLN 240</td><td>—</td><td>T2-A1.json (01M75A0T5N9Q5D2QN7FZRQ34Y7)</td></tr><tr><td>T3.A1</td><td>failed</td><td>deterministic</td><td>totalPLN equals 240.</td><td>GET /quote?promotion=true&amp;loyalty=true status 200 totalPLN 220; expected 240</td><td>—</td><td>T3-A1.json (01M75A0ZVZC156GNSTPZ9G4MYX)</td></tr></tbody></table><h2>Findings</h2><h3>F1 · defect · medium: Loyalty discount does not stack with promotion in quote</h3><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Assertions</td><td>T3.A1</td></tr><tr><td>Requirements</td><td>R2</td></tr><tr><td>Expected</td><td>totalPLN equals 240.</td></tr><tr><td>Observed</td><td>GET /quote?promotion=true&amp;loyalty=true returned status 200 with totalPLN 220.</td></tr><tr><td>Evidence</td><td>T3-A1.json (01M75A0ZVZC156GNSTPZ9G4MYX)</td></tr></tbody></table><ol><li>GET /quote?promotion=true&amp;loyalty=true</li></ol><h2>New gaps</h2><p>No new gaps.</p><h2>Evidence</h2><table><thead><tr><th>Evidence</th><th>Assertion</th><th>Kind</th><th>Name</th><th>Media type</th><th>Size</th><th>SHA-256</th></tr></thead><tbody><tr><td>01M75A0MHETEGDTJKJA4R95CGZ</td><td>T1.A1</td><td>observation</td><td>T1-A1.txt</td><td>text/plain</td><td>96</td><td>747bc1d482cf7e0b537e9fccd23abc229b3b6b3b0bf3c3223ea100bc10da4a87</td></tr><tr><td>01M75A0T5N9Q5D2QN7FZRQ34Y7</td><td>T2.A1</td><td>http_exchange</td><td>T2-A1.json</td><td>application/json</td><td>60</td><td>d87beb454e1f63bea4102fa83fe980eb6fd12e53e15b7235f5e2c2c90a96f39e</td></tr><tr><td>01M75A0ZVZC156GNSTPZ9G4MYX</td><td>T3.A1</td><td>http_exchange</td><td>T3-A1.json</td><td>application/json</td><td>60</td><td>74046dcf7859e9370f5269411b40719c710f28157da2a48ef867a5115ccdd548</td></tr></tbody></table><h2>Coverage</h2><table><thead><tr><th>Requirement</th><th>Status</th><th>Tests</th><th>Reason</th></tr></thead><tbody><tr><td>R1</td><td>tested</td><td>T1</td><td>—</td></tr><tr><td>R2</td><td>tested</td><td>T2, T3</td><td>—</td></tr><tr><td>R3</td><td>uncovered</td><td>T4</td><td>At least one required check or decision is missing.</td></tr></tbody></table><h2>Cleanup</h2><p>completed: Browser session closed; fixture stores no records, no cleanup required.</p><details><summary>Complete JSON record</summary><pre>{
+  &quot;applicationBuild&quot;: &quot;fixture-build-1&quot;,
+  &quot;attempts&quot;: 1,
+  &quot;cleanup&quot;: {
+    &quot;reason&quot;: &quot;Browser session closed; fixture stores no records, no cleanup required.&quot;,
+    &quot;status&quot;: &quot;completed&quot;
+  },
+  &quot;completion&quot;: &quot;completed&quot;,
+  &quot;contractVersion&quot;: &quot;toolkit-2&quot;,
+  &quot;coverage&quot;: {
+    &quot;requirements&quot;: [
+      {
+        &quot;reason&quot;: null,
+        &quot;requirementId&quot;: &quot;R1&quot;,
+        &quot;status&quot;: &quot;tested&quot;,
+        &quot;testIds&quot;: [
+          &quot;T1&quot;
+        ]
+      },
+      {
+        &quot;reason&quot;: null,
+        &quot;requirementId&quot;: &quot;R2&quot;,
+        &quot;status&quot;: &quot;tested&quot;,
+        &quot;testIds&quot;: [
+          &quot;T2&quot;,
+          &quot;T3&quot;
+        ]
+      },
+      {
+        &quot;reason&quot;: &quot;At least one required check or decision is missing.&quot;,
+        &quot;requirementId&quot;: &quot;R3&quot;,
+        &quot;status&quot;: &quot;uncovered&quot;,
+        &quot;testIds&quot;: [
+          &quot;T4&quot;
+        ]
+      }
+    ],
+    &quot;status&quot;: &quot;partial&quot;
+  },
+  &quot;evidence&quot;: [
+    {
+      &quot;assertionId&quot;: &quot;A1&quot;,
+      &quot;id&quot;: &quot;01M75A0MHETEGDTJKJA4R95CGZ&quot;,
+      &quot;kind&quot;: &quot;observation&quot;,
+      &quot;mediaType&quot;: &quot;text/plain&quot;,
+      &quot;name&quot;: &quot;T1-A1.txt&quot;,
+      &quot;sha256&quot;: &quot;747bc1d482cf7e0b537e9fccd23abc229b3b6b3b0bf3c3223ea100bc10da4a87&quot;,
+      &quot;size&quot;: 96,
+      &quot;testId&quot;: &quot;T1&quot;
+    },
+    {
+      &quot;assertionId&quot;: &quot;A1&quot;,
+      &quot;id&quot;: &quot;01M75A0T5N9Q5D2QN7FZRQ34Y7&quot;,
+      &quot;kind&quot;: &quot;http_exchange&quot;,
+      &quot;mediaType&quot;: &quot;application/json&quot;,
+      &quot;name&quot;: &quot;T2-A1.json&quot;,
+      &quot;sha256&quot;: &quot;d87beb454e1f63bea4102fa83fe980eb6fd12e53e15b7235f5e2c2c90a96f39e&quot;,
+      &quot;size&quot;: 60,
+      &quot;testId&quot;: &quot;T2&quot;
+    },
+    {
+      &quot;assertionId&quot;: &quot;A1&quot;,
+      &quot;id&quot;: &quot;01M75A0ZVZC156GNSTPZ9G4MYX&quot;,
+      &quot;kind&quot;: &quot;http_exchange&quot;,
+      &quot;mediaType&quot;: &quot;application/json&quot;,
+      &quot;name&quot;: &quot;T3-A1.json&quot;,
+      &quot;sha256&quot;: &quot;74046dcf7859e9370f5269411b40719c710f28157da2a48ef867a5115ccdd548&quot;,
+      &quot;size&quot;: 60,
+      &quot;testId&quot;: &quot;T3&quot;
+    }
+  ],
+  &quot;findings&quot;: [
+    {
+      &quot;assertionIds&quot;: [
+        &quot;T3.A1&quot;
+      ],
+      &quot;evidenceIds&quot;: [
+        &quot;01M75A0ZVZC156GNSTPZ9G4MYX&quot;
+      ],
+      &quot;expected&quot;: &quot;totalPLN equals 240.&quot;,
+      &quot;id&quot;: &quot;F1&quot;,
+      &quot;observed&quot;: &quot;GET /quote?promotion=true&amp;loyalty=true returned status 200 with totalPLN 220.&quot;,
+      &quot;reproduction&quot;: [
+        &quot;GET /quote?promotion=true&amp;loyalty=true&quot;
+      ],
+      &quot;requirementIds&quot;: [
+        &quot;R2&quot;
+      ],
+      &quot;severity&quot;: &quot;medium&quot;,
+      &quot;testIds&quot;: [
+        &quot;T3&quot;
+      ],
+      &quot;title&quot;: &quot;Loyalty discount does not stack with promotion in quote&quot;,
+      &quot;type&quot;: &quot;defect&quot;
+    }
+  ],
+  &quot;finishedAt&quot;: &quot;2026-11-11T12:41:29.370Z&quot;,
+  &quot;newGaps&quot;: [],
+  &quot;plan&quot;: {
+    &quot;planId&quot;: &quot;checkout&quot;,
+    &quot;revision&quot;: 2,
+    &quot;sha256&quot;: &quot;db79cfb64c1c8e00f35b23fe84e3bdb06d2f060c436f461278afff9be886d63f&quot;
+  },
+  &quot;retestOf&quot;: null,
+  &quot;runId&quot;: &quot;live-run&quot;,
+  &quot;selectedTestIds&quot;: [
+    &quot;T1&quot;,
+    &quot;T2&quot;,
+    &quot;T3&quot;
+  ],
+  &quot;startedAt&quot;: &quot;2026-11-11T12:40:47.717Z&quot;,
+  &quot;target&quot;: {
+    &quot;revision&quot;: 1,
+    &quot;sha256&quot;: &quot;b031a78b1d2fdd2774eeef470b5f8a47101a4be1c2c867a684c0e622e9fe637b&quot;,
+    &quot;targetId&quot;: &quot;checkout-local&quot;
+  },
+  &quot;tests&quot;: [
+    {
+      &quot;assertions&quot;: [
+        {
+          &quot;assertionId&quot;: &quot;A1&quot;,
+          &quot;check&quot;: &quot;The order total is 400 PLN.&quot;,
+          &quot;evidenceIds&quot;: [
+            &quot;01M75A0MHETEGDTJKJA4R95CGZ&quot;
+          ],
+          &quot;observed&quot;: &quot;Order confirmed: 400 PLN shown after Complete checkout&quot;,
+          &quot;oracleKind&quot;: &quot;deterministic&quot;,
+          &quot;reason&quot;: null,
+          &quot;result&quot;: &quot;passed&quot;
+        }
+      ],
+      &quot;outcome&quot;: &quot;passed&quot;,
+      &quot;reason&quot;: null,
+      &quot;testId&quot;: &quot;T1&quot;
+    },
+    {
+      &quot;assertions&quot;: [
+        {
+          &quot;assertionId&quot;: &quot;A1&quot;,
+          &quot;check&quot;: &quot;The quoted total is 240 PLN.&quot;,
+          &quot;evidenceIds&quot;: [
+            &quot;01M75A0T5N9Q5D2QN7FZRQ34Y7&quot;
+          ],
+          &quot;observed&quot;: &quot;GET /quote?promotion=true status 200 totalPLN 240&quot;,
+          &quot;oracleKind&quot;: &quot;deterministic&quot;,
+          &quot;reason&quot;: null,
+          &quot;result&quot;: &quot;passed&quot;
+        }
+      ],
+      &quot;outcome&quot;: &quot;passed&quot;,
+      &quot;reason&quot;: null,
+      &quot;testId&quot;: &quot;T2&quot;
+    },
+    {
+      &quot;assertions&quot;: [
+        {
+          &quot;assertionId&quot;: &quot;A1&quot;,
+          &quot;check&quot;: &quot;totalPLN equals 240.&quot;,
+          &quot;evidenceIds&quot;: [
+            &quot;01M75A0ZVZC156GNSTPZ9G4MYX&quot;
+          ],
+          &quot;observed&quot;: &quot;GET /quote?promotion=true&amp;loyalty=true status 200 totalPLN 220; expected 240&quot;,
+          &quot;oracleKind&quot;: &quot;deterministic&quot;,
+          &quot;reason&quot;: null,
+          &quot;result&quot;: &quot;failed&quot;
+        }
+      ],
+      &quot;outcome&quot;: &quot;failed&quot;,
+      &quot;reason&quot;: null,
+      &quot;testId&quot;: &quot;T3&quot;
+    },
+    {
+      &quot;assertions&quot;: [],
+      &quot;outcome&quot;: &quot;not_run&quot;,
+      &quot;reason&quot;: &quot;Test was not selected.&quot;,
+      &quot;testId&quot;: &quot;T4&quot;
+    }
+  ]
+}</pre></details></html>

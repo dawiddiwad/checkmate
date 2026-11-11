@@ -6,343 +6,173 @@
 
 #
 
-Think of it like a QA contract for agent testing: Claude Code drives your running application with real tools, and Checkmate keeps the record strict. A plan maps each requirement to a test or an open question, the caller answers what is unclear, and every verdict needs saved evidence. It aims to patch the gap between fully coded tests and freelance agent testing.
+Think of it like a QA contract for agent testing: Claude Code drives your running application with real tools, and Checkmate keeps the record strict. A plan maps each requirement to tests with explicit assertions or to an open question. A human answers what is unclear, approves the plan, and accepts the result. Every assertion result needs saved evidence. It aims to patch the gap between fully coded tests and freelance agent testing.
 
 ## Install
+
+Checkmate needs Node.js 24.12.0 or later, because it uses `node:sqlite`. Browser tests use [Playwright CLI](plugin/references/browser.md).
+
+Install the Claude Code plugin:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
 ```
 
-Use Node.js 24.12.0 or later. The plugin has no npm dependencies and no build step. Browser tests use [Playwright CLI](plugin/references/browser.md).
+The plugin has no npm dependencies and no build step. It contains every command that the skills need.
+
+Install the npm CLI for the terminal, CI, and the review UI:
+
+```sh
+npm i -g @xoxoai/checkmate
+checkmate --help
+```
+
+You can also run it without an install: `npx @xoxoai/checkmate <command>`. The npm package contains the same plugin at the same version. It adds `delegate` and `ui`.
 
 ## Usage
 
-#### A plan request is a JSON document:
+This example tests a local checkout. Run the `checkmate` commands in the application workspace. Run the `/checkmate:` skills in Claude Code in the same workspace.
 
-```json
-{
-	"contractVersion": "toolkit-1",
-	"requestId": "req-plan-1",
-	"operation": "plan",
-	"caller": "factory-agent",
-	"objective": "Verify checkout and identify missing acceptance decisions.",
-	"target": {
-		"path": "profile.json",
-		"sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
-	},
-	"requirements": [
-		{
-			"id": "R1",
-			"text": "A standard order for a 400 PLN item has a total of 400 PLN.",
-			"source": "caller://checkout-brief#standard"
-		},
-		{
-			"id": "R2",
-			"text": "A 40 percent promotion is applied during checkout; stacking behaviour is unspecified.",
-			"source": "caller://checkout-brief#promotion"
-		},
-		{
-			"id": "R3",
-			"text": "Refund behaviour must be checked; eligibility rules are unspecified.",
-			"source": "caller://checkout-brief#refund"
-		}
-	],
-	"sourceContext": [
-		{
-			"uri": "caller://checkout-brief",
-			"content": "Fixture checkout sells one item at 400 PLN. Promotion is 40 percent. Existing loyalty reduction can be 20 PLN. Confirm stacking and refund eligibility before asserting them."
-		}
-	],
-	"outputPlanId": "checkout",
-	"planDirectory": "plans/checkout"
-}
+1. Set your name for the record:
+
+   ```sh
+   export CHECKMATE_ACTOR=qa-lead
+   ```
+
+2. Open a target and set it up:
+
+   ```sh
+   checkmate target open checkout-local --base-url http://127.0.0.1:4173 \
+     --capabilities browser,http --operations read_catalog,create_fixture_order,apply_fixture_discount
+   ```
+
+   ```text
+   /checkmate:setup checkout-local
+   ```
+
+   The skill checks the tools and the target, and saves profile `checkout-local@1`.
+
+3. Open a plan and let Claude write it. `plan-request.json` has the objective, requirements, and source context ([example](docs/CONFIGURATION.md#plan-request)).
+
+   ```sh
+   checkmate plan open checkout --target checkout-local@1 < plan-request.json
+   ```
+
+   ```text
+   /checkmate:plan checkout
+   ```
+
+   The result is `needs_decision` when a requirement is unclear. Each unclear item is an open blocking gap, for example `G1: Does the 40 percent promotion stack with the 20 PLN loyalty discount?`
+
+4. Answer the gaps, and let Claude apply the decisions:
+
+   ```sh
+   checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
+     --value "The promotion replaces the loyalty discount. The quote total is 240 PLN." \
+     --rationale "Product owner decision."
+   checkmate gap answer checkout G2 --kind defer \
+     --value "Refunds are out of scope for this release." --rationale "Product owner decision."
+   ```
+
+   ```text
+   /checkmate:revise checkout
+   ```
+
+5. Read and approve the new revision:
+
+   ```sh
+   checkmate plan show checkout@2 --fields readiness,assertions
+   checkmate plan approve checkout@2 --rationale "Tests and assertions match the brief."
+   ```
+
+6. Execute the plan:
+
+   ```text
+   /checkmate:execute checkout@2, tests T1,T2,T3, build fixture-build-1, run ID run-1
+   ```
+
+   In the same session, the skill runs `checkmate run gate` and `checkmate run begin`. Then it records each assertion with evidence, closes each test, records findings, and finishes the run.
+
+7. Review and accept the result:
+
+   ```sh
+   checkmate run show run-1
+   checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before release."
+   ```
+
+   You can also make every decision in the review UI:
+
+   ```sh
+   checkmate ui
+   ```
+
+### CI and scripts
+
+`checkmate delegate` runs one stage in a fresh Claude Code session. Open the subject first, then delegate:
+
+```sh
+checkmate target open checkout-local --base-url "$BASE_URL" --capabilities browser,http \
+  --operations read_catalog,create_fixture_order,apply_fixture_discount
+checkmate delegate setup checkout-local --allow Read --allow Write --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
+checkmate plan open checkout --target checkout-local@1 < plan-request.json
+checkmate delegate plan checkout --allow Read --allow Write --allow "Bash(node *)"
+# A human answers the gaps and approves checkout@2.
+checkmate run begin run-7 checkout@2 --tests T1,T2,T3 --build "$GIT_SHA"
+checkmate delegate execute run-7 --allow Read --allow Write --allow "Bash(node *)" --allow "Bash(playwright-cli *)"
 ```
 
-#### Run:
+The parent does not trust the worker's words. It reads the database and returns the recorded result. Read [CLI](docs/CLI.md) for the stages, permissions, and deadlines.
 
-```text
-/checkmate:plan plan-request.json
-```
+### Example artifacts
 
-The request pins the target profile that `/checkmate:setup` saved. Checkmate saves `plans/checkout/v1.json` and returns a response. Unclear requirements come back as blocking gaps with `status: "needs_decision"`. The caller answers them with `/checkmate:revise`, then runs the plan with `/checkmate:execute`.
+These files were exported from a live run with Claude Code on the local checkout fixture:
 
-<details>
-<summary>Example documents</summary>
+- Plans: [revision 1](docs/examples/plans/checkout-v1.md) with two open gaps, and [revision 2](docs/examples/plans/checkout-v2.md) after the decisions.
+- Runs: [live-run](docs/examples/runs/live-run.md) found a defect in T3. [live-retest](docs/examples/runs/live-retest.md) passed on a new build.
 
-The documents describe an illustrative local checkout. They are not evidence from a live application. File digests refer to the exact files in [docs/examples](docs/examples).
-
-<details>
-<summary>Configuration: target profile</summary>
-
-The profile records the target, tool versions, access references, and permitted operations.
-
-```json
-{
-	"contractVersion": "toolkit-1",
-	"targetId": "checkout-local",
-	"revision": 1,
-	"baseUrl": "http://127.0.0.1:4173",
-	"environment": "local_fixture",
-	"capabilities": ["browser", "http"],
-	"tooling": [
-		{
-			"capability": "browser",
-			"executable": "playwright-cli",
-			"version": "0.1.23"
-		},
-		{
-			"capability": "http",
-			"executable": "node",
-			"version": "v24.22.1"
-		}
-	],
-	"authentication": {
-		"kind": "none",
-		"references": []
-	},
-	"allowedOperations": ["read_catalog", "create_fixture_order", "apply_fixture_discount"],
-	"startup": {
-		"owner": "caller",
-		"command": null
-	},
-	"cleanup": "Close the run browser session. The fixture stores no records.",
-	"readyForLiveExecution": true
-}
-```
-
-</details>
-
-<details>
-<summary>Input: caller decisions</summary>
-
-The caller clarifies the discount rule and defers refund coverage. The next plan revision preserves these decisions.
-
-```json
-{
-	"contractVersion": "toolkit-1",
-	"requestId": "revise-1",
-	"caller": "test-caller",
-	"operation": "revise",
-	"basePlan": {
-		"path": "plans/checkout/v1.json",
-		"sha256": "df4e09ebcc886104a3ceb2760f7a251238f8ddceae71094c7d90c1c33955b32d"
-	},
-	"baseRevision": 1,
-	"decisions": [
-		{
-			"id": "D1",
-			"gapId": "G1",
-			"kind": "clarify",
-			"actor": "factory-agent",
-			"rationale": "Product acceptance decision supplied by dispatcher.",
-			"value": "Promotion replaces loyalty. Apply 40 percent to the undiscounted 400 PLN subtotal; expected total is 240 PLN.",
-			"source": "caller://acceptance-decisions/checkout#promotion"
-		},
-		{
-			"id": "D2",
-			"gapId": "G2",
-			"kind": "defer",
-			"actor": "factory-agent",
-			"rationale": "Refund policy is outside this delivery; preserve the uncovered requirement.",
-			"value": "Do not execute refund checks in this scope.",
-			"source": null
-		}
-	]
-}
-```
-
-</details>
-
-<details>
-<summary>Input: execution request</summary>
-
-The request selects two tests and pins the target and plan by digest. It uses the default execution policy.
-
-```json
-{
-	"contractVersion": "toolkit-1",
-	"requestId": "execute-1",
-	"caller": "test-caller",
-	"operation": "execute",
-	"runId": "run-1",
-	"plan": {
-		"path": "plans/checkout/v2.json",
-		"sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
-	},
-	"target": {
-		"path": "profile.json",
-		"sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
-	},
-	"selectedTestIds": ["T1", "T2"],
-	"partialExecution": "wait_for_resolution",
-	"timeoutSeconds": 180,
-	"onNewBlocker": "return_to_caller",
-	"applicationBuild": "fixture-build-1",
-	"outputDirectory": "runs/run-1"
-}
-```
-
-</details>
-
-<details>
-<summary>Output: execution result</summary>
-
-The run completed. One test failed. Deferred refund coverage remains visible. Completion, test outcomes, and coverage are separate fields.
-
-```json
-{
-	"contractVersion": "toolkit-1",
-	"requestId": "execute-1",
-	"runId": "run-1",
-	"completion": "completed",
-	"plan": {
-		"path": "plans/checkout/v2.json",
-		"sha256": "2f9c2ef09130a0f4e7583db328e394b1ddd685d076193a5bf9237c062d1c95bc"
-	},
-	"target": {
-		"path": "profile.json",
-		"sha256": "d2c76c324a66b6fabf788ac059d556a62204edf68d0472f2c982e2368962da70"
-	},
-	"applicationBuild": "fixture-build-1",
-	"selectedTestIds": ["T1", "T2"],
-	"startedAt": "2026-11-07T14:24:25.788Z",
-	"tests": [
-		{
-			"testId": "T1",
-			"outcome": "passed",
-			"expected": "The order total is 400 PLN.",
-			"observed": "Order confirmed: 400 PLN",
-			"assertionKind": "agent_observation",
-			"evidenceIds": ["E-T1"],
-			"reason": null
-		},
-		{
-			"testId": "T2",
-			"outcome": "failed",
-			"expected": "HTTP 200 and totalPLN equals 240, with the loyalty discount replaced.",
-			"observed": "HTTP 200; totalPLN = 220",
-			"assertionKind": "deterministic",
-			"evidenceIds": ["E-T2"],
-			"reason": "Observed total differs from expected total."
-		},
-		{
-			"testId": "T3",
-			"outcome": "not_run",
-			"expected": null,
-			"observed": null,
-			"assertionKind": null,
-			"evidenceIds": [],
-			"reason": "Test was not selected or was deferred."
-		}
-	],
-	"findings": [
-		{
-			"id": "F1",
-			"type": "defect",
-			"severity": "medium",
-			"testIds": ["T2"],
-			"requirementIds": ["R2"],
-			"title": "Promotion stacks with loyalty",
-			"expected": "240 PLN",
-			"observed": "220 PLN",
-			"reproduction": [
-				"Create a 400 PLN cart with 20 PLN loyalty.",
-				"Apply a 40 percent promotion.",
-				"Read the quote total."
-			],
-			"evidenceIds": ["E-T2"]
-		}
-	],
-	"newGaps": [],
-	"evidence": [
-		{
-			"id": "E-T1",
-			"kind": "observation",
-			"path": "evidence/T1.txt",
-			"sha256": "defae3129c5e2095b2a6580118f56b824b9002714c9577730592317d1b8b8179"
-		},
-		{
-			"id": "E-T2",
-			"kind": "observation",
-			"path": "evidence/T2.txt",
-			"sha256": "86f68eb060aca6d97061d59ce146a5dc2cd1f7a90c0ceaff465ff74ade9bd067"
-		}
-	],
-	"cleanup": {
-		"status": "not_applicable",
-		"reason": "Illustrative document. No application was used to create this example."
-	},
-	"finishedAt": "2026-11-07T14:24:25.850Z",
-	"coverage": {
-		"status": "partial",
-		"requirements": [
-			{
-				"requirementId": "R1",
-				"status": "tested",
-				"testIds": ["T1"],
-				"reason": null
-			},
-			{
-				"requirementId": "R2",
-				"status": "tested",
-				"testIds": ["T2"],
-				"reason": null
-			},
-			{
-				"requirementId": "R3",
-				"status": "uncovered",
-				"testIds": ["T3"],
-				"reason": "At least one required check or decision is missing."
-			}
-		]
-	}
-}
-```
-
-</details>
-
-Read the [first plan](docs/examples/plans/checkout/v1.md), [revised plan](docs/examples/plans/checkout/v2.md), and [Markdown report](docs/examples/runs/run-1/report.md).
-
-</details>
+Read [the examples index](docs/examples/README.md) for the HTML and JSON forms.
 
 ## How it works
 
 ![Checkmate overview: five stages, a checkout example with a defect found and a passed retest, and who owns what.](docs/img/checkmate-infographic.png)
 
-Each stage is a skill with an explicit request file:
+The image shows the workflow stages: setup, plan, revise, execute, and report.
 
-- `/checkmate:setup` checks tools and access, and saves a target profile.
-- `/checkmate:plan` maps requirements to tests and records open gaps.
-- `/checkmate:revise` applies the caller's decisions in a new plan revision.
-- `/checkmate:execute` runs selected tests and saves evidence.
-- `/checkmate:report` generates Markdown and HTML from the JSON result.
+- **One SQLite store.** Checkmate keeps targets, plans, decisions, approvals, runs, evidence, and an operation log in `.checkmate/checkmate.db`. Rows do not change after a write. A plan revision and a result are snapshots with a SHA-256 digest. Each command records who did what, and when.
+- **Assertions.** Each test has one action and a list of assertions. The agent records each assertion as `passed`, `failed`, `inconclusive`, or `not_checked`, with an observation and evidence. Checkmate calculates the test outcome. One failed assertion fails the test. An `inconclusive` assertion means that the evidence cannot show the answer. An inconclusive test does not cover its requirement. Read [Evidence](docs/EVIDENCE.md) for the complete rule.
+- **Human gate.** A human approves a plan revision before execution and accepts a result after execution. A new revision needs a new approval. The target profile can turn off each gate.
+- **Review UI.** `checkmate ui` starts a local server on `127.0.0.1`. The inbox shows the gaps to answer, the plans to approve, and the results to accept. Pages update live when the CLI or a Claude session writes to the database. The UI uses the same functions as the CLI.
+- **Resumable runs.** An assertion result is final when the agent records it. After a crash or a deadline, `checkmate run resume` lists the open work. A retest is a new run on a new build. The prior run does not change.
 
-Saved files are never overwritten. A retest is a new run. Completion, test outcomes, and coverage are separate fields, and a process exit code is not a release decision.
-
-Checkmate checks structure and relationships. It cannot prove that an observation is true. Claude Code owns the model, tools, and permissions.
+Completion, test outcomes, and coverage are separate fields. A process exit code is not a release decision. Checkmate checks structure and relationships. It cannot prove that an observation is true. Claude Code owns the model, authentication, tools, and permissions.
 
 ## Commands
 
-```text
-checkmate validate <kind> <file.json>
-checkmate setup <request.json> <profile.json>
-checkmate save-plan <request.json> <plan.json>
-checkmate gate <request.json>
-checkmate begin <request.json>
-checkmate finalize <request.json> <observation.json>
-checkmate report <request.json>
-checkmate delegate <request.json> --allow <rule>... [--timeout <seconds>]
-```
+| Commands                                                                                                | Purpose                           |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `init`                                                                                                  | Create the database.              |
+| `target open`, `target request`, `target save`, `target show`                                           | Record and read target profiles.  |
+| `plan open`, `plan request`, `plan save`                                                                | Create a plan.                    |
+| `plan show`, `plan list`, `plan diff`                                                                   | Read plans.                       |
+| `gap answer`, `plan pending`, `plan revise`                                                             | Decide and revise.                |
+| `plan approve`, `plan reject`                                                                           | Plan gate.                        |
+| `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume` | Execute.                          |
+| `run show`, `run list`                                                                                  | Read runs.                        |
+| `result accept`, `result reject`                                                                        | Result gate.                      |
+| `evidence get`, `export plan`, `export run`                                                             | Read evidence and export reports. |
+| `log`, `query`                                                                                          | Operation log and read-only SQL.  |
+| `delegate`, `ui`                                                                                        | npm CLI only: workers and the UI. |
 
-Run a command as `node plugin/bin/checkmate.ts <command>`. `delegate` runs one stage in a fresh Claude Code session.
+Put options after the command, for example `checkmate plan list --workspace ../app`. Run `checkmate --help` for every option. In a plugin session, the skills run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`.
 
 ## Docs
 
-[Contracts and configuration](docs/CONFIGURATION.md)  
+[Configuration and payloads](docs/CONFIGURATION.md)  
 [CLI](docs/CLI.md)  
-[Evidence](docs/EVIDENCE.md)  
+[Evidence and outcomes](docs/EVIDENCE.md)  
+[Validation](docs/VALIDATION.md)  
+[Examples](docs/examples/README.md)  
 [Dev](docs/DEVELOPMENT.md)
 
 ## License

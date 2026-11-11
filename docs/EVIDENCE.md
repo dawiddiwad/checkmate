@@ -1,21 +1,153 @@
-# Evidence and reports
+# Evidence and outcomes
 
-Save evidence under the run's `evidence/` directory. In the observation, each entry has an ID, kind, and relative path.
+This page describes how Checkmate records assertion results, derives test outcomes, stores evidence, and reports a run.
 
-The finalizer checks file existence, path containment, and symlink resolution. It calculates the SHA-256 digest of each file and records it in the result. A later change to an evidence file does not match the result. A passed or failed assertion needs an observation and evidence. The expected result and assertion kind must match the plan.
+## Assertions
 
-A failed assertion needs a defect finding. A defect identifies the tests, requirements, expected behavior, observed behavior, reproduction steps, and evidence. Use `potential_issue` for an inference. Keep requirement gaps separate.
+A test has one action and a list of assertions. An assertion is one thing that the agent must check, for example `totalPLN equals 240.` Each assertion has an ID, a `check`, and an `oracleKind`:
 
-Completion describes the operation: `completed`, `interrupted`, or `operational_error`. Test outcomes are `passed`, `failed`, `blocked`, `not_run`, or `error`. Coverage is `complete`, `partial`, or `not_executed`.
+- `deterministic`: the check compares an exact value.
+- `agent_observation`: the agent interprets the evidence, for example a page layout.
 
-A tool or access failure is an error. It is not a product defect. A cleanup failure prevents `completion: completed`.
+The plan sets the check text and the oracle kind. The agent does not send them during a run. Checkmate copies them from the plan revision into the result.
 
-JSON is authoritative. The renderer creates Markdown and HTML from the same record. A report shows the completion and coverage summary, each test with its expected and observed values and evidence links, the findings with reproduction steps, new gaps, coverage for each requirement, and cleanup. The complete JSON record follows in a collapsed section. A plan view shows the requirements, tests and readiness, gaps, decisions, and assumptions.
+## Assertion results
 
-The renderer escapes untrusted text for Markdown and HTML. HTML uses no scripts or remote resources. Do not edit a generated view to change a verdict.
+The agent records each assertion once:
 
-Publication uses an exclusive temporary file, file sync, and a hard link that refuses overwrite. A completed result cannot replace an existing result. Generated views can be recovered with `report` after a rendering failure.
+```sh
+checkmate run check run-1 T2 A1 --result failed \
+  --observed "GET /quote?promotion=true&loyalty=true returned HTTP 200 with totalPLN 220." \
+  --evidence .checkmate/tmp/run-1/T2-A1.json
+```
 
-Use a trusted local workspace. Path checks are not a filesystem sandbox and do not protect against an actor who can replace files concurrently. The scripts cannot prove that an agent's interpretation is true.
+| Result         | Meaning                                                                        | Needs                                              |
+| -------------- | ------------------------------------------------------------------------------ | -------------------------------------------------- |
+| `passed`       | The agent observed the target. The observation meets the check.                | `--observed`, one or more `--evidence`             |
+| `failed`       | The agent observed the target. The observation contradicts the check.          | `--observed`, one or more `--evidence`             |
+| `inconclusive` | The agent checked the assertion. The evidence cannot show if the check is met. | `--observed`, one or more `--evidence`, `--reason` |
+| `not_checked`  | The agent did not check the assertion.                                         | `--reason`                                         |
 
-Select evidence fields before retention. Do not save credentials, cookies, authorization headers, or full raw transcripts. Screenshots and arbitrary text are not sanitized automatically. The caller owns evidence access and retention.
+Checkmate also checks these rules when it records a result:
+
+- The run is started and not finished.
+- The test is selected in the run, and it is not closed.
+- The assertion exists in the test, and it has no result. An assertion result is final.
+- Each local prerequisite in `dependsOn` is closed as `passed`.
+
+After a failed assertion, the agent checks the assertions that it can still check. It records the others as `not_checked`.
+
+## Test outcome
+
+When each assertion of a test has a result, the agent runs `checkmate run close <runId> <testId>`. Checkmate derives the outcome. The agent does not set it.
+
+Checkmate uses the first row that applies:
+
+| Assertion results          | Test outcome   |
+| -------------------------- | -------------- |
+| One or more `failed`       | `failed`       |
+| One or more `not_checked`  | `error`        |
+| One or more `inconclusive` | `inconclusive` |
+| All `passed`               | `passed`       |
+
+- `failed` comes first. One failed assertion fails the test, whatever the other results are.
+- `error` comes before `inconclusive`. An assertion that was not checked means that the run is incomplete for that test. The caller must know this first. The reason names the unchecked assertions.
+- A test that the agent did not start has no assertion results. The agent closes it with `--outcome blocked`, `--outcome not_run`, or `--outcome error`, and a `--reason`.
+- A tool failure during a test is `--outcome error`. The assertion results that the agent recorded before the failure stay. Evidence for the whole test, for example an error screenshot, can go with `--outcome error`.
+- A test outcome is final. A second `close` fails.
+- `run finish` records each selected test that is not closed as `error`, with the reason `Run stopped before the test closed. Actions may have occurred.` It records each unselected test as `not_run`.
+
+### Inconclusive
+
+- `inconclusive` is not a defect. It needs no finding. The agent can add a `potential_issue` finding when it suspects a defect.
+- An inconclusive test does not cover its requirements. The requirement stays `uncovered` with the reason `An assertion is inconclusive.`
+- An inconclusive test does not prevent `completion: completed`. The check ran. Only the evidence was not sufficient.
+- An inconclusive test does not satisfy a dependency. A dependency needs `passed`.
+- The caller decides what to do next: a decision that gives a stronger oracle, a change to the assertion, or a retest with better evidence. The review UI lists each inconclusive assertion with its reason above the result decision.
+
+## Evidence files
+
+1. `run begin` creates the evidence directory `.checkmate/tmp/<runId>/` and prints it.
+2. The agent writes one new evidence file for each assertion in that directory, for example `.checkmate/tmp/run-1/T2-A1.json`.
+3. The agent gives the path, relative to the workspace, with `--evidence <path>[:kind]`. A command can take more than one `--evidence`.
+4. Checkmate reads the file, stores the bytes in the database, and records the evidence row in the same transaction as the result.
+5. After the commit, Checkmate deletes the file. A refused command keeps the file.
+
+Checkmate refuses an evidence path that is absolute, is outside `.checkmate/tmp/<runId>/` after symbolic links are resolved, is not a regular file, or is larger than 32 MiB. The limit applies to one file. `node:sqlite` reads and writes a BLOB as one buffer, so a larger limit uses too much memory.
+
+The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.json` is `http_exchange`, `.zip` and `.trace` are `trace`, and other files are `observation`. The extension also sets the media type. An unknown extension gives `application/octet-stream`.
+
+### Blobs
+
+- Evidence bytes are BLOBs in the `blobs` table. The key is the SHA-256 digest of the bytes. Equal files are stored once.
+- Each evidence row has a ULID, the run, the test, the assertion (or none for evidence of the whole test), the kind, the original file name, the media type, and the digest.
+- Rows do not change after a write. A stored digest matches the stored bytes.
+- `checkmate evidence get <evidenceId> --out <file>` writes the bytes to a new file. The bytes are equal to the input bytes.
+- The review UI serves the bytes with the stored media type. It shows images and plain text inline. It sends other types as a download.
+
+## Findings
+
+`checkmate run finding <runId> < finding.json` records a finding. Read [Configuration](CONFIGURATION.md#finding) for the payload.
+
+- `defect`: a product defect. It names one or more failed assertions, and only failed assertions.
+- `potential_issue`: a suspicion, for example with an inconclusive assertion. It can name any assertion of a selected test.
+- Each failed assertion needs a defect finding. `run finish` refuses the run without it.
+- The requirements of a finding must be requirements of the named tests.
+- The evidence of a finding must belong to the named assertions, or to their tests as a whole.
+- Checkmate adds the `testIds` from the named assertions.
+
+A tool or access failure is an `error` outcome. It is not a product defect. Keep requirement gaps separate from findings. Record new ambiguity with `checkmate run gap`.
+
+## Completion, outcomes, and coverage
+
+These are three separate fields. Do not combine them.
+
+| Field        | Values                                                            | Describes                                   |
+| ------------ | ----------------------------------------------------------------- | ------------------------------------------- |
+| `completion` | `completed`, `interrupted`, `operational_error`                   | The operation: did the run finish its work? |
+| `outcome`    | `passed`, `failed`, `inconclusive`, `blocked`, `not_run`, `error` | One test.                                   |
+| `coverage`   | `complete`, `partial`, `not_executed`                             | The full requirement inventory of the plan. |
+
+`run finish --completion completed` needs:
+
+- every selected test closed, and no selected test closed as `error`,
+- a cleanup status that is not `failed`,
+- a cause for each selected test that is `blocked` or `not_run`: a prerequisite that did not pass, a blocked cross-plan dependency, or a new blocking gap,
+- a defect finding for each failed assertion.
+
+A requirement is `tested` when it has one or more planned tests, no deferred or open blocking gap applies to it, and each of its tests is `passed` or `failed`. Else it is `uncovered` with a reason. Coverage is `complete` when every requirement is tested. It is `partial` when one or more tests ran. Else it is `not_executed`. A narrow retest keeps the requirements of unselected tests uncovered.
+
+A `completed` run with failed tests is a correct result. The process exit code of `run finish` is 0 for `completed` and 1 for `interrupted` or `operational_error`. An exit code is not a release decision. Result acceptance is a caller record. It is not a release decision by Checkmate.
+
+## Resume
+
+A crash or a deadline does not finalize a run. The run stays `started`, and recorded results stay.
+
+- `checkmate run resume <runId>` records a new attempt. It lists each selected test that is not closed, with the assertions that have no result.
+- Checkmate does not repeat a test automatically. A test that was open when the session stopped shows the warning `Actions may have occurred`. The caller decides to continue it or to close it as `error`.
+- `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error` and records the new attempt in one step.
+
+## Export
+
+```sh
+checkmate export run run-1 --format html --out reports/run-1.html
+checkmate export plan checkout@2 --format md --out reports/checkout-v2.md
+```
+
+- `--format` is `md`, `html`, or `json`. `json` prints the stored snapshot.
+- `export run` needs a finished run. `export plan` needs a revision reference or a plan ID for the latest revision.
+- The command refuses an existing output file.
+- A run report shows the summary, each test outcome, each assertion with its check, observation, reason, and evidence, the findings with reproduction steps, new gaps, evidence digests, coverage for each requirement, and cleanup. The complete JSON record follows in a collapsed section.
+- A plan view shows the requirements and coverage, tests and readiness, assertions, gaps, decisions, and assumptions.
+- The renderer escapes untrusted text for Markdown and HTML. The HTML has a Content Security Policy that blocks scripts and remote resources.
+- An export is a view. The database is the authority. Do not edit an export to change a verdict.
+
+[docs/examples](examples/README.md) contains exports from a live run.
+
+## Retention and limits
+
+- Checkmate does not sanitize evidence. Screenshots and text are stored as the agent wrote them.
+- Do not capture credentials, cookies, authorization headers, or full raw transcripts.
+- The caller owns access to the database and how long it keeps evidence. Rows cannot be deleted through Checkmate. To remove evidence, delete the database file or keep a new one for each retention period.
+- Use a trusted local workspace. Path checks are not a filesystem sandbox. They do not protect against an actor who can replace files at the same time.
+- Checkmate checks structure and relationships. A digest shows that bytes did not change after the write. It does not show that an observation is true, that the evidence came from the target, or that the agent interpreted it correctly.

@@ -1,88 +1,136 @@
-# Validation record
+# Validation
 
-Date: 7 November 2026. Repository and plugin version: `0.7.0`.
+This page says what Checkmate checks, how the tests are organized, and what a live run showed. Contract version: `toolkit-2`.
 
-The checks ran on Debian Linux with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chromium `156.0.8078.79`.
+## What the code checks
 
-After this record, the plugin moved to `plugin/` and the runtime npm dependencies were removed. The commands now calculate plan coverage and evidence digests. `finalize` records an omitted unselected test as `not_run`. The live tests use Sonnet by default. The next section records the checks after these changes. The later sections record the earlier run.
+Checkmate checks structure and relationships. It cannot prove that an observation is true.
 
-## Checks after the plugin layout change
+### Payload shape
 
-Date: 7 November 2026. The checks ran in a Linux cloud container with Node.js `24.22.1`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and Chrome for Testing `153.0.8010.12`. The live tests used `ANTHROPIC_MODEL=sonnet`, which selected `claude-sonnet-5-5`. Hosted CI did not run these checks.
+`plugin/src/contracts.ts` validates each payload against its JSON Schema before any rule check. The validators in `plugin/src/validators.js` are generated from `plugin/contracts/`. A payload with an unknown field, a missing field, or a wrong type is refused.
 
-- Type generation, validator generation, strict TypeScript checks, lint, and formatting: passed.
-- `npm test`: 24 of 25 tests passed. The missing-authentication test failed because the container had a Claude login. This test checks the host configuration, not Checkmate.
-- `node test/plugin.js`: passed. The copied `plugin/` directory ran outside the repository without npm install.
-- Claude plugin and marketplace validation: passed. The validator reported a missing marketplace description.
-- `npm run test:live`: passed with an existing host login (`CHECKMATE_USE_HOST_LOGIN=1`). The delegated stages, the defect, the retest, same-session execution, and the permission denial gave the expected results.
+| Schema                       | Checked by                        |
+| ---------------------------- | --------------------------------- |
+| `profile.schema.json`        | `target save`                     |
+| `plan-request.schema.json`   | `plan open`                       |
+| `plan-candidate.schema.json` | `plan save`                       |
+| `plan-delta.schema.json`     | `plan revise`                     |
+| `plan.schema.json`           | each stored plan revision         |
+| `finding.schema.json`        | `run finding`                     |
+| `gap.schema.json`            | `run gap`, and each gap in a plan |
+| `result.schema.json`         | each stored result                |
+| `response.schema.json`       | the output of a delegated worker  |
 
-| Stage                | Seconds | Status           |
-| -------------------- | ------: | ---------------- |
-| Setup                |    19.3 | `completed`      |
-| Plan                 |    24.4 | `needs_decision` |
-| Ready-only execution |    29.0 | `completed`      |
-| Revise               |    13.4 | `completed`      |
-| Execute              |    29.0 | `completed`      |
-| Retest               |    17.7 | `completed`      |
+### Targets (`plugin/src/targets.ts`)
 
-These values describe one run. They are not performance targets.
+- The setup request has an HTTP or HTTPS URL and non-empty, unique capabilities and operations. A second `target open` with other values is refused.
+- A profile has the same target ID, URL, capabilities, and operations as the request.
+- A profile has one tool for each capability, the actual tool versions, and no credentials in the URL.
+- A profile revision is the latest revision plus 1. An identical save changes nothing.
 
-Earlier live runs during these changes failed. Each failure came from a worker document that did not follow a skill:
+### Plans (`plugin/src/contracts.ts`, `plugin/src/plans.ts`)
 
-- A worker omitted an unselected test. `finalize` now records an omitted unselected test as `not_run`.
-- A worker recorded an evidence path relative to the workspace. The execute skill now gives the path format and an example.
-- On Node.js `22.23.4`, Sonnet correctly marked the target as not ready, because Checkmate requires Node.js 24.12.0 or later.
+- IDs are unique: requirements, tests, gaps, decisions, assertions in a test, and coverage rows.
+- Each reference names a known requirement, test, or gap.
+- Each requirement has one or more tests or gaps.
+- `gapIds`, readiness, and coverage are equal to the values that Checkmate calculates from the gaps.
+- A ready test has one or more assertions, a capability of the target, and allowed operations only.
+- An open gap has no decision. A resolved or deferred gap has a matching decision. A `clarify` decision has a source. An accepted assumption stays visible.
+- Cross-plan references name a plan and a test in the latest revision of that plan. A dependency cycle across all plans is refused.
+- `gap answer` needs an open gap in the latest revision, a known kind, a value, and a rationale. A gap has one pending decision.
+- `plan revise` needs one or more pending decisions. A delta changes only `action`, `preconditions`, and `assertions` of affected tests. A removed assertion ID cannot come back. A new assertion has a check and an oracle kind.
+- A concurrent revise of the same plan fails on the primary key.
+- `plan approve` and `plan reject` need a revision reference and a rationale. `--expect-sha` stops a decision on a changed snapshot.
 
-The passing run does not prove that a worker always follows the skills. The finalizer rejects a document that does not satisfy the contracts.
+### Gate (`plugin/src/plans.ts`)
 
-## Automated checks
+`run gate` and `run begin` collect every reason. They do not stop at the first one:
 
-- `npm run phase:verify`: passed. All 21 tests passed. No test was skipped.
-- Type generation, strict TypeScript checks, lint, and formatting: passed.
-- Clean plugin install with production dependencies: passed. Node ran the TypeScript CLI and API without a build.
-- Claude plugin and marketplace validation: passed. The validator reported optional listing metadata warnings.
-- Documentation contracts, file digests, local links, and agent Markdown formatting: passed.
-- All eight animation scenes fit the viewport. The GIF and static infographic were inspected.
+1. The target profile is ready for live execution.
+2. When plan approval is required, the latest approval of the exact revision digest is `approved`.
+3. With `wait_for_resolution`, no blocking gap is open.
+4. Each selected test exists, is ready, uses a capability and allowed operations of the target, has one or more assertions, and has its local prerequisites in the selection.
+5. Each cross-plan dependency has a finalized `passed` result for the same build, accepted when required, and no open blocking gap applies to it.
+6. A retest names a finished run of the same plan and target, with a different build.
 
-The tests cover stale inputs, conflicting writes, blocked prerequisites, missing evidence, path escape, report escaping, duplicate run IDs, worker output errors, missing authentication, and worker interruption.
+### Runs (`plugin/src/runs.ts`)
 
-## Release checks
+- `run begin` refuses a run ID that exists.
+- `run check` needs a started run, a selected and open test, a known assertion without a result, and passed local prerequisites. A result needs the fields in [Evidence](EVIDENCE.md#assertion-results).
+- Evidence files are regular files inside `.checkmate/tmp/<runId>/`, at most 32 MiB each, and listed once.
+- `run close` derives the outcome from the assertion results, or records `blocked`, `not_run`, or `error` with a reason. A test with assertion results can only be closed as `error` by hand.
+- `run finding` checks that a defect names only failed assertions, that the requirements belong to the named tests, and that the evidence belongs to the named assertions or their tests.
+- `run gap` checks that a runtime gap is open, has a new ID, and names known requirements and tests.
+- `run finish` checks the rules for `completed` in [Evidence](EVIDENCE.md#completion-outcomes-and-coverage), records unselected tests as `not_run`, calculates coverage, and validates the result snapshot.
+- A finished run does not change. `result accept` and `result reject` need a finished run and a rationale.
 
-Version tests passed for the first `0.7.0` release, patch increases, repeated preparation, and rejection of stale versions. All version files stayed in sync. The package remained private.
+### Store (`plugin/src/store.ts`)
 
-Local simulations passed for Dependabot merge detection, direct pushes, manual releases, PR resume, invalid input, repeated release creation, and tag mismatch rejection. These simulations used a mock GitHub API. They did not create a release.
+- Every write runs in one `BEGIN IMMEDIATE` transaction with its operation row. A refused write rolls back and records a `rejected` operation row.
+- Triggers refuse `UPDATE` and `DELETE` on every table. A decision can set `applied_revision` once.
+- Foreign keys are on. WAL mode lets a reader see committed writes while a writer holds the lock.
+- Each snapshot body is canonical JSON. Its digest is the SHA-256 of that text.
+- A write without an actor is refused.
 
-Actionlint `1.7.12` passed after excluding its unsupported `queue` field check. GitHub documents [`queue: max`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency) as a supported setting. The workflow preserves that setting from the prior release job.
+### Delegation (`cli/src/launcher.ts`)
 
-## Live Claude checks
+- `delegate` refuses an empty `--allow` list and an unknown subject before it starts Claude Code.
+- The parent requires a structured worker response for the same subject. Then it reads the database for the recorded change. A worker claim without the change is `operational_error`.
+- At the deadline or a signal, the launcher stops the worker's process group. An execute run stays `started`.
 
-`npm run test:live` passed with subscription authentication.
+## Tests
 
-Claude completed setup in a workspace without application source. It recorded three blocking questions: discount stacking, refund eligibility, and refund permission. The caller clarified the discount rule and deferred both refund gaps. No interactive response was needed.
+Run the fast suite with `npm test` (`node --test test/*.test.ts`). It uses temporary workspaces. It needs no network and no Claude credential.
 
-The default gate blocked execution. Explicit ready-only execution ran the standard checkout test. A fresh session applied the decisions and published a new plan revision.
+| File                      | Covers                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `test/store.test.ts`      | Schema creation, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs.                           |
+| `test/targets.test.ts`    | Setup requests, profile checks, revision order, default approval policy.                                                           |
+| `test/plans.test.ts`      | Plan save, plan rules, decisions, delta revise, refused deltas, concurrent revise, approval, gate reasons.                         |
+| `test/cross-plan.test.ts` | Missing plans and tests, cycles, blocks by result, acceptance, and open gaps in other plans.                                       |
+| `test/runs.test.ts`       | Outcome derivation, checks, closes, findings, runtime gaps, finish rules, inconclusive coverage, resume, retest, result decisions. |
+| `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                                        |
+| `test/views.test.ts`      | The inbox and the approval policy.                                                                                                 |
+| `test/cli.test.ts`        | Compact and JSON output, `--tests`, `--fields`, `--expect-sha`, read-only `query`, actor, operation log, export.                   |
+| `test/launcher.test.ts`   | Worker output checks, database checks after a worker, deadlines, browser cleanup. It uses a fake Claude CLI.                       |
+| `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture. It needs Chromium.                                                       |
+| `test/package.test.ts`    | `npm pack` and install of `@xoxoai/checkmate`, run from `node_modules`, `delegate` loads the bundled plugin.                       |
+| `test/release.test.ts`    | Version rules and the version files of the plugin, marketplace, root package, and CLI package.                                     |
+| `test/ui.test.ts`         | UI pages, escaping, rationale and confirm steps, stale digests, Host and Origin checks, evidence types, live events.               |
+| `test/ui.browser.test.ts` | The UI in a real browser: keyboard, forms, confirm in place, live updates, dark mode, no JavaScript.                               |
 
-The execution found the seeded defect: the quote returned 85 PLN instead of 90 PLN. After the caller changed the fixture behavior, a new retest observed 90 PLN and passed. The first failure remained available. Refunds and omitted checks remained uncovered.
+Other checks:
 
-A separate Claude session invoked the plan skill directly. Another session executed a saved plan and published its result through the CLI. A live permission-denial check returned `needs_decision` without a test action.
+- `node test/plugin.ts` copies `plugin/` outside the repository and runs the bundled CLI without npm install.
+- `npm run phase:verify` runs type generation checks, the bundle check, TypeScript, lint, formatting, `npm test`, and the plugin check.
+- `npm run test:live` runs `test/live.ts` and `test/live-session.ts` with an authenticated Claude Code CLI. Read [Development](DEVELOPMENT.md) for the setup.
 
-## Measured stage durations
+## Live run
 
-| Stage                | Seconds |
-| -------------------- | ------: |
-| Setup                |    36.7 |
-| Plan                 |    27.0 |
-| Ready-only execution |    71.3 |
-| Revise               |    34.3 |
-| Execute              |    50.1 |
-| Retest               |    31.5 |
+Date: 11 November 2026. `test/live.ts` passed on Linux with Node.js `v24.22.2`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and `ANTHROPIC_MODEL=claude-haiku-5-5`. The worker permissions were `Read`, `Write`, `Edit`, and `Bash` in a temporary workspace.
 
-These values describe one local run. They are not performance targets. Model behavior, load, and tool latency can change them.
+| Stage             | Seconds | Status           |
+| ----------------- | ------: | ---------------- |
+| Setup             |    16.3 | `completed`      |
+| Plan              |    23.3 | `needs_decision` |
+| Revise            |    17.6 | `completed`      |
+| Execute           |    48.5 | `completed`      |
+| Retest            |    48.7 | `completed`      |
+| Same-session plan |    35.5 | `needs_decision` |
 
-The live test retains its requests, plans, evidence, reports, and timing record in the temporary path printed by the runner. This record contains no credentials or raw model transcript.
+What the run showed:
+
+- Setup saved profile `checkout-local@1` with the actual tool versions.
+- The plan had two blocking gaps: promotion stacking and refund eligibility. The first `plan save` was refused, and the worker corrected the candidate. Planning did not run a fixture action.
+- The caller clarified the promotion rule and deferred refunds. Revise added the assertion to T3. The caller approved `checkout@2`.
+- Execute found the seeded defect: the quote returned 220 PLN instead of 240 PLN. T3 failed with a defect finding. Refund coverage stayed uncovered. The caller accepted the result.
+- After the fixture changed, a retest on a new build passed T2 and T3. The first run did not change.
+
+The exported plans and runs are in [docs/examples](examples/README.md). These values describe one run. They are not performance targets. Model behavior, load, and tool latency can change them. A passed live run does not prove that a worker always follows the skills. The commands refuse a payload that does not satisfy the contracts.
 
 ## Support limits
 
-Linux is the measured platform. macOS and Windows were not tested. The launcher rejects Windows.
+Linux is the measured platform. macOS was not tested. The launcher rejects Windows.
 
-Local checks do not establish that hosted CI passed. The PR check reports that result separately. Live CI requires a repository secret and a manual workflow dispatch.
+Local checks do not show that hosted CI passed. The PR check reports that result separately. Live CI needs a repository secret and a manual workflow dispatch.

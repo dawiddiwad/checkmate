@@ -7,11 +7,26 @@ Run every command from the caller's workspace:
 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>
 ```
 
-In a skill, `checkmate <command>` means that command line. There is no global npm command in a plugin session.
+In a skill, `checkmate <command>` means that command line. A plugin session has no global `checkmate` command.
+
+The caller is the person or the agent that owns the request. The caller answers gaps, approves plans, and accepts results.
+
+## Read the current state first
+
+Before you answer a question about targets, plans, tests, gaps, runs, or results, read the current state from the database. Chat memory can be out of date. Another session, the review UI, or the caller can change the database at any time.
+
+| Question                                 | Command                                                     |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| What waits for the caller?               | `checkmate inbox`                                           |
+| Which plans exist, and what blocks them? | `checkmate plan list`                                       |
+| What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
+| Which runs exist?                        | `checkmate run list [--plan <planId>]`                      |
+| What did a run record?                   | `checkmate run show <runId>`                                |
+| What changed, and who changed it?        | `checkmate log [--subject <id>]`                            |
+| Anything else                            | `checkmate query "<sql>"` (read-only, SQLite `SELECT` only) |
 
 ## Commands
 
-- Every write records an actor. Commands read `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name. If `CHECKMATE_ACTOR` is not set, add `--actor claude`. Else Checkmate records your write with the name of the person.
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read each `reason:` line.
@@ -23,19 +38,65 @@ checkmate plan save <planId> <<'EOF'
 EOF
 ```
 
-- Send text evidence on standard input with `--evidence -`. Write a file only for binary evidence, for example a screenshot, and only below `.checkmate/tmp/<runId>/`. Checkmate deletes the file after it stores it.
+- Send text evidence on standard input with `--evidence -`. Write a file only for binary evidence, for example a screenshot, and only in `.checkmate/tmp/<runId>/`. Checkmate deletes the file after it stores it.
 - Do not write other files. The database is the only record.
-- Read through the commands. Do not read or change `.checkmate/checkmate.db` directly. `checkmate query "<sql>"` is read-only.
+- Use the commands to read and write. Do not open `.checkmate/checkmate.db` directly.
 - A refused write changes nothing. Correct the payload and send it again.
-- Approved records do not change. The caller can edit a plan revision that is not approved with `checkmate plan edit <planId@rev>`. Do not edit a plan unless the caller asks.
 - The contracts are in `${CLAUDE_PLUGIN_ROOT}/contracts/`. Read a schema only when a command refuses a payload.
 
-## Delegated and same-session stages
+## Actor
 
-- A delegated stage starts with a parent prompt that says `delegated`. The parent names the subject. Do only that stage for that subject.
-- In a delegated stage, do not ask a person. Do not wait for a person. Return the response object.
-- A same-session stage can show its results and questions to the person.
+Every write records an actor. Commands use `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name.
+
+- Stage work is agent work: `target save`, `plan save`, `plan revise`, and the `run` commands. When `CHECKMATE_ACTOR` is not set, add `--actor claude:<stage>` to each of these writes, for example `--actor claude:execute`. Else the record shows the git user name, not the agent.
+- Caller decisions are `gap answer`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the caller tells you the decision in this session. Keep the default actor, or give the caller's name with `--actor`.
+
+## Who runs a stage
+
+| Mode                              | How it starts                                                                      | Writes with                                      | Asks the caller?                      |
+| --------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------- |
+| Same session                      | The caller runs `/checkmate:<stage>` in Claude Code.                               | The plugin CLI                                   | Yes. Show results and questions.      |
+| Sub-agent in the same Claude host | A parent agent gives a stage to a sub-agent that has the Checkmate plugin.         | The plugin CLI                                   | No. Return the response object.       |
+| Delegated session                 | `checkmate delegate <stage> <subject>` starts `claude -p` with the bundled plugin. | The plugin CLI, `CHECKMATE_ACTOR=claude:<stage>` | No. Return the response object.       |
+| External agent or script          | The agent runs the npm `checkmate` command.                                        | The npm CLI                                      | It is the caller. It makes decisions. |
+
+- A sub-agent or a delegated stage starts with a prompt that names the stage and the subject. Do only that stage for that subject. Use the stage skill and the plugin CLI. Do not ask the caller. Do not wait for the caller.
 - Return `{ "status", "subject", "reasons" }`. Copy the status and reasons from the last Checkmate command of the stage.
+- The parent does not trust the returned words. It reads the database: `checkmate inbox`, `checkmate plan show`, or `checkmate run show`.
+- An external agent, or a parent agent that is the caller, makes caller decisions with `checkmate inbox`, `checkmate gap answer`, `checkmate plan approve|reject`, `checkmate plan edit`, and `checkmate result accept|reject`.
+
+## Report to the caller
+
+Use this format when you show state or the end of a stage to the caller in the terminal. A sub-agent or a delegated stage returns only the response object.
+
+1. A Markdown table of the plans, tests, gaps, or runs that matter now. Use one row for each item and only the columns that help the decision.
+2. `Done:` one or two short lines about what you did.
+3. `Next:` what is necessary to continue: the decision, who makes it, and the command or the UI action. Give enough context to decide.
+
+```md
+| Gap | Severity | Tests | Question                                             |
+| --- | -------- | ----- | ---------------------------------------------------- |
+| G1  | blocking | T3    | Does the promotion stack with the loyalty discount?  |
+| G2  | blocking | T4    | Can a customer get a refund after the order shipped? |
+
+Done: Saved checkout@1 with 4 tests. T1 and T2 are ready. T3 and T4 are blocked by G1 and G2.
+
+Next: The caller answers G1 and G2. Use `/checkmate:ui`, or run
+`checkmate gap answer checkout G1 --kind clarify --source <source> --value "<answer>" --rationale "<why>"`.
+Then run `/checkmate:revise checkout`.
+```
+
+Useful columns:
+
+- Plans: Plan, Approval, Open gaps, Blocked tests.
+- Tests: Test, Readiness, Capability, Title. In a run: Test, Outcome, Reason.
+- Gaps: Gap, Severity, Status, Tests, Question.
+- Runs: Run, Plan, Build, Completion, Coverage, Acceptance.
+
+## Changes to records
+
+- Approved plan revisions, run records, and results do not change.
+- The caller can change the latest plan revision with `checkmate plan edit <planId@rev>`. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. Do not edit a plan unless the caller asks.
 
 ## Safety
 
@@ -47,5 +108,5 @@ EOF
 - Stop when permission, access, or a required tool is missing. Return `needs_decision` with the missing item as a reason.
 - Do not use a permission bypass. Do not repeat a destructive action automatically.
 
-Checkmate checks structure and relationships. It does not prove that an observation is true.
-The host controls model choice, authentication, tools, and permissions.
+Checkmate validates structure and relationships. It does not prove that an observation is true.
+The host controls model choice, authentication, tools, and permissions. Checkmate records the tools and checks the records.

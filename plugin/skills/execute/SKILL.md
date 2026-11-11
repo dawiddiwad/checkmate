@@ -3,12 +3,13 @@ name: execute
 description: Execute an approved Checkmate plan revision. Record each assertion result with evidence, close each test, record findings and gaps, and finish the run.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
-Read `${CLAUDE_PLUGIN_ROOT}/references/browser.md` and `${CLAUDE_PLUGIN_ROOT}/references/http.md` as needed.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
+
+Use the tools of the plan. `checkmate plan request <planId>` lists them. Each tool has a name, a kind (`cli`, `mcp`, or `skill`), and a purpose. The host gives the permission to use a tool. The references `browser.md` and `http.md` are optional recipes for `playwright-cli` and `node`. Read one only when the plan uses that tool.
 
 ## Start
 
-- Delegated stage: the parent has begun the run. The prompt names the run ID, plan revision, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
+- Delegated stage, or a sub-agent that gets a run ID: the parent has begun the run. The prompt names the run ID, plan revision, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
 - Same session, new run: run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. Stop when it does not print `completed`. Then run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build>` once. Add `--retest-of <runId>` for a retest.
 - Same session, stalled run: run `checkmate run resume <runId>`. Check only the assertions that it lists. The caller decides about tests marked `Actions may have occurred`.
 
@@ -16,7 +17,7 @@ Then:
 
 1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result.
 2. Run `checkmate plan show <planId@rev> --tests <T1,T2> --fields dependsOn,preconditions,action,assertions`.
-3. Run `checkmate target show <targetId>` when you need the base URL or the tools.
+3. Run `checkmate plan request <planId>` for the tools. Run `checkmate target show <targetId>` when you need the base URL.
 
 ## For each selected test
 
@@ -78,5 +79,6 @@ Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSO
    - `operational_error`: a tool, access, or cleanup failure stopped the run.
    - `interrupted`: the deadline is near. Finish before the deadline.
 3. Return the response of `run finish`.
+4. In the same session, report to the caller in the format of `workflow.md`. Show the tests (Test, Outcome, Reason) and the findings. In `Next:`, name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. Name a retest or a gap answer when one is necessary.
 
 A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage.

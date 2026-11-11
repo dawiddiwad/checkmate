@@ -1,6 +1,8 @@
 # Browser recipe
 
-Use Microsoft Playwright CLI. Checkmate tests version `0.1.23`.
+Use this recipe when the plan lists the `playwright-cli` tool. For another browser tool, for example an MCP server, use the same rules for sessions and evidence.
+
+Microsoft Playwright CLI is the default browser tool. Checkmate is tested with version `0.1.23`.
 For command details, run `playwright-cli --help` or `playwright-cli <command> --help`.
 
 Use the run's `browserSession` for every command. `run begin` and `run resume` print it. A delegated prompt names it.

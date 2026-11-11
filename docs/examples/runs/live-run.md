@@ -1,12 +1,23 @@
-# Test result: live-run
+# Test report: live-run
 
-Generated from the Checkmate database. Completion, test outcomes, and coverage are separate. Use checkmate evidence get to read evidence.
+checkout@2 on build fixture-build-1. Generated from the Checkmate database. Completion, test outcomes, and coverage are separate.
+
+- **Completion:** completed
+- **Coverage:** partial
+- **Acceptance:** approved
+- **Selected tests:** 3
+- **passed:** 2
+- **failed:** 1
+- **Assertions passed:** 2 of 3
+- **Findings:** 1
+- **New gaps:** 0
+
+## Summary
 
 | Field | Value |
 | --- | --- |
-| Completion | completed |
-| Coverage | partial |
 | Run | live-run |
+| Objective | Verify checkout totals and identify missing acceptance decisions. |
 | Application build | fixture-build-1 |
 | Plan | checkout@2 |
 | Target profile | checkout-local@1 |
@@ -14,16 +25,22 @@ Generated from the Checkmate database. Completion, test outcomes, and coverage a
 | Finished | 2026-11-11T12:41:29.370Z |
 | Attempts | 1 |
 | Retest of | — |
+| Cleanup | completed: Browser session closed; fixture stores no records, no cleanup required. |
 | Result digest | ebf419350e0f97cf2676fce3e88e51005501138d7649432f217cf23e54b9ab47 |
+
+## Acceptance
+
+| Verdict | Actor | At | Rationale | Digest |
+| --- | --- | --- | --- | --- |
+| approved | acceptance-test | 2026-11-11T12:41Z | The defect is real. | ebf419350e0f97cf2676fce3e88e51005501138d7649432f217cf23e54b9ab47 |
 
 ## Tests
 
-| Test | Outcome | Reason |
-| --- | --- | --- |
-| T1 | passed | — |
-| T2 | passed | — |
-| T3 | failed | — |
-| T4 | not\_run | Test was not selected. |
+| Test | Outcome | Assertions | Reason |
+| --- | --- | --- | --- |
+| T1 | passed | 1 of 1 passed | — |
+| T2 | passed | 1 of 1 passed | — |
+| T3 | failed | 0 of 1 passed | — |
 
 ## Assertions
 
@@ -51,7 +68,26 @@ Generated from the Checkmate database. Completion, test outcomes, and coverage a
 
 No new gaps.
 
+## Plan gaps and decisions (checkout@2)
+
+| Gap | Severity | Status | Question | Decision | Value | Actor | Rationale |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| G1 | blocking | resolved | Does the 40 percent promotion stack with the 20 PLN loyalty discount, and what is the expected total? | clarify | The promotion replaces the loyalty discount. With the promotion and loyalty, the quote total is 240 PLN. | acceptance-test | Product owner decision. |
+| G2 | blocking | deferred | Which orders qualify for a refund, and under what conditions? | defer | Refunds are out of scope for this release. | acceptance-test | Product owner decision. |
+
 ## Evidence
+
+- T1.A1: T1-A1.txt (text/plain, 96 bytes)
+- T2.A1: T2-A1.json (application/json, 60 bytes)
+
+  ```
+  {"method":"GET","path":"/quote","status":200,"totalPLN":240}
+  ```
+- T3.A1: T3-A1.json (application/json, 60 bytes)
+
+  ```
+  {"method":"GET","path":"/quote","status":200,"totalPLN":220}
+  ```
 
 | Evidence | Assertion | Kind | Name | Media type | Size | SHA-256 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -61,15 +97,11 @@ No new gaps.
 
 ## Coverage
 
-| Requirement | Status | Tests | Reason |
-| --- | --- | --- | --- |
-| R1 | tested | T1 | — |
-| R2 | tested | T2, T3 | — |
-| R3 | uncovered | T4 | At least one required check or decision is missing. |
-
-## Cleanup
-
-completed: Browser session closed; fixture stores no records, no cleanup required.
+| Requirement | Text | Status | Tests | Reason |
+| --- | --- | --- | --- | --- |
+| R1 | A standard order for one 400 PLN item has a total of 400 PLN. | tested | T1 | — |
+| R2 | A 40 percent promotion applies to the order. The brief does not say if it stacks with the 20 PLN loyalty discount. | tested | T2, T3 | — |
+| R3 | Customers can request refunds. The brief does not say which orders qualify. | uncovered | T4 | At least one required check or decision is missing. |
 
 <details>
 <summary>Complete JSON record</summary>

@@ -18,7 +18,9 @@ The agent records each assertion once:
 ```sh
 checkmate run check run-1 T2 A1 --result failed \
   --observed "GET /quote?promotion=true&loyalty=true returned HTTP 200 with totalPLN 220." \
-  --evidence .checkmate/tmp/run-1/T2-A1.json
+  --evidence -:http_exchange <<'EOF'
+{"method":"GET","path":"/quote","status":200,"totalPLN":220}
+EOF
 ```
 
 | Result         | Meaning                                                                        | Needs                                              |
@@ -28,7 +30,7 @@ checkmate run check run-1 T2 A1 --result failed \
 | `inconclusive` | The agent checked the assertion. The evidence cannot show if the check is met. | `--observed`, one or more `--evidence`, `--reason` |
 | `not_checked`  | The agent did not check the assertion.                                         | `--reason`                                         |
 
-Checkmate also checks these rules when it records a result:
+When Checkmate records a result, it also applies these rules:
 
 - The run is started and not finished.
 - The test is selected in the run, and it is not closed.
@@ -65,17 +67,33 @@ Checkmate uses the first row that applies:
 - An inconclusive test does not satisfy a dependency. A dependency needs `passed`.
 - The caller decides what to do next: a decision that gives a stronger oracle, a change to the assertion, or a retest with better evidence. The review UI lists each inconclusive assertion with its reason above the result decision.
 
-## Evidence files
+## Evidence input
+
+`run check` and `run close` take one or more `--evidence` options. The database is the only record. No evidence file stays in the workspace.
+
+### Text
+
+Send text evidence on standard input with `--evidence -`, for example a page excerpt or an HTTP exchange. Do not write a file.
+
+- Checkmate stores valid JSON as `application/json` with the name `<testId>-<assertionId>.json`. It stores other text as `text/plain` with the name `<testId>-<assertionId>.txt`.
+- The kind is `observation`. Use `--evidence -:<kind>` for another kind, for example `-:http_exchange`.
+- A command takes one text on standard input. The text must not be empty.
+
+### Binary files
+
+Use a file only for binary evidence, for example a screenshot or a trace.
 
 1. `run begin` creates the evidence directory `.checkmate/tmp/<runId>/` and prints it.
-2. The agent writes one new evidence file for each assertion in that directory, for example `.checkmate/tmp/run-1/T2-A1.json`.
-3. The agent gives the path, relative to the workspace, with `--evidence <path>[:kind]`. A command can take more than one `--evidence`.
+2. The agent writes one new file in that directory, for example `.checkmate/tmp/run-1/T1-A1.png`.
+3. The agent gives the path, relative to the workspace, with `--evidence <path>[:kind]`.
 4. Checkmate reads the file, stores the bytes in the database, and records the evidence row in the same transaction as the result.
-5. After the commit, Checkmate deletes the file. A refused command keeps the file.
+5. After the commit, Checkmate deletes the file. A refused command keeps the file, so the agent can send it again.
 
-Checkmate refuses an evidence path that is absolute, is outside `.checkmate/tmp/<runId>/` after symbolic links are resolved, is not a regular file, or is larger than 32 MiB. The limit applies to one file. `node:sqlite` reads and writes a BLOB as one buffer, so a larger limit uses too much memory.
+Checkmate refuses an evidence path that is absolute, is outside `.checkmate/tmp/<runId>/` after symbolic links are resolved, is not a regular file, or is larger than 32 MiB. The same limit applies to a text. `node:sqlite` reads and writes a BLOB as one buffer, so a larger limit uses too much memory.
 
-The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.json` is `http_exchange`, `.zip` and `.trace` are `trace`, and other files are `observation`. The extension also sets the media type. An unknown extension gives `application/octet-stream`.
+The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the file extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.json` is `http_exchange`, `.zip` and `.trace` are `trace`, and other files are `observation`. The extension also sets the media type. An unknown extension gives `application/octet-stream`.
+
+A command can take one text and one or more files together.
 
 ### Blobs
 
@@ -87,7 +105,7 @@ The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:
 
 ## Findings
 
-`checkmate run finding <runId> < finding.json` records a finding. Read [Configuration](CONFIGURATION.md#finding) for the payload.
+`checkmate run finding <runId>` records a finding from standard input. Read [Configuration](CONFIGURATION.md#finding) for the payload.
 
 - `defect`: a product defect. It names one or more failed assertions, and only failed assertions.
 - `potential_issue`: a suspicion, for example with an inconclusive assertion. It can name any assertion of a selected test.
@@ -130,17 +148,21 @@ A crash or a deadline does not finalize a run. The run stays `started`, and reco
 ## Export
 
 ```sh
+checkmate export run run-1 --format md
 checkmate export run run-1 --format html --out reports/run-1.html
-checkmate export plan checkout@2 --format md --out reports/checkout-v2.md
+checkmate export plan checkout@2 --format json
 ```
 
-- `--format` is `md`, `html`, or `json`. `json` prints the stored snapshot.
-- `export run` needs a finished run. `export plan` needs a revision reference or a plan ID for the latest revision.
-- The command refuses an existing output file.
-- A run report shows the summary, each test outcome, each assertion with its check, observation, reason, and evidence, the findings with reproduction steps, new gaps, evidence digests, coverage for each requirement, and cleanup. The complete JSON record follows in a collapsed section.
-- A plan view shows the requirements and coverage, tests and readiness, assertions, gaps, decisions, and assumptions.
+- `--format` is `md`, `html`, or `json`.
+- The command prints the report on standard output. With `--out <path>`, it writes a new file instead. It refuses an existing file.
+- `export run` needs a finished run. `export plan` takes a revision reference, or a plan ID for the latest revision.
+- A run report shows the summary, the acceptance decision, each test outcome, each assertion with its check, observation, reason, and evidence, the findings with reproduction steps, new gaps, coverage for each requirement, and cleanup. The complete JSON record follows in a collapsed section.
+- The HTML run report is one self-contained file. It shows small images and text evidence inline. It has a print stylesheet, so a browser can save it as a clean PDF.
+- The JSON run report is `{ "result", "sha256", "acceptance", "plan" }`: the stored result snapshot, its digest, the acceptance state with the latest decision, and the objective, requirements, gaps, decisions, and assumptions of the plan revision.
+- A JSON plan export is the stored plan revision. A plan view shows the requirements and coverage, tests and readiness, assertions, gaps, decisions, and assumptions.
 - The renderer escapes untrusted text for Markdown and HTML. The HTML has a Content Security Policy that blocks scripts and remote resources.
 - An export is a view. The database is the authority. Do not edit an export to change a verdict.
+- The review UI run page offers the same report as an HTML, JSON, or Markdown download.
 
 [docs/examples](examples/README.md) contains exports from a live run.
 
@@ -150,4 +172,4 @@ checkmate export plan checkout@2 --format md --out reports/checkout-v2.md
 - Do not capture credentials, cookies, authorization headers, or full raw transcripts.
 - The caller owns access to the database and how long it keeps evidence. Rows cannot be deleted through Checkmate. To remove evidence, delete the database file or keep a new one for each retention period.
 - Use a trusted local workspace. Path checks are not a filesystem sandbox. They do not protect against an actor who can replace files at the same time.
-- Checkmate checks structure and relationships. A digest shows that bytes did not change after the write. It does not show that an observation is true, that the evidence came from the target, or that the agent interpreted it correctly.
+- Checkmate validates structure and relationships. A digest shows that bytes did not change after the write. It does not show that an observation is true, that the evidence came from the target, or that the agent interpreted it correctly.

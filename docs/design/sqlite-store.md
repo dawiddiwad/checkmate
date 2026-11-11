@@ -1,6 +1,6 @@
 # Design: SQLite store and npm CLI
 
-Status: draft for review. Contract version: `toolkit-2`. All open questions of the first draft are resolved in section 3.
+Status: implemented. Contract version: `toolkit-2`. Schema version: 2. All open questions of the first draft are resolved in section 3. Later changes are noted in the sections.
 
 ## 1. Goals
 
@@ -10,7 +10,7 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 - Give each test an explicit list of assertions. One failed assertion fails the test.
 - Reduce tokens. Agents read only the fields they need and write only the changes.
 - Support hundreds of plans. Plans can depend on other plans and can block other plans.
-- Let a human approve plans and accept results in a local UI that is simple, elegant, and easy to use.
+- Let the caller approve plans and accept results, and let a human do it in a local UI that is simple, elegant, and easy to use.
 - Ship a self-contained Claude Code plugin and a separate npm CLI that starts Claude Code with that plugin.
 
 ## 2. Non-goals
@@ -19,21 +19,21 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 - No shared database for many hosts. One host writes to one database.
 - No `toolkit-1` compatibility and no importer.
 - No authentication or access control. The `actor` field is a record. It is not a proof of identity.
-- No proof that an observation is true. Checkmate checks structure and relationships only.
+- No proof that an observation is true. Checkmate validates structure and relationships only.
 
 ## 3. Decisions
 
 | Topic                 | Decision                                                                                                                                                         |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                                                                                      |
-| Human gate            | A human approves a plan revision before execution and accepts a result after execution.                                                                          |
+| Caller gate           | The caller approves a plan revision before execution and accepts a result after execution.                                                                       |
 | Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only).                                                                   |
 | Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                                                                                                |
 | Dependency rule       | The latest finalized result for the same application build must show `passed`.                                                                                   |
 | Evidence              | Evidence bytes are BLOBs in the database. Each blob is content-addressed by SHA-256.                                                                             |
 | Audit                 | Each command records one operation row with the actor, the arguments, and the response.                                                                          |
 | Views                 | Markdown and HTML are on-demand exports. The UI reads the database directly.                                                                                     |
-| Interface             | CLI flags for small writes. JSON on stdin for structured payloads. Compact output.                                                                               |
+| Interface             | CLI flags for small writes. JSON on stdin for structured payloads. Text evidence on stdin. Compact output.                                                       |
 | Assertions            | Each test has a list of assertions. A test passes only when all assertions pass. One failed assertion fails the test.                                            |
 | Inconclusive          | An assertion is `inconclusive` when the evidence cannot show whether it is met. A test with an inconclusive assertion and no failed assertion is `inconclusive`. |
 | Approval default      | The profile requires plan approval and result acceptance by default.                                                                                             |
@@ -46,18 +46,19 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 
 ```text
 plugin/                Claude Code plugin. Self-contained. No npm dependencies.
-  skills/              setup, plan, revise, execute, report
+  skills/              setup, plan, revise, execute, report, ui
   contracts/           JSON Schemas for toolkit-2 payloads
-  src/                 core: store, rules, commands
+  src/                 core: store, rules, commands, views, export
+  src/ui/              review UI server, pages, and assets (fonts, style, client script)
   dist/checkmate.js    one bundled file, generated at release
 cli/                   npm package @xoxoai/checkmate
-  src/                 launcher (delegate), ui, entry point
+  src/                 launcher (delegate), entry point
   plugin/              exact copy of plugin/ at the same version, copied at pack time
 ```
 
 The plugin contains the complete core. A plugin user can do every stage inside Claude Code without the npm package. The skills run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`.
 
-The npm CLI adds `delegate` and `ui`. It also exposes every core command. `delegate` starts `claude -p --plugin-dir <cli>/plugin`, so the CLI and plugin versions are always the same.
+The plugin also contains the review UI (`checkmate ui`, `/checkmate:ui`). The npm CLI adds `delegate`. It also exposes every core command. `delegate` starts `claude -p --plugin-dir <cli>/plugin`, so the CLI and plugin versions are always the same.
 
 Node.js does not strip TypeScript types for files in `node_modules`. A `.ts` entry point fails in an npm install. For this reason, the release builds one JavaScript bundle with esbuild. The bundle has no runtime dependencies. Source stays in TypeScript. Plugin users do not build anything.
 
@@ -77,7 +78,7 @@ All tables use `STRICT`. Foreign keys are on. The database uses WAL mode and `bu
 
 ```sql
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
--- contractVersion = toolkit-2, schemaVersion = 1
+-- contractVersion = toolkit-2, schemaVersion = 2 (a version 1 database is upgraded when it opens)
 
 CREATE TABLE operations (
   id TEXT PRIMARY KEY,            -- ULID
@@ -262,7 +263,7 @@ At hundreds of plans, these views are fast enough. If a query becomes slow, add 
 
 ### Immutability
 
-Triggers refuse `UPDATE` and `DELETE` on every table except one column: `decisions.applied_revision`, which changes once from `NULL` to a revision. The core never updates a row. The triggers are a second check against a direct SQL write.
+Triggers refuse `UPDATE` and `DELETE` on every table, with two exceptions. `decisions.applied_revision` changes once from `NULL` to a revision. A `plan_revisions` row without an approval and without a run can change its body, digest, and operation (`plan edit`, schema version 2). The core never updates a row. The triggers are a second check against a direct SQL write.
 
 ```sql
 CREATE TRIGGER plan_revisions_immutable BEFORE UPDATE ON plan_revisions
@@ -331,20 +332,25 @@ Checkmate uses the first row that applies:
 
 ### Create
 
-1. The caller runs `checkmate plan open <planId> --target <targetId@rev> < request.json`. The payload has the objective, requirements, and source context. Checkmate records the plan request.
+1. The caller runs `checkmate plan open <planId> --target <targetId@rev>` with the request in a heredoc on stdin. The request has the objective, and requirements or context sources. It can have source context, instructions, and plan tools. Checkmate records the plan request.
 2. The plan skill reads the request with `checkmate plan request <planId>`.
-3. The skill writes a candidate and runs `checkmate plan save <planId> < candidate.json`.
-4. Checkmate sets readiness and coverage, checks the candidate, and stores revision 1.
+3. When the request has only sources, the skill reads them with the plan tools and writes the requirements. Each requirement cites a context source.
+4. The skill sends a candidate to `checkmate plan save <planId>`.
+5. Checkmate sets readiness and coverage, checks the candidate, and stores revision 1.
 
-The rules from `toolkit-1` stay: requirements and sources do not change, the first revision has no decisions or assumptions, and a ready test needs one or more assertions, a capability of the target, and permitted operations.
+The rules from `toolkit-1` stay: `plan revise` does not change requirements, the first revision has no decisions or assumptions, and a ready test needs one or more assertions, a capability of the target, and permitted operations.
+
+### Edit
+
+The caller can change the latest revision with `checkmate plan edit <planId@rev>` and a full candidate. A revision without an approval and without a run changes in place. The operation log keeps the earlier body. An approved or used revision gives the next revision.
 
 ### Decide and revise
 
 The decision and its implementation are separate steps. The caller has the authority. The agent implements.
 
-1. A human (UI) or a caller agent runs `checkmate gap answer <planId> <gapId> --kind <kind> --value <text> --source <uri> --rationale <text> --actor <name>`. Checkmate records a decision against the latest revision. The gap must be open in that revision.
+1. The caller runs `checkmate gap answer <planId> <gapId> --kind <kind> --value <text> --source <uri> --rationale <text>`, or a human answers in the UI. Checkmate records a decision against the latest revision. The gap must be open in that revision.
 2. The revise skill runs `checkmate plan pending <planId>`. The output shows the pending decisions and only the gaps and tests that they affect.
-3. The skill sends only the changes: `checkmate plan revise <planId> < delta.json`.
+3. The skill sends only the changes to `checkmate plan revise <planId>`.
 
 ```json
 {
@@ -410,17 +416,17 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 ### Commands
 
 1. `checkmate run gate <planId@rev> --tests T1,T2 --build <build>` checks the gate without side effects.
-2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|run_ready] [--on-new-blocker return_to_caller|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
-3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence <file>[:kind]]...`.
+2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|ready_only] [--on-new-blocker return_to_caller|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
+3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence -[:kind]] [--evidence <file>[:kind]]...`.
    - The agent does not send the check text or the oracle kind. Checkmate copies them from the plan.
-   - Checkmate reads each evidence file, stores the bytes as a blob, and records the evidence row. The agent writes evidence files to `.checkmate/tmp/<runId>/` first. Checkmate deletes each file after it stores it.
-   - Checkmate checks the rules for one assertion now: the test is selected and ready, its prerequisites passed, and a `passed` or `failed` result has an observation and evidence.
+   - `--evidence -` reads text evidence from stdin. A binary file, for example a screenshot, goes to `.checkmate/tmp/<runId>/` first. Checkmate stores the bytes as a blob, records the evidence row, and deletes the file.
+   - Checkmate applies the rules for one assertion at once: the test is selected and ready, its prerequisites passed, and a `passed` or `failed` result has an observation and evidence.
    - An assertion result is final. A second `check` for the same assertion fails.
 4. When the agent has a result for each assertion of a test, it runs `checkmate run close <runId> <testId>`. Checkmate calculates the test outcome (section 7) and prints it.
    - For a test that the agent did not start, the agent runs `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason <text>`.
    - A tool failure during a test is `--outcome error`. The assertion results that the agent recorded before the failure stay.
    - A test outcome is final. A second `close` for the same test fails.
-5. `checkmate run finding <runId> < finding.json` and `checkmate run gap <runId> < gap.json` record findings and new gaps.
+5. `checkmate run finding <runId>` and `checkmate run gap <runId>` record findings and new gaps from stdin.
 6. `checkmate run finish <runId> --completion <completion> --cleanup <status> --cleanup-reason <text>` checks the rules for the whole run (section 10), adds `not_run` for unselected tests, calculates coverage, and stores the result.
 
 ### Resume
@@ -470,7 +476,7 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 ### Common options
 
 - `--workspace <path>`: the directory that contains `.checkmate/`. The default is the current directory.
-- `--actor <name>`: required for every write. `CHECKMATE_ACTOR` sets a default.
+- `--actor <name>`: the actor of a write. Without it, Checkmate uses `CHECKMATE_ACTOR`, then the git user name, then the login name.
 - `--expect-sha <digest>`: stop if the referenced snapshot differs.
 - `--json`: JSON output.
 
@@ -479,20 +485,22 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 | Command                                                                                                 | Package | Purpose                                      |
 | ------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------- |
 | `init`                                                                                                  | plugin  | Create the database.                         |
-| `target save < profile.json`, `target show <id@rev>`                                                    | plugin  | Store and read a target profile.             |
+| `inbox`                                                                                                 | plugin  | List what waits for the caller.              |
+| `target open`, `target request`, `target save`, `target show <id@rev>`                                  | plugin  | Store and read a target profile.             |
 | `plan open`, `plan request`, `plan save`                                                                | plugin  | Create a plan.                               |
 | `plan show`, `plan list`, `plan diff <id> <a> <b>`                                                      | plugin  | Read plans. `diff` prints a JSON Patch.      |
 | `gap answer`, `plan pending`, `plan revise`                                                             | plugin  | Decide and revise.                           |
+| `plan edit <id@rev>`                                                                                    | plugin  | Change the latest revision.                  |
 | `plan approve`, `plan reject`                                                                           | plugin  | Plan gate.                                   |
 | `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume` | plugin  | Execute.                                     |
 | `run show`, `run list`                                                                                  | plugin  | Read runs.                                   |
 | `result accept`, `result reject`                                                                        | plugin  | Result gate.                                 |
 | `evidence get <id> --out <file>`                                                                        | plugin  | Write evidence bytes to a file for viewing.  |
-| `export plan\|run <id> --format md\|html\|json --out <file>`                                            | plugin  | Generate views.                              |
+| `export plan\|run <id> --format md\|html\|json [--out <file>]`                                          | plugin  | Print a view, or write it to a new file.     |
 | `log [--subject <id>]`                                                                                  | plugin  | Read the operation log.                      |
 | `query "<sql>"`                                                                                         | plugin  | Read-only SQL. The database opens read-only. |
 | `delegate <stage> ... --allow <rule>...`                                                                | npm     | Run a stage in a new Claude Code session.    |
-| `ui [--port <n>]`                                                                                       | npm     | Start the local review UI.                   |
+| `ui [--port <n>]`                                                                                       | plugin  | Start the local review UI.                   |
 
 ### Operation log and replay
 
@@ -503,7 +511,8 @@ Each command records one `operations` row in the same transaction as its change.
 - Evidence belongs to one assertion, or to the whole test when it shows an error.
 - Evidence bytes are BLOBs in `blobs`. The key is the SHA-256 of the bytes. Equal files are stored once.
 - The maximum size of one evidence file is 32 MiB. `node:sqlite` reads and writes a BLOB as one buffer, so a larger limit uses too much memory.
-- The media type comes from the file extension. Unknown extensions use `application/octet-stream`.
+- Text evidence comes on stdin. It is `application/json` when it parses as JSON, else `text/plain`.
+- For a file, the media type comes from the file extension. Unknown extensions use `application/octet-stream`.
 - `evidence get` and the UI give the bytes back. The UI serves them with the stored media type and `Content-Disposition: attachment` for types other than images and plain text.
 - Checkmate does not sanitize evidence. The caller owns what an agent captures and how long the database keeps it. Do not capture credentials, cookies, authorization headers, or full transcripts.
 
@@ -516,7 +525,7 @@ The UI has one job: show the human what waits for a decision, and let them decid
 ### Visual language
 
 - **Mark.** Four squares in a row. The third square is filled. It appears in the page header.
-- **Type.** Space Grotesk for headings, Inter for text, and JetBrains Mono for IDs, digests, builds, and code. The npm package includes the WOFF2 files. All three fonts use the SIL Open Font License 1.1. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
+- **Type.** Space Grotesk for headings, Inter for text, and JetBrains Mono for IDs, digests, builds, and code. The plugin includes the WOFF2 files in `plugin/src/ui/assets/fonts/`. All three fonts use the SIL Open Font License 1.1. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
 - **Color.** Neutral greys with a green tint, one deep-green accent, and white or near-black surfaces. Status colors (passed, failed, blocked, warning) are separate from the accent. The UI follows the system light or dark setting. A toggle in the header overrides it.
 - **Status in form and text.** Each status has an icon, a word, and a color, for example `✓ passed`, `✗ failed`, and `? inconclusive`. Color is never the only signal.
 - **Restraint.** Borders mark separate objects only. No shadows on lists. No animation except a short fade for toasts. The UI respects `prefers-reduced-motion`.
@@ -587,7 +596,7 @@ The CLI, a delegated worker, and the UI are different processes. SQLite does not
 ### Security
 
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
-- The UI asks for the actor name once and keeps it in a cookie.
+- The UI fills in the default actor of the commands. When the human changes it, the UI keeps it in a cookie.
 - The server escapes all stored text. Plan and evidence text is untrusted data.
 - The server checks the `Host` and `Origin` headers and uses a random per-start token in each form. This blocks a write from another web page in the same browser.
 - The server sends a strict Content Security Policy: same origin only, no inline script, no remote resources.
@@ -634,7 +643,7 @@ The skills keep their stages. The instructions change:
 4. Runs: begin, check, close, finding, gap, finish, resume, and evidence blobs.
 5. Export and the report views.
 6. Skills update.
-7. npm CLI: bundle, `delegate`, `ui` with local fonts and live updates.
+7. npm CLI: bundle and `delegate`. The review UI with local fonts and live updates is in the plugin.
 8. Documentation: README, CONFIGURATION, CLI, EVIDENCE, architecture wiki.
 
 Each step keeps `npm run phase:verify` green. The JSON file code is removed when step 4 is complete.

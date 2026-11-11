@@ -3,7 +3,7 @@ name: revise
 description: Apply recorded caller decisions to a Checkmate plan. Write a delta for the affected tests and save the next revision with plan revise.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
 
 1. Run `checkmate plan pending <planId>`. It prints each pending decision, then the affected gaps and tests with their assertions.
 2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
@@ -12,6 +12,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
 5. Send the delta in a heredoc: `checkmate plan revise <planId> <<'EOF'`, the JSON, then `EOF`.
 6. If the command refuses the delta, correct it and run step 5 again.
 7. Return the response of `plan revise`.
+8. In the same session, report to the caller in the format of `workflow.md`. Show the changed tests (Test, Readiness, Title) and the gaps that are still open. In `Next:`, name the plan approval: `checkmate plan approve <planId@rev> --rationale "<why>"`, or the review UI.
 
 ```json
 {
@@ -37,4 +38,4 @@ Rules:
 - `accept_assumption`: write the assertions that the assumption makes known.
 - `defer`: change no assertion for that gap. Send `{ "tests": {} }` when every decision is `defer`.
 - Do not write gap status, decisions, or assumptions. Checkmate applies them from the pending decisions.
-- Do not invent a decision. Do not answer a gap. Only `checkmate gap answer` by the caller records a decision.
+- Do not invent a decision. Do not answer a gap. Only the caller records a decision, with `checkmate gap answer` or in the review UI.

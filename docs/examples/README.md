@@ -2,7 +2,12 @@
 
 These files were exported from a live run with Claude Code on the local checkout fixture (`test/fixture.ts`). The run is `npm run test:live` on 11 November 2026 with `ANTHROPIC_MODEL=claude-haiku-5-5`. [Validation](../VALIDATION.md#live-run) records the stages and durations.
 
-The text in the plans and results is the text that Claude and the test caller wrote. It is not edited. Checkmate generated each file with `checkmate export`.
+The text in the plans and results is the text that Claude and the test caller wrote. It is not edited.
+
+The current exporter rendered the files again from the stored plan and result snapshots of that run. The digests in the reports match the original records. The live database was not kept, so two details come from other records:
+
+- The acceptance of `live-run` uses the actor and rationale of `test/live.ts` (`acceptance-test`, `The defect is real.`). Its time is known to the minute only.
+- The HTTP evidence is inline because its bytes were recovered: each text has the recorded SHA-256 digest. The text evidence of T1 was not recovered, so the report lists it without content.
 
 ## Plans
 
@@ -22,7 +27,8 @@ In both runs, R3 (refunds) stays uncovered, because its gap is deferred. Complet
 
 ## Notes
 
-- The evidence bytes stay in the database. The reports list each evidence file with its name, media type, size, and SHA-256 digest. Read the bytes with `checkmate evidence get <evidenceId> --out <file>`.
+- The evidence bytes stay in the database. The reports list each evidence item with its name, media type, size, and SHA-256 digest. Read the bytes with `checkmate evidence get <evidenceId> --out <file>`.
+- A JSON run report is `{ "result", "sha256", "acceptance", "plan" }`. A JSON plan export is the stored plan revision.
 - The exports contain no credentials and no local paths. The fixture URL is in the target profile, which the exports do not include.
 - `.prettierignore` excludes this directory, so the files keep the exact bytes of the export.
 
@@ -31,4 +37,5 @@ To make the same files from your own database:
 ```sh
 checkmate export plan checkout@2 --format md --out docs/examples/plans/checkout-v2.md
 checkmate export run live-run --format html --out docs/examples/runs/live-run.html
+checkmate export run live-run --format json > docs/examples/runs/live-run.json
 ```

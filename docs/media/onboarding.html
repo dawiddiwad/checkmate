@@ -3,9 +3,9 @@
 <meta charset="utf-8" />
 <title>Checkmate onboarding</title>
 <style>
-	@font-face { font-family: 'Space Grotesk'; src: url('../../cli/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
-	@font-face { font-family: 'Inter'; src: url('../../cli/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
-	@font-face { font-family: 'JetBrains Mono'; src: url('../../cli/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
+	@font-face { font-family: 'Space Grotesk'; src: url('../../plugin/src/ui/assets/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
+	@font-face { font-family: 'Inter'; src: url('../../plugin/src/ui/assets/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
+	@font-face { font-family: 'JetBrains Mono'; src: url('../../plugin/src/ui/assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
 	:root {
 		--bg: #f6f7f5; --surface: #ffffff; --ink: #1b2420; --muted: #5b6862; --line: #dde3df;
 		--accent: #2c6150; --accent-soft: #e3efea; --code-bg: #eef1ef;
@@ -62,20 +62,20 @@
 </style>
 <main>
 
-<section class="scene" data-start="0" data-length="2.8">
+<section class="scene" data-start="0" data-length="5.2">
 	<h1>1. Claude writes a plan</h1>
 	<div class="card term">
-		<div data-in="0.2"><span class="prompt">$</span> checkmate plan open checkout <span class="muted">…</span></div>
-		<div data-in="0.7"><span class="prompt">$</span> checkmate delegate plan checkout <span class="muted">…</span></div>
+		<div data-in="0.3"><span class="prompt">&gt;</span> /checkmate:plan checkout</div>
 		<div style="height: 14px"></div>
 		<div data-in="1.3" class="accent">needs_decision checkout@1</div>
-		<div data-in="1.5">reason: G1: Does the promotion stack</div>
-		<div data-in="1.5">&nbsp; with loyalty?</div>
+		<div data-in="2.0">G1 &nbsp;Does the promotion stack</div>
+		<div data-in="2.0">&nbsp; &nbsp; with loyalty?</div>
+		<div data-in="3.0"><span class="muted">Next:</span> answer G1 in /checkmate:ui</div>
 	</div>
 </section>
 
-<section class="scene" data-start="2.8" data-length="3.2">
-	<h1>2. A person answers the gap and approves</h1>
+<section class="scene" data-start="5.2" data-length="5.8">
+	<h1>2. The caller answers the gap and approves</h1>
 	<div class="card" style="padding-bottom: 16px">
 		<div class="bar">
 			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
@@ -84,37 +84,37 @@
 			<span class="live">● Live</span>
 		</div>
 		<div style="position: relative">
-			<div data-in="0" data-out="1.6">
+			<div data-in="0" data-out="3.0">
 				<div class="group">Gaps to answer · 1</div>
 				<div class="row focus">
 					<div class="line">checkout · G1 <span class="pill fail right">● blocking</span></div>
 					<div class="q">Does the promotion stack with loyalty?</div>
-					<div class="line accent" data-in="0.8">Clarify: 240 PLN</div>
+					<div class="line accent" data-in="1.2">Clarify: 240 PLN</div>
 				</div>
 			</div>
-			<div data-in="1.8" style="position: absolute; inset: 0 0 auto">
+			<div data-in="3.3" style="position: absolute; inset: 0 0 auto">
 				<div class="group">Plans to approve · 1</div>
 				<div class="row focus"><div class="line">checkout@2</div></div>
 			</div>
 		</div>
 	</div>
-	<div class="toast" data-in="1.0" data-out="1.6">Answered checkout · G1</div>
-	<div class="toast" data-in="2.3">Approved checkout@2</div>
+	<div class="toast" data-in="1.8" data-out="3.0">Answered checkout · G1</div>
+	<div class="toast" data-in="4.2">Approved checkout@2</div>
 </section>
 
-<section class="scene" data-start="6" data-length="3.1">
-	<h1>3. Claude runs the tests, records evidence</h1>
+<section class="scene" data-start="11" data-length="5.4">
+	<h1>3. Claude runs the tests with evidence</h1>
 	<div class="card">
-		<div class="runhead">run-7 <span>checkout@2</span></div>
-		<div class="check" data-in="0.4"><span>T1.A1</span><span class="pass">✓ passed</span></div>
-		<div class="check" data-in="0.8"><span>T2.A1</span><span class="pass">✓ passed</span></div>
-		<div class="check bad" data-in="1.2" style="flex-wrap: wrap; row-gap: 0"><span>T3.A1</span><span class="fail">✗ failed</span><span style="width: 100%" class="fail">totalPLN 220; expected 240</span></div>
-		<div class="check" data-in="1.9"><span class="pill fail">✗ defect</span><span>F1</span></div>
+		<div class="runhead">run-1 <span>checkout@2</span></div>
+		<div class="check" data-in="0.6"><span>T1.A1</span><span class="pass">✓ passed</span></div>
+		<div class="check" data-in="1.3"><span>T2.A1</span><span class="pass">✓ passed</span></div>
+		<div class="check bad" data-in="2.0" style="flex-wrap: wrap; row-gap: 0"><span>T3.A1</span><span class="fail">✗ failed</span><span style="width: 100%" class="fail">totalPLN 220; expected 240</span></div>
+		<div class="check" data-in="3.2"><span class="pill fail">✗ defect</span><span>F1</span></div>
 	</div>
 </section>
 
-<section class="scene" data-start="9.1" data-length="1.8">
-	<h1>4. A person accepts the result</h1>
+<section class="scene" data-start="16.4" data-length="3.8">
+	<h1>4. The caller accepts the result</h1>
 	<div class="card" style="padding-bottom: 16px">
 		<div class="bar">
 			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
@@ -124,13 +124,13 @@
 		</div>
 		<div class="group">Results to accept · 1</div>
 		<div class="row focus">
-			<div class="line">run-7 <span class="muted">checkout@2</span> <span class="pill pass right">✓ 2</span><span class="pill fail">✗ 1</span></div>
+			<div class="line">run-1 <span class="muted">checkout@2</span> <span class="pill pass right">✓ 2</span><span class="pill fail">✗ 1</span></div>
 		</div>
 	</div>
-	<div class="toast" data-in="0.7">Accepted run-7</div>
+	<div class="toast" data-in="1.4">Accepted run-1</div>
 </section>
 
-<section class="scene" data-start="10.9" data-length="1.6">
+<section class="scene" data-start="20.2" data-length="2.6">
 	<div class="end">
 		<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
 		<span>checkmate</span>
@@ -139,11 +139,11 @@
 
 </main>
 <script>
-	const fade = 0.25
+	const fade = 0.4
 	const scenes = [...document.querySelectorAll('.scene')]
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 
-	window.DURATION = 12.5
+	window.DURATION = 22.8
 	// The renderer calls measure() once before the first frame. Nothing needs measuring here.
 	window.measure = () => {}
 	// Show the frame at a time in seconds. Scenes cross-fade; elements fade in at data-in and out at data-out.

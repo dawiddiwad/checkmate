@@ -198,6 +198,11 @@ test('a decision needs a rationale, a confirm step, and redirects to the next in
 		headers: { Cookie: `checkmate_actor=${human}; checkmate_toast=${toast[1]}` },
 	})
 	assert.match(next.body, /class="toast"[^>]*>Approved search@1</)
+	const refreshed = await call(ui, '/plans/checkout@2/gaps/G2', {
+		headers: { Cookie: `checkmate_actor=${human}; checkmate_toast=${toast[1]}`, 'Sec-Fetch-Mode': 'cors' },
+	})
+	assert.doesNotMatch(refreshed.body, /class="toast"/)
+	assert.doesNotMatch(String(refreshed.headers['set-cookie']), /checkmate_toast/)
 	const approval = read(workspace, (store) => planDetail(store, 'search').approval)
 	assert.equal(approval.state, 'approved')
 	assert.equal(approval.latest?.actor, human)

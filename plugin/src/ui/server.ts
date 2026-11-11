@@ -198,7 +198,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			csrf,
 			actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
 			theme,
-			toast: request.cookies.checkmate_toast || null,
+			toast:
+				(request.req.headers['sec-fetch-mode'] ?? 'navigate') === 'navigate'
+					? request.cookies.checkmate_toast || null
+					: null,
 			inboxCount: inboxCount(inbox(store)),
 			cursor: latestRowid(store),
 			workspace: options.workspace,

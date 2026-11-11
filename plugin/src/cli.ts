@@ -609,10 +609,16 @@ const commands: Record<string, Command> = {
 	log: {
 		positionals: [],
 		flags: { subject: 'value', limit: 'value' },
-		run: (store, args) =>
-			completed('log', {
-				operations: operationLog(store, { subject: value(args, 'subject'), limit: integer(args, 'limit') }),
-			}),
+		run: (store, args) => {
+			const subject = value(args, 'subject')
+			requireCondition(
+				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
+				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
+			)
+			return completed('log', {
+				operations: operationLog(store, { subject, limit: integer(args, 'limit') }),
+			})
+		},
 		print: (reply) => ({
 			lines: (reply.data.operations as ReturnType<typeof operationLog>).map((operation) => [
 				operation.id,

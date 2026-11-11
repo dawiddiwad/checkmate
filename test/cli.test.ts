@@ -246,6 +246,10 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.equal(compact.lines.length, 2)
 	assert.match(compact.lines[1], /^[0-9A-Z]{26}\t\S+\ttester\ttarget save\tcompleted\ttarget:checkout-local$/)
 	assert.match(cli(workspace, ['log', '--limit', 'ten']).lines[1], /Invalid --limit: ten/)
+	assert.deepEqual(cli(workspace, ['log', '--subject', 'checkout-local']).lines, [
+		'rejected log',
+		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.',
+	])
 })
 
 test('a finished run exits 1 when it was interrupted, and export writes each format', (t) => {

@@ -23,23 +23,24 @@ Status: draft for review. Contract version: `toolkit-2`. All open questions of t
 
 ## 3. Decisions
 
-| Topic                 | Decision                                                                                                              |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                                           |
-| Human gate            | A human approves a plan revision before execution and accepts a result after execution.                               |
-| Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only).                        |
-| Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                                                     |
-| Dependency rule       | The latest finalized result for the same application build must show `passed`.                                        |
-| Evidence              | Evidence bytes are BLOBs in the database. Each blob is content-addressed by SHA-256.                                  |
-| Audit                 | Each command records one operation row with the actor, the arguments, and the response.                               |
-| Views                 | Markdown and HTML are on-demand exports. The UI reads the database directly.                                          |
-| Interface             | CLI flags for small writes. JSON on stdin for structured payloads. Compact output.                                    |
-| Assertions            | Each test has a list of assertions. A test passes only when all assertions pass. One failed assertion fails the test. |
-| Approval default      | The profile requires plan approval and result acceptance by default.                                                  |
-| Evidence size         | The limit is 32 MiB for one evidence file.                                                                            |
-| Resume                | `run resume` can record stalled tests as `error` in one step.                                                         |
-| Package name          | The npm package is `@xoxoai/checkmate`.                                                                               |
-| Merge                 | Not built now. The schema keeps a later merge possible (section 14).                                                  |
+| Topic                 | Decision                                                                                                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                                                                                      |
+| Human gate            | A human approves a plan revision before execution and accepts a result after execution.                                                                          |
+| Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only).                                                                   |
+| Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                                                                                                |
+| Dependency rule       | The latest finalized result for the same application build must show `passed`.                                                                                   |
+| Evidence              | Evidence bytes are BLOBs in the database. Each blob is content-addressed by SHA-256.                                                                             |
+| Audit                 | Each command records one operation row with the actor, the arguments, and the response.                                                                          |
+| Views                 | Markdown and HTML are on-demand exports. The UI reads the database directly.                                                                                     |
+| Interface             | CLI flags for small writes. JSON on stdin for structured payloads. Compact output.                                                                               |
+| Assertions            | Each test has a list of assertions. A test passes only when all assertions pass. One failed assertion fails the test.                                            |
+| Inconclusive          | An assertion is `inconclusive` when the evidence cannot show whether it is met. A test with an inconclusive assertion and no failed assertion is `inconclusive`. |
+| Approval default      | The profile requires plan approval and result acceptance by default.                                                                                             |
+| Evidence size         | The limit is 32 MiB for one evidence file.                                                                                                                       |
+| Resume                | `run resume` can record stalled tests as `error` in one step.                                                                                                    |
+| Package name          | The npm package is `@xoxoai/checkmate`.                                                                                                                          |
+| Merge                 | Not built now. The schema keeps a later merge possible (section 14).                                                                                             |
 
 ## 4. Package layout
 
@@ -179,9 +180,9 @@ CREATE TABLE assertion_results (
   test_id TEXT NOT NULL,
   assertion_id TEXT NOT NULL,
   attempt INTEGER NOT NULL,
-  result TEXT NOT NULL,           -- passed | failed | not_checked
-  observed TEXT,                  -- required for passed and failed
-  reason TEXT,                    -- required for not_checked
+  result TEXT NOT NULL,           -- passed | failed | inconclusive | not_checked
+  observed TEXT,                  -- required for passed, failed, and inconclusive
+  reason TEXT,                    -- required for inconclusive and not_checked
   recorded_at TEXT NOT NULL,
   operation_id TEXT NOT NULL REFERENCES operations(id),
   PRIMARY KEY (run_id, test_id, assertion_id)
@@ -191,7 +192,7 @@ CREATE TABLE outcomes (
   run_id TEXT NOT NULL REFERENCES runs(run_id),
   test_id TEXT NOT NULL,
   attempt INTEGER NOT NULL,
-  outcome TEXT NOT NULL,          -- passed | failed | blocked | not_run | error
+  outcome TEXT NOT NULL,          -- passed | failed | inconclusive | blocked | not_run | error
   reason TEXT,                    -- required for blocked, not_run, and error
   recorded_at TEXT NOT NULL,
   operation_id TEXT NOT NULL REFERENCES operations(id),
@@ -298,17 +299,29 @@ A test has one action and a list of assertions. An assertion is one thing that t
 
 ### Run rules
 
-- The agent records one result for each assertion: `passed`, `failed`, or `not_checked`.
+- The agent records one result for each assertion: `passed`, `failed`, `inconclusive`, or `not_checked`.
 - `passed` and `failed` need an observation and one or more evidence files.
-- `not_checked` needs a reason, for example `Stopped after A1 failed: the quote was not created.`
+- `inconclusive` means that the agent checked the assertion, but the evidence cannot show whether the assertion is met. It needs an observation, one or more evidence files, and a reason that says what is missing, for example `The quote shows a total, but not which discounts it includes.`
+- `inconclusive` is not a defect and needs no finding. The agent can add a `potential_issue` finding when it suspects a defect.
+- `not_checked` means that the agent did not check the assertion. It needs a reason, for example `Stopped after A1 failed: the quote was not created.`
 - After a failed assertion, the agent continues with the assertions that it can still check. The agent records the others as `not_checked`.
 - Checkmate calculates the test outcome from the assertion results. The agent does not set it:
 
-| Assertion results                        | Test outcome |
-| ---------------------------------------- | ------------ |
-| All `passed`                             | `passed`     |
-| One or more `failed`                     | `failed`     |
-| None `failed`, one or more `not_checked` | `error`      |
+Checkmate uses the first row that applies:
+
+| Assertion results          | Test outcome   |
+| -------------------------- | -------------- |
+| One or more `failed`       | `failed`       |
+| One or more `not_checked`  | `error`        |
+| One or more `inconclusive` | `inconclusive` |
+| All `passed`               | `passed`       |
+
+- `failed` comes first: one failed assertion fails the test, whatever the other results are.
+- `error` comes before `inconclusive`: an assertion that was not checked means the run is incomplete for that test. The caller must know this first.
+- An `inconclusive` test does not cover its requirements. The requirement stays `uncovered` with the reason `An assertion is inconclusive.`
+- An `inconclusive` test does not prevent `completion: completed`. The check ran. Only the evidence was not sufficient.
+- An `inconclusive` test does not satisfy a dependency. A dependency needs `passed`.
+- The caller decides what to do next: a decision that gives a stronger oracle, a change to the assertion, or a retest with better evidence.
 
 - A test that the agent did not start has no assertion results. The agent records it as `blocked`, `not_run`, or `error` with a reason.
 - Each failed assertion is in a `defect` finding. A finding names its assertions, for example `"assertionIds": ["T2.A2"]`. A defect names one or more failed assertions.
@@ -427,7 +440,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 The rules in `stages.ts` move to the new commands. They do not change in meaning:
 
 - Revisions are immutable and linear. A revision cannot change requirements, sources, test inventory, gap inventory, unrelated tests, or prior decisions and assumptions.
-- A `passed` or `failed` assertion result needs an observation and evidence. The check text and oracle kind come from the plan.
+- A `passed`, `failed`, or `inconclusive` assertion result needs an observation and evidence. An `inconclusive` result also needs a reason. The check text and oracle kind come from the plan.
 - A failed assertion needs a defect finding. A defect needs a failed assertion.
 - A finding's requirements and evidence match its tests and assertions.
 - A runtime gap is new and open.
@@ -504,7 +517,7 @@ The UI has one job: show the human what waits for a decision, and let them decid
 - **Mark.** Four squares in a row. The third square is filled. It appears in the page header.
 - **Type.** Space Grotesk for headings, Inter for text, and JetBrains Mono for IDs, digests, builds, and code. The npm package includes the WOFF2 files. All three fonts use the SIL Open Font License 1.1. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
 - **Color.** Neutral greys with a green tint, one deep-green accent, and white or near-black surfaces. Status colors (passed, failed, blocked, warning) are separate from the accent. The UI follows the system light or dark setting. A toggle in the header overrides it.
-- **Status in form and text.** Each status has an icon, a word, and a color, for example `✓ passed` and `✗ failed`. Color is never the only signal.
+- **Status in form and text.** Each status has an icon, a word, and a color, for example `✓ passed`, `✗ failed`, and `? inconclusive`. Color is never the only signal.
 - **Restraint.** Borders mark separate objects only. No shadows on lists. No animation except a short fade for toasts. The UI respects `prefers-reduced-motion`.
 - **Accessibility.** Contrast meets WCAG 2.2 AA in both themes. Each control has a label and a visible focus ring. Pages use landmarks and headings in order.
 
@@ -528,11 +541,12 @@ The navigation shows the number of inbox items. An empty inbox says `Nothing wai
 - **One primary action for each page.** The decision panel is on the right on a wide screen and at the bottom on a narrow screen. It shows the subject (`checkout@2`), the digest, and the action buttons.
 - **A rationale is required.** The action button stays disabled until the rationale field has text.
 - **Confirm in place.** The first click on `Approve checkout@2` changes the panel to a short summary and a `Confirm` button. The UI does not use modal dialogs.
+- **Inconclusive results.** The result acceptance panel lists each inconclusive assertion with its reason, above the action buttons.
 - **Queue flow.** After an action, the UI shows a toast (`Approved checkout@2`) and opens the next inbox item. `Back to inbox` is always one click away.
 - **Gap answer form.** A segmented control selects `Clarify`, `Accept assumption`, or `Defer`. Help text below the control says what each kind does. The source field is shown and required for `Clarify` only.
 - **Stale data.** Each form sends the digest of the snapshot on the page. If the snapshot changed, Checkmate refuses the action. The UI keeps the typed text and shows a banner: `checkout has a newer revision (3). Your decision was not recorded. Review revision 3.`
 - **Evidence.** Images show as thumbnails and open in a viewer. Text shows inline in monospace. Other types download.
-- **Assertion results.** A run page shows each assertion as one row: the icon, the check text, and the observation. A failed row opens by default. Passed rows stay closed.
+- **Assertion results.** A run page shows each assertion as one row: the icon, the check text, and the observation. Failed and inconclusive rows open by default. Passed rows stay closed.
 - **Diff.** The history shows field changes, for example `T2.A2 check: "totalPLN equals 220." → "totalPLN equals 240."`. It does not show raw JSON Patch.
 - **Stable links.** Each URL identifies one object and can be shared on the same host, for example `/plans/checkout@2#T2`.
 - **Keyboard.** `/` focuses search. `j` and `k` move in a list. `Enter` opens the item. `Esc` closes the evidence viewer. `?` shows the shortcuts.
@@ -573,7 +587,7 @@ The skills keep their stages. The instructions change:
 - Store: schema creation, immutability triggers, foreign keys, WAL with two connections.
 - Plans: create, delta revise, refused deltas, concurrent revise, approval required by the gate, new revision needs new approval.
 - Cross-plan: missing plan or test, cycle refused, block by missing result, block by failed result, block by unaccepted result, block by open gap in another plan.
-- Assertions: a ready test without assertions refused, outcome calculated from assertion results, one failed assertion fails the test, `not_checked` without a failure gives `error`, failed assertion without a defect refused, assertion delta add, change, and remove.
+- Assertions: a ready test without assertions refused, outcome calculated from assertion results, one failed assertion fails the test, `not_checked` without a failure gives `error`, `inconclusive` without a failure or `not_checked` gives `inconclusive`, inconclusive without a reason or evidence refused, inconclusive test leaves its requirement uncovered and blocks a dependency, failed assertion without a defect refused, assertion delta add, change, and remove.
 - Runs: one assertion recorded at a time, second check refused, second close refused, resume keeps recorded assertions, `resume --error`, finish rules, retest rules.
 - Evidence: blob deduplication, size limit, export bytes equal input bytes.
 - CLI: compact and JSON output, `--fields`, `--expect-sha`, read-only `query` refuses writes.

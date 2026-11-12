@@ -75,7 +75,7 @@
 			<div class="step oracle" id="s2" style="left: 236px" data-role="oracle" data-t="2.6">approve</div>
 			<div class="record decision" data-of="s2" data-row="0" data-t="3.1">✓ plan@1</div>
 			<div class="step qa" id="s3" style="left: 352px" data-role="qa" data-t="3.6">run early</div>
-			<div class="record" data-of="s3" data-row="0" data-t="4.1">run-1 <span class="ok">1 ✓</span> <span class="bad">3 ✗</span></div>
+			<div class="record" data-of="s3" data-row="0" data-t="4.1">run-1 <span class="ok">1 ✓</span> <span class="bad">2 ✗</span></div>
 			<div class="record defect" data-of="s3" data-row="1" data-t="4.5">F1 defect</div>
 			<div class="record gap" data-of="s3" data-row="2" data-t="4.9">G4 new gap</div>
 
@@ -85,6 +85,7 @@
 			<div class="record plan" data-of="s5" data-row="0" data-t="8.7">plan@2</div>
 			<div class="step human" id="s6" style="left: 782px" data-role="human" data-t="9.2">edit plan</div>
 			<div class="record plan" data-of="s6" data-row="0" data-t="9.7">edit plan@2</div>
+			<div class="record gap" data-of="s6" data-row="1" data-t="10.0">covers G4</div>
 			<div class="step oracle" id="s7" style="left: 912px" data-role="oracle" data-t="10.2">approve</div>
 			<div class="record decision" data-of="s7" data-row="0" data-t="10.7">✓ plan@2</div>
 
@@ -107,20 +108,20 @@
 		<div class="caption" data-from="0" data-to="6">Large gaps first, then an early red run</div>
 		<div class="caption" data-from="6" data-to="11.5">The oracle answers, the plan is revised</div>
 		<div class="caption" data-from="11.5" data-to="17">Dev fixes F1, the retest is partly green</div>
-		<div class="caption" data-from="17" data-to="23.5">The retest passes, the oracle accepts</div>
+		<div class="caption" data-from="17" data-to="23">The retest passes, the oracle accepts</div>
 		<div class="mark"><i></i><i></i><i></i><i></i></div>
 	</div>
 
-	<section class="solo" data-from="23.5" data-to="28.5">
+	<section class="solo" data-from="23" data-to="28">
 		<h1>Solo mode: <i>you are the oracle</i></h1>
 		<div class="term">
-			<div data-t="24.1"><span>&gt;</span> /checkmate:plan checkout</div>
-			<div data-t="24.6"><span>&gt;</span> /checkmate:ui</div>
-			<div data-t="25.1"><span>&gt;</span> /checkmate:revise checkout</div>
-			<div data-t="25.6"><span>&gt;</span> /checkmate:execute checkout@2</div>
+			<div data-t="23.6"><span>&gt;</span> /checkmate:plan checkout</div>
+			<div data-t="24.1"><span>&gt;</span> /checkmate:ui</div>
+			<div data-t="24.6"><span>&gt;</span> /checkmate:revise checkout</div>
+			<div data-t="25.1"><span>&gt;</span> /checkmate:execute checkout@2</div>
 		</div>
-		<p data-t="26.2">The same records, in your own Claude Code.<br />Test your own work, or verify a teammate's.</p>
-		<div class="brand" data-t="26.6"><div class="mark"><i></i><i></i><i></i><i></i></div>checkmate</div>
+		<p data-t="25.7">The same records, in your own Claude Code.<br />Test your own work, or verify a teammate's.</p>
+		<div class="brand" data-t="26.1"><div class="mark"><i></i><i></i><i></i><i></i></div>checkmate</div>
 	</section>
 </main>
 <script src="swimlane.js"></script>
@@ -140,7 +141,7 @@
 		return pans[pans.length - 1][1]
 	}
 
-	window.DURATION = 28.5
+	window.DURATION = 28
 	window.measure = () => drawSwimlane(track)
 	window.renderFrame = (time) => {
 		track.style.transform = `translateX(${-panAt(time)}px)`

@@ -61,9 +61,9 @@ checkmate plan open checkout --target shop@1 <<'EOF'
 EOF
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 
-# Oracle: approve. QA: run the ready tests early. Most fail.
+# Oracle: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 waits.
 checkmate plan approve checkout@1 --rationale "Run the ready tests early."
-checkmate run begin run-1 checkout@1 --tests T1,T2,T3,T4 --build "$GIT_SHA" --partial ready_only
+checkmate run begin run-1 checkout@1 --tests T1,T2,T3 --build "$GIT_SHA" --partial ready_only
 checkmate delegate execute run-1 --allow Read --allow Bash
 
 # Iteration 2. Oracle: answer the gaps. Planner: revise. Oracle: approve.
@@ -82,7 +82,7 @@ checkmate delegate execute run-2 --allow Read --allow Bash
 checkmate result accept run-3 --rationale "All tests pass on the new build."
 ```
 
-`--partial ready_only` lets a run start while the plan has open gaps. It selects only ready tests. A runtime gap from a run does not change the plan: the oracle adds it with `plan edit` or `Edit plan` in the review UI.
+`--partial ready_only` lets a run start while the plan has open blocking gaps. Select only ready tests: a test that an open blocking gap affects is not ready. A runtime gap from a run, such as G4, does not change the plan. The oracle or a human acts on it with `plan edit` or `Edit plan` in the review UI: change the tests, or add the gap and answer it. An edit before approval keeps the revision number. An edit after approval gives a new revision.
 
 Give each delegated stage at least `--allow Read --allow Bash`. The worker sends JSON on standard input with a heredoc, and the permission check of Claude Code blocks that heredoc under a prefix rule such as `Bash(node *)`. The host still owns the permissions. Add rules for other tools, for example `--allow mcp__jira`.
 

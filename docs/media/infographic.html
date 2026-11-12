@@ -1,278 +1,183 @@
 <!doctype html>
 <html lang="en">
-	<meta charset="utf-8" />
-	<title>Checkmate overview</title>
-	<link
-		rel="stylesheet"
-		href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=block"
-	/>
-	<link rel="stylesheet" href="style.css" />
-	<style>
-		:root {
-			--planner: #6f9bff;
-			--caller: #4fd18b;
-			--qa: #b48cff;
-			--dev: #a9b6c7;
-		}
-		main {
-			width: 1600px;
-			padding: 60px 64px 64px;
-			display: flex;
-			flex-direction: column;
-			gap: 32px;
-		}
-		header {
-			display: flex;
-			align-items: flex-end;
-			gap: 32px;
-		}
-		.mark {
-			display: grid;
-			grid-template-columns: repeat(4, 18px);
-			grid-auto-rows: 18px;
-			gap: 8px;
-			margin-bottom: 18px;
-		}
-		.mark span {
-			background: #2a303b;
-		}
-		.mark span:nth-child(3) {
-			background: var(--blue);
-		}
-		.title {
-			font-size: 72px;
-			font-weight: 500;
-			letter-spacing: -1px;
-			line-height: 1;
-		}
-		.subtitle {
-			font-size: 34px;
-			color: var(--muted);
-			margin-bottom: 4px;
-		}
-		.subtitle b {
-			font-weight: 500;
-			color: var(--text);
-		}
-		.label {
-			font-size: 18px;
-		}
-		.factory {
-			padding: 30px 32px 30px;
-		}
-		svg {
-			display: block;
-			margin-top: 8px;
-		}
-		svg text {
-			font-family: var(--sans);
-			fill: var(--text);
-		}
-		svg .name {
-			font-size: 28px;
-			font-weight: 600;
-		}
-		svg .what {
-			font-size: 23px;
-			fill: var(--muted);
-		}
-		svg .code {
-			font-family: var(--mono);
-			font-size: 20px;
-			font-weight: 500;
-		}
-		svg .small {
-			font-family: var(--mono);
-			font-size: 21px;
-			fill: var(--muted);
-		}
-		.station {
-			fill: var(--card-strong);
-			stroke: var(--line);
-			stroke-width: 2;
-		}
-		.arrow {
-			stroke: #4a5363;
-			stroke-width: 3;
-			fill: none;
-		}
-		.link {
-			stroke: var(--blue-line);
-			stroke-width: 2;
-			stroke-dasharray: 6 6;
-		}
-		.caption {
-			margin-top: 22px;
-			font-size: 23px;
-			line-height: 1.45;
-			color: var(--muted);
-		}
-		.caption code {
-			font: 500 20px var(--mono);
-			color: var(--text);
-		}
-		.bottom {
-			display: grid;
-			grid-template-columns: 1.2fr 1fr;
-			gap: 16px;
-		}
-		.panel {
-			padding: 26px 30px 28px;
-		}
-		.panel h2 {
-			margin: 0;
-			font: 600 30px var(--sans);
-		}
-		.panel p {
-			font-size: 23px;
-			line-height: 1.4;
-			color: var(--muted);
-			margin: 10px 0 18px;
-		}
-		.term {
-			font: 500 22px/1.75 var(--mono);
-			padding: 12px 20px;
-			background: var(--bg);
-			border: 2px solid var(--line);
-			border-radius: 4px;
-		}
-		.term span {
-			color: var(--faint);
-		}
-		.owners {
-			display: flex;
-			flex-direction: column;
-			gap: 14px;
-			margin-top: 18px;
-		}
-		.owner {
-			display: grid;
-			grid-template-columns: 180px 1fr;
-			align-items: baseline;
-			gap: 16px;
-			font-size: 23px;
-		}
-		.owner b {
-			font: 500 23px var(--mono);
-		}
-		.owner span {
-			color: var(--muted);
-		}
-	</style>
-	<main>
-		<header>
-			<div>
-				<div class="mark"><span></span><span></span><span></span><span></span></div>
-				<div class="title">Checkmate</div>
-			</div>
-			<div class="subtitle">The QA contract and <b>system of record</b> for agent teams</div>
-		</header>
+<meta charset="utf-8" />
+<title>Checkmate overview</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+	@font-face { font-family: 'Space Grotesk'; src: url('../../plugin/src/ui/assets/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
+	@font-face { font-family: 'Inter'; src: url('../../plugin/src/ui/assets/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
+	@font-face { font-family: 'JetBrains Mono'; src: url('../../plugin/src/ui/assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
+	main { width: 1600px; padding: 56px 64px 64px; display: flex; flex-direction: column; gap: 28px; background: var(--bg); }
 
-		<div class="card factory">
-			<div class="label">team mode · one ticket through the software factory</div>
-			<svg width="1406" height="600" viewBox="0 0 1406 600">
-				<defs>
-					<marker id="head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-						<path d="M0 0 L10 5 L0 10 z" fill="#4a5363" />
-					</marker>
-				</defs>
+	header { display: flex; align-items: flex-end; gap: 36px; }
+	header .mark { gap: 8px; margin-bottom: 16px; }
+	header .mark i { width: 20px; height: 20px; border-width: 3px; }
+	.title { font: 500 72px/1 var(--display); letter-spacing: -1px; }
+	.subtitle { font: 400 32px var(--display); color: var(--muted); margin-bottom: 4px; }
+	.subtitle b { font-weight: 500; color: var(--text); }
 
-				<rect x="0" y="64" width="222" height="44" rx="6" fill="#0f1217" stroke="#2a303b" stroke-width="2" />
-				<text class="code" x="20" y="93" style="fill: var(--muted)">ticket SHOP-12</text>
-				<line class="arrow" x1="111" y1="110" x2="111" y2="168" marker-end="url(#head)" />
+	.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
+	.diagram { padding: 26px 0 28px; }
+	.diagram-head { display: flex; align-items: baseline; gap: 28px; padding: 0 32px 18px; }
+	.label { font: 500 19px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: var(--faint); }
+	.legend { margin-left: auto; display: flex; gap: 28px; font: 400 20px var(--body); color: var(--muted); }
+	.legend b { font: 600 20px var(--mono); color: var(--text); margin-right: 8px; }
 
-				<rect class="station" x="764" y="0" width="260" height="104" rx="6" />
-				<text class="name" x="786" y="40" style="fill: var(--dev)">Dev agent</text>
-				<text class="what" x="786" y="78">Fixes F1 in the code.</text>
-				<line class="arrow" x1="850" y1="172" x2="850" y2="110" marker-end="url(#head)" />
-				<line class="arrow" x1="938" y1="110" x2="938" y2="172" marker-end="url(#head)" />
-				<text class="small" x="836" y="148" text-anchor="end" style="fill: var(--red)">defect F1</text>
-				<text class="small" x="952" y="148" style="fill: var(--green)">retest run-2</text>
+	.strip { position: relative; width: 1470px; height: 448px; border-top: 1px solid var(--line-strong); }
+	.strip + .strip { margin-top: 18px; }
+	.lane { position: absolute; left: 0; width: 1470px; height: 54px; border-top: 1px solid var(--line); }
+	.lane b { position: absolute; left: 32px; top: 0; font: 600 22px/53px var(--display); }
+	.lane.record { top: 306px; height: 142px; background: #121a28; border-top: 2px solid var(--blue-line); }
+	.lane.record b { color: var(--blue); line-height: 28px; top: 16px; }
+	.lane.record span { position: absolute; left: 32px; top: 46px; font: 500 20px var(--display); color: var(--muted); }
+	.gutter { position: absolute; left: 180px; top: 0; bottom: 0; border-left: 1px solid var(--line-strong); }
+	.axis { position: absolute; left: 32px; top: 0; font: 500 18px/36px var(--mono); color: var(--faint); }
+	.anytime { position: absolute; left: 181px; right: 0; top: 279px; border-top: 2px dotted #3a4150; }
+	.anytime-note { position: absolute; top: 266px; font: 500 20px/26px var(--display); color: var(--muted); background: var(--card); padding: 0 10px; }
 
-				<rect class="station" x="0" y="176" width="260" height="176" rx="6" />
-				<text class="name" x="22" y="218" style="fill: var(--planner)">Planner agent</text>
-				<text class="what" x="22" y="258">Reads the ticket.</text>
-				<text class="what" x="22" y="288">Writes the tests.</text>
-				<text class="code" x="22" y="328" style="fill: var(--amber)">gap G1 raised</text>
+	.track { left: 196px; top: 0; width: 1258px; height: 448px; }
+	.iteration { position: absolute; top: 0; height: 448px; border-left: 1px dashed var(--line-strong); }
+	.iteration span { position: absolute; left: 12px; top: 0; font: 600 18px/36px var(--mono); letter-spacing: 2px; color: var(--faint); white-space: nowrap; }
+	.step { font-size: 20px; line-height: 34px; height: 36px; padding: 0 12px; }
+	.step[data-role='planner'], .step.ticket { top: 45px; }
+	.step[data-role='oracle'], .step.ticket.oracle-lane { top: 99px; }
+	.step[data-role='qa'] { top: 153px; }
+	.step[data-role='dev'] { top: 207px; }
+	.step[data-role='human'] { top: 261px; }
+	.record { font-size: 19px; line-height: 30px; height: 32px; padding: 0 10px; }
+	.record[data-row='0'] { top: 322px; }
+	.record[data-row='1'] { top: 362px; }
+	.record[data-row='2'] { top: 402px; }
 
-				<rect class="station" x="382" y="176" width="260" height="176" rx="6" />
-				<text class="name" x="404" y="218" style="fill: var(--caller)">Caller</text>
-				<text class="what" x="404" y="258">Answers the gap.</text>
-				<text class="what" x="404" y="288">Approves the plan.</text>
-				<text class="code" x="404" y="328" style="fill: var(--green)">checkout@2 ✓</text>
+	.note { padding: 20px 32px 0; font: 400 22px/1.5 var(--body); color: var(--muted); border-top: 1px solid var(--line-strong); margin-top: 0; }
+	.note code { font: 500 20px var(--mono); color: var(--text); }
 
-				<rect class="station" x="764" y="176" width="260" height="176" rx="6" />
-				<text class="name" x="786" y="218" style="fill: var(--qa)">QA agent</text>
-				<text class="what" x="786" y="258">Runs the tests</text>
-				<text class="what" x="786" y="288">with real tools.</text>
-				<text class="code" x="786" y="328" style="fill: var(--red)">T3: 220 ≠ 240 PLN</text>
+	.bottom { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; }
+	.panel { padding: 26px 32px 30px; }
+	.panel h2 { margin: 0; font: 600 30px var(--display); }
+	.panel h2 i { font-style: normal; color: var(--oracle); }
+	.panel p { font: 400 22px/1.45 var(--body); color: var(--muted); margin: 10px 0 18px; }
+	.term { font: 500 21px/1.75 var(--mono); padding: 12px 20px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 4px; }
+	.term span { color: var(--faint); }
+	.owners { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
+	.owner { display: grid; grid-template-columns: 190px 1fr; align-items: baseline; gap: 16px; font: 400 22px var(--body); }
+	.owner b { font: 600 22px var(--mono); }
+	.owner span { color: var(--muted); }
+</style>
+<main>
+	<header>
+		<div>
+			<div class="mark"><i></i><i></i><i></i><i></i></div>
+			<div class="title">Checkmate</div>
+		</div>
+		<div class="subtitle">The QA <b>system of record</b> for an agent software factory</div>
+	</header>
 
-				<rect class="station" x="1146" y="176" width="260" height="176" rx="6" />
-				<text class="name" x="1168" y="218" style="fill: var(--caller)">Caller</text>
-				<text class="what" x="1168" y="258">Reads the evidence.</text>
-				<text class="what" x="1168" y="288">Accepts the result.</text>
-				<text class="code" x="1168" y="328" style="fill: var(--green)">run-2 accepted</text>
+	<div class="card diagram">
+		<div class="diagram-head">
+			<div class="label">Team mode · one ticket, three iterations</div>
+			<div class="legend"><span><b>→</b>next step</span><span><b>↓</b>writes a record</span><span><b>┄</b>human in the review UI</span></div>
+		</div>
 
-				<line class="arrow" x1="268" y1="264" x2="372" y2="264" marker-end="url(#head)" />
-				<line class="arrow" x1="650" y1="264" x2="754" y2="264" marker-end="url(#head)" />
-				<line class="arrow" x1="1032" y1="264" x2="1136" y2="264" marker-end="url(#head)" />
+		<div class="strip">
+			<div class="lane" style="top: 36px"><b class="planner">Planner</b></div>
+			<div class="lane" style="top: 90px"><b class="oracle">Oracle</b></div>
+			<div class="lane" style="top: 144px"><b class="qa">QA</b></div>
+			<div class="lane" style="top: 198px"><b class="dev">Dev</b></div>
+			<div class="lane" style="top: 252px"><b class="human">Human</b></div>
+			<div class="lane record"><b>Checkmate</b><span>record</span></div>
+			<div class="axis">time →</div>
+			<div class="gutter"></div>
+			<div class="anytime"></div>
+			<div class="track">
+				<div class="iteration" style="left: 0"><span>ITERATION 1</span></div>
+				<div class="iteration" style="left: 648px"><span>ITERATION 2</span></div>
 
-				<defs>
-					<pattern id="belt" width="20" height="12" patternUnits="userSpaceOnUse" patternTransform="skewX(-45)">
-						<rect width="10" height="12" fill="#262d39" />
-						<rect x="10" width="10" height="12" fill="#151a22" />
-					</pattern>
-				</defs>
-				<rect x="0" y="362" width="1406" height="12" rx="6" fill="url(#belt)" />
+				<div class="step ticket" id="a0" style="left: 16px">SHOP-12</div>
+				<div class="step planner" id="a1" style="left: 160px" data-role="planner">plan</div>
+				<div class="record plan" data-of="a1" data-row="0">plan@1</div>
+				<div class="record gap" data-of="a1" data-row="1">G1–G3 open</div>
+				<div class="step oracle" id="a2" style="left: 316px" data-role="oracle">approve</div>
+				<div class="record decision" data-of="a2" data-row="0">✓ plan@1</div>
+				<div class="step qa" id="a3" style="left: 456px" data-role="qa">run early</div>
+				<div class="record" data-of="a3" data-row="0">run-1 <span class="ok">1 ✓</span> <span class="bad">3 ✗</span></div>
+				<div class="record defect" data-of="a3" data-row="1">F1 defect</div>
+				<div class="record gap" data-of="a3" data-row="2">G4 new gap</div>
 
-				<line class="link" x1="130" y1="374" x2="130" y2="420" />
-				<line class="link" x1="512" y1="374" x2="512" y2="420" />
-				<line class="link" x1="894" y1="374" x2="894" y2="420" />
-				<line class="link" x1="1276" y1="374" x2="1276" y2="420" />
-
-				<rect x="0" y="420" width="1406" height="180" rx="6" fill="#161f2e" stroke="#2c4a8c" stroke-width="2" />
-				<text class="name" x="22" y="462" style="fill: var(--blue)">Checkmate</text>
-				<text class="small" x="186" y="461">system of record · .checkmate/checkmate.db</text>
-				<text class="code" x="22" y="512">checkout@1</text>
-				<text class="code" x="22" y="546" style="fill: var(--amber)">needs_decision</text>
-				<text class="code" x="22" y="580" style="fill: var(--muted)">gap G1 open</text>
-				<text class="code" x="404" y="512">gap answer G1</text>
-				<text class="code" x="404" y="546">plan approve</text>
-				<text class="code" x="404" y="580" style="fill: var(--muted)">edit → checkout@3</text>
-				<text class="code" x="786" y="512">result + evidence</text>
-				<text class="code" x="786" y="546" style="fill: var(--red)">run-1 finding F1</text>
-				<text class="code" x="786" y="580" style="fill: var(--muted)">run-2 --retest-of</text>
-				<text class="code" x="1168" y="512">result accept</text>
-				<text class="code" x="1168" y="546">actor + rationale</text>
-				<text class="code" x="1168" y="580" style="fill: var(--muted)">run-1 unchanged</text>
-			</svg>
-			<div class="caption">
-				Checkmate does not run the agents. Each agent reads and writes the same records:
-				<code>checkmate inbox</code>, <code>gap answer</code>, <code>plan approve</code>, <code>result accept</code>, or
-				a <code>/checkmate:*</code> skill.
+				<div class="step oracle" id="a4" style="left: 670px" data-role="oracle">gap answer</div>
+				<div class="record decision" data-of="a4" data-row="0">answers G1–G3</div>
+				<div class="step planner" id="a5" style="left: 860px" data-role="planner">revise</div>
+				<div class="record plan" data-of="a5" data-row="0">plan@2</div>
+				<div class="step human" id="a6" style="left: 978px" data-role="human">edit plan</div>
+				<div class="record plan" data-of="a6" data-row="0">edit plan@2</div>
+				<div class="step oracle" id="a7" style="left: 1140px" data-role="oracle">approve</div>
+				<div class="record decision" data-of="a7" data-row="0">✓ plan@2</div>
 			</div>
 		</div>
 
-		<div class="bottom">
-			<div class="card panel">
-				<h2>Solo mode</h2>
-				<p>You are the caller in your own Claude Code. Test your own work, or verify the work of a teammate.</p>
-				<div class="term">
-					<div><span>&gt;</span> /checkmate:plan checkout from docs/checkout.md</div>
-					<div><span>&gt;</span> /checkmate:ui</div>
-					<div><span>&gt;</span> /checkmate:revise checkout</div>
-					<div><span>&gt;</span> /checkmate:execute checkout@2</div>
-				</div>
-			</div>
-			<div class="card panel">
-				<h2>Who owns what</h2>
-				<div class="owners">
-					<div class="owner"><b>Claude Code</b><span>model, tools, permissions</span></div>
-					<div class="owner"><b style="color: var(--blue)">Checkmate</b><span>contracts, evidence, the record</span></div>
-					<div class="owner"><b style="color: var(--caller)">Caller</b><span>gap answers, approval, acceptance</span></div>
-					<div class="owner"><b>Agents</b><span>plans, test runs, code fixes</span></div>
-				</div>
+		<div class="strip">
+			<div class="lane" style="top: 36px"><b class="planner">Planner</b></div>
+			<div class="lane" style="top: 90px"><b class="oracle">Oracle</b></div>
+			<div class="lane" style="top: 144px"><b class="qa">QA</b></div>
+			<div class="lane" style="top: 198px"><b class="dev">Dev</b></div>
+			<div class="lane" style="top: 252px"><b class="human">Human</b></div>
+			<div class="lane record"><b>Checkmate</b><span>record</span></div>
+			<div class="axis">time →</div>
+			<div class="gutter"></div>
+			<div class="anytime"></div>
+			<div class="track">
+				<div class="anytime-note" style="left: 16px">joins at any time: checkmate ui</div>
+				<div class="iteration" style="left: 0"><span>ITERATION 2, CONTINUED</span></div>
+				<div class="iteration" style="left: 632px"><span>ITERATION 3</span></div>
+
+				<div class="step ticket oracle-lane" id="b0" style="left: 16px">✓ plan@2</div>
+				<div class="step dev" id="b1" style="left: 172px" data-role="dev">fix F1 · build b2</div>
+				<div class="step qa" id="b2" style="left: 424px" data-role="qa">retest</div>
+				<div class="record" data-of="b2" data-row="0">run-2 <span class="ok">3 ✓</span> <span class="bad">1 ✗</span></div>
+				<div class="record" data-of="b2" data-row="1">retest-of run-1</div>
+				<div class="record defect" data-of="b2" data-row="2">F2 defect</div>
+
+				<div class="step dev" id="b3" style="left: 654px" data-role="dev">fix F2 · build b3</div>
+				<div class="step qa" id="b4" style="left: 906px" data-role="qa">retest</div>
+				<div class="record" data-of="b4" data-row="0">run-3 <span class="ok">4 ✓</span></div>
+				<div class="record" data-of="b4" data-row="1">retest-of run-2</div>
+				<div class="step oracle" id="b5" style="left: 1040px" data-role="oracle">accept</div>
+				<div class="record accepted" data-of="b5" data-row="0">result accepted</div>
 			</div>
 		</div>
-	</main>
+
+		<div class="note">
+			Checkmate does not start, schedule, or message the agents. The factory does. The agents coordinate through the records:
+			<code>inbox</code>, <code>gap answer</code>, <code>plan revise</code>, <code>plan approve</code>, <code>run begin --retest-of</code>,
+			<code>result accept</code>, or a <code>/checkmate:*</code> skill. The oracle is anyone who can give the answer: a product-owner agent or a person.
+		</div>
+	</div>
+
+	<div class="bottom">
+		<div class="card panel">
+			<h2>Solo mode: <i>you are the oracle</i></h2>
+			<p>The same records, in your own Claude Code. Test your own work, or verify a teammate's.</p>
+			<div class="term">
+				<div><span>&gt;</span> /checkmate:plan checkout from docs/checkout.md</div>
+				<div><span>&gt;</span> /checkmate:ui</div>
+				<div><span>&gt;</span> /checkmate:revise checkout</div>
+				<div><span>&gt;</span> /checkmate:execute checkout@2</div>
+			</div>
+		</div>
+		<div class="card panel">
+			<h2>Who owns what</h2>
+			<div class="owners">
+				<div class="owner"><b>The factory</b><span>starts the agents, gives the work</span></div>
+				<div class="owner"><b style="color: var(--blue)">Checkmate</b><span>contracts, evidence, the record</span></div>
+				<div class="owner"><b class="oracle">Oracle</b><span>gap answers, approvals, acceptance</span></div>
+				<div class="owner"><b>Claude Code</b><span>model, tools, permissions</span></div>
+				<div class="owner"><b class="dev">Dev agent</b><span>code changes</span></div>
+			</div>
+		</div>
+	</div>
+</main>
+<script src="swimlane.js"></script>
+<script>
+	document.fonts.ready.then(() => document.querySelectorAll('.track').forEach(drawSwimlane))
+</script>
 </html>

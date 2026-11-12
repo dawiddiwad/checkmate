@@ -1,19 +1,39 @@
-/* Shared style for the onboarding animation and the infographic. */
+/* Shared tokens and swimlane parts of the onboarding animation and the infographic. */
 :root {
 	--bg: #0f1217;
 	--card: #12171f;
-	--card-strong: #171b24;
 	--line: #1f2530;
+	--line-strong: #2a303b;
+	--wire: #4a5363;
 	--text: #e8ebf0;
 	--muted: #9aa3b2;
 	--faint: #5d6675;
 	--blue: #5b8afd;
 	--blue-bg: #161f2e;
 	--blue-line: #2c4a8c;
+	--planner: #6f9bff;
+	--planner-bg: #141d2e;
+	--planner-line: #2c4a8c;
+	--oracle: #4fd18b;
+	--oracle-bg: #10231a;
+	--oracle-line: #235c3c;
+	--qa: #b48cff;
+	--qa-bg: #1c1630;
+	--qa-line: #4a3878;
+	--dev: #a9b6c7;
+	--dev-bg: #181d25;
+	--dev-line: #3a4452;
+	--human: #e8ebf0;
+	--human-line: #8a93a3;
 	--green: #4fd18b;
 	--red: #ff6b7d;
+	--red-bg: #2a1418;
+	--red-line: #6e2a35;
 	--amber: #e7b452;
-	--sans: 'Space Grotesk', Inter, sans-serif;
+	--amber-bg: #251e10;
+	--amber-line: #6b5222;
+	--display: 'Space Grotesk', Inter, sans-serif;
+	--body: Inter, sans-serif;
 	--mono: 'JetBrains Mono', monospace;
 }
 * {
@@ -23,45 +43,33 @@ body {
 	margin: 0;
 	background: var(--bg);
 	color: var(--text);
-	font-family: var(--sans);
+	font-family: var(--body);
 }
-h1 {
-	font-size: 44px;
-	line-height: 1.15;
-	font-weight: 500;
-	letter-spacing: -0.5px;
-	margin: 0;
+.mark {
+	display: flex;
 }
-em {
-	font-style: normal;
-	color: var(--blue);
+.mark i {
+	display: block;
+	border: 2px solid var(--line-strong);
 }
-.mono {
-	font-family: var(--mono);
+.mark i:nth-child(3) {
+	background: var(--blue);
+	border-color: var(--blue);
 }
-.label {
-	font: 14px var(--mono);
-	letter-spacing: 3px;
-	color: var(--faint);
-	text-transform: uppercase;
+.planner {
+	color: var(--planner);
 }
-.card {
-	background: var(--card);
-	border: 1px solid var(--line);
-	border-radius: 4px;
+.oracle {
+	color: var(--oracle);
 }
-.card.accent {
-	background: var(--blue-bg);
-	border-color: var(--blue-line);
+.qa {
+	color: var(--qa);
 }
-.chip {
-	font: 15px var(--mono);
-	color: var(--blue);
-	background: var(--blue-bg);
-	border: 1px solid var(--blue-line);
-	border-radius: 3px;
-	padding: 9px 0;
-	text-align: center;
+.dev {
+	color: var(--dev);
+}
+.human {
+	color: var(--human);
 }
 .ok {
 	color: var(--green);
@@ -69,22 +77,116 @@ em {
 .bad {
 	color: var(--red);
 }
-.warn {
-	color: var(--amber);
+.track {
+	position: absolute;
 }
-.dim {
+.wires {
+	position: absolute;
+	left: 0;
+	top: 0;
+	overflow: visible;
+}
+.step,
+.record {
+	position: absolute;
+	white-space: nowrap;
+	font-family: var(--mono);
+	border: 1px solid;
+}
+.step {
+	font-weight: 600;
+	border-radius: 4px;
+}
+.step.planner {
+	background: var(--planner-bg);
+	border-color: var(--planner-line);
+}
+.step.oracle {
+	background: var(--oracle-bg);
+	border-color: var(--oracle-line);
+}
+.step.qa {
+	background: var(--qa-bg);
+	border-color: var(--qa-line);
+}
+.step.dev {
+	background: var(--dev-bg);
+	border-color: var(--dev-line);
+}
+.step.human {
+	background: var(--bg);
+	border: 1px dashed var(--human-line);
+}
+.step.ticket {
 	color: var(--muted);
+	background: var(--bg);
+	border-color: var(--line-strong);
 }
-.logo {
-	display: grid;
-	gap: 0;
+.record {
+	font-weight: 500;
+	border-radius: 3px;
+	color: var(--text);
+	background: var(--card);
+	border-color: var(--line-strong);
 }
-.logo span {
-	background: #161a21;
+.record.plan {
+	color: var(--planner);
+	background: var(--planner-bg);
+	border-color: var(--planner-line);
 }
-.logo span:nth-child(odd) {
-	background: #1b2029;
+.record.gap {
+	color: var(--amber);
+	background: var(--amber-bg);
+	border-color: var(--amber-line);
 }
-.logo span.on {
-	background: var(--blue);
+.record.decision {
+	color: var(--green);
+	background: var(--oracle-bg);
+	border-color: var(--oracle-line);
+}
+.record.defect {
+	color: var(--red);
+	background: var(--red-bg);
+	border-color: var(--red-line);
+}
+.record.accepted {
+	color: var(--bg);
+	background: var(--green);
+	border-color: var(--green);
+	font-weight: 600;
+}
+.flow {
+	fill: none;
+	stroke: var(--wire);
+	stroke-width: 2;
+}
+.flow-head {
+	fill: var(--wire);
+}
+.drop {
+	stroke-width: 2;
+}
+.drop.planner {
+	stroke: var(--planner);
+}
+.drop.oracle {
+	stroke: var(--oracle);
+}
+.drop.qa {
+	stroke: var(--qa);
+}
+.drop.human {
+	stroke: var(--human-line);
+}
+.drop-head.planner {
+	fill: var(--planner);
+}
+.drop-head.oracle {
+	fill: var(--oracle);
+}
+.drop-head.qa {
+	fill: var(--qa);
+}
+.drop-head.human {
+	fill: var(--human-line);
 }

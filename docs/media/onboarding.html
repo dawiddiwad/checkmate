@@ -2,177 +2,165 @@
 <html lang="en">
 <meta charset="utf-8" />
 <title>Checkmate onboarding</title>
+<link rel="stylesheet" href="style.css" />
 <style>
 	@font-face { font-family: 'Space Grotesk'; src: url('../../plugin/src/ui/assets/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
 	@font-face { font-family: 'Inter'; src: url('../../plugin/src/ui/assets/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
 	@font-face { font-family: 'JetBrains Mono'; src: url('../../plugin/src/ui/assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
-	:root {
-		--bg: #f6f7f5; --surface: #ffffff; --ink: #1b2420; --muted: #5b6862; --line: #dde3df;
-		--accent: #2c6150; --accent-soft: #e3efea; --code-bg: #eef1ef;
-		--pass: #23704f; --pass-soft: #e1f0e8; --fail: #b3362c; --fail-soft: #f8e4e1; --gap: #8a5a12; --gap-soft: #f7eedb;
-		--planner: #2f5597; --planner-soft: #e5ecf7; --qa: #5d3f8f; --qa-soft: #ece6f5; --dev: #3f4b59; --dev-soft: #e4e8ec;
-		--display: 'Space Grotesk', sans-serif; --body: 'Inter', sans-serif; --mono: 'JetBrains Mono', monospace;
-	}
-	* { box-sizing: border-box; }
-	html, body { margin: 0; background: var(--bg); }
-	main { width: 640px; height: 400px; position: relative; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body); }
-	.scene { position: absolute; inset: 0; opacity: 0; }
-	.abs { position: absolute; }
+	main { width: 640px; height: 400px; position: relative; overflow: hidden; background: var(--bg); }
 
-	h1 { position: absolute; left: 28px; top: 18px; margin: 0; font: 600 25px/34px var(--display); letter-spacing: -0.3px; white-space: nowrap; }
-	h1 b { display: inline-block; width: 30px; height: 30px; margin-right: 10px; border-radius: 7px; background: var(--ink); color: #fff; font: 600 19px/30px var(--display); text-align: center; vertical-align: 2px; }
-	.mode { position: absolute; right: 28px; top: 24px; font: 600 14px/24px var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); border: 2px solid var(--line); border-radius: 999px; padding: 0 10px; background: var(--surface); }
+	.lane { position: absolute; left: 0; width: 640px; height: 42px; border-top: 1px solid var(--line); }
+	.lane b { position: absolute; left: 12px; top: 0; font: 600 16px/41px var(--display); }
+	.lane.record { top: 274px; height: 126px; background: #121a28; border-top: 2px solid var(--blue-line); }
+	.lane.record b { color: var(--blue); font-size: 15px; line-height: 20px; top: 12px; }
+	.lane.record span { position: absolute; left: 12px; top: 34px; font: 500 15px var(--display); color: var(--muted); }
+	.gutter { position: absolute; left: 96px; top: 44px; bottom: 0; border-left: 1px solid var(--line-strong); }
+	.axis { position: absolute; left: 14px; top: 44px; font: 500 14px/20px var(--mono); color: var(--faint); }
 
-	.station { position: absolute; top: 70px; width: 134px; height: 48px; border: 2px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font: 600 20px/44px var(--display); text-align: center; }
-	.station.on { color: #fff; border-color: transparent; }
-	.belt { position: absolute; left: 28px; top: 128px; width: 584px; height: 8px; border-radius: 4px; background: repeating-linear-gradient(135deg, #cfd6d2 0 8px, #eaeeeb 8px 16px); }
+	.window { position: absolute; left: 97px; top: 0; width: 543px; height: 400px; overflow: hidden; }
+	.track { left: 0; top: 0; width: 2000px; height: 400px; }
+	.iteration { position: absolute; top: 44px; bottom: 0; border-left: 1px dashed var(--line-strong); }
+	.iteration span { position: absolute; left: 10px; top: 0; font: 600 14px/20px var(--mono); letter-spacing: 1.5px; color: var(--faint); white-space: nowrap; }
+	.anytime { position: absolute; left: 0; width: 2000px; top: 253px; border-top: 2px dotted #3a4150; }
+	.anytime-note { position: absolute; top: 243px; font: 500 15px/20px var(--display); color: var(--muted); background: var(--bg); padding: 0 8px; }
 
-	.ledger { position: absolute; left: 28px; top: 154px; width: 584px; height: 230px; background: var(--surface); border: 2px solid var(--line); border-radius: 10px; }
-	.ledger .head { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 16px; border-bottom: 2px solid var(--line); font: 600 17px var(--display); }
-	.ledger .head .db { margin-left: auto; font: 500 15px var(--mono); color: var(--muted); }
-	.markrow { display: flex; gap: 3px; }
-	.markrow i { width: 11px; height: 11px; border: 2px solid var(--ink); display: block; }
-	.markrow i.on { background: var(--ink); }
+	.step { font-size: 15px; line-height: 26px; height: 28px; padding: 0 9px; }
+	.step[data-role='planner'], .step.ticket { top: 71px; }
+	.step[data-role='oracle'] { top: 113px; }
+	.step[data-role='qa'] { top: 155px; }
+	.step[data-role='dev'] { top: 197px; }
+	.step[data-role='human'] { top: 239px; }
+	.record { font-size: 15px; line-height: 24px; height: 26px; padding: 0 8px; }
+	.record[data-row='0'] { top: 286px; }
+	.record[data-row='1'] { top: 318px; }
+	.record[data-row='2'] { top: 350px; }
 
-	.rows { position: absolute; left: 46px; top: 196px; width: 548px; }
-	.row { display: flex; align-items: center; gap: 12px; height: 44px; font: 500 20px var(--mono); white-space: nowrap; }
-	.row.bad { background: var(--fail-soft); margin: 0 -8px; padding: 0 8px; border-radius: 6px; }
-	.note { font: 400 20px var(--body); padding-left: 2px; }
-	.who { font: 600 15px/26px var(--mono); padding: 0 9px; border-radius: 6px; min-width: 76px; text-align: center; }
-	.who.planner { color: var(--planner); background: var(--planner-soft); }
-	.who.caller { color: var(--accent); background: var(--accent-soft); }
-	.who.qa { color: var(--qa); background: var(--qa-soft); }
-	.who.dev { color: var(--dev); background: var(--dev-soft); }
-	.pass { color: var(--pass); } .fail { color: var(--fail); } .gap { color: var(--gap); } .muted { color: var(--muted); } .accent { color: var(--accent); }
-	.ev { font: 500 15px/24px var(--mono); color: var(--fail); background: var(--surface); border: 2px solid #ecc5bf; border-radius: 6px; padding: 0 8px; margin-left: auto; }
+	.bar { position: absolute; left: 0; top: 0; width: 640px; height: 44px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 2; }
+	.caption { position: absolute; left: 14px; top: 0; font: 600 19px/44px var(--display); white-space: nowrap; }
+	.bar .mark { position: absolute; right: 16px; top: 15px; gap: 4px; }
+	.bar .mark i { width: 13px; height: 13px; }
 
-	.token { position: absolute; top: 118px; transform: translateX(-50%); font: 600 16px/28px var(--mono); padding: 0 11px; border-radius: 7px; white-space: nowrap; color: #fff; box-shadow: 0 2px 0 rgba(0,0,0,0.12); }
-
-	.stamp { position: absolute; left: 50%; top: 300px; transform: translateX(-50%); background: var(--accent); color: #fff; font: 600 21px/30px var(--display); padding: 8px 20px; border-radius: 9px; white-space: nowrap; }
-
-	.term { position: absolute; left: 28px; top: 82px; width: 584px; padding: 12px 20px; background: var(--surface); border: 2px solid var(--line); border-radius: 10px; font: 500 19px/36px var(--mono); }
-	.term .p { color: var(--muted); }
-	.solo-note { position: absolute; left: 28px; top: 264px; width: 584px; font: 400 20px/30px var(--body); color: var(--muted); }
-	.brand { position: absolute; left: 0; right: 0; top: 340px; display: flex; justify-content: center; align-items: center; gap: 14px; font: 600 30px var(--display); }
-	.brand .markrow { gap: 6px; }
-	.brand .markrow i { width: 22px; height: 22px; border-width: 3px; }
+	.solo { position: absolute; inset: 0; background: var(--bg); z-index: 3; }
+	.solo h1 { position: absolute; left: 28px; top: 24px; margin: 0; font: 600 25px/34px var(--display); }
+	.solo h1 i { font-style: normal; color: var(--oracle); }
+	.term { position: absolute; left: 28px; top: 80px; width: 584px; padding: 10px 20px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 6px; font: 500 18px/34px var(--mono); }
+	.term span { color: var(--faint); }
+	.solo p { position: absolute; left: 28px; top: 252px; width: 584px; margin: 0; font: 400 19px/29px var(--body); color: var(--muted); }
+	.brand { position: absolute; left: 0; right: 0; top: 336px; display: flex; justify-content: center; align-items: center; gap: 14px; font: 600 30px var(--display); }
+	.brand .mark { gap: 6px; }
+	.brand .mark i { width: 22px; height: 22px; border-width: 3px; }
 </style>
 <main>
+	<div class="lane" style="top: 64px"><b class="planner">Planner</b></div>
+	<div class="lane" style="top: 106px"><b class="oracle">Oracle</b></div>
+	<div class="lane" style="top: 148px"><b class="qa">QA</b></div>
+	<div class="lane" style="top: 190px"><b class="dev">Dev</b></div>
+	<div class="lane" style="top: 232px"><b class="human">Human</b></div>
+	<div class="lane record"><b>Checkmate</b><span>record</span></div>
+	<div class="axis">time →</div>
+	<div class="gutter"></div>
 
-<section class="scene" data-start="0" data-length="24.6">
-	<div class="mode">team mode</div>
-	<div class="station" style="left: 28px">Planner</div>
-	<div class="station" style="left: 178px">Caller</div>
-	<div class="station" style="left: 328px">QA</div>
-	<div class="station" style="left: 478px">Dev</div>
-	<div class="belt"></div>
-	<div class="ledger">
-		<div class="head"><div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>checkmate<span class="db">system of record</span></div>
+	<div class="window">
+		<div class="track" id="track">
+			<div class="anytime" data-t="1.9"></div>
+			<div class="anytime-note" style="left: 374px" data-t="1.9">joins any time</div>
+			<div class="iteration" style="left: 0"><span>ITERATION 1</span></div>
+			<div class="iteration" style="left: 506px" data-t="6"><span>ITERATION 2</span></div>
+			<div class="iteration" style="left: 1386px" data-t="17"><span>ITERATION 3</span></div>
+
+			<div class="step ticket" id="ticket" style="left: 14px" data-t="0.4">SHOP-12</div>
+			<div class="step planner" id="s1" style="left: 116px" data-role="planner" data-t="1.0">plan</div>
+			<div class="record plan" data-of="s1" data-row="0" data-t="1.6">plan@1</div>
+			<div class="record gap" data-of="s1" data-row="1" data-t="1.9">G1–G3 open</div>
+			<div class="step oracle" id="s2" style="left: 236px" data-role="oracle" data-t="2.6">approve</div>
+			<div class="record decision" data-of="s2" data-row="0" data-t="3.1">✓ plan@1</div>
+			<div class="step qa" id="s3" style="left: 352px" data-role="qa" data-t="3.6">run early</div>
+			<div class="record" data-of="s3" data-row="0" data-t="4.1">run-1 <span class="ok">1 ✓</span> <span class="bad">3 ✗</span></div>
+			<div class="record defect" data-of="s3" data-row="1" data-t="4.5">F1 defect</div>
+			<div class="record gap" data-of="s3" data-row="2" data-t="4.9">G4 new gap</div>
+
+			<div class="step oracle" id="s4" style="left: 528px" data-role="oracle" data-t="7.1">gap answer</div>
+			<div class="record decision" data-of="s4" data-row="0" data-t="7.6">answers G1–G3</div>
+			<div class="step planner" id="s5" style="left: 684px" data-role="planner" data-t="8.2">revise</div>
+			<div class="record plan" data-of="s5" data-row="0" data-t="8.7">plan@2</div>
+			<div class="step human" id="s6" style="left: 782px" data-role="human" data-t="9.2">edit plan</div>
+			<div class="record plan" data-of="s6" data-row="0" data-t="9.7">edit plan@2</div>
+			<div class="step oracle" id="s7" style="left: 912px" data-role="oracle" data-t="10.2">approve</div>
+			<div class="record decision" data-of="s7" data-row="0" data-t="10.7">✓ plan@2</div>
+
+			<div class="step dev" id="s8" style="left: 1018px" data-role="dev" data-t="12.7">fix F1 · build b2</div>
+			<div class="step qa" id="s9" style="left: 1196px" data-role="qa" data-t="13.7">retest</div>
+			<div class="record" data-of="s9" data-row="0" data-t="14.2">run-2 <span class="ok">3 ✓</span> <span class="bad">1 ✗</span></div>
+			<div class="record" data-of="s9" data-row="1" data-t="14.6">retest-of run-1</div>
+			<div class="record defect" data-of="s9" data-row="2" data-t="15.0">F2 defect</div>
+
+			<div class="step dev" id="s10" style="left: 1408px" data-role="dev" data-t="18.1">fix F2 · build b3</div>
+			<div class="step qa" id="s11" style="left: 1584px" data-role="qa" data-t="19.1">retest</div>
+			<div class="record" data-of="s11" data-row="0" data-t="19.6">run-3 <span class="ok">4 ✓</span></div>
+			<div class="record" data-of="s11" data-row="1" data-t="20.0">retest-of run-2</div>
+			<div class="step oracle" id="s12" style="left: 1752px" data-role="oracle" data-t="20.6">accept</div>
+			<div class="record accepted" data-of="s12" data-row="0" data-t="21.1">result accepted</div>
+		</div>
 	</div>
-</section>
 
-<section class="scene" data-start="0" data-length="5">
-	<h1><b>1</b>Planner agent drafts the plan</h1>
-	<div class="station on" style="left: 28px; background: var(--planner)">Planner</div>
-	<div class="token" style="background: var(--ink)" data-in="0" data-out="0.9" data-path="95 95" data-move="0 0.8">SHOP-12</div>
-	<div class="rows">
-		<div class="row" data-in="0.9"><span class="who planner">planner</span>plan checkout@1 · 3 tests</div>
-		<div class="row" data-in="1.7"><span class="who planner">planner</span><span class="gap">needs_decision · gap G1</span></div>
-		<div class="row note" data-in="2.4">G1: Does the promo stack with loyalty?</div>
+	<div class="bar">
+		<div class="caption" data-from="0" data-to="6">Large gaps first, then an early red run</div>
+		<div class="caption" data-from="6" data-to="11.5">The oracle answers, the plan is revised</div>
+		<div class="caption" data-from="11.5" data-to="17">Dev fixes F1, the retest is partly green</div>
+		<div class="caption" data-from="17" data-to="23.5">The retest passes, the oracle accepts</div>
+		<div class="mark"><i></i><i></i><i></i><i></i></div>
 	</div>
-	<div class="token" style="background: var(--gap)" data-in="3.3" data-path="95 245" data-move="3.5 4.4">G1</div>
-</section>
 
-<section class="scene" data-start="5" data-length="5">
-	<h1><b>2</b>The caller agent answers the gap</h1>
-	<div class="station on" style="left: 178px; background: var(--accent)">Caller</div>
-	<div class="rows">
-		<div class="row" data-in="0.5"><span class="who caller">caller</span>gap answer checkout G1</div>
-		<div class="row note accent" data-in="1.1">The promo replaces loyalty: 240 PLN.</div>
-		<div class="row" data-in="2.0"><span class="who planner">planner</span>revise → checkout@2</div>
-		<div class="row" data-in="2.9"><span class="who caller">caller</span>plan approve checkout@2 <span class="pass">✓</span></div>
-	</div>
-</section>
-
-<section class="scene" data-start="10" data-length="5">
-	<h1><b>3</b>QA agent runs the tests</h1>
-	<div class="station on" style="left: 328px; background: var(--qa)">QA</div>
-	<div class="rows">
-		<div class="row" data-in="0.5"><span class="who qa">qa</span>run-1 T1 <span class="pass">✓ passed</span></div>
-		<div class="row" data-in="1.0"><span class="who qa">qa</span>run-1 T2 <span class="pass">✓ passed</span></div>
-		<div class="row bad" data-in="1.6"><span class="who qa">qa</span><span class="fail">run-1 T3 ✗ 220, expected 240</span><span class="ev">evidence</span></div>
-		<div class="row" data-in="2.5"><span class="who qa">qa</span><span class="fail">finding F1 · defect</span></div>
-	</div>
-	<div class="token" style="background: var(--fail)" data-in="3.4" data-path="395 545" data-move="3.6 4.5">F1</div>
-</section>
-
-<section class="scene" data-start="15" data-length="5.4">
-	<h1><b>4</b>Dev agent fixes, QA agent retests</h1>
-	<div class="station on" style="left: 478px; background: var(--dev)" data-in="0" data-out="1.6">Dev</div>
-	<div class="station on" style="left: 328px; background: var(--qa)" data-in="1.6">QA</div>
-	<div class="token" style="background: var(--dev)" data-in="0.4" data-out="1.9" data-path="545 395" data-move="0.7 1.6">build 1.4.1</div>
-	<div class="rows">
-		<div class="row note muted" data-in="0.3">The dev agent reads F1 and fixes the code.</div>
-		<div class="row" data-in="1.8"><span class="who caller">caller</span>run-2 --retest-of run-1</div>
-		<div class="row" data-in="2.7"><span class="who qa">qa</span>run-2 T3 <span class="pass">✓ total 240</span></div>
-		<div class="row note muted" data-in="3.5">run-1 stays as it was.</div>
-	</div>
-</section>
-
-<section class="scene" data-start="20.4" data-length="4.2">
-	<h1><b>5</b>The caller accepts the result</h1>
-	<div class="station on" style="left: 178px; background: var(--accent)">Caller</div>
-	<div class="token" style="background: var(--qa)" data-in="0.2" data-out="1.2" data-path="395 245" data-move="0.3 1.1">run-2</div>
-	<div class="rows">
-		<div class="row" data-in="1.0"><span class="who caller">caller</span>result accept run-2 <span class="pass">✓</span></div>
-		<div class="row note muted" data-in="1.6">Plans, decisions, runs, and evidence</div>
-		<div class="row note muted" data-in="1.6" style="margin-top: -10px">stay in .checkmate/checkmate.db</div>
-	</div>
-</section>
-
-<section class="scene" data-start="24.6" data-length="5">
-	<h1>Solo: the same flow in Claude Code</h1>
-	<div class="mode">solo mode</div>
-	<div class="term">
-		<div data-in="0.4"><span class="p">&gt;</span> /checkmate:plan checkout</div>
-		<div data-in="1.0"><span class="p">&gt;</span> /checkmate:ui</div>
-		<div data-in="1.6"><span class="p">&gt;</span> /checkmate:revise checkout</div>
-		<div data-in="2.0"><span class="p">&gt;</span> /checkmate:execute checkout@2</div>
-	</div>
-	<div class="solo-note" data-in="2.6">You are the caller.<br />Test your own work, or verify the work of a teammate.</div>
-	<div class="brand" data-in="3.3"><div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>checkmate</div>
-</section>
-
+	<section class="solo" data-from="23.5" data-to="28.5">
+		<h1>Solo mode: <i>you are the oracle</i></h1>
+		<div class="term">
+			<div data-t="24.1"><span>&gt;</span> /checkmate:plan checkout</div>
+			<div data-t="24.6"><span>&gt;</span> /checkmate:ui</div>
+			<div data-t="25.1"><span>&gt;</span> /checkmate:revise checkout</div>
+			<div data-t="25.6"><span>&gt;</span> /checkmate:execute checkout@2</div>
+		</div>
+		<p data-t="26.2">The same records, in your own Claude Code.<br />Test your own work, or verify a teammate's.</p>
+		<div class="brand" data-t="26.6"><div class="mark"><i></i><i></i><i></i><i></i></div>checkmate</div>
+	</section>
 </main>
+<script src="swimlane.js"></script>
 <script>
-	const fade = 0.35
-	const scenes = [...document.querySelectorAll('.scene')]
+	const fade = 0.3
+	const pans = [[0, 0], [6, 0], [6.9, 500], [11.5, 500], [12.3, 900], [17, 900], [17.9, 1380]]
+	const track = document.getElementById('track')
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 	const ease = (t) => t * t * (3 - 2 * t)
 
-	window.DURATION = 29.6
-	window.measure = () => {}
+	const panAt = (time) => {
+		for (let index = 1; index < pans.length; index++) {
+			const [start, from] = pans[index - 1]
+			const [end, to] = pans[index]
+			if (time < end) return from + (to - from) * ease(ramp(time, start, end - start))
+		}
+		return pans[pans.length - 1][1]
+	}
+
+	window.DURATION = 28.5
+	window.measure = () => drawSwimlane(track)
 	window.renderFrame = (time) => {
-		for (const scene of scenes) {
-			const start = Number(scene.dataset.start)
-			const end = start + Number(scene.dataset.length)
-			const shown = start === 0 ? 1 : ramp(time, start, fade)
-			const hidden = end >= window.DURATION ? 0 : ramp(time, end - fade, fade)
-			scene.style.opacity = shown * (1 - hidden)
-			const local = time - start
-			for (const element of scene.querySelectorAll('[data-in]')) {
-				const elementShown = ramp(local, Number(element.dataset.in), fade)
-				const elementHidden = element.dataset.out ? ramp(local, Number(element.dataset.out), fade) : 0
-				element.style.opacity = elementShown * (1 - elementHidden)
-			}
-			for (const element of scene.querySelectorAll('[data-path]')) {
-				const [from, to] = element.dataset.path.split(' ').map(Number)
-				const [moveStart, moveEnd] = element.dataset.move.split(' ').map(Number)
-				const progress = ease(ramp(local, moveStart, moveEnd - moveStart))
-				element.style.left = `${from + (to - from) * progress}px`
-			}
+		track.style.transform = `translateX(${-panAt(time)}px)`
+		for (const element of document.querySelectorAll('[data-from]')) {
+			const from = Number(element.dataset.from)
+			const to = Number(element.dataset.to)
+			const shown = from === 0 ? 1 : ramp(time, from, fade)
+			const hidden = to >= window.DURATION ? 0 : ramp(time, to - fade, fade)
+			element.style.opacity = shown * (1 - hidden)
+		}
+		for (const element of document.querySelectorAll('[data-t]'))
+			element.style.opacity = ramp(time, Number(element.dataset.t), fade)
+		for (const element of document.querySelectorAll('[data-draw]')) {
+			const [start, end] = element.dataset.draw.split(' ').map(Number)
+			const progress = ramp(time, start, end - start)
+			if (element.tagName === 'path') {
+				element.style.strokeDasharray = '1 1'
+				element.style.strokeDashoffset = 1 - progress
+			} else element.style.opacity = progress
 		}
 	}
-	window.renderFrame(0)
 </script>
 </html>

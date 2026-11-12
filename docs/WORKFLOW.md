@@ -2,6 +2,8 @@
 
 Checkmate has five stages: setup, plan, revise, execute, and report. Between the stages, the caller makes decisions.
 
+Checkmate has two modes. In team mode, agents share the QA work, and an agent or a script is the caller. Read [From an agent or a script](#from-an-agent-or-a-script) and [Sub-agents in Claude Code](#sub-agents-in-claude-code). In solo mode, you are the caller in your own Claude Code. Read [In Claude Code](#in-claude-code).
+
 - The **caller** owns the request. The caller answers gaps, approves plans, and accepts results. The caller can be a person in Claude Code or an agent that delegates QA work.
 - The **actor** is the name that Checkmate records with each write. Commands use `--actor`, then `CHECKMATE_ACTOR`, then `git config user.name`, then the login name. `delegate` records its workers as `claude:<stage>`.
 - The **host** is Claude Code. It owns the model, authentication, tools, and permissions.
@@ -10,7 +12,7 @@ All state is in `.checkmate/checkmate.db` in the application workspace. Run the 
 
 ## In Claude Code
 
-Use this path when you work in Claude Code with the plugin. You do not need the npm CLI. [README](../README.md#use-it-in-claude-code) shows how to install the plugin.
+Use this path when you work in Claude Code with the plugin. You do not need the npm CLI. [README](../README.md#solo-mode-your-claude-code) shows how to install the plugin.
 
 1. Set up the target. Give the base URL, the capabilities, and the operations that tests can do. You can name tools, for example an MCP server:
 

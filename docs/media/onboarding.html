@@ -9,155 +9,166 @@
 	:root {
 		--bg: #f6f7f5; --surface: #ffffff; --ink: #1b2420; --muted: #5b6862; --line: #dde3df;
 		--accent: #2c6150; --accent-soft: #e3efea; --code-bg: #eef1ef;
-		--pass: #23704f; --pass-soft: #e1f0e8; --fail: #b3362c; --fail-soft: #f8e4e1; --warn: #8a5a12;
+		--pass: #23704f; --pass-soft: #e1f0e8; --fail: #b3362c; --fail-soft: #f8e4e1; --gap: #8a5a12; --gap-soft: #f7eedb;
+		--planner: #2f5597; --planner-soft: #e5ecf7; --qa: #5d3f8f; --qa-soft: #ece6f5; --dev: #3f4b59; --dev-soft: #e4e8ec;
 		--display: 'Space Grotesk', sans-serif; --body: 'Inter', sans-serif; --mono: 'JetBrains Mono', monospace;
 	}
 	* { box-sizing: border-box; }
 	html, body { margin: 0; background: var(--bg); }
 	main { width: 640px; height: 400px; position: relative; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body); }
-	.scene { position: absolute; inset: 0; opacity: 0; padding: 26px 28px; }
-	h1 { font: 600 27px/34px var(--display); letter-spacing: -0.3px; margin: 0 0 20px; }
-	.card { background: var(--surface); border: 2px solid var(--line); border-radius: 10px; overflow: hidden; }
-	.mono { font-family: var(--mono); }
-	.muted { color: var(--muted); }
-	.pass { color: var(--pass); }
-	.fail { color: var(--fail); }
-	.accent { color: var(--accent); }
+	.scene { position: absolute; inset: 0; opacity: 0; }
+	.abs { position: absolute; }
 
-	/* terminal */
-	.term { padding: 18px 20px; font: 500 19px/32px var(--mono); }
-	.term .prompt { color: var(--muted); }
+	h1 { position: absolute; left: 28px; top: 18px; margin: 0; font: 600 25px/34px var(--display); letter-spacing: -0.3px; white-space: nowrap; }
+	h1 b { display: inline-block; width: 30px; height: 30px; margin-right: 10px; border-radius: 7px; background: var(--ink); color: #fff; font: 600 19px/30px var(--display); text-align: center; vertical-align: 2px; }
+	.mode { position: absolute; right: 28px; top: 24px; font: 600 14px/24px var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); border: 2px solid var(--line); border-radius: 999px; padding: 0 10px; background: var(--surface); }
 
-	/* inbox */
-	.bar { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 2px solid var(--line); font: 600 19px var(--display); }
-	.markrow { display: flex; gap: 4px; }
-	.markrow i { width: 13px; height: 13px; border: 2px solid var(--ink); display: block; }
+	.station { position: absolute; top: 70px; width: 134px; height: 48px; border: 2px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font: 600 20px/44px var(--display); text-align: center; }
+	.station.on { color: #fff; border-color: transparent; }
+	.belt { position: absolute; left: 28px; top: 128px; width: 584px; height: 8px; border-radius: 4px; background: repeating-linear-gradient(135deg, #cfd6d2 0 8px, #eaeeeb 8px 16px); }
+
+	.ledger { position: absolute; left: 28px; top: 154px; width: 584px; height: 230px; background: var(--surface); border: 2px solid var(--line); border-radius: 10px; }
+	.ledger .head { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 16px; border-bottom: 2px solid var(--line); font: 600 17px var(--display); }
+	.ledger .head .db { margin-left: auto; font: 500 15px var(--mono); color: var(--muted); }
+	.markrow { display: flex; gap: 3px; }
+	.markrow i { width: 11px; height: 11px; border: 2px solid var(--ink); display: block; }
 	.markrow i.on { background: var(--ink); }
-	.tab { background: var(--accent-soft); color: var(--accent); border-radius: 7px; padding: 4px 10px; display: flex; align-items: center; gap: 8px; }
-	.count { background: var(--accent); color: #fff; border-radius: 999px; font: 600 14px/22px var(--body); min-width: 22px; text-align: center; }
-	.live { margin-left: auto; font: 500 16px var(--mono); color: var(--pass); }
-	.group { padding: 14px 18px 0; font: 500 14px var(--mono); letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
-	.row { margin: 10px 18px 0; border: 2px solid var(--line); border-radius: 8px; padding: 10px 14px; }
-	.row.focus { border-color: var(--accent); }
-	.line { display: flex; align-items: center; gap: 12px; font: 500 19px/28px var(--mono); }
-	.q { font: 400 19px/28px var(--body); margin-top: 2px; }
-	.pill { font: 500 15px/24px var(--mono); padding: 0 10px; border-radius: 999px; }
-	.pill.fail { background: var(--fail-soft); }
-	.pill.pass { background: var(--pass-soft); }
-	.pill.accent { background: var(--accent-soft); }
-	.right { margin-left: auto; }
-	.toast { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--accent); color: #fff; font: 500 19px/26px var(--mono); padding: 9px 18px; border-radius: 8px; white-space: nowrap; }
 
-	/* run */
-	.runhead { padding: 12px 18px; border-bottom: 2px solid var(--line); font: 600 21px var(--display); display: flex; gap: 12px; align-items: baseline; }
-	.runhead span { font: 500 17px var(--mono); color: var(--muted); }
-	.check { display: flex; gap: 14px; padding: 9px 18px; font: 500 19px/28px var(--mono); border-bottom: 2px solid var(--line); }
-	.check:last-child { border-bottom: 0; }
-	.check.bad { background: var(--fail-soft); }
+	.rows { position: absolute; left: 30px; top: 196px; width: 556px; }
+	.row { display: flex; align-items: center; gap: 12px; height: 44px; font: 500 20px var(--mono); white-space: nowrap; }
+	.row.bad { background: var(--fail-soft); margin: 0 -8px; padding: 0 8px; border-radius: 6px; }
+	.note { font: 400 20px var(--body); padding-left: 2px; }
+	.who { font: 600 15px/26px var(--mono); padding: 0 9px; border-radius: 6px; min-width: 76px; text-align: center; }
+	.who.planner { color: var(--planner); background: var(--planner-soft); }
+	.who.caller { color: var(--accent); background: var(--accent-soft); }
+	.who.qa { color: var(--qa); background: var(--qa-soft); }
+	.who.dev { color: var(--dev); background: var(--dev-soft); }
+	.pass { color: var(--pass); } .fail { color: var(--fail); } .gap { color: var(--gap); } .muted { color: var(--muted); } .accent { color: var(--accent); }
+	.ev { font: 500 15px/24px var(--mono); color: var(--fail); background: var(--surface); border: 2px solid #ecc5bf; border-radius: 6px; padding: 0 8px; margin-left: auto; }
 
-	/* end */
-	.end { display: flex; align-items: center; justify-content: center; gap: 18px; height: 100%; font: 600 46px var(--display); }
-	.end .markrow { gap: 8px; }
-	.end .markrow i { width: 34px; height: 34px; border-width: 4px; }
+	.token { position: absolute; top: 118px; transform: translateX(-50%); font: 600 16px/28px var(--mono); padding: 0 11px; border-radius: 7px; white-space: nowrap; color: #fff; box-shadow: 0 2px 0 rgba(0,0,0,0.12); }
+
+	.stamp { position: absolute; left: 50%; top: 300px; transform: translateX(-50%); background: var(--accent); color: #fff; font: 600 21px/30px var(--display); padding: 8px 20px; border-radius: 9px; white-space: nowrap; }
+
+	.term { position: absolute; left: 28px; top: 82px; width: 584px; padding: 14px 20px; background: var(--surface); border: 2px solid var(--line); border-radius: 10px; font: 500 19px/40px var(--mono); }
+	.term .p { color: var(--muted); }
+	.solo-note { position: absolute; left: 28px; top: 250px; width: 584px; font: 400 20px/30px var(--body); color: var(--muted); }
+	.brand { position: absolute; left: 0; right: 0; top: 330px; display: flex; justify-content: center; align-items: center; gap: 14px; font: 600 30px var(--display); }
+	.brand .markrow { gap: 6px; }
+	.brand .markrow i { width: 22px; height: 22px; border-width: 3px; }
 </style>
 <main>
 
-<section class="scene" data-start="0" data-length="5.2">
-	<h1>1. Claude writes a plan</h1>
-	<div class="card term">
-		<div data-in="0.3"><span class="prompt">&gt;</span> /checkmate:plan checkout</div>
-		<div style="height: 14px"></div>
-		<div data-in="1.3" class="accent">needs_decision checkout@1</div>
-		<div data-in="2.0">G1 &nbsp;Does the promotion stack</div>
-		<div data-in="2.0">&nbsp; &nbsp; with loyalty?</div>
-		<div data-in="3.0"><span class="muted">Next:</span> answer G1 in /checkmate:ui</div>
+<section class="scene" data-start="0" data-length="24.6">
+	<div class="mode">team mode</div>
+	<div class="station" style="left: 28px">Planner</div>
+	<div class="station" style="left: 178px">Caller</div>
+	<div class="station" style="left: 328px">QA</div>
+	<div class="station" style="left: 478px">Dev</div>
+	<div class="belt"></div>
+	<div class="ledger">
+		<div class="head"><div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>checkmate<span class="db">system of record</span></div>
 	</div>
 </section>
 
-<section class="scene" data-start="5.2" data-length="5.8">
-	<h1>2. The caller answers the gap and approves</h1>
-	<div class="card" style="padding-bottom: 16px">
-		<div class="bar">
-			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
-			<span>checkmate</span>
-			<span class="tab">Inbox <span class="count">2</span></span>
-			<span class="live">● Live</span>
-		</div>
-		<div style="position: relative">
-			<div data-in="0" data-out="3.0">
-				<div class="group">Gaps to answer · 1</div>
-				<div class="row focus">
-					<div class="line">checkout · G1 <span class="pill fail right">● blocking</span></div>
-					<div class="q">Does the promotion stack with loyalty?</div>
-					<div class="line accent" data-in="1.2">Clarify: 240 PLN</div>
-				</div>
-			</div>
-			<div data-in="3.3" style="position: absolute; inset: 0 0 auto">
-				<div class="group">Plans to approve · 1</div>
-				<div class="row focus"><div class="line">checkout@2</div></div>
-			</div>
-		</div>
+<section class="scene" data-start="0" data-length="5">
+	<h1><b>1</b>Planner agent drafts the plan</h1>
+	<div class="station on" style="left: 28px; background: var(--planner)">Planner</div>
+	<div class="token" style="background: var(--ink)" data-in="0" data-out="0.9" data-path="-60 95" data-move="0 0.8">SHOP-12</div>
+	<div class="rows">
+		<div class="row" data-in="0.9"><span class="who planner">planner</span>plan checkout@1 · 3 tests</div>
+		<div class="row" data-in="1.7"><span class="who planner">planner</span><span class="gap">needs_decision · gap G1</span></div>
+		<div class="row note" data-in="2.4">G1: Does the promo stack with loyalty?</div>
 	</div>
-	<div class="toast" data-in="1.8" data-out="3.0">Answered checkout · G1</div>
-	<div class="toast" data-in="4.2">Approved checkout@2</div>
+	<div class="token" style="background: var(--gap)" data-in="3.3" data-path="95 245" data-move="3.5 4.4">G1</div>
 </section>
 
-<section class="scene" data-start="11" data-length="5.4">
-	<h1>3. Claude runs the tests with evidence</h1>
-	<div class="card">
-		<div class="runhead">run-1 <span>checkout@2</span></div>
-		<div class="check" data-in="0.6"><span>T1.A1</span><span class="pass">✓ passed</span></div>
-		<div class="check" data-in="1.3"><span>T2.A1</span><span class="pass">✓ passed</span></div>
-		<div class="check bad" data-in="2.0" style="flex-wrap: wrap; row-gap: 0"><span>T3.A1</span><span class="fail">✗ failed</span><span style="width: 100%" class="fail">totalPLN 220; expected 240</span></div>
-		<div class="check" data-in="3.2"><span class="pill fail">✗ defect</span><span>F1</span></div>
+<section class="scene" data-start="5" data-length="5">
+	<h1><b>2</b>The caller agent answers the gap</h1>
+	<div class="station on" style="left: 178px; background: var(--accent)">Caller</div>
+	<div class="rows">
+		<div class="row" data-in="0.5"><span class="who caller">caller</span>gap answer checkout G1</div>
+		<div class="row note accent" data-in="1.1">The promo replaces loyalty: 240 PLN.</div>
+		<div class="row" data-in="2.0"><span class="who planner">planner</span>revise → checkout@2</div>
+		<div class="row" data-in="2.9"><span class="who caller">caller</span>plan approve checkout@2 <span class="pass">✓</span></div>
 	</div>
 </section>
 
-<section class="scene" data-start="16.4" data-length="3.8">
-	<h1>4. The caller accepts the result</h1>
-	<div class="card" style="padding-bottom: 16px">
-		<div class="bar">
-			<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
-			<span>checkmate</span>
-			<span class="tab">Inbox <span class="count">1</span></span>
-			<span class="live">● Live</span>
-		</div>
-		<div class="group">Results to accept · 1</div>
-		<div class="row focus">
-			<div class="line">run-1 <span class="muted">checkout@2</span> <span class="pill pass right">✓ 2</span><span class="pill fail">✗ 1</span></div>
-		</div>
+<section class="scene" data-start="10" data-length="5">
+	<h1><b>3</b>QA agent runs the tests</h1>
+	<div class="station on" style="left: 328px; background: var(--qa)">QA</div>
+	<div class="rows">
+		<div class="row" data-in="0.5"><span class="who qa">qa</span>run-1 T1 <span class="pass">✓ passed</span></div>
+		<div class="row" data-in="1.0"><span class="who qa">qa</span>run-1 T2 <span class="pass">✓ passed</span></div>
+		<div class="row bad" data-in="1.6"><span class="who qa">qa</span><span class="fail">run-1 T3 ✗ 220, expected 240</span><span class="ev">evidence</span></div>
+		<div class="row" data-in="2.5"><span class="who qa">qa</span><span class="fail">finding F1 · defect</span></div>
 	</div>
-	<div class="toast" data-in="1.4">Accepted run-1</div>
+	<div class="token" style="background: var(--fail)" data-in="3.4" data-path="395 545" data-move="3.6 4.5">F1</div>
 </section>
 
-<section class="scene" data-start="20.2" data-length="2.6">
-	<div class="end">
-		<div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>
-		<span>checkmate</span>
+<section class="scene" data-start="15" data-length="5.4">
+	<h1><b>4</b>Dev agent fixes, QA agent retests</h1>
+	<div class="station on" style="left: 478px; background: var(--dev)" data-in="0" data-out="1.6">Dev</div>
+	<div class="station on" style="left: 328px; background: var(--qa)" data-in="1.6">QA</div>
+	<div class="token" style="background: var(--dev)" data-in="0.4" data-out="1.9" data-path="545 395" data-move="0.7 1.6">build 1.4.1</div>
+	<div class="rows">
+		<div class="row note muted" data-in="0.3">The dev agent reads F1 and fixes the code.</div>
+		<div class="row" data-in="1.8"><span class="who caller">caller</span>run-2 --retest-of run-1</div>
+		<div class="row" data-in="2.7"><span class="who qa">qa</span>run-2 T3 <span class="pass">✓ total 240</span></div>
+		<div class="row note muted" data-in="3.5">run-1 stays as it was.</div>
 	</div>
+</section>
+
+<section class="scene" data-start="20.4" data-length="4.2">
+	<h1><b>5</b>The caller accepts the result</h1>
+	<div class="station on" style="left: 178px; background: var(--accent)">Caller</div>
+	<div class="token" style="background: var(--qa)" data-in="0.2" data-out="1.2" data-path="395 245" data-move="0.3 1.1">run-2</div>
+	<div class="rows">
+		<div class="row" data-in="1.0"><span class="who caller">caller</span>result accept run-2 <span class="pass">✓</span></div>
+		<div class="row note muted" data-in="1.6">Plans, decisions, runs, and evidence</div>
+		<div class="row note muted" data-in="1.6" style="margin-top: -10px">stay in .checkmate/checkmate.db</div>
+	</div>
+</section>
+
+<section class="scene" data-start="24.6" data-length="5">
+	<h1>Solo: the same flow in Claude Code</h1>
+	<div class="mode">solo mode</div>
+	<div class="term">
+		<div data-in="0.4"><span class="p">&gt;</span> /checkmate:plan checkout</div>
+		<div data-in="1.0"><span class="p">&gt;</span> /checkmate:ui</div>
+		<div data-in="1.6"><span class="p">&gt;</span> /checkmate:execute checkout@2</div>
+	</div>
+	<div class="solo-note" data-in="2.2">You are the caller.<br />Test your own work, or verify the work of a teammate.</div>
+	<div class="brand" data-in="3.0"><div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>checkmate</div>
 </section>
 
 </main>
 <script>
-	const fade = 0.4
+	const fade = 0.35
 	const scenes = [...document.querySelectorAll('.scene')]
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
+	const ease = (t) => t * t * (3 - 2 * t)
 
-	window.DURATION = 22.8
-	// The renderer calls measure() once before the first frame. Nothing needs measuring here.
+	window.DURATION = 29.6
 	window.measure = () => {}
-	// Show the frame at a time in seconds. Scenes cross-fade; elements fade in at data-in and out at data-out.
 	window.renderFrame = (time) => {
 		for (const scene of scenes) {
 			const start = Number(scene.dataset.start)
 			const end = start + Number(scene.dataset.length)
-			const last = scene === scenes.at(-1)
-			scene.style.opacity = start === 0 ? (last ? 1 : 1 - ramp(time, end, fade)) : ramp(time, start, fade) * (last ? 1 : 1 - ramp(time, end, fade))
+			const shown = start === 0 ? 1 : ramp(time, start, fade)
+			const hidden = end >= window.DURATION ? 0 : ramp(time, end - fade, fade)
+			scene.style.opacity = shown * (1 - hidden)
 			const local = time - start
 			for (const element of scene.querySelectorAll('[data-in]')) {
-				const shown = ramp(local, Number(element.dataset.in), fade)
-				const hidden = element.dataset.out ? ramp(local, Number(element.dataset.out), fade) : 0
-				element.style.opacity = shown * (1 - hidden)
+				const elementShown = ramp(local, Number(element.dataset.in), fade)
+				const elementHidden = element.dataset.out ? ramp(local, Number(element.dataset.out), fade) : 0
+				element.style.opacity = elementShown * (1 - elementHidden)
+			}
+			for (const element of scene.querySelectorAll('[data-path]')) {
+				const [from, to] = element.dataset.path.split(' ').map(Number)
+				const [moveStart, moveEnd] = element.dataset.move.split(' ').map(Number)
+				const progress = ease(ramp(local, moveStart, moveEnd - moveStart))
+				element.style.left = `${from + (to - from) * progress}px`
 			}
 		}
 	}

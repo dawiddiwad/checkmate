@@ -199,7 +199,7 @@
 				<text class="name" x="404" y="218" style="fill: var(--caller)">Caller</text>
 				<text class="what" x="404" y="258">Answers the gap.</text>
 				<text class="what" x="404" y="288">Approves the plan.</text>
-				<text class="code" x="404" y="328" style="fill: var(--green)">plan@2 approved</text>
+				<text class="code" x="404" y="328" style="fill: var(--green)">checkout@2 ✓</text>
 
 				<rect class="station" x="764" y="176" width="260" height="176" rx="6" />
 				<text class="name" x="786" y="218" style="fill: var(--qa)">QA agent</text>
@@ -233,18 +233,18 @@
 				<rect x="0" y="420" width="1406" height="180" rx="6" fill="#161f2e" stroke="#2c4a8c" stroke-width="2" />
 				<text class="name" x="22" y="462" style="fill: var(--blue)">Checkmate</text>
 				<text class="small" x="186" y="461">system of record · .checkmate/checkmate.db</text>
-				<text class="code" x="22" y="512">plan@1</text>
+				<text class="code" x="22" y="512">checkout@1</text>
 				<text class="code" x="22" y="546" style="fill: var(--amber)">needs_decision</text>
 				<text class="code" x="22" y="580" style="fill: var(--muted)">gap G1 open</text>
 				<text class="code" x="404" y="512">gap answer G1</text>
 				<text class="code" x="404" y="546">plan approve</text>
-				<text class="code" x="404" y="580" style="fill: var(--muted)">plan@2 locked</text>
+				<text class="code" x="404" y="580" style="fill: var(--muted)">edit → checkout@3</text>
 				<text class="code" x="786" y="512">result + evidence</text>
 				<text class="code" x="786" y="546" style="fill: var(--red)">run-1 finding F1</text>
 				<text class="code" x="786" y="580" style="fill: var(--muted)">run-2 --retest-of</text>
 				<text class="code" x="1168" y="512">result accept</text>
 				<text class="code" x="1168" y="546">actor + rationale</text>
-				<text class="code" x="1168" y="580" style="fill: var(--muted)">run-1 kept</text>
+				<text class="code" x="1168" y="580" style="fill: var(--muted)">run-1 unchanged</text>
 			</svg>
 			<div class="caption">
 				Checkmate does not run the agents. Each agent reads and writes the same records:
@@ -260,6 +260,7 @@
 				<div class="term">
 					<div><span>&gt;</span> /checkmate:plan checkout from docs/checkout.md</div>
 					<div><span>&gt;</span> /checkmate:ui</div>
+					<div><span>&gt;</span> /checkmate:revise checkout</div>
 					<div><span>&gt;</span> /checkmate:execute checkout@2</div>
 				</div>
 			</div>

@@ -75,7 +75,7 @@ Each command prints `<status> <subject>` on line 1. `needs_decision` exits with 
 
 ## Solo mode: your Claude Code
 
-Use the plugin when you work alone. You are the caller. Drive the tests for your own change, or verify the work of a teammate, for example as a QA.
+Use the plugin when you work alone. You are the caller. Drive the tests for your own change, or verify the work of a teammate, for example as the QA engineer.
 
 You need the plugin, Node.js 24.12.0 or later, and the tools that your tests use. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`. You do not need the npm CLI.
 

@@ -34,7 +34,7 @@
 	.markrow i { width: 11px; height: 11px; border: 2px solid var(--ink); display: block; }
 	.markrow i.on { background: var(--ink); }
 
-	.rows { position: absolute; left: 30px; top: 196px; width: 556px; }
+	.rows { position: absolute; left: 46px; top: 196px; width: 548px; }
 	.row { display: flex; align-items: center; gap: 12px; height: 44px; font: 500 20px var(--mono); white-space: nowrap; }
 	.row.bad { background: var(--fail-soft); margin: 0 -8px; padding: 0 8px; border-radius: 6px; }
 	.note { font: 400 20px var(--body); padding-left: 2px; }
@@ -50,10 +50,10 @@
 
 	.stamp { position: absolute; left: 50%; top: 300px; transform: translateX(-50%); background: var(--accent); color: #fff; font: 600 21px/30px var(--display); padding: 8px 20px; border-radius: 9px; white-space: nowrap; }
 
-	.term { position: absolute; left: 28px; top: 82px; width: 584px; padding: 14px 20px; background: var(--surface); border: 2px solid var(--line); border-radius: 10px; font: 500 19px/40px var(--mono); }
+	.term { position: absolute; left: 28px; top: 82px; width: 584px; padding: 12px 20px; background: var(--surface); border: 2px solid var(--line); border-radius: 10px; font: 500 19px/36px var(--mono); }
 	.term .p { color: var(--muted); }
-	.solo-note { position: absolute; left: 28px; top: 250px; width: 584px; font: 400 20px/30px var(--body); color: var(--muted); }
-	.brand { position: absolute; left: 0; right: 0; top: 330px; display: flex; justify-content: center; align-items: center; gap: 14px; font: 600 30px var(--display); }
+	.solo-note { position: absolute; left: 28px; top: 264px; width: 584px; font: 400 20px/30px var(--body); color: var(--muted); }
+	.brand { position: absolute; left: 0; right: 0; top: 340px; display: flex; justify-content: center; align-items: center; gap: 14px; font: 600 30px var(--display); }
 	.brand .markrow { gap: 6px; }
 	.brand .markrow i { width: 22px; height: 22px; border-width: 3px; }
 </style>
@@ -74,7 +74,7 @@
 <section class="scene" data-start="0" data-length="5">
 	<h1><b>1</b>Planner agent drafts the plan</h1>
 	<div class="station on" style="left: 28px; background: var(--planner)">Planner</div>
-	<div class="token" style="background: var(--ink)" data-in="0" data-out="0.9" data-path="-60 95" data-move="0 0.8">SHOP-12</div>
+	<div class="token" style="background: var(--ink)" data-in="0" data-out="0.9" data-path="95 95" data-move="0 0.8">SHOP-12</div>
 	<div class="rows">
 		<div class="row" data-in="0.9"><span class="who planner">planner</span>plan checkout@1 · 3 tests</div>
 		<div class="row" data-in="1.7"><span class="who planner">planner</span><span class="gap">needs_decision · gap G1</span></div>
@@ -136,10 +136,11 @@
 	<div class="term">
 		<div data-in="0.4"><span class="p">&gt;</span> /checkmate:plan checkout</div>
 		<div data-in="1.0"><span class="p">&gt;</span> /checkmate:ui</div>
-		<div data-in="1.6"><span class="p">&gt;</span> /checkmate:execute checkout@2</div>
+		<div data-in="1.6"><span class="p">&gt;</span> /checkmate:revise checkout</div>
+		<div data-in="2.0"><span class="p">&gt;</span> /checkmate:execute checkout@2</div>
 	</div>
-	<div class="solo-note" data-in="2.2">You are the caller.<br />Test your own work, or verify the work of a teammate.</div>
-	<div class="brand" data-in="3.0"><div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>checkmate</div>
+	<div class="solo-note" data-in="2.6">You are the caller.<br />Test your own work, or verify the work of a teammate.</div>
+	<div class="brand" data-in="3.3"><div class="markrow"><i></i><i></i><i class="on"></i><i></i></div>checkmate</div>
 </section>
 
 </main>

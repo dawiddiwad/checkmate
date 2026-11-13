@@ -19,6 +19,7 @@ import {
 	showPlanRequest,
 } from '../plugin/src/plans.ts'
 import { beginRun, runState } from '../plugin/src/runs.ts'
+import { resultCoverage } from '../plugin/src/contracts.ts'
 import { inbox, planDetail, planHistory } from '../plugin/src/views.ts'
 import { actor, approved, candidate, plan, planRequest, promotionDelta, revised, store, target } from './support.ts'
 
@@ -371,10 +372,53 @@ test('the gate needs an approval of the exact revision, and a new revision needs
 	revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
 	assert.deepEqual(gate(opened, { ...gateInput, reference: 'checkout@3' }).reply.reasons, [
 		'Plan checkout@3 is not approved',
-		'Test is not ready: T2',
 	])
 	approved(opened, 'checkout', 3)
-	assert.deepEqual(gate(opened, { ...gateInput, reference: 'checkout@3' }).reply.reasons, ['Test is not ready: T2'])
+	assert.equal(gate(opened, { ...gateInput, reference: 'checkout@3' }).reply.status, 'completed')
+})
+
+test('only a deferred blocking gap defers its tests and their requirements', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened, 'checkout', withG3())
+	revised(opened)
+	answerGap(opened, actor, { planId: 'checkout', gapId: 'G3', kind: 'defer', value: 'Later.', rationale: 'Scope.' })
+	revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
+	const third = planRevision(opened, 'checkout', 3).plan
+	assert.deepEqual(
+		third.gaps.map((gap) => [gap.id, gap.severity, gap.status]),
+		[
+			['G1', 'blocking', 'resolved'],
+			['G2', 'blocking', 'deferred'],
+			['G3', 'non_blocking', 'deferred'],
+		]
+	)
+	assert.deepEqual(
+		third.tests.map((test) => [test.id, test.readiness]),
+		[
+			['T1', 'ready'],
+			['T2', 'ready'],
+			['T3', 'deferred'],
+		]
+	)
+	assert.deepEqual(
+		third.coverage.map((row) => [row.requirementId, row.status]),
+		[
+			['R1', 'planned'],
+			['R2', 'planned'],
+			['R3', 'deferred'],
+		]
+	)
+	const passed = (testId: string) => ({ testId, outcome: 'passed' as const, reason: null, assertions: [] })
+	const coverage = resultCoverage(third, [passed('T1'), passed('T2')], [])
+	assert.deepEqual(
+		coverage.requirements.map((row) => [row.requirementId, row.status]),
+		[
+			['R1', 'tested'],
+			['R2', 'tested'],
+			['R3', 'deferred'],
+		]
+	)
 })
 
 test('the gate collects every reason in order', (t) => {

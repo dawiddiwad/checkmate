@@ -38,6 +38,6 @@ Rules:
 - A new assertion needs both `check` and `checkKind`. A change can give only the changed field.
 - `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision.
 - `accept_assumption`: write the assertions that the assumption makes known.
-- `defer`: change no assertion for that gap. Send `{ "tests": {} }` when every decision is `defer`.
+- `defer`: change no assertion for that gap. A deferred blocking gap defers its tests. A deferred non-blocking gap only closes, and its tests stay ready. Send `{ "tests": {} }` when every decision is `defer`.
 - Do not write gap status, decisions, or assumptions. Checkmate applies them from the pending decisions.
 - Do not invent a decision. Do not answer a gap. Only the oracle records a decision, with `checkmate gap answer` or in the review UI.

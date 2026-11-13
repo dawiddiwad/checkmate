@@ -135,7 +135,7 @@ export function gapsAffecting(gaps: Gap[], test: Pick<Test, 'id' | 'requirementI
 
 export function testReadiness(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds'>): Test['readiness'] {
 	const affected = gapsAffecting(gaps, test)
-	if (affected.some((gap) => gap.status === 'deferred')) return 'deferred'
+	if (affected.some((gap) => gap.status === 'deferred' && gap.severity === 'blocking')) return 'deferred'
 	if (affected.some((gap) => gap.status === 'open' && gap.severity === 'blocking')) return 'blocked'
 	return 'ready'
 }
@@ -147,7 +147,8 @@ export function planCoverage(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>
 			(gap) => gap.requirementIds.includes(requirement.id) || (!gap.requirementIds.length && !gap.testIds.length)
 		)
 		const status =
-			gaps.some((gap) => gap.status === 'deferred') || tests.some((test) => test.readiness === 'deferred')
+			gaps.some((gap) => gap.status === 'deferred' && gap.severity === 'blocking') ||
+			tests.some((test) => test.readiness === 'deferred')
 				? 'deferred'
 				: gaps.some((gap) => gap.severity === 'blocking' && gap.status === 'open') ||
 					  tests.some((test) => test.readiness === 'blocked') ||
@@ -309,7 +310,7 @@ export function resultCoverage(plan: Plan, tests: ResultTest[], newGaps: Gap[]):
 			(gap) => gap.requirementIds.includes(requirement.id) || (!gap.requirementIds.length && !gap.testIds.length)
 		)
 		const blocking = gaps.some((gap) => gap.status === 'open' && gap.severity === 'blocking')
-		const deferredGap = gaps.some((gap) => gap.status === 'deferred')
+		const deferredGap = gaps.some((gap) => gap.status === 'deferred' && gap.severity === 'blocking')
 		const tested = planned.length > 0 && !blocking && !deferredGap && planned.every(conclusive)
 		const deferred =
 			!tested &&

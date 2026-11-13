@@ -868,7 +868,7 @@ function notReadyReason(store: Store, plan: Plan, test: Test, build: string) {
 			(gap) =>
 				test.gapIds.includes(gap.id) &&
 				(test.readiness === 'deferred'
-					? gap.status === 'deferred'
+					? gap.status === 'deferred' && gap.severity === 'blocking'
 					: gap.status === 'open' && gap.severity === 'blocking')
 		)
 		return `${test.readiness} by ${gaps.map((gap) => gap.id).join(', ')}`

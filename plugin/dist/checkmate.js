@@ -6276,7 +6276,7 @@ function gapsAffecting(gaps, test) {
 }
 function testReadiness(gaps, test) {
   const affected = gapsAffecting(gaps, test);
-  if (affected.some((gap) => gap.status === "deferred")) return "deferred";
+  if (affected.some((gap) => gap.status === "deferred" && gap.severity === "blocking")) return "deferred";
   if (affected.some((gap) => gap.status === "open" && gap.severity === "blocking")) return "blocked";
   return "ready";
 }
@@ -6286,7 +6286,7 @@ function planCoverage(plan) {
     const gaps = plan.gaps.filter(
       (gap) => gap.requirementIds.includes(requirement.id) || !gap.requirementIds.length && !gap.testIds.length
     );
-    const status = gaps.some((gap) => gap.status === "deferred") || tests.some((test) => test.readiness === "deferred") ? "deferred" : gaps.some((gap) => gap.severity === "blocking" && gap.status === "open") || tests.some((test) => test.readiness === "blocked") || tests.length === 0 ? "blocked" : "planned";
+    const status = gaps.some((gap) => gap.status === "deferred" && gap.severity === "blocking") || tests.some((test) => test.readiness === "deferred") ? "deferred" : gaps.some((gap) => gap.severity === "blocking" && gap.status === "open") || tests.some((test) => test.readiness === "blocked") || tests.length === 0 ? "blocked" : "planned";
     return { requirementId: requirement.id, testIds: tests.map((test) => test.id), status };
   });
 }
@@ -6432,7 +6432,7 @@ function resultCoverage(plan, tests, newGaps2) {
       (gap) => gap.requirementIds.includes(requirement.id) || !gap.requirementIds.length && !gap.testIds.length
     );
     const blocking = gaps.some((gap) => gap.status === "open" && gap.severity === "blocking");
-    const deferredGap = gaps.some((gap) => gap.status === "deferred");
+    const deferredGap = gaps.some((gap) => gap.status === "deferred" && gap.severity === "blocking");
     const tested = planned.length > 0 && !blocking && !deferredGap && planned.every(conclusive);
     const deferred = !tested && !blocking && (deferredGap || planned.some((test) => test.readiness === "deferred")) && planned.every((test) => test.readiness === "deferred" || conclusive(test));
     return {
@@ -7317,7 +7317,7 @@ function readySelection(store, plan, build) {
 function notReadyReason(store, plan, test, build) {
   if (test.readiness !== "ready") {
     const gaps = plan.gaps.filter(
-      (gap) => test.gapIds.includes(gap.id) && (test.readiness === "deferred" ? gap.status === "deferred" : gap.status === "open" && gap.severity === "blocking")
+      (gap) => test.gapIds.includes(gap.id) && (test.readiness === "deferred" ? gap.status === "deferred" && gap.severity === "blocking" : gap.status === "open" && gap.severity === "blocking")
     );
     return `${test.readiness} by ${gaps.map((gap) => gap.id).join(", ")}`;
   }

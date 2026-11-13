@@ -213,7 +213,7 @@ The plan skill writes a candidate and sends it to `checkmate plan save checkout`
 Checkmate sets these fields. The candidate does not contain them:
 
 - `gapIds`: the gaps that affect the test. A gap affects the tests in `testIds` and every test of the requirements in `requirementIds`. A gap with two empty lists affects every test.
-- `readiness`: `deferred` when an affecting gap is deferred, else `blocked` when an affecting gap is open and blocking, else `ready`.
+- `readiness`: `deferred` when an affecting blocking gap is deferred, else `blocked` when an affecting gap is open and blocking, else `ready`. A deferred non-blocking gap is closed and leaves its tests ready.
 - `coverage`: one row for each requirement, with the status `planned`, `blocked`, or `deferred`.
 
 Rules:
@@ -237,11 +237,11 @@ checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
   --rationale "Product owner decision."
 ```
 
-| Kind                | Effect in the next revision                                                        | Needs                                |
-| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------ |
-| `clarify`           | The gap is `resolved`. The agent writes the assertions that the value makes known. | `--value`, `--rationale`, `--source` |
-| `accept_assumption` | The gap is `resolved`. The value stays visible in `assumptions`.                   | `--value`, `--rationale`             |
-| `defer`             | The gap is `deferred`. Affected tests are `deferred`. Coverage stays incomplete.   | `--value`, `--rationale`             |
+| Kind                | Effect in the next revision                                                                                                             | Needs                                |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `clarify`           | The gap is `resolved`. The agent writes the assertions that the value makes known.                                                      | `--value`, `--rationale`, `--source` |
+| `accept_assumption` | The gap is `resolved`. The value stays visible in `assumptions`.                                                                        | `--value`, `--rationale`             |
+| `defer`             | The gap is `deferred`. For a blocking gap, affected tests are `deferred` and coverage stays incomplete. A non-blocking gap only closes. | `--value`, `--rationale`             |
 
 The gap must be open in the latest revision, or be a gap of a run of the plan that the plan does not have yet. For a run gap, `gap answer` first adopts the gap as `plan adopt-gaps` does, then records the decision on the adopted revision. When two runs have a gap with the same ID, adopt one with `plan adopt-gaps --gaps` first. A gap can have one pending decision.
 

@@ -1,5 +1,4 @@
-// Renders docs/img/onboarding.gif and docs/img/checkmate-infographic.png from docs/media.
-// Use --only onboarding to render the GIF alone.
+// Renders docs/img/onboarding.gif from docs/media/onboarding.html.
 import { chromium } from 'playwright-core'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,7 +7,6 @@ import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
 const framesPerSecond = 10
-const onlyOnboarding = process.argv.slice(2).join(' ') === '--only onboarding'
 const media = (name: string) => pathToFileURL(join(process.cwd(), 'docs/media', name)).href
 const frames = await mkdtemp(join(tmpdir(), 'checkmate-animation-'))
 const browser = await chromium.launch({
@@ -17,13 +15,6 @@ const browser = await chromium.launch({
 })
 type Animation = { DURATION: number; measure: () => void; renderFrame: (seconds: number) => void }
 try {
-	if (!onlyOnboarding) {
-		const overview = await browser.newPage({ viewport: { width: 1600, height: 1200 }, deviceScaleFactor: 1 })
-		await overview.goto(media('infographic.html'))
-		await overview.evaluate(() => document.fonts.ready)
-		await overview.locator('main').screenshot({ path: 'docs/img/checkmate-infographic.png' })
-	}
-
 	const page = await browser.newPage({ viewport: { width: 900, height: 756 }, deviceScaleFactor: 1 })
 	await page.goto(media('onboarding.html'))
 	await page.evaluate(() => document.fonts.ready)
@@ -55,7 +46,7 @@ try {
 		],
 		{ stdio: 'inherit' }
 	)
-	console.log(`Rendered ${onlyOnboarding ? '' : 'the infographic and '}a ${duration}-second onboarding animation.`)
+	console.log(`Rendered a ${duration}-second onboarding animation.`)
 } finally {
 	await browser.close()
 	await rm(frames, { recursive: true, force: true })

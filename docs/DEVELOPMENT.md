@@ -67,20 +67,19 @@ The GitHub Actions token needs write access to repository contents. Repository r
 
 ## Documentation media
 
-`docs/media/onboarding.html` defines the animation scenes. `docs/media/infographic.html` defines the static overview. Both use the dark tokens in `docs/media/style.css` and draw the same swimlane diagram: lanes for the planner, the oracle, QA, and the factory, a Checkmate record lane at the bottom, and time from left to right. A dashed step in the oracle lane is a human in the review UI. The animation is 900 by 756 pixels. Its top band is a loop of stations around the record, with the return path from the QA retest to the planner for a new revision. The band below it is the swimlane: when a step appears in its lane, the matching station lights up, and the centre shows the records of that step. Keep one idea per scene and few records in each frame. `docs/media/swimlane.js` places the records under each step and draws the arrows. The animation is an illustrated workflow. It is not a live test recording.
+`docs/media/onboarding.html` defines the animation scenes. It uses the dark tokens in `docs/media/style.css`. The animation is 900 by 756 pixels. Its top band is a ring of four stations around the record: the planner and the oracle on the top edge, the factory and QA on the bottom edge, and the human badge for the review UI below. A retest is QA again on a new build. The amber path on the left edge goes from QA back to the planner for a new revision. The band below it is a swimlane diagram: lanes for the planner, the oracle, QA, and the factory, a Checkmate record lane at the bottom, and time from left to right. A dashed step in the oracle lane is a human in the review UI. The ring and the lanes match one to one: when a step appears in its lane, the matching station lights up, and the centre shows the records of that step. Keep one idea per scene and few records in each frame. `docs/media/swimlane.js` places the records under each step and draws the arrows. The animation is an illustrated workflow. It is not a live test recording.
 
-The animation uses a small timeline in `onboarding.html`. Each step and record has `data-t`, the time in seconds when it appears. Each caption has `data-from` and `data-to`. A step with `data-station` also lights that station of the loop. `pans` sets where the track moves, and `window.DURATION` is the total. Give each scene enough time to read, about 4 to 6 seconds. Keep the scenes flat, so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
+The animation uses a small timeline in `onboarding.html`. Each step and record has `data-t`, the time in seconds when it appears. Each caption has `data-from` and `data-to`. A step with `data-station` also lights that station of the ring. `pans` sets where the track moves, and `window.DURATION` is the total. Give each scene enough time to read, about 4 to 6 seconds. Keep the scenes flat, so the GIF stays small. Prettier does not format these pages, because their text keeps exact whitespace.
 
-Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation and the overview:
+Install Chromium and FFmpeg. Install development dependencies with `npm ci`. Render the animation:
 
 ```sh
 node scripts/render-onboarding.ts
-node scripts/render-onboarding.ts --only onboarding
 ```
 
-Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The first command updates `docs/img/onboarding.gif` and `docs/img/checkmate-infographic.png`. The second command updates only the GIF. Both pages load their fonts from `plugin/src/ui/assets/fonts/`. The script does not build the plugin.
+Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The command updates `docs/img/onboarding.gif`. The page loads its fonts from `plugin/src/ui/assets/fonts/`. The script does not build the plugin.
 
-Keep the labels in both images consistent with the workflow. The README and the images use "oracle" for the person or agent that decides. The other docs call it the caller.
+Keep the labels of the animation consistent with the workflow. The README and the animation use "oracle" for the person or agent that decides. The other docs call it the caller.
 
 `docs/examples/` contains exports from a live run. Do not edit them by hand. To update them, run `npm run test:live`, then export the plans and runs from the printed workspace with `checkmate export --out`. Read `docs/examples/README.md`.
 

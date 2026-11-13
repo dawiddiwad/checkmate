@@ -77,22 +77,18 @@
 <main>
 	<div class="loop">
 		<svg width="900" height="336">
-			<rect class="ring" x="190" y="26" width="520" height="244" rx="24" />
+			<rect class="ring" x="210" y="26" width="480" height="244" rx="24" />
 			<path class="ring-head" d="M456 26 l-10 -6 v12 z" />
-			<path class="ring-head" d="M710 96 l-6 -10 h12 z" />
-			<path class="ring-head" d="M710 210 l-6 -10 h12 z" />
-			<path class="ring-head" d="M400 270 l10 -6 v12 z" />
-			<path class="ring-head" d="M190 196 l-6 10 h12 z" />
-			<path class="ring-head" d="M190 86 l-6 10 h12 z" />
-			<path class="change" data-light="change" d="M238 270 H214 Q190 270 190 246 V50 Q190 26 214 26 H238" />
-			<path class="ring-head" data-light="change" style="fill: var(--amber)" d="M190 86 l-7 11 h14 z" />
-			<line class="spoke" x1="300" y1="44" x2="300" y2="50" />
-			<line class="spoke" x1="600" y1="44" x2="600" y2="50" />
-			<line class="spoke" x1="648" y1="148" x2="620" y2="148" />
-			<line class="spoke" x1="600" y1="252" x2="600" y2="242" />
-			<line class="spoke" x1="300" y1="252" x2="300" y2="242" />
+			<path class="ring-head" d="M690 154 l-6 -10 h12 z" />
+			<path class="ring-head" d="M480 270 l10 -6 v12 z" />
+			<path class="ring-head" d="M210 142 l-6 10 h12 z" />
+			<path class="change" data-light="change" d="M268 270 H234 Q210 270 210 246 V50 Q210 26 234 26 H268" />
+			<path class="ring-head" data-light="change" style="fill: var(--amber)" d="M210 141 l-7 11 h14 z" />
+			<line class="spoke" x1="330" y1="44" x2="330" y2="50" />
+			<line class="spoke" x1="570" y1="44" x2="570" y2="50" />
+			<line class="spoke" x1="570" y1="252" x2="570" y2="242" />
+			<line class="spoke" x1="330" y1="252" x2="330" y2="242" />
 			<line class="spoke" x1="450" y1="242" x2="450" y2="300" />
-			<line class="hot" data-light="qa" style="stroke: var(--qa)" x1="648" y1="148" x2="620" y2="148" />
 			<line class="hot" data-light="human" style="stroke: var(--human)" x1="450" y1="242" x2="450" y2="300" />
 		</svg>
 		<div class="return">new gaps or<br />plan change:<br />new revision<div class="lit" data-light="change">new gaps or<br />plan change:<br />new revision</div></div>
@@ -103,11 +99,10 @@
 			<div class="iter" data-from="27" data-to="35.5">iteration 3</div>
 			<div id="groups"></div>
 		</div>
-		<div class="station planner" style="left: 300px; top: 26px">Planner<div class="lit" data-light="planner" style="background: var(--planner)">Planner</div></div>
-		<div class="station oracle" style="left: 600px; top: 26px">Oracle<div class="lit" data-light="oracle" style="background: var(--oracle)">Oracle</div></div>
-		<div class="station qa" style="left: 710px; top: 148px">QA<div class="lit" data-light="qa" style="background: var(--qa)">QA</div></div>
-		<div class="station factory" style="left: 600px; top: 270px">Factory<div class="lit" data-light="factory" style="background: var(--factory)">Factory</div></div>
-		<div class="station qa" style="left: 300px; top: 270px">QA retest<div class="lit" data-light="retest" style="background: var(--qa)">QA retest</div></div>
+		<div class="station planner" style="left: 330px; top: 26px">Planner<div class="lit" data-light="planner" style="background: var(--planner)">Planner</div></div>
+		<div class="station oracle" style="left: 570px; top: 26px">Oracle<div class="lit" data-light="oracle" style="background: var(--oracle)">Oracle</div></div>
+		<div class="station factory" style="left: 570px; top: 270px">Factory<div class="lit" data-light="factory" style="background: var(--factory)">Factory</div></div>
+		<div class="station qa" style="left: 330px; top: 270px">QA<div class="lit" data-light="qa" style="background: var(--qa)">QA</div></div>
 		<div class="badge">human · checkmate ui<div class="lit" data-light="human">human · checkmate ui</div></div>
 	</div>
 
@@ -143,7 +138,7 @@
 				<div class="record gap" data-of="s5" data-row="2" data-t="12.7">G4 run gap</div>
 
 				<div class="step factory" id="s6" style="left: 912px" data-role="factory" data-station="factory" data-t="16">build b2</div>
-				<div class="step qa" id="s7" style="left: 1046px" data-role="qa" data-station="retest" data-t="17.2">retest</div>
+				<div class="step qa" id="s7" style="left: 1046px" data-role="qa" data-station="qa" data-t="17.2">retest</div>
 				<div class="record" data-of="s7" data-row="0" data-t="17.7">run-2 <span class="ok">3 ✓</span> <span class="bad">1 ✗</span></div>
 				<div class="record" data-of="s7" data-row="1" data-t="18.2">retest-of run-1</div>
 				<div class="record defect" data-of="s7" data-row="2" data-t="18.7">F4 defect</div>
@@ -157,7 +152,7 @@
 				<div class="record decision" data-of="s11" data-row="0" data-t="25.3">✓ plan@4</div>
 
 				<div class="step factory" id="s12" style="left: 1842px" data-role="factory" data-station="factory" data-t="27">build c3</div>
-				<div class="step qa" id="s13" style="left: 1976px" data-role="qa" data-station="retest" data-t="28.2">retest</div>
+				<div class="step qa" id="s13" style="left: 1976px" data-role="qa" data-station="qa" data-t="28.2">retest</div>
 				<div class="record" data-of="s13" data-row="0" data-t="28.7">run-3 <span class="ok">4 ✓</span></div>
 				<div class="record" data-of="s13" data-row="1" data-t="29.1">retest-of run-2</div>
 				<div class="step oracle" id="s14" style="left: 2172px" data-role="oracle" data-station="oracle" data-t="32.5">accept</div>

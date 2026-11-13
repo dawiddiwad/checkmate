@@ -16,6 +16,7 @@ import {
 	runResult,
 	stoppedReason,
 } from '../plugin/src/runs.ts'
+import { adoptGaps, planRevision, planRunGaps } from '../plugin/src/plans.ts'
 import { inbox, runDetail } from '../plugin/src/views.ts'
 import { accept, actor, approved, begin, check, evidenceFile, failT2, plan, ready, store } from './support.ts'
 
@@ -492,6 +493,62 @@ test('a runtime gap is new, open, and names known requirements and tests', (t) =
 	assert.throws(() => gap({ testIds: ['login:T1'] }), /Unknown test in gap G7: login:T1/)
 	assert.equal(gap({}).status, 'completed')
 	assert.throws(() => gap({}), /Gap G7 exists in run run-1/)
+})
+
+function runGap(opened: Store, id: string, severity: 'blocking' | 'non_blocking', runId = 'run-1') {
+	return recordGap(opened, actor, {
+		runId,
+		gap: {
+			id,
+			severity,
+			status: 'open',
+			requirementIds: [],
+			testIds: ['T2'],
+			question: `${id}: is the label right?`,
+			consequence: 'Unchecked label.',
+			decisionId: null,
+		},
+	})
+}
+
+test('plan adopt-gaps brings run gaps into the next revision or into an unused revision in place', (t) => {
+	const opened = started(t)
+	runGap(opened, 'G3', 'blocking')
+	runGap(opened, 'G4', 'non_blocking')
+	const adopt = (reference: string, gapIds?: string[]) =>
+		adoptGaps(opened, actor, { reference, runId: 'run-1', gapIds })
+	assert.throws(() => adopt('checkout@1'), /checkout@1 is not the latest revision. Edit checkout@2/)
+	assert.throws(() => adoptGaps(opened, actor, { reference: 'checkout@2', runId: 'run-9' }), /Unknown run: run-9/)
+	assert.throws(() => adopt('checkout@2', ['G9']), /Run run-1 has no gap G9/)
+	const first = adopt('checkout@2', ['G3'])
+	assert.deepEqual(
+		[first.status, first.subject, first.data.edit, first.data.reason, first.data.adopted],
+		['needs_decision', 'checkout@3', 'new_revision', 'run', ['G3']]
+	)
+	assert.deepEqual(first.reasons, ['G3: G3: is the label right?'])
+	const third = planRevision(opened, 'checkout', 3).plan
+	assert.equal(third.tests.find((test) => test.id === 'T2')!.readiness, 'blocked')
+	assert.deepEqual(
+		planRunGaps(opened, 'checkout').map((item) => [item.runId, item.gap.id, item.adopted]),
+		[
+			['run-1', 'G3', true],
+			['run-1', 'G4', false],
+		]
+	)
+	assert.throws(() => adopt('checkout@3', ['G3']), /Gap G3 of run run-1 is in plan checkout/)
+	const second = adopt('checkout@3')
+	assert.deepEqual([second.subject, second.data.edit, second.data.adopted], ['checkout@3', 'in_place', ['G4']])
+	assert.throws(() => adopt('checkout@3'), /Run run-1 has no gap to adopt/)
+	const log = opened.db
+		.prepare("SELECT subjects FROM operations WHERE command = 'plan adopt-gaps' AND status != 'rejected'")
+		.all()
+	assert.deepEqual(
+		log.map((row) => JSON.parse(String(row.subjects))),
+		[
+			['plan:checkout', 'inbox', 'run:run-1'],
+			['plan:checkout', 'inbox', 'run:run-1'],
+		]
+	)
 })
 
 test('result accept and reject need a finished run and record the result digest', (t) => {

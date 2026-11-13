@@ -6777,6 +6777,41 @@ function patchPlan(store, actor, input) {
     return storeEdit(store, operationId, base, patchedCandidate(base.plan, patch));
   });
 }
+function adoptGaps(store, actor, input) {
+  return write(store, { actor, command: "plan adopt-gaps", subject: input.reference, input }, (operationId) => {
+    const base = editableRevision(store, input.reference, input.expectSha256);
+    const planId = base.plan.planId;
+    const run2 = one(store, "SELECT plan_id FROM runs WHERE run_id = ?", input.runId);
+    requireCondition(run2, `Unknown run: ${input.runId}`);
+    requireCondition(run2.plan_id === planId, `Run ${input.runId} tests plan ${run2.plan_id}, not ${planId}`);
+    const recorded = planRunGaps(store, planId).filter((item) => item.runId === input.runId);
+    const gaps = input.gapIds === void 0 ? recorded.filter((item) => !item.adopted).map((item) => item.gap) : input.gapIds.map((id2) => {
+      const item = recorded.find((item2) => item2.gap.id === id2);
+      requireCondition(item, `Run ${input.runId} has no gap ${id2}`);
+      requireCondition(!item.adopted, `Gap ${id2} of run ${input.runId} is in plan ${planId}`);
+      return item.gap;
+    });
+    requireCondition(gaps.length, `Run ${input.runId} has no gap to adopt`);
+    return adoption(store, operationId, base, input.runId, gaps);
+  });
+}
+function adoption(store, operationId, base, runId, gaps) {
+  const candidate = planCandidate(base.plan);
+  const change = storeEdit(store, operationId, base, { ...candidate, gaps: [...candidate.gaps, ...gaps] });
+  change.reply.data.runId = runId;
+  change.reply.data.adopted = gaps.map((gap) => gap.id);
+  change.subjects.push(`run:${runId}`);
+  return change;
+}
+function planRunGaps(store, planId) {
+  return all(
+    store,
+    `SELECT g.run_id, g.body, EXISTS (SELECT 1 FROM plan_gaps p
+			WHERE p.plan_id = r.plan_id AND p.revision > r.plan_revision AND p.gap_id = g.id) AS adopted
+		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id WHERE r.plan_id = ? ORDER BY g.rowid`,
+    planId
+  ).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1 }));
+}
 function editableRevision(store, text, expectSha256) {
   const reference = revisionReference(requireText(text, "plan reference"), "plan reference");
   requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
@@ -12002,6 +12037,21 @@ var commands = {
       return args.patch ? patchPlan(store, actor, { reference, patch: stdin(), expectSha256 }) : editPlan(store, actor, { reference, candidate: stdin(), expectSha256 });
     },
     print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), edit: reply.data.edit } })
+  },
+  "plan adopt-gaps": {
+    positionals: ["reference"],
+    flags: { run: "value", gaps: "list", "expect-sha": "value" },
+    required: ["run"],
+    write: true,
+    run: (store, args, { actor }) => adoptGaps(store, actor, {
+      reference: value(args, "reference"),
+      runId: value(args, "run"),
+      gapIds: list(args, "gaps"),
+      expectSha256: value(args, "expect-sha")
+    }),
+    print: (reply) => ({
+      facts: { sha256: short2(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted }
+    })
   },
   "plan approve": verdictCommand(
     "reference",

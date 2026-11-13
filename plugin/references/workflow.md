@@ -50,7 +50,7 @@ EOF
 Every write records an actor. Commands use `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name.
 
 - Stage work is agent work: `target save`, `plan save`, `plan revise`, and the `run` commands. When `CHECKMATE_ACTOR` is not set, add `--actor claude:<stage>` to each of these writes, for example `--actor claude:execute`. Else the record shows the git user name, not the agent.
-- Oracle decisions are `gap answer`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the oracle tells you the decision in this session. Keep the default actor, or give the oracle's name with `--actor`.
+- Oracle decisions are `gap answer`, `plan adopt-gaps`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the oracle tells you the decision in this session. Keep the default actor, or give the oracle's name with `--actor`.
 
 ## Who runs a stage
 
@@ -64,7 +64,7 @@ Every write records an actor. Commands use `--actor`, then `CHECKMATE_ACTOR`, th
 - A sub-agent or a delegated stage starts with a prompt that names the stage and the subject. Do only that stage for that subject. Use the stage skill and the plugin CLI. Do not ask the oracle. Do not wait for the oracle.
 - Return `{ "status", "subject", "reasons" }`. Copy the status and reasons from the last Checkmate command of the stage.
 - The parent does not trust the returned words. It reads the database: `checkmate inbox`, `checkmate plan show`, or `checkmate run show`.
-- An external agent, or a parent agent that is the oracle, makes oracle decisions with `checkmate inbox`, `checkmate gap answer`, `checkmate plan approve|reject`, `checkmate plan edit`, and `checkmate result accept|reject`.
+- An external agent, or a parent agent that is the oracle, makes oracle decisions with `checkmate inbox`, `checkmate gap answer`, `checkmate plan adopt-gaps`, `checkmate plan approve|reject`, `checkmate plan edit`, and `checkmate result accept|reject`.
 
 ## Report to the oracle
 
@@ -98,6 +98,7 @@ Useful columns:
 
 - Approved plan revisions, run records, and results do not change.
 - The oracle can change the latest plan revision with `checkmate plan edit <planId@rev>`. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. Do not edit a plan unless the oracle asks.
+- To bring the gaps of a run into the plan, the oracle runs `checkmate plan adopt-gaps <planId@rev> --run <runId>`. The same edit rules apply.
 - For a small change, send only the changes with `checkmate plan edit <planId@rev> --patch`. Key each requirement, test, assertion, and gap by its ID. Give only the changed fields. A new ID adds an item. `null` removes it:
 
 ```sh

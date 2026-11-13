@@ -7,6 +7,7 @@ import { closeStore, completed, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
 import {
+	adoptGaps,
 	answerGap,
 	approvePlan,
 	diffPlan,
@@ -397,6 +398,22 @@ const commands: Record<string, Command> = {
 				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256 })
 		},
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), edit: reply.data.edit } }),
+	},
+	'plan adopt-gaps': {
+		positionals: ['reference'],
+		flags: { run: 'value', gaps: 'list', 'expect-sha': 'value' },
+		required: ['run'],
+		write: true,
+		run: (store, args, { actor }) =>
+			adoptGaps(store, actor, {
+				reference: value(args, 'reference')!,
+				runId: value(args, 'run')!,
+				gapIds: list(args, 'gaps'),
+				expectSha256: value(args, 'expect-sha'),
+			}),
+		print: (reply) => ({
+			facts: { sha256: short(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted },
+		}),
 	},
 	'plan approve': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>
 		approvePlan(store, actor, { reference, rationale, expectSha256 })

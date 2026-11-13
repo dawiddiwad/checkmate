@@ -1,4 +1,4 @@
-import type { Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile } from './types.ts'
+import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -246,6 +246,53 @@ export function patchPlan(
 		const patch = validate('plan-patch', input.patch)
 		return storeEdit(store, operationId, base, patchedCandidate(base.plan, patch))
 	})
+}
+
+export function adoptGaps(
+	store: Store,
+	actor: string | undefined,
+	input: { reference: string; runId: string; gapIds?: string[]; expectSha256?: string }
+) {
+	return write(store, { actor, command: 'plan adopt-gaps', subject: input.reference, input }, (operationId) => {
+		const base = editableRevision(store, input.reference, input.expectSha256)
+		const planId = base.plan.planId
+		const run = one<{ plan_id: string }>(store, 'SELECT plan_id FROM runs WHERE run_id = ?', input.runId)
+		requireCondition(run, `Unknown run: ${input.runId}`)
+		requireCondition(run.plan_id === planId, `Run ${input.runId} tests plan ${run.plan_id}, not ${planId}`)
+		const recorded = planRunGaps(store, planId).filter((item) => item.runId === input.runId)
+		const gaps =
+			input.gapIds === undefined
+				? recorded.filter((item) => !item.adopted).map((item) => item.gap)
+				: input.gapIds.map((id) => {
+						const item = recorded.find((item) => item.gap.id === id)
+						requireCondition(item, `Run ${input.runId} has no gap ${id}`)
+						requireCondition(!item.adopted, `Gap ${id} of run ${input.runId} is in plan ${planId}`)
+						return item.gap
+					})
+		requireCondition(gaps.length, `Run ${input.runId} has no gap to adopt`)
+		return adoption(store, operationId, base, input.runId, gaps)
+	})
+}
+
+function adoption(store: Store, operationId: string, base: PlanRevision, runId: string, gaps: Gap[]): Change {
+	const candidate = planCandidate(base.plan)
+	const change = storeEdit(store, operationId, base, { ...candidate, gaps: [...candidate.gaps, ...gaps] })
+	change.reply.data.runId = runId
+	change.reply.data.adopted = gaps.map((gap) => gap.id)
+	change.subjects.push(`run:${runId}`)
+	return change
+}
+
+export type RunGap = { runId: string; gap: Gap; adopted: boolean }
+
+export function planRunGaps(store: Store, planId: string): RunGap[] {
+	return all<{ run_id: string; body: string; adopted: number }>(
+		store,
+		`SELECT g.run_id, g.body, EXISTS (SELECT 1 FROM plan_gaps p
+			WHERE p.plan_id = r.plan_id AND p.revision > r.plan_revision AND p.gap_id = g.id) AS adopted
+		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id WHERE r.plan_id = ? ORDER BY g.rowid`,
+		planId
+	).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1 }))
 }
 
 function editableRevision(store: Store, text: string, expectSha256: string | undefined) {

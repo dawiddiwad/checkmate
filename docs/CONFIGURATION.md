@@ -360,7 +360,10 @@ When the agent finds new ambiguity during a run, it sends a gap to `checkmate ru
 }
 ```
 
-A runtime gap is open, has no decision, and has an ID that is new in the plan and the run. Its requirements and tests must exist. A blocking runtime gap that names a requirement keeps that requirement uncovered in the result. A gap with two empty lists keeps every requirement uncovered. A runtime gap does not change the plan. The oracle decides what to do next.
+A runtime gap is open, has no decision, and has an ID that is new in the plan and the run. Its requirements and tests must exist. A blocking runtime gap that names a requirement keeps that requirement uncovered in the result. A gap with two empty lists keeps every requirement uncovered. A runtime gap does not change the plan by itself. The oracle decides what to do next:
+
+- `checkmate plan adopt-gaps <planId@rev> --run <runId>` adds each gap of the run that the plan does not have yet. `--gaps G3,G4` selects gaps. The gap keeps its ID and its fields. The rules of [plan edit](#plan-edit) apply.
+- A run gap counts as adopted when a later revision of the plan has a gap with the same ID.
 
 ## Execution policy
 

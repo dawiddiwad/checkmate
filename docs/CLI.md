@@ -9,15 +9,15 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 
 ## Commands
 
-| Group     | Commands                                                                                                |
-| --------- | ------------------------------------------------------------------------------------------------------- |
-| State     | `inbox`, `plan list`, `plan show`, `run list`, `run show`, `log`, `query`                               |
-| Target    | `target open`, `target request`, `target save`, `target show`                                           |
-| Plan      | `plan open`, `plan request`, `plan save`, `plan pending`, `plan revise`, `plan diff`                    |
-| Decisions | `gap answer`, `plan edit`, `plan approve`, `plan reject`, `result accept`, `result reject`              |
-| Run       | `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume` |
-| Output    | `export plan`, `export run`, `evidence get`, `ui`                                                       |
-| npm only  | `delegate`                                                                                              |
+| Group     | Commands                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------- |
+| State     | `inbox`, `plan list`, `plan show`, `run list`, `run show`, `log`, `query`                                     |
+| Target    | `target open`, `target request`, `target save`, `target show`                                                 |
+| Plan      | `plan open`, `plan request`, `plan save`, `plan pending`, `plan revise`, `plan diff`                          |
+| Decisions | `gap answer`, `plan adopt-gaps`, `plan edit`, `plan approve`, `plan reject`, `result accept`, `result reject` |
+| Run       | `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume`       |
+| Output    | `export plan`, `export run`, `evidence get`, `ui`                                                             |
+| npm only  | `delegate`                                                                                                    |
 
 - `inbox` lists the open gaps without a pending decision, the plans that wait for approval, the results that wait for acceptance, and the plan requests that have no revision yet. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `plan`, `result`, or `requested`. A requested plan waits for the plan stage.
 - `plan list` shows each plan at its latest revision, and each plan request without a revision as `<planId> status=requested`. It takes `--needs-decision`, `--awaiting-approval`, and `--blocked`. `run list` takes `--plan` and `--build`.
@@ -39,6 +39,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 
 - `run check` and `run close` take `--evidence -` for text evidence on standard input, and `--evidence -:<kind>` to set the kind. Give a file path only for binary evidence. Read [Evidence](EVIDENCE.md#evidence-input).
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool.
+- `plan adopt-gaps <planId@rev> --run <runId> [--gaps G4,G5]` adds the run gaps that the plan does not have yet to the latest revision. The rules of `plan edit` apply. The reply prints `edit=` and `adopted=`.
 - `plan edit <planId@rev>` takes a full candidate. With `--patch`, it takes only the changes, keyed by ID. Read [Configuration](CONFIGURATION.md#small-edits).
 - `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of a JSON request. Use JSON for requirements, source context, or plan tools.
 

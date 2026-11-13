@@ -138,7 +138,7 @@ In a QA-driven software factory, agents do acceptance-test-driven development. T
 | Role          | What it does                                                                | Checkmate interface                                                                                                                                                                       |
 | ------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Planner agent | Runs the plan and revise stages. Turns the ticket into tests. Records gaps. | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise`                                                                                            |
-| Oracle        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                                       |
+| Oracle        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan adopt-gaps`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                    |
 | QA agent      | Runs the execute stage. Records results, evidence, defects, and gaps.       | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`                                                                                               |
 | Factory       | Runs the agents and sandboxes. Builds and fixes the code. Reads the record. | `run show`, `export run\|plan --format json`, `log`, `query`, and `inbox` to read the record. It writes only through the commands that it runs, for example `run begin` with a new build. |
 | Human         | Joins at any time in the review UI. Makes the same decisions.               | `checkmate ui` or `/checkmate:ui`                                                                                                                                                         |
@@ -186,7 +186,7 @@ checkmate result accept run-2 --rationale "All tests pass on the new build."
 ```
 
 - `--partial ready_only` lets a run start while the plan has open blocking gaps. Without `--tests`, it selects the ready tests and prints each test that it leaves out, with the reason. A test that an open blocking gap affects is not ready.
-- A runtime gap from a run, such as G4, does not change the plan. The oracle or a human acts on it with `plan edit` or `Edit plan` in the review UI: change the tests, or add the gap and answer it. An edit before approval keeps the revision number. An edit after approval gives a new revision.
+- A runtime gap from a run, such as G4, does not change the plan by itself. `checkmate plan adopt-gaps checkout@2 --run run-1` adds the open gaps of the run to the plan. Add `--gaps G4` to select gaps. The rules of `plan edit` apply: an unapproved revision without a run changes in place, else the plan gets a new revision.
 - `delegate` records its worker as actor `claude:<stage>`. Give each stage at least `--allow Read --allow Bash`.
 
 ## Sub-agents in Claude Code
@@ -205,6 +205,7 @@ The plugin has no global `checkmate` command. Its CLI is `node <plugin root>/dis
 | ----------------- | --------------------------------------------------------------------------------------- | ------------------ |
 | Answer a gap      | `checkmate gap answer <planId> <gapId> --kind ...`                                      | Inbox or plan page |
 | Change a plan     | `checkmate plan edit <planId@rev>` with a full candidate, or `--patch` with the changes | `Edit plan`        |
+| Adopt run gaps    | `checkmate plan adopt-gaps <planId@rev> --run <runId> [--gaps G4]`                      | `Edit plan`        |
 | Approve or reject | `checkmate plan approve\|reject <planId@rev>`                                           | Plan page          |
 | Accept or reject  | `checkmate result accept\|reject <runId>`                                               | Run page           |
 

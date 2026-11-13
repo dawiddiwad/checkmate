@@ -7,6 +7,7 @@ export {
 	savePlan,
 	editPlan,
 	patchPlan,
+	adoptGaps,
 	planCandidate,
 	frozenRevision,
 	answerGap,

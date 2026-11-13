@@ -56,8 +56,7 @@ export function candidateFromForm(base: Candidate, form: URLSearchParams): Candi
 			assertions: test.assertions.map((assertion, j) => ({
 				id: assertion.id,
 				check: text(`t${i}.a${j}.check`, assertion.check),
-				oracleKind:
-					form.get(`t${i}.a${j}.kind`) === 'agent_observation' ? 'agent_observation' : 'deterministic',
+				checkKind: form.get(`t${i}.a${j}.kind`) === 'agent_observation' ? 'agent_observation' : 'deterministic',
 			})),
 		})),
 		gaps: base.gaps,
@@ -119,13 +118,15 @@ function testFields(test: Test, i: number) {
 										<label class="aid" for="t${i}.a${j}.check">${assertion.id}</label>
 										<textarea id="t${i}.a${j}.check" name="t${i}.a${j}.check" rows="1">
 ${assertion.check}</textarea>
-										<label class="sr-only" for="t${i}.a${j}.kind">Oracle of ${assertion.id}</label>
+										<label class="sr-only" for="t${i}.a${j}.kind"
+											>Check kind of ${assertion.id}</label
+										>
 										<select id="t${i}.a${j}.kind" name="t${i}.a${j}.kind">
 											${['deterministic', 'agent_observation'].map(
 												(kind) =>
 													html`<option
 														value="${kind}"
-														${kind === assertion.oracleKind ? html`selected` : ''}
+														${kind === assertion.checkKind ? html`selected` : ''}
 													>
 														${kind.replace('_', ' ')}
 													</option>`

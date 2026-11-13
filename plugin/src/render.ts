@@ -298,12 +298,12 @@ function runDocument(report: RunReport): Report {
 		},
 		{ heading: 'Assertions' },
 		{
-			table: ['Assertion', 'Result', 'Oracle', 'Check', 'Observed', 'Reason', 'Evidence'],
+			table: ['Assertion', 'Result', 'Check kind', 'Check', 'Observed', 'Reason', 'Evidence'],
 			rows: result.tests.flatMap((test) =>
 				test.assertions.map((assertion) => [
 					`${test.testId}.${assertion.assertionId}`,
 					assertion.result,
-					assertion.oracleKind,
+					assertion.checkKind,
 					assertion.check,
 					assertion.observed ?? none,
 					assertion.reason ?? none,
@@ -450,13 +450,9 @@ function planReport(plan: Plan, sha256: string): Report {
 		},
 		{ heading: 'Assertions' },
 		{
-			table: ['Assertion', 'Oracle', 'Check'],
+			table: ['Assertion', 'Check kind', 'Check'],
 			rows: plan.tests.flatMap((test) =>
-				test.assertions.map((assertion) => [
-					`${test.id}.${assertion.id}`,
-					assertion.oracleKind,
-					assertion.check,
-				])
+				test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.checkKind, assertion.check])
 			),
 		},
 		{ heading: 'Gaps' },

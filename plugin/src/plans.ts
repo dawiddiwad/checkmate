@@ -496,10 +496,10 @@ function applyTestChange(test: Test, change: PlanDelta['tests'][string], used: s
 				`Assertion ID ${test.id}.${id} was used in an earlier revision. Use a new ID.`
 			)
 			requireCondition(
-				assertion.check !== undefined && assertion.oracleKind !== undefined,
-				`New assertion ${test.id}.${id} needs check and oracleKind`
+				assertion.check !== undefined && assertion.checkKind !== undefined,
+				`New assertion ${test.id}.${id} needs check and checkKind`
 			)
-			test.assertions.push({ id, check: assertion.check, oracleKind: assertion.oracleKind })
+			test.assertions.push({ id, check: assertion.check, checkKind: assertion.checkKind })
 		}
 	}
 }

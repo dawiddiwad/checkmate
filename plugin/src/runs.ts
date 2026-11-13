@@ -695,7 +695,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 					return {
 						assertionId: assertion.id,
 						check: assertion.check,
-						oracleKind: assertion.oracleKind,
+						checkKind: assertion.checkKind,
 						result: row.result,
 						observed: row.observed,
 						reason: row.reason,

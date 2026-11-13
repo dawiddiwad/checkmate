@@ -9,7 +9,7 @@ Generated from the Checkmate database. Record a decision and revise the plan to 
 | Previous revision | 1 |
 | Target | checkout-local@1 |
 | Objective | Verify checkout totals and identify missing acceptance decisions. |
-| Plan digest | db79cfb64c1c8e00f35b23fe84e3bdb06d2f060c436f461278afff9be886d63f |
+| Plan digest | b3617b84dc5be5db9d388e241102127d41383f924ec1063570ec8aa0f194a28d |
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Generated from the Checkmate database. Record a decision and revise the plan to 
 
 ## Assertions
 
-| Assertion | Oracle | Check |
+| Assertion | Check kind | Check |
 | --- | --- | --- |
 | T1.A1 | deterministic | The order total is 400 PLN. |
 | T2.A1 | deterministic | The quoted total is 240 PLN. |
@@ -164,7 +164,7 @@ No accepted assumptions.
         {
           "check": "The order total is 400 PLN.",
           "id": "A1",
-          "oracleKind": "deterministic"
+          "checkKind": "deterministic"
         }
       ],
       "capability": "browser",
@@ -189,7 +189,7 @@ No accepted assumptions.
         {
           "check": "The quoted total is 240 PLN.",
           "id": "A1",
-          "oracleKind": "deterministic"
+          "checkKind": "deterministic"
         }
       ],
       "capability": "http",
@@ -215,7 +215,7 @@ No accepted assumptions.
         {
           "check": "totalPLN equals 240.",
           "id": "A1",
-          "oracleKind": "deterministic"
+          "checkKind": "deterministic"
         }
       ],
       "capability": "http",

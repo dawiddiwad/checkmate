@@ -272,7 +272,7 @@ BEGIN SELECT RAISE(ABORT, 'Plan revisions are immutable'); END;
 
 ## 7. Tests and assertions
 
-A test has one action and a list of assertions. An assertion is one thing that the agent must check. It replaces the single `expected` field and the single `oracleKind` field of `toolkit-1`.
+A test has one action and a list of assertions. An assertion is one thing that the agent must check. It replaces the single expected value and the single check kind of each test in `toolkit-1`.
 
 ```json
 {
@@ -284,9 +284,9 @@ A test has one action and a list of assertions. An assertion is one thing that t
 	"preconditions": ["Cart has one 400 PLN item and 20 PLN loyalty."],
 	"action": "Apply the 40 percent promotion and read the quote.",
 	"assertions": [
-		{ "id": "A1", "check": "The response status is HTTP 200.", "oracleKind": "deterministic" },
-		{ "id": "A2", "check": "totalPLN equals 240.", "oracleKind": "deterministic" },
-		{ "id": "A3", "check": "The quote does not list the loyalty discount.", "oracleKind": "agent_observation" }
+		{ "id": "A1", "check": "The response status is HTTP 200.", "checkKind": "deterministic" },
+		{ "id": "A2", "check": "totalPLN equals 240.", "checkKind": "deterministic" },
+		{ "id": "A3", "check": "The quote does not list the loyalty discount.", "checkKind": "agent_observation" }
 	]
 }
 ```
@@ -295,7 +295,7 @@ A test has one action and a list of assertions. An assertion is one thing that t
 
 - A ready test has one or more assertions.
 - An assertion ID is unique in its test. An assertion is referenced as `<testId>.<assertionId>`, for example `T2.A2`.
-- Each assertion has a non-empty `check` and an `oracleKind`: `deterministic` or `agent_observation`.
+- Each assertion has a non-empty `check` and a `checkKind`: `deterministic` or `agent_observation`.
 - An unknown expected result is a blocking gap. A test with such a gap is blocked. Do not write an assertion with an unknown expected result.
 - A revision can add, change, or remove assertions only in a test that a decision affects. A revision cannot reuse the ID of a removed assertion.
 
@@ -323,7 +323,7 @@ Checkmate uses the first row that applies:
 - An `inconclusive` test does not cover its requirements. The requirement stays `uncovered` with the reason `An assertion is inconclusive.`
 - An `inconclusive` test does not prevent `completion: completed`. The check ran. Only the evidence was not sufficient.
 - An `inconclusive` test does not satisfy a dependency. A dependency needs `passed`.
-- The caller decides what to do next: a decision that gives a stronger oracle, a change to the assertion, or a retest with better evidence.
+- The caller decides what to do next: a decision that gives a more exact expected value, a change to the assertion, or a retest with better evidence.
 
 - A test that the agent did not start has no assertion results. The agent records it as `blocked`, `not_run`, or `error` with a reason.
 - Each failed assertion is in a `defect` finding. A finding names its assertions, for example `"assertionIds": ["T2.A2"]`. A defect names one or more failed assertions.
@@ -359,7 +359,7 @@ The decision and its implementation are separate steps. The caller has the autho
 			"preconditions": ["Cart has 20 PLN loyalty."],
 			"assertions": {
 				"A2": { "check": "totalPLN equals 240." },
-				"A4": { "check": "The quote lists the promotion once.", "oracleKind": "deterministic" }
+				"A4": { "check": "The quote lists the promotion once.", "checkKind": "deterministic" }
 			}
 		}
 	},
@@ -418,7 +418,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 1. `checkmate run gate <planId@rev> --tests T1,T2 --build <build>` checks the gate without side effects.
 2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|ready_only] [--on-new-blocker return_to_caller|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
 3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence -[:kind]] [--evidence <file>[:kind]]...`.
-   - The agent does not send the check text or the oracle kind. Checkmate copies them from the plan.
+   - The agent does not send the check text or the check kind. Checkmate copies them from the plan.
    - `--evidence -` reads text evidence from stdin. A binary file, for example a screenshot, goes to `.checkmate/tmp/<runId>/` first. Checkmate stores the bytes as a blob, records the evidence row, and deletes the file.
    - Checkmate applies the rules for one assertion at once: the test is selected and ready, its prerequisites passed, and a `passed` or `failed` result has an observation and evidence.
    - An assertion result is final. A second `check` for the same assertion fails.
@@ -447,7 +447,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 The rules in `stages.ts` move to the new commands. They do not change in meaning:
 
 - Revisions are immutable and linear. A revision cannot change requirements, sources, test inventory, gap inventory, unrelated tests, or prior decisions and assumptions.
-- A `passed`, `failed`, or `inconclusive` assertion result needs an observation and evidence. An `inconclusive` result also needs a reason. The check text and oracle kind come from the plan.
+- A `passed`, `failed`, or `inconclusive` assertion result needs an observation and evidence. An `inconclusive` result also needs a reason. The check text and check kind come from the plan.
 - A failed assertion needs a defect finding. A defect needs a failed assertion.
 - A finding's requirements and evidence match its tests and assertions.
 - A runtime gap is new and open.

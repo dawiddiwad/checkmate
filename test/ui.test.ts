@@ -49,7 +49,7 @@ function seedPayload(workspace: string) {
 					dependsOn: [],
 					preconditions: [],
 					action: 'Read the page.',
-					assertions: [{ id: 'A1', check: 'Nothing runs.', oracleKind: 'deterministic' }],
+					assertions: [{ id: 'A1', check: 'Nothing runs.', checkKind: 'deterministic' }],
 				},
 			],
 			gaps: ['G1', 'G2'].map((id) => ({
@@ -613,7 +613,7 @@ test('an unapproved plan changes in place and an approved plan gets a new revisi
 	assert.equal(revised.latestRevision, 3)
 	assert.equal(revised.approval.state, 'pending')
 	assert.deepEqual(revised.plan.tests[3].requirementIds, ['R2', 'R4'])
-	assert.equal(revised.plan.tests[3].assertions[1].oracleKind, 'deterministic')
+	assert.equal(revised.plan.tests[3].assertions[1].checkKind, 'deterministic')
 	const log = read(workspace, (store) => operationLog(store, { limit: 1 })[0])
 	assert.equal(log.command, 'plan edit')
 	assert.equal(log.actor, human)
@@ -639,7 +639,7 @@ test('the JSON editor reports errors, keeps the text, and records the typed name
 	assert.equal(invalid.status, 422)
 	assert.match(invalid.body, /class="form-error"/)
 	const candidate = read(workspace, (store) => planCandidate(planDetail(store, 'search').plan))
-	candidate.tests[1].assertions.push({ id: 'A2', check: 'Popular items show.', oracleKind: 'agent_observation' })
+	candidate.tests[1].assertions.push({ id: 'A2', check: 'Popular items show.', checkKind: 'agent_observation' })
 	const done = await call(ui, '/plans/search@1/edit', {
 		form: { ...base, json: JSON.stringify(candidate), actor: 'reviewer' },
 		headers: { Cookie: 'checkmate_actor=saved-name' },

@@ -115,7 +115,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 			</summary>
 			<div class="asr-body">
 				${assertion.reason ? html`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ''}
-				<p class="muted small">${words(assertion.oracleKind)} · ${words(assertion.result)}</p>
+				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
 				${evidenceList(store, assertion.evidence)}
 			</div>
 		</details>

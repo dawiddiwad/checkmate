@@ -25,7 +25,7 @@ checkout@2 on build fixture-build-2. Generated from the Checkmate database. Comp
 | Attempts | 1 |
 | Retest of | live-run |
 | Cleanup | completed: Browser session was not opened; quote checks were HTTP GET requests that create no records. No records to clean up. |
-| Result digest | 0c821fad4c3add5eb8f410e5d5f4ce7a37d07f2a90f505a537b90604600707cb |
+| Result digest | f4f6fe943e07bb3fdc282d6961a68dd4dc282516b7aeaa3583d040ffff81b326 |
 
 ## Acceptance
 
@@ -40,7 +40,7 @@ No decision yet.
 
 ## Assertions
 
-| Assertion | Result | Oracle | Check | Observed | Reason | Evidence |
+| Assertion | Result | Check kind | Check | Observed | Reason | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | T2.A1 | passed | deterministic | The quoted total is 240 PLN. | GET /quote?promotion=true returned HTTP 200 with totalPLN 240. | — | T2-A1.json (01M75A2EYDGEKF4P8XY3M2G4VS) |
 | T3.A1 | passed | deterministic | totalPLN equals 240. | GET /quote?promotion=true&loyalty=true returned HTTP 200 with totalPLN 240. | — | T3-A1.json (01M75A2F3XDVYTHDMT4CVPC9A1) |
@@ -157,7 +157,7 @@ No new gaps.
   "plan": {
     "planId": "checkout",
     "revision": 2,
-    "sha256": "db79cfb64c1c8e00f35b23fe84e3bdb06d2f060c436f461278afff9be886d63f"
+    "sha256": "b3617b84dc5be5db9d388e241102127d41383f924ec1063570ec8aa0f194a28d"
   },
   "retestOf": "live-run",
   "runId": "live-retest",
@@ -187,7 +187,7 @@ No new gaps.
             "01M75A2EYDGEKF4P8XY3M2G4VS"
           ],
           "observed": "GET /quote?promotion=true returned HTTP 200 with totalPLN 240.",
-          "oracleKind": "deterministic",
+          "checkKind": "deterministic",
           "reason": null,
           "result": "passed"
         }
@@ -205,7 +205,7 @@ No new gaps.
             "01M75A2F3XDVYTHDMT4CVPC9A1"
           ],
           "observed": "GET /quote?promotion=true&loyalty=true returned HTTP 200 with totalPLN 240.",
-          "oracleKind": "deterministic",
+          "checkKind": "deterministic",
           "reason": null,
           "result": "passed"
         }

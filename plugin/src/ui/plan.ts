@@ -80,7 +80,7 @@ export function testCard(detail: Detail, test: Test) {
 									<span class="box" aria-hidden="true"></span>
 									<span class="aid">${assertion.id}</span>
 									<span class="check">${assertion.check}</span>
-									<span class="tag">${words(assertion.oracleKind)}</span>
+									<span class="tag">${words(assertion.checkKind)}</span>
 								</li>`
 						)}
 					</ul>`

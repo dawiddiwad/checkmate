@@ -26,7 +26,7 @@ function loginCandidate(): PlanCandidate {
 				dependsOn: [],
 				preconditions: [],
 				action: 'Log in.',
-				assertions: [{ id: 'A1', check: 'The session cookie is set.', oracleKind: 'deterministic' }],
+				assertions: [{ id: 'A1', check: 'The session cookie is set.', checkKind: 'deterministic' }],
 			},
 		],
 		gaps: [],

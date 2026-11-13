@@ -201,7 +201,7 @@ test('plan revise applies decisions and an assertion delta to affected tests', (
 					preconditions: ['Cart with 20 PLN loyalty.'],
 					assertions: {
 						A1: { check: 'The response status is HTTP 200 OK.' },
-						A2: { check: 'totalPLN equals 240.', oracleKind: 'deterministic' },
+						A2: { check: 'totalPLN equals 240.', checkKind: 'deterministic' },
 					},
 				},
 			},
@@ -216,8 +216,8 @@ test('plan revise applies decisions and an assertion delta to affected tests', (
 		['ready', 'ready', 'deferred']
 	)
 	assert.deepEqual(next.tests[1].assertions, [
-		{ id: 'A1', check: 'The response status is HTTP 200 OK.', oracleKind: 'deterministic' },
-		{ id: 'A2', check: 'totalPLN equals 240.', oracleKind: 'deterministic' },
+		{ id: 'A1', check: 'The response status is HTTP 200 OK.', checkKind: 'deterministic' },
+		{ id: 'A2', check: 'totalPLN equals 240.', checkKind: 'deterministic' },
 	])
 	assert.deepEqual(next.tests[1].preconditions, ['Cart with 20 PLN loyalty.'])
 	assert.deepEqual(
@@ -282,7 +282,7 @@ test('plan revise refuses deltas outside the decided scope', (t) => {
 	assert.throws(() => delta({ T2: { assertions: { A7: null } } }), /Cannot remove unknown assertion T2.A7/)
 	assert.throws(
 		() => delta({ T2: { assertions: { A2: { check: 'x' } } } }),
-		/New assertion T2.A2 needs check and oracleKind/
+		/New assertion T2.A2 needs check and checkKind/
 	)
 	assert.throws(() => delta({ T2: { assertions: { A1: null } } }), /Ready test T2 needs one or more assertions/)
 	assert.throws(
@@ -290,7 +290,7 @@ test('plan revise refuses deltas outside the decided scope', (t) => {
 		/has digest/
 	)
 	assert.equal(
-		delta({ T2: { assertions: { A1: null, A2: { check: 'totalPLN equals 240.', oracleKind: 'deterministic' } } } })
+		delta({ T2: { assertions: { A1: null, A2: { check: 'totalPLN equals 240.', checkKind: 'deterministic' } } } })
 			.status,
 		'needs_decision'
 	)
@@ -303,7 +303,7 @@ test('plan revise refuses deltas outside the decided scope', (t) => {
 		rationale: 'Product.',
 	})
 	assert.throws(
-		() => delta({ T2: { assertions: { A1: { check: 'Again.', oracleKind: 'deterministic' } } } }),
+		() => delta({ T2: { assertions: { A1: { check: 'Again.', checkKind: 'deterministic' } } } }),
 		/Assertion ID T2.A1 was used in an earlier revision/
 	)
 	assert.equal(planRevision(opened, 'checkout').plan.revision, 2)
@@ -571,7 +571,7 @@ test('plan edit keeps gaps with pending decisions open and refuses reused assert
 	removed.tests[1].assertions = removed.tests[1].assertions.filter((assertion) => assertion.id !== 'A2')
 	editPlan(opened, actor, { reference: 'checkout@2', candidate: removed })
 	const reused = structuredClone(removed)
-	reused.tests[1].assertions.push({ id: 'A2', check: 'Another meaning.', oracleKind: 'deterministic' })
+	reused.tests[1].assertions.push({ id: 'A2', check: 'Another meaning.', checkKind: 'deterministic' })
 	editPlan(opened, actor, { reference: 'checkout@2', candidate: reused })
 	const open = structuredClone(reused)
 	open.gaps.push({

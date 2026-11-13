@@ -123,7 +123,7 @@
 									"type": "string",
 									"minLength": 1
 								},
-								"oracleKind": {
+								"checkKind": {
 									"enum": ["deterministic", "agent_observation"]
 								},
 								"result": {
@@ -161,7 +161,7 @@
 									"uniqueItems": true
 								}
 							},
-							"required": ["assertionId", "check", "oracleKind", "result", "observed", "reason", "evidenceIds"],
+							"required": ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"],
 							"additionalProperties": false
 						},
 						"minItems": 0,

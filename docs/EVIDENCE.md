@@ -4,12 +4,12 @@ This page describes how Checkmate records assertion results, derives test outcom
 
 ## Assertions
 
-A test has one action and a list of assertions. An assertion is one thing that the agent must check, for example `totalPLN equals 240.` Each assertion has an ID, a `check`, and an `oracleKind`:
+A test has one action and a list of assertions. An assertion is one thing that the agent must check, for example `totalPLN equals 240.` Each assertion has an ID, a `check`, and a `checkKind`:
 
 - `deterministic`: the check compares an exact value.
 - `agent_observation`: the agent interprets the evidence, for example a page layout.
 
-The plan sets the check text and the oracle kind. The agent does not send them during a run. Checkmate copies them from the plan revision into the result.
+The plan sets the check text and the check kind. The agent does not send them during a run. Checkmate copies them from the plan revision into the result.
 
 ## Assertion results
 
@@ -65,7 +65,7 @@ Checkmate uses the first row that applies:
 - An inconclusive test does not cover its requirements. The requirement stays `uncovered` with the reason `An assertion is inconclusive.`
 - An inconclusive test does not prevent `completion: completed`. The check ran. Only the evidence was not sufficient.
 - An inconclusive test does not satisfy a dependency. A dependency needs `passed`.
-- The caller decides what to do next: a decision that gives a stronger oracle, a change to the assertion, or a retest with better evidence. The review UI lists each inconclusive assertion with its reason above the result decision.
+- The caller decides what to do next: a decision that gives a more exact expected value, a change to the assertion, or a retest with better evidence. The review UI lists each inconclusive assertion with its reason above the result decision.
 
 ## Evidence input
 

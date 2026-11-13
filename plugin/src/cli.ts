@@ -528,7 +528,7 @@ const commands: Record<string, Command> = {
 						[test.testId, 'unclosed', test.warning],
 						...test.assertions.map((assertion) => [
 							`${test.testId}.${assertion.id}`,
-							assertion.oracleKind,
+							assertion.checkKind,
 							assertion.check,
 						]),
 					]),
@@ -756,7 +756,7 @@ function testLines(test: Plan['tests'][number]) {
 		[test.id, test.readiness, test.capability, test.title],
 		[test.id, 'action', test.action],
 		...test.preconditions.map((precondition) => [test.id, 'precondition', precondition]),
-		...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.oracleKind, assertion.check]),
+		...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.checkKind, assertion.check]),
 	]
 }
 
@@ -772,7 +772,7 @@ function printPlan(reply: Reply): Printed {
 				...(fields.includes('assertions')
 					? (test.assertions as Plan['tests'][number]['assertions']).map((assertion) => [
 							`${test.id}.${assertion.id}`,
-							assertion.oracleKind,
+							assertion.checkKind,
 							assertion.check,
 						])
 					: []),

@@ -288,7 +288,7 @@ export function runDetail(store: Store, runId: string) {
 					return {
 						assertionId: assertion.id,
 						check: assertion.check,
-						oracleKind: assertion.oracleKind,
+						checkKind: assertion.checkKind,
 						result: row?.result ?? null,
 						observed: row?.observed ?? null,
 						reason: row?.reason ?? null,

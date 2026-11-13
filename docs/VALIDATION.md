@@ -42,7 +42,7 @@ The code validates structure and relationships. It cannot prove that an observat
 - An open gap has no decision. A resolved or deferred gap has a matching decision. A `clarify` decision has a source. An accepted assumption stays visible.
 - Cross-plan references name a plan and a test in the latest revision of that plan. A dependency cycle across all plans is refused.
 - `gap answer` needs an open gap in the latest revision, a known kind, a value, and a rationale. A gap has one pending decision.
-- `plan revise` needs one or more pending decisions. A delta changes only `action`, `preconditions`, and `assertions` of affected tests. A removed assertion ID cannot come back. A new assertion has a check and an oracle kind.
+- `plan revise` needs one or more pending decisions. A delta changes only `action`, `preconditions`, and `assertions` of affected tests. A removed assertion ID cannot come back. A new assertion has a check and a check kind.
 - A concurrent revise of the same plan fails on the primary key.
 - `plan edit` names the latest revision. It changes the revision in place only when the revision has no approval and no run. Else it saves the next revision. A gap with a pending decision stays open. A used assertion ID cannot come back.
 - `plan approve` and `plan reject` need a revision reference and a rationale. `--expect-sha` stops a decision on a changed snapshot.

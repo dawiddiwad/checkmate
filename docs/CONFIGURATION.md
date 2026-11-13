@@ -172,7 +172,7 @@ The plan skill writes a candidate and sends it to `checkmate plan save checkout`
 			"dependsOn": [],
 			"preconditions": ["Fresh cart with one 400 PLN item."],
 			"action": "Complete checkout and read the order total.",
-			"assertions": [{ "id": "A1", "check": "The order total is 400 PLN.", "oracleKind": "deterministic" }]
+			"assertions": [{ "id": "A1", "check": "The order total is 400 PLN.", "checkKind": "deterministic" }]
 		},
 		{
 			"id": "T2",
@@ -211,7 +211,7 @@ Rules:
 
 - Each requirement has one or more tests or gaps.
 - A ready test needs one or more assertions, a capability of the target, and allowed operations only.
-- An assertion has a unique ID in its test, a non-empty `check`, and an `oracleKind`. Use `deterministic` for an exact value. Use `agent_observation` when the agent interprets the evidence.
+- An assertion has a unique ID in its test, a non-empty `check`, and a `checkKind`. Use `deterministic` for an exact value. Use `agent_observation` when the agent interprets the evidence.
 - Do not write an assertion with an unknown expected value. Write an open blocking gap. In the example, T2 has no assertions and is `blocked`.
 - `dependsOn` names local tests or cross-plan tests (`login:T3`). The named plan and test must exist. Checkmate refuses a dependency cycle across all plans.
 - Revision 1 has no decisions and no assumptions.
@@ -246,8 +246,8 @@ The revise skill reads `checkmate plan pending checkout` and sends the delta to 
 		"T2": {
 			"preconditions": ["Cart with one 400 PLN item and 20 PLN loyalty."],
 			"assertions": {
-				"A1": { "check": "totalPLN equals 240.", "oracleKind": "deterministic" },
-				"A2": { "check": "The response status is HTTP 200.", "oracleKind": "deterministic" }
+				"A1": { "check": "totalPLN equals 240.", "checkKind": "deterministic" },
+				"A2": { "check": "The response status is HTTP 200.", "checkKind": "deterministic" }
 			}
 		}
 	}
@@ -258,7 +258,7 @@ Checkmate builds the next revision from the latest revision, the pending decisio
 
 1. It appends the pending decisions in recorded order. It sets the gap status and `decisionId`. It adds an assumption for each `accept_assumption`.
 2. It applies the delta. A delta can change only `action`, `preconditions`, and `assertions` of tests that a pending decision affects.
-3. In `assertions`, a known ID changes that assertion. A new ID adds an assertion and needs `check` and `oracleKind`. `null` removes an assertion. An ID from an earlier revision cannot come back.
+3. In `assertions`, a known ID changes that assertion. A new ID adds an assertion and needs `check` and `checkKind`. `null` removes an assertion. An ID from an earlier revision cannot come back.
 4. It calculates `gapIds`, readiness, and coverage again, and checks all plan rules.
 5. It marks the decisions as applied.
 

@@ -26,13 +26,13 @@ checkout@2 on build fixture-build-1. Generated from the Checkmate database. Comp
 | Attempts | 1 |
 | Retest of | — |
 | Cleanup | completed: Browser session closed; fixture stores no records, no cleanup required. |
-| Result digest | ebf419350e0f97cf2676fce3e88e51005501138d7649432f217cf23e54b9ab47 |
+| Result digest | e56caf67658530fcfa5561e32d32df9808da1700d218f035d0ca1b670ccaccff |
 
 ## Acceptance
 
 | Verdict | Actor | At | Rationale | Digest |
 | --- | --- | --- | --- | --- |
-| approved | acceptance-test | 2026-11-11T12:41Z | The defect is real. | ebf419350e0f97cf2676fce3e88e51005501138d7649432f217cf23e54b9ab47 |
+| approved | acceptance-test | 2026-11-11T12:41Z | The defect is real. | e56caf67658530fcfa5561e32d32df9808da1700d218f035d0ca1b670ccaccff |
 
 ## Tests
 
@@ -44,7 +44,7 @@ checkout@2 on build fixture-build-1. Generated from the Checkmate database. Comp
 
 ## Assertions
 
-| Assertion | Result | Oracle | Check | Observed | Reason | Evidence |
+| Assertion | Result | Check kind | Check | Observed | Reason | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | T1.A1 | passed | deterministic | The order total is 400 PLN. | Order confirmed: 400 PLN shown after Complete checkout | — | T1-A1.txt (01M75A0MHETEGDTJKJA4R95CGZ) |
 | T2.A1 | passed | deterministic | The quoted total is 240 PLN. | GET /quote?promotion=true status 200 totalPLN 240 | — | T2-A1.json (01M75A0T5N9Q5D2QN7FZRQ34Y7) |
@@ -208,7 +208,7 @@ No new gaps.
   "plan": {
     "planId": "checkout",
     "revision": 2,
-    "sha256": "db79cfb64c1c8e00f35b23fe84e3bdb06d2f060c436f461278afff9be886d63f"
+    "sha256": "b3617b84dc5be5db9d388e241102127d41383f924ec1063570ec8aa0f194a28d"
   },
   "retestOf": null,
   "runId": "live-run",
@@ -233,7 +233,7 @@ No new gaps.
             "01M75A0MHETEGDTJKJA4R95CGZ"
           ],
           "observed": "Order confirmed: 400 PLN shown after Complete checkout",
-          "oracleKind": "deterministic",
+          "checkKind": "deterministic",
           "reason": null,
           "result": "passed"
         }
@@ -251,7 +251,7 @@ No new gaps.
             "01M75A0T5N9Q5D2QN7FZRQ34Y7"
           ],
           "observed": "GET /quote?promotion=true status 200 totalPLN 240",
-          "oracleKind": "deterministic",
+          "checkKind": "deterministic",
           "reason": null,
           "result": "passed"
         }
@@ -269,7 +269,7 @@ No new gaps.
             "01M75A0ZVZC156GNSTPZ9G4MYX"
           ],
           "observed": "GET /quote?promotion=true&loyalty=true status 200 totalPLN 220; expected 240",
-          "oracleKind": "deterministic",
+          "checkKind": "deterministic",
           "reason": null,
           "result": "failed"
         }

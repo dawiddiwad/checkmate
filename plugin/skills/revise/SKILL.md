@@ -23,7 +23,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 			"preconditions": ["Cart has one 400 PLN item and 20 PLN loyalty."],
 			"assertions": {
 				"A1": { "check": "totalPLN equals 240." },
-				"A2": { "check": "The quote lists the promotion once.", "oracleKind": "deterministic" },
+				"A2": { "check": "The quote lists the promotion once.", "checkKind": "deterministic" },
 				"A3": null
 			}
 		}
@@ -35,7 +35,7 @@ Rules:
 
 - Change only tests that `plan pending` prints. Change only `action`, `preconditions`, and `assertions`.
 - In `assertions`, a known ID changes that assertion. A new ID adds an assertion. `null` removes an assertion. Do not reuse a removed ID.
-- A new assertion needs both `check` and `oracleKind`. A change can give only the changed field.
+- A new assertion needs both `check` and `checkKind`. A change can give only the changed field.
 - `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision.
 - `accept_assumption`: write the assertions that the assumption makes known.
 - `defer`: change no assertion for that gap. Send `{ "tests": {} }` when every decision is `defer`.

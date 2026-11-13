@@ -4,7 +4,7 @@ These files were exported from a live run with Claude Code on the local checkout
 
 The text in the plans and results is the text that Claude and the test caller wrote. It is not edited.
 
-The current exporter rendered the files again from the stored plan and result snapshots of that run. The digests in the reports match the original records. The live database was not kept, so two details come from other records:
+The current exporter rendered the files again from the stored plan and result snapshots of that run. After the live run, the assertion field `oracleKind` became `checkKind`. The snapshots use the new name, so the plan and result digests are new: each digest is the SHA-256 of the canonical JSON in its file, and a run refers to the new plan digest. The target profile is not in the exports, so its digest stays as recorded. The live database was not kept, so two details come from other records:
 
 - The acceptance of `live-run` uses the actor and rationale of `test/live.ts` (`acceptance-test`, `The defect is real.`). Its time is known to the minute only.
 - The HTTP evidence is inline because its bytes were recovered: each text has the recorded SHA-256 digest. The text evidence of T1 was not recovered, so the report lists it without content.

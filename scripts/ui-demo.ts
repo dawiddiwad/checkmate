@@ -92,8 +92,8 @@ const loginCandidate: PlanCandidate = {
 			preconditions: ['Fixture customer anna@example.test exists.'],
 			action: 'Open the sign-in page, enter valid credentials, and submit.',
 			assertions: [
-				{ id: 'A1', check: 'The account page shows the customer name.', oracleKind: 'agent_observation' },
-				{ id: 'A2', check: 'The session cookie has the HttpOnly flag.', oracleKind: 'deterministic' },
+				{ id: 'A1', check: 'The account page shows the customer name.', checkKind: 'agent_observation' },
+				{ id: 'A2', check: 'The session cookie has the HttpOnly flag.', checkKind: 'deterministic' },
 			],
 		},
 		{
@@ -106,8 +106,8 @@ const loginCandidate: PlanCandidate = {
 			preconditions: ['Fixture customer ben@example.test has no failed attempts.'],
 			action: 'Send six sign-in requests with a wrong password.',
 			assertions: [
-				{ id: 'A1', check: 'The sixth attempt returns HTTP 423.', oracleKind: 'deterministic' },
-				{ id: 'A2', check: 'The response names the unlock time.', oracleKind: 'agent_observation' },
+				{ id: 'A1', check: 'The sixth attempt returns HTTP 423.', checkKind: 'deterministic' },
+				{ id: 'A2', check: 'The response names the unlock time.', checkKind: 'agent_observation' },
 			],
 		},
 	],
@@ -145,8 +145,8 @@ const checkoutCandidate: PlanCandidate = {
 			preconditions: ['Signed-in customer with an empty cart.'],
 			action: 'Add the 400 PLN item, complete checkout, and read the confirmation.',
 			assertions: [
-				{ id: 'A1', check: 'The confirmation shows a total of 400 PLN.', oracleKind: 'agent_observation' },
-				{ id: 'A2', check: 'The order API returns one line item.', oracleKind: 'deterministic' },
+				{ id: 'A1', check: 'The confirmation shows a total of 400 PLN.', checkKind: 'agent_observation' },
+				{ id: 'A2', check: 'The order API returns one line item.', checkKind: 'deterministic' },
 			],
 		},
 		{
@@ -159,9 +159,9 @@ const checkoutCandidate: PlanCandidate = {
 			preconditions: ['Cart with one 400 PLN item and a 20 PLN loyalty credit.'],
 			action: 'Apply the code SPRING40 and read the quote.',
 			assertions: [
-				{ id: 'A1', check: 'The response status is HTTP 200.', oracleKind: 'deterministic' },
-				{ id: 'A2', check: 'totalPLN equals 220.', oracleKind: 'deterministic' },
-				{ id: 'A3', check: 'The quote does not list the loyalty discount.', oracleKind: 'deterministic' },
+				{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' },
+				{ id: 'A2', check: 'totalPLN equals 220.', checkKind: 'deterministic' },
+				{ id: 'A3', check: 'The quote does not list the loyalty discount.', checkKind: 'deterministic' },
 			],
 		},
 		{
@@ -185,8 +185,8 @@ const checkoutCandidate: PlanCandidate = {
 			preconditions: ['Cart with one item.'],
 			action: 'Open the checkout page and read the banner.',
 			assertions: [
-				{ id: 'A1', check: 'The checkout page shows a promotion banner.', oracleKind: 'agent_observation' },
-				{ id: 'A2', check: 'The banner states a 40 percent discount.', oracleKind: 'agent_observation' },
+				{ id: 'A1', check: 'The checkout page shows a promotion banner.', checkKind: 'agent_observation' },
+				{ id: 'A2', check: 'The banner states a 40 percent discount.', checkKind: 'agent_observation' },
 			],
 		},
 	],
@@ -245,8 +245,8 @@ const searchCandidate: PlanCandidate = {
 			preconditions: ['The fixture catalog is loaded.'],
 			action: 'Search for "lamp" and read the first five results.',
 			assertions: [
-				{ id: 'A1', check: 'The first three results are lamps.', oracleKind: 'agent_observation' },
-				{ id: 'A2', check: 'The result count is 12.', oracleKind: 'deterministic' },
+				{ id: 'A1', check: 'The first three results are lamps.', checkKind: 'agent_observation' },
+				{ id: 'A2', check: 'The result count is 12.', checkKind: 'deterministic' },
 			],
 		},
 		{
@@ -262,7 +262,7 @@ const searchCandidate: PlanCandidate = {
 				{
 					id: 'A1',
 					check: 'The page says that nothing matches and offers popular items.',
-					oracleKind: 'agent_observation',
+					checkKind: 'agent_observation',
 				},
 			],
 		},
@@ -542,7 +542,7 @@ const accountCandidate: PlanCandidate = {
 			dependsOn: [],
 			preconditions: ['Signed in as anna@example.test.'],
 			action: 'Open the profile page and save a new display name.',
-			assertions: [{ id: 'A1', check: 'The header shows the new name.', oracleKind: 'deterministic' }],
+			assertions: [{ id: 'A1', check: 'The header shows the new name.', checkKind: 'deterministic' }],
 		},
 	],
 	gaps: [],

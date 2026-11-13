@@ -79,17 +79,17 @@ Every write needs an actor: `--actor <name>`, else `CHECKMATE_ACTOR`, else `git 
 `contractVersion` is `toolkit-2` everywhere. Identifier pattern `^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$` (ID).
 Test reference pattern `^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$` (local or `plan:test`).
 
-| Schema                       | Used by                        | Shape                                                                                                |
-| ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `profile.schema.json`        | `target save` stdin, snapshot  | toolkit-1 profile plus `approvals: { plan: required                                                  | none, result: required                                                                                                      | none }` (optional, default both required) |
-| `plan-request.schema.json`   | `plan open` stdin              | `{ objective, requirements?, sourceContext?, context?: {sources, instructions?}, tools? }`           |
-| `plan-candidate.schema.json` | `plan save`, `plan edit` stdin | `{ requirements?, tests: [test without readiness and gapIds], gaps: [gap] }`                         |
-| `plan-delta.schema.json`     | `plan revise` stdin            | `{ tests: { <testId>: { action?, preconditions?, assertions?: { <assertionId>: {check?, oracleKind?} | null } } } }`                                                                                                               |
-| `plan.schema.json`           | snapshot                       | see below                                                                                            |
-| `finding.schema.json`        | `run finding` stdin            | `{ id, type: defect                                                                                  | potential_issue, severity, assertionIds: ["T2.A2"], requirementIds, title, expected, observed, reproduction, evidenceIds }` |
-| `gap.schema.json`            | `run gap` stdin, inside plan   | toolkit-1 gap (`testIds` items use the test reference pattern)                                       |
-| `result.schema.json`         | snapshot                       | see below                                                                                            |
-| `response.schema.json`       | delegated worker output        | `{ status: completed                                                                                 | needs_decision                                                                                                              | interrupted                               | operational_error | rejected, subject, reasons: [string] }` |
+| Schema                       | Used by                        | Shape                                                                                               |
+| ---------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `profile.schema.json`        | `target save` stdin, snapshot  | toolkit-1 profile plus `approvals: { plan: required                                                 | none, result: required                                                                                                      | none }` (optional, default both required) |
+| `plan-request.schema.json`   | `plan open` stdin              | `{ objective, requirements?, sourceContext?, context?: {sources, instructions?}, tools? }`          |
+| `plan-candidate.schema.json` | `plan save`, `plan edit` stdin | `{ requirements?, tests: [test without readiness and gapIds], gaps: [gap] }`                        |
+| `plan-delta.schema.json`     | `plan revise` stdin            | `{ tests: { <testId>: { action?, preconditions?, assertions?: { <assertionId>: {check?, checkKind?} | null } } } }`                                                                                                               |
+| `plan.schema.json`           | snapshot                       | see below                                                                                           |
+| `finding.schema.json`        | `run finding` stdin            | `{ id, type: defect                                                                                 | potential_issue, severity, assertionIds: ["T2.A2"], requirementIds, title, expected, observed, reproduction, evidenceIds }` |
+| `gap.schema.json`            | `run gap` stdin, inside plan   | toolkit-1 gap (`testIds` items use the test reference pattern)                                      |
+| `result.schema.json`         | snapshot                       | see below                                                                                           |
+| `response.schema.json`       | delegated worker output        | `{ status: completed                                                                                | needs_decision                                                                                                              | interrupted                               | operational_error | rejected, subject, reasons: [string] }` |
 
 Plan snapshot:
 
@@ -114,7 +114,7 @@ Plan snapshot:
 			"dependsOn": [],
 			"preconditions": [],
 			"action": "…",
-			"assertions": [{ "id": "A1", "check": "…", "oracleKind": "deterministic" }]
+			"assertions": [{ "id": "A1", "check": "…", "checkKind": "deterministic" }]
 		}
 	],
 	"gaps": [
@@ -166,7 +166,7 @@ Result snapshot:
 				{
 					"assertionId": "A1",
 					"check": "…",
-					"oracleKind": "deterministic",
+					"checkKind": "deterministic",
 					"result": "passed",
 					"observed": "…",
 					"reason": null,

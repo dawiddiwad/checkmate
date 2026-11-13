@@ -57,7 +57,7 @@ A request needs `requirements` or `context.sources`. When it has only sources, y
 			"dependsOn": [],
 			"preconditions": ["Fresh cart with one item."],
 			"action": "Complete checkout and read the confirmation.",
-			"assertions": [{ "id": "A1", "check": "The confirmation shows 400 PLN.", "oracleKind": "agent_observation" }]
+			"assertions": [{ "id": "A1", "check": "The confirmation shows 400 PLN.", "checkKind": "agent_observation" }]
 		}
 	],
 	"gaps": [

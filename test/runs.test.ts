@@ -335,7 +335,7 @@ test('resume keeps recorded results, lists what is open, and can close stalled t
 			testId: 'T2',
 			warning: 'Actions may have occurred',
 			recorded: 1,
-			assertions: [{ id: 'A2', check: 'totalPLN equals 240.', oracleKind: 'deterministic' }],
+			assertions: [{ id: 'A2', check: 'totalPLN equals 240.', checkKind: 'deterministic' }],
 		},
 	])
 	assert.equal(runDetail(opened, 'run-1').tests[1].assertions[0].result, 'passed')

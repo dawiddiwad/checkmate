@@ -110,8 +110,8 @@ export function candidate(): PlanCandidate {
 				preconditions: ['Fresh cart with one 400 PLN item.'],
 				action: 'Complete checkout and read the confirmation.',
 				assertions: [
-					{ id: 'A1', check: 'The confirmation shows 400 PLN.', oracleKind: 'agent_observation' },
-					{ id: 'A2', check: 'The order has one item.', oracleKind: 'deterministic' },
+					{ id: 'A1', check: 'The confirmation shows 400 PLN.', checkKind: 'agent_observation' },
+					{ id: 'A2', check: 'The order has one item.', checkKind: 'deterministic' },
 				],
 			},
 			{
@@ -123,7 +123,7 @@ export function candidate(): PlanCandidate {
 				dependsOn: ['T1'],
 				preconditions: ['Cart with 400 PLN and 20 PLN loyalty.'],
 				action: 'Apply the promotion and read the quote.',
-				assertions: [{ id: 'A1', check: 'The response status is HTTP 200.', oracleKind: 'deterministic' }],
+				assertions: [{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' }],
 			},
 			{
 				id: 'T3',
@@ -171,7 +171,7 @@ export const promotionDelta = {
 	tests: {
 		T2: {
 			assertions: {
-				A2: { check: 'totalPLN equals 240.', oracleKind: 'deterministic' as const },
+				A2: { check: 'totalPLN equals 240.', checkKind: 'deterministic' as const },
 			},
 		},
 	},

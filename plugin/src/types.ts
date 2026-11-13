@@ -41,7 +41,7 @@ export type PlanCandidate = {
 		assertions: Array<{
 			id: string
 			check: string
-			oracleKind: 'deterministic' | 'agent_observation'
+			checkKind: 'deterministic' | 'agent_observation'
 		}>
 	}>
 	gaps: Array<{
@@ -66,7 +66,7 @@ export type PlanDelta = {
 				string,
 				{
 					check?: string
-					oracleKind?: 'deterministic' | 'agent_observation'
+					checkKind?: 'deterministic' | 'agent_observation'
 				} | null
 			>
 		}
@@ -128,7 +128,7 @@ export type Plan = {
 		assertions: Array<{
 			id: string
 			check: string
-			oracleKind: 'deterministic' | 'agent_observation'
+			checkKind: 'deterministic' | 'agent_observation'
 		}>
 	}>
 	gaps: Array<{
@@ -225,7 +225,7 @@ export type Result = {
 		assertions: Array<{
 			assertionId: string
 			check: string
-			oracleKind: 'deterministic' | 'agent_observation'
+			checkKind: 'deterministic' | 'agent_observation'
 			result: 'passed' | 'failed' | 'inconclusive' | 'not_checked'
 			observed: string | null
 			reason: string | null

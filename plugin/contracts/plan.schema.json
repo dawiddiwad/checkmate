@@ -302,11 +302,11 @@
 					"type": "string",
 					"minLength": 1
 				},
-				"oracleKind": {
+				"checkKind": {
 					"enum": ["deterministic", "agent_observation"]
 				}
 			},
-			"required": ["id", "check", "oracleKind"],
+			"required": ["id", "check", "checkKind"],
 			"additionalProperties": false
 		}
 	}

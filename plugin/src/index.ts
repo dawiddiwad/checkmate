@@ -36,6 +36,7 @@ export {
 	inbox,
 	planList,
 	planDetail,
+	planStatus,
 	planHistory,
 	runList,
 	runDetail,

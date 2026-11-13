@@ -16,6 +16,13 @@ export function inboxItems(waiting: Waiting) {
 	]
 }
 
+export function loopState(loop: { state: string; waitsOn: string }) {
+	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
+	return html`<span class="loop"
+		>${pill(loop.state)}${loop.waitsOn === 'none' ? '' : html` <span class="muted small">waits on ${role}</span>`}</span
+	>`
+}
+
 export function inboxCount(waiting: Waiting) {
 	return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.requests.length
 }
@@ -353,6 +360,15 @@ const approvals = [
 	['not_required', 'Not required'],
 ]
 
+const waits = [
+	['', 'Anyone'],
+	['oracle', 'Oracle'],
+	['planner', 'Planner'],
+	['qa', 'QA'],
+	['factory', 'Factory'],
+	['none', 'Nobody'],
+]
+
 export function plansSpec(): ListSpec {
 	return {
 		path: '/plans',
@@ -361,6 +377,7 @@ export function plansSpec(): ListSpec {
 		search: 'Search plans',
 		columns: [
 			{ label: 'Plan', sort: 'plan' },
+			{ label: 'Loop', sort: 'loop' },
 			{ label: 'Tests', sort: 'tests', first: 'desc' },
 			{ label: 'Open gaps', sort: 'gaps', first: 'desc' },
 			{ label: 'Approval', sort: 'approval' },
@@ -372,6 +389,7 @@ export function plansSpec(): ListSpec {
 		filters: [
 			{ name: 'show', label: 'Show', choices: planShows, strict: true },
 			{ name: 'approval', label: 'Approval', choices: approvals, strict: true },
+			{ name: 'waits', label: 'Waits on', choices: waits, strict: true },
 		],
 	}
 }
@@ -389,6 +407,7 @@ function testSummary(tests: PlanRow['tests']) {
 function requestedPlanRow(row: PlanRow) {
 	return html`<tr data-key="plan:${row.planId}" data-nav-row>
 		<td><span class="mono">${row.planId}</span></td>
+		<td>${loopState(row.loop)}</td>
 		<td><span class="muted">no revision yet</span></td>
 		<td><span class="muted">none</span></td>
 		<td>${pill('requested')}</td>
@@ -403,6 +422,7 @@ function planRow(row: PlanRow) {
 		<td>
 			<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item>${row.planId}@${row.revision}</a>
 		</td>
+		<td>${loopState(row.loop)}</td>
 		<td>${testSummary(row.tests)}</td>
 		<td>
 			${

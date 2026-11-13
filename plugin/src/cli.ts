@@ -32,7 +32,17 @@ import {
 	rejectResult,
 	resumeRun,
 } from './runs.ts'
-import { evidenceBytes, inbox, operationLog, planDetail, planList, runDetail, runList } from './views.ts'
+import {
+	evidenceBytes,
+	inbox,
+	operationLog,
+	planDetail,
+	planList,
+	planStatus,
+	roles,
+	runDetail,
+	runList,
+} from './views.ts'
 import { exportPlan, exportRun } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
@@ -175,6 +185,48 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
+	status: {
+		positionals: ['planId'],
+		run: (store, args) => {
+			const planId = value(args, 'planId')!
+			return completed(planId, planStatus(store, planId))
+		},
+		print: (reply) => {
+			const status = reply.data as ReturnType<typeof planStatus>
+			return {
+				facts: {
+					state: status.state,
+					waitsOn: status.waitsOn,
+					revision: status.revision ?? undefined,
+					approval: status.approval ?? undefined,
+					run: status.latestRun?.runId,
+				},
+				lines: [
+					...status.why.map((line) => ['why', line]),
+					...(status.next ? [['next', status.next]] : []),
+					...status.gaps.map((gap) =>
+						gap.runId
+							? [gap.gapId, 'run_gap', gap.severity, gap.runId, gap.question]
+							: [gap.gapId, 'gap', gap.severity, gap.question]
+					),
+					...status.pendingDecisions.map((decision) => [
+						decision.id,
+						'pending',
+						decision.gapId,
+						decision.kind,
+					]),
+					...status.defects.map((defect) => [
+						defect.findingId,
+						'defect',
+						defect.runId,
+						defect.severity,
+						defect.assertionIds,
+						defect.title,
+					]),
+				],
+			}
+		},
+	},
 	'target open': {
 		positionals: ['targetId'],
 		flags: { 'base-url': 'value', capabilities: 'list', operations: 'list', tool: 'repeat' },
@@ -298,13 +350,16 @@ const commands: Record<string, Command> = {
 	},
 	'plan list': {
 		positionals: [],
-		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch' },
+		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': 'value' },
 		run: (store, args) => {
+			const waitsOn = value(args, 'waits-on')
+			if (waitsOn !== undefined) requireChoice(waitsOn, roles, 'role (--waits-on)')
 			const plans = planList(store).filter(
 				(plan) =>
 					(!args['needs-decision'] || plan.openBlockingGaps.length > 0) &&
 					(!args['awaiting-approval'] || plan.approval === 'pending') &&
-					(!args.blocked || plan.blocked.length > 0)
+					(!args.blocked || plan.blocked.length > 0) &&
+					(waitsOn === undefined || plan.loop.waitsOn === waitsOn)
 			)
 			return completed('plans', { plans })
 		},
@@ -312,12 +367,14 @@ const commands: Record<string, Command> = {
 			facts: { count: (reply.data.plans as unknown[]).length },
 			lines: (reply.data.plans as ReturnType<typeof planList>).map((plan) =>
 				plan.status === 'requested'
-					? [plan.planId, 'status=requested']
+					? [plan.planId, 'status=requested', `state=${plan.loop.state}`, `waitsOn=${plan.loop.waitsOn}`]
 					: [
 							`${plan.planId}@${plan.revision}`,
 							`gaps=${cell(plan.openBlockingGaps)}`,
 							`approval=${plan.approval}`,
 							`blocked=${cell(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`,
+							`state=${plan.loop.state}`,
+							`waitsOn=${plan.loop.waitsOn}`,
 						]
 			),
 		}),

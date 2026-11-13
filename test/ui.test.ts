@@ -472,7 +472,11 @@ test('the inbox and the plan list show a plan request without a revision', async
 	assert.match(home, /<code>\/checkmate:plan draft<\/code>/)
 	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
 	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
-	assert.match(plans, /<span class="mono">draft<\/span><\/td>\s*<td><span class="muted">no revision yet<\/span>/)
+	assert.match(
+		plans,
+		/<span class="mono">draft<\/span><\/td>\s*<td><span class="loop"\s*>.*needs plan<\/span> <span class="muted small">waits on planner<\/span>/
+	)
+	assert.match(plans, /<span class="mono">draft<\/span>[\s\S]*?<td><span class="muted">no revision yet<\/span>/)
 	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
 })
 
@@ -531,6 +535,40 @@ test('a run gap is in the inbox, and its answer adopts it into the plan', async 
 	assert.match(
 		(await call(ui, '/runs/run-7')).body,
 		/in plan<\/span>\s*<a href="\/plans\/checkout@3#G4">checkout@3<\/a>/
+	)
+})
+
+test('the plan list and the plan page show the loop state and who it waits on', async (t) => {
+	const { ui } = await start(t)
+	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
+	const loops = [
+		...plans.matchAll(
+			/data-key="plan:([^"]+)" data-nav-row>[\s\S]*?<td><span class="loop"\s*>(.*?)<\/span\s*><\/td>/g
+		),
+	].map((match) => [
+		match[1],
+		match[2]
+			.replace(/<[^>]+>/g, '')
+			.replace(/\s+/g, ' ')
+			.trim(),
+	])
+	assert.deepEqual(loops, [
+		['account', '○ ready to run waits on QA'],
+		['checkout', '? needs answers waits on oracle'],
+		['login', '● run in progress waits on QA'],
+		['search', '○ needs approval waits on oracle'],
+		['xss', '? needs answers waits on oracle'],
+	])
+	assert.deepEqual(rowKeys((await call(ui, '/plans?waits=qa')).body, 'plan'), ['account', 'login'])
+	assert.deepEqual(rowKeys((await call(ui, '/plans?sort=loop&dir=asc')).body, 'plan').slice(0, 2), [
+		'checkout',
+		'xss',
+	])
+	assert.equal(rowKeys((await call(ui, '/plans?waits=nobody')).body, 'plan').length, 5)
+	const checkout = (await call(ui, '/plans/checkout@2')).body
+	assert.match(
+		checkout,
+		/<div class="meta">\s*<span class="loop"\s*><span class="st warn"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
 	)
 })
 

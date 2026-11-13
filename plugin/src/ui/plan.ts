@@ -3,13 +3,13 @@ import type { Plan } from '../types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
-import { planDetail, planHistory } from '../views.ts'
+import { planDetail, planHistory, planStatus } from '../views.ts'
 import { planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
 import { html, join, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
-import { counts, runStatus } from './lists.ts'
+import { counts, loopState, runStatus } from './lists.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]
@@ -394,7 +394,7 @@ export function planPage(
 	const subject = `${planId}@${revision}`
 	const latest = detail.revision === detail.latestRevision
 	const meta = html`<div class="meta">
-		${pill(detail.approval.state)}
+		${loopState(planStatus(store, planId))} ${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
 		<span class="head-actions">

@@ -11,7 +11,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 
 | Group     | Commands                                                                                                      |
 | --------- | ------------------------------------------------------------------------------------------------------------- |
-| State     | `inbox`, `plan list`, `plan show`, `run list`, `run show`, `log`, `query`                                     |
+| State     | `status`, `inbox`, `plan list`, `plan show`, `run list`, `run show`, `log`, `query`                           |
 | Target    | `target open`, `target request`, `target save`, `target show`                                                 |
 | Plan      | `plan open`, `plan request`, `plan save`, `plan pending`, `plan revise`, `plan diff`                          |
 | Decisions | `gap answer`, `plan adopt-gaps`, `plan edit`, `plan approve`, `plan reject`, `result accept`, `result reject` |
@@ -25,6 +25,28 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 - `log` lists the operation log, newest first. It takes `--subject` and `--limit <n>` (default 50). A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`.
 - `query "<sql>"` runs one SQL statement on a read-only connection.
 - `run gate` and `run begin` with `--partial ready_only` and no `--tests` select the ready tests. Each test that they leave out prints as `<testId> left_out <reason>`.
+
+## Loop state
+
+`checkmate status <planId>` reads the records of one plan and prints where it is in the loop. Line 1 has `state=` and `waitsOn=`. Then `why` lines, a `next` line, the open gaps, the pending decisions, and the defects of the latest finished run. Checkmate stores no loop state. It derives it from the records. The review UI shows the same state on the plan list and the plan page.
+
+| State               | Waits on | Meaning                                                                           |
+| ------------------- | -------- | --------------------------------------------------------------------------------- |
+| `needs_plan`        | planner  | The plan request has no revision.                                                 |
+| `run_in_progress`   | qa       | A run of the plan is started.                                                     |
+| `needs_revision`    | planner  | A gap answer waits for the revise stage.                                          |
+| `plan_rejected`     | oracle   | The latest revision is rejected. Change the plan.                                 |
+| `needs_answers`     | oracle   | A gap or a run gap is open without an answer.                                     |
+| `needs_approval`    | oracle   | The latest revision waits for approval.                                           |
+| `ready_to_run`      | qa       | The latest revision is approved, no run is finished, and a test is ready.         |
+| `nothing_to_run`    | oracle   | No test is ready and no gap is open.                                              |
+| `defects_open`      | factory  | The latest finished run has defects. Build a fix, then retest.                    |
+| `needs_retest`      | qa       | The latest run did not pass every test, tested an older revision, or is rejected. |
+| `awaits_acceptance` | oracle   | The latest run passed every selected test. Its result waits for acceptance.       |
+| `accepted`          | none     | The oracle accepted the result.                                                   |
+| `passed`            | none     | The latest run passed. Result acceptance is not required.                         |
+
+Checkmate checks the states in this order and prints the first one that applies. An approved revision with open gaps is `ready_to_run` until its first run finishes. `plan list` prints `state=` and `waitsOn=` for each plan, and takes `--waits-on <planner|oracle|qa|factory|none>`.
 
 ## Input
 
@@ -107,7 +129,7 @@ checkmate ui [--workspace <path>] [--port <n>]
 In Claude Code, run `/checkmate:ui`. The command prints the local URL on `127.0.0.1`. It runs until SIGINT or SIGTERM. The UI writes to the database only when a human submits a form. Each page updates when another process writes.
 
 - **Inbox** (`/`): the gaps to answer, the plans to approve, the results to accept, and the plans to draft. After a decision, the UI opens the next item.
-- **Plans, Runs, and Log:** 25, 50, or 100 rows for each page. Click a column header to sort. The search field filters while you type. The URL keeps the list state.
+- **Plans, Runs, and Log:** 25, 50, or 100 rows for each page. The plan list has a `Loop` column with the [loop state](#loop-state) and the role that it waits on, and a `Waits on` filter. The plan page shows the same state in its header. Click a column header to sort. The search field filters while you type. The URL keeps the list state.
 - **Plan** (`/plans/<planId>@<rev>`): tests, gaps, requirements and coverage, runs of the plan, decisions, and history. Approve or reject the revision here. `Export` downloads the plan as HTML, Markdown, or JSON. Resolved and deferred gaps are folded below the open gaps. The history shows the latest revision open and five earlier revisions folded. `Show full history` loads the rest.
 - **Plan editor** (`/plans/<planId>@<rev>/edit`, `Edit plan` on the plan page): forms for the requirements, the tests, the assertions, and the coverage. `Edit as JSON` adds or removes requirements, tests, assertions, and gaps. The rules of `plan edit` apply. Only the latest revision can change.
 - **Run** (`/runs/<runId>`): outcomes, assertions with evidence, findings, new gaps, coverage, and the result decision. When the run is finished, `Download report` gives HTML, Markdown, or JSON (`/runs/<runId>/report.html`, `.md`, or `.json`).

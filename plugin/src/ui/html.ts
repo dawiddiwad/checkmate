@@ -71,6 +71,18 @@ const statusLook: Record<string, [string, Tone]> = {
 	rejected_operation: ['✗', 'fail'],
 	needs_decision: ['?', 'warn'],
 	invalid_request: ['✗', 'fail'],
+	needs_plan: ['○', 'acc'],
+	run_in_progress: ['●', 'acc'],
+	needs_revision: ['○', 'acc'],
+	plan_rejected: ['✗', 'fail'],
+	needs_answers: ['?', 'warn'],
+	needs_approval: ['○', 'acc'],
+	ready_to_run: ['○', 'acc'],
+	nothing_to_run: ['–', 'block'],
+	defects_open: ['✗', 'fail'],
+	needs_retest: ['!', 'warn'],
+	awaits_acceptance: ['○', 'acc'],
+	accepted: ['✓', 'pass'],
 }
 
 export function words(status: string) {

@@ -18,6 +18,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 | Question                                 | Command                                                     |
 | ---------------------------------------- | ----------------------------------------------------------- |
 | What waits for the oracle?               | `checkmate inbox`                                           |
+| Where is a plan in the loop? Who acts?   | `checkmate status <planId>`                                 |
 | Which plans exist, and what blocks them? | `checkmate plan list`                                       |
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
 | Which runs exist?                        | `checkmate run list [--plan <planId>]`                      |

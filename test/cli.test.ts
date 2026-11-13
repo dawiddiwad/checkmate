@@ -423,7 +423,7 @@ test('inbox and plan list show a plan request without a revision', (t) => {
 	const plans = cli(workspace, ['plan', 'list'])
 	assert.equal(plans.lines[0], 'completed plans count=2')
 	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
-	assert.equal(plans.lines[2], 'later\tstatus=requested')
+	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=needs_plan\twaitsOn=planner')
 	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 })
 
@@ -509,6 +509,31 @@ test('a run gap shows in the inbox, and plan adopt-gaps or gap answer brings it 
 	assert.deepEqual(cli(workspace, ['inbox']).lines.slice(1, 2), [
 		'checkout@3/G3\tgap\tnon_blocking\tIs G3 a question?',
 	])
+})
+
+test('status prints the loop state, who it waits on, and the open items', (t) => {
+	const workspace = setup(t)
+	const status = cli(workspace, ['status', 'checkout'])
+	assert.equal(status.code, 0)
+	assert.deepEqual(status.lines, [
+		'completed checkout state=needs_answers waitsOn=oracle revision=1 approval=pending',
+		'why\t2 open gaps',
+		'why\tcheckout@1 waits for approval',
+		'next\tcheckmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --rationale "<why>"',
+		'G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
+		'G2\tgap\tblocking\tWhich orders qualify for refunds?',
+	])
+	assert.equal(json(workspace, ['status', 'checkout']).body.waitsOn, 'oracle')
+	assert.deepEqual(cli(workspace, ['status', 'nothing']).lines, [
+		'rejected nothing',
+		'reason: Unknown plan: nothing. Run plan open first.',
+	])
+	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'oracle']).lines[0], 'completed plans count=1')
+	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'qa']).lines[0], 'completed plans count=0')
+	assert.match(
+		cli(workspace, ['plan', 'list', '--waits-on', 'boss']).lines[1],
+		/^reason: Invalid role \(--waits-on\): boss/
+	)
 })
 
 test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {

@@ -30,7 +30,7 @@ checkmate delegate plan checkout --allow Read --allow Bash
 checkmate inbox
 ```
 
-To give requirements or plan tools, send the request as JSON on standard input ([Plan request](docs/CONFIGURATION.md#plan-request)). Your factory can read the record with `inbox`, `log`, `query` (read-only), and `export --format json`. [The factory loop](docs/WORKFLOW.md#factory-loop) shows each step, from the early red run to acceptance.
+To give requirements or plan tools, send the request as JSON on standard input ([Plan request](docs/CONFIGURATION.md#plan-request)). `checkmate status checkout` says where the ticket is in the loop and who it waits on. Your factory can read the record with `status`, `inbox`, `log`, `query` (read-only), and `export --format json`. [The factory loop](docs/WORKFLOW.md#factory-loop) shows each step, from the early red run to acceptance.
 
 ## Solo mode: your Claude Code
 

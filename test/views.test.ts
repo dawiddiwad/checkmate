@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { answerGap, openPlan, revisePlan } from '../plugin/src/plans.ts'
+import { answerGap, openPlan, patchPlan, rejectPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
+import { beginRun, closeTest, finishRun, recordFinding } from '../plugin/src/runs.ts'
 import {
 	changesAfter,
 	inbox,
@@ -10,12 +11,16 @@ import {
 	pagedRuns,
 	planDetail,
 	planList,
+	planStatus,
 	runList,
 } from '../plugin/src/views.ts'
 import {
+	accept,
 	actor,
 	approved,
 	begin,
+	candidate,
+	check,
 	passRun,
 	plan,
 	planRequest,
@@ -191,4 +196,100 @@ test('paged lists sort, filter by text and dropdown, and report the total', (t) 
 	assert.throws(() => pagedPlans(opened, { filters: { owner: 'x' } }), /Unknown filter: owner/)
 	assert.throws(() => pagedPlans(opened, { filters: { show: 'some' } }), /Invalid show filter: some/)
 	assert.throws(() => pagedOperations(opened, { offset: -1 }), /Invalid offset: -1/)
+})
+
+test('plan status follows the loop and names the role that the plan waits on', (t) => {
+	const opened = store(t)
+	target(opened)
+	const where = () => {
+		const status = planStatus(opened, 'checkout')
+		return `${status.state} ${status.waitsOn}`
+	}
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	assert.equal(where(), 'needs_plan planner')
+	savePlan(opened, actor, { planId: 'checkout', candidate: candidate() })
+	assert.equal(where(), 'needs_answers oracle')
+	approved(opened, 'checkout', 1)
+	assert.equal(where(), 'ready_to_run qa')
+	beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', partial: 'ready_only' })
+	assert.equal(where(), 'run_in_progress qa')
+	const failed = check(opened, 'run-1', 'T1.A1', 'failed')
+	check(opened, 'run-1', 'T1.A2', 'passed')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	recordFinding(opened, actor, {
+		runId: 'run-1',
+		finding: {
+			id: 'F1',
+			type: 'defect',
+			severity: 'high',
+			assertionIds: ['T1.A1'],
+			requirementIds: ['R1'],
+			title: 'Wrong total',
+			expected: '400 PLN',
+			observed: '380 PLN',
+			reproduction: ['Check out.'],
+			evidenceIds: failed.data.evidenceIds as string[],
+		},
+	})
+	finishRun(opened, actor, {
+		runId: 'run-1',
+		completion: 'completed',
+		cleanup: 'completed',
+		cleanupReason: 'Closed.',
+	})
+	const early = planStatus(opened, 'checkout')
+	assert.deepEqual(
+		[early.state, early.gaps.map((gap) => gap.gapId), early.defects.map((defect) => defect.findingId)],
+		['needs_answers', ['G1', 'G2'], ['F1']]
+	)
+	answerGap(opened, actor, {
+		planId: 'checkout',
+		gapId: 'G1',
+		kind: 'clarify',
+		value: '240 PLN.',
+		source: 'd#1',
+		rationale: 'R.',
+	})
+	answerGap(opened, actor, { planId: 'checkout', gapId: 'G2', kind: 'defer', value: 'Later.', rationale: 'R.' })
+	assert.equal(where(), 'needs_revision planner')
+	revisePlan(opened, actor, { planId: 'checkout', delta: promotionDelta })
+	assert.equal(where(), 'needs_approval oracle')
+	approved(opened)
+	const fix = planStatus(opened, 'checkout')
+	assert.deepEqual([fix.state, fix.waitsOn, fix.why], ['defects_open', 'factory', ['run-1 has 1 defect on build b1']])
+	assert.equal(fix.next, 'Build a fix, then checkmate run begin <runId> checkout@2 --build <build> --retest-of run-1')
+	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
+	assert.equal(where(), 'run_in_progress qa')
+	for (const testId of ['T1', 'T2']) {
+		for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, actor, { runId: 'run-2', testId })
+	}
+	finishRun(opened, actor, {
+		runId: 'run-2',
+		completion: 'completed',
+		cleanup: 'completed',
+		cleanupReason: 'Closed.',
+	})
+	assert.equal(where(), 'awaits_acceptance oracle')
+	accept(opened, 'run-2')
+	assert.equal(where(), 'accepted none')
+	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { title: 'Order total' } } } })
+	assert.equal(where(), 'needs_approval oracle')
+	approved(opened, 'checkout', 3)
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 tested checkout@2, not checkout@3'])
+	assert.equal(where(), 'needs_retest qa')
+	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { title: 'Total' } } } })
+	rejectPlan(opened, actor, { reference: 'checkout@4', rationale: 'No.' })
+	assert.equal(where(), 'plan_rejected oracle')
+	assert.deepEqual(
+		planList(opened).map((row) => [row.planId, row.loop]),
+		[['checkout', { state: 'plan_rejected', waitsOn: 'oracle' }]]
+	)
+})
+
+test('plan status reports a passed run without acceptance when the policy needs none', (t) => {
+	const opened = store(t)
+	ready(opened, { approvals: { plan: 'none', result: 'none' } })
+	passRun(opened, 'run-1', 'b1')
+	assert.deepEqual([planStatus(opened, 'checkout').state, planStatus(opened, 'checkout').waitsOn], ['passed', 'none'])
 })

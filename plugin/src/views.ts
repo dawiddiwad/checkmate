@@ -8,6 +8,7 @@ import {
 	latestApproval,
 	planApproval,
 	planChanges,
+	planRequest,
 	planRevision,
 	planRunGaps,
 } from './plans.ts'
@@ -38,6 +39,7 @@ export type PlanListRow = {
 	tests: { total: number; ready: number; blocked: number; deferred: number }
 	approval: ApprovalLabel | null
 	blocked: Array<{ testId: string; dependency: string; cause: string }>
+	loop: { state: LoopState; waitsOn: Role }
 }
 
 export function approvalLabel(state: ApprovalState): ApprovalLabel {
@@ -172,6 +174,7 @@ export function planList(store: Store): PlanListRow[] {
 						return cause ? [{ testId: test.id, dependency, cause }] : []
 					})
 			),
+			loop: loopOf(store, row.plan_id),
 		}
 	})
 	const requested = requestedPlans(store).map((request): PlanListRow => ({
@@ -185,6 +188,7 @@ export function planList(store: Store): PlanListRow[] {
 		tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
 		approval: null,
 		blocked: [],
+		loop: { state: 'needs_plan', waitsOn: 'planner' },
 	}))
 	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
 }
@@ -240,6 +244,186 @@ export function planHistory(store: Store, planId: string) {
 		at: row.at,
 		changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i]),
 	}))
+}
+
+export type LoopState =
+	| 'needs_plan'
+	| 'run_in_progress'
+	| 'needs_revision'
+	| 'plan_rejected'
+	| 'needs_answers'
+	| 'needs_approval'
+	| 'ready_to_run'
+	| 'nothing_to_run'
+	| 'defects_open'
+	| 'needs_retest'
+	| 'awaits_acceptance'
+	| 'accepted'
+	| 'passed'
+export type Role = 'planner' | 'oracle' | 'qa' | 'factory' | 'none'
+export const roles = ['planner', 'oracle', 'qa', 'factory', 'none'] as const
+
+export function planStatus(store: Store, planId: string) {
+	if (!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId)) {
+		planRequest(store, planId)
+		return {
+			planId,
+			revision: null,
+			...loop('needs_plan', 'planner', [], `checkmate delegate plan ${planId}`),
+			approval: null,
+			gaps: [],
+			pendingDecisions: [],
+			latestRun: null,
+			defects: [],
+		}
+	}
+	const { plan, sha256 } = planRevision(store, planId)
+	const subject = `${planId}@${plan.revision}`
+	const pendingDecisions = all<{ id: string; gap_id: string; kind: string }>(
+		store,
+		'SELECT id, gap_id, kind FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
+		planId
+	).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind }))
+	const gaps = [
+		...plan.gaps
+			.filter((gap) => gap.status === 'open' && !pendingDecisions.some((item) => item.gapId === gap.id))
+			.map((gap) => ({
+				gapId: gap.id,
+				severity: gap.severity,
+				question: gap.question,
+				runId: null as string | null,
+			})),
+		...planRunGaps(store, planId)
+			.filter((item) => !item.adopted)
+			.map((item) => ({
+				gapId: item.gap.id,
+				severity: item.gap.severity,
+				question: item.gap.question,
+				runId: item.runId as string | null,
+			})),
+	]
+	const approval = approvalLabel(planApproval(store, plan, sha256))
+	const runs = runList(store, { planId })
+	const started = runs.find((run) => run.state === 'started')
+	const finished = runs.filter((run) => run.state === 'finalized').at(-1)
+	const latestRun = started ?? finished ?? null
+	const defects = finished
+		? runFindings(store, finished.runId)
+				.filter((finding) => finding.type === 'defect')
+				.map((finding) => ({
+					runId: finished.runId,
+					findingId: finding.id,
+					severity: finding.severity,
+					assertionIds: finding.assertionIds,
+					title: finding.title,
+				}))
+		: []
+	const state = (): ReturnType<typeof loop> => {
+		const run = `checkmate run begin <runId> ${subject} --build <build>`
+		if (started)
+			return loop(
+				'run_in_progress',
+				'qa',
+				[`${started.runId} is started on build ${started.build}`],
+				`checkmate delegate execute ${started.runId}`
+			)
+		if (pendingDecisions.length)
+			return loop(
+				'needs_revision',
+				'planner',
+				pendingDecisions.map((item) => `${item.gapId} has a pending ${item.kind} decision`),
+				`checkmate delegate revise ${planId}`
+			)
+		if (approval === 'rejected')
+			return loop('plan_rejected', 'oracle', [`${subject} is rejected`], `checkmate plan edit ${subject} --patch`)
+		const answer = `checkmate gap answer ${planId} <gapId> --kind <kind> --value "<answer>" --rationale "<why>"`
+		if (approval === 'pending')
+			return gaps.length
+				? loop(
+						'needs_answers',
+						'oracle',
+						[amount(gaps.length, 'open gap'), `${subject} waits for approval`],
+						answer
+					)
+				: loop(
+						'needs_approval',
+						'oracle',
+						[`${subject} waits for approval`],
+						`checkmate plan approve ${subject} --rationale "<why>"`
+					)
+		const ready = plan.tests.filter((test) => test.readiness === 'ready').length
+		if (!finished) {
+			if (ready)
+				return loop(
+					'ready_to_run',
+					'qa',
+					[`${ready} of ${plan.tests.length} tests are ready`],
+					`${run} --partial ready_only`
+				)
+			return gaps.length
+				? loop('needs_answers', 'oracle', [`No test is ready. ${amount(gaps.length, 'open gap')}`], answer)
+				: loop(
+						'nothing_to_run',
+						'oracle',
+						['No test is ready and no gap is open'],
+						`checkmate plan edit ${subject} --patch`
+					)
+		}
+		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
+		const retest = `${run} --retest-of ${finished.runId}`
+		if (defects.length)
+			return loop(
+				'defects_open',
+				'factory',
+				[`${finished.runId} has ${amount(defects.length, 'defect')} on build ${finished.build}`],
+				`Build a fix, then ${retest}`
+			)
+		const result = runResult(store, finished.runId)!.result
+		const unpassed = result.tests.filter(
+			(test) => result.selectedTestIds.includes(test.testId) && test.outcome !== 'passed'
+		)
+		const why = [
+			...(finished.revision !== plan.revision
+				? [`${finished.runId} tested ${planId}@${finished.revision}, not ${subject}`]
+				: []),
+			...(result.completion !== 'completed' ? [`${finished.runId} is ${result.completion}`] : []),
+			...unpassed.map((test) => `${test.testId} is ${test.outcome} in ${finished.runId}`),
+			...(finished.acceptance === 'rejected' ? [`Result ${finished.runId} is rejected`] : []),
+		]
+		if (why.length) return loop('needs_retest', 'qa', why, retest)
+		if (finished.acceptance === 'pending')
+			return loop(
+				'awaits_acceptance',
+				'oracle',
+				[`${finished.runId} passed on build ${finished.build}`],
+				`checkmate result accept ${finished.runId} --rationale "<why>"`
+			)
+		if (finished.acceptance === 'approved') return loop('accepted', 'none', [`${finished.runId} is accepted`], null)
+		return loop('passed', 'none', [`${finished.runId} passed. Result acceptance is not required`], null)
+	}
+	return {
+		planId,
+		revision: plan.revision,
+		...state(),
+		approval,
+		gaps,
+		pendingDecisions,
+		latestRun,
+		defects,
+	}
+}
+
+function loopOf(store: Store, planId: string) {
+	const { state, waitsOn } = planStatus(store, planId)
+	return { state, waitsOn }
+}
+
+function amount(count: number, noun: string) {
+	return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+function loop(state: LoopState, waitsOn: Role, why: string[], next: string | null) {
+	return { state, waitsOn, why, next }
 }
 
 export function runList(store: Store, filters: { planId?: string; build?: string } = {}) {
@@ -517,6 +701,7 @@ export function pagedPlans(store: Store, query: ListQuery = {}) {
 	type Row = ReturnType<typeof planList>[number]
 	const columns: Record<string, (row: Row) => Sortable> = {
 		plan: (row) => row.planId,
+		loop: (row) => row.loop.state,
 		tests: (row) => row.tests.total,
 		gaps: (row) => row.openGaps.length,
 		approval: (row) => row.approval ?? row.status,
@@ -524,10 +709,11 @@ export function pagedPlans(store: Store, query: ListQuery = {}) {
 		updated: (row) => row.since,
 	}
 	const options = listQuery(query, Object.keys(columns), { sort: 'plan', direction: 'asc' })
-	const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels })
+	const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels, waits: roles })
 	const rows = planList(store).filter(
 		(row) =>
 			(filters.approval === undefined || row.approval === filters.approval) &&
+			(filters.waits === undefined || row.loop.waitsOn === filters.waits) &&
 			(filters.show !== 'needs_decision' || row.openGaps.length > 0) &&
 			(filters.show !== 'awaiting_approval' || row.approval === 'pending') &&
 			(filters.show !== 'blocked' || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
@@ -535,6 +721,8 @@ export function pagedPlans(store: Store, query: ListQuery = {}) {
 	return pageOf(rows, options, columns, (row) => [
 		row.revision === null ? row.planId : `${row.planId}@${row.revision}`,
 		row.status,
+		row.loop.state,
+		`waits on ${row.loop.waitsOn}`,
 		`${row.tests.total} tests ${row.tests.ready} ready ${row.tests.blocked} blocked ${row.tests.deferred} deferred`,
 		...row.openGaps,
 		row.approval,

@@ -8293,7 +8293,8 @@ function planList(store) {
           const cause = dependencyBlock(store, dependency, null);
           return cause ? [{ testId: test.id, dependency, cause }] : [];
         })
-      )
+      ),
+      loop: loopOf(store, row.plan_id)
     };
   });
   const requested = requestedPlans(store).map((request) => ({
@@ -8306,7 +8307,8 @@ function planList(store) {
     openBlockingGaps: [],
     tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
     approval: null,
-    blocked: []
+    blocked: [],
+    loop: { state: "needs_plan", waitsOn: "planner" }
   }));
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
@@ -8357,6 +8359,152 @@ function planHistory(store, planId) {
     at: row.at,
     changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i])
   }));
+}
+var roles = ["planner", "oracle", "qa", "factory", "none"];
+function planStatus(store, planId) {
+  if (!one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId)) {
+    planRequest(store, planId);
+    return {
+      planId,
+      revision: null,
+      ...loop("needs_plan", "planner", [], `checkmate delegate plan ${planId}`),
+      approval: null,
+      gaps: [],
+      pendingDecisions: [],
+      latestRun: null,
+      defects: []
+    };
+  }
+  const { plan, sha256 } = planRevision(store, planId);
+  const subject = `${planId}@${plan.revision}`;
+  const pendingDecisions2 = all(
+    store,
+    "SELECT id, gap_id, kind FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
+    planId
+  ).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind }));
+  const gaps = [
+    ...plan.gaps.filter((gap) => gap.status === "open" && !pendingDecisions2.some((item) => item.gapId === gap.id)).map((gap) => ({
+      gapId: gap.id,
+      severity: gap.severity,
+      question: gap.question,
+      runId: null
+    })),
+    ...planRunGaps(store, planId).filter((item) => !item.adopted).map((item) => ({
+      gapId: item.gap.id,
+      severity: item.gap.severity,
+      question: item.gap.question,
+      runId: item.runId
+    }))
+  ];
+  const approval = approvalLabel(planApproval(store, plan, sha256));
+  const runs = runList(store, { planId });
+  const started = runs.find((run2) => run2.state === "started");
+  const finished = runs.filter((run2) => run2.state === "finalized").at(-1);
+  const latestRun = started ?? finished ?? null;
+  const defects = finished ? runFindings(store, finished.runId).filter((finding) => finding.type === "defect").map((finding) => ({
+    runId: finished.runId,
+    findingId: finding.id,
+    severity: finding.severity,
+    assertionIds: finding.assertionIds,
+    title: finding.title
+  })) : [];
+  const state = () => {
+    const run2 = `checkmate run begin <runId> ${subject} --build <build>`;
+    if (started)
+      return loop(
+        "run_in_progress",
+        "qa",
+        [`${started.runId} is started on build ${started.build}`],
+        `checkmate delegate execute ${started.runId}`
+      );
+    if (pendingDecisions2.length)
+      return loop(
+        "needs_revision",
+        "planner",
+        pendingDecisions2.map((item) => `${item.gapId} has a pending ${item.kind} decision`),
+        `checkmate delegate revise ${planId}`
+      );
+    if (approval === "rejected")
+      return loop("plan_rejected", "oracle", [`${subject} is rejected`], `checkmate plan edit ${subject} --patch`);
+    const answer = `checkmate gap answer ${planId} <gapId> --kind <kind> --value "<answer>" --rationale "<why>"`;
+    if (approval === "pending")
+      return gaps.length ? loop(
+        "needs_answers",
+        "oracle",
+        [amount(gaps.length, "open gap"), `${subject} waits for approval`],
+        answer
+      ) : loop(
+        "needs_approval",
+        "oracle",
+        [`${subject} waits for approval`],
+        `checkmate plan approve ${subject} --rationale "<why>"`
+      );
+    const ready = plan.tests.filter((test) => test.readiness === "ready").length;
+    if (!finished) {
+      if (ready)
+        return loop(
+          "ready_to_run",
+          "qa",
+          [`${ready} of ${plan.tests.length} tests are ready`],
+          `${run2} --partial ready_only`
+        );
+      return gaps.length ? loop("needs_answers", "oracle", [`No test is ready. ${amount(gaps.length, "open gap")}`], answer) : loop(
+        "nothing_to_run",
+        "oracle",
+        ["No test is ready and no gap is open"],
+        `checkmate plan edit ${subject} --patch`
+      );
+    }
+    if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer);
+    const retest = `${run2} --retest-of ${finished.runId}`;
+    if (defects.length)
+      return loop(
+        "defects_open",
+        "factory",
+        [`${finished.runId} has ${amount(defects.length, "defect")} on build ${finished.build}`],
+        `Build a fix, then ${retest}`
+      );
+    const result = runResult(store, finished.runId).result;
+    const unpassed = result.tests.filter(
+      (test) => result.selectedTestIds.includes(test.testId) && test.outcome !== "passed"
+    );
+    const why = [
+      ...finished.revision !== plan.revision ? [`${finished.runId} tested ${planId}@${finished.revision}, not ${subject}`] : [],
+      ...result.completion !== "completed" ? [`${finished.runId} is ${result.completion}`] : [],
+      ...unpassed.map((test) => `${test.testId} is ${test.outcome} in ${finished.runId}`),
+      ...finished.acceptance === "rejected" ? [`Result ${finished.runId} is rejected`] : []
+    ];
+    if (why.length) return loop("needs_retest", "qa", why, retest);
+    if (finished.acceptance === "pending")
+      return loop(
+        "awaits_acceptance",
+        "oracle",
+        [`${finished.runId} passed on build ${finished.build}`],
+        `checkmate result accept ${finished.runId} --rationale "<why>"`
+      );
+    if (finished.acceptance === "approved") return loop("accepted", "none", [`${finished.runId} is accepted`], null);
+    return loop("passed", "none", [`${finished.runId} passed. Result acceptance is not required`], null);
+  };
+  return {
+    planId,
+    revision: plan.revision,
+    ...state(),
+    approval,
+    gaps,
+    pendingDecisions: pendingDecisions2,
+    latestRun,
+    defects
+  };
+}
+function loopOf(store, planId) {
+  const { state, waitsOn } = planStatus(store, planId);
+  return { state, waitsOn };
+}
+function amount(count, noun) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+function loop(state, waitsOn, why, next) {
+  return { state, waitsOn, why, next };
 }
 function runList(store, filters = {}) {
   const rows = all(
@@ -8567,6 +8715,7 @@ var approvalLabels = ["approved", "rejected", "pending", "not_required"];
 function pagedPlans(store, query = {}) {
   const columns = {
     plan: (row) => row.planId,
+    loop: (row) => row.loop.state,
     tests: (row) => row.tests.total,
     gaps: (row) => row.openGaps.length,
     approval: (row) => row.approval ?? row.status,
@@ -8574,13 +8723,15 @@ function pagedPlans(store, query = {}) {
     updated: (row) => row.since
   };
   const options2 = listQuery(query, Object.keys(columns), { sort: "plan", direction: "asc" });
-  const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels });
+  const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels, waits: roles });
   const rows = planList(store).filter(
-    (row) => (filters.approval === void 0 || row.approval === filters.approval) && (filters.show !== "needs_decision" || row.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row.approval === "pending") && (filters.show !== "blocked" || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
+    (row) => (filters.approval === void 0 || row.approval === filters.approval) && (filters.waits === void 0 || row.loop.waitsOn === filters.waits) && (filters.show !== "needs_decision" || row.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row.approval === "pending") && (filters.show !== "blocked" || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
   );
   return pageOf(rows, options2, columns, (row) => [
     row.revision === null ? row.planId : `${row.planId}@${row.revision}`,
     row.status,
+    row.loop.state,
+    `waits on ${row.loop.waitsOn}`,
     `${row.tests.total} tests ${row.tests.ready} ready ${row.tests.blocked} blocked ${row.tests.deferred} deferred`,
     ...row.openGaps,
     row.approval,
@@ -9216,7 +9367,19 @@ var statusLook = {
   critical: ["!!", "fail"],
   rejected_operation: ["\u2717", "fail"],
   needs_decision: ["?", "warn"],
-  invalid_request: ["\u2717", "fail"]
+  invalid_request: ["\u2717", "fail"],
+  needs_plan: ["\u25CB", "acc"],
+  run_in_progress: ["\u25CF", "acc"],
+  needs_revision: ["\u25CB", "acc"],
+  plan_rejected: ["\u2717", "fail"],
+  needs_answers: ["?", "warn"],
+  needs_approval: ["\u25CB", "acc"],
+  ready_to_run: ["\u25CB", "acc"],
+  nothing_to_run: ["\u2013", "block"],
+  defects_open: ["\u2717", "fail"],
+  needs_retest: ["!", "warn"],
+  awaits_acceptance: ["\u25CB", "acc"],
+  accepted: ["\u2713", "pass"]
 };
 function words(status) {
   return status.replace(/_/g, " ");
@@ -9591,6 +9754,12 @@ function inboxItems(waiting) {
     ...waiting.results.map((result) => `/runs/${result.runId}#decide`)
   ];
 }
+function loopState(loop2) {
+  const role = loop2.waitsOn === "qa" ? "QA" : loop2.waitsOn;
+  return html2`<span class="loop"
+		>${pill(loop2.state)}${loop2.waitsOn === "none" ? "" : html2` <span class="muted small">waits on ${role}</span>`}</span
+	>`;
+}
 function inboxCount(waiting) {
   return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.requests.length;
 }
@@ -9859,6 +10028,14 @@ var approvals = [
   ["rejected", "Rejected"],
   ["not_required", "Not required"]
 ];
+var waits = [
+  ["", "Anyone"],
+  ["oracle", "Oracle"],
+  ["planner", "Planner"],
+  ["qa", "QA"],
+  ["factory", "Factory"],
+  ["none", "Nobody"]
+];
 function plansSpec() {
   return {
     path: "/plans",
@@ -9867,6 +10044,7 @@ function plansSpec() {
     search: "Search plans",
     columns: [
       { label: "Plan", sort: "plan" },
+      { label: "Loop", sort: "loop" },
       { label: "Tests", sort: "tests", first: "desc" },
       { label: "Open gaps", sort: "gaps", first: "desc" },
       { label: "Approval", sort: "approval" },
@@ -9877,7 +10055,8 @@ function plansSpec() {
     direction: "desc",
     filters: [
       { name: "show", label: "Show", choices: planShows2, strict: true },
-      { name: "approval", label: "Approval", choices: approvals, strict: true }
+      { name: "approval", label: "Approval", choices: approvals, strict: true },
+      { name: "waits", label: "Waits on", choices: waits, strict: true }
     ]
   };
 }
@@ -9891,6 +10070,7 @@ function testSummary(tests) {
 function requestedPlanRow(row) {
   return html2`<tr data-key="plan:${row.planId}" data-nav-row>
 		<td><span class="mono">${row.planId}</span></td>
+		<td>${loopState(row.loop)}</td>
 		<td><span class="muted">no revision yet</span></td>
 		<td><span class="muted">none</span></td>
 		<td>${pill("requested")}</td>
@@ -9904,6 +10084,7 @@ function planRow(row) {
 		<td>
 			<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item>${row.planId}@${row.revision}</a>
 		</td>
+		<td>${loopState(row.loop)}</td>
 		<td>${testSummary(row.tests)}</td>
 		<td>
 			${row.openGaps.length ? join4(
@@ -10419,7 +10600,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   const subject = `${planId}@${revision}`;
   const latest = detail.revision === detail.latestRevision;
   const meta = html2`<div class="meta">
-		${pill(detail.approval.state)}
+		${loopState(planStatus(store, planId))} ${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
 		<span class="head-actions">
@@ -11893,6 +12074,46 @@ var commands = {
       };
     }
   },
+  status: {
+    positionals: ["planId"],
+    run: (store, args) => {
+      const planId = value(args, "planId");
+      return completed(planId, planStatus(store, planId));
+    },
+    print: (reply) => {
+      const status = reply.data;
+      return {
+        facts: {
+          state: status.state,
+          waitsOn: status.waitsOn,
+          revision: status.revision ?? void 0,
+          approval: status.approval ?? void 0,
+          run: status.latestRun?.runId
+        },
+        lines: [
+          ...status.why.map((line) => ["why", line]),
+          ...status.next ? [["next", status.next]] : [],
+          ...status.gaps.map(
+            (gap) => gap.runId ? [gap.gapId, "run_gap", gap.severity, gap.runId, gap.question] : [gap.gapId, "gap", gap.severity, gap.question]
+          ),
+          ...status.pendingDecisions.map((decision) => [
+            decision.id,
+            "pending",
+            decision.gapId,
+            decision.kind
+          ]),
+          ...status.defects.map((defect) => [
+            defect.findingId,
+            "defect",
+            defect.runId,
+            defect.severity,
+            defect.assertionIds,
+            defect.title
+          ])
+        ]
+      };
+    }
+  },
   "target open": {
     positionals: ["targetId"],
     flags: { "base-url": "value", capabilities: "list", operations: "list", tool: "repeat" },
@@ -12003,21 +12224,25 @@ var commands = {
   },
   "plan list": {
     positionals: [],
-    flags: { "needs-decision": "switch", "awaiting-approval": "switch", blocked: "switch" },
+    flags: { "needs-decision": "switch", "awaiting-approval": "switch", blocked: "switch", "waits-on": "value" },
     run: (store, args) => {
+      const waitsOn = value(args, "waits-on");
+      if (waitsOn !== void 0) requireChoice(waitsOn, roles, "role (--waits-on)");
       const plans = planList(store).filter(
-        (plan) => (!args["needs-decision"] || plan.openBlockingGaps.length > 0) && (!args["awaiting-approval"] || plan.approval === "pending") && (!args.blocked || plan.blocked.length > 0)
+        (plan) => (!args["needs-decision"] || plan.openBlockingGaps.length > 0) && (!args["awaiting-approval"] || plan.approval === "pending") && (!args.blocked || plan.blocked.length > 0) && (waitsOn === void 0 || plan.loop.waitsOn === waitsOn)
       );
       return completed("plans", { plans });
     },
     print: (reply) => ({
       facts: { count: reply.data.plans.length },
       lines: reply.data.plans.map(
-        (plan) => plan.status === "requested" ? [plan.planId, "status=requested"] : [
+        (plan) => plan.status === "requested" ? [plan.planId, "status=requested", `state=${plan.loop.state}`, `waitsOn=${plan.loop.waitsOn}`] : [
           `${plan.planId}@${plan.revision}`,
           `gaps=${cell2(plan.openBlockingGaps)}`,
           `approval=${plan.approval}`,
-          `blocked=${cell2(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`
+          `blocked=${cell2(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`,
+          `state=${plan.loop.state}`,
+          `waitsOn=${plan.loop.waitsOn}`
         ]
       )
     })

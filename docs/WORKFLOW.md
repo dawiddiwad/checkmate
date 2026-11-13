@@ -135,13 +135,13 @@ checkmate export run run-1 --format html --out reports/run-1.html
 
 In a QA-driven software factory, agents do acceptance-test-driven development. The factory runs the agents and their sandboxes, the harness, the builds, and the code changes. Checkmate drives the definition of executable requirements, gap discovery, test execution, and evidence capture through its stages, and keeps the results as an auditable record. Claude Code runs the tools. Checkmate does not start, schedule, or message agents, and it does not change code. The agents coordinate through the records.
 
-| Role          | What it does                                                                | Checkmate interface                                                                                                                                                                       |
-| ------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Planner agent | Runs the plan and revise stages. Turns the ticket into tests. Records gaps. | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise`                                                                                            |
-| Oracle        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan adopt-gaps`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                    |
-| QA agent      | Runs the execute stage. Records results, evidence, defects, and gaps.       | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`                                                                                               |
-| Factory       | Runs the agents and sandboxes. Builds and fixes the code. Reads the record. | `run show`, `export run\|plan --format json`, `log`, `query`, and `inbox` to read the record. It writes only through the commands that it runs, for example `run begin` with a new build. |
-| Human         | Joins at any time in the review UI. Makes the same decisions.               | `checkmate ui` or `/checkmate:ui`                                                                                                                                                         |
+| Role          | What it does                                                                | Checkmate interface                                                                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planner agent | Runs the plan and revise stages. Turns the ticket into tests. Records gaps. | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise`                                                                                                                                      |
+| Oracle        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan adopt-gaps`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                                                              |
+| QA agent      | Runs the execute stage. Records results, evidence, defects, and gaps.       | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`                                                                                                                                         |
+| Factory       | Runs the agents and sandboxes. Builds and fixes the code. Reads the record. | `status`, `plan list --waits-on factory`, `run show`, `export run\|plan --format json`, `log`, `query`, and `inbox` to read the record. It writes only through the commands that it runs, for example `run begin` with a new build. |
+| Human         | Joins at any time in the review UI. Makes the same decisions.               | `checkmate ui` or `/checkmate:ui`                                                                                                                                                                                                   |
 
 The oracle is anyone who can give the answer: a product-owner agent or a person. One ticket goes around the loop until its tests pass:
 
@@ -169,14 +169,15 @@ checkmate plan approve checkout@1 --rationale "Run the ready tests early."
 checkmate run begin run-1 checkout@1 --build "$GIT_SHA" --partial ready_only
 checkmate delegate execute run-1 --allow Read --allow Bash
 
-# Iteration 2. Oracle: answer the gaps. Planner: revise. Oracle: approve.
-checkmate inbox
+# Iteration 2. Oracle: answer the gaps, also the run gap G4. Planner: revise. Oracle: approve.
+checkmate status checkout    # state=needs_answers waitsOn=oracle
 checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
   --value "The promotion replaces the loyalty discount." --rationale "Product decision."
 checkmate delegate revise checkout --allow Read --allow Bash
 checkmate plan approve checkout@2 --rationale "Tests match the answers."
 
 # Factory: read the findings, fix the code, and build. QA: retest on the new build.
+checkmate status checkout    # state=defects_open waitsOn=factory
 checkmate export run run-1 --format md
 checkmate run begin run-2 checkout@2 --tests T1,T2,T3,T4 --build "$NEW_SHA" --retest-of run-1
 checkmate delegate execute run-2 --allow Read --allow Bash
@@ -188,6 +189,7 @@ checkmate result accept run-2 --rationale "All tests pass on the new build."
 - `--partial ready_only` lets a run start while the plan has open blocking gaps. Without `--tests`, it selects the ready tests and prints each test that it leaves out, with the reason. A test that an open blocking gap affects is not ready.
 - A runtime gap from a run, such as G4, does not change the plan by itself. `checkmate plan adopt-gaps checkout@2 --run run-1` adds the open gaps of the run to the plan. Add `--gaps G4` to select gaps. The rules of `plan edit` apply: an unapproved revision without a run changes in place, else the plan gets a new revision. `gap answer checkout G4` adopts the gap and records the answer in one step.
 - `delegate` records its worker as actor `claude:<stage>`. Give each stage at least `--allow Read --allow Bash`.
+- `checkmate status <planId>` says where the ticket is in the loop and who acts next. `checkmate plan list --waits-on factory` lists the tickets that wait on the factory. [CLI](CLI.md#loop-state) lists the states.
 
 ## Sub-agents in Claude Code
 

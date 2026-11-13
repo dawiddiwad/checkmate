@@ -46,7 +46,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 | `accepted`          | none     | The oracle accepted the result.                                                   |
 | `passed`            | none     | The latest run passed. Result acceptance is not required.                         |
 
-Checkmate checks the states in this order and prints the first one that applies. It ignores a run that a later run retests. For `defects_open`, `next` is a retest on a new build with `--retest-of`. For `needs_retest`, `next` is a new run on the build of the latest run. An approved revision with open gaps is `ready_to_run` until its first run finishes. `plan list` prints `state=` and `waitsOn=` for each plan, and takes `--waits-on <planner|oracle|qa|factory|none>`.
+Checkmate checks the states in this order and prints the first one that applies. After a finished run, an open blocking gap (plan or run) gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. Every open gap stays in the output. It ignores a run that a later run retests. For `defects_open`, `next` is a retest on a new build with `--retest-of`. For `needs_retest`, `next` is a new run on the build of the latest run. An approved revision with open gaps is `ready_to_run` until its first run finishes. `plan list` prints `state=` and `waitsOn=` for each plan, and takes `--waits-on <planner|oracle|qa|factory|none>`.
 
 ## Input
 

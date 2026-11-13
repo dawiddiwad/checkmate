@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { answerGap, openPlan, patchPlan, rejectPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
-import { beginRun, closeTest, finishRun, recordFinding } from '../plugin/src/runs.ts'
+import { beginRun, closeTest, finishRun, recordFinding, recordGap } from '../plugin/src/runs.ts'
 import {
 	changesAfter,
 	inbox,
@@ -21,6 +21,7 @@ import {
 	begin,
 	candidate,
 	check,
+	failT2,
 	passRun,
 	plan,
 	planRequest,
@@ -306,4 +307,52 @@ test('plan status reports a passed run without acceptance when the policy needs 
 	ready(opened, { approvals: { plan: 'none', result: 'none' } })
 	passRun(opened, 'run-1', 'b1')
 	assert.deepEqual([planStatus(opened, 'checkout').state, planStatus(opened, 'checkout').waitsOn], ['passed', 'none'])
+})
+
+test('plan status puts blocking gaps before defects and defects before non-blocking gaps', (t) => {
+	const finished = (severity: 'blocking' | 'non_blocking') => {
+		const opened = store(t)
+		ready(opened)
+		begin(opened, 'run-1', ['T1', 'T2'], 'b1')
+		for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
+		closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+		check(opened, 'run-1', 'T2.A1', 'passed')
+		failT2(opened, 'run-1')
+		closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
+		recordGap(opened, actor, {
+			runId: 'run-1',
+			gap: {
+				id: 'G7',
+				severity,
+				status: 'open',
+				requirementIds: [],
+				testIds: ['T2'],
+				question: 'Is the label right?',
+				consequence: 'Unchecked label.',
+				decisionId: null,
+			},
+		})
+		finishRun(opened, actor, {
+			runId: 'run-1',
+			completion: 'completed',
+			cleanup: 'completed',
+			cleanupReason: 'Closed.',
+		})
+		return planStatus(opened, 'checkout')
+	}
+	const blocking = finished('blocking')
+	assert.deepEqual(
+		[blocking.state, blocking.waitsOn, blocking.why],
+		['needs_answers', 'oracle', ['1 open blocking gap']]
+	)
+	const minor = finished('non_blocking')
+	assert.deepEqual([minor.state, minor.waitsOn], ['defects_open', 'factory'])
+	assert.deepEqual(
+		minor.gaps.map((gap) => [gap.gapId, gap.severity, gap.runId]),
+		[['G7', 'non_blocking', 'run-1']]
+	)
+	assert.deepEqual(
+		minor.defects.map((defect) => defect.findingId),
+		['F1']
+	)
 })

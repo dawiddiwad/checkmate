@@ -8460,7 +8460,9 @@ function planStatus(store, planId) {
         `checkmate plan edit ${subject} --patch`
       );
     }
-    if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer);
+    const blocking = gaps.filter((gap) => gap.severity === "blocking");
+    if (blocking.length)
+      return loop("needs_answers", "oracle", [amount(blocking.length, "open blocking gap")], answer);
     const retest = `checkmate run begin <runId> ${subject} --build <new build> --retest-of ${finished.runId}`;
     if (defects.length)
       return loop(
@@ -8469,6 +8471,7 @@ function planStatus(store, planId) {
         [`${finished.runId} has ${amount(defects.length, "defect")} on build ${finished.build}`],
         `Build a fix, then ${retest}`
       );
+    if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer);
     const result = runResult(store, finished.runId).result;
     const unpassed = result.tests.filter(
       (test) => result.selectedTestIds.includes(test.testId) && test.outcome !== "passed"

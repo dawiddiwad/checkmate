@@ -760,7 +760,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 					completion,
 					coverage: coverage.status,
 					sha256,
-					counts: outcomeCounts(tests),
+					counts: outcomeCounts(tests.filter((test) => selected.includes(test.testId))),
 				},
 			},
 			subjects: [`run:${input.runId}`, `plan:${run.plan.planId}`, 'inbox'],

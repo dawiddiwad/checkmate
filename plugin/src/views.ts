@@ -1,4 +1,4 @@
-import type { Plan } from './types.ts'
+import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import { all, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
@@ -137,12 +137,16 @@ export function inbox(store: Store) {
 			planId: row.plan_id,
 			revision: row.plan_revision,
 			build: row.application_build,
-			counts: outcomeCounts(runResult(store, row.run_id)!.result.tests),
+			counts: selectedCounts(runResult(store, row.run_id)!.result),
 			coverage: row.coverage,
 			sha256: row.sha256,
 			since: row.finished_at,
 		}))
 	return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) }
+}
+
+function selectedCounts(result: Result) {
+	return outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)))
 }
 
 function bySince(a: { since: string }, b: { since: string }) {

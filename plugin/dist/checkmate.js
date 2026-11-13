@@ -8083,7 +8083,7 @@ function finish(store, actor, input) {
           completion,
           coverage: coverage2.status,
           sha256,
-          counts: outcomeCounts(tests)
+          counts: outcomeCounts(tests.filter((test) => selected.includes(test.testId)))
         }
       },
       subjects: [`run:${input.runId}`, `plan:${run2.plan.planId}`, "inbox"]
@@ -8262,12 +8262,15 @@ function inbox(store) {
     planId: row.plan_id,
     revision: row.plan_revision,
     build: row.application_build,
-    counts: outcomeCounts(runResult(store, row.run_id).result.tests),
+    counts: selectedCounts(runResult(store, row.run_id).result),
     coverage: row.coverage,
     sha256: row.sha256,
     since: row.finished_at
   }));
   return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) };
+}
+function selectedCounts(result) {
+  return outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
 }
 function bySince(a, b) {
   return a.since.localeCompare(b.since);

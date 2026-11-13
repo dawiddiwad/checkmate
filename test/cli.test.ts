@@ -404,7 +404,7 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 	const later = cli(workspace, ['inbox'])
 	assert.deepEqual(later.lines, [
 		'completed inbox gaps=0 plans=0 results=1 requests=0',
-		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1,not_run=2',
+		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1',
 	])
 	const body = json(workspace, ['inbox']).body
 	assert.deepEqual(

@@ -75,7 +75,7 @@ test('the inbox lists open gaps without a decision, plans to approve, and result
 	assert.deepEqual(waiting.plans, [])
 	assert.deepEqual(
 		waiting.results.map((row) => [row.runId, row.build, row.coverage, row.counts]),
-		[['run-1', 'build-1', 'partial', { passed: 1, not_run: 2 }]]
+		[['run-1', 'build-1', 'partial', { passed: 1 }]]
 	)
 	const changes = changesAfter(opened, cursor)
 	assert.deepEqual(changes.at(-1)!.subjects, ['run:run-1', 'plan:checkout', 'inbox'])

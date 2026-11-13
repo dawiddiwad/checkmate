@@ -2,7 +2,7 @@
 
 Checkmate has five stages: setup, plan, revise, execute, and report. Between the stages, the caller makes decisions.
 
-Checkmate has two modes. In team mode, agents share the QA work, and an agent or a script is the caller. Read [From an agent or a script](#from-an-agent-or-a-script) and [Sub-agents in Claude Code](#sub-agents-in-claude-code). In solo mode, you are the caller in your own Claude Code. Read [In Claude Code](#in-claude-code).
+Checkmate has two modes. In team mode, agents share the QA work, and an agent or a script is the caller. Read [From an agent or a script](#from-an-agent-or-a-script), [Factory loop](#factory-loop), and [Sub-agents in Claude Code](#sub-agents-in-claude-code). In solo mode, you are the caller in your own Claude Code. Read [In Claude Code](#in-claude-code).
 
 - The **caller** owns the request. The caller answers gaps, approves plans, and accepts results. The caller can be a person in Claude Code or an agent that delegates QA work.
 - The **actor** is the name that Checkmate records with each write. Commands use `--actor`, then `CHECKMATE_ACTOR`, then `git config user.name`, then the login name. `delegate` records its workers as `claude:<stage>`.
@@ -65,6 +65,16 @@ Use this path when you work in Claude Code with the plugin. You do not need the 
 
 After each stage, Claude reports in one format: a Markdown table of the plans, tests, gaps, or runs; a `Done:` line; and a `Next:` line with the decision, who makes it, and the command or UI action. Before Claude answers a question about the state, it reads the database with `inbox`, `plan list`, `plan show`, `run list`, or `run show`.
 
+<details>
+<summary>Screenshots of the review UI</summary>
+
+From a live run on a local checkout fixture. Claude found the seeded defect: the quote total is 220 PLN, and the requirement expects 240 PLN. The plans and runs of that live run are in [examples](examples/README.md).
+
+<img src="img/toolkit-2/inbox.jpg" alt="Inbox with gaps, a plan to approve, and a result to accept"/>
+<img src="img/toolkit-2/run-defect.jpg" alt="Run page with a failed assertion, its evidence, and the defect"/>
+
+</details>
+
 ## From an agent or a script
 
 Use the npm CLI, version 0.7.0 or later (`npm i -g @xoxoai/checkmate@^0.7.0`), when an agent, a CI job, or a script gives QA work to Checkmate. The agent is the caller. It opens each subject, delegates the stage, and makes the decisions. `delegate` needs the `claude` command, installed and logged in.
@@ -123,6 +133,66 @@ checkmate export run run-1 --format html --out reports/run-1.html
 - When `run begin` prints `needs_decision`, the gate refused the run, and no run exists. The `reason:` lines name the missing approval, the open gaps, or the blocked tests.
 - `delegate` does not trust the worker's summary. It reads the database and returns the response of the recorded command. Read [CLI](CLI.md#delegated-stages) for the permissions and deadlines.
 - Without `--out`, `export` prints the report on standard output.
+
+## Factory loop
+
+In a QA-driven software factory, agents do acceptance-test-driven development. The factory starts the agents and gives them the work. Checkmate does not start, schedule, or message agents, and it does not change code. The agents coordinate through the records.
+
+| Role          | What it does                                                  | Checkmate interface                                                                            |
+| ------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Planner agent | Turns the ticket into tests. Records gaps.                    | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise` |
+| Caller        | Answers gaps. Approves plans. Accepts results.                | `inbox`, `gap answer`, `plan edit`, `plan approve\|reject`, `result accept\|reject`            |
+| QA agent      | Runs the tests. Records results, evidence, defects, and gaps. | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`    |
+| Dev agent     | Fixes the code.                                               | `run show` or `export run` to read the findings                                                |
+| Human         | Joins at any time in the review UI. Makes the same decisions. | `checkmate ui` or `/checkmate:ui`                                                              |
+
+The caller is anyone who can give the answer: a product-owner agent or a person. One ticket goes around the loop until its tests pass:
+
+1. **Plan.** The planner agent reads the ticket and the other sources, and writes the tests. The feature does not exist yet, so the first revision has many gaps.
+2. **Run early.** The caller approves the revision. The QA agent runs the ready tests before the feature exists. Most tests fail. This is correct: an early run explores the requirements. Each failed assertion needs a defect finding with evidence. Unclear behavior becomes a new gap in the run.
+3. **Answer.** The caller answers the gaps. The planner agent applies the answers in a new revision. The caller approves it.
+4. **Fix.** The dev agent reads the findings and changes the code.
+5. **Retest.** The QA agent runs the tests again on the new build with `--retest-of`. The earlier run does not change. When a run shows new gaps or a plan change, the plan gets a new revision, and the loop continues.
+6. **Accept.** When a retest passes, the caller accepts the result.
+
+One ticket through the loop:
+
+```sh
+checkmate target open shop --base-url http://127.0.0.1:4173 --capabilities browser,http \
+  --operations read_catalog,create_order \
+  --tool "playwright-cli:cli:Drive the browser." --tool "jira:mcp:Read the ticket."
+checkmate delegate setup shop --allow Read --allow Bash
+
+# Iteration 1. Planner: plan from the ticket. Unclear requirements become gaps.
+checkmate plan open checkout --target shop@1 <<'EOF'
+{ "objective": "Verify checkout totals.", "context": { "sources": ["jira:SHOP-12"] } }
+EOF
+checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
+
+# Caller: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 waits.
+checkmate plan approve checkout@1 --rationale "Run the ready tests early."
+checkmate run begin run-1 checkout@1 --tests T1,T2,T3 --build "$GIT_SHA" --partial ready_only
+checkmate delegate execute run-1 --allow Read --allow Bash
+
+# Iteration 2. Caller: answer the gaps. Planner: revise. Caller: approve.
+checkmate inbox
+checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
+  --value "The promotion replaces the loyalty discount." --rationale "Product decision."
+checkmate delegate revise checkout --allow Read --allow Bash
+checkmate plan approve checkout@2 --rationale "Tests match the answers."
+
+# Dev: read the findings and fix the code. QA: retest on the new build.
+checkmate export run run-1 --format md
+checkmate run begin run-2 checkout@2 --tests T1,T2,T3,T4 --build "$NEW_SHA" --retest-of run-1
+checkmate delegate execute run-2 --allow Read --allow Bash
+
+# When the retest passes, accept. Else fix and retest again.
+checkmate result accept run-2 --rationale "All tests pass on the new build."
+```
+
+- `--partial ready_only` lets a run start while the plan has open blocking gaps. Select only ready tests: a test that an open blocking gap affects is not ready.
+- A runtime gap from a run, such as G4, does not change the plan. The caller or a human acts on it with `plan edit` or `Edit plan` in the review UI: change the tests, or add the gap and answer it. An edit before approval keeps the revision number. An edit after approval gives a new revision.
+- `delegate` records its worker as actor `claude:<stage>`. Give each stage at least `--allow Read --allow Bash`.
 
 ## Sub-agents in Claude Code
 

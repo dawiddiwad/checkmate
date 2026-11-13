@@ -77,6 +77,9 @@ body {
 .bad {
 	color: var(--red);
 }
+.warn {
+	color: var(--amber);
+}
 .track {
 	position: absolute;
 }

@@ -156,7 +156,12 @@ function testCounts(plan: Plan) {
 
 export function planList(store: Store): PlanListRow[] {
 	const drafted = latestRevisions(store).map((row): PlanListRow => {
-		const open = row.plan.gaps.filter((gap) => gap.status === 'open')
+		const open = [
+			...row.plan.gaps.filter((gap) => gap.status === 'open'),
+			...planRunGaps(store, row.plan_id)
+				.filter((item) => !item.adopted)
+				.map((item) => item.gap),
+		]
 		return {
 			planId: row.plan_id,
 			status: 'drafted',

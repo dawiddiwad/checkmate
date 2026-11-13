@@ -488,6 +488,7 @@ test('a run gap shows in the inbox, and plan adopt-gaps or gap answer brings it 
 		'checkout@2/G3\trun_gap\tnon_blocking\trun-1\tIs G3 a question?',
 		'checkout@2/G4\trun_gap\tnon_blocking\trun-1\tIs G4 a question?',
 	])
+	assert.deepEqual(json(workspace, ['plan', 'list']).body.plans[0].openGaps, ['G3', 'G4'])
 	const adopted = cli(workspace, ['plan', 'adopt-gaps', 'checkout@2', '--run', 'run-1', '--gaps', 'G3'])
 	assert.match(adopted.lines[0], /^completed checkout@3 sha256=[a-f0-9]{8} edit=new_revision adopted=G3$/)
 	const answered = cli(workspace, [

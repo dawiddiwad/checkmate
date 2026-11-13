@@ -1,6 +1,6 @@
 ---
 name: status
-description: Answer where a Checkmate plan is in the loop, who it waits on, and what comes next. Use when the human asks about the state of a plan, a ticket, a run, or the inbox. Reads only.
+description: Answer where a Checkmate plan is in the loop, who it waits on, and what comes next. Use for a question about the state of a plan, a ticket, a run, or the inbox. Reads only.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
@@ -17,4 +17,4 @@ Checkmate stores no loop state. `checkmate status` derives it from the records. 
    - `Done:` the commands that you ran. Say that you changed nothing.
    - `Next:` who acts, from `waitsOn`, and the `next` command from the status. Give the `why` lines as the reason. When `waitsOn` is `none`, say that the loop is complete.
 
-Do not change the records. Do not answer gaps, approve, or begin a run. Tell the human the command, or `/checkmate:ui`.
+Do not change the records. Do not answer gaps, approve, or begin a run. Tell the oracle the command, or `/checkmate:ui`.

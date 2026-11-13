@@ -13,4 +13,4 @@ Use ASD-STE100 style for documentation, instructions, and skills. Use short sent
 
 Report passed, failed, and unrun checks separately. Do not claim that mocked output proves live Claude behavior.
 
-Keep publication separate from implementation. Do not create a release or tag unless the caller requests it.
+Keep publication separate from implementation. Do not create a release or tag unless the user requests it.

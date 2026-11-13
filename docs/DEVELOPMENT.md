@@ -1,6 +1,6 @@
 # Development
 
-Use the existing checkout. Cloud tasks already have an isolated workspace. Create a worktree only when the caller requests one.
+Use the existing checkout. Cloud tasks already have an isolated workspace. Create a worktree only on request.
 
 Use Node.js 24.12.0 or later. Install pinned dependencies with `npm ci`. Use a separate feature branch for changes.
 
@@ -45,7 +45,7 @@ Run `plugin/bin/checkmate.ts` with Node.js. The runtime uses erasable TypeScript
 
 ## Plugin layout
 
-The marketplace source is `./plugin`. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tooling outside it.
+The marketplace source is `./plugin`. Claude Code copies only that directory into its plugin cache. It does not run npm install. Keep runtime files in `plugin/`. Keep tests, scripts, documentation, and development tools outside it.
 
 The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
 
@@ -83,4 +83,11 @@ Keep the labels of the animation consistent with the workflow. The README, the a
 
 `docs/examples/` contains exports from a live run. Do not edit them by hand. To update them, run `npm run test:live`, then export the plans and runs from the printed workspace with `checkmate export --out`. Read `docs/examples/README.md`.
 
-`scripts/ui-demo.ts` seeds a demo workspace. `node scripts/ui-screenshots.ts <directory>` captures review UI screenshots of that workspace. It needs `CHECKMATE_BROWSER_EXECUTABLE`.
+`scripts/ui-demo.ts` seeds a demo workspace. `node scripts/ui-screenshots.ts <directory>` captures review UI screenshots of that workspace in PNG. It needs `CHECKMATE_BROWSER_EXECUTABLE`. The docs use the dark captures in `docs/img/ui/` as JPEG files, 1280 pixels wide:
+
+```sh
+CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots
+for name in inbox plans plan run-gap run; do
+  convert /tmp/shots/$name-dark.png -resize 1280x -quality 82 docs/img/ui/$name.jpg
+done
+```

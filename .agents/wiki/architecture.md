@@ -21,7 +21,7 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
 - `cli/src/main.ts` handles `delegate` and passes every other command to the plugin CLI.
 - `cli/src/launcher.ts` starts the installed Claude CLI with the bundled plugin, checks its structured response, and then checks the database for the recorded change.
 
-The repository root contains tests, scripts, documentation, and development tooling.
+The repository root contains tests, scripts, documentation, and development tools.
 
 The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate records the tools of a target and a plan, and owns its contracts and record checks. These checks are not a sandbox.
 

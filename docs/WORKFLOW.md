@@ -53,9 +53,9 @@ Use this path when you work in Claude Code with the plugin. You do not need the 
    /checkmate:execute checkout@2, tests T1,T2,T3, build fixture-build-1, run ID run-1
    ```
 
-   Claude checks the gate, begins the run, records each assertion with evidence, closes each test, records findings, and finishes the run.
+   Claude checks the gate, begins the run, records each assertion with evidence, closes each test, records findings, and finishes the run. To run early while gaps are open, ask for the ready tests only, for example `/checkmate:execute checkout@1, ready tests only, build fixture-build-1`.
 
-6. Accept or reject the result on the run page of the UI.
+6. Accept or reject the result on the run page of the UI. When the run found new gaps, click `Answer` to answer a gap, or `Bring into plan` to add it to the plan without an answer.
 
 7. Get the report. On the run page, click `Download report` and select HTML, Markdown, or JSON. Or ask Claude:
 
@@ -63,15 +63,18 @@ Use this path when you work in Claude Code with the plugin. You do not need the 
    /checkmate:report run-1 as html in reports/run-1.html
    ```
 
-After each stage, Claude reports in one format: a Markdown table of the plans, tests, gaps, or runs; a `Done:` line; and a `Next:` line with the decision, who makes it, and the command or UI action. Before Claude answers a question about the state, it reads the database with `status`, `inbox`, `plan list`, `plan show`, `run list`, or `run show`. To ask where a plan is in the loop, run `/checkmate:status checkout`, or ask "Where is the checkout plan in the loop?"
+After each stage, Claude reports in one format: a Markdown table of the plans, tests, gaps, or runs; a `Done:` line; and a `Next:` line with the decision, who makes it, and the command or UI action. Before Claude answers a question about the state, it reads the database with `status`, `inbox`, `plan list`, `plan show`, `run list`, or `run show`. To ask where a plan is in the loop, run `/checkmate:status checkout`, or ask "Where is the checkout plan in the loop?" In the UI, the `Loop` column of the plan list and the header of the plan page show the same state.
 
 <details>
 <summary>Screenshots of the review UI</summary>
 
-From a live run on a local checkout fixture. Claude found the seeded defect: the quote total is 220 PLN, and the requirement expects 240 PLN. The plans and runs of that live run are in [examples](examples/README.md).
+From the demo workspace of `scripts/ui-demo.ts`. Run `run-7` found a defect: the quote total is 220 PLN, and the requirement expects 240 PLN. It also found the new gap G4. The plans and runs of a live run are in [examples](examples/README.md).
 
-<img src="img/toolkit-2/inbox.jpg" alt="Inbox with gaps, a plan to approve, and a result to accept"/>
-<img src="img/toolkit-2/run-defect.jpg" alt="Run page with a failed assertion, its evidence, and the defect"/>
+<img src="img/ui/inbox.jpg" alt="Inbox with a plan gap, a run gap from run-7, a plan to approve, and a result to accept"/>
+<img src="img/ui/plans.jpg" alt="Plan list with the Loop column: the state of each plan and the role that it waits on"/>
+<img src="img/ui/plan.jpg" alt="Plan page of checkout@2 with the loop state needs answers, waits on oracle, in the header"/>
+<img src="img/ui/run-gap.jpg" alt="Run page with defect F1 and the new gap G4 with the Answer and Bring into plan buttons"/>
+<img src="img/ui/run.jpg" alt="Full run page with outcomes, a failed assertion with its evidence, the defect, the new gap, and coverage"/>
 
 </details>
 
@@ -164,7 +167,7 @@ checkmate delegate setup shop --allow Read --allow Bash
 checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." --source jira:SHOP-12
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 
-# Oracle: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 is left out.
+# Oracle: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 is left out. QA records the new gap G4.
 checkmate plan approve checkout@1 --rationale "Run the ready tests early."
 checkmate run begin run-1 checkout@1 --build "$GIT_SHA" --partial ready_only
 checkmate delegate execute run-1 --allow Read --allow Bash
@@ -173,13 +176,14 @@ checkmate delegate execute run-1 --allow Read --allow Bash
 checkmate status checkout    # state=needs_answers waitsOn=oracle
 checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
   --value "The promotion replaces the loyalty discount." --rationale "Product decision."
-checkmate delegate revise checkout --allow Read --allow Bash
-checkmate plan approve checkout@2 --rationale "Tests match the answers."
+checkmate gap answer checkout G4 --kind defer --value "Not in this release." --rationale "Product decision."
+checkmate delegate revise checkout --allow Read --allow Bash    # G4 went into checkout@2, revise writes checkout@3
+checkmate plan approve checkout@3 --rationale "Tests match the answers."
 
 # Factory: read the findings, fix the code, and build. QA: retest on the new build.
 checkmate status checkout    # state=defects_open waitsOn=factory
 checkmate export run run-1 --format md
-checkmate run begin run-2 checkout@2 --tests T1,T2,T3,T4 --build "$NEW_SHA" --retest-of run-1
+checkmate run begin run-2 checkout@3 --tests T1,T2,T3,T4 --build "$NEW_SHA" --retest-of run-1
 checkmate delegate execute run-2 --allow Read --allow Bash
 
 # When the retest passes, accept. Else fix and retest again.
@@ -187,7 +191,7 @@ checkmate result accept run-2 --rationale "All tests pass on the new build."
 ```
 
 - `--partial ready_only` lets a run start while the plan has open blocking gaps. Without `--tests`, it selects the ready tests and prints each test that it leaves out, with the reason. A test that an open blocking gap affects is not ready.
-- A runtime gap from a run, such as G4, does not change the plan by itself. `checkmate plan adopt-gaps checkout@2 --run run-1` adds the open gaps of the run to the plan. Add `--gaps G4` to select gaps. The rules of `plan edit` apply: an unapproved revision without a run changes in place, else the plan gets a new revision. `gap answer checkout G4` adopts the gap and records the answer in one step.
+- A runtime gap from a run, such as G4, does not change the plan by itself. `checkmate plan adopt-gaps checkout@1 --run run-1` adds the open gaps of the run to the plan. Add `--gaps G4` to select gaps. The rules of `plan edit` apply: an unapproved revision without a run changes in place, else the plan gets a new revision. `gap answer checkout G4` adopts the gap and records the answer in one step. Its reply prints `revision=` and `edit=`. Approve the revision that `checkmate status checkout` names.
 - `delegate` records its worker as actor `claude:<stage>`. Give each stage at least `--allow Read --allow Bash`.
 - `checkmate status <planId>` says where the ticket is in the loop and who acts next. `checkmate plan list --waits-on factory` lists the tickets that wait on the factory. [CLI](CLI.md#loop-state) lists the states.
 

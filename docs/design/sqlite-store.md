@@ -332,7 +332,7 @@ Checkmate uses the first row that applies:
 
 ### Create
 
-1. The factory runs `checkmate plan open <planId> --target <targetId@rev>` with the request in a heredoc on stdin. The request has the objective, and requirements or context sources. It can have source context, instructions, and plan tools. Checkmate records the plan request.
+1. The factory runs `checkmate plan open <planId> --target <targetId@rev>` with the request in a heredoc on stdin, or with `--objective`, `--source`, and `--instructions` for a request with sources only. The request has the objective, and requirements or context sources. It can have source context, instructions, and plan tools. Checkmate records the plan request.
 2. The plan skill reads the request with `checkmate plan request <planId>`.
 3. When the request has only sources, the skill reads them with the plan tools and writes the requirements. Each requirement cites a context source.
 4. The skill sends a candidate to `checkmate plan save <planId>`.
@@ -342,13 +342,13 @@ The rules from `toolkit-1` stay: `plan revise` does not change requirements, the
 
 ### Edit
 
-The oracle can change the latest revision with `checkmate plan edit <planId@rev>` and a full candidate. A revision without an approval and without a run changes in place. The operation log keeps the earlier body. An approved or used revision gives the next revision.
+The oracle can change the latest revision with `checkmate plan edit <planId@rev>` and a full candidate, or with `--patch` and only the changes. `checkmate plan adopt-gaps <planId@rev> --run <runId>` adds the gaps of a run to the plan. A revision without an approval and without a run changes in place. The operation log keeps the earlier body. An approved or used revision gives the next revision.
 
 ### Decide and revise
 
 The decision and its implementation are separate steps. The oracle has the authority. The agent implements.
 
-1. The oracle runs `checkmate gap answer <planId> <gapId> --kind <kind> --value <text> --source <uri> --rationale <text>`, or a human answers in the UI. Checkmate records a decision against the latest revision. The gap must be open in that revision.
+1. The oracle runs `checkmate gap answer <planId> <gapId> --kind <kind> --value <text> --source <uri> --rationale <text>`, or a human answers in the UI. Checkmate records a decision against the latest revision. The gap must be open in that revision, or be a gap of a run of the plan that the plan does not have yet. Checkmate adopts such a run gap first.
 2. The revise skill runs `checkmate plan pending <planId>`. The output shows the pending decisions and only the gaps and tests that they affect.
 3. The skill sends only the changes to `checkmate plan revise <planId>`.
 
@@ -482,25 +482,25 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 
 ### Commands
 
-| Command                                                                                                 | Package | Purpose                                      |
-| ------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------- |
-| `init`                                                                                                  | plugin  | Create the database.                         |
-| `inbox`                                                                                                 | plugin  | List what waits for the oracle.              |
-| `target open`, `target request`, `target save`, `target show <id@rev>`                                  | plugin  | Store and read a target profile.             |
-| `plan open`, `plan request`, `plan save`                                                                | plugin  | Create a plan.                               |
-| `plan show`, `plan list`, `plan diff <id> <a> <b>`                                                      | plugin  | Read plans. `diff` prints a JSON Patch.      |
-| `gap answer`, `plan pending`, `plan revise`                                                             | plugin  | Decide and revise.                           |
-| `plan edit <id@rev>`                                                                                    | plugin  | Change the latest revision.                  |
-| `plan approve`, `plan reject`                                                                           | plugin  | Plan gate.                                   |
-| `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume` | plugin  | Execute.                                     |
-| `run show`, `run list`                                                                                  | plugin  | Read runs.                                   |
-| `result accept`, `result reject`                                                                        | plugin  | Result gate.                                 |
-| `evidence get <id> --out <file>`                                                                        | plugin  | Write evidence bytes to a file for viewing.  |
-| `export plan\|run <id> --format md\|html\|json [--out <file>]`                                          | plugin  | Print a view, or write it to a new file.     |
-| `log [--subject <s>]`                                                                                   | plugin  | Read the operation log.                      |
-| `query "<sql>"`                                                                                         | plugin  | Read-only SQL. The database opens read-only. |
-| `delegate <stage> ... --allow <rule>...`                                                                | npm     | Run a stage in a new Claude Code session.    |
-| `ui [--port <n>]`                                                                                       | plugin  | Start the local review UI.                   |
+| Command                                                                                                 | Package | Purpose                                                           |
+| ------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------- |
+| `init`                                                                                                  | plugin  | Create the database.                                              |
+| `inbox`, `status <planId>`                                                                              | plugin  | List what waits for the oracle. Show where a plan is in the loop. |
+| `target open`, `target request`, `target save`, `target show <id@rev>`                                  | plugin  | Store and read a target profile.                                  |
+| `plan open`, `plan request`, `plan save`                                                                | plugin  | Create a plan.                                                    |
+| `plan show`, `plan list`, `plan diff <id> <a> <b>`                                                      | plugin  | Read plans. `diff` prints a JSON Patch.                           |
+| `gap answer`, `plan pending`, `plan revise`                                                             | plugin  | Decide and revise.                                                |
+| `plan edit <id@rev> [--patch]`, `plan adopt-gaps <id@rev> --run <runId>`                                | plugin  | Change the latest revision.                                       |
+| `plan approve`, `plan reject`                                                                           | plugin  | Plan gate.                                                        |
+| `run gate`, `run begin`, `run check`, `run close`, `run finding`, `run gap`, `run finish`, `run resume` | plugin  | Execute.                                                          |
+| `run show`, `run list`                                                                                  | plugin  | Read runs.                                                        |
+| `result accept`, `result reject`                                                                        | plugin  | Result gate.                                                      |
+| `evidence get <id> --out <file>`                                                                        | plugin  | Write evidence bytes to a file for viewing.                       |
+| `export plan\|run <id> --format md\|html\|json [--out <file>]`                                          | plugin  | Print a view, or write it to a new file.                          |
+| `log [--subject <s>]`                                                                                   | plugin  | Read the operation log.                                           |
+| `query "<sql>"`                                                                                         | plugin  | Read-only SQL. The database opens read-only.                      |
+| `delegate <stage> ... --allow <rule>...`                                                                | npm     | Run a stage in a new Claude Code session.                         |
+| `ui [--port <n>]`                                                                                       | plugin  | Start the local review UI.                                        |
 
 ### Operation log and replay
 
@@ -535,12 +535,12 @@ The UI has one job: show the human what waits for a decision, and let them decid
 
 | Page  | URL                      | Content                                                                                                                                                                                                                         |
 | ----- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Inbox | `/`                      | Items that wait for a human, oldest first, in three groups: gaps to answer, plans to approve, results to accept. This is the start page.                                                                                        |
-| Plans | `/plans`                 | All plans with status, open gaps, approval, and blocks. Filters and search by ID. Lists show 25, 50, or 100 rows for each page and sort by column.                                                                              |
+| Inbox | `/`                      | Items that wait for a decision, oldest first, in four groups: gaps to answer, also of runs, plans to approve, results to accept, and plans to draft. This is the start page.                                                    |
+| Plans | `/plans`                 | All plans with the loop state and the role that it waits on, open gaps, approval, and blocks. Filters by status, approval, and waits on, and search by ID. Lists show 25, 50, or 100 rows for each page and sort by column.     |
 | Plan  | `/plans/checkout@2`      | Tests with their assertions, gaps, requirements and coverage, the runs of the plan, decisions, and history with a diff for each revision. An `Export` menu downloads the plan from `/plans/checkout@2/export.<html\|md\|json>`. |
 | Edit  | `/plans/checkout@2/edit` | Forms for requirements, tests, assertions, and the coverage matrix, and a JSON editor for added or removed items. It calls the core function of `plan edit`.                                                                    |
 | Runs  | `/runs`                  | All runs with plan, build, completion, coverage, and acceptance. Filters by plan, build, and status.                                                                                                                            |
-| Run   | `/runs/run-7`            | Summary, each test with its assertion results and evidence, findings, new gaps, coverage, and cleanup. A finished run downloads its report from `/runs/run-7/report.<html\|md\|json>`.                                          |
+| Run   | `/runs/run-7`            | Summary, each test with its assertion results and evidence, findings, new gaps with `Answer` and `Bring into plan`, coverage, and cleanup. A finished run downloads its report from `/runs/run-7/report.<html\|md\|json>`.      |
 | Log   | `/log`                   | The operation log. Filters by subject and actor.                                                                                                                                                                                |
 
 The navigation shows the number of inbox items. An empty inbox says `Nothing waits for you.` and links to the latest runs.

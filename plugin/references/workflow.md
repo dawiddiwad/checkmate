@@ -90,7 +90,7 @@ Then run `/checkmate:revise checkout`.
 
 Useful columns:
 
-- Plans: Plan, Approval, Open gaps, Blocked tests.
+- Plans: Plan, Loop, Waits on, Approval, Open gaps, Blocked tests.
 - Tests: Test, Readiness, Capability, Title. In a run: Test, Outcome, Reason.
 - Gaps: Gap, Severity, Status, Tests, Question.
 - Runs: Run, Plan, Build, Completion, Coverage, Acceptance.

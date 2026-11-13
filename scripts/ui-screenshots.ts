@@ -65,7 +65,12 @@ try {
 	await shot(phone, '/plans/search@1/edit', 'plan-edit-phone')
 	const dark = await open('dark', 1280)
 	await shot(dark, '/', 'inbox-dark')
+	await shot(dark, '/plans', 'plans-dark')
+	await shot(dark, '/plans/checkout@2', 'plan-dark', false)
 	await shot(dark, '/runs/run-7', 'run-dark')
+	await dark.evaluate(() => document.querySelector('#findings')?.scrollIntoView({ block: 'start' }))
+	await dark.screenshot({ path: join(directory, 'run-gap-dark.png') })
+	console.log(join(directory, 'run-gap-dark.png'))
 } finally {
 	await browser.close()
 	await ui.close()

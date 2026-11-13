@@ -20,9 +20,12 @@ Checkmate does not start your agents or change code. The factory does. The agent
 | Dev agent     | Fixes the code.                                     | Nothing. It reads the defects.    |
 | Human         | Joins in the review UI. Makes the same decisions.   | Decisions and plan edits          |
 
-After `target open` and `delegate setup`, the planner starts the loop and the oracle reads what waits:
+Set up the target, let the planner start the loop, and read what waits for the oracle:
 
 ```bash
+checkmate target open shop --base-url http://127.0.0.1:4173 \
+  --capabilities browser,http --operations read_catalog,create_order
+checkmate delegate setup shop --allow Read --allow Bash
 checkmate plan open checkout --target shop@1 <<'EOF'
 { "objective": "Verify checkout totals.", "context": { "sources": ["docs/checkout.md"] } }
 EOF
@@ -50,7 +53,7 @@ You are the oracle. Test your own work, or verify the work of a teammate.
 
 <img src="docs/img/checkmate-infographic.png" alt="Swimlane diagram of one ticket over two iterations. Lanes for the planner agent, the oracle, the QA agent, and the dev agent, and a Checkmate record lane below. Each step writes a record: plan@1 with three gaps, approval, an early failed run with defect F1 and gap G4, gap answers, plan@2, a human edit in the review UI that covers G4, approval, a retest on build b2 that passes, and the accepted result."/>
 
-Each step writes a record. A failed assertion needs a defect with evidence. A retest is a new run on a new build: earlier runs and approved plans do not change. The host (Claude Code) owns the model, the tools, and the permissions.
+A failed assertion needs a defect with evidence. A retest is a new run on a new build: earlier runs and approved plans do not change. The host (Claude Code) owns the model, the tools, and the permissions.
 
 ## Install
 

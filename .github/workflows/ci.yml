@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       pull_request:
-        description: Resume a GitHub release for this merged PR number
+        description: Resume the npm and GitHub release for this merged PR number
         type: string
         required: false
       release:
-        description: Create or resume a GitHub release
+        description: Create or resume the npm and GitHub release
         type: boolean
         default: false
       live:
@@ -92,17 +92,8 @@ jobs:
                 pull.merged_at && pull.base.ref === branch && pull.merge_commit_sha === context.sha
               )
               if (!pull) return
-              // Release only merges that change the installed plugin or its marketplace entry.
-              const files = await github.paginate(github.rest.pulls.listFiles, {
-                ...context.repo, pull_number: pull.number,
-              })
-              const shipped = files.some(file =>
-                [file.filename, file.previous_filename].some(name =>
-                  name && (name.startsWith('plugin/') || name === '.claude-plugin/marketplace.json')
-                )
-              )
-              if (!shipped) {
-                core.info(`PR #${pull.number} changes no plugin files. No release.`)
+              if (pull.labels.some(label => label.name === 'skip-release')) {
+                core.info(`PR #${pull.number} has the skip-release label. No npm or GitHub release.`)
                 return
               }
             }
@@ -115,13 +106,14 @@ jobs:
       needs.release-source.outputs.source != '' &&
       (needs.live.result == 'success' || needs.live.result == 'skipped')
     concurrency:
-      group: github-plugin-release
+      group: release
       cancel-in-progress: false
       queue: max
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: write
+      id-token: write
     env:
       RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
       RELEASE_SOURCE: ${{ needs.release-source.outputs.source }}
@@ -135,6 +127,15 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: Check the publishing environment
+        run: |
+          node --version
+          npm --version
+          node --input-type=module <<'NODE'
+          for (const name of ['ACTIONS_ID_TOKEN_REQUEST_URL', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) {
+            if (!process.env[name]) throw new Error(`GitHub OIDC is unavailable: ${name} is missing.`)
+          }
+          NODE
       - name: Resume an existing release commit
         id: resume
         shell: bash
@@ -147,7 +148,7 @@ jobs:
             echo "resume=false" >> "$GITHUB_OUTPUT"
           fi
       - run: npm ci
-      - name: Prepare the plugin version
+      - name: Prepare the version
         id: version
         shell: bash
         run: |
@@ -156,6 +157,24 @@ jobs:
           else
             node scripts/release-version.ts
           fi
+          echo "package=$(node -p "require('./cli/package.json').name")" >> "$GITHUB_OUTPUT"
+      - name: Check whether npm already has this version
+        id: registry
+        env:
+          RELEASE_PACKAGE: ${{ steps.version.outputs.package }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_RESUME: ${{ steps.resume.outputs.resume }}
+        run: |
+          npm view "$RELEASE_PACKAGE" versions --json > "$RUNNER_TEMP/npm-versions.json"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs'
+          const versions = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-versions.json`, 'utf8'))
+          const published = [versions].flat().includes(process.env.RELEASE_VERSION)
+          if (published && process.env.RELEASE_RESUME !== 'true') {
+            throw new Error(`npm already has ${process.env.RELEASE_VERSION}. Update the repository version before releasing.`)
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`)
+          NODE
       - name: Verify the release candidate
         run: npm run phase:verify
       - name: Commit and tag the verified version
@@ -166,17 +185,22 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json
+          git add package.json package-lock.json cli/package.json plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json
           git commit --allow-empty -m "Release v$RELEASE_VERSION" -m "Release-Source: $RELEASE_SOURCE"
           git tag "v$RELEASE_VERSION"
           git push --atomic origin "HEAD:refs/heads/$RELEASE_BRANCH" "refs/tags/v$RELEASE_VERSION"
+      - name: Publish the CLI to npm with trusted publishing
+        if: steps.registry.outputs.published != 'true'
+        run: npm publish ./cli --access public
       - name: Create the GitHub release
         uses: actions/github-script@v8
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_PACKAGE: ${{ steps.version.outputs.package }}
         with:
           script: |
-            const tag = `v${process.env.RELEASE_VERSION}`
+            const version = process.env.RELEASE_VERSION
+            const tag = `v${version}`
             const { data: reference } = await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })
             const head = require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
             if (reference.object.sha !== head) throw new Error('Release tag does not match the verified commit.')
@@ -187,11 +211,12 @@ jobs:
             } catch (error) {
               if (error.status !== 404) throw error
             }
+            const npm = `https://www.npmjs.com/package/${process.env.RELEASE_PACKAGE}/v/${version}`
             await github.rest.repos.createRelease({
               ...context.repo,
               tag_name: tag,
               name: tag,
-              body: 'Install the Claude Code plugin from the Checkmate marketplace. This release has no npm package.',
+              body: `Install the Claude Code plugin from the Checkmate marketplace, or the CLI from npm: [${process.env.RELEASE_PACKAGE}@${version}](${npm}).`,
               generate_release_notes: true,
               make_latest: 'legacy',
             })

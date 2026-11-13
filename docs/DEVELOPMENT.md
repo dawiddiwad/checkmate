@@ -49,21 +49,21 @@ The marketplace source is `./plugin`. Claude Code copies only that directory int
 
 The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
 
-The root package is private. It installs development dependencies and runs development commands. The npm CLI package is `cli/` (`@xoxoai/checkmate`). Its `prepack` script runs `scripts/build-cli.ts`, which bundles `cli/src/main.ts` and copies `plugin/` into the package. The release workflow does not publish it yet.
+The root package is private. It installs development dependencies and runs development commands. The npm CLI package is `cli/` (`@xoxoai/checkmate`). Its `prepack` script runs `scripts/build-cli.ts`, which bundles `cli/src/main.ts` and copies `plugin/` into the package. The release job publishes it.
 
-## GitHub releases
+## Releases
 
-A merged PR to `main` starts the release job after verification passes, if the PR changes the plugin. A PR changes the plugin when it changes a file under `plugin/` or `.claude-plugin/marketplace.json`. Merges that change only documentation, tests, CI, or development dependencies do not create a release. The job updates the package, lockfile, plugin, and marketplace versions together. It commits the version, creates a tag, and creates a GitHub release.
+Each merged PR to `main` starts the release job after verification passes. The job updates the package, lockfile, CLI package, plugin, and marketplace versions together. Then it verifies the release candidate, pushes the version commit and tag, publishes the CLI package to npm, and creates the GitHub release. The GitHub release is created only after the npm publish succeeds.
 
-The first plugin release is `v0.7.0`. Later merges increase the patch version. To select a new minor or major version, update all four version records in the PR. The selected version must be newer than every existing release tag.
+To merge without a release, add the `skip-release` label to the PR before you merge it. The job then makes no version commit, no npm package, and no GitHub release.
 
-Release jobs run one at a time. The job verifies the release candidate before it pushes the commit and tag together. It never publishes to npm.
+The first release is `v0.7.0`. Later merges increase the patch version. To select a new minor or major version, update all five version records in the PR. The selected version must be newer than every existing release tag, and npm must not have it yet.
 
-If release creation fails after the push, rerun the failed job. You can also run CI manually on `main`. Enable `release` and enter the merged PR number in `pull_request`. The job reuses the release commit and tag for that PR. It does not increase the version again.
+Release jobs run one at a time. If the job fails after the push, for example at the npm publish, rerun the failed job. You can also run CI manually on `main`: enable `release` and enter the merged PR number in `pull_request`. The job reuses the release commit and tag for that PR, skips the npm publish when npm already has the version, and does not increase the version again.
 
-A manual release does not check the changed files. A manual release with no PR number creates a separate release request. Direct pushes without an associated merged PR do not start an automatic release.
+A manual release does not check the PR labels. A manual release with no PR number creates a separate release request. Direct pushes without an associated merged PR do not start an automatic release.
 
-The GitHub Actions token needs write access to repository contents. Repository rules must permit the release bot to push the version commit and tag. Live Claude checks run only when selected. They are not a required automatic release check.
+npm publishing uses trusted publishing from `.github/workflows/ci.yml`, with no npm token. The npm package settings must trust this repository and workflow file. The GitHub Actions token needs write access to repository contents. Repository rules must permit the release bot to push the version commit and tag. Live Claude checks run only when selected. They are not a required automatic release check.
 
 ## Documentation media
 

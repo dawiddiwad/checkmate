@@ -1,6 +1,8 @@
 {
 	"name": "checkmate",
-	"owner": { "name": "Dawid Dobrowolski" },
+	"owner": {
+		"name": "Dawid Dobrowolski"
+	},
 	"plugins": [
 		{
 			"name": "checkmate",

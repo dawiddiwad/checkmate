@@ -42,7 +42,7 @@ try {
 	await mkdir(workspace)
 	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
-	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'ui'])
+	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
 	const ui = spawn(process.execPath, [bundle, 'ui', '--workspace', workspace], { cwd: directory })
 	try {

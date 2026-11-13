@@ -63,7 +63,7 @@ Use this path when you work in Claude Code with the plugin. You do not need the 
    /checkmate:report run-1 as html in reports/run-1.html
    ```
 
-After each stage, Claude reports in one format: a Markdown table of the plans, tests, gaps, or runs; a `Done:` line; and a `Next:` line with the decision, who makes it, and the command or UI action. Before Claude answers a question about the state, it reads the database with `inbox`, `plan list`, `plan show`, `run list`, or `run show`.
+After each stage, Claude reports in one format: a Markdown table of the plans, tests, gaps, or runs; a `Done:` line; and a `Next:` line with the decision, who makes it, and the command or UI action. Before Claude answers a question about the state, it reads the database with `status`, `inbox`, `plan list`, `plan show`, `run list`, or `run show`. To ask where a plan is in the loop, run `/checkmate:status checkout`, or ask "Where is the checkout plan in the loop?"
 
 <details>
 <summary>Screenshots of the review UI</summary>

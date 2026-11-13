@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plan } from '../plugin/src/types.ts'
 import type { Measurement } from './live-support.ts'
@@ -43,6 +43,24 @@ const request = {
 				'The shop sells one item at 400 PLN. A loyal customer has a 20 PLN loyalty discount. A 40 percent promotion exists. Refunds exist.',
 		},
 	],
+	context: {
+		sources: [],
+		instructions:
+			'Test R1 through the checkout page. The page has no promotion control. Test R2 through the HTTP API only, with GET /quote and the http capability.',
+	},
+}
+
+function status(planId: string) {
+	const loop = checkmate(workspace, ['status', planId])
+	console.log(JSON.stringify({ status: planId, state: loop.state, waitsOn: loop.waitsOn, next: loop.next }))
+	return loop
+}
+
+function expectStatus(planId: string, state: string, waitsOn: string) {
+	const loop = status(planId)
+	assert.equal(loop.state, state, JSON.stringify(loop))
+	assert.equal(loop.waitsOn, waitsOn, JSON.stringify(loop))
+	return loop
 }
 
 async function stage(name: string, kind: 'setup' | 'plan' | 'revise' | 'execute', subject: string) {
@@ -88,9 +106,11 @@ try {
 	assert.equal(target.profile.readyForLiveExecution, true)
 
 	checkmate(workspace, ['plan', 'open', 'checkout', '--target', `checkout-local@${target.revision}`], request)
+	expectStatus('checkout', 'needs_plan', 'planner')
 	await stage('plan', 'plan', 'checkout')
 	assert.equal(app.actions(), 0, 'Planning executed a fixture action')
 	const first = latestPlan('checkout')
+	expectStatus('checkout', 'needs_answers', 'oracle')
 	for (const requirement of ['R2', 'R3'])
 		assert(
 			testsOf(first, requirement).some((test) => test.readiness === 'blocked'),
@@ -122,6 +142,7 @@ try {
 			'Product owner decision.',
 		])
 	}
+	expectStatus('checkout', 'needs_revision', 'planner')
 	await stage('revise', 'revise', 'checkout')
 	const revised = latestPlan('checkout')
 	assert(revised.revision > first.revision, 'No new revision')
@@ -131,18 +152,30 @@ try {
 		'No R2 test is ready'
 	)
 	const reference = `checkout@${revised.revision}`
+	assert.equal(status('checkout').waitsOn, 'oracle')
 	checkmate(workspace, ['plan', 'approve', reference, '--rationale', 'Reviewed the revision.'])
+	assert.match(expectStatus('checkout', 'ready_to_run', 'qa').next, /--partial ready_only/)
 
 	const ready = revised.tests.filter((test) => test.readiness === 'ready').map((test) => test.id)
+	const gate = checkmate(workspace, [
+		'run',
+		'gate',
+		reference,
+		'--build',
+		'fixture-build-1',
+		'--partial',
+		'ready_only',
+	])
+	assert(gate.tests.length > 0 && gate.tests.every((id: string) => ready.includes(id)), JSON.stringify(gate))
 	checkmate(workspace, [
 		'run',
 		'begin',
 		'live-run',
 		reference,
-		'--tests',
-		ready.join(','),
 		'--build',
 		'fixture-build-1',
+		'--partial',
+		'ready_only',
 	])
 	await stage('execute', 'execute', 'live-run')
 	const failed = checkmate(workspace, ['run', 'show', 'live-run'])
@@ -155,6 +188,9 @@ try {
 		'No R2 defect'
 	)
 	assert.equal(failed.result.coverage.status, 'partial')
+	const afterRun = status('checkout')
+	assert(afterRun.defects.length > 0, JSON.stringify(afterRun))
+	if (afterRun.gaps.length === 0) assert.equal(afterRun.waitsOn, 'factory', JSON.stringify(afterRun))
 	checkmate(workspace, ['result', 'accept', 'live-run', '--rationale', 'The defect is real.'])
 
 	app.fix()
@@ -185,13 +221,35 @@ try {
 	)
 	assert.equal(retest.result.coverage.status, 'partial')
 	assert.equal(checkmate(workspace, ['run', 'show', 'live-run']).result.completion, 'completed')
+	const inbox = checkmate(workspace, ['inbox'])
+	assert(!inbox.results.some((result: { runId: string }) => result.runId === 'live-run'), JSON.stringify(inbox))
+	checkmate(workspace, ['result', 'accept', 'live-retest', '--rationale', 'The fix passed the retest.'])
+	const final = status('checkout')
+	if (final.gaps.length === 0) assert.equal(final.state, 'accepted', JSON.stringify(final))
 	assert.deepEqual(readdirSync(join(workspace, '.checkmate')), ['checkmate.db'])
 	assert.equal(existsSync(join(workspace, '.playwright-cli')), false)
 
 	checkmate(workspace, ['export', 'run', 'live-run', '--format', 'html', '--out', 'reports/live-run.html'])
 	assert.match(readFileSync(join(workspace, 'reports/live-run.html'), 'utf8'), /live-run/)
 
-	checkmate(workspace, ['plan', 'open', 'same-session', '--target', `checkout-local@${target.revision}`], request)
+	mkdirSync(join(workspace, 'docs'))
+	writeFileSync(
+		join(workspace, 'docs/checkout.md'),
+		['# Checkout', '', '## R1', '', 'A standard order for one 400 PLN item has a total of 400 PLN.', ''].join('\n')
+	)
+	checkmate(workspace, [
+		'plan',
+		'open',
+		'same-session',
+		'--target',
+		`checkout-local@${target.revision}`,
+		'--objective',
+		'Verify the standard checkout total.',
+		'--source',
+		'docs/checkout.md',
+		'--instructions',
+		'Draft one requirement for each section of the file.',
+	])
 	await measure(measurements, 'same-session-plan', () =>
 		worker('claude', workerArgs(pluginRoot, allowedTools), {
 			cwd: workspace,

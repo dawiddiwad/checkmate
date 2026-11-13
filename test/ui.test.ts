@@ -594,6 +594,7 @@ test('Bring into plan adopts one run gap with the digest guard and the actor', a
 	const page = (await call(ui, '/runs/run-7')).body
 	assert.match(page, /<form method="post" action="\/runs\/run-7\/gaps\/G4" class="inline-form">/)
 	assert.match(page, /Bring into plan<\/button>/)
+	assert.match(page, /<div class="actions">\s*<a class="btn small" href="[^"]+\/gaps\/G4#answer">Answer<\/a>/)
 	const form = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), actor: '' }
 	const nameless = await call(ui, '/runs/run-7/gaps/G4', { form })
 	assert.equal(nameless.status, 422)

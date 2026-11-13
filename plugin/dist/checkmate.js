@@ -11237,11 +11237,11 @@ function newGaps(store, context, detail, adoptError) {
 					</div>
 					<p class="gap-q">${gap.question}</p>
 					<p class="muted">${gap.consequence}</p>
-					<p>
+					<div class="actions">
 						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
 										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
 										${adoptForm(context, detail, gap.id, revision.sha256)}`}
-					</p>
+					</div>
 					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
 				</li>`
   )}

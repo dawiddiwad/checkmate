@@ -1299,6 +1299,9 @@ summary.asr-row:focus-visible {
 	align-items: center;
 	margin: 0 0 0 8px;
 }
+.actions .inline-form {
+	margin: 0;
+}
 .form-error {
 	color: var(--fail);
 	background: var(--fail-soft);

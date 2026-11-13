@@ -259,7 +259,7 @@ function newGaps(store: Store, context: Context, detail: Detail, adoptError: Ado
 					</div>
 					<p class="gap-q">${gap.question}</p>
 					<p class="muted">${gap.consequence}</p>
-					<p>
+					<div class="actions">
 						${
 							adopted.includes(gap.id)
 								? html`${pill('resolved', 'in plan')}
@@ -267,7 +267,7 @@ function newGaps(store: Store, context: Context, detail: Detail, adoptError: Ado
 								: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
 										${adoptForm(context, detail, gap.id, revision.sha256)}`
 						}
-					</p>
+					</div>
 					${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
 				</li>`
 		)}

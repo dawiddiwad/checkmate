@@ -136,22 +136,22 @@ checkmate export run run-1 --format html --out reports/run-1.html
 
 ## Factory loop
 
-In a QA-driven software factory, agents do acceptance-test-driven development. The factory starts the agents and gives them the work. Checkmate does not start, schedule, or message agents, and it does not change code. The agents coordinate through the records.
+In a QA-driven software factory, agents do acceptance-test-driven development. The factory runs the agents and their sandboxes, the harness, the builds, and the code changes. Checkmate drives the definition of executable requirements, gap discovery, test execution, and evidence capture through its stages, and keeps the results as an auditable record. Claude Code runs the tools. Checkmate does not start, schedule, or message agents, and it does not change code. The agents coordinate through the records.
 
-| Role          | What it does                                                  | Checkmate interface                                                                            |
-| ------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Planner agent | Turns the ticket into tests. Records gaps.                    | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise` |
-| Caller        | Answers gaps. Approves plans. Accepts results.                | `inbox`, `gap answer`, `plan edit`, `plan approve\|reject`, `result accept\|reject`            |
-| QA agent      | Runs the tests. Records results, evidence, defects, and gaps. | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`    |
-| Dev agent     | Fixes the code.                                               | `run show` or `export run` to read the findings                                                |
-| Human         | Joins at any time in the review UI. Makes the same decisions. | `checkmate ui` or `/checkmate:ui`                                                              |
+| Role          | What it does                                                                | Checkmate interface                                                                                                                                                                       |
+| ------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planner agent | Runs the plan and revise stages. Turns the ticket into tests. Records gaps. | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise`                                                                                            |
+| Caller        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                                       |
+| QA agent      | Runs the execute stage. Records results, evidence, defects, and gaps.       | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`                                                                                               |
+| Factory       | Runs the agents and sandboxes. Builds and fixes the code. Reads the record. | `run show`, `export run\|plan --format json`, `log`, `query`, and `inbox` to read the record. It writes only through the commands that it runs, for example `run begin` with a new build. |
+| Human         | Joins at any time in the review UI. Makes the same decisions.               | `checkmate ui` or `/checkmate:ui`                                                                                                                                                         |
 
 The caller is anyone who can give the answer: a product-owner agent or a person. One ticket goes around the loop until its tests pass:
 
 1. **Plan.** The planner agent reads the ticket and the other sources, and writes the tests. The feature does not exist yet, so the first revision has many gaps.
 2. **Run early.** The caller approves the revision. The QA agent runs the ready tests before the feature exists. Most tests fail. This is correct: an early run explores the requirements. Each failed assertion needs a defect finding with evidence. Unclear behavior becomes a new gap in the run.
 3. **Answer.** The caller answers the gaps. The planner agent applies the answers in a new revision. The caller approves it.
-4. **Fix.** The dev agent reads the findings and changes the code.
+4. **Fix.** The factory reads the findings, changes the code, and makes a new build.
 5. **Retest.** The QA agent runs the tests again on the new build with `--retest-of`. The earlier run does not change. When a run shows new gaps or a plan change, the plan gets a new revision, and the loop continues.
 6. **Accept.** When a retest passes, the caller accepts the result.
 
@@ -181,7 +181,7 @@ checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
 checkmate delegate revise checkout --allow Read --allow Bash
 checkmate plan approve checkout@2 --rationale "Tests match the answers."
 
-# Dev: read the findings and fix the code. QA: retest on the new build.
+# Factory: read the findings, fix the code, and build. QA: retest on the new build.
 checkmate export run run-1 --format md
 checkmate run begin run-2 checkout@2 --tests T1,T2,T3,T4 --build "$NEW_SHA" --retest-of run-1
 checkmate delegate execute run-2 --allow Read --allow Bash

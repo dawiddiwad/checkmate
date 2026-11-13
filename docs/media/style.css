@@ -20,9 +20,9 @@
 	--qa: #b48cff;
 	--qa-bg: #1c1630;
 	--qa-line: #4a3878;
-	--dev: #a9b6c7;
-	--dev-bg: #181d25;
-	--dev-line: #3a4452;
+	--factory: #a9b6c7;
+	--factory-bg: #181d25;
+	--factory-line: #3a4452;
 	--human: #e8ebf0;
 	--human-line: #8a93a3;
 	--green: #4fd18b;
@@ -65,8 +65,8 @@ body {
 .qa {
 	color: var(--qa);
 }
-.dev {
-	color: var(--dev);
+.factory {
+	color: var(--factory);
 }
 .human {
 	color: var(--human);
@@ -92,6 +92,10 @@ body {
 .step,
 .record {
 	position: absolute;
+}
+.step,
+.record,
+.chip {
 	white-space: nowrap;
 	font-family: var(--mono);
 	border: 1px solid;
@@ -112,9 +116,9 @@ body {
 	background: var(--qa-bg);
 	border-color: var(--qa-line);
 }
-.step.dev {
-	background: var(--dev-bg);
-	border-color: var(--dev-line);
+.step.factory {
+	background: var(--factory-bg);
+	border-color: var(--factory-line);
 }
 .step.human {
 	background: var(--bg);
@@ -125,34 +129,40 @@ body {
 	background: var(--bg);
 	border-color: var(--line-strong);
 }
-.record {
+.record,
+.chip {
 	font-weight: 500;
 	border-radius: 3px;
 	color: var(--text);
 	background: var(--card);
 	border-color: var(--line-strong);
 }
-.record.plan {
+.record.plan,
+.chip.plan {
 	color: var(--planner);
 	background: var(--planner-bg);
 	border-color: var(--planner-line);
 }
-.record.gap {
+.record.gap,
+.chip.gap {
 	color: var(--amber);
 	background: var(--amber-bg);
 	border-color: var(--amber-line);
 }
-.record.decision {
+.record.decision,
+.chip.decision {
 	color: var(--green);
 	background: var(--oracle-bg);
 	border-color: var(--oracle-line);
 }
-.record.defect {
+.record.defect,
+.chip.defect {
 	color: var(--red);
 	background: var(--red-bg);
 	border-color: var(--red-line);
 }
-.record.accepted {
+.record.accepted,
+.chip.accepted {
 	color: var(--bg);
 	background: var(--green);
 	border-color: var(--green);

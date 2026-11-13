@@ -2,23 +2,23 @@
 
 # Checkmate
 
-**The QA system of record for an agent software factory.** Agents plan, test, and fix against one shared record, until the tests pass.
+**The QA system of record for an agent software factory.** Checkmate drives executable requirements, gap discovery, test runs, and evidence capture, and keeps all of it as an auditable record that agents and the factory can read to monitor and improve their work.
 
-<img src="docs/img/onboarding.gif" alt="Swimlane timeline of one ticket. Iteration 1: the planner agent writes plan@1 with three gaps, the oracle approves it, and an early QA run fails with defect F1 and new gap G4. Iteration 2: the oracle answers the gaps, the planner writes plan@2, a human edits it in the review UI to cover G4, and the oracle approves it. The dev agent fixes F1, the QA retest on build b2 passes, and the oracle accepts the result. Each step writes a record in Checkmate." width="50%"/>
+<img src="docs/img/onboarding.gif" alt="One ticket in two synced views. Left: a loop of stations for the planner, the oracle, QA, the factory, and the QA retest around the Checkmate record. Right: the same steps on a swimlane timeline with lanes for the planner, the oracle, QA, and the factory, and a Checkmate record lane below. Iteration 1: the planner writes plan@1 with three gaps, the oracle approves it, and an early QA run fails with defect F1 and new gap G4. Iteration 2: the oracle answers the gaps, the planner writes plan@2, a human edits it in the review UI to cover G4, and the oracle approves it. The factory fixes F1 in build b2, the QA retest passes, and the oracle accepts the result. The animation ends with solo mode in Claude Code." width="100%"/>
 
-Checkmate is a CLI and a Claude Code plugin. Each plan, gap, decision, run, defect, and piece of evidence is a record in one SQLite database.<br/>
+Checkmate is a CLI and a Claude Code plugin. Its stages give the planner and QA agents their skills and contracts, and Claude Code runs the tools.<br/>
 The **oracle** is anyone who can give the answer: a product-owner agent or a person. A human can join at any time in the review UI.<br/>
-Checkmate does not start your agents or change code. The factory does. The agents meet in the record.
+Checkmate does not start, schedule, or message agents, and it does not change code. The factory does.
 
 ## Team mode: the factory loop
 
-| Lane          | Does                                                | Writes to the record              |
-| ------------- | --------------------------------------------------- | --------------------------------- |
-| Planner agent | Turns the ticket into tests.                        | Plan revisions and gaps           |
-| Oracle        | Answers gaps. Approves plans. Accepts results.      | Decisions                         |
-| QA agent      | Runs the tests early, then again on each new build. | Runs, evidence, defects, new gaps |
-| Dev agent     | Fixes the code.                                     | Nothing. It reads the defects.    |
-| Human         | Joins in the review UI. Makes the same decisions.   | Decisions and plan edits          |
+| Lane    | Does                                                                              | Writes to the record                                        |
+| ------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Planner | An agent runs the Checkmate plan and revise stages. It turns a ticket into tests. | Plan revisions and gaps                                     |
+| Oracle  | Answers gaps. Approves plans. Accepts results.                                    | Decisions                                                   |
+| QA      | An agent runs the Checkmate execute stage, early and on each new build.           | Runs, evidence, defects, and new gaps                       |
+| Factory | Runs the agents and their sandboxes. Builds and fixes the code. Reads the record. | Only what its commands record, such as a run on a new build |
+| Human   | Joins in the review UI. Makes the same decisions as the oracle.                   | Decisions and plan edits                                    |
 
 Set up the target, let the planner start the loop, and read what waits for the oracle:
 
@@ -34,6 +34,8 @@ checkmate inbox
 ```
 
 [The full loop](docs/WORKFLOW.md#factory-loop): early runs, gap answers, revisions, retests with `--retest-of`, and acceptance.
+
+To monitor and improve the factory, read the record: `checkmate inbox`, `checkmate log`, `checkmate query "<sql>"` (read-only), and `checkmate export run|plan --format json`.
 
 ## Solo mode: your Claude Code
 
@@ -51,7 +53,7 @@ You are the oracle. Test your own work, or verify the work of a teammate.
 
 ## How it works
 
-<img src="docs/img/checkmate-infographic.png" alt="Swimlane diagram of one ticket over two iterations. Lanes for the planner agent, the oracle, the QA agent, and the dev agent, and a Checkmate record lane below. Each step writes a record: plan@1 with three gaps, approval, an early failed run with defect F1 and gap G4, gap answers, plan@2, a human edit in the review UI that covers G4, approval, a retest on build b2 that passes, and the accepted result."/>
+<img src="docs/img/checkmate-infographic.png" alt="Swimlane diagram of one ticket over two iterations. Lanes for the planner, the oracle, QA, and the factory, and a Checkmate record lane below. Each step writes a record: plan@1 with three gaps, approval, an early failed run with defect F1 and gap G4, gap answers, plan@2, a human edit in the review UI that covers G4, and approval. The factory fixes F1 in build b2, which writes no record. The retest passes, and the oracle accepts the result."/>
 
 A failed assertion needs a defect with evidence. A retest is a new run on a new build: earlier runs and approved plans do not change. The host (Claude Code) owns the model, the tools, and the permissions.
 

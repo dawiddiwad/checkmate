@@ -38,7 +38,7 @@
 	.step[data-role='planner'], .step.ticket { top: 55px; }
 	.step[data-role='oracle'], .step[data-role='human'] { top: 119px; }
 	.step[data-role='qa'] { top: 183px; }
-	.step[data-role='dev'] { top: 247px; }
+	.step[data-role='factory'] { top: 247px; }
 	.record { font-size: 21px; line-height: 36px; height: 38px; padding: 0 12px; }
 	.record[data-row='0'] { top: 324px; }
 	.record[data-row='1'] { top: 376px; }
@@ -65,7 +65,7 @@
 			<div class="lane" style="top: 44px"><b class="planner">Planner</b></div>
 			<div class="lane" style="top: 108px"><b class="oracle">Oracle</b></div>
 			<div class="lane" style="top: 172px"><b class="qa">QA</b></div>
-			<div class="lane" style="top: 236px"><b class="dev">Dev</b></div>
+			<div class="lane" style="top: 236px"><b class="factory">Factory</b></div>
 			<div class="lane record"><b>Checkmate</b><span>record</span></div>
 			<div class="axis">time →</div>
 			<div class="gutter"></div>
@@ -94,7 +94,7 @@
 			<div class="lane" style="top: 44px"><b class="planner">Planner</b></div>
 			<div class="lane" style="top: 108px"><b class="oracle">Oracle</b></div>
 			<div class="lane" style="top: 172px"><b class="qa">QA</b></div>
-			<div class="lane" style="top: 236px"><b class="dev">Dev</b></div>
+			<div class="lane" style="top: 236px"><b class="factory">Factory</b></div>
 			<div class="lane record"><b>Checkmate</b><span>record</span></div>
 			<div class="axis">time →</div>
 			<div class="gutter"></div>
@@ -105,7 +105,7 @@
 				<div class="record plan" data-of="b1" data-row="0">covers G4</div>
 				<div class="step oracle" id="b2" style="left: 270px" data-role="oracle">approve</div>
 				<div class="record decision" data-of="b2" data-row="0">✓ plan@2</div>
-				<div class="step dev" id="b3" style="left: 440px" data-role="dev">fix F1 · build b2</div>
+				<div class="step factory" id="b3" style="left: 440px" data-role="factory">fix F1 · build b2</div>
 				<div class="step qa" id="b4" style="left: 720px" data-role="qa">retest</div>
 				<div class="record" data-of="b4" data-row="0">run-2 <span class="ok">4 ✓</span></div>
 				<div class="record" data-of="b4" data-row="1">retest-of run-1</div>
@@ -118,15 +118,15 @@
 	<div class="facts">
 		<div class="card fact">
 			<h2 style="color: var(--blue)">Checkmate keeps the record</h2>
-			<p>Plans, gaps, decisions, runs, defects, and evidence, in <code>.checkmate/checkmate.db</code>.</p>
+			<p>Its stages define the tests, find the gaps, drive the runs, and save the evidence. Anyone can read it: <code>inbox</code>, <code>log</code>, <code>query</code>, <code>export</code>.</p>
 		</div>
 		<div class="card fact">
 			<h2 class="oracle">The oracle decides</h2>
 			<p>A product-owner agent or a person answers gaps, approves plans, and accepts results.</p>
 		</div>
 		<div class="card fact">
-			<h2>The factory runs the agents</h2>
-			<p>Checkmate does not start or message agents, and does not change code.</p>
+			<h2 class="factory">The factory runs the agents</h2>
+			<p>It runs the agents and their sandboxes, builds the code, and fixes it. Checkmate does not start agents or change code.</p>
 		</div>
 	</div>
 </main>

@@ -71,7 +71,9 @@ export function inboxPage(store: Store): Page {
 				data-announce="New gap ${gap.planId} ${gap.gapId}"
 			>
 				<span class="id">${gap.planId} · ${gap.gapId}</span>
-				<span class="what">${gap.question}</span>
+				<span class="what"
+					>${gap.question}${gap.runId ? html` <span class="muted">· from run ${gap.runId}</span>` : ''}</span
+				>
 				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
 			</a>`
 	)

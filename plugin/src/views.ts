@@ -2,7 +2,15 @@ import type { Plan } from './types.ts'
 import type { Store } from './store.ts'
 import { all, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
-import { approvalState, dependencyBlock, latestApproval, planApproval, planChanges, planRevision } from './plans.ts'
+import {
+	approvalState,
+	dependencyBlock,
+	latestApproval,
+	planApproval,
+	planChanges,
+	planRevision,
+	planRunGaps,
+} from './plans.ts'
 import {
 	outcomeCounts,
 	resultAcceptance,
@@ -75,8 +83,8 @@ export function inbox(store: Store) {
 	)
 	const revisions = latestRevisions(store)
 	const gaps = revisions
-		.flatMap((row) =>
-			row.plan.gaps
+		.flatMap((row) => [
+			...row.plan.gaps
 				.filter((gap) => gap.status === 'open' && !pending.has(`${row.plan_id}:${gap.id}`))
 				.map((gap) => ({
 					planId: row.plan_id,
@@ -85,8 +93,20 @@ export function inbox(store: Store) {
 					question: gap.question,
 					severity: gap.severity,
 					since: row.at,
-				}))
-		)
+					runId: null as string | null,
+				})),
+			...planRunGaps(store, row.plan_id)
+				.filter((item) => !item.adopted)
+				.map((item) => ({
+					planId: row.plan_id,
+					revision: row.revision,
+					gapId: item.gap.id,
+					question: item.gap.question,
+					severity: item.gap.severity,
+					since: item.at,
+					runId: item.runId,
+				})),
+		])
 		.sort(bySince)
 	const plans = revisions
 		.filter((row) => {

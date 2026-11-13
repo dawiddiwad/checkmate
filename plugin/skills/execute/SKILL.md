@@ -85,6 +85,6 @@ Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSO
    - `operational_error`: a tool, access, or cleanup failure stopped the run.
    - `interrupted`: the deadline is near. Finish before the deadline.
 3. Return the response of `run finish`.
-4. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Outcome, Reason) and the findings. In `Next:`, name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. Name a retest or a gap answer when one is necessary.
+4. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Outcome, Reason) and the findings. In `Next:`, name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. Name a retest or a gap answer when one is necessary. For a new gap of the run, name `checkmate gap answer <planId> <gapId> ...`. It adopts the gap into the plan and records the answer.
 
 A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage.

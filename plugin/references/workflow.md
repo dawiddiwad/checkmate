@@ -98,7 +98,7 @@ Useful columns:
 
 - Approved plan revisions, run records, and results do not change.
 - The oracle can change the latest plan revision with `checkmate plan edit <planId@rev>`. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. Do not edit a plan unless the oracle asks.
-- To bring the gaps of a run into the plan, the oracle runs `checkmate plan adopt-gaps <planId@rev> --run <runId>`. The same edit rules apply.
+- To bring the gaps of a run into the plan, the oracle runs `checkmate plan adopt-gaps <planId@rev> --run <runId>`. The same edit rules apply. `checkmate gap answer <planId> <gapId>` on a run gap adopts it and records the answer in one step.
 - For a small change, send only the changes with `checkmate plan edit <planId@rev> --patch`. Key each requirement, test, assertion, and gap by its ID. Give only the changed fields. A new ID adds an item. `null` removes it:
 
 ```sh

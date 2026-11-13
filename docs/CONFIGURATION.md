@@ -243,7 +243,7 @@ checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
 | `accept_assumption` | The gap is `resolved`. The value stays visible in `assumptions`.                   | `--value`, `--rationale`             |
 | `defer`             | The gap is `deferred`. Affected tests are `deferred`. Coverage stays incomplete.   | `--value`, `--rationale`             |
 
-The gap must be open in the latest revision. A gap can have one pending decision.
+The gap must be open in the latest revision, or be a gap of a run of the plan that the plan does not have yet. For a run gap, `gap answer` first adopts the gap as `plan adopt-gaps` does, then records the decision on the adopted revision. When two runs have a gap with the same ID, adopt one with `plan adopt-gaps --gaps` first. A gap can have one pending decision.
 
 ## Plan delta
 
@@ -363,7 +363,9 @@ When the agent finds new ambiguity during a run, it sends a gap to `checkmate ru
 A runtime gap is open, has no decision, and has an ID that is new in the plan and the run. Its requirements and tests must exist. A blocking runtime gap that names a requirement keeps that requirement uncovered in the result. A gap with two empty lists keeps every requirement uncovered. A runtime gap does not change the plan by itself. The oracle decides what to do next:
 
 - `checkmate plan adopt-gaps <planId@rev> --run <runId>` adds each gap of the run that the plan does not have yet. `--gaps G3,G4` selects gaps. The gap keeps its ID and its fields. The rules of [plan edit](#plan-edit) apply.
-- A run gap counts as adopted when a later revision of the plan has a gap with the same ID.
+- `checkmate gap answer <planId> <gapId>` answers a run gap. It adopts the gap, then records the decision. This is the one path to answer a run gap. To drop a run gap, answer it with `--kind defer`.
+- Use `plan adopt-gaps` to bring a gap into the plan without an answer, for example to block the affected tests now.
+- A run gap counts as adopted when a later revision of the plan has a gap with the same ID. The inbox lists each run gap that is not adopted.
 
 ## Execution policy
 

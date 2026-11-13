@@ -3,6 +3,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
+import { planRevision, planRunGaps } from '../plans.ts'
 import { clock, html, icon, join, pill, plural, short, time, words } from './html.ts'
 import { downloads, heading } from './layout.ts'
 import { emptyState, recordPanel, verdictPanel } from './forms.ts'
@@ -218,8 +219,12 @@ function findings(store: Store, detail: Detail) {
 	</div>`
 }
 
-function newGaps(detail: Detail) {
+function newGaps(store: Store, detail: Detail) {
 	if (!detail.newGaps.length) return html`<p class="empty-line">No new gaps.</p>`
+	const latest = `${detail.planId}@${planRevision(store, detail.planId).plan.revision}`
+	const adopted = planRunGaps(store, detail.planId)
+		.filter((item) => item.runId === detail.runId && item.adopted)
+		.map((item) => item.gap.id)
 	return html`<ul class="gaps">
 		${detail.newGaps.map(
 			(gap) =>
@@ -232,6 +237,14 @@ function newGaps(detail: Detail) {
 					</div>
 					<p class="gap-q">${gap.question}</p>
 					<p class="muted">${gap.consequence}</p>
+					<p>
+						${
+							adopted.includes(gap.id)
+								? html`${pill('resolved', 'in plan')}
+										<a href="/plans/${latest}#${gap.id}">${latest}</a>`
+								: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>`
+						}
+					</p>
 				</li>`
 		)}
 	</ul>`
@@ -426,7 +439,7 @@ export function runPage(store: Store, context: Context, runId: string, state: Fo
 				</section>
 				<section aria-labelledby="new-gaps" data-region="new-gaps">
 					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
-					${newGaps(detail)}
+					${newGaps(store, detail)}
 				</section>
 				<section aria-labelledby="coverage" data-region="coverage">
 					<h2 id="coverage">Coverage</h2>

@@ -186,7 +186,7 @@ checkmate result accept run-2 --rationale "All tests pass on the new build."
 ```
 
 - `--partial ready_only` lets a run start while the plan has open blocking gaps. Without `--tests`, it selects the ready tests and prints each test that it leaves out, with the reason. A test that an open blocking gap affects is not ready.
-- A runtime gap from a run, such as G4, does not change the plan by itself. `checkmate plan adopt-gaps checkout@2 --run run-1` adds the open gaps of the run to the plan. Add `--gaps G4` to select gaps. The rules of `plan edit` apply: an unapproved revision without a run changes in place, else the plan gets a new revision.
+- A runtime gap from a run, such as G4, does not change the plan by itself. `checkmate plan adopt-gaps checkout@2 --run run-1` adds the open gaps of the run to the plan. Add `--gaps G4` to select gaps. The rules of `plan edit` apply: an unapproved revision without a run changes in place, else the plan gets a new revision. `gap answer checkout G4` adopts the gap and records the answer in one step.
 - `delegate` records its worker as actor `claude:<stage>`. Give each stage at least `--allow Read --allow Bash`.
 
 ## Sub-agents in Claude Code
@@ -209,7 +209,7 @@ The plugin has no global `checkmate` command. Its CLI is `node <plugin root>/dis
 | Approve or reject | `checkmate plan approve\|reject <planId@rev>`                                           | Plan page          |
 | Accept or reject  | `checkmate result accept\|reject <runId>`                                               | Run page           |
 
-- `checkmate inbox` lists the gaps to answer, the plans to approve, and the results to accept. It also lists the plan requests that have no revision yet. Run the plan stage for them.
+- `checkmate inbox` lists the gaps to answer, the run gaps that the plan does not have yet, the plans to approve, and the results to accept. It also lists the plan requests that have no revision yet. Run the plan stage for them.
 - A gap answer is a pending decision. The revise stage applies it and writes the next revision.
 - `plan edit` changes the latest revision. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. [Configuration](CONFIGURATION.md#plan-edit) shows how to get the current candidate.
 - A gap answer, an approval, and a result decision need a rationale. Add `--expect-sha <digest>` to stop the decision when the snapshot changed.

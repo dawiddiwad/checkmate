@@ -502,6 +502,38 @@ test('a plan page lists its runs, folds closed gaps, and folds older history', a
 	assert.doesNotMatch((await call(ui, '/plans/login@1')).body, /data-history-more/)
 })
 
+test('a run gap is in the inbox, and its answer adopts it into the plan', async (t) => {
+	const { ui, workspace } = await start(t)
+	const home = (await call(ui, '/')).body
+	assert.match(home, /href="\/plans\/checkout@2\/gaps\/G4#answer"/)
+	assert.match(home, /from run run-7/)
+	assert.match((await call(ui, '/runs/run-7')).body, /href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</)
+	const page = (await call(ui, '/plans/checkout@2/gaps/G4')).body
+	assert.match(page, /This gap comes from run <a class="mono" href="\/runs\/run-7">run-7<\/a>/)
+	const done = await call(ui, '/plans/checkout@2/gaps/G4', {
+		form: {
+			csrf: field(page, 'csrf'),
+			sha: field(page, 'sha'),
+			kind: 'defer',
+			value: 'Wrap the banner in a later release.',
+			source: '',
+			rationale: 'Scope.',
+			actor: 'reviewer',
+		},
+	})
+	assert.equal(done.status, 303)
+	const latest = read(workspace, (store) => planDetail(store, 'checkout'))
+	assert.equal(latest.revision, 3)
+	assert.deepEqual(
+		latest.pendingDecisions.map((item) => item.gapId),
+		['G4']
+	)
+	assert.match(
+		(await call(ui, '/runs/run-7')).body,
+		/in plan<\/span>\s*<a href="\/plans\/checkout@3#G4">checkout@3<\/a>/
+	)
+})
+
 test('a finished run downloads its report as HTML, Markdown, or JSON', async (t) => {
 	const { ui } = await start(t)
 	const page = (await call(ui, '/runs/run-7')).body

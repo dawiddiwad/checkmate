@@ -465,6 +465,52 @@ test('run gate and run begin with ready_only and no --tests print the selection 
 	assert.equal(missing.lines[1], 'reason: Select one or more tests with --tests, or add --partial ready_only')
 })
 
+test('a run gap shows in the inbox, and plan adopt-gaps or gap answer brings it into the plan', (t) => {
+	const workspace = setup(t)
+	revise(workspace)
+	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])
+	cli(workspace, ['run', 'begin', 'run-1', 'checkout@2', '--tests', 'T1', '--build', 'b1'])
+	const gap = (id: string) => ({
+		id,
+		severity: 'non_blocking',
+		status: 'open',
+		requirementIds: [],
+		testIds: ['T1'],
+		question: `Is ${id} a question?`,
+		consequence: 'Unknown.',
+		decisionId: null,
+	})
+	cli(workspace, ['run', 'gap', 'run-1'], gap('G3'))
+	cli(workspace, ['run', 'gap', 'run-1'], gap('G4'))
+	const waiting = cli(workspace, ['inbox'])
+	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=0 results=0 requests=0')
+	assert.deepEqual(waiting.lines.slice(1), [
+		'checkout@2/G3\trun_gap\tnon_blocking\trun-1\tIs G3 a question?',
+		'checkout@2/G4\trun_gap\tnon_blocking\trun-1\tIs G4 a question?',
+	])
+	const adopted = cli(workspace, ['plan', 'adopt-gaps', 'checkout@2', '--run', 'run-1', '--gaps', 'G3'])
+	assert.match(adopted.lines[0], /^completed checkout@3 sha256=[a-f0-9]{8} edit=new_revision adopted=G3$/)
+	const answered = cli(workspace, [
+		'gap',
+		'answer',
+		'checkout',
+		'G4',
+		'--kind',
+		'defer',
+		'--value',
+		'Later.',
+		'--rationale',
+		'Scope.',
+	])
+	assert.match(
+		answered.lines[0],
+		/^completed checkout decision=[0-9A-Z]{26} gap=G4 from=run-1 revision=3 edit=in_place$/
+	)
+	assert.deepEqual(cli(workspace, ['inbox']).lines.slice(1, 2), [
+		'checkout@3/G3\tgap\tnon_blocking\tIs G3 a question?',
+	])
+})
+
 test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {
 	const workspace = setup(t)
 	const shown = json(workspace, ['plan', 'show', 'checkout@1']).body

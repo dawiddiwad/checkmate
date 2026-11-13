@@ -6806,11 +6806,12 @@ function adoption(store, operationId, base, runId, gaps) {
 function planRunGaps(store, planId) {
   return all(
     store,
-    `SELECT g.run_id, g.body, EXISTS (SELECT 1 FROM plan_gaps p
+    `SELECT g.run_id, g.body, o.at, EXISTS (SELECT 1 FROM plan_gaps p
 			WHERE p.plan_id = r.plan_id AND p.revision > r.plan_revision AND p.gap_id = g.id) AS adopted
-		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id WHERE r.plan_id = ? ORDER BY g.rowid`,
+		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id JOIN operations o ON o.id = g.operation_id
+		WHERE r.plan_id = ? ORDER BY g.rowid`,
     planId
-  ).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1 }));
+  ).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1, at: row.at }));
 }
 function editableRevision(store, text, expectSha256) {
   const reference = revisionReference(requireText(text, "plan reference"), "plan reference");
@@ -6992,21 +6993,22 @@ function pendingDecisions(store, planId) {
 }
 function answerGap(store, actor, input) {
   return write(store, { actor, command: "gap answer", subject: input.planId, input }, (operationId, at, actor2) => {
-    const latest = planRevision(store, input.planId);
-    const subject = `${input.planId}@${latest.plan.revision}`;
-    expectDigest(latest.sha256, input.expectSha256, subject);
-    const gap = latest.plan.gaps.find((gap2) => gap2.id === input.gapId);
-    requireCondition(gap, `Unknown gap ${input.gapId} in ${subject}`);
-    requireCondition(
-      gap.status === "open",
-      `Gap ${gap.id} is ${gap.status} in ${subject}. Only an open gap takes a decision.`
-    );
     const kind = requireChoice(input.kind, decisionKinds, "decision kind (--kind)");
     const value2 = requireText(input.value, "decision value (--value)");
     const rationale = requireText(input.rationale, "rationale (--rationale)");
     const source = input.source ?? null;
     if (source !== null) requireText(source, "source (--source)");
     requireCondition(kind !== "clarify" || source, "A clarification needs a source (--source)");
+    const answered = planRevision(store, input.planId);
+    expectDigest(answered.sha256, input.expectSha256, `${input.planId}@${answered.plan.revision}`);
+    const adopted = answered.plan.gaps.some((gap2) => gap2.id === input.gapId) ? null : adoptRunGap(store, operationId, answered, input.gapId);
+    const latest = adopted ? planRevision(store, input.planId) : answered;
+    const subject = `${input.planId}@${latest.plan.revision}`;
+    const gap = latest.plan.gaps.find((gap2) => gap2.id === input.gapId);
+    requireCondition(
+      gap.status === "open",
+      `Gap ${gap.id} is ${gap.status} in ${subject}. Only an open gap takes a decision.`
+    );
     const pending = pendingDecisions(store, input.planId).find((decision) => decision.gap_id === gap.id);
     requireCondition(
       !pending,
@@ -7033,11 +7035,28 @@ function answerGap(store, actor, input) {
         planId: input.planId,
         baseRevision: latest.plan.revision,
         gapId: gap.id,
-        kind
+        kind,
+        ...adopted ? {
+          adopted: {
+            runId: adopted.reply.data.runId,
+            revision: latest.plan.revision,
+            edit: adopted.reply.data.edit
+          }
+        } : {}
       }),
-      subjects: [`plan:${input.planId}`, "inbox"]
+      subjects: adopted ? adopted.subjects : [`plan:${input.planId}`, "inbox"]
     };
   });
+}
+function adoptRunGap(store, operationId, base, gapId) {
+  const subject = `${base.plan.planId}@${base.plan.revision}`;
+  const found = planRunGaps(store, base.plan.planId).filter((item) => item.gap.id === gapId && !item.adopted);
+  requireCondition(found.length, `Unknown gap ${gapId} in ${subject}`);
+  requireCondition(
+    found.length === 1,
+    `Gap ${gapId} is in runs ${found.map((item) => item.runId).join(", ")}. Run plan adopt-gaps ${subject} --run <runId> --gaps ${gapId} first.`
+  );
+  return adoption(store, operationId, base, found[0].runId, [found[0].gap]);
 }
 function affectedTests(plan, gapIds) {
   const gaps = plan.gaps.filter((gap) => gapIds.includes(gap.id));
@@ -8201,16 +8220,26 @@ function inbox(store) {
     ).map((row) => `${row.plan_id}:${row.gap_id}`)
   );
   const revisions = latestRevisions(store);
-  const gaps = revisions.flatMap(
-    (row) => row.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row.plan_id}:${gap.id}`)).map((gap) => ({
+  const gaps = revisions.flatMap((row) => [
+    ...row.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row.plan_id}:${gap.id}`)).map((gap) => ({
       planId: row.plan_id,
       revision: row.revision,
       gapId: gap.id,
       question: gap.question,
       severity: gap.severity,
-      since: row.at
+      since: row.at,
+      runId: null
+    })),
+    ...planRunGaps(store, row.plan_id).filter((item) => !item.adopted).map((item) => ({
+      planId: row.plan_id,
+      revision: row.revision,
+      gapId: item.gap.id,
+      question: item.gap.question,
+      severity: item.gap.severity,
+      since: item.at,
+      runId: item.runId
     }))
-  ).sort(bySince);
+  ]).sort(bySince);
   const plans = revisions.filter((row) => {
     const state = planApproval(store, row.plan, row.sha256);
     return state.policy === "required" && !state.approved && !state.rejected;
@@ -9607,7 +9636,9 @@ function inboxPage(store) {
 				data-announce="New gap ${gap.planId} ${gap.gapId}"
 			>
 				<span class="id">${gap.planId} · ${gap.gapId}</span>
-				<span class="what">${gap.question}</span>
+				<span class="what"
+					>${gap.question}${gap.runId ? html2` <span class="muted">· from run ${gap.runId}</span>` : ""}</span
+				>
 				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
 			</a>`
   );
@@ -10453,14 +10484,20 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 function gapPage(store, context, planId, revision, gapId, state = null) {
   const detail = planDetail(store, planId, revision);
   const { plan } = detail;
-  const gap = plan.gaps.find((item) => item.id === gapId);
+  const latest = detail.revision === detail.latestRevision;
+  const fromRun = plan.gaps.some((item) => item.id === gapId) || !latest ? null : unadoptedRunGap(store, planId, gapId);
+  const gap = plan.gaps.find((item) => item.id === gapId) ?? fromRun?.gap;
   if (!gap) throw new Error(`Unknown gap ${gapId} in ${planId}@${revision}`);
   const subject = `${planId}@${revision}`;
   const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id);
   const decision = decisionFor(plan, gap);
-  const tests = plan.tests.filter((test) => test.gapIds.includes(gap.id));
+  const tests = plan.tests.filter((test) => gapsAffecting([gap], test).length > 0);
   const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id));
-  const latest = detail.revision === detail.latestRevision;
+  const runBanner = fromRun ? banner(
+    "info",
+    html2`This gap comes from run <a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your
+					answer adds it to ${planId}.`
+  ) : "";
   let panel;
   if (state || latest && gap.status === "open" && !pending)
     panel = gapPanel(
@@ -10503,7 +10540,7 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 		${pill(gap.severity)} ${pill(gap.status)} <a class="pill" href="/plans/${subject}">${subject}</a>
 	</div>`;
   const body = html2`${heading(html2`${planId} · ${gap.id}`, gap.question, meta)}
-		<div data-region="banners">${newerBanner(detail)}</div>
+		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>
 		<div class="split">
 			<div class="main-col">
 				<section aria-labelledby="consequence">
@@ -10529,7 +10566,16 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 			</div>
 			${side(panel)}
 		</div>`;
-  return { title: `${planId} ${gap.id}`, section: "inbox", subjects: [`plan:${planId}`, "inbox"], body };
+  return {
+    title: `${planId} ${gap.id}`,
+    section: "inbox",
+    subjects: [`plan:${planId}`, "inbox", ...fromRun ? [`run:${fromRun.runId}`] : []],
+    body
+  };
+}
+function unadoptedRunGap(store, planId, gapId) {
+  const found = planRunGaps(store, planId).filter((item) => item.gap.id === gapId && !item.adopted);
+  return found.length === 1 ? found[0] : null;
 }
 
 // plugin/src/ui/edit.ts
@@ -10961,8 +11007,10 @@ function findings(store, detail) {
   )}
 	</div>`;
 }
-function newGaps(detail) {
+function newGaps(store, detail) {
   if (!detail.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
+  const latest = `${detail.planId}@${planRevision(store, detail.planId).plan.revision}`;
+  const adopted = planRunGaps(store, detail.planId).filter((item) => item.runId === detail.runId && item.adopted).map((item) => item.gap.id);
   return html2`<ul class="gaps">
 		${detail.newGaps.map(
     (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
@@ -10974,6 +11022,10 @@ function newGaps(detail) {
 					</div>
 					<p class="gap-q">${gap.question}</p>
 					<p class="muted">${gap.consequence}</p>
+					<p>
+						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
+										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>`}
+					</p>
 				</li>`
   )}
 	</ul>`;
@@ -11151,7 +11203,7 @@ function runPage(store, context, runId, state = null) {
 				</section>
 				<section aria-labelledby="new-gaps" data-region="new-gaps">
 					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
-					${newGaps(detail)}
+					${newGaps(store, detail)}
 				</section>
 				<section aria-labelledby="coverage" data-region="coverage">
 					<h2 id="coverage">Coverage</h2>
@@ -11808,12 +11860,15 @@ var commands = {
           requests: waiting.requests.length
         },
         lines: [
-          ...waiting.gaps.map((gap) => [
-            `${gap.planId}@${gap.revision}/${gap.gapId}`,
-            "gap",
-            gap.severity,
-            gap.question
-          ]),
+          ...waiting.gaps.map(
+            (gap) => gap.runId ? [
+              `${gap.planId}@${gap.revision}/${gap.gapId}`,
+              "run_gap",
+              gap.severity,
+              gap.runId,
+              gap.question
+            ] : [`${gap.planId}@${gap.revision}/${gap.gapId}`, "gap", gap.severity, gap.question]
+          ),
           ...waiting.plans.map((plan) => [
             `${plan.planId}@${plan.revision}`,
             "plan",
@@ -11997,7 +12052,18 @@ var commands = {
       rationale: value(args, "rationale"),
       expectSha256: value(args, "expect-sha")
     }),
-    print: (reply) => ({ facts: { decision: reply.data.decisionId, gap: reply.data.gapId } })
+    print: (reply) => {
+      const adopted = reply.data.adopted;
+      return {
+        facts: {
+          decision: reply.data.decisionId,
+          gap: reply.data.gapId,
+          from: adopted?.runId,
+          revision: adopted?.revision,
+          edit: adopted?.edit
+        }
+      };
+    }
   },
   "plan pending": {
     positionals: ["planId"],

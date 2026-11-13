@@ -140,12 +140,17 @@ const commands: Record<string, Command> = {
 					requests: waiting.requests.length,
 				},
 				lines: [
-					...waiting.gaps.map((gap) => [
-						`${gap.planId}@${gap.revision}/${gap.gapId}`,
-						'gap',
-						gap.severity,
-						gap.question,
-					]),
+					...waiting.gaps.map((gap) =>
+						gap.runId
+							? [
+									`${gap.planId}@${gap.revision}/${gap.gapId}`,
+									'run_gap',
+									gap.severity,
+									gap.runId,
+									gap.question,
+								]
+							: [`${gap.planId}@${gap.revision}/${gap.gapId}`, 'gap', gap.severity, gap.question]
+					),
 					...waiting.plans.map((plan) => [
 						`${plan.planId}@${plan.revision}`,
 						'plan',
@@ -351,7 +356,18 @@ const commands: Record<string, Command> = {
 				rationale: value(args, 'rationale')!,
 				expectSha256: value(args, 'expect-sha'),
 			}),
-		print: (reply) => ({ facts: { decision: reply.data.decisionId, gap: reply.data.gapId } }),
+		print: (reply) => {
+			const adopted = reply.data.adopted as { runId: string; revision: number; edit: string } | undefined
+			return {
+				facts: {
+					decision: reply.data.decisionId,
+					gap: reply.data.gapId,
+					from: adopted?.runId,
+					revision: adopted?.revision,
+					edit: adopted?.edit,
+				},
+			}
+		},
 	},
 	'plan pending': {
 		positionals: ['planId'],

@@ -283,16 +283,17 @@ function adoption(store: Store, operationId: string, base: PlanRevision, runId: 
 	return change
 }
 
-export type RunGap = { runId: string; gap: Gap; adopted: boolean }
+export type RunGap = { runId: string; gap: Gap; adopted: boolean; at: string }
 
 export function planRunGaps(store: Store, planId: string): RunGap[] {
-	return all<{ run_id: string; body: string; adopted: number }>(
+	return all<{ run_id: string; body: string; adopted: number; at: string }>(
 		store,
-		`SELECT g.run_id, g.body, EXISTS (SELECT 1 FROM plan_gaps p
+		`SELECT g.run_id, g.body, o.at, EXISTS (SELECT 1 FROM plan_gaps p
 			WHERE p.plan_id = r.plan_id AND p.revision > r.plan_revision AND p.gap_id = g.id) AS adopted
-		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id WHERE r.plan_id = ? ORDER BY g.rowid`,
+		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id JOIN operations o ON o.id = g.operation_id
+		WHERE r.plan_id = ? ORDER BY g.rowid`,
 		planId
-	).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1 }))
+	).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1, at: row.at }))
 }
 
 function editableRevision(store: Store, text: string, expectSha256: string | undefined) {
@@ -485,21 +486,24 @@ function pendingDecisions(store: Store, planId: string) {
 
 export function answerGap(store: Store, actor: string | undefined, input: GapAnswer) {
 	return write(store, { actor, command: 'gap answer', subject: input.planId, input }, (operationId, at, actor) => {
-		const latest = planRevision(store, input.planId)
-		const subject = `${input.planId}@${latest.plan.revision}`
-		expectDigest(latest.sha256, input.expectSha256, subject)
-		const gap = latest.plan.gaps.find((gap) => gap.id === input.gapId)
-		requireCondition(gap, `Unknown gap ${input.gapId} in ${subject}`)
-		requireCondition(
-			gap.status === 'open',
-			`Gap ${gap.id} is ${gap.status} in ${subject}. Only an open gap takes a decision.`
-		)
 		const kind = requireChoice(input.kind, decisionKinds, 'decision kind (--kind)')
 		const value = requireText(input.value, 'decision value (--value)')
 		const rationale = requireText(input.rationale, 'rationale (--rationale)')
 		const source = input.source ?? null
 		if (source !== null) requireText(source, 'source (--source)')
 		requireCondition(kind !== 'clarify' || source, 'A clarification needs a source (--source)')
+		const answered = planRevision(store, input.planId)
+		expectDigest(answered.sha256, input.expectSha256, `${input.planId}@${answered.plan.revision}`)
+		const adopted = answered.plan.gaps.some((gap) => gap.id === input.gapId)
+			? null
+			: adoptRunGap(store, operationId, answered, input.gapId)
+		const latest = adopted ? planRevision(store, input.planId) : answered
+		const subject = `${input.planId}@${latest.plan.revision}`
+		const gap = latest.plan.gaps.find((gap) => gap.id === input.gapId)!
+		requireCondition(
+			gap.status === 'open',
+			`Gap ${gap.id} is ${gap.status} in ${subject}. Only an open gap takes a decision.`
+		)
 		const pending = pendingDecisions(store, input.planId).find((decision) => decision.gap_id === gap.id)
 		requireCondition(
 			!pending,
@@ -527,10 +531,30 @@ export function answerGap(store: Store, actor: string | undefined, input: GapAns
 				baseRevision: latest.plan.revision,
 				gapId: gap.id,
 				kind,
+				...(adopted
+					? {
+							adopted: {
+								runId: adopted.reply.data.runId,
+								revision: latest.plan.revision,
+								edit: adopted.reply.data.edit,
+							},
+						}
+					: {}),
 			}),
-			subjects: [`plan:${input.planId}`, 'inbox'],
+			subjects: adopted ? adopted.subjects : [`plan:${input.planId}`, 'inbox'],
 		}
 	})
+}
+
+function adoptRunGap(store: Store, operationId: string, base: PlanRevision, gapId: string) {
+	const subject = `${base.plan.planId}@${base.plan.revision}`
+	const found = planRunGaps(store, base.plan.planId).filter((item) => item.gap.id === gapId && !item.adopted)
+	requireCondition(found.length, `Unknown gap ${gapId} in ${subject}`)
+	requireCondition(
+		found.length === 1,
+		`Gap ${gapId} is in runs ${found.map((item) => item.runId).join(', ')}. Run plan adopt-gaps ${subject} --run <runId> --gaps ${gapId} first.`
+	)
+	return adoption(store, operationId, base, found[0].runId, [found[0].gap])
 }
 
 function affectedTests(plan: Plan, gapIds: string[]) {

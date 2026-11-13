@@ -19,7 +19,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 | Output    | `export plan`, `export run`, `evidence get`, `ui`                                                             |
 | npm only  | `delegate`                                                                                                    |
 
-- `inbox` lists the open gaps without a pending decision, the plans that wait for approval, the results that wait for acceptance, and the plan requests that have no revision yet. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `plan`, `result`, or `requested`. A requested plan waits for the plan stage.
+- `inbox` lists the open gaps without a pending decision, the plans that wait for approval, the results that wait for acceptance, and the plan requests that have no revision yet. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `run_gap`, `plan`, `result`, or `requested`. A `run_gap` line is a gap of a run that the plan does not have yet. Its fourth field is the run ID. A requested plan waits for the plan stage.
 - `plan list` shows each plan at its latest revision, and each plan request without a revision as `<planId> status=requested`. It takes `--needs-decision`, `--awaiting-approval`, and `--blocked`. `run list` takes `--plan` and `--build`.
 - `plan show <planId@rev>` takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`. A plan ID without a revision shows the latest revision. `run show <runId>` takes `--tests`.
 - `log` lists the operation log, newest first. It takes `--subject` and `--limit <n>` (default 50). A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`.
@@ -39,6 +39,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 
 - `run check` and `run close` take `--evidence -` for text evidence on standard input, and `--evidence -:<kind>` to set the kind. Give a file path only for binary evidence. Read [Evidence](EVIDENCE.md#evidence-input).
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool.
+- `gap answer <planId> <gapId>` also answers a run gap. It adopts the gap into the latest revision first, then records the decision on that revision. The reply prints `from=<runId>`, `revision=`, and `edit=`.
 - `plan adopt-gaps <planId@rev> --run <runId> [--gaps G4,G5]` adds the run gaps that the plan does not have yet to the latest revision. The rules of `plan edit` apply. The reply prints `edit=` and `adopted=`.
 - `plan edit <planId@rev>` takes a full candidate. With `--patch`, it takes only the changes, keyed by ID. Read [Configuration](CONFIGURATION.md#small-edits).
 - `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of a JSON request. Use JSON for requirements, source context, or plan tools.

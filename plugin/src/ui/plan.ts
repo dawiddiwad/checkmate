@@ -4,6 +4,8 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { planDetail, planHistory } from '../views.ts'
+import { planRunGaps } from '../plans.ts'
+import { gapsAffecting } from '../contracts.ts'
 import { html, join, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
@@ -467,14 +469,23 @@ export function gapPage(
 ): Page {
 	const detail = planDetail(store, planId, revision)
 	const { plan } = detail
-	const gap = plan.gaps.find((item) => item.id === gapId)
+	const latest = detail.revision === detail.latestRevision
+	const fromRun =
+		plan.gaps.some((item) => item.id === gapId) || !latest ? null : unadoptedRunGap(store, planId, gapId)
+	const gap = plan.gaps.find((item) => item.id === gapId) ?? fromRun?.gap
 	if (!gap) throw new Error(`Unknown gap ${gapId} in ${planId}@${revision}`)
 	const subject = `${planId}@${revision}`
 	const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id)
 	const decision = decisionFor(plan, gap)
-	const tests = plan.tests.filter((test) => test.gapIds.includes(gap.id))
+	const tests = plan.tests.filter((test) => gapsAffecting([gap], test).length > 0)
 	const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id))
-	const latest = detail.revision === detail.latestRevision
+	const runBanner = fromRun
+		? banner(
+				'info',
+				html`This gap comes from run <a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your
+					answer adds it to ${planId}.`
+			)
+		: ''
 	let panel: Html
 	if (state || (latest && gap.status === 'open' && !pending))
 		panel = gapPanel(
@@ -517,7 +528,7 @@ export function gapPage(
 		${pill(gap.severity)} ${pill(gap.status)} <a class="pill" href="/plans/${subject}">${subject}</a>
 	</div>`
 	const body = html`${heading(html`${planId} · ${gap.id}`, gap.question, meta)}
-		<div data-region="banners">${newerBanner(detail)}</div>
+		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>
 		<div class="split">
 			<div class="main-col">
 				<section aria-labelledby="consequence">
@@ -552,5 +563,15 @@ export function gapPage(
 			</div>
 			${side(panel)}
 		</div>`
-	return { title: `${planId} ${gap.id}`, section: 'inbox', subjects: [`plan:${planId}`, 'inbox'], body }
+	return {
+		title: `${planId} ${gap.id}`,
+		section: 'inbox',
+		subjects: [`plan:${planId}`, 'inbox', ...(fromRun ? [`run:${fromRun.runId}`] : [])],
+		body,
+	}
+}
+
+function unadoptedRunGap(store: Store, planId: string, gapId: string) {
+	const found = planRunGaps(store, planId).filter((item) => item.gap.id === gapId && !item.adopted)
+	return found.length === 1 ? found[0] : null
 }

@@ -16,7 +16,7 @@ import {
 	runResult,
 	stoppedReason,
 } from '../plugin/src/runs.ts'
-import { adoptGaps, planRevision, planRunGaps } from '../plugin/src/plans.ts'
+import { adoptGaps, answerGap, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
 import { inbox, runDetail } from '../plugin/src/views.ts'
 import { accept, actor, approved, begin, check, evidenceFile, failT2, plan, ready, store } from './support.ts'
 
@@ -548,6 +548,38 @@ test('plan adopt-gaps brings run gaps into the next revision or into an unused r
 			['plan:checkout', 'inbox', 'run:run-1'],
 			['plan:checkout', 'inbox', 'run:run-1'],
 		]
+	)
+})
+
+test('gap answer adopts a run gap into the plan and records the decision on that revision', (t) => {
+	const opened = started(t)
+	runGap(opened, 'G3', 'blocking')
+	assert.deepEqual(
+		inbox(opened).gaps.map((gap) => [gap.planId, gap.revision, gap.gapId, gap.runId]),
+		[['checkout', 2, 'G3', 'run-1']]
+	)
+	const answer = (gapId: string) =>
+		answerGap(opened, actor, { planId: 'checkout', gapId, kind: 'defer', value: 'Not now.', rationale: 'Scope.' })
+	assert.throws(() => answer('G9'), /Unknown gap G9 in checkout@2/)
+	const answered = answer('G3')
+	assert.equal(answered.status, 'completed')
+	assert.deepEqual(answered.data.adopted, { runId: 'run-1', revision: 3, edit: 'new_revision' })
+	assert.equal(answered.data.baseRevision, 3)
+	assert.deepEqual(planRevision(opened, 'checkout', 3).plan.gaps.at(-1)!.id, 'G3')
+	assert.deepEqual(inbox(opened).gaps, [])
+	assert.deepEqual(
+		inbox(opened).plans.map((row) => row.revision),
+		[3]
+	)
+	const revised = revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
+	assert.equal(revised.subject, 'checkout@4')
+	assert.equal(planRevision(opened, 'checkout', 4).plan.gaps.at(-1)!.status, 'deferred')
+	begin(opened, 'run-2', ['T1'], 'build-2')
+	runGap(opened, 'G5', 'non_blocking', 'run-1')
+	runGap(opened, 'G5', 'non_blocking', 'run-2')
+	assert.throws(
+		() => answer('G5'),
+		/Gap G5 is in runs run-1, run-2. Run plan adopt-gaps checkout@4 --run <runId> --gaps G5 first/
 	)
 })
 

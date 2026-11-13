@@ -7,8 +7,6 @@ import { planRevision } from './plans.ts'
 import { outcomeCounts, resultAcceptance, runResult, runState } from './runs.ts'
 import { approvalLabel, evidenceBytes } from './views.ts'
 
-// A report is a list of blocks. Markdown and HTML render the same blocks,
-// so both views always show the same content.
 type Block =
 	| { heading: string; level?: 2 | 3 }
 	| { text: string }

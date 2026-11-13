@@ -124,8 +124,6 @@ export function approvalPolicy(profile: Profile) {
 	return profile.approvals ?? { plan: 'required', result: 'required' }
 }
 
-// A gap applies to the tests it names, to every test of the requirements it names,
-// and to every test when it names neither.
 export function gapsAffecting(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds'>) {
 	return gaps.filter(
 		(gap) =>
@@ -257,8 +255,6 @@ export function planTargetCheck(plan: Plan, profile: Profile) {
 	}
 }
 
-// Each cross-plan reference of every latest plan must name a test in the latest
-// revision of that plan, and the test graph of those plans must have no cycle.
 export function dependencyCheck(plan: Plan, latest: ReadonlyMap<string, Plan>) {
 	const plans = new Map(latest).set(plan.planId, plan)
 	const crossReferences = [...plans.values()]

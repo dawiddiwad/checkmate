@@ -58,7 +58,6 @@ test('real browser and API find the defect; factory fix passes a narrow retest',
 	)
 	const session = `test-${Date.now()}`
 	const cli = join(root, 'node_modules/.bin/playwright-cli')
-	// A cold browser start on a shared CI runner can take most of a minute.
 	const browser = async (args: string[]) =>
 		(await exec(cli, [`-s=${session}`, ...args], { cwd: opened.workspace, timeout: 60000, maxBuffer: 1024 * 1024 }))
 			.stdout

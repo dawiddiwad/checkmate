@@ -6,9 +6,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { root } from './support.ts'
 
-// Claude Code copies the marketplace source directory into its plugin cache.
-// It does not run npm install. This check copies the same directory outside the
-// repository, so no development node_modules can resolve.
 const directory = await mkdtemp(join(tmpdir(), 'checkmate-plugin-'))
 try {
 	const marketplace = JSON.parse(await readFile(join(root, '.claude-plugin/marketplace.json'), 'utf8'))

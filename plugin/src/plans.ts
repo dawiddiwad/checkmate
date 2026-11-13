@@ -906,9 +906,6 @@ function retestCheck(store: Store, runId: string, plan: Plan, build: string) {
 	)
 }
 
-// A cross-plan dependency needs the latest finalized result for the build (any build
-// when build is null) that selected the test to show passed, accepted when required,
-// and no open blocking gap in any plan that applies to the test.
 export function dependencyBlock(store: Store, reference: string, build: string | null): string | null {
 	const { planId, testId } = testReference(reference)
 	const result = one<{ run_id: string; target_id: string; target_revision: number; sha256: string; outcome: string }>(

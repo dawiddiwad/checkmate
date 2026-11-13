@@ -1,4 +1,3 @@
-// Renders docs/img/onboarding.gif from docs/media/onboarding.html.
 import { chromium } from 'playwright-core'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

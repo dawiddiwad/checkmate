@@ -1,5 +1,3 @@
-// Bundles plugin/bin/checkmate.ts into plugin/dist/checkmate.js.
-// Node.js does not strip types in node_modules, so the skills and the npm package run this bundle.
 import { build } from 'esbuild'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'

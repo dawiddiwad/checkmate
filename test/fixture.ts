@@ -10,7 +10,6 @@ export async function fixture() {
 		if (url.pathname === '/health') return response.end(JSON.stringify({ ready: true }))
 		if (url.pathname === '/quote') {
 			actions++
-			// The seeded defect: the promotion stacks with loyalty until the factory fixes it.
 			const promotion = url.searchParams.get('promotion') === 'true'
 			const loyalty = url.searchParams.get('loyalty') === 'true'
 			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : 400

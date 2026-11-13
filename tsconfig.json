@@ -1,26 +1,16 @@
 {
 	"compilerOptions": {
-		"target": "ES2022",
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"lib": ["ES2022", "DOM"],
-		"strict": false,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
-		"paths": {
-			"@xoxoai/checkmate": ["./src/index.ts"],
-			"@xoxoai/checkmate/driver": ["./src/driver.ts"],
-			"@xoxoai/checkmate/driver-web": ["./src/drivers/web/index.ts"]
-		},
-		"outDir": "./dist",
-		"rootDir": "./src",
-		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
+		"target": "ESNext",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
 		"noEmit": true,
-		"noImplicitAny": true
+		"strict": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"types": ["node"]
 	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "test-results", "test-reports", "package"]
+	"include": ["plugin/src/**/*.ts", "plugin/bin/**/*.ts", "cli/src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
 }

@@ -1,0 +1,205 @@
+/* Shared tokens and swimlane parts of the onboarding animation. */
+:root {
+	--bg: #0f1217;
+	--card: #12171f;
+	--line: #1f2530;
+	--line-strong: #2a303b;
+	--wire: #4a5363;
+	--text: #e8ebf0;
+	--muted: #9aa3b2;
+	--faint: #5d6675;
+	--blue: #5b8afd;
+	--blue-bg: #161f2e;
+	--blue-line: #2c4a8c;
+	--planner: #6f9bff;
+	--planner-bg: #141d2e;
+	--planner-line: #2c4a8c;
+	--oracle: #4fd18b;
+	--oracle-bg: #10231a;
+	--oracle-line: #235c3c;
+	--qa: #b48cff;
+	--qa-bg: #1c1630;
+	--qa-line: #4a3878;
+	--factory: #a9b6c7;
+	--factory-bg: #181d25;
+	--factory-line: #3a4452;
+	--human: #e8ebf0;
+	--human-line: #8a93a3;
+	--green: #4fd18b;
+	--red: #ff6b7d;
+	--red-bg: #2a1418;
+	--red-line: #6e2a35;
+	--amber: #e7b452;
+	--amber-bg: #251e10;
+	--amber-line: #6b5222;
+	--display: 'Space Grotesk', Inter, sans-serif;
+	--body: Inter, sans-serif;
+	--mono: 'JetBrains Mono', monospace;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--body);
+}
+.mark {
+	display: flex;
+}
+.mark i {
+	display: block;
+	border: 2px solid var(--line-strong);
+}
+.mark i:nth-child(3) {
+	background: var(--blue);
+	border-color: var(--blue);
+}
+.planner {
+	color: var(--planner);
+}
+.oracle {
+	color: var(--oracle);
+}
+.qa {
+	color: var(--qa);
+}
+.factory {
+	color: var(--factory);
+}
+.human {
+	color: var(--human);
+}
+.ok {
+	color: var(--green);
+}
+.bad {
+	color: var(--red);
+}
+.warn {
+	color: var(--amber);
+}
+.track {
+	position: absolute;
+}
+.wires {
+	position: absolute;
+	left: 0;
+	top: 0;
+	overflow: visible;
+}
+.step,
+.record {
+	position: absolute;
+}
+.step,
+.record,
+.chip {
+	white-space: nowrap;
+	font-family: var(--mono);
+	border: 1px solid;
+}
+.step {
+	font-weight: 600;
+	border-radius: 4px;
+}
+.step.planner {
+	background: var(--planner-bg);
+	border-color: var(--planner-line);
+}
+.step.oracle {
+	background: var(--oracle-bg);
+	border-color: var(--oracle-line);
+}
+.step.qa {
+	background: var(--qa-bg);
+	border-color: var(--qa-line);
+}
+.step.factory {
+	background: var(--factory-bg);
+	border-color: var(--factory-line);
+}
+.step.human {
+	background: var(--bg);
+	border: 1px dashed var(--human-line);
+}
+.step.ticket {
+	color: var(--muted);
+	background: var(--bg);
+	border-color: var(--line-strong);
+}
+.record,
+.chip {
+	font-weight: 500;
+	border-radius: 3px;
+	color: var(--text);
+	background: var(--card);
+	border-color: var(--line-strong);
+}
+.record.plan,
+.chip.plan {
+	color: var(--planner);
+	background: var(--planner-bg);
+	border-color: var(--planner-line);
+}
+.record.gap,
+.chip.gap {
+	color: var(--amber);
+	background: var(--amber-bg);
+	border-color: var(--amber-line);
+}
+.record.decision,
+.chip.decision {
+	color: var(--green);
+	background: var(--oracle-bg);
+	border-color: var(--oracle-line);
+}
+.record.defect,
+.chip.defect {
+	color: var(--red);
+	background: var(--red-bg);
+	border-color: var(--red-line);
+}
+.record.accepted,
+.chip.accepted {
+	color: var(--bg);
+	background: var(--green);
+	border-color: var(--green);
+	font-weight: 600;
+}
+.flow {
+	fill: none;
+	stroke: var(--wire);
+	stroke-width: 2;
+}
+.flow-head {
+	fill: var(--wire);
+}
+.drop {
+	stroke-width: 2;
+}
+.drop.planner {
+	stroke: var(--planner);
+}
+.drop.oracle {
+	stroke: var(--oracle);
+}
+.drop.qa {
+	stroke: var(--qa);
+}
+.drop.human {
+	stroke: var(--human-line);
+}
+.drop-head.planner {
+	fill: var(--planner);
+}
+.drop-head.oracle {
+	fill: var(--oracle);
+}
+.drop-head.qa {
+	fill: var(--qa);
+}
+.drop-head.human {
+	fill: var(--human-line);
+}

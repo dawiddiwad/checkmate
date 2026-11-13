@@ -1,0 +1,154 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "profile.schema.json",
+	"type": "object",
+	"properties": {
+		"contractVersion": {
+			"const": "toolkit-2"
+		},
+		"targetId": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"revision": {
+			"type": "integer",
+			"minimum": 1
+		},
+		"baseUrl": {
+			"type": "string",
+			"format": "uri"
+		},
+		"environment": {
+			"type": "string",
+			"minLength": 1
+		},
+		"capabilities": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"tools": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1
+					},
+					"kind": {
+						"enum": ["cli", "mcp", "skill"]
+					},
+					"purpose": {
+						"type": "string",
+						"minLength": 1
+					},
+					"version": {
+						"type": "string",
+						"minLength": 1
+					},
+					"reachable": {
+						"type": "boolean"
+					}
+				},
+				"required": ["name", "kind", "purpose", "reachable"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"authentication": {
+			"type": "object",
+			"properties": {
+				"kind": {
+					"enum": ["none", "environment", "browser_session"]
+				},
+				"references": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				}
+			},
+			"required": ["kind", "references"],
+			"additionalProperties": false
+		},
+		"allowedOperations": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"startup": {
+			"type": "object",
+			"properties": {
+				"owner": {
+					"enum": ["factory", "checkmate"]
+				},
+				"command": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"minItems": 1,
+							"uniqueItems": true
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"required": ["owner", "command"],
+			"additionalProperties": false
+		},
+		"cleanup": {
+			"type": "string",
+			"minLength": 1
+		},
+		"readyForLiveExecution": {
+			"type": "boolean"
+		},
+		"approvals": {
+			"type": "object",
+			"properties": {
+				"plan": {
+					"enum": ["required", "none"]
+				},
+				"result": {
+					"enum": ["required", "none"]
+				}
+			},
+			"required": ["plan", "result"],
+			"additionalProperties": false
+		}
+	},
+	"required": [
+		"contractVersion",
+		"targetId",
+		"revision",
+		"baseUrl",
+		"environment",
+		"capabilities",
+		"tools",
+		"authentication",
+		"allowedOperations",
+		"startup",
+		"cleanup",
+		"readyForLiveExecution"
+	],
+	"additionalProperties": false
+}

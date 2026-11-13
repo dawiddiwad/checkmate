@@ -1,0 +1,313 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "plan.schema.json",
+	"type": "object",
+	"properties": {
+		"contractVersion": {
+			"const": "toolkit-2"
+		},
+		"planId": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"revision": {
+			"type": "integer",
+			"minimum": 1
+		},
+		"previousRevision": {
+			"anyOf": [
+				{
+					"type": "integer",
+					"minimum": 1
+				},
+				{
+					"type": "null"
+				}
+			]
+		},
+		"target": {
+			"type": "object",
+			"properties": {
+				"targetId": {
+					"type": "string",
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"revision": {
+					"type": "integer",
+					"minimum": 1
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				}
+			},
+			"required": ["targetId", "revision", "sha256"],
+			"additionalProperties": false
+		},
+		"objective": {
+			"type": "string",
+			"minLength": 1
+		},
+		"requirements": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"text": {
+						"type": "string",
+						"minLength": 1
+					},
+					"source": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["id", "text", "source"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"tests": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/test"
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"gaps": {
+			"type": "array",
+			"items": {
+				"$ref": "gap.schema.json"
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"assumptions": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"decisionId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"text": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["decisionId", "text"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"decisions": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"gapId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"kind": {
+						"enum": ["clarify", "accept_assumption", "defer"]
+					},
+					"actor": {
+						"type": "string",
+						"minLength": 1
+					},
+					"rationale": {
+						"type": "string",
+						"minLength": 1
+					},
+					"value": {
+						"type": "string",
+						"minLength": 1
+					},
+					"source": {
+						"anyOf": [
+							{
+								"type": "string",
+								"minLength": 1
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": ["id", "gapId", "kind", "actor", "rationale", "value", "source"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"coverage": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"requirementId": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"testIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"status": {
+						"enum": ["planned", "blocked", "deferred"]
+					}
+				},
+				"required": ["requirementId", "testIds", "status"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		}
+	},
+	"required": [
+		"contractVersion",
+		"planId",
+		"revision",
+		"previousRevision",
+		"target",
+		"objective",
+		"requirements",
+		"tests",
+		"gaps",
+		"assumptions",
+		"decisions",
+		"coverage"
+	],
+	"additionalProperties": false,
+	"definitions": {
+		"test": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"title": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 200
+				},
+				"requirementIds": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"minItems": 1,
+					"uniqueItems": true
+				},
+				"capability": {
+					"type": "string",
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"operations": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"minItems": 1,
+					"uniqueItems": true
+				},
+				"readiness": {
+					"enum": ["ready", "blocked", "deferred"]
+				},
+				"gapIds": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				},
+				"dependsOn": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"pattern": "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				},
+				"preconditions": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				},
+				"action": {
+					"type": "string",
+					"minLength": 1
+				},
+				"assertions": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/assertion"
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				}
+			},
+			"required": [
+				"id",
+				"title",
+				"requirementIds",
+				"capability",
+				"operations",
+				"readiness",
+				"gapIds",
+				"dependsOn",
+				"preconditions",
+				"action",
+				"assertions"
+			],
+			"additionalProperties": false
+		},
+		"assertion": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"check": {
+					"type": "string",
+					"minLength": 1
+				},
+				"checkKind": {
+					"enum": ["deterministic", "agent_observation"]
+				}
+			},
+			"required": ["id", "check", "checkKind"],
+			"additionalProperties": false
+		}
+	}
+}

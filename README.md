@@ -1,293 +1,88 @@
 #### □ □ ■ □
 
-## _Checkmate - a harness for agentic acceptance_
+# Checkmate
 
-[![npm version](https://img.shields.io/npm/v/%40xoxoai%2Fcheckmate)](https://www.npmjs.com/package/@xoxoai/checkmate)
+### The QA system of record for an agent software factory.
 
-<img src="docs/img/onboarding.gif" alt="onboarding" width="50%" centered/>
+It turns a ticket into executable requirements, finds the gaps, drives test runs, and keeps the evidence and every decision in one auditable database. The factory runs the agents and builds the code. Checkmate keeps the record that they all read.
 
-#
+<img src="docs/img/onboarding.gif" alt="One ticket in two synced views. Top: a ring with four stations, the planner and the oracle on the top edge, the factory and QA on the bottom edge, the Checkmate record in the centre, and a human badge for the review UI below. An amber path on the left edge goes from QA back to the planner: new gaps or a plan change give a new revision. Below: the same steps on a swimlane timeline with lanes for the planner, the oracle, QA, and the factory, and a Checkmate record lane at the bottom. Iteration 1: the planner writes plan@1 with open gaps G1 to G3, the oracle answers them, the planner writes plan@2, and the oracle approves it. An early QA run fails three of four tests, with defects F1 to F3 and run gap G4. Iteration 2: the factory builds b2, and QA retests: three tests pass and defect F4 is found. A human edits the plan in the review UI to add G4 as plan@3, the oracle answers G4, the planner writes plan@4, and the oracle approves it. Iteration 3: the factory builds c3, QA retests and all four tests pass, and the oracle accepts the result. The animation ends with solo mode in Claude Code." width="100%"/>
 
-Think of it like QA contracts for software factories: policies define the bounds of execution, where scenarios describe the intent to verify through a domain driver. It aims to patch the gap between fully coded tests and freelance agent testing.
+The **oracle** answers gaps, approves plans, and accepts results. It is a product-owner agent or a human.<br/>
+Checkmate does not start, schedule, or message agents, and it does not change code. Your factory does.
 
-## Install
+## Actors
 
-```bash
-npm install @xoxoai/checkmate
-```
+| Role    | What it does                                                    | What it writes to the record                |
+| ------- | --------------------------------------------------------------- | ------------------------------------------- |
+| Planner | Turns a ticket into tests. Records the gaps.                    | Plan revisions and gaps                     |
+| Oracle  | Answers gaps. Approves plans. Accepts results.                  | Decisions                                   |
+| QA      | Runs the tests, early and again on each new build.              | Runs, evidence, defects, and new gaps       |
+| Factory | Runs the agents and their sandboxes. Builds and fixes the code. | Only what its commands record, such as runs |
 
-## Usage
+A human can make the oracle's decisions at any time in the review UI.
 
-#### Scenario is a JSON document:
+## Highlights
 
-```json
-{
-	"schemaVersion": 1,
-	"scenario": {
-		"id": "checkout spring promo",
-		"driver": {
-			"id": "web",
-			"target": {
-				"baseUrl": "https://staging.example.test"
-			}
-		},
-		"policy": "ci",
-		"steps": [
-			{
-				"id": "start checkout",
-				"action": "Add a product to the cart",
-				"expect": "The checkout page is displayed"
-			},
-			{
-				"id": "apply promo",
-				"action": "Apply promotion code SPRING25",
-				"expect": "The order total is reduced by 25%"
-			},
-			{
-				"id": "verify total",
-				"action": "Proceed to the payment step",
-				"expect": "The order total reflects the applied promotion"
-			}
-		]
-	}
-}
-```
+- **Shared QA record.** Everything lives in `.checkmate/checkmate.db`. Payloads go through stdin, no temporary files.
+- **Built for a factory.** `plan open` takes `--objective` and `--source`. Early runs pick the ready tests. Gaps found during a run go into the plan with `gap answer` or `plan adopt-gaps`. Small edits use `plan edit --patch`. A retest replaces the earlier run in the inbox.
+- **The caller is the Oracle.** Policy `return_to_oracle`, startup owner `factory`, and the assertion field `checkKind`.
+- **The review UI inside the plugin.** No npm install is needed for `/checkmate:ui`. Lists are paged, sorted, and filtered as you type. Plans can be edited, and reports download as HTML, Markdown, or JSON.
+- **Aware of the caller's harness tools.** A target lists the CLI tools, MCP servers, and skills that the factory provides. Claude Code still owns the permissions.
 
-#### Run:
+## The review UI
 
-```bash
-checkmate run scenario.json
-```
-
-Checkmate writes one JSON result to stdout. Outcomes distinguish application, model, infrastructure, and invalid-invocation failures.
+<img src="https://github.com/dawiddiwad/checkmate/blob/a5a2c17f7014a95563758b19258f19c7298d355a/docs/img/ui/inbox.jpg?raw=true" alt="Inbox with a plan gap, a gap from a run, a plan to approve, and a result to accept" width="100%"/>
 
 <details>
-<summary>Example Results</summary>
-
-A successful run of the scenario above:
-
-```json
-{
-	"kind": "run-result",
-	"schemaVersion": 1,
-	"runId": "0123456789abcdef",
-	"scenarioId": "checkout spring promo",
-	"status": "passed",
-	"category": "passed",
-	"reason": "scenario-complete",
-	"targetMutation": "possibly-mutated",
-	"startedAt": "2026-09-04T12:00:00.000Z",
-	"durationMs": 12600,
-	"driver": { "id": "web", "contractVersion": 1 },
-	"policy": {
-		"id": "ci",
-		"effectiveLimits": {
-			"scenarioTimeoutMs": 180000,
-			"stepTimeoutMs": 120000,
-			"turnsPerStep": 20,
-			"requestTimeoutMs": 60000,
-			"maxRetries": 3,
-			"loopMaxRepetitions": 5,
-			"cleanupTimeoutMs": 10000,
-			"budgetTokens": 200000
-		}
-	},
-	"usage": {
-		"promptTokens": 3600,
-		"cachedPromptTokens": 1200,
-		"completionTokens": 300,
-		"totalTokens": 3900,
-		"state": "complete"
-	},
-	"steps": [
-		{
-			"id": "start checkout",
-			"status": "passed",
-			"category": "app",
-			"reason": "met-expectation",
-			"actual": "The checkout page displays one product with a $40 order total.",
-			"turns": 3,
-			"durationMs": 4000,
-			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
-			"toolCalls": [
-				{
-					"turn": 1,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": { "ref": "e12", "name": "Add to cart", "hover": false, "goal": "Add a product to the cart" },
-					"status": "ok"
-				},
-				{
-					"turn": 2,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": { "ref": "e18", "name": "Checkout", "hover": false, "goal": "Open the checkout page" },
-					"status": "ok"
-				}
-			]
-		},
-		{
-			"id": "apply promo",
-			"status": "passed",
-			"category": "app",
-			"reason": "met-expectation",
-			"actual": "SPRING25 is applied and the order total is reduced from $40 to $30.",
-			"turns": 3,
-			"durationMs": 4000,
-			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
-			"toolCalls": [
-				{
-					"turn": 1,
-					"driverId": "web",
-					"name": "browser_type_or_select",
-					"arguments": {
-						"elements": [
-							{ "ref": "e24", "name": "Promotion code", "text": "SPRING25", "clear": true, "select": false }
-						],
-						"goal": "Enter the promotion code"
-					},
-					"status": "ok"
-				},
-				{
-					"turn": 2,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": { "ref": "e25", "name": "Apply", "hover": false, "goal": "Apply the promotion code" },
-					"status": "ok"
-				}
-			]
-		},
-		{
-			"id": "verify total",
-			"status": "passed",
-			"category": "app",
-			"reason": "met-expectation",
-			"actual": "The payment step displays the discounted order total of $30.",
-			"turns": 2,
-			"durationMs": 4000,
-			"usage": { "promptTokens": 1200, "cachedPromptTokens": 400, "completionTokens": 100, "totalTokens": 1300 },
-			"toolCalls": [
-				{
-					"turn": 1,
-					"driverId": "web",
-					"name": "browser_click_or_hover",
-					"arguments": {
-						"ref": "e30",
-						"name": "Continue to payment",
-						"hover": false,
-						"goal": "Verify the discounted total at the payment step"
-					},
-					"status": "ok"
-				}
-			]
-		}
-	],
-	"evidence": { "state": "complete", "references": [] },
-	"diagnostics": []
-}
-```
+<summary>More screenshots</summary>
+<img src="https://github.com/dawiddiwad/checkmate/blob/a5a2c17f7014a95563758b19258f19c7298d355a/docs/img/ui/plans.jpg?raw=true" alt="Plans list with the Loop column showing each plan's state and who it waits on" width="100%"/>
+<img src="https://github.com/dawiddiwad/checkmate/blob/a5a2c17f7014a95563758b19258f19c7298d355a/docs/img/ui/run-gap.jpg?raw=true" alt="Run page with a defect, its evidence, and a new gap with the Answer and Bring into plan buttons" width="100%"/>
+<img src="https://github.com/dawiddiwad/checkmate/blob/a5a2c17f7014a95563758b19258f19c7298d355a/docs/img/ui/plan.jpg?raw=true" alt="Plan page with the loop state pill: needs answers, waits on oracle" width="100%"/>
+<img src="https://github.com/dawiddiwad/checkmate/blob/a5a2c17f7014a95563758b19258f19c7298d355a/docs/img/ui/run.jpg?raw=true" alt="Full run page with tests, evidence, the defect, the new gap, and coverage" width="100%"/>
 
 </details>
 
-## Configuration
+## Team mode
 
-Execution is configured through `checkmate.config.json`.
+### QA CLI for your Factory
 
-Policies keep execution settings outside test intent. For example, a policy can define limits, evidence retention, and allowed driver tools:
+Install the CLI with `npm i -g @xoxoai/checkmate@^0.7.0` and set up a target with `checkmate target open` and `checkmate delegate setup`. Then the factory opens a plan for each ticket, lets the planner write it, and reads what waits for the oracle:
 
-<details>
-<summary>Example Configuration</summary>
-
-```json
-{
-	"schemaVersion": 1,
-	"outputDirectory": ".checkmate/runs",
-	"defaultPolicy": "ci",
-	"secretBindings": {
-		"openai-api-key": {
-			"source": "environment",
-			"name": "CHECKMATE_OPENAI_API_KEY"
-		}
-	},
-	"policies": {
-		"ci": {
-			"modelEgress": {
-				"provider": {
-					"id": "openai",
-					"model": "gpt-5-mini",
-					"apiKeyBinding": "openai-api-key"
-				},
-				"textRedaction": "on",
-				"allowOpaque": false,
-				"maxStepBytes": 1048576,
-				"maxMessageBytes": 262144
-			},
-			"bounds": {
-				"scenarioTimeoutMs": 180000,
-				"stepTimeoutMs": 120000,
-				"turnsPerStep": 20,
-				"requestTimeoutMs": 60000,
-				"maxRetries": 3,
-				"loopMaxRepetitions": 5,
-				"cleanupTimeoutMs": 10000,
-				"budgetTokens": 200000
-			},
-			"evidence": {
-				"retention": "retain-on-failure",
-				"redaction": "on",
-				"allowOpaque": false
-			},
-			"drivers": {
-				"web": {
-					"settings": {
-						"headless": true,
-						"logLevel": "off",
-						"logsAsEvidence": false,
-						"snapshotFilter": false
-					},
-					"tools": { "allowed": ["*"] }
-				}
-			}
-		}
-	},
-	"drivers": {
-		"web": {
-			"package": "@xoxoai/checkmate/driver-web",
-			"secrets": {}
-		}
-	}
-}
+```sh
+checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." --source docs/checkout.md
+checkmate delegate plan checkout --allow Read --allow Bash
+checkmate inbox
 ```
 
-</details>
+To give requirements or plan tools, send the request as JSON on standard input ([Plan request](docs/CONFIGURATION.md#plan-request)). `checkmate status checkout` says where the ticket is in the loop and who it waits on. Your factory can read the record with `status`, `inbox`, `log`, `query` (read-only), and `export --format json`. [The factory loop](docs/WORKFLOW.md#factory-loop) shows each step, from the early red run to acceptance.
 
-## Drivers
+## Solo mode
 
-#### Checkmate is designed around domain-specific drivers.
+### Plugin for your Claude Code
 
-A driver defines how the model interacts with a particular system while the harness keeps scenario execution, policies, results, and evidence consistent.
-
-The included `web` driver is a simple reference implementation. Other domains can be integrated through the same public driver contract.
-
-## Commands
+You are the oracle. Test your own work, or verify the work of a teammate. Install the plugin with `/plugin marketplace add dawiddiwad/checkmate` and `/plugin install checkmate@checkmate`. It does not need the npm CLI.
 
 ```text
-checkmate run <request.json|->
-checkmate validate <request.json>
-checkmate describe
-checkmate --help
-checkmate --version
+/checkmate:setup shop at http://127.0.0.1:4173, browser, operations read_catalog and create_order
+/checkmate:plan checkout for shop@1: verify checkout totals from docs/checkout.md
+/checkmate:ui
+/checkmate:status checkout
 ```
 
-`describe` returns the drivers, policies, and contract versions available in the current environment.
+[The full path in Claude Code](docs/WORKFLOW.md#in-claude-code): setup, plan, review, revise, execute, and report.
+
+Both modes need Claude Code and Node.js 24.12.0 or later. Team mode also needs a logged-in `claude` command. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
 
 ## Docs
 
-[Configuration](docs/CONFIGURATION.md)  
-[Evidence](docs/EVIDENCE.md)  
-[Drivers](docs/DRIVERS.md)  
-[CLI](docs/CLI.md)  
-[Dev](docs/DEVELOPMENT.md)
+- [Workflow](docs/WORKFLOW.md): each stage and decision, the factory loop, and sub-agents
+- [CLI](docs/CLI.md): commands, statuses, delegated stages, and the review UI
+- [Configuration](docs/CONFIGURATION.md): targets, plans, policies, runtime gaps, and the actor
+- [Evidence and outcomes](docs/EVIDENCE.md): assertions, evidence, outcomes, coverage, and reports
+- [Validation](docs/VALIDATION.md): what the tests and the live run check
+- [Examples](docs/examples/README.md): plans and runs exported from a live run
+- [Development](docs/DEVELOPMENT.md): build, test, release, and the media of this page
 
 ## License
 

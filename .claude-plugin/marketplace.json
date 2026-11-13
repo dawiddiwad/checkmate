@@ -1,0 +1,14 @@
+{
+	"name": "checkmate",
+	"owner": {
+		"name": "Dawid Dobrowolski"
+	},
+	"plugins": [
+		{
+			"name": "checkmate",
+			"source": "./plugin",
+			"description": "Plan tests, resolve gaps, and collect evidence.",
+			"version": "0.7.0"
+		}
+	]
+}

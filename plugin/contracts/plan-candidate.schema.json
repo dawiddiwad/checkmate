@@ -1,0 +1,103 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "plan-candidate.schema.json",
+	"type": "object",
+	"properties": {
+		"requirements": {
+			"$ref": "plan.schema.json#/properties/requirements"
+		},
+		"tests": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"title": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"requirementIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"capability": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"operations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					},
+					"dependsOn": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"preconditions": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"action": {
+						"type": "string",
+						"minLength": 1
+					},
+					"assertions": {
+						"type": "array",
+						"items": {
+							"$ref": "plan.schema.json#/definitions/assertion"
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					}
+				},
+				"required": [
+					"id",
+					"title",
+					"requirementIds",
+					"capability",
+					"operations",
+					"dependsOn",
+					"preconditions",
+					"action",
+					"assertions"
+				],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"gaps": {
+			"type": "array",
+			"items": {
+				"$ref": "gap.schema.json"
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		}
+	},
+	"required": ["tests", "gaps"],
+	"additionalProperties": false
+}

@@ -1,0 +1,319 @@
+export type Finding = {
+	id: string
+	type: 'defect' | 'potential_issue'
+	severity: 'low' | 'medium' | 'high' | 'critical'
+	assertionIds: Array<string>
+	requirementIds: Array<string>
+	title: string
+	expected: string
+	observed: string
+	reproduction: Array<string>
+	evidenceIds: Array<string>
+}
+
+export type Gap = {
+	id: string
+	severity: 'blocking' | 'non_blocking'
+	status: 'open' | 'resolved' | 'deferred'
+	requirementIds: Array<string>
+	testIds: Array<string>
+	question: string
+	consequence: string
+	decisionId: string | null
+}
+
+export type PlanCandidate = {
+	requirements?: Array<{
+		id: string
+		text: string
+		source: string
+	}>
+	tests: Array<{
+		id: string
+		title: string
+		requirementIds: Array<string>
+		capability: string
+		operations: Array<string>
+		dependsOn: Array<string>
+		preconditions: Array<string>
+		action: string
+		assertions: Array<{
+			id: string
+			check: string
+			checkKind: 'deterministic' | 'agent_observation'
+		}>
+	}>
+	gaps: Array<{
+		id: string
+		severity: 'blocking' | 'non_blocking'
+		status: 'open' | 'resolved' | 'deferred'
+		requirementIds: Array<string>
+		testIds: Array<string>
+		question: string
+		consequence: string
+		decisionId: string | null
+	}>
+}
+
+export type PlanDelta = {
+	tests: Record<
+		string,
+		{
+			action?: string
+			preconditions?: Array<string>
+			assertions?: Record<
+				string,
+				{
+					check?: string
+					checkKind?: 'deterministic' | 'agent_observation'
+				} | null
+			>
+		}
+	>
+}
+
+export type PlanPatch = {
+	requirements?: Record<
+		string,
+		{
+			text?: string
+			source?: string
+		} | null
+	>
+	tests?: Record<
+		string,
+		{
+			title?: string
+			requirementIds?: Array<string>
+			capability?: string
+			operations?: Array<string>
+			dependsOn?: Array<string>
+			preconditions?: Array<string>
+			action?: string
+			assertions?: Record<
+				string,
+				{
+					check?: string
+					checkKind?: 'deterministic' | 'agent_observation'
+				} | null
+			>
+		} | null
+	>
+	gaps?: Record<
+		string,
+		{
+			severity?: 'blocking' | 'non_blocking'
+			requirementIds?: Array<string>
+			testIds?: Array<string>
+			question?: string
+			consequence?: string
+		} | null
+	>
+}
+
+export type PlanRequest = {
+	objective: string
+	requirements?: Array<{
+		id: string
+		text: string
+		source: string
+	}>
+	sourceContext?: Array<{
+		uri: string
+		content: string
+	}>
+	context?: {
+		sources: Array<string>
+		instructions?: string
+	}
+	tools?: Array<
+		| string
+		| {
+				name: string
+				kind: 'cli' | 'mcp' | 'skill'
+				purpose: string
+		  }
+	>
+}
+
+export type Plan = {
+	contractVersion: 'toolkit-2'
+	planId: string
+	revision: number
+	previousRevision: number | null
+	target: {
+		targetId: string
+		revision: number
+		sha256: string
+	}
+	objective: string
+	requirements: Array<{
+		id: string
+		text: string
+		source: string
+	}>
+	tests: Array<{
+		id: string
+		title: string
+		requirementIds: Array<string>
+		capability: string
+		operations: Array<string>
+		readiness: 'ready' | 'blocked' | 'deferred'
+		gapIds: Array<string>
+		dependsOn: Array<string>
+		preconditions: Array<string>
+		action: string
+		assertions: Array<{
+			id: string
+			check: string
+			checkKind: 'deterministic' | 'agent_observation'
+		}>
+	}>
+	gaps: Array<{
+		id: string
+		severity: 'blocking' | 'non_blocking'
+		status: 'open' | 'resolved' | 'deferred'
+		requirementIds: Array<string>
+		testIds: Array<string>
+		question: string
+		consequence: string
+		decisionId: string | null
+	}>
+	assumptions: Array<{
+		decisionId: string
+		text: string
+	}>
+	decisions: Array<{
+		id: string
+		gapId: string
+		kind: 'clarify' | 'accept_assumption' | 'defer'
+		actor: string
+		rationale: string
+		value: string
+		source: string | null
+	}>
+	coverage: Array<{
+		requirementId: string
+		testIds: Array<string>
+		status: 'planned' | 'blocked' | 'deferred'
+	}>
+}
+
+export type Profile = {
+	contractVersion: 'toolkit-2'
+	targetId: string
+	revision: number
+	baseUrl: string
+	environment: string
+	capabilities: Array<string>
+	tools: Array<{
+		name: string
+		kind: 'cli' | 'mcp' | 'skill'
+		purpose: string
+		version?: string
+		reachable: boolean
+	}>
+	authentication: {
+		kind: 'none' | 'environment' | 'browser_session'
+		references: Array<string>
+	}
+	allowedOperations: Array<string>
+	startup: {
+		owner: 'factory' | 'checkmate'
+		command: Array<string> | null
+	}
+	cleanup: string
+	readyForLiveExecution: boolean
+	approvals?: {
+		plan: 'required' | 'none'
+		result: 'required' | 'none'
+	}
+}
+
+export type Response = {
+	status: 'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected'
+	subject: string
+	reasons: Array<string>
+}
+
+export type Result = {
+	contractVersion: 'toolkit-2'
+	runId: string
+	plan: {
+		planId: string
+		revision: number
+		sha256: string
+	}
+	target: {
+		targetId: string
+		revision: number
+		sha256: string
+	}
+	applicationBuild: string
+	selectedTestIds: Array<string>
+	retestOf: string | null
+	startedAt: string
+	finishedAt: string
+	attempts: number
+	completion: 'completed' | 'interrupted' | 'operational_error'
+	tests: Array<{
+		testId: string
+		outcome: 'passed' | 'failed' | 'inconclusive' | 'blocked' | 'not_run' | 'error'
+		reason: string | null
+		assertions: Array<{
+			assertionId: string
+			check: string
+			checkKind: 'deterministic' | 'agent_observation'
+			result: 'passed' | 'failed' | 'inconclusive' | 'not_checked'
+			observed: string | null
+			reason: string | null
+			evidenceIds: Array<string>
+		}>
+	}>
+	findings: Array<{
+		id: string
+		type: 'defect' | 'potential_issue'
+		severity: 'low' | 'medium' | 'high' | 'critical'
+		requirementIds: Array<string>
+		title: string
+		expected: string
+		observed: string
+		reproduction: Array<string>
+		evidenceIds: Array<string>
+		testIds: Array<string>
+		assertionIds: Array<string>
+	}>
+	newGaps: Array<{
+		id: string
+		severity: 'blocking' | 'non_blocking'
+		status: 'open' | 'resolved' | 'deferred'
+		requirementIds: Array<string>
+		testIds: Array<string>
+		question: string
+		consequence: string
+		decisionId: string | null
+	}>
+	evidence: Array<{
+		id: string
+		testId: string
+		assertionId: string | null
+		kind: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+		name: string
+		mediaType: string
+		sha256: string
+		size: number
+	}>
+	cleanup: {
+		status: 'completed' | 'failed' | 'not_applicable'
+		reason: string
+	}
+	coverage: {
+		status: 'complete' | 'partial' | 'not_executed'
+		requirements: Array<{
+			requirementId: string
+			status: 'tested' | 'deferred' | 'uncovered'
+			testIds: Array<string>
+			reason: string | null
+		}>
+	}
+}

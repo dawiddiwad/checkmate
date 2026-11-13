@@ -1,0 +1,108 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "plan-request.schema.json",
+	"type": "object",
+	"properties": {
+		"objective": {
+			"type": "string",
+			"minLength": 1
+		},
+		"requirements": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"text": {
+						"type": "string",
+						"minLength": 1
+					},
+					"source": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["id", "text", "source"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
+		},
+		"sourceContext": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"uri": {
+						"type": "string",
+						"minLength": 1
+					},
+					"content": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["uri", "content"],
+				"additionalProperties": false
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		},
+		"context": {
+			"type": "object",
+			"properties": {
+				"sources": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 0,
+					"uniqueItems": true
+				},
+				"instructions": {
+					"type": "string",
+					"minLength": 1
+				}
+			},
+			"required": ["sources"],
+			"additionalProperties": false
+		},
+		"tools": {
+			"type": "array",
+			"items": {
+				"anyOf": [
+					{
+						"type": "string",
+						"minLength": 1
+					},
+					{
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"minLength": 1
+							},
+							"kind": {
+								"enum": ["cli", "mcp", "skill"]
+							},
+							"purpose": {
+								"type": "string",
+								"minLength": 1
+							}
+						},
+						"required": ["name", "kind", "purpose"],
+						"additionalProperties": false
+					}
+				]
+			},
+			"minItems": 0,
+			"uniqueItems": true
+		}
+	},
+	"required": ["objective"],
+	"additionalProperties": false
+}

@@ -1,0 +1,116 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "plan-patch.schema.json",
+	"type": "object",
+	"properties": {
+		"requirements": {
+			"type": "object",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"additionalProperties": {
+				"anyOf": [
+					{
+						"type": "object",
+						"properties": {
+							"text": {
+								"type": "string",
+								"minLength": 1
+							},
+							"source": {
+								"type": "string",
+								"minLength": 1
+							}
+						},
+						"additionalProperties": false,
+						"minProperties": 1
+					},
+					{
+						"type": "null"
+					}
+				]
+			}
+		},
+		"tests": {
+			"type": "object",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"additionalProperties": {
+				"anyOf": [
+					{
+						"type": "object",
+						"properties": {
+							"title": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/title"
+							},
+							"requirementIds": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds"
+							},
+							"capability": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/capability"
+							},
+							"operations": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/operations"
+							},
+							"dependsOn": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn"
+							},
+							"preconditions": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/preconditions"
+							},
+							"action": {
+								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/action"
+							},
+							"assertions": {
+								"$ref": "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions"
+							}
+						},
+						"additionalProperties": false,
+						"minProperties": 1
+					},
+					{
+						"type": "null"
+					}
+				]
+			}
+		},
+		"gaps": {
+			"type": "object",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"additionalProperties": {
+				"anyOf": [
+					{
+						"type": "object",
+						"properties": {
+							"severity": {
+								"$ref": "gap.schema.json#/properties/severity"
+							},
+							"requirementIds": {
+								"$ref": "gap.schema.json#/properties/requirementIds"
+							},
+							"testIds": {
+								"$ref": "gap.schema.json#/properties/testIds"
+							},
+							"question": {
+								"$ref": "gap.schema.json#/properties/question"
+							},
+							"consequence": {
+								"$ref": "gap.schema.json#/properties/consequence"
+							}
+						},
+						"additionalProperties": false,
+						"minProperties": 1
+					},
+					{
+						"type": "null"
+					}
+				]
+			}
+		}
+	},
+	"additionalProperties": false,
+	"minProperties": 1
+}

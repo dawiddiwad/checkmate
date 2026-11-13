@@ -1,47 +1,28 @@
 # Architecture
 
-## Public Surface
+Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
 
-- `src/index.ts` exports `run`, `validate`, `describe`, `CheckmateOperationalError`, and versioned contract types.
-- `src/driver.ts` exports provider-neutral driver contracts and `defineDriverTool`.
-- `src/drivers/web/index.ts` exports the built-in web driver. Only this driver loads Playwright.
-- `bin/checkmate.js` invokes `src/cli/main.ts` after compilation.
-- Six hand-authored schemas in `src/contracts/schemas` are copied to package-root `schemas`; the web descriptor is copied beside its compiled driver.
+`plugin/` is the installed plugin. It has no npm dependencies.
 
-The export map permits only the root, `./driver`, `./driver-web`, its static descriptor, and `./schemas/*`. Root and driver-contract imports remain browser-free until selected-driver execution. There are no Playwright Test fixtures, Salesforce entry points, extension adapters, or scaffolding commands.
+- `plugin/skills/` contains the setup, plan, revise, execute, report, status, and ui workflows.
+- `plugin/references/workflow.md` has the shared stage rules: read state first, actor, modes, and the report format. `browser.md` and `http.md` are optional tool recipes.
+- `plugin/contracts/` contains authoritative JSON Schemas.
+- `plugin/src/contracts.ts` checks document shape and plan relationships.
+- `plugin/src/store.ts` owns the SQLite database, transactions, and the operation log.
+- `plugin/src/targets.ts`, `plans.ts`, and `runs.ts` own the commands for targets, plans, and runs.
+- `plugin/src/views.ts` has the read models for the inbox, the lists, the detail pages, and the loop status of a plan. `plugin/src/actor.ts` finds the default actor.
+- `plugin/src/cli.ts` parses arguments and prints compact or JSON output. `plugin/dist/checkmate.js` is its bundle.
+- `plugin/src/render.ts` generates the Markdown, HTML, and JSON exports.
+- `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the pages, and the assets. `checkmate ui` starts it.
+- `plugin/src/types.ts` and `plugin/src/validators.js` are generated from the schemas.
 
-## Runtime Ownership
+`cli/` is the npm package `@xoxoai/checkmate`.
 
-`src/api/prepare-run.ts` validates the operator manifest, request, policy, static descriptor, and secret availability. It neither imports executable driver code nor allocates a run. Static `validate` and `describe` return versioned envelopes.
+- `cli/src/main.ts` handles `delegate` and passes every other command to the plugin CLI.
+- `cli/src/launcher.ts` starts the installed Claude CLI with the bundled plugin, checks its structured response, and then checks the database for the recorded change.
 
-`src/api/allocate-run-identity.ts` allocates one invocation directory. `src/api/execute-prepared-run.ts` imports only the selected trusted driver and owns scenario execution and terminal finalization. The CLI parent performs preparation and allocation once, then sends the prepared input to a managed worker. The in-process API executes the same workflow without hard process containment.
+The repository root contains tests, scripts, documentation, and development tools.
 
-The CLI worker never repeats preparation or identity allocation. The parent alone writes public stdout, discards raw worker streams, and accepts only validated terminal bytes before its monotonic cutoff. Parent-authored containment does not fabricate execution steps or claim committed evidence. The in-process API returns expected invalid input as data but rejects operational preparation/allocation failures; it does not return CLI-parent containment envelopes.
+The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate records the tools of a target and a plan, and owns its contracts and record checks. These checks are not a sandbox.
 
-- `src/runtime/` owns scenario sequencing, deadline controls, bounded driver awaits, internal step reports, and raw token usage.
-- `src/ai/` owns provider requests, turn processing, message history, and request retry behavior.
-- `src/tools/` owns the private registry, dispatcher, and assertion-bearing result tools.
-- `src/drivers/web/` owns browser lifecycle, fourteen browser tools, snapshots, screenshots, and network/transient-state recording.
-- `src/config/` owns the sole manifest configuration boundary, package resolution, policy tightening, and invocation-local secret readers.
-- `src/evidence/` owns buffering, retention, atomic commitment, and terminal result persistence.
-- `src/logging/` and `src/redaction/` provide invocation-local level filtering, sanitized diagnostics, bounded optional log transcripts, and policy-controlled content redaction.
-
-## Driver Contract
-
-One trusted driver session serves all ordered steps in a scenario. Its tools must match its static descriptor exactly and obey the selected policy allowlist. Drivers contribute instructions, initial and post-tool context, evidence, and cleanup. They cannot contribute harness assertions through the public tool contract.
-
-Execution stops at the first failure and reports every declared step. Cleanup failures can change the top-level route without rewriting completed steps. No whole-scenario retry, target rollback, resume, cost estimate, or suite scheduling is provided.
-
-## Snapshot Filtering
-
-`src/drivers/web/tools/snapshot-filter/` filters the browser snapshot. Each public step contains only its ID, action, and expectation; requests do not configure search or filtering. The manifest policy owns `snapshotFilter` and `snapshotTopPercent`. The web driver derives its query from action and expectation. Browser service tests live in `src/test/drivers/web/`.
-
-## Configuration And Evidence
-
-`checkmate.config.json` is the sole non-secret configuration source. An explicit config path does not change the invocation root. Policies own model selection, egress controls, driver settings, tools, bounds, and evidence behavior; requests can select a policy and tighten scenario timeout or token budget. There are no implicit model defaults or USD budgets.
-
-Model-egress redaction and evidence redaction are separate policies. Evidence redaction transforms content-bearing fields, not structural metadata. With evidence redaction off, finalized content may remain raw in durable results, API returns, and byte-identical CLI stdout. Diagnostic sanitization remains mandatory. Driver settings may select diagnostic verbosity and request a bounded scenario-level log transcript only when the descriptor declares that evidence kind; evidence retention and redaction remain policy-owned. The terminal finalizer alone commits the final result; checkpoints are partial and never terminal or resumable.
-
-## Trust Boundary
-
-Drivers and providers are trusted host-identity code, not sandboxed plugins. CLI lifetime containment and stdout isolation do not provide hostile-code isolation. In-process cancellation bounds awaited asynchronous work but cannot interrupt synchronous blocking code. Evidence references are published only after durable commitment beneath the invocation-owned POSIX output tree.
+The oracle owns scope, decisions, and release decisions. The factory owns application startup and fixes. Target content cannot authorize a change to the request or plan.

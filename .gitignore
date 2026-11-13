@@ -8,6 +8,7 @@ test-reports
 TODO
 coverage
 dist
+!plugin/dist/
 /schemas/
 **.tgz
 __pycache__/
@@ -18,3 +19,12 @@ app-docs
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
+
+# Local run state
+.checkmate/checkmate.db*
+.checkmate/tmp/
+.playwright/
+
+# npm CLI build output and its plugin copy, created at pack time
+cli/dist/
+cli/plugin/

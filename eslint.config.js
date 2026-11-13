@@ -1,34 +1,52 @@
-import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
+import js from '@eslint/js'
 
 export default [
 	{
 		ignores: [
-			'dist/**',
-			'coverage/**',
-			'test-reports/**',
-			'test-results/**',
 			'node_modules/**',
-			'package/**',
-			'src/test/create-examples.test.ts',
-			'bin/checkmate.js',
-			'.agents/**',
-			'.claude/**',
-			'.humanlayer/**',
-			'.checkmate/**',
-			'.pi-meetings/**',
-			'.playwright-cli/**',
-			'.playwright-mcp/**',
-			'.sf/**',
+			'dist/**',
+			'plugin/dist/**',
+			'cli/dist/**',
+			'cli/plugin/**',
+			'**/*.d.ts',
+			'plugin/src/validators.js',
 		],
 	},
 	js.configs.recommended,
 	...tseslint.configs.recommended,
 	{
-		files: ['**/*.ts'],
+		rules: {
+			'no-empty': ['error', { allowEmptyCatch: true }],
+			'@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+		},
+	},
+	{
 		languageOptions: {
-			ecmaVersion: 2022,
-			sourceType: 'module',
+			globals: Object.fromEntries(
+				[
+					'process',
+					'window',
+					'console',
+					'Buffer',
+					'URL',
+					'fetch',
+					'AbortSignal',
+					'setTimeout',
+					'clearTimeout',
+					'structuredClone',
+				].map((name) => [name, 'readonly'])
+			),
+		},
+	},
+	{
+		files: ['plugin/src/ui/assets/*.js'],
+		languageOptions: {
+			globals: Object.fromEntries(
+				['document', 'location', 'EventSource', 'DOMParser', 'FormData', 'URLSearchParams', 'CSS'].map(
+					(name) => [name, 'readonly']
+				)
+			),
 		},
 	},
 ]

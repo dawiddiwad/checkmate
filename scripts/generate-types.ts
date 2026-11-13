@@ -1,0 +1,67 @@
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import assert from 'node:assert/strict'
+
+type Schema = {
+	$ref?: string
+	const?: string
+	enum?: string[]
+	anyOf?: Schema[]
+	type?: string
+	items?: Schema
+	properties?: Record<string, Schema>
+	additionalProperties?: Schema | boolean
+	required?: string[]
+	definitions?: Record<string, Schema>
+}
+const contracts = new URL('../plugin/contracts/', import.meta.url)
+const files = (await readdir(contracts)).filter((file) => file.endsWith('.schema.json')).sort()
+const schemas = new Map<string, Schema>()
+for (const file of files) schemas.set(file, JSON.parse(await readFile(new URL(file, contracts), 'utf8')))
+
+function resolve(ref: string, file: string): [Schema, string] {
+	const [path, pointer] = ref.split('#')
+	const target = path || file
+	let schema = schemas.get(target)
+	assert(schema, `Unknown schema reference: ${ref}`)
+	for (const key of (pointer ?? '').split('/').filter(Boolean)) schema = (schema as Record<string, Schema>)[key]
+	assert(schema, `Unknown schema reference: ${ref}`)
+	return [schema, target]
+}
+function type(schema: Schema, file: string): string {
+	if (schema.$ref) return type(...resolve(schema.$ref, file))
+	if (schema.const !== undefined) return JSON.stringify(schema.const)
+	if (schema.enum) return schema.enum.map((value) => JSON.stringify(value)).join(' | ')
+	if (schema.anyOf) return schema.anyOf.map((item) => type(item, file)).join(' | ')
+	if (schema.type === 'array') return `Array<${type(schema.items!, file)}>`
+	if (schema.type === 'object' && !schema.properties)
+		return `Record<string, ${type(schema.additionalProperties as Schema, file)}>`
+	if (schema.type === 'object')
+		return `{\n${Object.entries(schema.properties!)
+			.map(
+				([key, value]) =>
+					`${JSON.stringify(key)}${schema.required?.includes(key) ? '' : '?'}: ${type(value, file)}`
+			)
+			.join('\n')}\n}`
+	if (schema.type === 'integer') return 'number'
+	return schema.type!
+}
+let text = ''
+for (const file of files) {
+	text += `export type ${file
+		.slice(0, -'.schema.json'.length)
+		.split('-')
+		.map((word) => word[0].toUpperCase() + word.slice(1))
+		.join('')} = ${type(schemas.get(file)!, file)}\n\n`
+}
+const { format } = await import('prettier')
+text = await format(text, {
+	parser: 'typescript',
+	semi: false,
+	singleQuote: true,
+	useTabs: true,
+	printWidth: 120,
+	trailingComma: 'es5',
+})
+const path = new URL('../plugin/src/types.ts', import.meta.url)
+if (process.argv.includes('--check')) assert.equal(await readFile(path, 'utf8'), text, 'Run npm run generate')
+else await writeFile(path, text)

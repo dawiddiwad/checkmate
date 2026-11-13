@@ -1,0 +1,63 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "plan-delta.schema.json",
+	"type": "object",
+	"properties": {
+		"tests": {
+			"type": "object",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"action": {
+						"type": "string",
+						"minLength": 1
+					},
+					"preconditions": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1
+						},
+						"minItems": 0,
+						"uniqueItems": true
+					},
+					"assertions": {
+						"type": "object",
+						"propertyNames": {
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"additionalProperties": {
+							"anyOf": [
+								{
+									"type": "object",
+									"properties": {
+										"check": {
+											"type": "string",
+											"minLength": 1
+										},
+										"checkKind": {
+											"enum": ["deterministic", "agent_observation"]
+										}
+									},
+									"additionalProperties": false,
+									"minProperties": 1
+								},
+								{
+									"type": "null"
+								}
+							]
+						},
+						"minProperties": 1
+					}
+				},
+				"additionalProperties": false,
+				"minProperties": 1
+			}
+		}
+	},
+	"required": ["tests"],
+	"additionalProperties": false
+}

@@ -31,7 +31,7 @@ This codebase is for humans first, and must be:
 ## Task-Specific Skills
 
 - `.agents/skills/update-documentation/SKILL.md` for public API, configuration, behavior, and workflow documentation.
-- `.agents/skills/update-model-policy/SKILL.md` for policy-owned model selection, provider requests, egress controls, and token accounting.
+- `.agents/skills/update-model-policy/SKILL.md` for host model selection, authentication, and permissions.
 
 ## Non-Negotiables
 
@@ -40,4 +40,4 @@ This codebase is for humans first, and must be:
 - Do not add abstractions unless they remove real complexity.
 - If behavior changes, update tests.
 - If public API, config, or workflow changes, update documentation.
-- Keep model selection and egress policy-owned. Checkmate reports raw token usage, not model pricing or USD budgets.
+- Keep model selection, authentication, and permissions with the host. Use ASD-STE100 style for documentation, instructions, and skills.

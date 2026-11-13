@@ -389,10 +389,11 @@ A runtime gap is open, has no decision, and has an ID that is new in the plan an
 
 ## Environment variables
 
-| Variable          | Owner     | Effect                                                                                              |
-| ----------------- | --------- | --------------------------------------------------------------------------------------------------- |
-| `CHECKMATE_ACTOR` | Checkmate | The default actor for writes. `--actor` overrides it. Without it, Checkmate uses the git user name. |
-| `ANTHROPIC_MODEL` | Host      | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it unchanged.  |
+| Variable                    | Owner          | Effect                                                                                                                 |
+| --------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `CHECKMATE_ACTOR`           | Checkmate      | The default actor for writes. `--actor` overrides it. Without it, Checkmate uses the git user name.                    |
+| `ANTHROPIC_MODEL`           | Host           | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it unchanged.                     |
+| `PLAYWRIGHT_MCP_OUTPUT_DIR` | Playwright CLI | `delegate execute` sets it to the evidence directory of the run. Browser snapshots and logs stay out of the workspace. |
 
 The live tests read more variables. Read [Development](DEVELOPMENT.md).
 

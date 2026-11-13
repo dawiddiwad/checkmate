@@ -268,6 +268,7 @@ test('an execute worker that finishes the run through the plugin CLI completes t
 	const finishes = claude(
 		workspace,
 		`const fs = require('node:fs')
+fs.writeFileSync('output-dir.txt', process.env.PLAYWRIGHT_MCP_OUTPUT_DIR)
 fs.writeFileSync('.checkmate/tmp/run-1/a2.txt', 'one item')
 checkmate(['run', 'check', 'run-1', 'T1', 'A2', '--result', 'passed', '--observed', 'One item.', '--evidence', '.checkmate/tmp/run-1/a2.txt'])
 checkmate(['run', 'close', 'run-1', 'T1'])
@@ -296,4 +297,5 @@ reply({ status, subject, reasons })`
 		['claude:execute']
 	)
 	assert.equal(readFileSync(join(workspace, 'closed.log'), 'utf8'), `-s=${session} close\n`)
+	assert.equal(readFileSync(join(workspace, 'output-dir.txt'), 'utf8'), join(workspace, '.checkmate', 'tmp', 'run-1'))
 })

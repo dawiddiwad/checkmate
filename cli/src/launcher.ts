@@ -302,7 +302,11 @@ export async function delegate(
 			cwd: workspace,
 			prompt: prompt(stage, subject, workspace, pluginRoot, run, timeoutSeconds),
 			timeoutSeconds,
-			env: { ...process.env, CHECKMATE_ACTOR: `claude:${stage}` },
+			env: {
+				...process.env,
+				CHECKMATE_ACTOR: `claude:${stage}`,
+				...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
+			},
 		})
 		if (!subjectMatches(claimed.subject, subject))
 			failure = new Error(`Worker response names ${claimed.subject}, not ${subject}`)

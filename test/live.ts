@@ -191,7 +191,10 @@ try {
 	const afterRun = status('checkout')
 	assert(afterRun.defects.length > 0, JSON.stringify(afterRun))
 	if (afterRun.gaps.length === 0) assert.equal(afterRun.waitsOn, 'factory', JSON.stringify(afterRun))
-	checkmate(workspace, ['result', 'accept', 'live-run', '--rationale', 'The defect is real.'])
+	assert(
+		checkmate(workspace, ['inbox']).results.some((result: { runId: string }) => result.runId === 'live-run'),
+		'The inbox does not list live-run'
+	)
 
 	app.fix()
 	const retested = testsOf(revised, 'R2')
@@ -223,6 +226,7 @@ try {
 	assert.equal(checkmate(workspace, ['run', 'show', 'live-run']).result.completion, 'completed')
 	const inbox = checkmate(workspace, ['inbox'])
 	assert(!inbox.results.some((result: { runId: string }) => result.runId === 'live-run'), JSON.stringify(inbox))
+	checkmate(workspace, ['result', 'accept', 'live-run', '--rationale', 'The defect is real.'])
 	checkmate(workspace, ['result', 'accept', 'live-retest', '--rationale', 'The fix passed the retest.'])
 	const final = status('checkout')
 	if (final.gaps.length === 0) assert.equal(final.state, 'accepted', JSON.stringify(final))

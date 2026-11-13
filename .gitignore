@@ -25,6 +25,8 @@ app-docs
 .checkmate/tmp/
 .playwright/
 
-# npm CLI build output and its plugin copy, created at pack time
+# npm CLI build output, its plugin copy, README, and license, created at pack time
 cli/dist/
 cli/plugin/
+cli/README.md
+cli/LICENSE

@@ -2,9 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { directory, root } from './support.ts'
+import { packageReadme } from '../scripts/build-cli.ts'
 
 function json(path: string) {
 	return JSON.parse(readFileSync(path, 'utf8'))
@@ -14,6 +15,8 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 	t.after(() => {
 		rmSync(join(root, 'cli/dist'), { recursive: true, force: true })
 		rmSync(join(root, 'cli/plugin'), { recursive: true, force: true })
+		rmSync(join(root, 'cli/README.md'), { force: true })
+		rmSync(join(root, 'cli/LICENSE'), { force: true })
 	})
 	execFileSync(process.execPath, ['scripts/build-cli.ts'], { cwd: root, stdio: 'ignore' })
 	const packs = directory(t)
@@ -30,6 +33,25 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 	const version = json(join(root, 'cli/package.json')).version
 	assert.equal(json(join(installed, 'package.json')).version, version)
 	assert.equal(json(join(installed, 'plugin/.claude-plugin/plugin.json')).version, version)
+	assert.equal(readFileSync(join(installed, 'LICENSE'), 'utf8'), readFileSync(join(root, 'LICENSE'), 'utf8'))
+	const metadata = json(join(installed, 'package.json'))
+	assert.equal(metadata.description, 'The QA system of record for an agent software factory')
+	assert.ok(metadata.keywords.includes('software-factory'))
+	assert.deepEqual(metadata.publishConfig, { access: 'public' })
+	const readme = readFileSync(join(installed, 'README.md'), 'utf8')
+	assert.equal(readme, packageReadme(readFileSync(join(root, 'README.md'), 'utf8'), version))
+	const targets = [...readme.matchAll(/\]\(([^)\s]+)\)|\b(?:src|href)="([^"]+)"/g)].map(
+		(match) => match[1] ?? match[2]
+	)
+	assert.ok(targets.length > 10)
+	for (const target of targets) {
+		assert.match(target, /^(https:\/\/|#)/, `relative link in the package README: ${target}`)
+		assert.doesNotMatch(target, /\?raw=true$/)
+		const file = target.match(
+			/^https:\/\/(?:github\.com\/dawiddiwad\/checkmate\/blob|raw\.githubusercontent\.com\/dawiddiwad\/checkmate)\/[^/]+\/([^#?]+)/
+		)
+		if (file) assert.ok(existsSync(join(root, file[1])), `missing file for ${target}`)
+	}
 
 	const fakes = join(project, 'fakes')
 	mkdirSync(fakes)

@@ -27,4 +27,4 @@ EOF
 - Save only the fields that the assertion needs. Do not save request headers, cookies, query credentials, or a full response.
 - Compare the observed value with the exact check of the assertion.
 - A timeout or a failed connection is a tool failure, not a product defect.
-- Do not repeat a request that can change application state without caller authorization.
+- Do not repeat a request that can change application state without oracle authorization.

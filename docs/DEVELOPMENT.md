@@ -17,7 +17,7 @@ The browser test requires a Chromium executable. Set `CHECKMATE_BROWSER_EXECUTAB
 
 `test:live` sets the host model with `ANTHROPIC_MODEL`. The default is `claude-haiku-5-5` to limit usage. To use a different model, set `ANTHROPIC_MODEL` before you run the test. Checkmate does not select a model. The launcher passes the environment to Claude Code without changes.
 
-The live test uses an isolated local fixture and gives the workers the minimum rules of `delegate`, `Read` and `Bash`, in that temporary workspace. After execution, it checks that `.checkmate/` holds only the database and that no `.playwright-cli/` directory stays. `test/live.ts` checks delegated setup, planning gaps, caller decisions, revision, approval, execution with a defect, result acceptance, a retest on a new build, and a plan skill in one session. `test/live-session.ts` checks execution in one session and a permission denial. Each test writes stage, duration, and status to standard output and to `measurements.json` in the workspace. The workspace stays after the test. Its path is printed. It does not change product code or send fixture data to a production service.
+The live test uses an isolated local fixture and gives the workers the minimum rules of `delegate`, `Read` and `Bash`, in that temporary workspace. After execution, it checks that `.checkmate/` holds only the database and that no `.playwright-cli/` directory stays. `test/live.ts` checks delegated setup, planning gaps, oracle decisions, revision, approval, execution with a defect, result acceptance, a retest on a new build, and a plan skill in one session. `test/live-session.ts` checks execution in one session and a permission denial. Each test writes stage, duration, and status to standard output and to `measurements.json` in the workspace. The workspace stays after the test. Its path is printed. It does not change product code or send fixture data to a production service.
 
 The normal CI job runs on Ubuntu with Node.js 24. The live job runs only when selected in a manual workflow dispatch. Configure a repository secret for Claude authentication before that run. Do not expose secrets to untrusted pull requests.
 
@@ -79,7 +79,7 @@ node scripts/render-onboarding.ts
 
 Set `CHECKMATE_BROWSER_EXECUTABLE` if Chromium is not at `/usr/bin/chromium`. The command updates `docs/img/onboarding.gif`. The page loads its fonts from `plugin/src/ui/assets/fonts/`. The script does not build the plugin.
 
-Keep the labels of the animation consistent with the workflow. The README and the animation use "oracle" for the person or agent that decides. The other docs call it the caller.
+Keep the labels of the animation consistent with the workflow. The README, the animation, and the other docs use "oracle" for the person or agent that decides.
 
 `docs/examples/` contains exports from a live run. Do not edit them by hand. To update them, run `npm run test:live`, then export the plans and runs from the printed workspace with `checkmate export --out`. Read `docs/examples/README.md`.
 

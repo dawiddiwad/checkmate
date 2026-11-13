@@ -9,7 +9,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 The review UI is for a human. In the UI, the human answers gaps, edits and approves plans, accepts results, and downloads reports. The plugin contains the UI. The npm CLI is not necessary.
 
-1. If a UI of this workspace already runs in this session, give its URL again and go to step 3. Else start the UI from the caller's workspace as a background command. Use the background option of the shell tool:
+1. If a UI of this workspace already runs in this session, give its URL again and go to step 3. Else start the UI from the application workspace as a background command. Use the background option of the shell tool:
 
 ```sh
 checkmate ui

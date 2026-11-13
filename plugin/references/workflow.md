@@ -1,7 +1,7 @@
 # Stage rules
 
-Checkmate keeps targets, plans, decisions, runs, and evidence in `.checkmate/checkmate.db` in the caller's workspace.
-Run every command from the caller's workspace with the absolute path of the plugin CLI:
+Checkmate keeps targets, plans, decisions, runs, and evidence in `.checkmate/checkmate.db` in the application workspace.
+Run every command from the application workspace with the absolute path of the plugin CLI:
 
 ```sh
 node "<plugin root>/dist/checkmate.js" <command>
@@ -9,15 +9,15 @@ node "<plugin root>/dist/checkmate.js" <command>
 
 The skill that told you to read this file names the plugin root. A delegated prompt names the full command. In a skill, `checkmate <command>` means that command line. Write the absolute path. Do not write a shell variable, for example `${CLAUDE_PLUGIN_ROOT}`, in its place. The shell can leave it empty, and the permission check can refuse the command. A plugin session has no global `checkmate` command.
 
-The caller is the person or the agent that owns the request. The caller answers gaps, approves plans, and accepts results.
+The oracle answers gaps, approves plans, and accepts results. The oracle is anyone who can give the answer: a product-owner agent or a person.
 
 ## Read the current state first
 
-Before you answer a question about targets, plans, tests, gaps, runs, or results, read the current state from the database. Chat memory can be out of date. Another session, the review UI, or the caller can change the database at any time.
+Before you answer a question about targets, plans, tests, gaps, runs, or results, read the current state from the database. Chat memory can be out of date. Another session, the review UI, or the oracle can change the database at any time.
 
 | Question                                 | Command                                                     |
 | ---------------------------------------- | ----------------------------------------------------------- |
-| What waits for the caller?               | `checkmate inbox`                                           |
+| What waits for the oracle?               | `checkmate inbox`                                           |
 | Which plans exist, and what blocks them? | `checkmate plan list`                                       |
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
 | Which runs exist?                        | `checkmate run list [--plan <planId>]`                      |
@@ -40,7 +40,7 @@ EOF
 
 - Send text evidence on standard input with `--evidence -`. Write a file only for binary evidence, for example a screenshot, and only in `.checkmate/tmp/<runId>/`. Checkmate deletes the file after it stores it.
 - Put browser output in `.checkmate/tmp/` too. `browser.md` shows how. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
-- Do not write other files. The database is the only record. The one exception is an export that the caller asks for with `export --out <path>`.
+- Do not write other files. The database is the only record. The one exception is an export that the oracle asks for with `export --out <path>`.
 - Use the commands to read and write. Do not open `.checkmate/checkmate.db` directly.
 - A refused write changes nothing. Correct the payload and send it again.
 - The contracts are in `<plugin root>/contracts/`. Read a schema only when a command refuses a payload.
@@ -50,25 +50,25 @@ EOF
 Every write records an actor. Commands use `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name.
 
 - Stage work is agent work: `target save`, `plan save`, `plan revise`, and the `run` commands. When `CHECKMATE_ACTOR` is not set, add `--actor claude:<stage>` to each of these writes, for example `--actor claude:execute`. Else the record shows the git user name, not the agent.
-- Caller decisions are `gap answer`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the caller tells you the decision in this session. Keep the default actor, or give the caller's name with `--actor`.
+- Oracle decisions are `gap answer`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the oracle tells you the decision in this session. Keep the default actor, or give the oracle's name with `--actor`.
 
 ## Who runs a stage
 
-| Mode                              | How it starts                                                                      | Writes with                                      | Asks the caller?                      |
-| --------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------- |
-| Same session                      | The caller runs `/checkmate:<stage>` in Claude Code.                               | The plugin CLI                                   | Yes. Show results and questions.      |
-| Sub-agent in the same Claude host | A parent agent gives a stage to a sub-agent that has the Checkmate plugin.         | The plugin CLI                                   | No. Return the response object.       |
-| Delegated session                 | `checkmate delegate <stage> <subject>` starts `claude -p` with the bundled plugin. | The plugin CLI, `CHECKMATE_ACTOR=claude:<stage>` | No. Return the response object.       |
-| External agent or script          | The agent runs the npm `checkmate` command.                                        | The npm CLI                                      | It is the caller. It makes decisions. |
+| Mode                              | How it starts                                                                      | Writes with                                      | Asks the oracle?                         |
+| --------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
+| Same session                      | The oracle runs `/checkmate:<stage>` in Claude Code.                               | The plugin CLI                                   | Yes. Show results and questions.         |
+| Sub-agent in the same Claude host | A parent agent gives a stage to a sub-agent that has the Checkmate plugin.         | The plugin CLI                                   | No. Return the response object.          |
+| Delegated session                 | `checkmate delegate <stage> <subject>` starts `claude -p` with the bundled plugin. | The plugin CLI, `CHECKMATE_ACTOR=claude:<stage>` | No. Return the response object.          |
+| External agent or script          | The agent runs the npm `checkmate` command.                                        | The npm CLI                                      | It is the oracle, or it asks the oracle. |
 
-- A sub-agent or a delegated stage starts with a prompt that names the stage and the subject. Do only that stage for that subject. Use the stage skill and the plugin CLI. Do not ask the caller. Do not wait for the caller.
+- A sub-agent or a delegated stage starts with a prompt that names the stage and the subject. Do only that stage for that subject. Use the stage skill and the plugin CLI. Do not ask the oracle. Do not wait for the oracle.
 - Return `{ "status", "subject", "reasons" }`. Copy the status and reasons from the last Checkmate command of the stage.
 - The parent does not trust the returned words. It reads the database: `checkmate inbox`, `checkmate plan show`, or `checkmate run show`.
-- An external agent, or a parent agent that is the caller, makes caller decisions with `checkmate inbox`, `checkmate gap answer`, `checkmate plan approve|reject`, `checkmate plan edit`, and `checkmate result accept|reject`.
+- An external agent, or a parent agent that is the oracle, makes oracle decisions with `checkmate inbox`, `checkmate gap answer`, `checkmate plan approve|reject`, `checkmate plan edit`, and `checkmate result accept|reject`.
 
-## Report to the caller
+## Report to the oracle
 
-Use this format when you show state or the end of a stage to the caller in the terminal. A sub-agent or a delegated stage returns only the response object.
+Use this format when you show state or the end of a stage to the oracle in the terminal. A sub-agent or a delegated stage returns only the response object.
 
 1. A Markdown table of the plans, tests, gaps, or runs that matter now. Use one row for each item and only the columns that help the decision. Copy IDs, titles, and statuses exactly from the database.
 2. `Done:` one or two short lines about what you did.
@@ -82,7 +82,7 @@ Use this format when you show state or the end of a stage to the caller in the t
 
 Done: Saved checkout@1 with 4 tests. T1 and T2 are ready. T3 and T4 are blocked by G1 and G2.
 
-Next: The caller answers G1 and G2. Use `/checkmate:ui`, or run
+Next: The oracle answers G1 and G2. Use `/checkmate:ui`, or run
 `checkmate gap answer checkout G1 --kind clarify --source <source> --value "<answer>" --rationale "<why>"`.
 Then run `/checkmate:revise checkout`.
 ```
@@ -97,7 +97,7 @@ Useful columns:
 ## Changes to records
 
 - Approved plan revisions, run records, and results do not change.
-- The caller can change the latest plan revision with `checkmate plan edit <planId@rev>`. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. Do not edit a plan unless the caller asks.
+- The oracle can change the latest plan revision with `checkmate plan edit <planId@rev>`. A revision without an approval and without a run changes in place, and the log records the edit. An approved or used revision gives a new revision. Do not edit a plan unless the oracle asks.
 
 ## Safety
 

@@ -6,7 +6,7 @@
 
 <img src="docs/img/onboarding.gif" alt="One ticket in two synced views. Top: a ring with four stations, the planner and the oracle on the top edge, the factory and QA on the bottom edge, the Checkmate record in the centre, and a human badge for the review UI below. An amber path on the left edge goes from QA back to the planner: new gaps or a plan change give a new revision. Below: the same steps on a swimlane timeline with lanes for the planner, the oracle, QA, and the factory, and a Checkmate record lane at the bottom. Iteration 1: the planner writes plan@1 with open gaps G1 to G3, the oracle answers them, the planner writes plan@2, and the oracle approves it. An early QA run fails three of four tests, with defects F1 to F3 and run gap G4. Iteration 2: the factory builds b2, and QA retests: three tests pass and defect F4 is found. A human edits the plan in the review UI to add G4 as plan@3, the oracle answers G4, the planner writes plan@4, and the oracle approves it. Iteration 3: the factory builds c3, QA retests and all four tests pass, and the oracle accepts the result. The animation ends with solo mode in Claude Code." width="100%"/>
 
-The **oracle** answers gaps, approves plans, and accepts results. It is a product-owner agent or a person. The docs call it the caller.<br/>
+The **oracle** answers gaps, approves plans, and accepts results. It is a product-owner agent or a person.<br/>
 Checkmate does not start, schedule, or message agents, and it does not change code. Your factory does.
 
 ## Four roles

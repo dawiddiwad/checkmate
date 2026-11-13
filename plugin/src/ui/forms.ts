@@ -187,7 +187,7 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 					id="source"
 					name="source"
 					value="${state.values.source ?? ''}"
-					placeholder="caller://refund-policy#window"
+					placeholder="oracle://refund-policy#window"
 					data-source
 				/>
 				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>

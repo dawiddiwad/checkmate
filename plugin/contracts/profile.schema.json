@@ -93,7 +93,7 @@
 			"type": "object",
 			"properties": {
 				"owner": {
-					"enum": ["caller", "checkmate"]
+					"enum": ["factory", "checkmate"]
 				},
 				"command": {
 					"anyOf": [

@@ -3450,7 +3450,7 @@ function be(d, { instancePath: t = "", parentData: j, parentDataProperty: z, roo
   return be.errors = e, s === 0;
 }
 var rs = Ae;
-var E = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, baseUrl: { type: "string", format: "uri" }, environment: { type: "string", minLength: 1 }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["caller", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "baseUrl", "environment", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+var E = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, baseUrl: { type: "string", format: "uri" }, environment: { type: "string", minLength: 1 }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "baseUrl", "environment", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
 var Ue = Q().fullFormats.uri;
 function Ae(d, { instancePath: t = "", parentData: j, parentDataProperty: z, rootData: O = d } = {}) {
   let e = null, s = 0;
@@ -3821,7 +3821,7 @@ function Ae(d, { instancePath: t = "", parentData: j, parentDataProperty: z, roo
         }
         if (p.owner !== void 0) {
           let h = p.owner;
-          if (!(h === "caller" || h === "checkmate")) {
+          if (!(h === "factory" || h === "checkmate")) {
             let c = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: E.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [c] : e.push(c), s++;
           }
@@ -5751,7 +5751,7 @@ function planCheck(value2) {
   for (const assumption of plan.assumptions)
     requireCondition(
       decisions.get(assumption.decisionId)?.kind === "accept_assumption",
-      `Assumption ${assumption.decisionId} lacks caller acceptance`
+      `Assumption ${assumption.decisionId} lacks oracle acceptance`
     );
   for (const test of plan.tests) {
     references(test.requirementIds, requirements, `requirement in test ${test.id}`);
@@ -5850,7 +5850,7 @@ function resultCoverage(plan, tests, newGaps2) {
       requirementId: requirement.id,
       status: tested ? "tested" : deferred ? "deferred" : "uncovered",
       testIds: planned.map((test) => test.id),
-      reason: tested ? null : deferred ? "A caller decision deferred the missing checks." : planned.some((test) => outcomes.get(test.id) === "inconclusive") ? "An assertion is inconclusive." : "At least one required check or decision is missing."
+      reason: tested ? null : deferred ? "An oracle decision deferred the missing checks." : planned.some((test) => outcomes.get(test.id) === "inconclusive") ? "An assertion is inconclusive." : "At least one required check or decision is missing."
     };
   });
   const executed = ["passed", "failed", "error", "inconclusive"];
@@ -6782,8 +6782,8 @@ function beginRun(store, actor, input) {
         `Run ${runId} exists. Use a new run ID.`
       );
       const onNewBlocker = requireChoice(
-        input.onNewBlocker ?? "return_to_caller",
-        ["return_to_caller", "continue_independent"],
+        input.onNewBlocker ?? "return_to_oracle",
+        ["return_to_oracle", "continue_independent"],
         "new blocker policy (--on-new-blocker)"
       );
       const timeoutSeconds = input.timeoutSeconds ?? 600;
@@ -8777,7 +8777,7 @@ function gapPanel(context, form, state) {
 					id="source"
 					name="source"
 					value="${state.values.source ?? ""}"
-					placeholder="caller://refund-policy#window"
+					placeholder="oracle://refund-policy#window"
 					data-source
 				/>
 				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>

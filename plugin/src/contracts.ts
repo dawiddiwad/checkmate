@@ -200,7 +200,7 @@ export function planCheck(value: unknown): Plan {
 	for (const assumption of plan.assumptions)
 		requireCondition(
 			decisions.get(assumption.decisionId)?.kind === 'accept_assumption',
-			`Assumption ${assumption.decisionId} lacks caller acceptance`
+			`Assumption ${assumption.decisionId} lacks oracle acceptance`
 		)
 	for (const test of plan.tests) {
 		references(test.requirementIds, requirements, `requirement in test ${test.id}`)
@@ -315,7 +315,7 @@ export function resultCoverage(plan: Plan, tests: ResultTest[], newGaps: Gap[]):
 			reason: tested
 				? null
 				: deferred
-					? 'A caller decision deferred the missing checks.'
+					? 'An oracle decision deferred the missing checks.'
 					: planned.some((test) => outcomes.get(test.id) === 'inconclusive')
 						? 'An assertion is inconclusive.'
 						: 'At least one required check or decision is missing.',

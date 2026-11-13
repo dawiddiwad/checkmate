@@ -2,7 +2,7 @@
 
 These files were exported from a live run with Claude Code on the local checkout fixture (`test/fixture.ts`). The run is `npm run test:live` on 11 November 2026 with `ANTHROPIC_MODEL=claude-haiku-5-5`. [Validation](../VALIDATION.md#live-run) records the stages and durations.
 
-The text in the plans and results is the text that Claude and the test caller wrote. It is not edited.
+The text in the plans and results is the text that Claude and the test oracle wrote. It is not edited.
 
 The current exporter rendered the files again from the stored plan and result snapshots of that run. After the live run, the assertion field `oracleKind` became `checkKind`. The snapshots use the new name, so the plan and result digests are new: each digest is the SHA-256 of the canonical JSON in its file, and a run refers to the new plan digest. The target profile is not in the exports, so its digest stays as recorded. The live database was not kept, so two details come from other records:
 
@@ -23,7 +23,7 @@ The current exporter rendered the files again from the stored plan and result sn
 | `live-run`    | [live-run.md](runs/live-run.md)       | [live-run.html](runs/live-run.html)       | [live-run.json](runs/live-run.json)       | Build `fixture-build-1`. T1 and T2 passed. T3 failed with defect F1. Coverage is partial. Accepted. |
 | `live-retest` | [live-retest.md](runs/live-retest.md) | [live-retest.html](runs/live-retest.html) | [live-retest.json](runs/live-retest.json) | Build `fixture-build-2`, a retest of `live-run`. T2 and T3 passed. Acceptance is pending.           |
 
-In both runs, R3 (refunds) stays uncovered, because its gap is deferred. Completion is `completed` and coverage is `partial`. These are separate fields. Checkmate recorded these results before the requirement status `deferred` existed. A new run records R3 as `deferred`, because only a caller decision leaves it open.
+In both runs, R3 (refunds) stays uncovered, because its gap is deferred. Completion is `completed` and coverage is `partial`. These are separate fields. Checkmate recorded these results before the requirement status `deferred` existed. A new run records R3 as `deferred`, because only an oracle decision leaves it open.
 
 ## Notes
 

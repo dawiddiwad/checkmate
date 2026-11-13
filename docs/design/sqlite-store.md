@@ -10,7 +10,7 @@ Status: implemented. Contract version: `toolkit-2`. Schema version: 2. All open 
 - Give each test an explicit list of assertions. One failed assertion fails the test.
 - Reduce tokens. Agents read only the fields they need and write only the changes.
 - Support hundreds of plans. Plans can depend on other plans and can block other plans.
-- Let the caller approve plans and accept results, and let a human do it in a local UI that is simple, elegant, and easy to use.
+- Let the oracle approve plans and accept results, and let a human do it in a local UI that is simple, elegant, and easy to use.
 - Ship a self-contained Claude Code plugin and a separate npm CLI that starts Claude Code with that plugin.
 
 ## 2. Non-goals
@@ -25,8 +25,8 @@ Status: implemented. Contract version: `toolkit-2`. Schema version: 2. All open 
 
 | Topic                 | Decision                                                                                                                                                         |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Location              | `.checkmate/checkmate.db` in the caller's workspace. One host writes to it.                                                                                      |
-| Caller gate           | The caller approves a plan revision before execution and accepts a result after execution.                                                                       |
+| Location              | `.checkmate/checkmate.db` in the application workspace. One host writes to it.                                                                                   |
+| Oracle gate           | The oracle approves a plan revision before execution and accepts a result after execution.                                                                       |
 | Agent access          | Agents write only through CLI commands. Agents can read through `checkmate query` (read-only).                                                                   |
 | Cross-plan dependency | A dependency names a plan and a test. It does not pin a revision.                                                                                                |
 | Dependency rule       | The latest finalized result for the same application build must show `passed`.                                                                                   |
@@ -66,8 +66,8 @@ Both paths need Node.js 24.12.0 or later for `node:sqlite`. The host still owns 
 
 ## 5. Identifiers and references
 
-- `planId`, `targetId`, `runId`, test IDs, gap IDs, and requirement IDs are caller-readable names, as today.
-- Internal rows that the caller does not name (operations, decisions, approvals, evidence) use ULIDs. They do not use autoincrement integers. This keeps a later merge possible.
+- `planId`, `targetId`, `runId`, test IDs, gap IDs, and requirement IDs are readable names, as today.
+- Internal rows (operations, decisions, approvals, evidence) use ULIDs. They do not use autoincrement integers. This keeps a later merge possible.
 - A reference is `<id>@<revision>`, for example `checkout@2` or `checkout-local@1`.
 - A cross-plan test reference is `<planId>:<testId>`, for example `login:T3`. A test ID without a prefix refers to the same plan.
 - Each stored snapshot has a SHA-256 digest of its canonical JSON (sorted keys, no whitespace). A command can take `--expect-sha <digest>`. The command stops if the digest differs.
@@ -319,11 +319,11 @@ Checkmate uses the first row that applies:
 | All `passed`               | `passed`       |
 
 - `failed` comes first: one failed assertion fails the test, whatever the other results are.
-- `error` comes before `inconclusive`: an assertion that was not checked means the run is incomplete for that test. The caller must know this first.
+- `error` comes before `inconclusive`: an assertion that was not checked means the run is incomplete for that test. The oracle must know this first.
 - An `inconclusive` test does not cover its requirements. The requirement stays `uncovered` with the reason `An assertion is inconclusive.`
 - An `inconclusive` test does not prevent `completion: completed`. The check ran. Only the evidence was not sufficient.
 - An `inconclusive` test does not satisfy a dependency. A dependency needs `passed`.
-- The caller decides what to do next: a decision that gives a more exact expected value, a change to the assertion, or a retest with better evidence.
+- The oracle decides what to do next: a decision that gives a more exact expected value, a change to the assertion, or a retest with better evidence.
 
 - A test that the agent did not start has no assertion results. The agent records it as `blocked`, `not_run`, or `error` with a reason.
 - Each failed assertion is in a `defect` finding. A finding names its assertions, for example `"assertionIds": ["T2.A2"]`. A defect names one or more failed assertions.
@@ -332,7 +332,7 @@ Checkmate uses the first row that applies:
 
 ### Create
 
-1. The caller runs `checkmate plan open <planId> --target <targetId@rev>` with the request in a heredoc on stdin. The request has the objective, and requirements or context sources. It can have source context, instructions, and plan tools. Checkmate records the plan request.
+1. The factory runs `checkmate plan open <planId> --target <targetId@rev>` with the request in a heredoc on stdin. The request has the objective, and requirements or context sources. It can have source context, instructions, and plan tools. Checkmate records the plan request.
 2. The plan skill reads the request with `checkmate plan request <planId>`.
 3. When the request has only sources, the skill reads them with the plan tools and writes the requirements. Each requirement cites a context source.
 4. The skill sends a candidate to `checkmate plan save <planId>`.
@@ -342,13 +342,13 @@ The rules from `toolkit-1` stay: `plan revise` does not change requirements, the
 
 ### Edit
 
-The caller can change the latest revision with `checkmate plan edit <planId@rev>` and a full candidate. A revision without an approval and without a run changes in place. The operation log keeps the earlier body. An approved or used revision gives the next revision.
+The oracle can change the latest revision with `checkmate plan edit <planId@rev>` and a full candidate. A revision without an approval and without a run changes in place. The operation log keeps the earlier body. An approved or used revision gives the next revision.
 
 ### Decide and revise
 
-The decision and its implementation are separate steps. The caller has the authority. The agent implements.
+The decision and its implementation are separate steps. The oracle has the authority. The agent implements.
 
-1. The caller runs `checkmate gap answer <planId> <gapId> --kind <kind> --value <text> --source <uri> --rationale <text>`, or a human answers in the UI. Checkmate records a decision against the latest revision. The gap must be open in that revision.
+1. The oracle runs `checkmate gap answer <planId> <gapId> --kind <kind> --value <text> --source <uri> --rationale <text>`, or a human answers in the UI. Checkmate records a decision against the latest revision. The gap must be open in that revision.
 2. The revise skill runs `checkmate plan pending <planId>`. The output shows the pending decisions and only the gaps and tests that they affect.
 3. The skill sends only the changes to `checkmate plan revise <planId>`.
 
@@ -410,13 +410,13 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 ```
 
 - `started`: a `runs` row exists and has no `results` row.
-- `stalled`: not stored. A started run with no live worker. The caller decides to resume or finish it.
+- `stalled`: not stored. A started run with no live worker. The oracle decides to resume or finish it.
 - `finalized`: a `results` row exists. The run does not change after this.
 
 ### Commands
 
 1. `checkmate run gate <planId@rev> --tests T1,T2 --build <build>` checks the gate without side effects.
-2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|ready_only] [--on-new-blocker return_to_caller|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
+2. `checkmate run begin <runId> <planId@rev> --tests T1,T2 --build <build> [--retest-of <runId>] [--timeout <s>] [--partial wait_for_resolution|ready_only] [--on-new-blocker return_to_oracle|continue_independent]` runs the gate, records the run and attempt 1, and prints `startedAt` and `browserSession`. A plan revision that needs approval and has none fails the gate.
 3. For each assertion, the agent runs `checkmate run check <runId> <testId> <assertionId> --result <result> [--observed <text>] [--reason <text>] [--evidence -[:kind]] [--evidence <file>[:kind]]...`.
    - The agent does not send the check text or the check kind. Checkmate copies them from the plan.
    - `--evidence -` reads text evidence from stdin. A binary file, for example a screenshot, goes to `.checkmate/tmp/<runId>/` first. Checkmate stores the bytes as a blob, records the evidence row, and deletes the file.
@@ -433,14 +433,14 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 
 - `checkmate run resume <runId>` records a new attempt. It lists each selected test that is not closed, with the assertions that have no result.
 - Recorded assertion results stay. The agent checks only the assertions that have no result.
-- Checkmate does not repeat a test automatically. An agent can have done actions of a test that was not closed when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The caller decides to continue it or to record it as `error`.
+- Checkmate does not repeat a test automatically. An agent can have done actions of a test that was not closed when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The oracle decides to continue it or to record it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error` and records the new attempt in one step.
-- A deadline or a worker failure in `delegate` does not finalize the run with `error` for every test, as `toolkit-1` does. The run stays `started`. Recorded outcomes stay. The response tells the caller to resume or finish.
+- A deadline or a worker failure in `delegate` does not finalize the run with `error` for every test, as `toolkit-1` does. The run stays `started`. Recorded outcomes stay. The response says to resume or finish.
 
 ### Result acceptance
 
 - `checkmate result accept <runId> --actor <name> --rationale <text>` and `checkmate result reject ...` record an approval with the result digest.
-- Acceptance is a caller record. It is not a release decision by Checkmate.
+- Acceptance is an oracle record. It is not a release decision by Checkmate.
 
 ## 10. Rules kept from toolkit-1
 
@@ -461,7 +461,7 @@ The rules in `stages.ts` move to the new commands. They do not change in meaning
 
 - The default output is compact text. The first line is the status. Each item is one line with the ID first and tab-separated fields.
 - `--json` prints the same data as JSON for programs.
-- A command prints only what the caller asked for. It does not repeat complete documents.
+- A command prints only the requested data. It does not repeat complete documents.
 - `--fields` selects fields. `--tests` and `--gaps` select items.
 
 ```text
@@ -485,7 +485,7 @@ T2.A3	agent_observation	The quote does not list the loyalty discount.
 | Command                                                                                                 | Package | Purpose                                      |
 | ------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------- |
 | `init`                                                                                                  | plugin  | Create the database.                         |
-| `inbox`                                                                                                 | plugin  | List what waits for the caller.              |
+| `inbox`                                                                                                 | plugin  | List what waits for the oracle.              |
 | `target open`, `target request`, `target save`, `target show <id@rev>`                                  | plugin  | Store and read a target profile.             |
 | `plan open`, `plan request`, `plan save`                                                                | plugin  | Create a plan.                               |
 | `plan show`, `plan list`, `plan diff <id> <a> <b>`                                                      | plugin  | Read plans. `diff` prints a JSON Patch.      |
@@ -514,7 +514,7 @@ Each command records one `operations` row in the same transaction as its change.
 - Text evidence comes on stdin. It is `application/json` when it parses as JSON, else `text/plain`.
 - For a file, the media type comes from the file extension. Unknown extensions use `application/octet-stream`.
 - `evidence get` and the UI give the bytes back. The UI serves them with the stored media type and `Content-Disposition: attachment` for types other than images and plain text.
-- Checkmate does not sanitize evidence. The caller owns what an agent captures and how long the database keeps it. Do not capture credentials, cookies, authorization headers, or full transcripts.
+- Checkmate does not sanitize evidence. The workspace owner owns what an agent captures and how long the database keeps it. Do not capture credentials, cookies, authorization headers, or full transcripts.
 
 ## 13. Review UI
 
@@ -610,7 +610,7 @@ Not built now. These design choices keep it possible:
 - Rows are append-only.
 - Each snapshot has a digest.
 
-A later `checkmate merge <other.db>` attaches the other database and inserts missing rows. Equal rows have the same key and digest. A conflict is the same key with a different digest, for example two different revisions with the same number of the same plan. The command stops and reports each conflict. The caller decides. Runs do not conflict, because run IDs are unique.
+A later `checkmate merge <other.db>` attaches the other database and inserts missing rows. Equal rows have the same key and digest. A conflict is the same key with a different digest, for example two different revisions with the same number of the same plan. The command stops and reports each conflict. The oracle decides. Runs do not conflict, because run IDs are unique.
 
 ## 15. Skills
 

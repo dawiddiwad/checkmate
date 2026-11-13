@@ -31,7 +31,7 @@ function finish(opened: Store, runId: string) {
 	})
 }
 
-test('real browser and API find the defect; caller fix passes a narrow retest', { timeout: 180000 }, async (t) => {
+test('real browser and API find the defect; factory fix passes a narrow retest', { timeout: 180000 }, async (t) => {
 	const opened = store(t)
 	const app = await fixture()
 	t.after(() => app.close())

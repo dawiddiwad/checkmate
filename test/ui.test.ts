@@ -229,7 +229,7 @@ test('a gap answer asks for a name once and refuses a stale digest with the type
 		answerGap(store, agent, { planId: 'xss', gapId: 'G2', kind: 'defer', value: 'Later.', rationale: 'Scope.' })
 		revisePlan(store, agent, { planId: 'xss', delta: { tests: {} } })
 	})
-	const stale = await call(ui, '/plans/xss@1/gaps/G1', { form: { ...form, source: 'caller://answers' } })
+	const stale = await call(ui, '/plans/xss@1/gaps/G1', { form: { ...form, source: 'oracle://answers' } })
 	assert.equal(stale.status, 422)
 	assert.match(stale.body, /xss has a newer revision \(2\)/)
 	assert.match(stale.body, /Typed answer that must survive\.<\/textarea/)
@@ -237,7 +237,7 @@ test('a gap answer asks for a name once and refuses a stale digest with the type
 	assert.match(String(stale.headers['set-cookie']), /checkmate_actor=reviewer/)
 	const current = (await call(ui, '/plans/xss@2/gaps/G1')).body
 	const done = await call(ui, '/plans/xss@2/gaps/G1', {
-		form: { ...form, sha: field(current, 'sha'), source: 'caller://answers' },
+		form: { ...form, sha: field(current, 'sha'), source: 'oracle://answers' },
 	})
 	assert.equal(done.status, 303)
 	assert.equal(

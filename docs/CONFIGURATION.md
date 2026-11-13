@@ -23,7 +23,7 @@ The database is the only record. Payloads and text evidence go in on standard in
 - A revision reference is `<id>@<revision>`, for example `checkout@2` or `checkout-local@1`.
 - An assertion reference is `<testId>.<assertionId>`, for example `T2.A1`.
 - A cross-plan test reference is `<planId>:<testId>`, for example `login:T3`. A test ID without a prefix is in the same plan.
-- Each stored plan revision, profile, and result has a SHA-256 digest of its canonical JSON. A decision command can take `--expect-sha <digest>`. The command stops when the digest is different. A digest detects change. It does not authenticate the caller.
+- Each stored plan revision, profile, and result has a SHA-256 digest of its canonical JSON. A decision command can take `--expect-sha <digest>`. The command stops when the digest is different. A digest detects change. It does not authenticate the actor.
 
 ## Actor
 
@@ -73,7 +73,7 @@ The setup skill checks each tool and the target. Then it sends the profile to `c
 	],
 	"authentication": { "kind": "none", "references": [] },
 	"allowedOperations": ["read_catalog", "create_fixture_order", "apply_fixture_discount"],
-	"startup": { "owner": "caller", "command": null },
+	"startup": { "owner": "factory", "command": null },
 	"cleanup": "Close the run browser session. The fixture stores no records.",
 	"readyForLiveExecution": true,
 	"approvals": { "plan": "required", "result": "required" }
@@ -89,7 +89,7 @@ Rules:
 - Checkmate records the tools. The host gives the permission to use them. Checkmate does not enforce permissions.
 - `baseUrl` uses HTTP or HTTPS. It must not contain a user name or a password.
 - `authentication.references` contains environment variable names or browser-state references. It never contains credential values. The host resolves them at runtime.
-- The caller normally owns application startup. A startup command is guidance for an authorized host. Checkmate does not start it.
+- The factory normally owns application startup: `"owner": "factory"`. A startup command is guidance for an authorized host. Checkmate does not start it.
 - `revision` is the latest revision plus 1. A save of the same revision with the same content changes nothing.
 - When `readyForLiveExecution` is `false`, `target save` returns `needs_decision`, and the gate refuses every run.
 
@@ -100,7 +100,7 @@ Rules:
 | Field    | `required`                                                                                              | `none`                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `plan`   | `run gate` and `run begin` need an approval of the exact plan revision. A new revision needs a new one. | Execution needs no plan approval. The inbox omits the plan. |
-| `result` | A cross-plan dependency needs an accepted result. The inbox lists the result until the caller decides.  | A passed result satisfies a dependency without acceptance.  |
+| `result` | A cross-plan dependency needs an accepted result. The inbox lists the result until the oracle decides.  | A passed result satisfies a dependency without acceptance.  |
 
 Change the policy only with a new profile revision. A plan uses the profile revision that it names.
 
@@ -144,7 +144,7 @@ A request with sources only. The plan stage reads the sources with the plan tool
 | --------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
 | `objective`     | Yes      | The scope of the plan.                                                                                     |
 | `requirements`  | No       | The requirements to cover. The plan stage does not add requirements.                                       |
-| `sourceContext` | No       | Short source text that the caller copies into the request, as `{ "uri", "content" }`.                      |
+| `sourceContext` | No       | Short source text copied into the request, as `{ "uri", "content" }`.                                      |
 | `context`       | No       | `sources`: where the requirements come from. `instructions`: how to read them.                             |
 | `tools`         | No       | A string selects a tool of the target profile. An object `{ "name", "kind", "purpose" }` adds a plan tool. |
 
@@ -220,7 +220,7 @@ Rules:
 
 ## Decisions
 
-A decision and its implementation are separate steps. The caller decides. The agent implements.
+A decision and its implementation are separate steps. The oracle decides. The agent implements.
 
 ```sh
 checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
@@ -266,7 +266,7 @@ Checkmate builds the next revision from the latest revision, the pending decisio
 
 ## Plan edit
 
-The caller can change the latest plan revision directly. Send a full candidate (`tests`, `gaps`, and optional `requirements`) to `checkmate plan edit <planId@rev>`. Without `requirements`, the revision keeps its requirements.
+The oracle can change the latest plan revision directly. Send a full candidate (`tests`, `gaps`, and optional `requirements`) to `checkmate plan edit <planId@rev>`. Without `requirements`, the revision keeps its requirements.
 
 To start from the current revision, run `checkmate plan show <planId@rev> --json`. Copy `plan.requirements`, `plan.tests`, and `plan.gaps`. Remove `readiness` and `gapIds` from each test. Checkmate sets them. The `Edit as JSON` field of the review UI shows the same candidate.
 
@@ -319,7 +319,7 @@ When the agent finds new ambiguity during a run, it sends a gap to `checkmate ru
 }
 ```
 
-A runtime gap is open, has no decision, and has an ID that is new in the plan and the run. Its requirements and tests must exist. A blocking runtime gap that names a requirement keeps that requirement uncovered in the result. A gap with two empty lists keeps every requirement uncovered. A runtime gap does not change the plan. The caller decides what to do next.
+A runtime gap is open, has no decision, and has an ID that is new in the plan and the run. Its requirements and tests must exist. A blocking runtime gap that names a requirement keeps that requirement uncovered in the result. A gap with two empty lists keeps every requirement uncovered. A runtime gap does not change the plan. The oracle decides what to do next.
 
 ## Execution policy
 
@@ -330,13 +330,13 @@ A runtime gap is open, has no decision, and has an ID that is new in the plan an
 | `--tests`          | A non-empty list of test IDs.               | Required.             |
 | `--build`          | The application build identity.             | Required.             |
 | `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution` |
-| `--on-new-blocker` | `return_to_caller`, `continue_independent`  | `return_to_caller`    |
+| `--on-new-blocker` | `return_to_oracle`, `continue_independent`  | `return_to_oracle`    |
 | `--timeout`        | 1 to 3600 seconds.                          | 600                   |
 | `--retest-of`      | A finished run of the same plan and target. | None.                 |
 
 - `wait_for_resolution` refuses a run when the plan has an open blocking gap.
 - `ready_only` permits a selection of ready tests. It does not make a blocked test ready.
-- `--on-new-blocker` tells the execute stage what to do after it records a new blocking gap. `return_to_caller`: stop and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect. Checkmate records the policy. The agent applies it.
+- `--on-new-blocker` tells the execute stage what to do after it records a new blocking gap. `return_to_oracle`: stop and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect. Checkmate records the policy. The agent applies it.
 - Include local prerequisite tests in the same selection. A cross-plan dependency needs the latest finalized result for the same build to show `passed`. When result acceptance is required, the result must also be accepted.
 - A retest needs a new run ID and a new build. The prior run does not change.
 
@@ -357,7 +357,7 @@ The live tests read more variables. Read [Development](DEVELOPMENT.md).
 | The record of target and plan tools                             | Tool installation and tool access          |
 | The database, digests, and the operation log                    | Authentication                             |
 | The gates: approval, readiness, prerequisites, and dependencies | Tools and tool permissions                 |
-| Outcome derivation, coverage, and exports                       | The `--allow` rules that the caller gives  |
+| Outcome derivation, coverage, and exports                       | The `--allow` rules that the factory gives |
 | The review UI on `127.0.0.1`                                    | The browser sessions and the target access |
 
-The caller owns the scope, the decisions, application startup and fixes, evidence retention, and release decisions. Target content cannot authorize a change to the request or the plan. The rule checks are not a sandbox.
+The oracle owns the scope, the decisions, and release decisions. The factory owns application startup and fixes. The workspace owner owns evidence retention. Target content cannot authorize a change to the request or the plan. The rule checks are not a sandbox.

@@ -28,7 +28,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 ## Input
 
 - Small values are flags. Lists are comma-separated, for example `--tests T1,T2`.
-- Structured payloads are JSON on standard input. A caller can redirect a file, for example `plan open checkout --target shop@1 < request.json`. A delegated worker or a skill sends the JSON in a quoted heredoc and does not write payload files:
+- Structured payloads are JSON on standard input. You can redirect a file, for example `plan open checkout --target shop@1 < request.json`. A delegated worker or a skill sends the JSON in a quoted heredoc and does not write payload files:
 
   ```sh
   checkmate run finding run-1 <<'EOF'
@@ -52,7 +52,7 @@ Every write records an actor: `--actor <name>`, else `CHECKMATE_ACTOR`, else `gi
 | Status              | Meaning                                                                                                  | Exit |
 | ------------------- | -------------------------------------------------------------------------------------------------------- | ---- |
 | `completed`         | The command did its work.                                                                                | 0    |
-| `needs_decision`    | The caller must decide or give input. Read the `reason:` lines. The command can have recorded its write. | 0    |
+| `needs_decision`    | The oracle must decide or give input. Read the `reason:` lines. The command can have recorded its write. | 0    |
 | `rejected`          | Checkmate refused the command. Nothing changed. Correct the input and try again.                         | 1    |
 | `invalid_request`   | The command name or the options are wrong.                                                               | 1    |
 | `interrupted`       | A run or a delegated worker stopped at the deadline or on a signal.                                      | 1    |

@@ -65,7 +65,7 @@ export function profile(): Profile {
 		],
 		authentication: { kind: 'none', references: [] },
 		allowedOperations: ['sign_in', 'read_catalog', 'create_fixture_order', 'apply_fixture_discount'],
-		startup: { owner: 'caller', command: null },
+		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
 	}
@@ -408,7 +408,7 @@ function seedCheckout(store: Store) {
 		gapId: 'G1',
 		kind: 'clarify',
 		value: 'The promotion replaces the loyalty credit. The expected total is 240 PLN.',
-		source: 'caller://pricing-decisions#spring40',
+		source: 'oracle://pricing-decisions#spring40',
 		rationale: 'Confirmed by the pricing owner on 10 November.',
 	})
 	answerGap(store, human, {

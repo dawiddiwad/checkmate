@@ -67,7 +67,7 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 		],
 		authentication: { kind: 'none', references: [] },
 		allowedOperations: ['read_catalog', 'create_fixture_order', 'apply_fixture_discount'],
-		startup: { owner: 'caller', command: null },
+		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
 		...overrides,

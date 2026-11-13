@@ -181,7 +181,7 @@ export type Profile = {
 	}
 	allowedOperations: Array<string>
 	startup: {
-		owner: 'caller' | 'checkmate'
+		owner: 'factory' | 'checkmate'
 		command: Array<string> | null
 	}
 	cleanup: string

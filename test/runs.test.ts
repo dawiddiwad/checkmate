@@ -282,7 +282,7 @@ test('a requirement that only a deferred decision leaves open is deferred; a mis
 		[
 			['R1', 'tested', null],
 			['R2', 'uncovered', 'At least one required check or decision is missing.'],
-			['R3', 'deferred', 'A caller decision deferred the missing checks.'],
+			['R3', 'deferred', 'An oracle decision deferred the missing checks.'],
 		]
 	)
 	assert.equal(result.coverage.status, 'partial')

@@ -129,8 +129,8 @@ What the run showed:
 
 - Setup saved profile `checkout-local@1` with the actual tool versions.
 - The plan had two blocking gaps: promotion stacking and refund eligibility. The first `plan save` was refused, and the worker corrected the candidate. Planning did not run a fixture action.
-- The caller clarified the promotion rule and deferred refunds. Revise added the assertion to T3. The caller approved `checkout@2`.
-- Execute found the seeded defect: the quote returned 220 PLN instead of 240 PLN. T3 failed with a defect finding. Refund coverage stayed uncovered. The caller accepted the result.
+- The oracle clarified the promotion rule and deferred refunds. Revise added the assertion to T3. The oracle approved `checkout@2`.
+- Execute found the seeded defect: the quote returned 220 PLN instead of 240 PLN. T3 failed with a defect finding. Refund coverage stayed uncovered. The oracle accepted the result.
 - After the fixture changed, a retest on a new build passed T2 and T3. The first run did not change.
 
 The exported plans and runs are in [docs/examples](examples/README.md). These values describe one run. They are not performance targets. Model behavior, load, and tool latency can change them. A passed live run does not prove that a worker always follows the skills. The commands refuse a payload that does not satisfy the contracts.

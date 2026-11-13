@@ -1,10 +1,10 @@
 # Workflow
 
-Checkmate has five stages: setup, plan, revise, execute, and report. Between the stages, the caller makes decisions.
+Checkmate has five stages: setup, plan, revise, execute, and report. Between the stages, the oracle makes decisions.
 
-Checkmate has two modes. In team mode, agents share the QA work, and an agent or a script is the caller. Read [From an agent or a script](#from-an-agent-or-a-script), [Factory loop](#factory-loop), and [Sub-agents in Claude Code](#sub-agents-in-claude-code). In solo mode, you are the caller in your own Claude Code. Read [In Claude Code](#in-claude-code).
+Checkmate has two modes. In team mode, agents share the QA work, and a product-owner agent or a person is the oracle. Read [From an agent or a script](#from-an-agent-or-a-script), [Factory loop](#factory-loop), and [Sub-agents in Claude Code](#sub-agents-in-claude-code). In solo mode, you are the oracle in your own Claude Code. Read [In Claude Code](#in-claude-code).
 
-- The **caller** owns the request. The caller answers gaps, approves plans, and accepts results. The caller can be a person in Claude Code or an agent that delegates QA work.
+- The **oracle** answers gaps, approves plans, and accepts results. The oracle is anyone who can give the answer: a product-owner agent or a person.
 - The **actor** is the name that Checkmate records with each write. Commands use `--actor`, then `CHECKMATE_ACTOR`, then `git config user.name`, then the login name. `delegate` records its workers as `claude:<stage>`.
 - The **host** is Claude Code. It owns the model, authentication, tools, and permissions.
 
@@ -77,9 +77,9 @@ From a live run on a local checkout fixture. Claude found the seeded defect: the
 
 ## From an agent or a script
 
-Use the npm CLI, version 0.7.0 or later (`npm i -g @xoxoai/checkmate@^0.7.0`), when an agent, a CI job, or a script gives QA work to Checkmate. The agent is the caller. It opens each subject, delegates the stage, and makes the decisions. `delegate` needs the `claude` command, installed and logged in.
+Use the npm CLI, version 0.7.0 or later (`npm i -g @xoxoai/checkmate@^0.7.0`), when an agent, a CI job, or a script gives QA work to Checkmate. The agent opens each subject and delegates the stage. The oracle makes the decisions. One agent can do both. `delegate` needs the `claude` command, installed and logged in.
 
-Read line 1 of each response: `<status> <subject>`. `completed` and `needs_decision` exit with 0. `needs_decision` means that the caller must decide or give input, for example for open gaps or a refused gate. Read the `reason:` lines. [CLI](CLI.md#output-and-exit-codes) lists every status.
+Read line 1 of each response: `<status> <subject>`. `completed` and `needs_decision` exit with 0. `needs_decision` means that the oracle must decide or give input, for example for open gaps or a refused gate. Read the `reason:` lines. [CLI](CLI.md#output-and-exit-codes) lists every status.
 
 Give each delegated stage at least `--allow Read --allow Bash`. A prefix rule such as `Bash(node *)` is not sufficient: the permission check of Claude Code blocks the heredoc that sends a JSON payload. [CLI](CLI.md#delegated-stages) has the details. The host owns the permissions.
 
@@ -141,19 +141,19 @@ In a QA-driven software factory, agents do acceptance-test-driven development. T
 | Role          | What it does                                                                | Checkmate interface                                                                                                                                                                       |
 | ------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Planner agent | Runs the plan and revise stages. Turns the ticket into tests. Records gaps. | `delegate plan`, `delegate revise`, or a sub-agent with `/checkmate:plan`, `/checkmate:revise`                                                                                            |
-| Caller        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                                       |
+| Oracle        | Answers gaps. Approves plans. Accepts results.                              | `inbox`, `gap answer`, `plan edit`, `plan approve\|reject`, `result accept\|reject`                                                                                                       |
 | QA agent      | Runs the execute stage. Records results, evidence, defects, and gaps.       | `run begin [--retest-of]`, then `delegate execute` or a sub-agent with `/checkmate:execute`                                                                                               |
 | Factory       | Runs the agents and sandboxes. Builds and fixes the code. Reads the record. | `run show`, `export run\|plan --format json`, `log`, `query`, and `inbox` to read the record. It writes only through the commands that it runs, for example `run begin` with a new build. |
 | Human         | Joins at any time in the review UI. Makes the same decisions.               | `checkmate ui` or `/checkmate:ui`                                                                                                                                                         |
 
-The caller is anyone who can give the answer: a product-owner agent or a person. One ticket goes around the loop until its tests pass:
+The oracle is anyone who can give the answer: a product-owner agent or a person. One ticket goes around the loop until its tests pass:
 
 1. **Plan.** The planner agent reads the ticket and the other sources, and writes the tests. The feature does not exist yet, so the first revision has many gaps.
-2. **Run early.** The caller approves the revision. The QA agent runs the ready tests before the feature exists. Most tests fail. This is correct: an early run explores the requirements. Each failed assertion needs a defect finding with evidence. Unclear behavior becomes a new gap in the run.
-3. **Answer.** The caller answers the gaps. The planner agent applies the answers in a new revision. The caller approves it.
+2. **Run early.** The oracle approves the revision. The QA agent runs the ready tests before the feature exists. Most tests fail. This is correct: an early run explores the requirements. Each failed assertion needs a defect finding with evidence. Unclear behavior becomes a new gap in the run.
+3. **Answer.** The oracle answers the gaps. The planner agent applies the answers in a new revision. The oracle approves it.
 4. **Fix.** The factory reads the findings, changes the code, and makes a new build.
 5. **Retest.** The QA agent runs the tests again on the new build with `--retest-of`. The earlier run does not change. When a run shows new gaps or a plan change, the plan gets a new revision, and the loop continues.
-6. **Accept.** When a retest passes, the caller accepts the result.
+6. **Accept.** When a retest passes, the oracle accepts the result.
 
 One ticket through the loop:
 
@@ -169,12 +169,12 @@ checkmate plan open checkout --target shop@1 <<'EOF'
 EOF
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 
-# Caller: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 waits.
+# Oracle: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 waits.
 checkmate plan approve checkout@1 --rationale "Run the ready tests early."
 checkmate run begin run-1 checkout@1 --tests T1,T2,T3 --build "$GIT_SHA" --partial ready_only
 checkmate delegate execute run-1 --allow Read --allow Bash
 
-# Iteration 2. Caller: answer the gaps. Planner: revise. Caller: approve.
+# Iteration 2. Oracle: answer the gaps. Planner: revise. Oracle: approve.
 checkmate inbox
 checkmate gap answer checkout G1 --kind clarify --source docs/promo.md \
   --value "The promotion replaces the loyalty discount." --rationale "Product decision."
@@ -191,16 +191,16 @@ checkmate result accept run-2 --rationale "All tests pass on the new build."
 ```
 
 - `--partial ready_only` lets a run start while the plan has open blocking gaps. Select only ready tests: a test that an open blocking gap affects is not ready.
-- A runtime gap from a run, such as G4, does not change the plan. The caller or a human acts on it with `plan edit` or `Edit plan` in the review UI: change the tests, or add the gap and answer it. An edit before approval keeps the revision number. An edit after approval gives a new revision.
+- A runtime gap from a run, such as G4, does not change the plan. The oracle or a human acts on it with `plan edit` or `Edit plan` in the review UI: change the tests, or add the gap and answer it. An edit before approval keeps the revision number. An edit after approval gives a new revision.
 - `delegate` records its worker as actor `claude:<stage>`. Give each stage at least `--allow Read --allow Bash`.
 
 ## Sub-agents in Claude Code
 
-A parent agent in Claude Code can give a stage to a sub-agent that has the Checkmate plugin. The sub-agent uses the stage skill and the plugin CLI to write to the database. It does not ask the caller. It returns `{ status, subject, reasons }`.
+A parent agent in Claude Code can give a stage to a sub-agent that has the Checkmate plugin. The sub-agent uses the stage skill and the plugin CLI to write to the database. It does not ask the oracle. It returns `{ status, subject, reasons }`.
 
 Prepare the subject first, as for `delegate`: `target open` for setup, `plan open` for plan, `gap answer` for revise, and `run begin` for execute. The sub-agent does not record a request. Then give it the stage and the subject, for example: "Delegated Checkmate plan stage for plan `checkout`. Use the checkmate:plan skill." For execute, give the run ID.
 
-The parent checks the result in the database with `inbox`, `plan show`, or `run show`. When the parent is the caller, it makes the decisions with the same commands as an external agent.
+The parent checks the result in the database with `inbox`, `plan show`, or `run show`. When the parent is the oracle, it makes the decisions with the same commands as an external agent.
 
 The plugin has no global `checkmate` command. Its CLI is `node <plugin root>/dist/checkmate.js`. A Checkmate skill shows the plugin root when it loads. To get a `checkmate` command, install the npm CLI.
 

@@ -197,8 +197,8 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				`Run ${runId} exists. Use a new run ID.`
 			)
 			const onNewBlocker = requireChoice(
-				input.onNewBlocker ?? 'return_to_caller',
-				['return_to_caller', 'continue_independent'],
+				input.onNewBlocker ?? 'return_to_oracle',
+				['return_to_oracle', 'continue_independent'],
 				'new blocker policy (--on-new-blocker)'
 			)
 			const timeoutSeconds = input.timeoutSeconds ?? 600

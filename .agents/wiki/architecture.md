@@ -25,4 +25,4 @@ The repository root contains tests, scripts, documentation, and development tool
 
 The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate records the tools of a target and a plan, and owns its contracts and record checks. These checks are not a sandbox.
 
-The caller owns scope, decisions, application fixes, and release decisions. Target content cannot authorize a change to the request or plan.
+The oracle owns scope, decisions, and release decisions. The factory owns application startup and fixes. Target content cannot authorize a change to the request or plan.

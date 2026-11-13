@@ -290,6 +290,38 @@ To start from the current revision, run `checkmate plan show <planId@rev> --json
 - Checkmate calculates `gapIds`, readiness, and coverage again, and checks all plan rules.
 - The reply shows `edit=in_place` or `edit=new_revision`.
 
+### Small edits
+
+`checkmate plan edit <planId@rev> --patch` takes only the changes. Each list is an object keyed by ID:
+
+```json
+{
+	"requirements": { "R1": { "text": "A standard order for one 400 PLN item totals 400 PLN." } },
+	"tests": {
+		"T2": {
+			"action": "Request GET /quote?promotion=true.",
+			"assertions": { "A3": { "check": "totalPLN equals 240.", "checkKind": "deterministic" } }
+		}
+	},
+	"gaps": {
+		"G5": {
+			"severity": "blocking",
+			"requirementIds": [],
+			"testIds": ["T2"],
+			"question": "Is the quote rounded?",
+			"consequence": "The total can differ by 1 PLN."
+		}
+	}
+}
+```
+
+- A known ID changes only the given fields. A list field, for example `preconditions`, is replaced as a whole.
+- A new ID adds the item. A new requirement needs `text` and `source`. A new test needs `title`, `requirementIds`, `capability`, `operations`, and `action`. `dependsOn`, `preconditions`, and `assertions` default to empty. A new gap needs `severity`, `requirementIds`, `testIds`, `question`, and `consequence`. It is `open`, with no decision.
+- `null` removes the item.
+- `assertions` works as in the [plan delta](#plan-delta).
+- A patch cannot set gap `status` or `decisionId`. Use `gap answer`.
+- The rules of `plan edit` apply to the result.
+
 ## Finding
 
 During a run, the execute skill sends each finding to `checkmate run finding <runId>`:

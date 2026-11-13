@@ -13,6 +13,7 @@ import {
 	editPlan,
 	gate,
 	openPlan,
+	patchPlan,
 	rejectPlan,
 	revisePlan,
 	savePlan,
@@ -385,15 +386,16 @@ const commands: Record<string, Command> = {
 	},
 	'plan edit': {
 		positionals: ['reference'],
-		flags: { 'expect-sha': 'value' },
+		flags: { patch: 'switch', 'expect-sha': 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			editPlan(store, actor, {
-				reference: value(args, 'reference')!,
-				candidate: stdin(),
-				expectSha256: value(args, 'expect-sha'),
-			}),
+		run: (store, args, { actor, stdin }) => {
+			const reference = value(args, 'reference')!
+			const expectSha256 = value(args, 'expect-sha')
+			return args.patch
+				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256 })
+				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256 })
+		},
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), edit: reply.data.edit } }),
 	},
 	'plan approve': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>

@@ -73,6 +73,45 @@ export type PlanDelta = {
 	>
 }
 
+export type PlanPatch = {
+	requirements?: Record<
+		string,
+		{
+			text?: string
+			source?: string
+		} | null
+	>
+	tests?: Record<
+		string,
+		{
+			title?: string
+			requirementIds?: Array<string>
+			capability?: string
+			operations?: Array<string>
+			dependsOn?: Array<string>
+			preconditions?: Array<string>
+			action?: string
+			assertions?: Record<
+				string,
+				{
+					check?: string
+					checkKind?: 'deterministic' | 'agent_observation'
+				} | null
+			>
+		} | null
+	>
+	gaps?: Record<
+		string,
+		{
+			severity?: 'blocking' | 'non_blocking'
+			requirementIds?: Array<string>
+			testIds?: Array<string>
+			question?: string
+			consequence?: string
+		} | null
+	>
+}
+
 export type PlanRequest = {
 	objective: string
 	requirements?: Array<{

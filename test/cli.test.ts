@@ -481,4 +481,7 @@ test('plan edit reads the edited content on standard input and prints the edit k
 	const stale = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
 	assert.equal(stale.code, 1)
 	assert.match(stale.lines[1], /^reason: checkout@1 has digest/)
+	const patched = cli(workspace, ['plan', 'edit', 'checkout@1', '--patch'], { tests: { T1: { title: 'Patched' } } })
+	assert.match(patched.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
+	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Patched')
 })

@@ -16,6 +16,7 @@ The code validates structure and relationships. It cannot prove that an observat
 | `plan-request.schema.json`   | `plan open`                       |
 | `plan-candidate.schema.json` | `plan save`, `plan edit`          |
 | `plan-delta.schema.json`     | `plan revise`                     |
+| `plan-patch.schema.json`     | `plan edit --patch`               |
 | `plan.schema.json`           | each stored plan revision         |
 | `finding.schema.json`        | `run finding`                     |
 | `gap.schema.json`            | `run gap`, and each gap in a plan |

@@ -1,4 +1,4 @@
-import type { Plan, PlanCandidate, PlanDelta, PlanRequest, Profile } from './types.ts'
+import type { Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -231,62 +231,153 @@ export function editPlan(
 	actor: string | undefined,
 	input: { reference: string; candidate: unknown; expectSha256?: string }
 ) {
+	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) =>
+		storeEdit(store, operationId, editableRevision(store, input.reference, input.expectSha256), input.candidate)
+	)
+}
+
+export function patchPlan(
+	store: Store,
+	actor: string | undefined,
+	input: { reference: string; patch: unknown; expectSha256?: string }
+) {
 	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) => {
-		const reference = revisionReference(requireText(input.reference, 'plan reference'), 'plan reference')
-		requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
-		const base = planRevision(store, reference.id, reference.revision)
-		const subject = `${reference.id}@${reference.revision}`
-		const latest = planRevision(store, reference.id).plan.revision
-		requireCondition(
-			latest === reference.revision,
-			`${subject} is not the latest revision. Edit ${reference.id}@${latest}.`
-		)
-		expectDigest(base.sha256, input.expectSha256, subject)
-		const candidate = validate('plan-candidate', input.candidate)
-		const frozen = frozenRevision(store, reference.id, reference.revision)
-		const { coverage, tests, ...kept } = structuredClone(base.plan)
-		const draft: PlanDraft = {
-			...kept,
-			...(frozen ? { revision: base.plan.revision + 1, previousRevision: base.plan.revision } : {}),
-			requirements: candidate.requirements ?? kept.requirements,
-			tests: candidate.tests,
-			gaps: candidate.gaps,
-		}
-		for (const decision of pendingDecisions(store, reference.id))
-			requireCondition(
-				draft.gaps.some((gap) => gap.id === decision.gap_id && gap.status === 'open'),
-				`Gap ${decision.gap_id} has a pending decision ${decision.id}. Keep the gap open.`
-			)
-		for (const test of draft.tests) {
-			const before = base.plan.tests.find((item) => item.id === test.id)?.assertions ?? []
-			const used = usedAssertionIds(store, reference.id, test.id)
-			for (const assertion of test.assertions)
-				requireCondition(
-					before.some((item) => item.id === assertion.id) || !used.includes(assertion.id),
-					`Assertion ID ${test.id}.${assertion.id} was used in an earlier revision. Use a new ID.`
-				)
-		}
-		if (frozen) {
-			const change = storeRevision(store, draft, operationId)
-			change.reply.data.edit = 'new_revision'
-			change.reply.data.reason = frozen
-			return change
-		}
-		const { plan, body, sha256 } = checkedRevision(store, draft)
-		execute(
-			store,
-			'UPDATE plan_revisions SET sha256 = ?, body = ?, operation_id = ? WHERE plan_id = ? AND revision = ?',
-			sha256,
-			body,
-			operationId,
-			plan.planId,
-			plan.revision
-		)
-		const change = revisionChange(plan, sha256)
-		change.reply.data.edit = 'in_place'
-		change.reply.data.previousSha256 = base.sha256
-		return change
+		const base = editableRevision(store, input.reference, input.expectSha256)
+		const patch = validate('plan-patch', input.patch)
+		return storeEdit(store, operationId, base, patchedCandidate(base.plan, patch))
 	})
+}
+
+function editableRevision(store: Store, text: string, expectSha256: string | undefined) {
+	const reference = revisionReference(requireText(text, 'plan reference'), 'plan reference')
+	requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
+	const base = planRevision(store, reference.id, reference.revision)
+	const subject = `${reference.id}@${reference.revision}`
+	const latest = planRevision(store, reference.id).plan.revision
+	requireCondition(
+		latest === reference.revision,
+		`${subject} is not the latest revision. Edit ${reference.id}@${latest}.`
+	)
+	expectDigest(base.sha256, expectSha256, subject)
+	return base
+}
+
+function storeEdit(store: Store, operationId: string, base: PlanRevision, value: unknown): Change {
+	const candidate = validate('plan-candidate', value)
+	const planId = base.plan.planId
+	const frozen = frozenRevision(store, planId, base.plan.revision)
+	const { coverage, tests, ...kept } = structuredClone(base.plan)
+	const draft: PlanDraft = {
+		...kept,
+		...(frozen ? { revision: base.plan.revision + 1, previousRevision: base.plan.revision } : {}),
+		requirements: candidate.requirements ?? kept.requirements,
+		tests: candidate.tests,
+		gaps: candidate.gaps,
+	}
+	for (const decision of pendingDecisions(store, planId))
+		requireCondition(
+			draft.gaps.some((gap) => gap.id === decision.gap_id && gap.status === 'open'),
+			`Gap ${decision.gap_id} has a pending decision ${decision.id}. Keep the gap open.`
+		)
+	for (const test of draft.tests) {
+		const before = base.plan.tests.find((item) => item.id === test.id)?.assertions ?? []
+		const used = usedAssertionIds(store, planId, test.id)
+		for (const assertion of test.assertions)
+			requireCondition(
+				before.some((item) => item.id === assertion.id) || !used.includes(assertion.id),
+				`Assertion ID ${test.id}.${assertion.id} was used in an earlier revision. Use a new ID.`
+			)
+	}
+	if (frozen) {
+		const change = storeRevision(store, draft, operationId)
+		change.reply.data.edit = 'new_revision'
+		change.reply.data.reason = frozen
+		return change
+	}
+	const { plan, body, sha256 } = checkedRevision(store, draft)
+	execute(
+		store,
+		'UPDATE plan_revisions SET sha256 = ?, body = ?, operation_id = ? WHERE plan_id = ? AND revision = ?',
+		sha256,
+		body,
+		operationId,
+		plan.planId,
+		plan.revision
+	)
+	const change = revisionChange(plan, sha256)
+	change.reply.data.edit = 'in_place'
+	change.reply.data.previousSha256 = base.sha256
+	return change
+}
+
+function patchedCandidate(plan: Plan, patch: PlanPatch): Required<PlanCandidate> {
+	const candidate = planCandidate(structuredClone(plan))
+	return {
+		requirements: patchList(candidate.requirements, patch.requirements, 'requirement', (item, id, change) =>
+			item ? { ...item, ...change } : { id, ...newFields(`requirement ${id}`, change, ['text', 'source']) }
+		),
+		tests: patchList(candidate.tests, patch.tests, 'test', (item, id, change) => {
+			const { assertions, ...fields } = change
+			const test = item
+				? { ...item, ...fields }
+				: {
+						id,
+						assertions: [],
+						...newFields(
+							`test ${id}`,
+							fields,
+							['title', 'requirementIds', 'capability', 'operations', 'action'],
+							{ dependsOn: [], preconditions: [] }
+						),
+					}
+			test.assertions = patchList(test.assertions, assertions, `assertion in test ${id}`, (old, key, value) =>
+				old
+					? { ...old, ...value }
+					: { id: key, ...newFields(`assertion ${id}.${key}`, value, ['check', 'checkKind']) }
+			)
+			return test
+		}),
+		gaps: patchList(candidate.gaps, patch.gaps, 'gap', (item, id, change) =>
+			item
+				? { ...item, ...change }
+				: {
+						id,
+						status: 'open',
+						decisionId: null,
+						...newFields(`gap ${id}`, change, [
+							'severity',
+							'requirementIds',
+							'testIds',
+							'question',
+							'consequence',
+						]),
+					}
+		),
+	}
+}
+
+function patchList<T extends { id: string }, C extends object>(
+	items: T[],
+	changes: Record<string, C | null> | undefined,
+	name: string,
+	apply: (item: T | undefined, id: string, change: C) => T
+) {
+	const result = [...items]
+	for (const [id, change] of Object.entries(changes ?? {})) {
+		const position = result.findIndex((item) => item.id === id)
+		if (change === null) {
+			requireCondition(position >= 0, `Cannot remove unknown ${name} ${id}`)
+			result.splice(position, 1)
+		} else if (position >= 0) result[position] = apply(result[position], id, change)
+		else result.push(apply(undefined, id, change))
+	}
+	return result
+}
+
+function newFields<C extends object>(name: string, change: C, required: string[], defaults: Partial<C> = {}) {
+	const missing = required.filter((field) => !(field in change))
+	requireCondition(!missing.length, `New ${name} needs ${missing.join(', ')}`)
+	return { ...defaults, ...change } as Required<C>
 }
 
 export function savePlan(store: Store, actor: string | undefined, input: { planId: string; candidate: unknown }) {

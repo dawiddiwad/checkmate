@@ -9,6 +9,7 @@ import {
 	editPlan,
 	gate,
 	openPlan,
+	patchPlan,
 	planCandidate,
 	planRevision,
 	rejectPlan,
@@ -640,5 +641,91 @@ test('plan edit keeps gaps with pending decisions open and refuses reused assert
 	assert.throws(
 		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: renamed }),
 		/Assertion ID T1.A1 was used in an earlier revision. Use a new ID/
+	)
+})
+
+test('plan edit --patch changes items by ID and keeps the edit rules', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const patch = (value: unknown, reference = 'checkout@1') => patchPlan(opened, actor, { reference, patch: value })
+	const edited = patch({
+		requirements: { R1: { text: 'A standard order totals 400 PLN.' } },
+		tests: {
+			T1: {
+				title: 'Standard total',
+				assertions: { A2: null, A3: { check: 'One line.', checkKind: 'deterministic' } },
+			},
+			T4: {
+				title: 'Catalog',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				action: 'Read the catalog.',
+				assertions: { A1: { check: 'HTTP 200.', checkKind: 'deterministic' } },
+			},
+		},
+		gaps: {
+			G1: { question: 'Does the 40 percent promotion stack with loyalty?' },
+			G3: {
+				severity: 'non_blocking',
+				requirementIds: [],
+				testIds: ['T4'],
+				question: 'Is the catalog paged?',
+				consequence: 'Paging is not checked.',
+			},
+		},
+	})
+	assert.deepEqual([edited.subject, edited.data.edit], ['checkout@1', 'in_place'])
+	const after = planRevision(opened, 'checkout').plan
+	assert.equal(after.requirements[0].text, 'A standard order totals 400 PLN.')
+	assert.equal(after.requirements[0].source, 'brief#standard')
+	assert.deepEqual(
+		after.tests.map((test) => [test.id, test.title, test.assertions.map((assertion) => assertion.id)]),
+		[
+			['T1', 'Standard total', ['A1', 'A3']],
+			['T2', 'Promotion quote', ['A1']],
+			['T3', 'Refund eligibility', []],
+			['T4', 'Catalog', ['A1']],
+		]
+	)
+	assert.deepEqual([after.tests[3].dependsOn, after.tests[3].preconditions, after.tests[3].gapIds], [[], [], ['G3']])
+	assert.deepEqual(
+		after.gaps.map((gap) => [gap.id, gap.status, gap.decisionId, gap.question]),
+		[
+			['G1', 'open', null, 'Does the 40 percent promotion stack with loyalty?'],
+			['G2', 'open', null, 'Which orders qualify for refunds?'],
+			['G3', 'open', null, 'Is the catalog paged?'],
+		]
+	)
+	assert.throws(() => patch({ tests: { T9: { title: 'New' } } }), /New test T9 needs requirementIds, capability/)
+	assert.throws(
+		() => patch({ tests: { T1: { assertions: { A9: { check: 'x' } } } } }),
+		/New assertion T1.A9 needs checkKind/
+	)
+	assert.throws(() => patch({ gaps: { G9: null } }), /Cannot remove unknown gap G9/)
+	assert.throws(() => patch({ tests: { T1: { readiness: 'ready' } } }), /Invalid plan-patch/)
+	assert.throws(() => patch({ gaps: { G1: { status: 'resolved' } } }), /Invalid plan-patch/)
+	assert.throws(() => patch({}), /Invalid plan-patch/)
+	assert.throws(
+		() => patch({ tests: { T1: { assertions: { A2: { check: 'Back.' } } } } }),
+		/New assertion T1.A2 needs/
+	)
+	assert.throws(() => patch({ requirements: { R1: null } }), /Unknown requirement in test T1: R1/)
+	approved(opened, 'checkout', 1)
+	const next = patch({ tests: { T1: { preconditions: ['Fresh cart.'] } } })
+	assert.deepEqual([next.subject, next.data.edit, next.data.reason], ['checkout@2', 'new_revision', 'approved'])
+	assert.deepEqual(planRevision(opened, 'checkout', 1).plan.tests[0].preconditions, [
+		'Fresh cart with one 400 PLN item.',
+	])
+	assert.throws(() => patch({ tests: { T1: { title: 'Old' } } }), /checkout@1 is not the latest revision/)
+	patch({ tests: { T1: { assertions: { A3: null } } } }, 'checkout@2')
+	assert.throws(
+		() =>
+			patch(
+				{ tests: { T1: { assertions: { A3: { check: 'Back.', checkKind: 'deterministic' } } } } },
+				'checkout@2'
+			),
+		/Assertion ID T1.A3 was used in an earlier revision/
 	)
 })

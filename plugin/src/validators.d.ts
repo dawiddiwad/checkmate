@@ -7,6 +7,7 @@ export const gap: Validator
 export const plan: Validator
 export const planCandidate: Validator
 export const planDelta: Validator
+export const planPatch: Validator
 export const planRequest: Validator
 export const profile: Validator
 export const response: Validator

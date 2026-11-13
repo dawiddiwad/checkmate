@@ -6,6 +6,7 @@ export {
 	openPlan,
 	savePlan,
 	editPlan,
+	patchPlan,
 	planCandidate,
 	frozenRevision,
 	answerGap,

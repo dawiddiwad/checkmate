@@ -39,6 +39,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 
 - `run check` and `run close` take `--evidence -` for text evidence on standard input, and `--evidence -:<kind>` to set the kind. Give a file path only for binary evidence. Read [Evidence](EVIDENCE.md#evidence-input).
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool.
+- `plan edit <planId@rev>` takes a full candidate. With `--patch`, it takes only the changes, keyed by ID. Read [Configuration](CONFIGURATION.md#small-edits).
 - `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of a JSON request. Use JSON for requirements, source context, or plan tools.
 
 ## Actor

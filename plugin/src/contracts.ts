@@ -1,4 +1,15 @@
-import type { Finding, Gap, Plan, PlanCandidate, PlanDelta, PlanRequest, Profile, Response, Result } from './types.ts'
+import type {
+	Finding,
+	Gap,
+	Plan,
+	PlanCandidate,
+	PlanDelta,
+	PlanPatch,
+	PlanRequest,
+	Profile,
+	Response,
+	Result,
+} from './types.ts'
 import { canonical } from './store.ts'
 import * as validators from './validators.js'
 
@@ -11,6 +22,7 @@ export type Documents = {
 	'plan-request': PlanRequest
 	'plan-candidate': PlanCandidate
 	'plan-delta': PlanDelta
+	'plan-patch': PlanPatch
 	plan: Plan
 	gap: Gap
 	finding: Finding

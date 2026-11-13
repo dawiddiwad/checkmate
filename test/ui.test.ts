@@ -589,6 +589,30 @@ test('a retested run leaves the inbox and keeps its decision form on the run pag
 	assert.match((await call(ui, '/runs/run-7')).body, /name="verdict"\s*value="accept"/)
 })
 
+test('Bring into plan adopts one run gap with the digest guard and the actor', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/runs/run-7')).body
+	assert.match(page, /<form method="post" action="\/runs\/run-7\/gaps\/G4" class="inline-form">/)
+	assert.match(page, /Bring into plan<\/button>/)
+	const form = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), actor: '' }
+	const nameless = await call(ui, '/runs/run-7/gaps/G4', { form })
+	assert.equal(nameless.status, 422)
+	assert.match(nameless.body, /<p class="form-error" role="alert">Enter your name/)
+	const done = await call(ui, '/runs/run-7/gaps/G4', { form: { ...form, actor: 'reviewer' } })
+	assert.equal(done.status, 303)
+	assert.equal(done.headers.location, '/runs/run-7#G4')
+	const latest = read(workspace, (store) => planDetail(store, 'checkout'))
+	assert.equal(latest.revision, 3)
+	assert(latest.plan.gaps.some((gap) => gap.id === 'G4'))
+	const log = read(workspace, (store) => operationLog(store, { limit: 1 })[0])
+	assert.deepEqual([log.command, log.actor], ['plan adopt-gaps', 'reviewer'])
+	const after = (await call(ui, '/runs/run-7')).body
+	assert.doesNotMatch(after, /Bring into plan/)
+	const stale = await call(ui, '/runs/run-7/gaps/G4', { form: { ...form, actor: 'reviewer' } })
+	assert.equal(stale.status, 422)
+	assert.match(stale.body, /checkout changed after you opened this page/)
+})
+
 test('a finished run downloads its report as HTML, Markdown, or JSON', async (t) => {
 	const { ui } = await start(t)
 	const page = (await call(ui, '/runs/run-7')).body

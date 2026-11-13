@@ -1292,6 +1292,13 @@ summary.asr-row:focus-visible {
 .confirm-box blockquote {
 	background: var(--surface);
 }
+.inline-form {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	margin: 0 0 0 8px;
+}
 .form-error {
 	color: var(--fail);
 	background: var(--fail-soft);

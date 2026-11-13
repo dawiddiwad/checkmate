@@ -203,13 +203,13 @@ The plugin has no global `checkmate` command. Its CLI is `node <plugin root>/dis
 
 ## Decisions
 
-| Decision          | Command                                                                                 | In the UI          |
-| ----------------- | --------------------------------------------------------------------------------------- | ------------------ |
-| Answer a gap      | `checkmate gap answer <planId> <gapId> --kind ...`                                      | Inbox or plan page |
-| Change a plan     | `checkmate plan edit <planId@rev>` with a full candidate, or `--patch` with the changes | `Edit plan`        |
-| Adopt run gaps    | `checkmate plan adopt-gaps <planId@rev> --run <runId> [--gaps G4]`                      | `Edit plan`        |
-| Approve or reject | `checkmate plan approve\|reject <planId@rev>`                                           | Plan page          |
-| Accept or reject  | `checkmate result accept\|reject <runId>`                                               | Run page           |
+| Decision          | Command                                                                                 | In the UI                         |
+| ----------------- | --------------------------------------------------------------------------------------- | --------------------------------- |
+| Answer a gap      | `checkmate gap answer <planId> <gapId> --kind ...`                                      | Inbox or plan page                |
+| Change a plan     | `checkmate plan edit <planId@rev>` with a full candidate, or `--patch` with the changes | `Edit plan`                       |
+| Adopt run gaps    | `checkmate plan adopt-gaps <planId@rev> --run <runId> [--gaps G4]`                      | `Bring into plan` on the run page |
+| Approve or reject | `checkmate plan approve\|reject <planId@rev>`                                           | Plan page                         |
+| Accept or reject  | `checkmate result accept\|reject <runId>`                                               | Run page                          |
 
 - `checkmate inbox` lists the gaps to answer, the run gaps that the plan does not have yet, the plans to approve, and the results to accept. Of a retest chain, only the latest run waits for acceptance. It also lists the plan requests that have no revision yet. Run the plan stage for them.
 - A gap answer is a pending decision. The revise stage applies it and writes the next revision.

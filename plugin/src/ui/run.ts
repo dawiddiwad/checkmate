@@ -219,9 +219,31 @@ function findings(store: Store, detail: Detail) {
 	</div>`
 }
 
-function newGaps(store: Store, detail: Detail) {
+export type AdoptError = { gapId: string; message: Html | string }
+
+function adoptForm(context: Context, detail: Detail, gapId: string, sha256: string) {
+	return html`<form method="post" action="/runs/${detail.runId}/gaps/${gapId}" class="inline-form">
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="sha" value="${sha256}" />
+		${
+			context.actor
+				? ''
+				: html`<input
+						name="actor"
+						required
+						autocomplete="name"
+						placeholder="Your name"
+						aria-label="Your name"
+					/>`
+		}
+		<button class="btn small">Bring into plan</button>
+	</form>`
+}
+
+function newGaps(store: Store, context: Context, detail: Detail, adoptError: AdoptError | null) {
 	if (!detail.newGaps.length) return html`<p class="empty-line">No new gaps.</p>`
-	const latest = `${detail.planId}@${planRevision(store, detail.planId).plan.revision}`
+	const revision = planRevision(store, detail.planId)
+	const latest = `${detail.planId}@${revision.plan.revision}`
 	const adopted = planRunGaps(store, detail.planId)
 		.filter((item) => item.runId === detail.runId && item.adopted)
 		.map((item) => item.gap.id)
@@ -242,9 +264,11 @@ function newGaps(store: Store, detail: Detail) {
 							adopted.includes(gap.id)
 								? html`${pill('resolved', 'in plan')}
 										<a href="/plans/${latest}#${gap.id}">${latest}</a>`
-								: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>`
+								: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+										${adoptForm(context, detail, gap.id, revision.sha256)}`
 						}
 					</p>
+					${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
 				</li>`
 		)}
 	</ul>`
@@ -401,7 +425,13 @@ function runBadge(detail: Detail) {
 	return pill(acceptance)
 }
 
-export function runPage(store: Store, context: Context, runId: string, state: FormState | null = null): Page {
+export function runPage(
+	store: Store,
+	context: Context,
+	runId: string,
+	state: FormState | null = null,
+	adoptError: AdoptError | null = null
+): Page {
 	const detail = runDetail(store, runId)
 	const sub = html`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
 			>${detail.planId}@${detail.revision}</a
@@ -439,7 +469,7 @@ export function runPage(store: Store, context: Context, runId: string, state: Fo
 				</section>
 				<section aria-labelledby="new-gaps" data-region="new-gaps">
 					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
-					${newGaps(store, detail)}
+					${newGaps(store, context, detail, adoptError)}
 				</section>
 				<section aria-labelledby="coverage" data-region="coverage">
 					<h2 id="coverage">Coverage</h2>

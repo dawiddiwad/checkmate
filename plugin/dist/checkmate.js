@@ -11204,9 +11204,24 @@ function findings(store, detail) {
   )}
 	</div>`;
 }
-function newGaps(store, detail) {
+function adoptForm(context, detail, gapId, sha256) {
+  return html2`<form method="post" action="/runs/${detail.runId}/gaps/${gapId}" class="inline-form">
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="sha" value="${sha256}" />
+		${context.actor ? "" : html2`<input
+						name="actor"
+						required
+						autocomplete="name"
+						placeholder="Your name"
+						aria-label="Your name"
+					/>`}
+		<button class="btn small">Bring into plan</button>
+	</form>`;
+}
+function newGaps(store, context, detail, adoptError) {
   if (!detail.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
-  const latest = `${detail.planId}@${planRevision(store, detail.planId).plan.revision}`;
+  const revision = planRevision(store, detail.planId);
+  const latest = `${detail.planId}@${revision.plan.revision}`;
   const adopted = planRunGaps(store, detail.planId).filter((item) => item.runId === detail.runId && item.adopted).map((item) => item.gap.id);
   return html2`<ul class="gaps">
 		${detail.newGaps.map(
@@ -11221,8 +11236,10 @@ function newGaps(store, detail) {
 					<p class="muted">${gap.consequence}</p>
 					<p>
 						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
-										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>`}
+										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+										${adoptForm(context, detail, gap.id, revision.sha256)}`}
 					</p>
+					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
 				</li>`
   )}
 	</ul>`;
@@ -11364,7 +11381,7 @@ function runBadge(detail) {
   if (acceptance === "pending") return pill("pending", "awaiting acceptance");
   return pill(acceptance);
 }
-function runPage(store, context, runId, state = null) {
+function runPage(store, context, runId, state = null, adoptError = null) {
   const detail = runDetail(store, runId);
   const sub = html2`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
 			>${detail.planId}@${detail.revision}</a
@@ -11400,7 +11417,7 @@ function runPage(store, context, runId, state = null) {
 				</section>
 				<section aria-labelledby="new-gaps" data-region="new-gaps">
 					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
-					${newGaps(store, detail)}
+					${newGaps(store, context, detail, adoptError)}
 				</section>
 				<section aria-labelledby="coverage" data-region="coverage">
 					<h2 id="coverage">Coverage</h2>
@@ -11429,6 +11446,7 @@ var routes = {
   history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
   planExport: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/export\\.(html|md|json)$`),
   run: new RegExp(`^/runs/(${id})$`),
+  runGap: new RegExp(`^/runs/(${id})/gaps/(${id})$`),
   report: new RegExp(`^/runs/(${id})/report\\.(html|md|json)$`),
   evidence: /^\/evidence\/([0-9A-Z]{26})$/,
   font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
@@ -11840,6 +11858,31 @@ data: ${matched.join(",") || "*"}
       }
     );
   }
+  function adopt(request, form, runId, gapId) {
+    const { actor, cookies } = actorFrom(request, form);
+    const planId = runDetail(store, runId).planId;
+    const sha = form.get("sha") ?? "";
+    const page = (message) => () => runPage(store, context(request), runId, null, { gapId, message });
+    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the change."), cookies);
+    const latest = planDetail(store, planId);
+    let adopted;
+    try {
+      adopted = adoptGaps(store, actor, {
+        reference: `${planId}@${latest.latestRevision}`,
+        runId,
+        gapIds: [gapId],
+        expectSha256: sha
+      });
+    } catch (error) {
+      const message = latest.sha256 === sha ? plainMessage(error) : html2`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
+							the plan. Review the plan, then send again.`;
+      return refuse(request, page(message), cookies);
+    }
+    redirect(request.res, `/runs/${runId}#${gapId}`, [
+      ...cookies,
+      cookie("checkmate_toast", `Brought ${gapId} into ${adopted.subject}`, 60)
+    ]);
+  }
   function saveEdit(request, form, planId, revision) {
     const { actor, cookies } = actorFrom(request, form);
     const subject = `${planId}@${revision}`;
@@ -11925,6 +11968,8 @@ data: ${matched.join(",") || "*"}
     if (plan) return decidePlan2(request, form, plan[1], Number(plan[2]));
     const run2 = routes.run.exec(pathname);
     if (run2) return decideRun(request, form, run2[1]);
+    const runGap = routes.runGap.exec(pathname);
+    if (runGap) return adopt(request, form, runGap[1], runGap[2]);
     return errorPage(request, 404, "Page not found", `Checkmate has no form at ${pathname}.`);
   }
   async function handle(req, res) {

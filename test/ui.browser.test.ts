@@ -316,3 +316,15 @@ test('the plan editor shows a long check in full at phone width', { skip }, asyn
 	assert(size.client >= size.scroll, JSON.stringify(size))
 	assert(size.client > 40, JSON.stringify(size))
 })
+
+test('Bring into plan on the run page adds the run gap to the plan', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/runs/run-7'))
+	await page.getByRole('button', { name: 'Bring into plan' }).click()
+	await page.waitForURL(/\/runs\/run-7#G4$/)
+	await page.getByRole('status').filter({ hasText: 'Brought G4 into checkout@3' }).waitFor()
+	await page.getByRole('link', { name: 'checkout@3' }).first().waitFor()
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	assert(planDetail(store, 'checkout').plan.gaps.some((gap) => gap.id === 'G4'))
+})

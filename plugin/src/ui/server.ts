@@ -8,7 +8,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
-import { answerGap, approvePlan, editPlan, planCandidate, rejectPlan } from '../plans.ts'
+import { adoptGaps, answerGap, approvePlan, editPlan, planCandidate, rejectPlan } from '../plans.ts'
 import { exportPlan, exportRun } from '../render.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
@@ -19,6 +19,7 @@ import { emptyState } from './forms.ts'
 import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
 import { gapPage, planHistoryList, planPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage } from './edit.ts'
+import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 
 export type UiOptions = { workspace: string; port?: number; defaultActor?: string }
@@ -37,6 +38,7 @@ const routes = {
 	history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
 	planExport: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/export\\.(html|md|json)$`),
 	run: new RegExp(`^/runs/(${id})$`),
+	runGap: new RegExp(`^/runs/(${id})/gaps/(${id})$`),
 	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json)$`),
 	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
@@ -503,6 +505,36 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		)
 	}
 
+	function adopt(request: Request, form: URLSearchParams, runId: string, gapId: string) {
+		const { actor, cookies } = actorFrom(request, form)
+		const planId = runDetail(store, runId).planId
+		const sha = form.get('sha') ?? ''
+		const page = (message: AdoptError['message']) => () =>
+			runPage(store, context(request), runId, null, { gapId, message })
+		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the change.'), cookies)
+		const latest = planDetail(store, planId)
+		let adopted
+		try {
+			adopted = adoptGaps(store, actor, {
+				reference: `${planId}@${latest.latestRevision}`,
+				runId,
+				gapIds: [gapId],
+				expectSha256: sha,
+			})
+		} catch (error) {
+			const message =
+				latest.sha256 === sha
+					? plainMessage(error)
+					: html`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
+							the plan. Review the plan, then send again.`
+			return refuse(request, page(message), cookies)
+		}
+		redirect(request.res, `/runs/${runId}#${gapId}`, [
+			...cookies,
+			cookie('checkmate_toast', `Brought ${gapId} into ${adopted.subject}`, 60),
+		])
+	}
+
 	function saveEdit(request: Request, form: URLSearchParams, planId: string, revision: number) {
 		const { actor, cookies } = actorFrom(request, form)
 		const subject = `${planId}@${revision}`
@@ -592,6 +624,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (plan) return decidePlan(request, form, plan[1], Number(plan[2]))
 		const run = routes.run.exec(pathname)
 		if (run) return decideRun(request, form, run[1])
+		const runGap = routes.runGap.exec(pathname)
+		if (runGap) return adopt(request, form, runGap[1], runGap[2])
 		return errorPage(request, 404, 'Page not found', `Checkmate has no form at ${pathname}.`)
 	}
 

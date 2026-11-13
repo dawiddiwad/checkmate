@@ -257,7 +257,10 @@ test('plan status follows the loop and names the role that the plan waits on', (
 	approved(opened)
 	const fix = planStatus(opened, 'checkout')
 	assert.deepEqual([fix.state, fix.waitsOn, fix.why], ['defects_open', 'factory', ['run-1 has 1 defect on build b1']])
-	assert.equal(fix.next, 'Build a fix, then checkmate run begin <runId> checkout@2 --build <build> --retest-of run-1')
+	assert.equal(
+		fix.next,
+		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --retest-of run-1'
+	)
 	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
 	assert.equal(where(), 'run_in_progress qa')
 	for (const testId of ['T1', 'T2']) {
@@ -271,6 +274,13 @@ test('plan status follows the loop and names the role that the plan waits on', (
 		cleanupReason: 'Closed.',
 	})
 	assert.equal(where(), 'awaits_acceptance oracle')
+	assert.deepEqual(
+		inbox(opened).results.map((row) => row.runId),
+		['run-2']
+	)
+	assert.equal(planStatus(opened, 'checkout').latestRun?.runId, 'run-2')
+	assert.equal(accept(opened, 'run-1').status, 'completed')
+	assert.equal(where(), 'awaits_acceptance oracle')
 	accept(opened, 'run-2')
 	assert.equal(where(), 'accepted none')
 	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { title: 'Order total' } } } })
@@ -278,6 +288,10 @@ test('plan status follows the loop and names the role that the plan waits on', (
 	approved(opened, 'checkout', 3)
 	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 tested checkout@2, not checkout@3'])
 	assert.equal(where(), 'needs_retest qa')
+	assert.equal(
+		planStatus(opened, 'checkout').next,
+		'checkmate run begin <runId> checkout@3 --build b2 --partial ready_only'
+	)
 	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { title: 'Total' } } } })
 	rejectPlan(opened, actor, { reference: 'checkout@4', rationale: 'No.' })
 	assert.equal(where(), 'plan_rejected oracle')

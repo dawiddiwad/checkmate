@@ -19,7 +19,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 | Output    | `export plan`, `export run`, `evidence get`, `ui`                                                             |
 | npm only  | `delegate`                                                                                                    |
 
-- `inbox` lists the open gaps without a pending decision, the plans that wait for approval, the results that wait for acceptance, and the plan requests that have no revision yet. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `run_gap`, `plan`, `result`, or `requested`. A `run_gap` line is a gap of a run that the plan does not have yet. Its fourth field is the run ID. A requested plan waits for the plan stage.
+- `inbox` lists the open gaps without a pending decision, the plans that wait for approval, the results that wait for acceptance, and the plan requests that have no revision yet. The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `run_gap`, `plan`, `result`, or `requested`. A `run_gap` line is a gap of a run that the plan does not have yet. Its fourth field is the run ID. Every run gap needs a decision: to drop one, answer it with `--kind defer`. A result line shows only the latest run of a retest chain. A run that a later run retests leaves the inbox, and its run page still takes a decision. A requested plan waits for the plan stage.
 - `plan list` shows each plan at its latest revision, and each plan request without a revision as `<planId> status=requested`. It takes `--needs-decision`, `--awaiting-approval`, and `--blocked`. `run list` takes `--plan` and `--build`.
 - `plan show <planId@rev>` takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`. A plan ID without a revision shows the latest revision. `run show <runId>` takes `--tests`.
 - `log` lists the operation log, newest first. It takes `--subject` and `--limit <n>` (default 50). A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`.
@@ -46,7 +46,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 | `accepted`          | none     | The oracle accepted the result.                                                   |
 | `passed`            | none     | The latest run passed. Result acceptance is not required.                         |
 
-Checkmate checks the states in this order and prints the first one that applies. An approved revision with open gaps is `ready_to_run` until its first run finishes. `plan list` prints `state=` and `waitsOn=` for each plan, and takes `--waits-on <planner|oracle|qa|factory|none>`.
+Checkmate checks the states in this order and prints the first one that applies. It ignores a run that a later run retests. For `defects_open`, `next` is a retest on a new build with `--retest-of`. For `needs_retest`, `next` is a new run on the build of the latest run. An approved revision with open gaps is `ready_to_run` until its first run finishes. `plan list` prints `state=` and `waitsOn=` for each plan, and takes `--waits-on <planner|oracle|qa|factory|none>`.
 
 ## Input
 

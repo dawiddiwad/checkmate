@@ -10,6 +10,7 @@ import { startUi } from '../plugin/src/ui/server.ts'
 import { agent, human, seedDemo } from '../scripts/ui-demo.ts'
 import {
 	answerGap,
+	beginRun,
 	checkAssertion,
 	closeStore,
 	openPlan,
@@ -570,6 +571,22 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 		checkout,
 		/<div class="meta">\s*<span class="loop"\s*><span class="st warn"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
 	)
+})
+
+test('a retested run leaves the inbox and keeps its decision form on the run page', async (t) => {
+	const { ui, workspace } = await start(t)
+	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
+	read(workspace, (store) =>
+		beginRun(store, agent, {
+			runId: 'run-9',
+			reference: 'checkout@2',
+			build: 'fixture-build-9',
+			partial: 'ready_only',
+			retestOf: 'run-7',
+		})
+	)
+	assert.doesNotMatch((await call(ui, '/')).body, /data-key="run:run-7"/)
+	assert.match((await call(ui, '/runs/run-7')).body, /name="verdict"\s*value="accept"/)
 })
 
 test('a finished run downloads its report as HTML, Markdown, or JSON', async (t) => {

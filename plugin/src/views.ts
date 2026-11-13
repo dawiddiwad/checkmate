@@ -123,13 +123,14 @@ export function inbox(store: Store) {
 			summary: planSummary(row.plan),
 		}))
 		.sort(bySince)
+	const superseded = retestedRuns(store)
 	const results = all<RunRow & { finished_at: string; sha256: string; coverage: string }>(
 		store,
 		'SELECT r.*, s.finished_at, s.sha256, s.coverage FROM runs r JOIN results s ON s.run_id = r.run_id ORDER BY s.rowid'
 	)
 		.filter((row) => {
 			const state = resultAcceptance(store, row, row.sha256)
-			return state.policy === 'required' && !state.latest
+			return state.policy === 'required' && !state.latest && !superseded.has(row.run_id)
 		})
 		.map((row) => ({
 			runId: row.run_id,
@@ -305,7 +306,8 @@ export function planStatus(store: Store, planId: string) {
 	const approval = approvalLabel(planApproval(store, plan, sha256))
 	const runs = runList(store, { planId })
 	const started = runs.find((run) => run.state === 'started')
-	const finished = runs.filter((run) => run.state === 'finalized').at(-1)
+	const superseded = retestedRuns(store)
+	const finished = runs.filter((run) => run.state === 'finalized' && !superseded.has(run.runId)).at(-1)
 	const latestRun = started ?? finished ?? null
 	const defects = finished
 		? runFindings(store, finished.runId)
@@ -370,7 +372,7 @@ export function planStatus(store: Store, planId: string) {
 					)
 		}
 		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
-		const retest = `${run} --retest-of ${finished.runId}`
+		const retest = `checkmate run begin <runId> ${subject} --build <new build> --retest-of ${finished.runId}`
 		if (defects.length)
 			return loop(
 				'defects_open',
@@ -390,7 +392,13 @@ export function planStatus(store: Store, planId: string) {
 			...unpassed.map((test) => `${test.testId} is ${test.outcome} in ${finished.runId}`),
 			...(finished.acceptance === 'rejected' ? [`Result ${finished.runId} is rejected`] : []),
 		]
-		if (why.length) return loop('needs_retest', 'qa', why, retest)
+		if (why.length)
+			return loop(
+				'needs_retest',
+				'qa',
+				why,
+				`checkmate run begin <runId> ${subject} --build ${finished.build} --partial ready_only`
+			)
 		if (finished.acceptance === 'pending')
 			return loop(
 				'awaits_acceptance',
@@ -416,6 +424,15 @@ export function planStatus(store: Store, planId: string) {
 function loopOf(store: Store, planId: string) {
 	const { state, waitsOn } = planStatus(store, planId)
 	return { state, waitsOn }
+}
+
+export function retestedRuns(store: Store) {
+	return new Set(
+		all<{ run_id: string }>(
+			store,
+			"SELECT DISTINCT request ->> '$.retestOf' AS run_id FROM runs WHERE request ->> '$.retestOf' IS NOT NULL"
+		).map((row) => row.run_id)
+	)
 }
 
 function amount(count: number, noun: string) {

@@ -1,25 +1,47 @@
 {
 	"name": "@xoxoai/checkmate",
 	"version": "0.7.0",
-	"description": "Run Checkmate QA workflows from the command line with Claude Code",
-	"type": "module",
-	"bin": {
-		"checkmate": "dist/checkmate.js"
-	},
-	"files": [
-		"dist",
-		"plugin"
+	"description": "The QA system of record for an agent software factory",
+	"keywords": [
+		"ai",
+		"ai-agents",
+		"ai-governance",
+		"claude-plugin",
+		"cli-tool",
+		"sdlc",
+		"software-factory",
+		"test-automation"
 	],
-	"engines": {
-		"node": ">=24.12.0"
-	},
-	"scripts": {
-		"prepack": "node ../scripts/build-cli.ts"
+	"homepage": "https://github.com/dawiddiwad/checkmate#readme",
+	"bugs": {
+		"url": "https://github.com/dawiddiwad/checkmate/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/dawiddiwad/checkmate.git",
 		"directory": "cli"
 	},
-	"license": "MIT"
+	"license": "MIT",
+	"author": {
+		"name": "Dawid Dobrowolski"
+	},
+	"type": "module",
+	"bin": {
+		"checkmate": "dist/checkmate.js"
+	},
+	"files": [
+		"dist",
+		"plugin",
+		"README.md",
+		"LICENSE"
+	],
+	"engines": {
+		"node": ">=24.12.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"prepack": "node ../scripts/build-cli.ts"
+	}
 }

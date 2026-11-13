@@ -49,7 +49,7 @@ The marketplace source is `./plugin`. Claude Code copies only that directory int
 
 The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies. `plugin/package.json` sets the module type only. `node test/plugin.ts` copies `plugin/` to a temporary directory and runs the CLI there.
 
-The root package is private. It installs development dependencies and runs development commands. The npm CLI package is `cli/` (`@xoxoai/checkmate`). Its `prepack` script runs `scripts/build-cli.ts`, which bundles `cli/src/main.ts` and copies `plugin/` into the package. The release job publishes it.
+The root package is private. It installs development dependencies and runs development commands. The npm CLI package is `cli/` (`@xoxoai/checkmate`). Its `prepack` script runs `scripts/build-cli.ts`, which bundles `cli/src/main.ts` and copies `plugin/`, `README.md`, and `LICENSE` into the package. In the package README, relative links and images point to the release tag on GitHub, so they work on npm. The release job publishes it.
 
 ## Releases
 

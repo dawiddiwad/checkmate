@@ -108,6 +108,15 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 
 `checkmate plan open checkout --target checkout-local@1` records the request from standard input. The target revision must exist.
 
+For a request with sources only, you can give flags in place of standard input:
+
+```sh
+checkmate plan open checkout --target checkout-local@1 --objective "Verify checkout totals." \
+  --source jira:SHOP-12 --source docs/checkout.md --instructions "Use the acceptance criteria only."
+```
+
+`--source` is repeatable. `--source` and `--instructions` need `--objective`. With `--objective`, the command does not read standard input. The validation is the same.
+
 A request with requirements:
 
 ```json

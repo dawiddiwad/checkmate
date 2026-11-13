@@ -25,12 +25,12 @@ A human can make the oracle's decisions at any time in the review UI.
 Install the CLI with `npm i -g @xoxoai/checkmate@^0.7.0` and set up a target with `checkmate target open` and `checkmate delegate setup`. Then the factory opens a plan for each ticket, lets the planner write it, and reads what waits for the oracle:
 
 ```sh
-checkmate plan open checkout --target shop@1 < request.json
+checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." --source docs/checkout.md
 checkmate delegate plan checkout --allow Read --allow Bash
 checkmate inbox
 ```
 
-`request.json` holds the objective and the sources ([Plan request](docs/CONFIGURATION.md#plan-request)). Your factory can read the record with `inbox`, `log`, `query` (read-only), and `export --format json`. [The factory loop](docs/WORKFLOW.md#factory-loop) shows each step, from the early red run to acceptance.
+To give requirements or plan tools, send the request as JSON on standard input ([Plan request](docs/CONFIGURATION.md#plan-request)). Your factory can read the record with `inbox`, `log`, `query` (read-only), and `export --format json`. [The factory loop](docs/WORKFLOW.md#factory-loop) shows each step, from the early red run to acceptance.
 
 ## Solo mode: your Claude Code
 

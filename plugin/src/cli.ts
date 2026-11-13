@@ -97,6 +97,20 @@ function toolSpec(spec: string): RequestedTool {
 	return { name: match[1], kind: match[2] as RequestedTool['kind'], purpose: match[3] }
 }
 
+function planRequestInput(args: Args, stdin: () => unknown) {
+	const objective = value(args, 'objective')
+	const sources = list(args, 'source')
+	const instructions = value(args, 'instructions')
+	if (objective === undefined) {
+		requireCondition(
+			!sources && instructions === undefined,
+			'Give --objective with --source and --instructions, or send the request on standard input'
+		)
+		return stdin()
+	}
+	return { objective, context: { sources: sources ?? [], ...(instructions === undefined ? {} : { instructions }) } }
+}
+
 function short(sha256: unknown) {
 	return typeof sha256 === 'string' ? sha256.slice(0, 8) : sha256
 }
@@ -215,7 +229,7 @@ const commands: Record<string, Command> = {
 	},
 	'plan open': {
 		positionals: ['planId'],
-		flags: { target: 'value' },
+		flags: { target: 'value', objective: 'value', source: 'repeat', instructions: 'value' },
 		required: ['target'],
 		write: true,
 		stdin: true,
@@ -223,7 +237,7 @@ const commands: Record<string, Command> = {
 			openPlan(store, actor, {
 				planId: value(args, 'planId')!,
 				target: value(args, 'target')!,
-				request: stdin(),
+				request: planRequestInput(args, stdin),
 			}),
 		print: (reply) => ({ facts: { target: reply.data.target, recorded: reply.data.recorded } }),
 	},

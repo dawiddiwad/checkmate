@@ -95,12 +95,9 @@ checkmate delegate setup checkout-local --allow Read --allow Bash
 Open the plan with its sources and instructions, then delegate the plan stage. Allow the tools that read the sources. `mcp__jira` allows every tool of the `jira` server. The worker uses the MCP servers of the host configuration:
 
 ```sh
-checkmate plan open checkout --target checkout-local@1 <<'EOF'
-{
-  "objective": "Verify checkout totals and identify missing acceptance decisions.",
-  "context": { "sources": ["jira:SHOP-12"], "instructions": "Use the acceptance criteria only." }
-}
-EOF
+checkmate plan open checkout --target checkout-local@1 \
+  --objective "Verify checkout totals and identify missing acceptance decisions." \
+  --source jira:SHOP-12 --instructions "Use the acceptance criteria only."
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 ```
 
@@ -164,9 +161,7 @@ checkmate target open shop --base-url http://127.0.0.1:4173 --capabilities brows
 checkmate delegate setup shop --allow Read --allow Bash
 
 # Iteration 1. Planner: plan from the ticket. Unclear requirements become gaps.
-checkmate plan open checkout --target shop@1 <<'EOF'
-{ "objective": "Verify checkout totals.", "context": { "sources": ["jira:SHOP-12"] } }
-EOF
+checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." --source jira:SHOP-12
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 
 # Oracle: approve. QA: run the ready tests early. Most fail. G1 blocks T4, so T4 waits.

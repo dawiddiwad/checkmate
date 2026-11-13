@@ -427,6 +427,30 @@ test('inbox and plan list show a plan request without a revision', (t) => {
 	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 })
 
+test('plan open takes the objective, sources, and instructions as flags', (t) => {
+	const workspace = setup(t)
+	const open = (planId: string, ...flags: string[]) =>
+		cli(workspace, ['plan', 'open', planId, '--target', 'checkout-local@1', ...flags])
+	const flags = ['--objective', 'Verify totals.', '--source', 'docs/a.md', '--source', 'jira:SHOP-12']
+	const opened = open('flags', ...flags, '--instructions', 'Use section 2.')
+	assert.equal(opened.lines[0], 'completed flags target=checkout-local@1 recorded=true')
+	assert.deepEqual(json(workspace, ['plan', 'request', 'flags']).body.context, {
+		sources: ['docs/a.md', 'jira:SHOP-12'],
+		instructions: 'Use section 2.',
+	})
+	const piped = { objective: 'Verify totals.', context: { sources: ['docs/a.md', 'jira:SHOP-12'] } }
+	assert.equal(cli(workspace, ['plan', 'open', 'same', '--target', 'checkout-local@1'], piped).code, 0)
+	assert.equal(open('same', ...flags).lines[0], 'completed same target=checkout-local@1 recorded=false')
+	assert.deepEqual(open('lonely', '--source', 'docs/a.md').lines, [
+		'rejected lonely',
+		'reason: Give --objective with --source and --instructions, or send the request on standard input',
+	])
+	assert.equal(
+		open('empty', '--objective', 'Verify totals.').lines.at(-1),
+		'reason: A plan request needs requirements or context sources'
+	)
+})
+
 test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {
 	const workspace = setup(t)
 	const shown = json(workspace, ['plan', 'show', 'checkout@1']).body

@@ -9,7 +9,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 ## Plan request
 
-The factory, or the oracle in the same session, records the request with `checkmate plan open <planId> --target <targetId@rev>` and a JSON payload on standard input. The request has these parts:
+The factory, or the oracle in the same session, records the request with `checkmate plan open <planId> --target <targetId@rev>`. It gives the objective and the sources as flags (`--objective`, `--source`, `--instructions`), or the full request as JSON on standard input. The request has these parts:
 
 - `objective`: the scope of the plan.
 - `requirements`: optional. When the request has requirements, the plan covers exactly these requirements.
@@ -24,7 +24,13 @@ A request needs `requirements` or `context.sources`. When it has only sources, y
 ## Steps
 
 1. Run `checkmate plan request <planId>`. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations.
-   - If it refuses with `Unknown plan`, and you are in the same session, record the request from the oracle's message. Run `checkmate target show <targetId>` for the latest target revision. Then send the request in a heredoc:
+   - If it refuses with `Unknown plan`, and you are in the same session, record the request from the oracle's message. Run `checkmate target show <targetId>` for the latest target revision. Then record the request:
+
+     ```sh
+     checkmate plan open <planId> --target <targetId@rev> --objective "<from the oracle>" --source docs/checkout.md
+     ```
+
+   - To give requirements or tools, send the full request in a heredoc in place of the flags:
 
      ```sh
      checkmate plan open <planId> --target <targetId@rev> <<'EOF'

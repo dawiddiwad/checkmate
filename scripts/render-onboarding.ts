@@ -24,7 +24,7 @@ try {
 		await overview.locator('main').screenshot({ path: 'docs/img/checkmate-infographic.png' })
 	}
 
-	const page = await browser.newPage({ viewport: { width: 1200, height: 420 }, deviceScaleFactor: 1 })
+	const page = await browser.newPage({ viewport: { width: 900, height: 732 }, deviceScaleFactor: 1 })
 	await page.goto(media('onboarding.html'))
 	await page.evaluate(() => document.fonts.ready)
 	await page.evaluate(() => (window as unknown as Animation).measure())

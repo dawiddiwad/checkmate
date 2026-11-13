@@ -7,10 +7,11 @@
 	@font-face { font-family: 'Space Grotesk'; src: url('../../plugin/src/ui/assets/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
 	@font-face { font-family: 'Inter'; src: url('../../plugin/src/ui/assets/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
 	@font-face { font-family: 'JetBrains Mono'; src: url('../../plugin/src/ui/assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
-	main { width: 1200px; height: 420px; position: relative; overflow: hidden; background: var(--bg); }
+	main { width: 900px; height: 732px; position: relative; overflow: hidden; background: var(--bg); }
 
-	.swim { position: absolute; left: 560px; top: 0; width: 640px; height: 420px; border-left: 1px solid var(--line-strong); }
-	.lane { position: absolute; left: 0; width: 640px; height: 52px; border-top: 1px solid var(--line); }
+	.swim { position: absolute; left: 0; top: 312px; width: 900px; height: 420px; }
+	.divider { position: absolute; left: 0; width: 900px; top: 48px; border-top: 1px solid var(--line-strong); }
+	.lane { position: absolute; left: 0; width: 900px; height: 52px; border-top: 1px solid var(--line); }
 	.lane b { position: absolute; left: 12px; top: 0; font: 600 18px/51px var(--display); }
 	.lane.record { top: 284px; height: 136px; background: #121a28; border-top: 2px solid var(--blue-line); }
 	.lane.record b { color: var(--blue); font-size: 16px; line-height: 22px; top: 18px; }
@@ -18,7 +19,7 @@
 	.gutter { position: absolute; left: 104px; top: 48px; bottom: 0; border-left: 1px solid var(--line-strong); }
 	.axis { position: absolute; left: 12px; top: 48px; font: 500 15px/24px var(--mono); color: var(--faint); }
 
-	.window { position: absolute; left: 105px; top: 0; width: 535px; height: 420px; overflow: hidden; }
+	.window { position: absolute; left: 105px; top: 0; width: 795px; height: 420px; overflow: hidden; }
 	.track { left: 0; top: 0; width: 2000px; height: 420px; }
 	.iteration { position: absolute; top: 48px; bottom: 0; border-left: 1px dashed var(--line-strong); }
 	.iteration span { position: absolute; left: 12px; top: 0; font: 600 15px/24px var(--mono); letter-spacing: 1.5px; color: var(--faint); white-space: nowrap; }
@@ -32,8 +33,8 @@
 	.record[data-row='0'] { top: 302px; }
 	.record[data-row='1'] { top: 346px; }
 
-	.loop { position: absolute; left: 0; top: 48px; width: 560px; height: 372px; }
-	.loop .area { position: absolute; left: -4px; top: 0; width: 560px; height: 372px; }
+	.loop { position: absolute; left: 0; top: 48px; width: 900px; height: 312px; }
+	.loop .area { position: absolute; left: -10px; top: 0; width: 900px; height: 312px; }
 	.loop svg { position: absolute; left: 0; top: 0; }
 	.ring { fill: none; stroke: var(--line-strong); stroke-width: 3; }
 	.ring-head { fill: var(--line-strong); }
@@ -41,64 +42,64 @@
 	.hot { stroke-width: 3; stroke-dasharray: 4 4; }
 	.station { position: absolute; width: 124px; height: 36px; margin: -18px 0 0 -62px; border: 2px solid var(--line-strong); border-radius: 8px; background: var(--card); font: 600 18px/32px var(--display); text-align: center; white-space: nowrap; }
 	.station .lit { position: absolute; inset: -2px; border-radius: 8px; color: var(--bg); line-height: 36px; }
-	.centre { position: absolute; left: 116px; top: 82px; width: 300px; height: 168px; background: #121a28; border: 2px solid var(--blue-line); border-radius: 10px; }
+	.centre { position: absolute; left: 250px; top: 58px; width: 400px; height: 150px; background: #121a28; border: 2px solid var(--blue-line); border-radius: 10px; }
 	.centre .top { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--blue-line); font: 600 17px var(--display); }
 	.centre .top .mark { gap: 3px; }
 	.centre .top .mark i { width: 11px; height: 11px; }
 	.centre .iter { position: absolute; right: 14px; top: 0; font: 500 14px/36px var(--mono); color: var(--muted); }
-	.group { position: absolute; left: 14px; top: 46px; right: 14px; }
-	.group div { display: flex; align-items: center; gap: 10px; height: 38px; font: 600 17px var(--mono); white-space: nowrap; }
+	.group { position: absolute; left: 14px; top: 42px; right: 14px; }
+	.group div { display: flex; align-items: center; gap: 10px; height: 34px; font: 600 17px var(--mono); white-space: nowrap; }
 	.group i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 	.group .chip { font-size: 16px; line-height: 28px; padding: 0 9px; }
 	.group .outside { font: 400 16px var(--body); color: var(--muted); }
-	.badge { position: absolute; left: 276px; top: 330px; transform: translateX(-50%); font: 500 15px/28px var(--mono); color: var(--muted); background: var(--card); border: 1px dashed var(--human-line); border-radius: 14px; padding: 0 14px; white-space: nowrap; }
+	.badge { position: absolute; left: 450px; top: 270px; transform: translateX(-50%); font: 500 15px/28px var(--mono); color: var(--muted); background: var(--card); border: 1px dashed var(--human-line); border-radius: 14px; padding: 0 14px; white-space: nowrap; }
 	.badge .lit { position: absolute; inset: -1px; border: 1px solid var(--human); border-radius: 14px; background: #262b34; color: var(--text); padding: 0 14px; }
 
-	.bar { position: absolute; left: 0; top: 0; width: 1200px; height: 48px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 2; }
+	.bar { position: absolute; left: 0; top: 0; width: 900px; height: 48px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 2; }
 	.caption { position: absolute; left: 16px; top: 0; font: 600 22px/48px var(--display); white-space: nowrap; }
 	.bar .mark { position: absolute; right: 18px; top: 17px; gap: 4px; }
 	.bar .mark i { width: 14px; height: 14px; }
 
 	.solo { position: absolute; inset: 0; background: var(--bg); z-index: 3; }
-	.solo h1 { position: absolute; left: 48px; top: 40px; margin: 0; font: 600 30px/40px var(--display); }
+	.solo h1 { position: absolute; left: 56px; top: 110px; margin: 0; font: 600 30px/40px var(--display); }
 	.solo h1 i { font-style: normal; color: var(--oracle); }
-	.term { position: absolute; left: 48px; top: 112px; width: 560px; padding: 14px 24px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 6px; font: 500 21px/40px var(--mono); }
+	.term { position: absolute; left: 56px; top: 188px; width: 600px; padding: 14px 24px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 6px; font: 500 21px/40px var(--mono); }
 	.term span { color: var(--faint); }
-	.solo p { position: absolute; left: 680px; top: 128px; width: 490px; margin: 0; font: 400 22px/34px var(--body); color: var(--muted); }
+	.solo p { position: absolute; left: 56px; top: 418px; width: 780px; margin: 0; font: 400 22px/34px var(--body); color: var(--muted); }
 	.solo p b { color: var(--text); font-weight: 500; }
-	.brand { position: absolute; left: 680px; top: 300px; display: flex; align-items: center; gap: 16px; font: 600 34px var(--display); }
+	.brand { position: absolute; left: 56px; top: 560px; display: flex; align-items: center; gap: 16px; font: 600 34px var(--display); }
 	.brand .mark { gap: 7px; }
 	.brand .mark i { width: 24px; height: 24px; border-width: 3px; }
 </style>
 <main>
 	<div class="loop">
 		<div class="area">
-		<svg width="560" height="372">
-			<rect class="ring" x="56" y="48" width="440" height="234" rx="24" />
-			<path class="ring-head" d="M282 48 l-10 -6 v12 z" />
-			<path class="ring-head" d="M496 112 l-6 -10 h12 z" />
-			<path class="ring-head" d="M496 228 l-6 -10 h12 z" />
-			<path class="ring-head" d="M270 282 l10 -6 v12 z" />
-			<path class="ring-head" d="M56 218 l-6 10 h12 z" />
-			<path class="ring-head" d="M56 102 l-6 10 h12 z" />
-			<line class="spoke" x1="160" y1="66" x2="160" y2="82" />
-			<line class="spoke" x1="392" y1="66" x2="392" y2="82" />
-			<line class="spoke" x1="434" y1="165" x2="416" y2="165" />
-			<line class="spoke" x1="392" y1="264" x2="392" y2="250" />
-			<line class="spoke" x1="160" y1="264" x2="160" y2="250" />
-			<line class="spoke" x1="276" y1="250" x2="276" y2="316" />
-			<line class="hot" data-light="planner" style="stroke: var(--planner)" x1="160" y1="66" x2="160" y2="82" />
-			<line class="hot" data-light="oracle" style="stroke: var(--oracle)" x1="392" y1="66" x2="392" y2="82" />
-			<line class="hot" data-light="qa" style="stroke: var(--qa)" x1="434" y1="165" x2="416" y2="165" />
-			<line class="hot" data-light="factory" style="stroke: var(--factory)" x1="392" y1="264" x2="392" y2="250" />
-			<line class="hot" data-light="retest" style="stroke: var(--qa)" x1="160" y1="264" x2="160" y2="250" />
-			<line class="hot" data-light="human" style="stroke: var(--human)" x1="276" y1="250" x2="276" y2="316" />
+		<svg width="900" height="312">
+			<rect class="ring" x="70" y="30" width="760" height="206" rx="24" />
+			<path class="ring-head" d="M456 30 l-10 -6 v12 z" />
+			<path class="ring-head" d="M830 84 l-6 -10 h12 z" />
+			<path class="ring-head" d="M830 194 l-6 -10 h12 z" />
+			<path class="ring-head" d="M444 236 l10 -6 v12 z" />
+			<path class="ring-head" d="M70 180 l-6 10 h12 z" />
+			<path class="ring-head" d="M70 80 l-6 10 h12 z" />
+			<line class="spoke" x1="330" y1="48" x2="330" y2="58" />
+			<line class="spoke" x1="570" y1="48" x2="570" y2="58" />
+			<line class="spoke" x1="768" y1="133" x2="650" y2="133" />
+			<line class="spoke" x1="570" y1="218" x2="570" y2="208" />
+			<line class="spoke" x1="330" y1="218" x2="330" y2="208" />
+			<line class="spoke" x1="450" y1="208" x2="450" y2="270" />
+			<line class="hot" data-light="planner" style="stroke: var(--planner)" x1="330" y1="48" x2="330" y2="58" />
+			<line class="hot" data-light="oracle" style="stroke: var(--oracle)" x1="570" y1="48" x2="570" y2="58" />
+			<line class="hot" data-light="qa" style="stroke: var(--qa)" x1="768" y1="133" x2="650" y2="133" />
+			<line class="hot" data-light="factory" style="stroke: var(--factory)" x1="570" y1="218" x2="570" y2="208" />
+			<line class="hot" data-light="retest" style="stroke: var(--qa)" x1="330" y1="218" x2="330" y2="208" />
+			<line class="hot" data-light="human" style="stroke: var(--human)" x1="450" y1="208" x2="450" y2="270" />
 		</svg>
-		<div class="station planner" style="left: 160px; top: 48px">Planner<div class="lit" data-light="planner" style="background: var(--planner)">Planner</div></div>
-		<div class="station oracle" style="left: 392px; top: 48px">Oracle<div class="lit" data-light="oracle" style="background: var(--oracle)">Oracle</div></div>
-		<div class="station qa" style="left: 496px; top: 165px">QA<div class="lit" data-light="qa" style="background: var(--qa)">QA</div></div>
-		<div class="station factory" style="left: 392px; top: 282px">Factory<div class="lit" data-light="factory" style="background: var(--factory)">Factory</div></div>
-		<div class="station qa" style="left: 160px; top: 282px">QA retest<div class="lit" data-light="retest" style="background: var(--qa)">QA retest</div></div>
+		<div class="station planner" style="left: 330px; top: 30px">Planner<div class="lit" data-light="planner" style="background: var(--planner)">Planner</div></div>
+		<div class="station oracle" style="left: 570px; top: 30px">Oracle<div class="lit" data-light="oracle" style="background: var(--oracle)">Oracle</div></div>
+		<div class="station qa" style="left: 830px; top: 133px">QA<div class="lit" data-light="qa" style="background: var(--qa)">QA</div></div>
+		<div class="station factory" style="left: 570px; top: 236px">Factory<div class="lit" data-light="factory" style="background: var(--factory)">Factory</div></div>
+		<div class="station qa" style="left: 330px; top: 236px">QA retest<div class="lit" data-light="retest" style="background: var(--qa)">QA retest</div></div>
 		<div class="centre">
 			<div class="top"><span class="mark"><i></i><i></i><i></i><i></i></span>checkmate</div>
 			<div class="iter" data-from="0" data-to="10.4">iteration 1</div>
@@ -110,6 +111,7 @@
 	</div>
 
 	<div class="swim">
+		<div class="divider"></div>
 		<div class="lane" style="top: 72px"><b class="planner">Planner</b></div>
 		<div class="lane" style="top: 124px"><b class="oracle">Oracle</b></div>
 		<div class="lane" style="top: 176px"><b class="qa">QA</b></div>
@@ -177,7 +179,7 @@
 <script>
 	const fade = 0.3
 	const teamEnd = 25
-	const pans = [[0, 0], [5, 0], [5.8, 260], [10, 260], [10.8, 640], [15.5, 640], [16.3, 1140], [21, 1140], [21.7, 1440]]
+	const pans = [[0, 0], [10, 0], [10.8, 620], [15.5, 620], [16.3, 1140]]
 	const track = document.getElementById('track')
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 	const ease = (t) => t * t * (3 - 2 * t)

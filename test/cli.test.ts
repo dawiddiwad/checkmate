@@ -211,7 +211,7 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	assert.equal(missing.lines[0], 'invalid_request run gate')
 	assert.match(
 		missing.lines[1],
-		/^reason: Missing --build\. Usage: checkmate run gate <reference> --tests <a,b> --build <value>/
+		/^reason: Missing --build\. Usage: checkmate run gate <reference> \[--tests <a,b>\] --build <value>/
 	)
 })
 
@@ -270,7 +270,7 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	])
 	assert.match(
 		begun.lines[0],
-		/^completed run-1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
+		/^completed run-1 tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
 	)
 	const finished = cli(workspace, [
 		'run',
@@ -449,6 +449,20 @@ test('plan open takes the objective, sources, and instructions as flags', (t) =>
 		open('empty', '--objective', 'Verify totals.').lines.at(-1),
 		'reason: A plan request needs requirements or context sources'
 	)
+})
+
+test('run gate and run begin with ready_only and no --tests print the selection and the tests left out', (t) => {
+	const workspace = setup(t)
+	cli(workspace, ['plan', 'approve', 'checkout@1', '--rationale', 'Run early.'])
+	const early = ['--build', 'b1', '--partial', 'ready_only']
+	const checked = cli(workspace, ['run', 'gate', 'checkout@1', ...early])
+	assert.match(checked.lines[0], /^completed checkout@1 sha256=[a-f0-9]{8} tests=T1$/)
+	assert.deepEqual(checked.lines.slice(1), ['T2\tleft_out\tblocked by G1', 'T3\tleft_out\tblocked by G2'])
+	const begun = cli(workspace, ['run', 'begin', 'run-1', 'checkout@1', ...early])
+	assert.match(begun.lines[0], /^completed run-1 tests=T1 startedAt=/)
+	assert.deepEqual(begun.lines.slice(1), checked.lines.slice(1))
+	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1'])
+	assert.equal(missing.lines[1], 'reason: Select one or more tests with --tests, or add --partial ready_only')
 })
 
 test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {

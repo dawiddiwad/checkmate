@@ -17,6 +17,7 @@ import {
 	showPending,
 	showPlanRequest,
 } from '../plugin/src/plans.ts'
+import { beginRun, runState } from '../plugin/src/runs.ts'
 import { inbox, planDetail, planHistory } from '../plugin/src/views.ts'
 import { actor, approved, candidate, plan, planRequest, promotionDelta, revised, store, target } from './support.ts'
 
@@ -400,6 +401,48 @@ test('the gate collects every reason in order', (t) => {
 		() => gate(opened, { reference: 'checkout@1', tests: ['T1'], build: 'b', partial: 'run_ready' }),
 		/Invalid partial execution/
 	)
+})
+
+test('ready_only without tests selects the ready tests and lists the tests it leaves out', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	approved(opened, 'checkout', 1)
+	const checked = gate(opened, { reference: 'checkout@1', build: 'b', partial: 'ready_only' })
+	assert.equal(checked.reply.status, 'completed')
+	assert.deepEqual(checked.reply.data.tests, ['T1'])
+	assert.deepEqual(checked.reply.data.leftOut, [
+		{ testId: 'T2', reason: 'blocked by G1' },
+		{ testId: 'T3', reason: 'blocked by G2' },
+	])
+	const begun = beginRun(opened, actor, {
+		runId: 'run-1',
+		reference: 'checkout@1',
+		build: 'b',
+		partial: 'ready_only',
+	})
+	assert.equal(begun.status, 'completed')
+	assert.deepEqual(runState(opened, 'run-1').request.selectedTestIds, ['T1'])
+	assert.throws(
+		() => gate(opened, { reference: 'checkout@1', build: 'b' }),
+		/Select one or more tests with --tests, or add --partial ready_only/
+	)
+	const chain = candidate()
+	chain.gaps[0].requirementIds = []
+	chain.gaps[0].testIds = ['T1']
+	plan(opened, 'chain', chain)
+	const none = gate(opened, { reference: 'chain@1', build: 'b', partial: 'ready_only' })
+	assert.deepEqual(none.reply.data.leftOut, [
+		{ testId: 'T1', reason: 'blocked by G1' },
+		{ testId: 'T2', reason: 'needs T1, which is left out' },
+		{ testId: 'T3', reason: 'blocked by G2' },
+	])
+	assert.deepEqual(none.reply.reasons, ['No test is ready in chain@1', 'Plan chain@1 is not approved'])
+	revised(opened)
+	approved(opened)
+	const deferred = gate(opened, { reference: 'checkout@2', build: 'b', partial: 'ready_only' })
+	assert.deepEqual(deferred.reply.data.tests, ['T1', 'T2'])
+	assert.deepEqual(deferred.reply.data.leftOut, [{ testId: 'T3', reason: 'deferred by G2' }])
 })
 
 test('a request with context sources and no requirements takes drafted requirements that cite a source', (t) => {

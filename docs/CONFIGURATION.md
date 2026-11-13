@@ -334,17 +334,18 @@ A runtime gap is open, has no decision, and has an ID that is new in the plan an
 
 `run begin` takes these flags. `run gate` takes the same flags except `--on-new-blocker` and `--timeout`. It checks the gate and records nothing.
 
-| Flag               | Values                                      | Default               |
-| ------------------ | ------------------------------------------- | --------------------- |
-| `--tests`          | A non-empty list of test IDs.               | Required.             |
-| `--build`          | The application build identity.             | Required.             |
-| `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution` |
-| `--on-new-blocker` | `return_to_oracle`, `continue_independent`  | `return_to_oracle`    |
-| `--timeout`        | 1 to 3600 seconds.                          | 600                   |
-| `--retest-of`      | A finished run of the same plan and target. | None.                 |
+| Flag               | Values                                      | Default                                       |
+| ------------------ | ------------------------------------------- | --------------------------------------------- |
+| `--tests`          | A non-empty list of test IDs.               | Required, except with `--partial ready_only`. |
+| `--build`          | The application build identity.             | Required.                                     |
+| `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution`                         |
+| `--on-new-blocker` | `return_to_oracle`, `continue_independent`  | `return_to_oracle`                            |
+| `--timeout`        | 1 to 3600 seconds.                          | 600                                           |
+| `--retest-of`      | A finished run of the same plan and target. | None.                                         |
 
 - `wait_for_resolution` refuses a run when the plan has an open blocking gap.
 - `ready_only` permits a selection of ready tests. It does not make a blocked test ready.
+- With `ready_only` and no `--tests`, Checkmate selects the ready tests. It leaves out a test that is blocked or deferred by a gap, a test whose local prerequisite is left out, and a test that a cross-plan dependency blocks. The response prints `tests=<selection>` and one `<testId> left_out <reason>` line for each test that it leaves out. When no test is ready, the gate refuses the run.
 - `--on-new-blocker` tells the execute stage what to do after it records a new blocking gap. `return_to_oracle`: stop and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect. Checkmate records the policy. The agent applies it.
 - Include local prerequisite tests in the same selection. A cross-plan dependency needs the latest finalized result for the same build to show `passed`. When result acceptance is required, the result must also be accepted.
 - A retest needs a new run ID and a new build. The prior run does not change.

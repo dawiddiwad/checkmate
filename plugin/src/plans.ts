@@ -37,7 +37,7 @@ export type GapAnswer = {
 export type Verdict = { reference: string; rationale: string; expectSha256?: string }
 export type GateInput = {
 	reference: string
-	tests: string[]
+	tests?: string[]
 	build: string
 	partial?: string
 	retestOf?: string | null
@@ -610,14 +610,17 @@ export function gate(store: Store, input: GateInput) {
 	const { plan } = revision
 	const subject = `${plan.planId}@${plan.revision}`
 	const target = targetRevision(store, plan.target.targetId, plan.target.revision)
-	requireCondition(Array.isArray(input.tests) && input.tests.length > 0, 'Select one or more tests with --tests')
-	requireCondition(new Set(input.tests).size === input.tests.length, 'Duplicate test in --tests')
-	const tests = index(plan.tests, 'id', 'test')
-	references(input.tests, tests, `test in ${subject}`)
 	const build = requireText(input.build, 'application build (--build)')
 	const partial = requireChoice(input.partial ?? 'wait_for_resolution', partialModes, 'partial execution (--partial)')
+	const tests = index(plan.tests, 'id', 'test')
+	const selection =
+		input.tests === undefined && partial === 'ready_only'
+			? readySelection(store, plan, build)
+			: givenSelection(input.tests, tests, subject)
+	const selected = selection.tests
 	if (input.retestOf) retestCheck(store, input.retestOf, plan, build)
 	const reasons: string[] = []
+	if (!selected.length) reasons.push(`No test is ready in ${subject}`)
 	if (!target.profile.readyForLiveExecution)
 		reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`)
 	const approval = planApproval(store, plan, revision.sha256)
@@ -625,7 +628,7 @@ export function gate(store: Store, input: GateInput) {
 	if (partial === 'wait_for_resolution')
 		for (const gap of plan.gaps)
 			if (gap.status === 'open' && gap.severity === 'blocking') reasons.push(`Open blocking gap: ${gap.id}`)
-	for (const id of input.tests) {
+	for (const id of selected) {
 		const test = tests.get(id)!
 		if (test.readiness !== 'ready') reasons.push(`Test is not ready: ${id}`)
 		if (!target.profile.capabilities.includes(test.capability))
@@ -634,10 +637,10 @@ export function gate(store: Store, input: GateInput) {
 			reasons.push(`Operation is not permitted: ${id}`)
 		if (!test.assertions.length) reasons.push(`Test has no assertions: ${id}`)
 		for (const dependency of test.dependsOn)
-			if (!dependency.includes(':') && !input.tests.includes(dependency))
+			if (!dependency.includes(':') && !selected.includes(dependency))
 				reasons.push(`Missing prerequisite: ${dependency}`)
 	}
-	for (const id of input.tests)
+	for (const id of selected)
 		for (const dependency of tests.get(id)!.dependsOn.filter((dependency) => dependency.includes(':'))) {
 			const cause = dependencyBlock(store, dependency, build)
 			if (cause) reasons.push(`Blocked by ${dependency}: ${cause}`)
@@ -647,13 +650,72 @@ export function gate(store: Store, input: GateInput) {
 			status: reasons.length ? ('needs_decision' as const) : ('completed' as const),
 			subject,
 			reasons,
-			data: { planId: plan.planId, revision: plan.revision, sha256: revision.sha256 },
+			data: {
+				planId: plan.planId,
+				revision: plan.revision,
+				sha256: revision.sha256,
+				tests: selected,
+				leftOut: selection.leftOut,
+			},
 		},
+		tests: selected,
 		revision,
 		target,
 		build,
 		partial,
 	}
+}
+
+type LeftOut = { testId: string; reason: string }
+
+function givenSelection(selected: string[] | undefined, tests: Map<string, Test>, subject: string) {
+	requireCondition(
+		Array.isArray(selected) && selected.length > 0,
+		'Select one or more tests with --tests, or add --partial ready_only'
+	)
+	requireCondition(new Set(selected).size === selected.length, 'Duplicate test in --tests')
+	references(selected, tests, `test in ${subject}`)
+	return { tests: selected, leftOut: [] as LeftOut[] }
+}
+
+function readySelection(store: Store, plan: Plan, build: string) {
+	const leftOut: LeftOut[] = []
+	for (const test of plan.tests) {
+		const reason = notReadyReason(store, plan, test, build)
+		if (reason) leftOut.push({ testId: test.id, reason })
+	}
+	let selected = plan.tests.map((test) => test.id).filter((id) => !leftOut.some((item) => item.testId === id))
+	for (let changed = true; changed;) {
+		changed = false
+		for (const test of plan.tests.filter((test) => selected.includes(test.id))) {
+			const missing = test.dependsOn.find((id) => !id.includes(':') && !selected.includes(id))
+			if (!missing) continue
+			leftOut.push({ testId: test.id, reason: `needs ${missing}, which is left out` })
+			selected = selected.filter((id) => id !== test.id)
+			changed = true
+		}
+	}
+	const order = plan.tests.map((test) => test.id)
+	leftOut.sort((a, b) => order.indexOf(a.testId) - order.indexOf(b.testId))
+	return { tests: selected, leftOut }
+}
+
+function notReadyReason(store: Store, plan: Plan, test: Test, build: string) {
+	if (test.readiness !== 'ready') {
+		const gaps = plan.gaps.filter(
+			(gap) =>
+				test.gapIds.includes(gap.id) &&
+				(test.readiness === 'deferred'
+					? gap.status === 'deferred'
+					: gap.status === 'open' && gap.severity === 'blocking')
+		)
+		return `${test.readiness} by ${gaps.map((gap) => gap.id).join(', ')}`
+	}
+	for (const dependency of test.dependsOn.filter((id) => id.includes(':'))) {
+		const cause = dependencyBlock(store, dependency, build)
+		if (cause) return `blocked by ${dependency}: ${cause}`
+	}
+	return null
 }
 
 function retestCheck(store: Store, runId: string, plan: Plan, build: string) {

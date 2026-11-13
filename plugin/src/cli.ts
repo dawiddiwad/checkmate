@@ -111,6 +111,11 @@ function planRequestInput(args: Args, stdin: () => unknown) {
 	return { objective, context: { sources: sources ?? [], ...(instructions === undefined ? {} : { instructions }) } }
 }
 
+function leftOutLines(reply: Reply) {
+	const leftOut = (reply.data.leftOut ?? []) as Array<{ testId: string; reason: string }>
+	return leftOut.map((item) => [item.testId, 'left_out', item.reason])
+}
+
 function short(sha256: unknown) {
 	return typeof sha256 === 'string' ? sha256.slice(0, 8) : sha256
 }
@@ -400,16 +405,19 @@ const commands: Record<string, Command> = {
 	'run gate': {
 		positionals: ['reference'],
 		flags: { tests: 'list', build: 'value', partial: 'value', 'retest-of': 'value' },
-		required: ['tests', 'build'],
+		required: ['build'],
 		run: (store, args) =>
 			gate(store, {
 				reference: value(args, 'reference')!,
-				tests: list(args, 'tests') ?? [],
+				tests: list(args, 'tests'),
 				build: value(args, 'build')!,
 				partial: value(args, 'partial'),
 				retestOf: value(args, 'retest-of') ?? null,
 			}).reply,
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
+		print: (reply) => ({
+			facts: { sha256: short(reply.data.sha256), tests: reply.data.tests },
+			lines: leftOutLines(reply),
+		}),
 	},
 	'run begin': {
 		positionals: ['runId', 'reference'],
@@ -421,13 +429,13 @@ const commands: Record<string, Command> = {
 			timeout: 'value',
 			'retest-of': 'value',
 		},
-		required: ['tests', 'build'],
+		required: ['build'],
 		write: true,
 		run: (store, args, { actor }) =>
 			beginRun(store, actor, {
 				runId: value(args, 'runId')!,
 				reference: value(args, 'reference')!,
-				tests: list(args, 'tests') ?? [],
+				tests: list(args, 'tests'),
 				build: value(args, 'build')!,
 				partial: value(args, 'partial'),
 				onNewBlocker: value(args, 'on-new-blocker'),
@@ -436,11 +444,13 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({
 			facts: {
+				tests: reply.data.tests,
 				startedAt: reply.data.startedAt,
 				browserSession: reply.data.browserSession,
 				deadlineSeconds: reply.data.deadlineSeconds,
 				evidenceDirectory: reply.data.evidenceDirectory,
 			},
+			lines: leftOutLines(reply),
 		}),
 	},
 	'run check': {

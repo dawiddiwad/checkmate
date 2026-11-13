@@ -6507,14 +6507,14 @@ function gate(store, input) {
   const { plan } = revision;
   const subject = `${plan.planId}@${plan.revision}`;
   const target = targetRevision(store, plan.target.targetId, plan.target.revision);
-  requireCondition(Array.isArray(input.tests) && input.tests.length > 0, "Select one or more tests with --tests");
-  requireCondition(new Set(input.tests).size === input.tests.length, "Duplicate test in --tests");
-  const tests = index(plan.tests, "id", "test");
-  references(input.tests, tests, `test in ${subject}`);
   const build = requireText(input.build, "application build (--build)");
   const partial = requireChoice(input.partial ?? "wait_for_resolution", partialModes, "partial execution (--partial)");
+  const tests = index(plan.tests, "id", "test");
+  const selection = input.tests === void 0 && partial === "ready_only" ? readySelection(store, plan, build) : givenSelection(input.tests, tests, subject);
+  const selected = selection.tests;
   if (input.retestOf) retestCheck(store, input.retestOf, plan, build);
   const reasons2 = [];
+  if (!selected.length) reasons2.push(`No test is ready in ${subject}`);
   if (!target.profile.readyForLiveExecution)
     reasons2.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`);
   const approval = planApproval(store, plan, revision.sha256);
@@ -6523,7 +6523,7 @@ function gate(store, input) {
     for (const gap of plan.gaps)
       if (gap.status === "open" && gap.severity === "blocking") reasons2.push(`Open blocking gap: ${gap.id}`);
   }
-  for (const id2 of input.tests) {
+  for (const id2 of selected) {
     const test = tests.get(id2);
     if (test.readiness !== "ready") reasons2.push(`Test is not ready: ${id2}`);
     if (!target.profile.capabilities.includes(test.capability))
@@ -6532,10 +6532,10 @@ function gate(store, input) {
       reasons2.push(`Operation is not permitted: ${id2}`);
     if (!test.assertions.length) reasons2.push(`Test has no assertions: ${id2}`);
     for (const dependency of test.dependsOn)
-      if (!dependency.includes(":") && !input.tests.includes(dependency))
+      if (!dependency.includes(":") && !selected.includes(dependency))
         reasons2.push(`Missing prerequisite: ${dependency}`);
   }
-  for (const id2 of input.tests)
+  for (const id2 of selected)
     for (const dependency of tests.get(id2).dependsOn.filter((dependency2) => dependency2.includes(":"))) {
       const cause = dependencyBlock(store, dependency, build);
       if (cause) reasons2.push(`Blocked by ${dependency}: ${cause}`);
@@ -6545,13 +6545,63 @@ function gate(store, input) {
       status: reasons2.length ? "needs_decision" : "completed",
       subject,
       reasons: reasons2,
-      data: { planId: plan.planId, revision: plan.revision, sha256: revision.sha256 }
+      data: {
+        planId: plan.planId,
+        revision: plan.revision,
+        sha256: revision.sha256,
+        tests: selected,
+        leftOut: selection.leftOut
+      }
     },
+    tests: selected,
     revision,
     target,
     build,
     partial
   };
+}
+function givenSelection(selected, tests, subject) {
+  requireCondition(
+    Array.isArray(selected) && selected.length > 0,
+    "Select one or more tests with --tests, or add --partial ready_only"
+  );
+  requireCondition(new Set(selected).size === selected.length, "Duplicate test in --tests");
+  references(selected, tests, `test in ${subject}`);
+  return { tests: selected, leftOut: [] };
+}
+function readySelection(store, plan, build) {
+  const leftOut = [];
+  for (const test of plan.tests) {
+    const reason = notReadyReason(store, plan, test, build);
+    if (reason) leftOut.push({ testId: test.id, reason });
+  }
+  let selected = plan.tests.map((test) => test.id).filter((id2) => !leftOut.some((item) => item.testId === id2));
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const test of plan.tests.filter((test2) => selected.includes(test2.id))) {
+      const missing = test.dependsOn.find((id2) => !id2.includes(":") && !selected.includes(id2));
+      if (!missing) continue;
+      leftOut.push({ testId: test.id, reason: `needs ${missing}, which is left out` });
+      selected = selected.filter((id2) => id2 !== test.id);
+      changed = true;
+    }
+  }
+  const order = plan.tests.map((test) => test.id);
+  leftOut.sort((a, b2) => order.indexOf(a.testId) - order.indexOf(b2.testId));
+  return { tests: selected, leftOut };
+}
+function notReadyReason(store, plan, test, build) {
+  if (test.readiness !== "ready") {
+    const gaps = plan.gaps.filter(
+      (gap) => test.gapIds.includes(gap.id) && (test.readiness === "deferred" ? gap.status === "deferred" : gap.status === "open" && gap.severity === "blocking")
+    );
+    return `${test.readiness} by ${gaps.map((gap) => gap.id).join(", ")}`;
+  }
+  for (const dependency of test.dependsOn.filter((id2) => id2.includes(":"))) {
+    const cause = dependencyBlock(store, dependency, build);
+    if (cause) return `blocked by ${dependency}: ${cause}`;
+  }
+  return null;
 }
 function retestCheck(store, runId, plan, build) {
   const previous = one(
@@ -6796,7 +6846,7 @@ function beginRun(store, actor, input) {
         return { reply: { ...checked.reply, subject: runId }, subjects: [] };
       const { plan, sha256 } = checked.revision;
       const request = {
-        selectedTestIds: input.tests,
+        selectedTestIds: checked.tests,
         partialExecution: checked.partial,
         onNewBlocker,
         timeoutSeconds,
@@ -6830,6 +6880,8 @@ function beginRun(store, actor, input) {
         reply: completed(runId, {
           runId,
           plan: `${plan.planId}@${plan.revision}`,
+          tests: checked.tests,
+          leftOut: checked.reply.data.leftOut,
           startedAt: at,
           browserSession,
           deadlineSeconds: timeoutSeconds,
@@ -11026,6 +11078,10 @@ function planRequestInput(args, stdin) {
   }
   return { objective, context: { sources: sources ?? [], ...instructions === void 0 ? {} : { instructions } } };
 }
+function leftOutLines(reply) {
+  const leftOut = reply.data.leftOut ?? [];
+  return leftOut.map((item) => [item.testId, "left_out", item.reason]);
+}
 function short2(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
@@ -11288,15 +11344,18 @@ var commands = {
   "run gate": {
     positionals: ["reference"],
     flags: { tests: "list", build: "value", partial: "value", "retest-of": "value" },
-    required: ["tests", "build"],
+    required: ["build"],
     run: (store, args) => gate(store, {
       reference: value(args, "reference"),
-      tests: list(args, "tests") ?? [],
+      tests: list(args, "tests"),
       build: value(args, "build"),
       partial: value(args, "partial"),
       retestOf: value(args, "retest-of") ?? null
     }).reply,
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({
+      facts: { sha256: short2(reply.data.sha256), tests: reply.data.tests },
+      lines: leftOutLines(reply)
+    })
   },
   "run begin": {
     positionals: ["runId", "reference"],
@@ -11308,12 +11367,12 @@ var commands = {
       timeout: "value",
       "retest-of": "value"
     },
-    required: ["tests", "build"],
+    required: ["build"],
     write: true,
     run: (store, args, { actor }) => beginRun(store, actor, {
       runId: value(args, "runId"),
       reference: value(args, "reference"),
-      tests: list(args, "tests") ?? [],
+      tests: list(args, "tests"),
       build: value(args, "build"),
       partial: value(args, "partial"),
       onNewBlocker: value(args, "on-new-blocker"),
@@ -11322,11 +11381,13 @@ var commands = {
     }),
     print: (reply) => ({
       facts: {
+        tests: reply.data.tests,
         startedAt: reply.data.startedAt,
         browserSession: reply.data.browserSession,
         deadlineSeconds: reply.data.deadlineSeconds,
         evidenceDirectory: reply.data.evidenceDirectory
-      }
+      },
+      lines: leftOutLines(reply)
     })
   },
   "run check": {

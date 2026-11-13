@@ -24,6 +24,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 - `plan show <planId@rev>` takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`. A plan ID without a revision shows the latest revision. `run show <runId>` takes `--tests`.
 - `log` lists the operation log, newest first. It takes `--subject` and `--limit <n>` (default 50). A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`.
 - `query "<sql>"` runs one SQL statement on a read-only connection.
+- `run gate` and `run begin` with `--partial ready_only` and no `--tests` select the ready tests. Each test that they leave out prints as `<testId> left_out <reason>`.
 
 ## Input
 

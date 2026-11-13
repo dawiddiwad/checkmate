@@ -63,7 +63,7 @@ export type EvidenceRow = {
 export type BeginInput = {
 	runId: string
 	reference: string
-	tests: string[]
+	tests?: string[]
 	build: string
 	partial?: string
 	onNewBlocker?: string
@@ -211,7 +211,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				return { reply: { ...checked.reply, subject: runId }, subjects: [] }
 			const { plan, sha256 } = checked.revision
 			const request: RunRequest = {
-				selectedTestIds: input.tests,
+				selectedTestIds: checked.tests,
 				partialExecution: checked.partial,
 				onNewBlocker,
 				timeoutSeconds,
@@ -245,6 +245,8 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				reply: completed(runId, {
 					runId,
 					plan: `${plan.planId}@${plan.revision}`,
+					tests: checked.tests,
+					leftOut: checked.reply.data.leftOut,
 					startedAt: at,
 					browserSession,
 					deadlineSeconds: timeoutSeconds,

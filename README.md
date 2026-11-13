@@ -47,7 +47,7 @@ You are the oracle. Test your own work, or verify the work of a teammate. The pl
 
 ```text
 /checkmate:setup shop at http://127.0.0.1:4173, browser, operations read_catalog and create_order
-/checkmate:plan checkout for shop@1 from docs/checkout.md
+/checkmate:plan checkout for shop@1: verify checkout totals from docs/checkout.md
 /checkmate:ui
 ```
 

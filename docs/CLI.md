@@ -28,7 +28,7 @@ Run commands from the application workspace, or add `--workspace <path>`. Put op
 ## Input
 
 - Small values are flags. Lists are comma-separated, for example `--tests T1,T2`.
-- Structured payloads are JSON on standard input. Use a quoted heredoc. Do not write payload files:
+- Structured payloads are JSON on standard input. A caller can redirect a file, for example `plan open checkout --target shop@1 < request.json`. A delegated worker or a skill sends the JSON in a quoted heredoc and does not write payload files:
 
   ```sh
   checkmate run finding run-1 <<'EOF'

@@ -41,15 +41,16 @@
 	.spoke { stroke: var(--blue-line); stroke-width: 2; stroke-dasharray: 4 4; }
 	.hot { stroke-width: 3; stroke-dasharray: 4 4; }
 	.change { fill: none; stroke: var(--amber); stroke-width: 4; stroke-linecap: round; }
+	.change.dim { stroke: var(--amber-line); stroke-width: 3; }
 	.station { position: absolute; width: 124px; height: 36px; margin: -18px 0 0 -62px; border: 2px solid var(--line-strong); border-radius: 8px; background: var(--card); font: 600 18px/32px var(--display); text-align: center; white-space: nowrap; }
 	.station .lit { position: absolute; inset: -2px; border-radius: 8px; color: var(--bg); line-height: 36px; }
-	.centre { position: absolute; left: 280px; top: 50px; width: 340px; height: 192px; background: #121a28; border: 2px solid var(--blue-line); border-radius: 10px; }
+	.centre { position: absolute; left: 296px; top: 58px; width: 308px; height: 176px; background: #121a28; border: 2px solid var(--blue-line); border-radius: 10px; }
 	.centre .top { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--blue-line); font: 600 17px var(--display); }
 	.centre .top .mark { gap: 3px; }
 	.centre .top .mark i { width: 11px; height: 11px; }
 	.centre .iter { position: absolute; right: 14px; top: 0; font: 500 14px/36px var(--mono); color: var(--muted); }
-	.group { position: absolute; left: 14px; top: 42px; right: 14px; }
-	.group div { display: flex; align-items: center; gap: 10px; height: 36px; font: 600 17px var(--mono); white-space: nowrap; }
+	.group { position: absolute; left: 14px; top: 40px; right: 14px; }
+	.group div { display: flex; align-items: center; gap: 10px; height: 33px; font: 600 17px var(--mono); white-space: nowrap; }
 	.group i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 	.group .chip { font-size: 16px; line-height: 28px; padding: 0 9px; }
 	.group .outside { font: 400 16px var(--body); color: var(--muted); }
@@ -82,14 +83,16 @@
 			<path class="ring-head" d="M690 154 l-6 -10 h12 z" />
 			<path class="ring-head" d="M480 270 l10 -6 v12 z" />
 			<path class="ring-head" d="M210 142 l-6 10 h12 z" />
+			<path class="change dim" d="M268 270 H234 Q210 270 210 246 V50 Q210 26 234 26 H268" />
+			<path class="ring-head" style="fill: var(--amber-line)" d="M210 141 l-7 11 h14 z" />
 			<path class="change" data-light="change" d="M268 270 H234 Q210 270 210 246 V50 Q210 26 234 26 H268" />
 			<path class="ring-head" data-light="change" style="fill: var(--amber)" d="M210 141 l-7 11 h14 z" />
-			<line class="spoke" x1="330" y1="44" x2="330" y2="50" />
-			<line class="spoke" x1="570" y1="44" x2="570" y2="50" />
-			<line class="spoke" x1="570" y1="252" x2="570" y2="242" />
-			<line class="spoke" x1="330" y1="252" x2="330" y2="242" />
-			<line class="spoke" x1="450" y1="242" x2="450" y2="300" />
-			<line class="hot" data-light="human" style="stroke: var(--human)" x1="450" y1="242" x2="450" y2="300" />
+			<line class="spoke" x1="330" y1="44" x2="330" y2="58" />
+			<line class="spoke" x1="570" y1="44" x2="570" y2="58" />
+			<line class="spoke" x1="570" y1="252" x2="570" y2="234" />
+			<line class="spoke" x1="330" y1="252" x2="330" y2="234" />
+			<line class="spoke" x1="450" y1="234" x2="450" y2="300" />
+			<line class="hot" data-light="human" style="stroke: var(--human)" x1="450" y1="234" x2="450" y2="300" />
 		</svg>
 		<div class="return">new gaps or<br />plan change:<br />new revision<div class="lit" data-light="change">new gaps or<br />plan change:<br />new revision</div></div>
 		<div class="centre">

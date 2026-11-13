@@ -37,7 +37,7 @@ Use `node:sqlite` `DatabaseSync` only. No new runtime dependencies in `plugin/`.
 
 - Path: `<workspace>/.checkmate/checkmate.db`. Any command creates the directory and the schema when missing.
 - On open: `PRAGMA journal_mode = WAL`, `PRAGMA busy_timeout = 5000`, `PRAGMA foreign_keys = ON`.
-- `meta`: `contractVersion = toolkit-2`, `schemaVersion = 2`. Upgrade a version 1 database on open. Refuse other versions.
+- `meta`: `contractVersion = toolkit-2`, `schemaVersion = 2`. Refuse other versions. Do not upgrade.
 - Tables as in the design, plus:
   - `target_requests (target_id TEXT PRIMARY KEY, body TEXT NOT NULL, operation_id ...)`: the setup request.
   - `operations` has `subjects TEXT NOT NULL` (JSON array).

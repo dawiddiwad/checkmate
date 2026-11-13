@@ -78,7 +78,7 @@ All tables use `STRICT`. Foreign keys are on. The database uses WAL mode and `bu
 
 ```sql
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
--- contractVersion = toolkit-2, schemaVersion = 2 (a version 1 database is upgraded when it opens)
+-- contractVersion = toolkit-2, schemaVersion = 2 (other versions are refused)
 
 CREATE TABLE operations (
   id TEXT PRIMARY KEY,            -- ULID
@@ -263,7 +263,7 @@ At hundreds of plans, these views are fast enough. If a query becomes slow, add 
 
 ### Immutability
 
-Triggers refuse `UPDATE` and `DELETE` on every table, with two exceptions. `decisions.applied_revision` changes once from `NULL` to a revision. A `plan_revisions` row without an approval and without a run can change its body, digest, and operation (`plan edit`, schema version 2). The core never updates a row. The triggers are a second check against a direct SQL write.
+Triggers refuse `UPDATE` and `DELETE` on every table, with two exceptions. `decisions.applied_revision` changes once from `NULL` to a revision. A `plan_revisions` row without an approval and without a run can change its body, digest, and operation (`plan edit`). The core never updates a row. The triggers are a second check against a direct SQL write.
 
 ```sql
 CREATE TRIGGER plan_revisions_immutable BEFORE UPDATE ON plan_revisions

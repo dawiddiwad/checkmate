@@ -12,7 +12,7 @@ Checkmate keeps all state in one SQLite database: `<workspace>/.checkmate/checkm
 - Any command creates `.checkmate/` and the schema when they are missing. `checkmate init` only creates them.
 - The database uses WAL mode. The CLI, a delegated worker, and the review UI can use it at the same time. One host writes to one database.
 - Rows do not change after a write. Database triggers refuse `UPDATE` and `DELETE`. There are two exceptions: a decision records the revision that applied it, once, and `plan edit` changes a plan revision that has no approval and no run. The operation log records each edit.
-- The schema version is 2. Checkmate upgrades a version 1 database when it opens it. It refuses other versions. There is no migration from JSON files.
+- The schema version is 2. Checkmate refuses a database with another version. There is no migration from earlier databases or JSON files.
 - Agents write only through commands. `checkmate query "<sql>"` opens the database read-only.
 
 The database is the only record. Payloads and text evidence go in on standard input. Binary evidence, for example a screenshot, goes in `.checkmate/tmp/<runId>/` for a short time. Checkmate deletes each file after it stores the bytes. `run finish` removes `.checkmate/tmp/<runId>/` with its contents, and `target save` removes `.checkmate/tmp/setup-<targetId>/`. The skills point the output of Playwright CLI into these directories, so no `.playwright-cli/` directory stays in the workspace. Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.

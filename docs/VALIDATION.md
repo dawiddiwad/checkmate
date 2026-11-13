@@ -73,7 +73,7 @@ The code validates structure and relationships. It cannot prove that an observat
 
 - Every write runs in one `BEGIN IMMEDIATE` transaction with its operation row. A refused write rolls back and records a `rejected` operation row.
 - Triggers refuse `UPDATE` and `DELETE` on every table. A decision can set `applied_revision` once. A plan revision without an approval and without a run can change its body and digest.
-- The schema version is 2. A version 1 database is upgraded when it is opened. Other versions are refused.
+- The schema version is 2. A database with another version is refused.
 - Foreign keys are on. WAL mode lets a reader see committed writes while a writer holds the lock.
 - Each snapshot body is canonical JSON. Its digest is the SHA-256 of that text.
 - A write without an actor is refused. The default actor is `CHECKMATE_ACTOR`, then the git user name, then the login name.

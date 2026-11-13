@@ -62,9 +62,9 @@ test('a database with another schema version is refused', (t) => {
 	closeStore(openStore(workspace))
 	const db = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
 	db.exec('DROP TRIGGER meta_update')
-	db.exec("UPDATE meta SET value = '3' WHERE key = 'schemaVersion'")
+	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 3\. Expected 2/)
+	assert.throws(() => openStore(workspace), /schema version 1\. Expected 2/)
 })
 
 function finishedRun(t: Parameters<typeof store>[0]) {
@@ -229,24 +229,4 @@ test('a plan revision row changes only while it is the latest, unapproved, and n
 		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 3"),
 		/immutable once approved, run, or revised/
 	)
-})
-
-test('opening a version 1 database upgrades the plan revision trigger', (t) => {
-	const workspace = directory(t)
-	closeStore(openStore(workspace))
-	const db = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
-	db.exec(`DROP TRIGGER plan_revisions_update;
-CREATE TRIGGER plan_revisions_update BEFORE UPDATE ON plan_revisions
-	BEGIN SELECT RAISE(ABORT, 'Rows of plan_revisions are immutable'); END;
-DROP TRIGGER meta_update;
-UPDATE meta SET value = '1' WHERE key = 'schemaVersion';
-CREATE TRIGGER meta_update BEFORE UPDATE ON meta
-	BEGIN SELECT RAISE(ABORT, 'Rows of meta are immutable'); END;`)
-	db.close()
-	const opened = store(t, workspace)
-	assert.equal(opened.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '2')
-	assert.throws(() => opened.db.exec("UPDATE meta SET value = 'x'"), /Rows of meta are immutable/)
-	target(opened)
-	plan(opened)
-	opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout'")
 })

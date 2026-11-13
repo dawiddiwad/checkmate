@@ -215,11 +215,6 @@ CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
 	)
 	.join('\n')
-const upgradeFromVersion1 = `DROP TRIGGER plan_revisions_update;
-${updateTrigger('plan_revisions')}
-DROP TRIGGER meta_update;
-UPDATE meta SET value = '${schemaVersion}' WHERE key = 'schemaVersion';
-${updateTrigger('meta')}`
 
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {
 	return { status: 'completed', subject, reasons: [], data }
@@ -252,8 +247,7 @@ export function openStore(workspace: string): Store {
 			const insert = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
-		} else if (db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value === '1')
-			db.exec(upgradeFromVersion1)
+		}
 		db.exec('COMMIT')
 	} catch (error) {
 		db.exec('ROLLBACK')

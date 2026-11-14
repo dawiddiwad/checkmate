@@ -582,7 +582,7 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 	)
 })
 
-test('a retested run leaves the inbox and keeps its decision form on the run page', async (t) => {
+test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {
 	const { ui, workspace } = await start(t)
 	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
 	read(workspace, (store) =>
@@ -595,7 +595,7 @@ test('a retested run leaves the inbox and keeps its decision form on the run pag
 			retestOf: 'run-7',
 		})
 	)
-	assert.doesNotMatch((await call(ui, '/')).body, /data-key="run:run-7"/)
+	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
 	assert.match((await call(ui, '/runs/run-7')).body, /name="verdict"\s*value="accept"/)
 })
 

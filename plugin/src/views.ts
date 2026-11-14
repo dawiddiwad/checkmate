@@ -125,13 +125,18 @@ export function inbox(store: Store) {
 		}))
 		.sort(bySince)
 	const superseded = retestedRuns(store)
+	const supplying = new Set(revisions.flatMap((row) => supplyingRuns(row.plan, finalizedResults(store, row.plan_id))))
 	const results = all<RunRow & { finished_at: string; sha256: string; coverage: string }>(
 		store,
 		'SELECT r.*, s.finished_at, s.sha256, s.coverage FROM runs r JOIN results s ON s.run_id = r.run_id ORDER BY s.rowid'
 	)
 		.filter((row) => {
 			const state = resultAcceptance(store, row, row.sha256)
-			return state.policy === 'required' && !state.latest && !superseded.has(row.run_id)
+			return (
+				state.policy === 'required' &&
+				!state.latest &&
+				(!superseded.has(row.run_id) || supplying.has(row.run_id))
+			)
 		})
 		.map((row) => ({
 			runId: row.run_id,
@@ -410,7 +415,7 @@ export function planStatus(store: Store, planId: string) {
 		}
 		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
 		const result = results.at(-1)!
-		const supplied = [...new Set(ready.flatMap((testId) => latest.get(testId)?.runId ?? []))]
+		const supplied = supplyingRuns(plan, results)
 		const supplying = runs.filter((run) => (supplied.length ? supplied : [finished.runId]).includes(run.runId))
 		const rejected = supplying.filter((run) => run.acceptance === 'rejected').map((run) => run.runId)
 		const testReasons = ready.flatMap((testId) => {
@@ -476,6 +481,15 @@ function finalizedResults(store: Store, planId: string) {
 function selectedOutcome(result: Result, testId: string) {
 	if (!result.selectedTestIds.includes(testId)) return null
 	return result.tests.find((test) => test.testId === testId)?.outcome ?? null
+}
+
+function supplyingRuns(plan: Plan, results: Result[]) {
+	const latest = latestOutcomes(results)
+	return [
+		...new Set(
+			plan.tests.filter((test) => test.readiness === 'ready').flatMap((test) => latest.get(test.id)?.runId ?? [])
+		),
+	]
 }
 
 function latestOutcomes(results: Result[]) {

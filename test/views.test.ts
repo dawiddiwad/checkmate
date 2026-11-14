@@ -592,3 +592,38 @@ test('after a finished run, a ready test that never ran needs a retest', (t) => 
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 has not run']])
 })
+
+test('the inbox lists an earlier run of a retest chain while status waits for it', (t) => {
+	const opened = store(t)
+	target(opened)
+	const value = candidate()
+	value.tests[1].dependsOn = []
+	plan(opened, 'checkout', value)
+	revised(opened)
+	approved(opened)
+	begin(opened, 'run-1', ['T1', 'T2'], 'b1')
+	for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	check(opened, 'run-1', 'T2.A1', 'passed')
+	failT2(opened, 'run-1')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
+	finishRun(opened, actor, { runId: 'run-1', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	begin(opened, 'run-2', ['T2'], 'b2', { retestOf: 'run-1' })
+	for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `T2.${assertionId}`, 'passed')
+	closeTest(opened, actor, { runId: 'run-2', testId: 'T2' })
+	finishRun(opened, actor, { runId: 'run-2', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	assert.deepEqual(
+		inbox(opened).results.map((row) => row.runId),
+		['run-1', 'run-2']
+	)
+	accept(opened, 'run-2')
+	const status = planStatus(opened, 'checkout')
+	assert.deepEqual([status.state, status.why], ['awaits_acceptance', ['run-1 on build b1 waits for acceptance']])
+	assert.deepEqual(
+		inbox(opened).results.map((row) => row.runId),
+		['run-1']
+	)
+	accept(opened, 'run-1')
+	assert.deepEqual(inbox(opened).results, [])
+	assert.equal(planStatus(opened, 'checkout').state, 'accepted')
+})

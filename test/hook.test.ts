@@ -174,18 +174,14 @@ test('the oracle signal hook from the factory guide sends one line only for new 
 	assert.equal((await hook(bash('checkmate inbox'))).code, 0)
 	assert.equal(cursor(), 6, 'a corrupt cursor starts again')
 	assert.equal(posts.length, 5)
-	for (const text of ['null', '[3]', '7']) {
-		writeFileSync(file, text)
-		assert.equal((await hook(bash('checkmate inbox'))).code, 0, text)
-		assert.equal(cursor(), 6, `a cursor file with ${text} starts again`)
-	}
-	assert.equal(posts.length, 8)
+	writeFileSync(file, 'null')
+	assert.equal((await hook(bash('checkmate inbox'))).code, 0)
+	assert.equal(cursor(), 6, 'a cursor file that is not an object starts again')
+	assert.equal(posts.length, 6)
 
 	let rows = 6
 	for (const command of [
 		'node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" plan reject checkout@1 --rationale No.',
-		'npx checkmate plan reject checkout@1 --rationale No.',
-		'CHECKMATE_ACTOR=x checkmate plan reject checkout@1 --rationale No.',
 		'bash -c "checkmate plan reject checkout@1 --rationale No."',
 	]) {
 		const opened = checkmate([

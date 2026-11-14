@@ -300,6 +300,7 @@ test('the npm CLI always takes the next token as the --claude-arg value, also on
 	assert.deepEqual(args().slice(1, 3), ['--model', 'claude-haiku-5-5'])
 	assert.equal(run('--claude-arg', '--json', '--claude-arg', '--help'), 'needs_decision checkout\nreason: Stopped.\n')
 	assert.deepEqual(args().slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
+	assert.match(run('--claude-arg', '--model', '--help'), /^completed delegate\ncheckmate delegate <setup\|plan/)
 	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
 	assert.equal(run('--claude-arg', '--model'), 'needs_decision checkout\nreason: Stopped.\n')
 	assert.deepEqual(args().slice(0, 3), ['-p', '--model', '--plugin-dir'])

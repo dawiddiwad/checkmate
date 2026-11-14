@@ -270,6 +270,9 @@ test('a gap answer asks for a name once and refuses a stale digest with the type
 		read(workspace, (store) => planDetail(store, 'xss').pendingDecisions[0].actor),
 		'reviewer'
 	)
+	const recorded = (await call(ui, '/plans/xss@2/gaps/G1')).body
+	assert.match(recorded, /Answer recorded/)
+	assert.match(recorded, /By reviewer\. The agent applies it in the next revision of xss\./)
 })
 
 test('the UI prefills the default actor and records it without a name cookie', async (t) => {

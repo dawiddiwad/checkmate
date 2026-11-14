@@ -14331,9 +14331,9 @@ var commands = {
     positionals: ["sql"],
     readOnly: true,
     run: (store, args) => {
-      const statement = store.db.prepare(value(args, "sql"));
+      const statement = queryStatement(store, value(args, "sql"));
       const columns = statement.columns().map((column) => column.name);
-      const rows = statement.all().map(
+      const rows = readOnly(() => statement.all()).map(
         (row) => Object.fromEntries(
           columns.map((column) => {
             const field2 = row[column];
@@ -14353,6 +14353,25 @@ var commands = {
     }
   }
 };
+var readOnlyReason = "query is read-only. Use the Checkmate commands to change the record.";
+function readOnly(read) {
+  try {
+    return read();
+  } catch (error) {
+    if (error instanceof Error && "errcode" in error && Number(error.errcode) === 8) throw new Error(readOnlyReason);
+    throw error;
+  }
+}
+function queryStatement(store, sql) {
+  requireCondition(!/^\s*PRAGMA\s+[\w.]+\s*=/i.test(sql), readOnlyReason);
+  const statement = readOnly(() => store.db.prepare(sql));
+  const rest = sql.slice(statement.sourceSQL.length);
+  requireCondition(
+    /^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
+    "query runs one SQL statement. Send each statement in its own query."
+  );
+  return statement;
+}
 function exportCommand(positional, choices, render) {
   return {
     positionals: [positional],

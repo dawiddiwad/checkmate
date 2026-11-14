@@ -165,11 +165,27 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 	const rows = cli(workspace, ['query', 'SELECT plan_id, revision FROM plan_revisions'])
 	assert.deepEqual(rows.lines, ['completed query rows=1', 'plan_id\trevision', 'checkout\t1'])
 	assert.deepEqual(json(workspace, ['query', 'SELECT plan_id FROM plan_revisions WHERE 0']).body.columns, ['plan_id'])
-	for (const sql of ['DELETE FROM operations', "INSERT INTO meta VALUES ('a', 'b')", 'DROP TABLE meta']) {
+	for (const sql of [
+		'DELETE FROM operations',
+		"INSERT INTO meta VALUES ('a', 'b')",
+		'DROP TABLE meta',
+		'PRAGMA user_version = 5',
+		'pragma main.journal_mode=delete',
+		'VACUUM',
+	]) {
 		const refused = cli(workspace, ['query', sql])
 		assert.equal(refused.code, 1, sql)
-		assert.deepEqual(refused.lines, ['rejected query', 'reason: attempt to write a readonly database'])
+		assert.deepEqual(refused.lines, [
+			'rejected query',
+			'reason: query is read-only. Use the Checkmate commands to change the record.',
+		])
 	}
+	assert.deepEqual(cli(workspace, ['query', 'SELECT 1; DELETE FROM operations']).lines, [
+		'rejected query',
+		'reason: query runs one SQL statement. Send each statement in its own query.',
+	])
+	assert.equal(cli(workspace, ['query', "SELECT ';' AS x; -- end"]).lines[2], ';')
+	assert.equal(cli(workspace, ['query', 'PRAGMA table_info(meta)']).code, 0)
 	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 5)
 	const fresh = directory(t)
 	assert.deepEqual(cli(fresh, ['query', 'SELECT count(*) AS n FROM plan_revisions']).lines, [

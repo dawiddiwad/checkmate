@@ -38,7 +38,7 @@ A prefix rule such as `Bash(node *)` is not sufficient. The worker sends JSON to
 
 ## Give Claude Code options to a worker
 
-Add `--claude-arg <arg>` once for each argument of the `claude` command. `delegate` adds the arguments in the same order, after its own options and before the tool rules of `--allow`. The value can start with `--`.
+Add `--claude-arg <arg>` once for each argument of the `claude` command. `delegate` adds the arguments in the same order, directly after `-p` and before its own options. The tool rules of `--allow` come last. The value is always the next argument, also when it starts with `--`. Give a flag and its value as two `--claude-arg` options.
 
 ```sh
 checkmate delegate plan checkout --allow Read --allow Bash \

@@ -113,6 +113,7 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 	const schema = readFileSync(join(pluginRoot, 'contracts', 'response.schema.json'), 'utf8')
 	const args = [
 		'-p',
+		...claudeArgs,
 		'--plugin-dir',
 		pluginRoot,
 		'--output-format',
@@ -122,7 +123,6 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 		'--permission-prompts',
 		'none',
 		'--no-session-persistence',
-		...claudeArgs,
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
 	return args

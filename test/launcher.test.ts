@@ -206,15 +206,24 @@ function requested(t: TestContext) {
 const recordsArgs = `require('node:fs').writeFileSync('args.json', JSON.stringify(process.argv.slice(2)))
 reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
 
-test('delegate puts each --claude-arg before the tool rules, so a value cannot add a tool', async (t) => {
+test('delegate puts each --claude-arg right after -p, so a dangling flag cannot take a tool rule', async (t) => {
 	const workspace = requested(t)
 	const records = claude(workspace, recordsArgs)
+	const read = () => JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
 	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs', 'Write']
 	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, claudeArgs, pluginRoot, claude: records })
-	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.equal(args[0], '-p')
-	assert.deepEqual(args.slice(-8), [...claudeArgs, '--allowedTools', 'Read', '--allowedTools', 'Bash'])
-	assert.equal(args.indexOf('Write'), args.indexOf('--allowedTools') - 1)
+	const args = read()
+	assert.deepEqual(args.slice(0, 6), ['-p', ...claudeArgs, '--plugin-dir'])
+	assert.deepEqual(args.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	await delegate(workspace, 'plan', 'checkout', {
+		allowedTools: rules,
+		claudeArgs: ['--model'],
+		pluginRoot,
+		claude: records,
+	})
+	const dangling = read()
+	assert.deepEqual(dangling.slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(dangling.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
 })
 
 test('delegate refuses a --claude-arg that changes the worker contract', async (t) => {
@@ -269,7 +278,40 @@ test('the npm CLI takes --claude-arg values that start with --', (t) => {
 	)
 	assert.equal(output, 'needs_decision checkout\nreason: Stopped.\n')
 	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.deepEqual(args.slice(-6, -4), ['--model', 'claude-haiku-5-5'])
+	assert.deepEqual(args.slice(1, 3), ['--model', 'claude-haiku-5-5'])
+})
+
+test('the npm CLI always takes the next token as the --claude-arg value and refuses a missing one', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const run = (...flags: string[]) => {
+		try {
+			return execFileSync(
+				process.execPath,
+				[
+					join(root, 'cli/src/main.ts'),
+					'delegate',
+					'plan',
+					'checkout',
+					'--allow',
+					'Read',
+					'--allow',
+					'Bash',
+					...flags,
+				],
+				{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+			)
+		} catch (error) {
+			return (error as { stdout: string }).stdout
+		}
+	}
+	assert.equal(run('--claude-arg', '--json', '--claude-arg', '--help'), 'needs_decision checkout\nreason: Stopped.\n')
+	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.deepEqual(args.slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
+	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
 })
 
 test('the npm CLI prints the facts of the recorded command with the operation', (t) => {

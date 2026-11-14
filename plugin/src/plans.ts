@@ -21,7 +21,7 @@ import {
 	testReference,
 	validate,
 } from './contracts.ts'
-import { targetRevision, toolCheck } from './targets.ts'
+import { findInstance, targetRevision, toolCheck } from './targets.ts'
 
 export type PlanRevision = { plan: Plan; sha256: string }
 export type PlanTool = Omit<Profile['tools'][number], 'reachable'> & { reachable?: boolean }
@@ -39,6 +39,7 @@ export type GateInput = {
 	reference: string
 	tests?: string[]
 	build: string
+	instance?: string
 	partial?: string
 	retestOf?: string | null
 }
@@ -231,9 +232,12 @@ export function editPlan(
 	actor: string | undefined,
 	input: { reference: string; candidate: unknown; expectSha256?: string }
 ) {
-	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) =>
-		storeEdit(store, operationId, editableRevision(store, input.reference, input.expectSha256), input.candidate)
-	)
+	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) => {
+		const base = editableRevision(store, input.reference, input.expectSha256)
+		const candidate = validate('plan-candidate', input.candidate)
+		gapEditCheck(store, base.plan, candidate)
+		return storeEdit(store, operationId, base, candidate)
+	})
 }
 
 export function patchPlan(
@@ -244,8 +248,27 @@ export function patchPlan(
 	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) => {
 		const base = editableRevision(store, input.reference, input.expectSha256)
 		const patch = validate('plan-patch', input.patch)
-		return storeEdit(store, operationId, base, patchedCandidate(base.plan, patch))
+		const candidate = patchedCandidate(base.plan, patch)
+		gapEditCheck(store, base.plan, candidate)
+		return storeEdit(store, operationId, base, candidate)
 	})
+}
+
+function gapEditCheck(store: Store, plan: Plan, candidate: { tests: Array<{ id: string }>; gaps: Gap[] }) {
+	const { gaps, tests } = candidate
+	const pending = pendingDecisions(store, plan.planId).map((decision) => decision.gap_id)
+	const kept = (id: string) => id.includes(':') || tests.some((test) => test.id === id)
+	for (const old of plan.gaps) {
+		if (old.status === 'open' && !pending.includes(old.id)) continue
+		const now = gaps.find((gap) => gap.id === old.id)
+		requireCondition(
+			now && same(now, { ...old, testIds: old.testIds.filter(kept) }),
+			`Gap ${old.id} has a decision. Only an open gap without a decision can change.`
+		)
+	}
+	const open = planRunGaps(store, plan.planId).filter((item) => !item.adopted)
+	for (const gap of gaps.filter((gap) => !plan.gaps.some((old) => old.id === gap.id)))
+		requireCondition(!open.some((item) => item.gap.id === gap.id), `Gap ID ${gap.id} is in use. Use a new ID.`)
 }
 
 export function adoptGaps(
@@ -276,11 +299,40 @@ export function adoptGaps(
 
 function adoption(store: Store, operationId: string, base: PlanRevision, runId: string, gaps: Gap[]): Change {
 	const candidate = planCandidate(base.plan)
-	const change = storeEdit(store, operationId, base, { ...candidate, gaps: [...candidate.gaps, ...gaps] })
+	const tested = runPlan(store, runId)
+	const kept = gaps.map((gap) => currentScope(base.plan, tested, gap))
+	const change = storeEdit(store, operationId, base, { ...candidate, gaps: [...candidate.gaps, ...kept] })
 	change.reply.data.runId = runId
 	change.reply.data.adopted = gaps.map((gap) => gap.id)
 	change.subjects.push(`run:${runId}`)
 	return change
+}
+
+function runPlan(store: Store, runId: string) {
+	const run = one<{ plan_id: string; plan_revision: number }>(
+		store,
+		'SELECT plan_id, plan_revision FROM runs WHERE run_id = ?',
+		runId
+	)!
+	return planRevision(store, run.plan_id, run.plan_revision).plan
+}
+
+function currentScope(plan: Plan, tested: Plan, gap: Gap): Gap {
+	const exists = (id: string) => id.includes(':') || plan.tests.some((test) => test.id === id)
+	const known = (id: string) => plan.requirements.some((requirement) => requirement.id === id)
+	const testIds = gap.testIds.filter(exists)
+	const removed = gap.testIds.filter((id) => !exists(id))
+	const requirementIds =
+		testIds.length || gap.requirementIds.length
+			? gap.requirementIds.filter(known)
+			: tested.tests
+					.filter((test) => removed.includes(test.id))
+					.flatMap((test) => test.requirementIds.filter(known))
+	requireCondition(
+		testIds.length || requirementIds.length || (!gap.testIds.length && !gap.requirementIds.length),
+		`Gap ${gap.id} names only tests and requirements that ${plan.planId}@${plan.revision} does not have. Record a new gap.`
+	)
+	return { ...gap, testIds, requirementIds: [...new Set(requirementIds)] }
 }
 
 export type RunGap = { runId: string; gap: Gap; adopted: boolean; at: string }
@@ -548,13 +600,9 @@ export function answerGap(store: Store, actor: string | undefined, input: GapAns
 
 function adoptRunGap(store: Store, operationId: string, base: PlanRevision, gapId: string) {
 	const subject = `${base.plan.planId}@${base.plan.revision}`
-	const found = planRunGaps(store, base.plan.planId).filter((item) => item.gap.id === gapId && !item.adopted)
-	requireCondition(found.length, `Unknown gap ${gapId} in ${subject}`)
-	requireCondition(
-		found.length === 1,
-		`Gap ${gapId} is in runs ${found.map((item) => item.runId).join(', ')}. Run plan adopt-gaps ${subject} --run <runId> --gaps ${gapId} first.`
-	)
-	return adoption(store, operationId, base, found[0].runId, [found[0].gap])
+	const found = planRunGaps(store, base.plan.planId).find((item) => item.gap.id === gapId && !item.adopted)
+	requireCondition(found, `Unknown gap ${gapId} in ${subject}`)
+	return adoption(store, operationId, base, found.runId, [found.gap])
 }
 
 function affectedTests(plan: Plan, gapIds: string[]) {
@@ -681,6 +729,7 @@ function decidePlan(store: Store, actor: string | undefined, input: Verdict, ver
 		requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
 		const revision = planRevision(store, reference.id, reference.revision)
 		const subject = `${reference.id}@${reference.revision}`
+		latestCheck(store, reference.id, reference.revision)
 		expectDigest(revision.sha256, input.expectSha256, subject)
 		return {
 			reply: recordApproval(store, actor, operationId, {
@@ -693,6 +742,11 @@ function decidePlan(store: Store, actor: string | undefined, input: Verdict, ver
 			subjects: [`plan:${reference.id}`, 'inbox'],
 		}
 	})
+}
+
+function latestCheck(store: Store, planId: string, revision: number) {
+	const latest = planRevision(store, planId).plan.revision
+	requireCondition(latest === revision, `${planId}@${revision} is not the latest revision. Use ${planId}@${latest}.`)
 }
 
 export function recordApproval(
@@ -771,6 +825,7 @@ export function gate(store: Store, input: GateInput) {
 	const revision = planRevision(store, reference.id, reference.revision)
 	const { plan } = revision
 	const subject = `${plan.planId}@${plan.revision}`
+	latestCheck(store, plan.planId, plan.revision)
 	const target = targetRevision(store, plan.target.targetId, plan.target.revision)
 	const build = requireText(input.build, 'application build (--build)')
 	const partial = requireChoice(input.partial ?? 'wait_for_resolution', partialModes, 'partial execution (--partial)')
@@ -780,7 +835,7 @@ export function gate(store: Store, input: GateInput) {
 			? readySelection(store, plan, build)
 			: givenSelection(input.tests, tests, subject)
 	const selected = selection.tests
-	if (input.retestOf) retestCheck(store, input.retestOf, plan, build)
+	if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance)
 	const reasons: string[] = []
 	if (!selected.length) reasons.push(`No test is ready in ${subject}`)
 	if (!target.profile.readyForLiveExecution)
@@ -790,9 +845,13 @@ export function gate(store: Store, input: GateInput) {
 	if (partial === 'wait_for_resolution')
 		for (const gap of plan.gaps)
 			if (gap.status === 'open' && gap.severity === 'blocking') reasons.push(`Open blocking gap: ${gap.id}`)
+	const runGaps = blockingRunGaps(store, plan.planId)
 	for (const id of selected) {
 		const test = tests.get(id)!
 		if (test.readiness !== 'ready') reasons.push(`Test is not ready: ${id}`)
+		const runGap = runGapAffecting(runGaps, test)
+		if (runGap && partial === 'wait_for_resolution')
+			reasons.push(`Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${id}`)
 		if (!target.profile.capabilities.includes(test.capability))
 			reasons.push(`Missing capability: ${test.capability}`)
 		if (!test.operations.every((operation) => target.profile.allowedOperations.includes(operation)))
@@ -840,10 +899,19 @@ function givenSelection(selected: string[] | undefined, tests: Map<string, Test>
 	return { tests: selected, leftOut: [] as LeftOut[] }
 }
 
-function readySelection(store: Store, plan: Plan, build: string) {
+function blockingRunGaps(store: Store, planId: string) {
+	return planRunGaps(store, planId).filter((item) => !item.adopted && item.gap.severity === 'blocking')
+}
+
+function runGapAffecting(runGaps: RunGap[], test: Test) {
+	return runGaps.find((item) => gapsAffecting([item.gap], test).length > 0)
+}
+
+export function readySelection(store: Store, plan: Plan, build: string | null) {
 	const leftOut: LeftOut[] = []
+	const runGaps = blockingRunGaps(store, plan.planId)
 	for (const test of plan.tests) {
-		const reason = notReadyReason(store, plan, test, build)
+		const reason = notReadyReason(store, plan, test, build, runGaps)
 		if (reason) leftOut.push({ testId: test.id, reason })
 	}
 	let selected = plan.tests.map((test) => test.id).filter((id) => !leftOut.some((item) => item.testId === id))
@@ -862,7 +930,7 @@ function readySelection(store: Store, plan: Plan, build: string) {
 	return { tests: selected, leftOut }
 }
 
-function notReadyReason(store: Store, plan: Plan, test: Test, build: string) {
+function notReadyReason(store: Store, plan: Plan, test: Test, build: string | null, runGaps: RunGap[]) {
 	if (test.readiness !== 'ready') {
 		const gaps = plan.gaps.filter(
 			(gap) =>
@@ -873,6 +941,8 @@ function notReadyReason(store: Store, plan: Plan, test: Test, build: string) {
 		)
 		return `${test.readiness} by ${gaps.map((gap) => gap.id).join(', ')}`
 	}
+	const runGap = runGapAffecting(runGaps, test)
+	if (runGap) return `blocked by ${runGap.gap.id} of ${runGap.runId}`
 	for (const dependency of test.dependsOn.filter((id) => id.includes(':'))) {
 		const cause = dependencyBlock(store, dependency, build)
 		if (cause) return `blocked by ${dependency}: ${cause}`
@@ -880,16 +950,17 @@ function notReadyReason(store: Store, plan: Plan, test: Test, build: string) {
 	return null
 }
 
-function retestCheck(store: Store, runId: string, plan: Plan, build: string) {
+function retestCheck(store: Store, runId: string, plan: Plan, build: string, instanceId: string | undefined) {
 	const previous = one<{
 		plan_id: string
 		target_id: string
 		target_revision: number
+		instance_id: string
 		application_build: string
 		finished: number
 	}>(
 		store,
-		'SELECT r.plan_id, r.target_id, r.target_revision, r.application_build, s.run_id IS NOT NULL AS finished FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.run_id = ?',
+		'SELECT r.plan_id, r.target_id, r.target_revision, r.instance_id, r.application_build, s.run_id IS NOT NULL AS finished FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.run_id = ?',
 		runId
 	)
 	requireCondition(previous, `Unknown run to retest: ${runId}`)
@@ -900,33 +971,46 @@ function retestCheck(store: Store, runId: string, plan: Plan, build: string) {
 			previous.target_revision === plan.target.revision,
 		`Retest scope changed: ${runId} ran plan ${previous.plan_id} on ${previous.target_id}@${previous.target_revision}`
 	)
+	const refreshed =
+		instanceId !== undefined &&
+		instanceId !== previous.instance_id &&
+		findInstance(store, previous.target_id, previous.instance_id).retired
 	requireCondition(
-		previous.application_build !== build,
-		`Retest needs a new build. Run ${runId} used build ${build}.`
+		previous.application_build !== build || refreshed,
+		`Retest needs a new build. Run ${runId} used build ${build}. Keep the build only on a new instance after ${previous.instance_id} is retired.`
 	)
 }
 
 export function dependencyBlock(store: Store, reference: string, build: string | null): string | null {
 	const { planId, testId } = testReference(reference)
-	const result = one<{ run_id: string; target_id: string; target_revision: number; sha256: string; outcome: string }>(
+	const results = all<{
+		run_id: string
+		target_id: string
+		target_revision: number
+		sha256: string
+		outcome: string
+	}>(
 		store,
 		`SELECT r.run_id, r.target_id, r.target_revision, s.sha256,
 			(SELECT t.value ->> '$.outcome' FROM json_each(s.body, '$.tests') t WHERE t.value ->> '$.testId' = ?) AS outcome
 		FROM runs r JOIN results s ON s.run_id = r.run_id
 		WHERE r.plan_id = ? AND (? IS NULL OR r.application_build = ?)
 			AND EXISTS (SELECT 1 FROM json_each(s.body, '$.selectedTestIds') WHERE value = ?)
-		ORDER BY s.rowid DESC LIMIT 1`,
+		ORDER BY r.rowid DESC`,
 		testId,
 		planId,
 		build,
 		build,
 		testId
 	)
-	if (!result) return build === null ? 'no finalized result' : `no finalized result for build ${build}`
-	if (result.outcome !== 'passed') return `latest result ${result.run_id} shows ${result.outcome}`
-	const policy = approvalPolicy(targetRevision(store, result.target_id, result.target_revision).profile).result
-	if (policy === 'required' && !approvalState(store, 'result', result.run_id, result.sha256, policy).approved)
-		return `result ${result.run_id} is not accepted`
+	if (!results.length) return build === null ? 'no finalized result' : `no finalized result for build ${build}`
+	const passed = results.filter((result) => result.outcome === 'passed')
+	if (!passed.length) return `latest result ${results[0].run_id} shows ${results[0].outcome}`
+	const accepted = (result: (typeof results)[number]) => {
+		const policy = approvalPolicy(targetRevision(store, result.target_id, result.target_revision).profile).result
+		return policy === 'none' || approvalState(store, 'result', result.run_id, result.sha256, policy).approved
+	}
+	if (!passed.some(accepted)) return `result ${passed[0].run_id} is not accepted`
 	for (const [owner, plan] of latestPlans(store)) {
 		const open = plan.gaps.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
 		const test = plan.tests.find((test) => test.id === testId)

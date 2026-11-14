@@ -7,10 +7,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { addInstance, openTarget, saveTarget } from '../plugin/src/targets.ts'
-import { answerGap, approvePlan, openPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
+import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
+import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
 import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
 import { run } from '../plugin/src/cli.ts'
+import { planStatus } from '../plugin/src/views.ts'
+import { minimumRules, stages } from '../cli/src/launcher.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
 export const actor = 'tester'
@@ -283,4 +285,55 @@ export function failT2(store: Store, runId: string) {
 
 export function accept(store: Store, runId: string) {
 	return acceptResult(store, actor, { runId, rationale: 'Looks right.' })
+}
+
+export function followHints(t: TestContext, opened: Store, planId = 'checkout', fill: Record<string, string> = {}) {
+	const status = planStatus(opened, planId)
+	const plan = status.revision === null ? null : planRevision(opened, planId).plan
+	const values: Record<string, string> = {
+		'<runId>': 'hint-run',
+		'<new build>': 'hint-build',
+		'<build>': 'hint-build',
+		'<gapId>': status.gaps[0]?.gapId ?? 'none',
+		'<kind>': 'defer',
+		'<answer>': 'Hint answer.',
+		'<source>': 'hints#1',
+		'<why>': 'Hint rationale.',
+		'<instanceId>': plan
+			? instanceList(opened, plan.target.targetId).find((instance) => !instance.retired)!.instanceId
+			: 'none',
+		...fill,
+	}
+	for (const hint of status.next) {
+		let command = hint.replace(/^Build a fix, then /, '')
+		for (const [placeholder, value] of Object.entries(values)) command = command.split(placeholder).join(value)
+		assert.doesNotMatch(command, /<[a-zA-Z ]+>/, command)
+		const args = (command.match(/"[^"]*"|\S+/g) ?? []).map((token) => token.replace(/^"|"$/g, ''))
+		assert.equal(args.shift(), 'checkmate', command)
+		if (args[0] === 'delegate') {
+			assert(stages.includes(args[1] as (typeof stages)[number]), command)
+			const allow = args.slice(3).filter((_, i) => i % 2 === 1)
+			assert.deepEqual(
+				args.slice(3).filter((_, i) => i % 2 === 0),
+				allow.map(() => '--allow'),
+				command
+			)
+			assert(
+				minimumRules.every((rule) => allow.includes(rule)),
+				command
+			)
+			continue
+		}
+		const copy = directory(t)
+		mkdirSync(join(copy, '.checkmate'))
+		opened.db.exec(`VACUUM INTO '${join(copy, '.checkmate', 'checkmate.db')}'`)
+		const stdin =
+			args[0] === 'plan' && args[1] === 'edit'
+				? { tests: { [plan!.tests[0].id]: { title: 'Hint title.' } } }
+				: undefined
+		const outcome = cli(copy, args, stdin)
+		assert.equal(outcome.code, 0, `${command}\n${outcome.output}`)
+		if (args[0] === 'run') assert.match(outcome.lines[0], /^completed /, `${command}\n${outcome.output}`)
+	}
+	return status
 }

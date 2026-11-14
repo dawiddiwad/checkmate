@@ -20,8 +20,19 @@ import {
 } from '../plugin/src/plans.ts'
 import { beginRun, runState } from '../plugin/src/runs.ts'
 import { resultCoverage } from '../plugin/src/contracts.ts'
-import { inbox, planDetail, planHistory } from '../plugin/src/views.ts'
-import { actor, approved, candidate, plan, planRequest, promotionDelta, revised, store, target } from './support.ts'
+import { inbox, planDetail, planHistory, planStatus } from '../plugin/src/views.ts'
+import {
+	actor,
+	approved,
+	candidate,
+	cli,
+	plan,
+	planRequest,
+	promotionDelta,
+	revised,
+	store,
+	target,
+} from './support.ts'
 
 function withG3(): PlanCandidate {
 	const value = candidate()
@@ -626,7 +637,12 @@ test('editing a rejected revision returns it to pending approval', (t) => {
 	plan(opened)
 	rejectPlan(opened, actor, { reference: 'checkout@1', rationale: 'T1 title is vague.' })
 	assert.equal(planDetail(opened, 'checkout').approval.state, 'rejected')
-	assert.deepEqual(inbox(opened).plans, [])
+	assert.equal(planStatus(opened, 'checkout').waitsOn, 'oracle')
+	assert.deepEqual(
+		inbox(opened).plans.map((row) => [`${row.planId}@${row.revision}`, row.approval, row.summary.split('. ')[0]]),
+		[['checkout@1', 'rejected', 'Rejected']]
+	)
+	assert.match(cli(opened.workspace, ['inbox']).output, /checkout@1\tplan\tfff1d35f\tRejected. Change the plan. /)
 	const content = planCandidate(planRevision(opened, 'checkout').plan)
 	content.tests[0].title = 'Standard order total for one item'
 	editPlan(opened, actor, { reference: 'checkout@1', candidate: content })
@@ -686,7 +702,17 @@ test('plan edit keeps gaps with pending decisions open and refuses reused assert
 	answerGap(opened, actor, { planId: 'checkout', gapId: 'G3', kind: 'defer', value: 'Later.', rationale: 'Scope.' })
 	assert.throws(
 		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: reused }),
-		/Gap G3 has a pending decision [0-9A-Z]{26}. Keep the gap open/
+		/Gap G3 has a decision. Only an open gap without a decision can change/
+	)
+	const reworded = structuredClone(open)
+	reworded.gaps.find((gap) => gap.id === 'G3')!.question = 'Is the label blue?'
+	assert.throws(
+		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: reworded }),
+		/Gap G3 has a decision. Only an open gap without a decision can change/
+	)
+	assert.throws(
+		() => patchPlan(opened, actor, { reference: 'checkout@2', patch: { gaps: { G1: { question: 'Other?' } } } }),
+		/Gap G1 has a decision. Only an open gap without a decision can change/
 	)
 	const renamed = structuredClone(open)
 	renamed.tests[0].assertions[0].id = 'A1x'

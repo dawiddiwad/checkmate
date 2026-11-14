@@ -78,6 +78,7 @@ npm run test:live
 
 `test:live` runs `test/live.ts` and `test/live-session.ts` with a real Claude Code CLI against the local checkout fixture.
 
+- Claude Code CLI: the tests use the `claude` command on the `PATH`. It is not a development dependency. The live job in CI installs a pinned version.
 - Authentication: set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. With a token, the test uses a temporary `CLAUDE_CONFIG_DIR`. Without authentication, the test fails. It does not skip.
 - Model: the test sets `ANTHROPIC_MODEL` to `claude-haiku-5-5` when it is not set. Checkmate does not select a model.
 - Permissions: the workers get `Read` and `Bash` in a temporary workspace.

@@ -11,6 +11,7 @@ import {
 	openPlan,
 	patchPlan,
 	planCandidate,
+	planChanges,
 	planRevision,
 	rejectPlan,
 	revisePlan,
@@ -567,6 +568,32 @@ test('a request needs known tool names and refuses drafted requirements when it 
 			}),
 		/The plan request names the requirements/
 	)
+})
+
+test('plan diff lists requirement changes, removed items, and absent values', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const before = planRevision(opened, 'checkout').plan
+	const after = structuredClone(before)
+	after.requirements[0].text = 'A standard order totals 400 PLN.'
+	after.requirements[0].metadata = { priority: 'high' }
+	after.requirements.pop()
+	after.requirements.push({ id: 'R4', text: 'Receipts show the currency.', source: 'brief#receipt' })
+	after.tests[0].assertions = []
+	after.tests.pop()
+	after.gaps.pop()
+	const changes = planChanges(before, after)
+	assert.deepEqual(changes.slice(0, 5), [
+		'R3 removed: "Refund eligibility is unspecified."',
+		'R1 metadata: (none) → {"priority":"high"}',
+		'R1 text: "A standard order for a 400 PLN item has a total of 400 PLN." → "A standard order totals 400 PLN."',
+		'R4 added: "Receipts show the currency."',
+		`${before.tests.at(-1)!.id} removed: ${JSON.stringify(before.tests.at(-1)!.title)}`,
+	])
+	assert(changes.includes('T1.A1 removed: "The confirmation shows 400 PLN."'))
+	assert(changes.includes(`${before.gaps.at(-1)!.id} removed: ${JSON.stringify(before.gaps.at(-1)!.question)}`))
+	assert(changes.every((line) => !line.includes('undefined')))
 })
 
 test('plan edit changes an unapproved latest revision in place and records the operation', (t) => {

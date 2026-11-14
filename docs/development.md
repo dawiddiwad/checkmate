@@ -4,7 +4,7 @@
 
 The plugin is plain TypeScript that Node.js runs directly, with no runtime npm dependencies. Every change goes through `npm run phase:verify`, and a merged pull request releases itself.
 
-**On this page:** [Set up](#set-up) · [Layout](#layout) · [Checks](#checks) · [Live tests](#live-tests) · [Contracts](#contracts) · [Releases](#releases) · [Media](#media)
+**On this page:** [Set up](#set-up) · [Layout](#layout) · [Checks](#checks) · [Writing tests](#writing-tests) · [Live tests](#live-tests) · [Contracts](#contracts) · [Releases](#releases) · [Media](#media)
 
 ## Set up
 
@@ -72,6 +72,17 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 | `test/ui.pages.browser.test.ts` | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width. |
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
+
+## Writing tests
+
+Use these rules when you add or change a test.
+
+1. **Assert a rule once.** Assert it at the lowest layer that owns it, for example `plans`, `runs`, or `views`. A CLI, UI, or browser test checks only the wiring: one happy path and one refusal for each command or page.
+2. **Write one scenario for each feature and for each escaped bug.** At each step, check `state`, `waitsOn`, `why`, and `next`. Name the test after the behavior that broke.
+3. **Use a table for validation.** Write one test for each input surface, with a table of inputs and expected reasons. Do not add a test for each bad input.
+4. **Write one property test for each state machine.** Check invariants at each step, not only that the walk ends.
+5. **Assert behavior, not text.** The agent-facing CLI lines are a contract. Check the format of each command in one test. In other places, match the identifying tokens, for example `/Unknown test .*T9/`. Select HTML by `data-key`, role, or label, not by class names or markup.
+6. **Keep a runtime budget, not a count budget.** Do not use a fixed wait. Wait for a condition, or inject the timeout. Use a subprocess only when the proof needs a process boundary, for example standard input, an exit code, or a lock between processes. Use a browser only for client behavior. Seed a shared workspace once for each file, and copy it for each test.
 
 ## Live tests
 

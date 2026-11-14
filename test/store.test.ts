@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import {
+	busyTimeout,
 	canonical,
 	closeStore,
 	digest,
@@ -135,6 +136,14 @@ test('a decision changes only applied_revision, only once, and only from NULL', 
 		() => opened.db.exec("UPDATE decisions SET applied_revision = 4 WHERE id = 'D9'"),
 		/Decisions are immutable/
 	)
+})
+
+test('a command waits CHECKMATE_BUSY_TIMEOUT_MS for the lock, else 30 seconds', (t) => {
+	const opened = store(t)
+	assert.equal(opened.db.prepare('PRAGMA busy_timeout').get()!.timeout, 30000)
+	assert.equal(busyTimeout('1000'), 1000)
+	for (const value of [undefined, '', '0', '-5', '1.5', 'abc', ' 1000'])
+		assert.equal(busyTimeout(value), 30000, String(value))
 })
 
 test('a write that meets a lock rolls back and logs no rejection', (t) => {

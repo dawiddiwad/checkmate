@@ -182,7 +182,7 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 | `interrupted`       | A run or a delegated worker stopped at the deadline or on a signal.                      | 1    |
 | `operational_error` | A tool, access, lock, or worker failure stopped the work.                                | 1    |
 
-**Lock.** One command writes at a time. Every command waits up to 30 seconds for the database lock, also a read such as `log`, `status`, or `inbox`. When it cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again. The log has no row for that attempt.
+**Lock.** One command writes at a time. Every command waits up to 30 seconds for the database lock, also a read such as `log`, `status`, or `inbox`. Set `CHECKMATE_BUSY_TIMEOUT_MS` to change the wait. When it cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again. The log has no row for that attempt.
 
 `needs_decision` exits with 0. For example, `plan save` with open gaps saves the revision and gives `needs_decision`. `run begin` gives `needs_decision` when the gate refuses the run, and then no run exists. Read line 1, not only the exit code.
 
@@ -260,11 +260,12 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 
 ## Environment variables
 
-| Variable                    | Read by        | Effect                                                                                   |
-| --------------------------- | -------------- | ---------------------------------------------------------------------------------------- |
-| `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                    |
-| `ANTHROPIC_MODEL`           | The host       | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it. |
-| `PLAYWRIGHT_MCP_OUTPUT_DIR` | Playwright CLI | `delegate execute` sets it to `.checkmate/tmp/<runId>`, so browser output stays there.   |
+| Variable                    | Read by        | Effect                                                                                                                |
+| --------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                                                 |
+| `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate      | The wait for the database lock in milliseconds. A value that is not a positive whole number gives the default, 30000. |
+| `ANTHROPIC_MODEL`           | The host       | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it.                              |
+| `PLAYWRIGHT_MCP_OUTPUT_DIR` | Playwright CLI | `delegate execute` sets it to `.checkmate/tmp/<runId>`, so browser output stays there.                                |
 
 The tests read more variables. Read [Development](../development.md).
 

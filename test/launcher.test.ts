@@ -376,6 +376,8 @@ function hold(workspace: string) {
 }
 
 test('a lock gives operational_error: retry before the worker, read the record after it', async (t) => {
+	process.env.CHECKMATE_BUSY_TIMEOUT_MS = '1000'
+	t.after(() => delete process.env.CHECKMATE_BUSY_TIMEOUT_MS)
 	const early = requested(t)
 	const bin = join(early, 'bin')
 	mkdirSync(bin)

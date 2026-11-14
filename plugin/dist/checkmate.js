@@ -243,12 +243,15 @@ var busyReason = "Another command holds the database lock. Nothing changed. Run 
 function isBusy(error) {
   return error instanceof Error && "errcode" in error && [5, 6].includes(Number(error.errcode) & 255);
 }
+function busyTimeout(value2 = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
+  return value2 !== void 0 && /^[1-9][0-9]*$/.test(value2) ? Number(value2) : 3e4;
+}
 function openStore(workspace) {
   const path = databasePath(workspace);
   mkdirSync(join(workspace, ".checkmate"), { recursive: true });
   const db = new DatabaseSync(path);
   try {
-    db.exec("PRAGMA busy_timeout = 30000");
+    db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`);
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
     db.exec("BEGIN IMMEDIATE");
@@ -271,7 +274,7 @@ function openReadOnlyStore(workspace) {
   const path = databasePath(workspace);
   closeStore(openStore(workspace));
   const db = new DatabaseSync(path, { readOnly: true });
-  db.exec("PRAGMA busy_timeout = 30000");
+  db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`);
   return checkedStore(db, workspace, path);
 }
 function checkedStore(db, workspace, path) {

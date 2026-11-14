@@ -366,7 +366,7 @@ test('the JUnit failure names the first defect by finding ID, and every export r
 	assert.match(xml, /<testcase classname="checkout" name="T2" time="[0-9.]+">/)
 	for (const format of ['md', 'html']) {
 		const text = exportRun(opened, 'run-1', format)
-		assert.doesNotMatch(text, /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/, format)
+		assert(![...text].some((character) => character < ' ' && !'\t\n\r'.includes(character)), format)
 		assert.match(text, /Second defect\uFFFD/, format)
 	}
 })

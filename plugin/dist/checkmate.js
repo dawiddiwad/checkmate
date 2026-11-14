@@ -14395,7 +14395,8 @@ function readOnly(read) {
   try {
     return read();
   } catch (error) {
-    if (error instanceof Error && "errcode" in error && Number(error.errcode) === 8) throw new Error(readOnlyReason);
+    if (error instanceof Error && "errcode" in error && Number(error.errcode) === 8)
+      throw new Error(readOnlyReason, { cause: error });
     throw error;
   }
 }

@@ -190,31 +190,39 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
 
 `checkmate log --after <rowid> --json` lists only the operations after a row ID, oldest first. Each operation has `rowid` and `subjects`. Keep the last row ID that you read, and give it on the next call. An operation that changes what waits for the oracle has the subject `inbox`.
 
-1. Save this script as `.claude/hooks/checkmate-signal.mjs` in the project. It stops when the Bash command does not run Checkmate. It keeps the last row ID in `.claude/hooks/.checkmate-cursor`, because Checkmate keeps no file other than its database. When a new operation has the subject `inbox` and `checkmate inbox` is not empty, it sends one line to `ORACLE_WEBHOOK_URL`. It saves the row ID only after the send worked, or when no send was necessary. When the send fails, the next run tries again.
+1. Save this script as `.claude/hooks/checkmate-signal.mjs` in the project. It stops when `ORACLE_WEBHOOK_URL` is not set. It stops when the Bash command does not run the `checkmate` program or `node .../dist/checkmate.js`, so `grep checkmate` does not start it. It uses the workspace of the `--workspace` option of the command, else `CLAUDE_PROJECT_DIR`. It stops when that workspace has no `.checkmate/checkmate.db`, so it never makes a database. It keeps the last row ID of each workspace in `.claude/hooks/.checkmate-cursor`, because Checkmate keeps no file other than its database. It starts again from row 0 when the cursor file is corrupt or a row ID is after the last row of the log. When a new operation has the subject `inbox` and `checkmate inbox` is not empty, it sends one line to `ORACLE_WEBHOOK_URL`. It saves the row ID only after the send worked, or when no send was necessary. When the send fails, the next run tries again.
 
    ```js
    import { execFileSync } from 'node:child_process'
-   import { readFileSync, writeFileSync } from 'node:fs'
+   import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+   import { resolve } from 'node:path'
 
+   if (!process.env.ORACLE_WEBHOOK_URL) process.exit(0)
    const hook = JSON.parse(readFileSync(0, 'utf8'))
    const command = hook.tool_input?.command ?? ''
-   if (hook.hook_event_name !== 'Stop' && !command.includes('checkmate')) process.exit(0)
+   const program = /(?:^|[;&|(\n]\s*|\bnode\s+)(?:\S*\/)?(?:checkmate|dist\/checkmate\.js)(?=\s|$)/
+   if (hook.hook_event_name !== 'Stop' && !program.test(command)) process.exit(0)
 
    const project = process.env.CLAUDE_PROJECT_DIR
-   const cursor = `${project}/.claude/hooks/.checkmate-cursor`
+   const flag = command.match(/--workspace(?:=|\s+)(["']?)(\S+?)\1(?=\s|$)/)
+   const workspace = flag ? resolve(hook.cwd ?? project, flag[2]) : project
+   if (!existsSync(`${workspace}/.checkmate/checkmate.db`)) process.exit(0)
    const checkmate = (...args) =>
-   	JSON.parse(execFileSync('checkmate', [...args, '--json'], { cwd: project, encoding: 'utf8' }))
+   	JSON.parse(execFileSync('checkmate', [...args, '--workspace', workspace, '--json'], { encoding: 'utf8' }))
 
-   let after = '0'
+   const file = `${project}/.claude/hooks/.checkmate-cursor`
+   let cursors = {}
    try {
-   	after = readFileSync(cursor, 'utf8').trim()
+   	cursors = JSON.parse(readFileSync(file, 'utf8'))
    } catch {}
-   const { operations } = checkmate('log', '--after', after, '--limit', '1000')
+   const latest = checkmate('log', '--limit', '1').operations[0]?.rowid ?? 0
+   const saved = cursors[workspace]
+   const after = Number.isInteger(saved) && saved >= 0 && saved <= latest ? saved : 0
+   const { operations } = checkmate('log', '--after', String(after), '--limit', '1000')
    if (!operations.length) process.exit(0)
 
    if (operations.some((operation) => operation.subjects.includes('inbox'))) {
-   	const inbox = checkmate('inbox')
-   	const { gaps, plans, results, requests } = inbox
+   	const { gaps, plans, results, requests } = checkmate('inbox')
    	if (gaps.length + plans.length + results.length + requests.length) {
    		const response = await fetch(process.env.ORACLE_WEBHOOK_URL, {
    			method: 'POST',
@@ -227,7 +235,7 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
    		if (!response.ok) process.exit(1)
    	}
    }
-   writeFileSync(cursor, String(operations.at(-1).rowid))
+   writeFileSync(file, JSON.stringify({ ...cursors, [workspace]: operations.at(-1).rowid }))
    ```
 
 2. Add the hook to `.claude/settings.json` in the project. `PostToolUse` runs after a command that exits with 0. `PostToolUseFailure` runs after a command that exits with 1, for example `rejected`. With `"async": true`, the hook runs in the background, and Claude does not wait for it.
@@ -266,7 +274,7 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
 3. Set `ORACLE_WEBHOOK_URL` in the environment of Claude Code.
 4. Add `.claude/hooks/.checkmate-cursor` to `.gitignore`.
 
-The hook reads `tool_input.command` and `hook_event_name` from the hook input on standard input. The script needs `checkmate` on the `PATH` of the hook. A worker of `delegate` runs `node <plugin root>/dist/checkmate.js`, and the script also matches that command.
+The hook reads `tool_input.command`, `hook_event_name`, and `cwd` from the hook input on standard input. A relative `--workspace` path starts at `cwd`. The script needs `checkmate` on the `PATH` of the hook. A worker of `delegate` runs `node <plugin root>/dist/checkmate.js`, and the script also matches that command.
 
 - **Delegated stages.** A `delegate` worker is a `claude -p` session in the workspace. It loads the hooks in `.claude/settings.json` of the project, so the same hook runs for the writes of a worker.
 - **A quieter alternative.** Add the same script as a `Stop` hook, without a matcher. It then runs once when Claude finishes a response, not after each command. The script reads the log for each `Stop` event.

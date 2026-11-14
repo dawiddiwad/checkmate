@@ -50,24 +50,25 @@ npm run phase:verify
 
 The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is not `/usr/bin/chromium`. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable directory.
 
-| Test file                 | Covers                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`      | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs. |
-| `test/targets.test.ts`    | Setup requests, profile checks, revision order, the default approval policy.                    |
-| `test/plans.test.ts`      | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.    |
-| `test/cross-plan.test.ts` | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.      |
-| `test/runs.test.ts`       | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.       |
-| `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.     |
-| `test/views.test.ts`      | The inbox, the approval policy, the loop state, and the plan, run, and log lists.               |
-| `test/render.test.ts`     | HTML, Markdown, and JSON exports.                                                               |
-| `test/cli.test.ts`        | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.  |
-| `test/launcher.test.ts`   | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.   |
-| `test/hook.test.ts`       | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.   |
-| `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture.                                       |
-| `test/package.test.ts`    | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.    |
-| `test/release.test.ts`    | Version rules and the five version files.                                                       |
-| `test/ui.test.ts`         | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.    |
-| `test/ui.browser.test.ts` | The UI in a real browser: keyboard, forms, live updates, dark mode, and no JavaScript.          |
+| Test file                       | Covers                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `test/store.test.ts`            | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs.         |
+| `test/targets.test.ts`          | Setup requests, profile checks, revision order, the default approval policy.                            |
+| `test/plans.test.ts`            | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.            |
+| `test/cross-plan.test.ts`       | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.              |
+| `test/runs.test.ts`             | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.               |
+| `test/evidence.test.ts`         | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.             |
+| `test/views.test.ts`            | The inbox, the approval policy, the loop state, and the plan, run, and log lists.                       |
+| `test/render.test.ts`           | HTML, Markdown, and JSON exports.                                                                       |
+| `test/cli.test.ts`              | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.          |
+| `test/launcher.test.ts`         | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.           |
+| `test/hook.test.ts`             | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.           |
+| `test/tools.test.ts`            | A real browser and HTTP API against the checkout fixture.                                               |
+| `test/package.test.ts`          | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.            |
+| `test/release.test.ts`          | Version rules and the five version files.                                                               |
+| `test/ui.test.ts`               | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.            |
+| `test/ui.browser.test.ts`       | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                        |
+| `test/ui.pages.browser.test.ts` | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width. |
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
 

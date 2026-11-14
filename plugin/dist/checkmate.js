@@ -10743,13 +10743,13 @@ var themeIcons = html2`<svg class="ti ti-system" viewBox="0 0 16 16" aria-hidden
 	</svg>`;
 var gear = html2`<svg class="gear" viewBox="0 0 16 16" aria-hidden="true">
 	<path
-		d="M6.7 1h2.6l.4 1.9 1.3.6 1.7-1 1.8 1.8-1 1.7.6 1.3 1.9.4v2.6l-1.9.4-.6 1.3 1 1.7-1.8 1.8-1.7-1-1.3.6-.4 1.9H6.7l-.4-1.9-1.3-.6-1.7 1-1.8-1.8 1-1.7-.6-1.3L1 9.3V6.7l1.9-.4.6-1.3-1-1.7 1.8-1.8 1.7 1 1.3-.6z"
+		d="M5.86 3.2 6.21 1.34h3.58l.35 1.86.95.55 1.79-.63 1.78 3.09-1.44 1.24v1.1l1.44 1.24-1.78 3.09-1.79-.63-.95.55-.35 1.86H6.21l-.35-1.86-.95-.55-1.79.63-1.78-3.09 1.44-1.24v-1.1L1.34 6.21l1.78-3.09 1.79.63z"
 		fill="none"
 		stroke="currentColor"
-		stroke-width="1.3"
+		stroke-width="1.5"
 		stroke-linejoin="round"
 	/>
-	<circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+	<circle cx="8" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5" />
 </svg>`;
 function settingsLink(page) {
   const current = page.section === "settings" ? html2` aria-current="page"` : "";

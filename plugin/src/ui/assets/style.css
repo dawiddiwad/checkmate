@@ -1950,8 +1950,8 @@ a.icon-btn[aria-current='page'] {
 	color: var(--accent);
 }
 .gear {
-	width: 16px;
-	height: 16px;
+	width: 15px;
+	height: 15px;
 	display: block;
 }
 .settings-nav {

@@ -328,3 +328,35 @@ test('Bring into plan on the run page adds the run gap to the plan', { skip }, a
 	t.after(() => closeStore(store))
 	assert(planDetail(store, 'checkout').plan.gaps.some((gap) => gap.id === 'G4'))
 })
+
+test('Settings adds and retires an instance from the keyboard and updates live', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/'))
+	await page.getByRole('link', { name: 'Settings' }).focus()
+	await page.keyboard.press('Enter')
+	await page.waitForURL(/\/settings\/targets$/)
+	await page.getByRole('link', { name: 'shop-local' }).click()
+	await page.getByRole('heading', { name: 'shop-local' }).waitFor()
+	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	await page.getByLabel('Instance ID').fill('uat')
+	await page.getByLabel('web url').fill('https://uat.shop.example')
+	await page.getByLabel('Environment optional').fill('UAT sandbox')
+	await page.getByRole('button', { name: 'Add instance' }).click()
+	await page.waitForURL(/#instance-uat$/)
+	const row = page.locator('#instance-uat')
+	await row.getByText('active').waitFor()
+	await row.locator('summary', { hasText: 'Retire' }).focus()
+	await page.keyboard.press('Enter')
+	await row.getByRole('button', { name: 'Confirm retire' }).click()
+	await page.locator('#instance-uat').getByText('retired by qa-lead').waitFor()
+	await checkmate(workspace, [
+		'target',
+		'instance',
+		'add',
+		'shop-local',
+		'eu',
+		'--entry',
+		'web=https://eu.shop.example',
+	])
+	await page.locator('#instance-eu').waitFor()
+})

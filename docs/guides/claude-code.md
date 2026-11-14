@@ -25,14 +25,14 @@ The plugin has no global `checkmate` command. Claude runs the plugin CLI for you
 
 ### 1. Set up the target
 
-Give the base URL, the capabilities, and the operations that tests can do. You can also name tools, for example an MCP server.
+Give the entry points, the capabilities, and the operations that tests can do. An entry point is a named way into the application, for example the `web` URL. Give the first instance too: the place where the application runs, with a value for each entry point. You can also name tools, for example an MCP server.
 
 ```text
-/checkmate:setup shop at http://127.0.0.1:4173, capabilities browser and http,
-operations read_catalog and create_order
+/checkmate:setup shop with entry point web (url), capabilities browser and http,
+operations read_catalog and create_order. First instance: local, web at http://127.0.0.1:4173
 ```
 
-Claude checks each tool and the target, and saves the profile `shop@1`.
+Claude checks each tool and the target, saves the profile `shop@1`, and adds the instance `local`. To add another instance later, for example a staging server, open Settings in the review UI, or ask Claude.
 
 ### 2. Plan
 
@@ -69,6 +69,8 @@ Claude writes revision 2 from your answers. Read it in the UI. To change it, cli
 ```
 
 Claude checks the gate, records each assertion with evidence, closes each test, records the findings, and finishes the run.
+
+When the target has two or more active instances, name the instance, for example `/checkmate:execute checkout@2, tests T1,T2, build b1, instance staging`. QA reads the entry values of that instance.
 
 To run before the gaps are answered, ask for the ready tests only, for example `/checkmate:execute checkout@1, ready tests only, build b1`.
 

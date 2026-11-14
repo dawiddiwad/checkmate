@@ -14,13 +14,28 @@
 			"type": "integer",
 			"minimum": 1
 		},
-		"baseUrl": {
-			"type": "string",
-			"format": "uri"
-		},
-		"environment": {
-			"type": "string",
-			"minLength": 1
+		"entryPoints": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"kind": {
+						"enum": ["url", "command", "value"]
+					},
+					"purpose": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["name", "kind", "purpose"],
+				"additionalProperties": false
+			},
+			"minItems": 1,
+			"uniqueItems": true
 		},
 		"capabilities": {
 			"type": "array",
@@ -140,8 +155,7 @@
 		"contractVersion",
 		"targetId",
 		"revision",
-		"baseUrl",
-		"environment",
+		"entryPoints",
 		"capabilities",
 		"tools",
 		"authentication",

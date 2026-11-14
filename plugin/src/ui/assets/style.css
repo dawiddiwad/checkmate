@@ -1924,3 +1924,63 @@ textarea.code {
 		box-shadow: inset 3px 0 0 var(--accent);
 	}
 }
+a.icon-btn {
+	text-decoration: none;
+}
+a.icon-btn[aria-current='page'] {
+	background: var(--accent-soft);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.gear {
+	width: 16px;
+	height: 16px;
+	display: block;
+}
+.settings-nav {
+	margin: -8px 0 18px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--line);
+}
+.entries {
+	margin: 0;
+	display: grid;
+	gap: 2px;
+	font-size: 13px;
+}
+.entries > div {
+	display: flex;
+	gap: 6px;
+	align-items: baseline;
+	flex-wrap: wrap;
+}
+.entries dt {
+	color: var(--muted);
+}
+.entries dt::after {
+	content: ':';
+}
+.entries dd {
+	margin: 0;
+}
+.entries code {
+	overflow-wrap: normal;
+}
+.entries .word {
+	white-space: nowrap;
+}
+.main-col > section {
+	min-width: 0;
+}
+.retire > summary {
+	list-style: none;
+}
+.retire > summary::-webkit-details-marker {
+	display: none;
+}
+.retire[open] > summary {
+	margin-bottom: 8px;
+}
+.retire .confirm-box {
+	min-width: 220px;
+}

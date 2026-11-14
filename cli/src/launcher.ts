@@ -1,5 +1,5 @@
 import type { Status, Store } from '../../plugin/src/index.ts'
-import { closeStore, openStore, validate } from '../../plugin/src/index.ts'
+import { closeStore, isBusy, openStore, validate } from '../../plugin/src/index.ts'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -11,6 +11,7 @@ export type WorkerResponse = { status: Status; subject: string; reasons: string[
 export type DelegateResponse = WorkerResponse & { operation: string | null }
 export type DelegateOptions = {
 	allowedTools: string[]
+	claudeArgs?: string[]
 	timeoutSeconds?: number
 	claude?: string
 	playwright?: string
@@ -23,6 +24,7 @@ type RunRow = {
 	plan_revision: number
 	target_id: string
 	target_revision: number
+	instance_id: string
 	application_build: string
 	request: string
 	browser_session: string
@@ -34,6 +36,18 @@ const maxOutputBytes = 4 * 1024 * 1024
 const defaultTimeoutSeconds = 300
 
 export const minimumRules = ['Read', 'Bash']
+
+export const reservedClaudeArgs = [
+	'-p',
+	'--print',
+	'--output-format',
+	'--input-format',
+	'--json-schema',
+	'--verbose',
+	'--plugin-dir',
+	'--allowedTools',
+	'--allowed-tools',
+]
 
 const verifiedBy: Record<Stage, { command: string; key: string }> = {
 	setup: { command: 'target save', key: 'targetId' },
@@ -47,6 +61,9 @@ export function defaultPluginRoot() {
 	if (existsSync(join(bundled, '.claude-plugin', 'plugin.json'))) return bundled
 	return fileURLToPath(new URL('../../plugin', import.meta.url))
 }
+
+export const unverifiedReason =
+	'The worker may have written already. Read `checkmate status` or `checkmate log` before you run delegate again.'
 
 export function resumeReason(runId: string) {
 	return `Recorded results stay. Run \`checkmate run resume ${runId}\` or \`checkmate run finish ${runId} ...\``
@@ -76,7 +93,18 @@ function readEnvelope(output: string) {
 	return validate('response', envelope.structured_output) as WorkerResponse
 }
 
-export function workerArgs(pluginRoot: string, allowedTools: string[]) {
+function checkClaudeArgs(claudeArgs: string[]) {
+	for (const arg of claudeArgs) {
+		const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`))
+		if (!reserved) continue
+		const instead = reserved.startsWith('--allowed')
+			? 'Use --allow <rule> for tools.'
+			: `delegate needs its own control of ${reserved}.`
+		refuse(`--claude-arg ${arg} is not permitted. ${instead}`)
+	}
+}
+
+export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArgs: string[] = []) {
 	const schema = readFileSync(join(pluginRoot, 'contracts', 'response.schema.json'), 'utf8')
 	const args = [
 		'-p',
@@ -89,6 +117,7 @@ export function workerArgs(pluginRoot: string, allowedTools: string[]) {
 		'--permission-prompts',
 		'none',
 		'--no-session-persistence',
+		...claudeArgs,
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
 	return args
@@ -175,6 +204,17 @@ function pendingDecisions(store: Store, planId: string) {
 	)!.count
 }
 
+function usesPlaywright(store: Store, run: RunRow) {
+	const profile = one<{ body: string }>(
+		store,
+		'SELECT body FROM profiles WHERE target_id = ? AND revision = ?',
+		run.target_id,
+		run.target_revision
+	)!
+	const tools = (JSON.parse(profile.body) as { tools: Array<{ name: string; kind: string }> }).tools
+	return tools.some((tool) => tool.name === 'playwright-cli' && tool.kind === 'cli')
+}
+
 function startedRun(store: Store, runId: string) {
 	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)
 	if (!run) refuse(`Unknown run: ${runId}. Run \`checkmate run begin\` before delegate execute.`)
@@ -222,6 +262,7 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	if (stage === 'setup')
 		return [
 			`Target: ${subject}. Read the setup request with \`checkmate target request ${subject}\`.`,
+			`Read the instances with \`checkmate target instance list ${subject}\`. Check the target through an active instance.`,
 			`Save the profile with \`checkmate target save ${subject}\`.`,
 		]
 	if (stage === 'plan')
@@ -239,6 +280,7 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	return [
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run!.plan_id}@${run!.plan_revision}. Target: ${run!.target_id}@${run!.target_revision}. Build: ${run!.application_build}.`,
+		`Instance: ${run!.instance_id}. Read its entry values with \`checkmate target show ${run!.target_id} --instance ${run!.instance_id}\`. Run a command entry at test time. Do not record its output as a value.`,
 		`Selected tests: ${request.selectedTestIds.join(',')}. New blocker policy: ${request.onNewBlocker}.`,
 		`Browser session: ${run!.browser_session}. Send text evidence with \`--evidence -\`. Binary evidence directory: .checkmate/tmp/${subject}/.`,
 		`Read the open tests with \`checkmate run show ${subject}\`. Finish with \`checkmate run finish ${subject}\` before the deadline.`,
@@ -289,35 +331,53 @@ export async function delegate(
 	workspace = resolve(workspace)
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`)
 	if (!options.allowedTools.length) refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`)
-	const { after, run } = withStore(workspace, (store) => {
+	checkClaudeArgs(options.claudeArgs ?? [])
+	const { after, run, browser } = withStore(workspace, (store) => {
 		checkSubject(store, stage, subject)
-		return { after: lastOperation(store), run: stage === 'execute' ? startedRun(store, subject) : null }
+		const run = stage === 'execute' ? startedRun(store, subject) : null
+		return { after: lastOperation(store), run, browser: run ? usesPlaywright(store, run) : false }
 	})
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
 	const timeoutSeconds = options.timeoutSeconds ?? run?.deadline_seconds ?? defaultTimeoutSeconds
 	let claimed: WorkerResponse | null = null
 	let failure: Error | null = null
 	try {
-		claimed = await worker(options.claude ?? 'claude', workerArgs(pluginRoot, options.allowedTools), {
-			cwd: workspace,
-			prompt: prompt(stage, subject, workspace, pluginRoot, run, timeoutSeconds),
-			timeoutSeconds,
-			env: {
-				...process.env,
-				CHECKMATE_ACTOR: `claude:${stage}`,
-				...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
-			},
-		})
+		claimed = await worker(
+			options.claude ?? 'claude',
+			workerArgs(pluginRoot, options.allowedTools, options.claudeArgs),
+			{
+				cwd: workspace,
+				prompt: prompt(stage, subject, workspace, pluginRoot, run, timeoutSeconds),
+				timeoutSeconds,
+				env: {
+					...process.env,
+					CHECKMATE_ACTOR: `claude:${stage}`,
+					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
+				},
+			}
+		)
 		if (!subjectMatches(claimed.subject, subject))
 			failure = new Error(`Worker response names ${claimed.subject}, not ${subject}`)
 	} catch (error) {
 		failure = error instanceof Error ? error : new Error('Unknown worker failure')
 	}
-	const cleanup = run
-		? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
-		: null
-	const verified = withStore(workspace, (store) => verify(store, stage, subject, after))
+	const cleanup =
+		run && browser
+			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
+			: null
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
+	let verified: Verified | null
+	try {
+		verified = withStore(workspace, (store) => verify(store, stage, subject, after))
+	} catch (error) {
+		if (!isBusy(error)) throw error
+		return {
+			status: 'operational_error',
+			subject,
+			reasons: [...(failure ? [failure.message] : []), (error as Error).message, unverifiedReason, ...extra],
+			operation: null,
+		}
+	}
 	if (failure) {
 		const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
 		return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }

@@ -3,7 +3,7 @@
 Use this recipe when the plan lists the `node` tool for HTTP. For another HTTP tool, use the same rules for evidence.
 
 Use Node.js `fetch` with an explicit timeout.
-Resolve credentials from the profile's environment references. Do not save their values.
+Resolve credentials from the authentication references of the profile and the instance. Do not save their values.
 Run the script from the workspace. It prints the exchange. It writes no file:
 
 ```sh

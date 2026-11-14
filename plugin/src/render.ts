@@ -30,7 +30,7 @@ const formats = ['md', 'html', 'json'] as const
 const maxInlineImage = 512 * 1024
 const maxInlineText = 16 * 1024
 const inlineImages = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const inlineTexts = ['text/plain', 'application/json', 'text/markdown']
+const inlineTexts = ['text/plain', 'application/json', 'text/markdown', 'application/xml', 'text/csv']
 const tones: Record<string, string> = {
 	passed: 'pass',
 	approved: 'pass',
@@ -254,6 +254,7 @@ function runDocument(report: RunReport): Report {
 				['Application build', result.applicationBuild],
 				['Plan', `${result.plan.planId}@${result.plan.revision}`],
 				['Target profile', `${result.target.targetId}@${result.target.revision}`],
+				['Instance', result.instanceId],
 				['Started', result.startedAt],
 				['Finished', result.finishedAt],
 				['Attempts', String(result.attempts)],

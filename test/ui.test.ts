@@ -15,6 +15,8 @@ import {
 	closeStore,
 	openPlan,
 	openStore,
+	addInstance,
+	instanceList,
 	operationLog,
 	planCandidate,
 	planDetail,
@@ -581,6 +583,7 @@ test('a retested run leaves the inbox and keeps its decision form on the run pag
 			runId: 'run-9',
 			reference: 'checkout@2',
 			build: 'fixture-build-9',
+			instance: 'staging',
 			partial: 'ready_only',
 			retestOf: 'run-7',
 		})
@@ -766,4 +769,146 @@ test('the JSON editor reports errors, keeps the text, and records the typed name
 		read(workspace, (store) => operationLog(store, { limit: 1 })[0].actor),
 		'reviewer'
 	)
+})
+
+test('the settings button opens Targets; a target page shows its shape, history, and instances', async (t) => {
+	const { ui } = await start(t)
+	const inbox = (await call(ui, '/')).body
+	assert.match(inbox, /<a class="icon-btn" href="\/settings" title="Settings" aria-label="Settings"\s*>/)
+	assert.equal((await call(ui, '/settings')).headers.location, '/settings/targets')
+	const list = await call(ui, '/settings/targets')
+	assert.equal(list.status, 200)
+	assert.match(list.body, /aria-label="Settings"\s+aria-current="page"/)
+	assert.match(list.body, /<a href="\/settings\/targets"\s+aria-current="page"\s*>Targets<\/a/)
+	assert.match(list.body, /href="\/settings\/targets\/shop-local" data-nav-item>shop-local<\/a>/)
+	assert.match(list.body, /<td>2<\/td>/)
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	for (const text of [
+		/Revision 1 \(latest\)/,
+		/<td class="mono">web<\/td>\s*<td class="mono">url<\/td>/,
+		/id="instance-staging"/,
+		/<code>STAGING_LOGIN<\/code>/,
+		/Confirm retire/,
+		/name="entry.web"/,
+		/shop-local@1<\/a/,
+		/<code>none<\/code> · references/,
+	])
+		assert.match(page, text)
+	assert.match(page, /id="instance-preview"[\s\S]*?retired/)
+	assert.equal((await call(ui, '/settings/targets/nothing')).status, 404)
+	assert.match((await call(ui, '/runs/run-8')).body, /instance <code>staging<\/code>/)
+	assert.match((await call(ui, '/runs')).body, /<td class="mono">staging<\/td>/)
+})
+
+test('the Add instance form records the actor and the Retire button needs its confirm step', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	const csrf = field(page, 'csrf')
+	assert.match(page, /id="instance-actor" name="actor"/)
+	const form = { csrf, instanceId: 'uat', 'entry.web': 'not a url', environment: 'UAT', references: 'a\nb' }
+	const nameless = await call(ui, '/settings/targets/shop-local/instances', { form })
+	assert.equal(nameless.status, 422)
+	assert.match(nameless.body, /Enter your name/)
+	const invalid = await call(ui, '/settings/targets/shop-local/instances', { form, headers: actorCookie })
+	assert.equal(invalid.status, 422)
+	assert.match(invalid.body, /Entry point web needs a valid URL/)
+	assert.match(invalid.body, /name="instanceId"[\s\S]*?value="uat"/)
+	const added = await call(ui, '/settings/targets/shop-local/instances', {
+		form: { ...form, 'entry.web': 'https://uat.shop.example' },
+		headers: actorCookie,
+	})
+	assert.equal(added.status, 303)
+	assert.equal(added.headers.location, '/settings/targets/shop-local#instance-uat')
+	assert.match(decodeURIComponent(String(added.headers['set-cookie'])), /Added instance uat to shop-local/)
+	const unconfirmed = await call(ui, '/settings/targets/shop-local/instances/uat/retire', {
+		form: { csrf },
+		headers: actorCookie,
+	})
+	assert.equal(unconfirmed.status, 422)
+	assert.match(unconfirmed.body, /Confirm that you want to retire the instance/)
+	const retired = await call(ui, '/settings/targets/shop-local/instances/uat/retire', {
+		form: { csrf, confirmed: '1' },
+		headers: actorCookie,
+	})
+	assert.equal(retired.status, 303)
+	const log = read(workspace, (store) => operationLog(store, { subject: 'target:shop-local', limit: 2 }))
+	assert.deepEqual(
+		log.map((row) => [row.command, row.actor]),
+		[
+			['target instance retire', human],
+			['target instance add', human],
+		]
+	)
+	const uat = read(workspace, (store) => instanceList(store, 'shop-local')).find(
+		(instance) => instance.instanceId === 'uat'
+	)
+	assert.deepEqual(uat?.references, ['a', 'b'])
+	assert.equal(uat?.environment, 'UAT')
+	assert(uat?.retired)
+	assert.match((await call(ui, '/log')).body, /href="\/settings\/targets\/shop-local">target:shop-local/)
+})
+
+test('the run page shows XML and CSV evidence inline as text', async (t) => {
+	const { ui, workspace } = await start(t)
+	read(workspace, (store) => {
+		const open = runDetail(store, 'run-8')
+			.tests.flatMap((test) => test.assertions.map((assertion) => ({ test, assertion })))
+			.find((item) => item.assertion.result === null)!
+		checkAssertion(store, agent, {
+			runId: 'run-8',
+			testId: open.test.testId,
+			assertionId: open.assertion.assertionId,
+			result: 'passed',
+			observed: 'The feed lists one item.',
+			evidence: [
+				evidenceFile(store, 'run-8', 'feed.xml', '<feed><item>Lamp</item></feed>'),
+				evidenceFile(store, 'run-8', 'rows.csv', 'sku,total\nLAMP-01,400\n'),
+			],
+		})
+	})
+	const page = (await call(ui, '/runs/run-8')).body
+	assert.match(page, /<pre tabindex="0">&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/)
+	assert.match(page, /<pre tabindex="0">sku,total\nLAMP-01,400\n<\/pre>/)
+})
+
+test('instance values are escaped in the table and the form; a javascript: URL entry is text only', async (t) => {
+	const { ui, workspace } = await start(t)
+	const hostile = 'javascript:alert("x")//<script>alert(1)</script>'
+	read(workspace, (store) =>
+		addInstance(store, agent, {
+			targetId: 'shop-local',
+			instanceId: 'hostile',
+			instance: { entries: { web: hostile }, environment: '<script>alert(2)</script>"' },
+		})
+	)
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	assert(!page.includes('<script>alert'), 'raw script in the page')
+	assert.match(
+		page,
+		/<span class="word">javascript:alert\(&quot;x&quot;\)\/\/&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/span>/
+	)
+	assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;&quot;/)
+	assert.doesNotMatch(page, /href="javascript:/i)
+	const csrf = field(page, 'csrf')
+	const refused = await call(ui, '/settings/targets/shop-local/instances', {
+		form: { csrf, instanceId: 'x"><script>', 'entry.web': '"><script>alert(3)</script>' },
+		headers: actorCookie,
+	})
+	assert.equal(refused.status, 422)
+	assert(!refused.body.includes('<script>alert(3)'), 'raw script in the form')
+	assert.match(refused.body, /value="&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;"/)
+	assert.match(refused.body, /value="x&quot;&gt;&lt;script&gt;"/)
+})
+
+test('a retire of an unknown instance shows a visible error; each Retire control names its instance', async (t) => {
+	const { ui } = await start(t)
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	assert.match(page, /aria-label="Retire staging"/)
+	assert.match(page, /retired by checkmate-agent/)
+	const unknown = await call(ui, '/settings/targets/shop-local/instances/nope/retire', {
+		form: { csrf: field(page, 'csrf'), confirmed: '1' },
+		headers: actorCookie,
+	})
+	assert.equal(unknown.status, 422)
+	assert.match(unknown.body, /<p class="form-error" role="alert">Unknown instance: shop-local\/nope\./)
 })

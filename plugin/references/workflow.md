@@ -18,6 +18,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 | Question                                 | Command                                                     |
 | ---------------------------------------- | ----------------------------------------------------------- |
 | What waits for the oracle?               | `checkmate inbox`                                           |
+| Which targets and instances exist?       | `checkmate target list`, `checkmate target instance list`   |
 | Where is a plan in the loop? Who acts?   | `checkmate status <planId>`                                 |
 | Which plans exist, and what blocks them? | `checkmate plan list`                                       |
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
@@ -31,6 +32,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read the status on line 1, not only the exit code. Read each `reason:` line.
+- `operational_error` with the reason `Another command holds the database lock` means that nothing changed. Run the same command again.
 - Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
 
 ```sh

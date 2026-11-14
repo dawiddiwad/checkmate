@@ -2,7 +2,7 @@ import type { Html } from './html.ts'
 import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'inbox' | 'plans' | 'runs' | 'log' | null
+export type Section = 'inbox' | 'plans' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {
 	path: string
@@ -40,6 +40,22 @@ const themeIcons = html`<svg class="ti ti-system" viewBox="0 0 16 16" aria-hidde
 	<svg class="ti ti-dark" viewBox="0 0 16 16" aria-hidden="true">
 		<path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z" fill="currentColor" />
 	</svg>`
+
+const gear = html`<svg class="gear" viewBox="0 0 16 16" aria-hidden="true">
+	<path
+		d="M6.7 1h2.6l.4 1.9 1.3.6 1.7-1 1.8 1.8-1 1.7.6 1.3 1.9.4v2.6l-1.9.4-.6 1.3 1 1.7-1.8 1.8-1.7-1-1.3.6-.4 1.9H6.7l-.4-1.9-1.3-.6-1.7 1-1.8-1.8 1-1.7-.6-1.3L1 9.3V6.7l1.9-.4.6-1.3-1-1.7 1.8-1.8 1.7 1 1.3-.6z"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.3"
+		stroke-linejoin="round"
+	/>
+	<circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+</svg>`
+
+function settingsLink(page: Page) {
+	const current = page.section === 'settings' ? html` aria-current="page"` : ''
+	return html`<a class="icon-btn" href="/settings" title="Settings" aria-label="Settings" ${current}>${gear}</a>`
+}
 
 export function mark() {
 	return html`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`
@@ -98,6 +114,7 @@ function header(context: Context, page: Page) {
 				>
 					?
 				</button>
+				${settingsLink(page)}
 			</div>
 		</div>
 	</header>`

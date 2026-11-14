@@ -811,7 +811,7 @@ export function gate(store: Store, input: GateInput) {
 		reply: {
 			status: reasons.length ? ('needs_decision' as const) : ('completed' as const),
 			subject,
-			reasons,
+			reasons: [...new Set(reasons)],
 			data: {
 				planId: plan.planId,
 				revision: plan.revision,

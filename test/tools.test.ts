@@ -35,7 +35,7 @@ test('real browser and API find the defect; factory fix passes a narrow retest',
 	const opened = store(t)
 	const app = await fixture()
 	t.after(() => app.close())
-	target(opened, { baseUrl: app.baseUrl })
+	target(opened, {}, app.baseUrl)
 	const independent = candidate()
 	independent.tests[1].dependsOn = []
 	plan(opened, 'checkout', independent)

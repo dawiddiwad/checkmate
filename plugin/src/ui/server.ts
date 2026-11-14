@@ -11,6 +11,7 @@ import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import { adoptGaps, answerGap, approvePlan, editPlan, planCandidate, rejectPlan } from '../plans.ts'
 import { exportPlan, exportRun } from '../render.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
+import { addInstance, retireInstance, targetRequest } from '../targets.ts'
 import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
 import { defaultActor } from '../actor.ts'
 import { html } from './html.ts'
@@ -21,6 +22,8 @@ import { gapPage, planHistoryList, planPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
+import type { InstanceForm } from './settings.ts'
+import { instanceFromForm, targetPage, targetsPage } from './settings.ts'
 
 export type UiOptions = { workspace: string; port?: number; defaultActor?: string }
 export type Ui = { url: string; close(): Promise<void> }
@@ -41,6 +44,9 @@ const routes = {
 	runGap: new RegExp(`^/runs/(${id})/gaps/(${id})$`),
 	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json)$`),
 	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
+	target: new RegExp(`^/settings/targets/(${id})$`),
+	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
+	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
 }
 const contentSecurityPolicy =
@@ -303,6 +309,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
+		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
+		if (pathname === '/settings/targets') return render(request, targetsPage(store))
+		const target = routes.target.exec(pathname)
+		if (target) {
+			const revision = searchParams.get('revision')
+			const number = revision && /^[1-9][0-9]{0,8}$/.test(revision) ? Number(revision) : null
+			return render(request, targetPage(store, shown, target[1], number))
+		}
 		const latest = routes.latestPlan.exec(pathname)
 		if (latest) {
 			const detail = planDetail(store, latest[1])
@@ -586,6 +600,53 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		redirect(request.res, `/plans/${saving}`, [...cookies, cookie('checkmate_toast', flash, 60)])
 	}
 
+	function saveInstance(request: Request, form: URLSearchParams, targetId: string) {
+		const { actor, cookies } = actorFrom(request, form)
+		const entryPoints = targetRequest(store, targetId).entryPoints
+		const state: InstanceForm = {
+			values: values(form, [
+				'instanceId',
+				'environment',
+				'references',
+				...entryPoints.map((entry) => `entry.${entry.name}`),
+			]),
+			error: null,
+		}
+		const page = () => targetPage(store, context(request), targetId, null, state)
+		const instanceId = state.values.instanceId.trim()
+		if (!actor) state.error = 'Enter your name. Checkmate records it with the instance.'
+		else if (!instanceId) state.error = 'Enter an instance ID.'
+		if (state.error) return refuse(request, page, cookies)
+		try {
+			addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) })
+		} catch (error) {
+			state.error = plainMessage(error)
+			return refuse(request, page, cookies)
+		}
+		redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
+			...cookies,
+			cookie('checkmate_toast', `Added instance ${instanceId} to ${targetId}`, 60),
+		])
+	}
+
+	function retire(request: Request, form: URLSearchParams, targetId: string, instanceId: string) {
+		const { actor, cookies } = actorFrom(request, form)
+		const page = (error: string) => () =>
+			targetPage(store, context(request), targetId, null, null, { instanceId, error })
+		if (form.get('confirmed') !== '1')
+			return refuse(request, page('Confirm that you want to retire the instance.'), cookies)
+		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the change.'), cookies)
+		try {
+			retireInstance(store, actor, { targetId, instanceId })
+		} catch (error) {
+			return refuse(request, page(plainMessage(error)), cookies)
+		}
+		redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
+			...cookies,
+			cookie('checkmate_toast', `Retired instance ${instanceId} of ${targetId}`, 60),
+		])
+	}
+
 	async function post(request: Request) {
 		const origin = request.req.headers.origin
 		if (origin !== undefined && origin !== `http://${request.req.headers.host}`)
@@ -626,6 +687,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (run) return decideRun(request, form, run[1])
 		const runGap = routes.runGap.exec(pathname)
 		if (runGap) return adopt(request, form, runGap[1], runGap[2])
+		const added = routes.addInstance.exec(pathname)
+		if (added) return saveInstance(request, form, added[1])
+		const retired = routes.retireInstance.exec(pathname)
+		if (retired) return retire(request, form, retired[1], retired[2])
 		return errorPage(request, 404, 'Page not found', `Checkmate has no form at ${pathname}.`)
 	}
 

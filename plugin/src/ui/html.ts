@@ -54,6 +54,8 @@ const statusLook: Record<string, [string, Tone]> = {
 	pending: ['○', 'acc'],
 	not_required: ['–', 'block'],
 	started: ['●', 'acc'],
+	active: ['●', 'pass'],
+	retired: ['–', 'block'],
 	finalized: ['✓', 'pass'],
 	open: ['○', 'warn'],
 	resolved: ['✓', 'pass'],

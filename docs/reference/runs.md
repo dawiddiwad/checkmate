@@ -6,19 +6,55 @@ QA records one result for each assertion, and Checkmate derives each test outcom
 
 <img src="../img/run.png" alt="Diagram: the record of run-1 on plan checkout@2, build b1, with tests T1 and T2. T1, Standard total, passed: its assertion T1.A1, Total is 400 PLN, passed with evidence T1-A1.json and its sha256. T2, Promotion, failed: its assertion T2.A1, totalPLN equals 240, failed with the observation totalPLN 220 and evidence T2-A1.json. Defect F1 names T2.A1 and its evidence. The run can also record new gaps for the oracle. On the right, four separate answers: completion is completed, outcome is passed 1 and failed 1, coverage is complete, and the oracle's acceptance is accepted. Each assertion result is final, and Checkmate derives the test outcome from the assertion results." width="100%"/>
 
-**On this page:** [Run commands](#run-commands) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
+**On this page:** [Run commands](#run-commands) · [Instances and matrix runs](#instances-and-matrix-runs) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
 
 ## Run commands
 
 A run goes through these commands in order:
 
-1. `run begin <runId> <planId@rev> --build <build>` checks the gate and starts the run. It prints the browser session and the evidence directory `.checkmate/tmp/<runId>/`.
+1. `run begin <runId> <planId@rev> --build <build> --instance <instanceId>` checks the gate and starts the run on one instance. It prints the instance, the browser session, and the evidence directory `.checkmate/tmp/<runId>/`. You can leave out `--instance` only when the target has one active instance.
 2. `run check <runId> <testId> <assertionId> --result <result>` records one assertion result with its evidence.
 3. `run close <runId> <testId>` closes a test. Checkmate derives the outcome.
 4. `run finding <runId>` and `run gap <runId>` record findings and new gaps from standard input.
 5. `run finish <runId> --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason <text>` checks the run and stores the result.
 
 A run is `started` until `run finish`. After `run finish`, the run does not change. The flags of `run begin` are in [Commands](commands.md#run-gate-and-policy).
+
+## Instances and matrix runs
+
+A run uses one instance of the target. `run show`, `run list`, `status`, the review UI, and the exports show it. The result records `instanceId`.
+
+- QA reads the entry values with `checkmate target show <targetId> --instance <instanceId>`.
+- QA uses a `url` entry and a `value` entry as they are.
+- QA runs a `command` entry at test time, for example to get a one-time login URL. Checkmate stores the command, not its output.
+- A retired instance cannot start a run.
+- A retest needs the same plan and target and a new build. It can run on another instance.
+- A cross-plan dependency needs a passed result on the same build. A run on any instance counts.
+- A matrix is one run of the same plan revision for each instance. `checkmate status <planId>` prints a `started` line for each open run, with its instance.
+- A refreshed sandbox is a new instance. Retire the old instance, add the new one, and retest on it. The plan and the retest chain stay the same.
+
+This example uses a Salesforce sandbox. The `web` entry is a command that prints a one-time login URL. The `org` entry is the org alias.
+
+```sh
+checkmate target open crm --entry-point "web:command:One-time login URL of the org." \
+  --entry-point "org:value:Org alias for sf commands." --capabilities browser \
+  --operations read_account,create_case --tool "playwright-cli:cli:Drive the browser." --tool "sf:cli:Open the org."
+checkmate target instance add crm uat --entry "web=sf org open --target-org crm-uat --url-only --json" \
+  --entry org=crm-uat --environment "UAT sandbox" --reference "sf alias crm-uat"
+checkmate target instance add crm qa --entry "web=sf org open --target-org crm-qa --url-only --json" \
+  --entry org=crm-qa --environment "QA sandbox"
+checkmate run begin run-uat cases@1 --build 2026.11.14 --instance uat --partial ready_only
+checkmate run begin run-qa cases@1 --build 2026.11.14 --instance qa --partial ready_only
+```
+
+After a sandbox refresh:
+
+```sh
+checkmate target instance retire crm uat
+checkmate target instance add crm uat-2 --entry "web=sf org open --target-org crm-uat --url-only --json" \
+  --entry org=crm-uat --environment "UAT sandbox, refreshed"
+checkmate run begin run-uat-2 cases@1 --build 2026.11.15 --instance uat-2 --tests T1,T2 --retest-of run-uat
+```
 
 ## Assertion results
 
@@ -99,13 +135,30 @@ Use a file only for binary evidence, for example a screenshot.
 
 Checkmate refuses a path that is absolute, is outside `.checkmate/tmp/<runId>/` after symbolic links are resolved, is not a regular file, or is larger than 32 MiB. The same limit applies to a text.
 
-The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.json` is `http_exchange`, `.zip` and `.trace` are `trace`, and other files are `observation`. An unknown extension gives the media type `application/octet-stream`.
+The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.zip` and `.trace` are `trace`, and other files are `observation`. A `.json` file is an `observation`. Add `:http_exchange` for an HTTP exchange.
+
+The extension sets the media type:
+
+| Extension               | Media type                 |
+| ----------------------- | -------------------------- |
+| `.png`                  | `image/png`                |
+| `.jpg`, `.jpeg`         | `image/jpeg`               |
+| `.webp`                 | `image/webp`               |
+| `.gif`                  | `image/gif`                |
+| `.json`                 | `application/json`         |
+| `.xml`                  | `application/xml`          |
+| `.csv`                  | `text/csv`                 |
+| `.txt`, `.log`          | `text/plain`               |
+| `.md`                   | `text/markdown`            |
+| `.html`                 | `text/html`                |
+| `.zip`                  | `application/zip`          |
+| Another or no extension | `application/octet-stream` |
 
 A command can take one text and one or more files together.
 
 ### Read evidence back
 
-`checkmate evidence get <evidenceId> --out <file>` writes the stored bytes to a new file. The review UI shows images and plain text inline, and sends other types as a download.
+`checkmate evidence get <evidenceId> --out <file>` writes the stored bytes to a new file. The run page of the review UI shows images inline, and shows plain text, JSON, Markdown, XML, and CSV up to 64 KiB as text. A direct evidence link opens only images and plain text in the browser. It sends other types as a download.
 
 ## Findings
 
@@ -167,7 +220,7 @@ checkmate export plan checkout@2 --format json
 
 - `--format` is `md`, `html`, or `json`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
 - `export run` needs a finished run. `export plan` takes a revision reference, or a plan ID for the latest revision.
-- A run report shows the summary, the acceptance, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- A run report shows the summary with the instance, the acceptance, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
 - The HTML report is one self-contained file. It shows small images and text evidence inline. It has a print stylesheet, so a browser can save it as a PDF.
 - The JSON run report is `{ "result", "sha256", "acceptance", "plan" }`. A JSON plan export is the stored plan revision.
 - The renderer escapes untrusted text. The HTML has a Content Security Policy that blocks scripts and remote resources.

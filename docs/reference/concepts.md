@@ -35,7 +35,11 @@ The plugin has two more skills. `/checkmate:status` tells where a plan is in the
 
 ## The records
 
-**Target.** The application under test. A target profile has a base URL, capabilities, allowed operations, and tools. Its reference is `<targetId>@<revision>`, for example `shop@1`.
+**Target.** The shape of the application under test. A target profile has entry points, capabilities, allowed operations, tools, authentication, startup, cleanup, and approvals. Its reference is `<targetId>@<revision>`, for example `shop@1`. A plan is approved against one revision.
+
+**Entry point.** A named way into the target, for example `web` or `org`. Its kind is `url`, `command`, or `value`. The target names its entry points. An instance gives their values.
+
+**Instance.** One place where the target runs, for example `local`, `uat`, or a Salesforce sandbox. It belongs to one target, not to one revision. It gives a value for each entry point, and it can have an environment and references. Adding or retiring an instance needs no new revision and no approval. Its reference is `<targetId>/<instanceId>`, for example `shop/uat`.
 
 **Capability.** A label for how a test drives the target, for example `browser` or `http`. A capability does not name a fixed tool.
 
@@ -57,7 +61,7 @@ The plugin has two more skills. `/checkmate:status` tells where a plan is in the
 
 **Approval.** The oracle's verdict on a plan revision or on a result: approved or rejected.
 
-**Run.** One execution of selected tests of a plan revision on one build. A retest is a new run on a new build.
+**Run.** One execution of selected tests of a plan revision on one build and one instance. A retest is a new run on a new build. It can use another instance. A matrix is a set of runs of one plan revision, one run for each instance.
 
 **Finding.** A defect or a potential issue that a run found.
 

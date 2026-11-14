@@ -50,7 +50,20 @@ The outcomes, the assertions with evidence, the findings, the new gaps, the cove
 
 ### Runs and Log
 
-The run list and the operation log. They page, sort, and filter like the plan list.
+The run list and the operation log. They page, sort, and filter like the plan list. The run list and the run page show the instance of each run.
+
+### Settings
+
+<img src="../img/ui/settings-target.jpg" alt="The Settings page of target shop-local in dark mode. It shows the entry point web, the instances preview (retired), local, and staging with their entry values, and the Add instance form on the right." width="100%"/>
+
+The button with the gear icon at the right of the top bar opens Settings. The first page is `Targets`. It lists each target with its latest revision, its capabilities, its entry points, and its number of active instances.
+
+A target page shows the entry points, the instances, the tools, the profile with the authentication references, and the revision history. Open an older revision from the history.
+
+- **Add instance.** Give an instance ID and a value for each entry point. The environment and the references are optional. Write one reference on each line. Adding an instance needs no new revision and no approval.
+- **Retire.** Click `Retire` on the instance row, then `Confirm retire`. No new run can start on a retired instance. Its runs stay as they are.
+
+Each change records your name and shows in the Log, as with the command `target instance add` or `target instance retire`.
 
 ## How a decision works
 

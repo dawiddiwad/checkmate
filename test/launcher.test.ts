@@ -1,9 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { delegate, minimumRules, resumeReason, worker } from '../cli/src/launcher.ts'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import {
+	delegate,
+	minimumRules,
+	reservedClaudeArgs,
+	resumeReason,
+	unverifiedReason,
+	worker,
+} from '../cli/src/launcher.ts'
+import { busyReason, closeStore, openStore } from '../plugin/src/store.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
 import type { TestContext } from 'node:test'
@@ -184,6 +192,135 @@ reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
 	)
 })
 
+function requested(t: TestContext) {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	closeStore(opened)
+	return workspace
+}
+
+const recordsArgs = `require('node:fs').writeFileSync('args.json', JSON.stringify(process.argv.slice(2)))
+reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
+
+test('delegate puts each --claude-arg before the tool rules, so a value cannot add a tool', async (t) => {
+	const workspace = requested(t)
+	const records = claude(workspace, recordsArgs)
+	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs', 'Write']
+	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, claudeArgs, pluginRoot, claude: records })
+	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.equal(args[0], '-p')
+	assert.deepEqual(args.slice(-8), [...claudeArgs, '--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	assert.equal(args.indexOf('Write'), args.indexOf('--allowedTools') - 1)
+})
+
+test('delegate refuses a --claude-arg that changes the worker contract', async (t) => {
+	const workspace = requested(t)
+	const missing = '/does-not-exist'
+	for (const arg of [...reservedClaudeArgs, '--output-format=text', '--json-schema={}'])
+		await assert.rejects(
+			delegate(workspace, 'plan', 'checkout', {
+				allowedTools: rules,
+				claudeArgs: [arg],
+				pluginRoot,
+				claude: missing,
+			}),
+			(error: Error) => error.message.startsWith(`--claude-arg ${arg} is not permitted.`)
+		)
+	await assert.rejects(
+		delegate(workspace, 'plan', 'checkout', {
+			allowedTools: rules,
+			claudeArgs: ['--allowedTools', 'Write'],
+			pluginRoot,
+			claude: missing,
+		}),
+		/Use --allow <rule> for tools\./
+	)
+})
+
+test('the npm CLI takes --claude-arg values that start with --', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const output = execFileSync(
+		process.execPath,
+		[
+			join(root, 'cli/src/main.ts'),
+			'delegate',
+			'plan',
+			'checkout',
+			'--allow',
+			'Read',
+			'--allow',
+			'Bash',
+			'--claude-arg',
+			'--model',
+			'--claude-arg',
+			'claude-haiku-5-5',
+			'--workspace',
+			workspace,
+		],
+		{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+	)
+	assert.equal(output, 'needs_decision checkout\nreason: Stopped.\n')
+	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.deepEqual(args.slice(-6, -4), ['--model', 'claude-haiku-5-5'])
+})
+
+function hold(workspace: string) {
+	const holder = openStore(workspace)
+	holder.db.exec('BEGIN IMMEDIATE')
+	return () => {
+		holder.db.exec('ROLLBACK')
+		closeStore(holder)
+	}
+}
+
+test('a lock gives operational_error: retry before the worker, read the record after it', async (t) => {
+	const early = requested(t)
+	const bin = join(early, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const releaseEarly = hold(early)
+	const refused = new Promise<string>((resolve) =>
+		execFile(
+			process.execPath,
+			[join(root, 'cli/src/main.ts'), 'delegate', 'plan', 'checkout', '--allow', 'Read', '--allow', 'Bash'],
+			{ cwd: early, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' },
+			(_, stdout) => resolve(stdout)
+		)
+	)
+	const { workspace, session } = started(t)
+	const quits = claude(workspace, `reply({ status: 'completed', subject: 'run-1', reasons: [] })`)
+	const pending = delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: '/missing-playwright',
+	})
+	const releaseLate = hold(workspace)
+	const late = await pending
+	releaseLate()
+	assert.deepEqual(late, {
+		status: 'operational_error',
+		subject: 'run-1',
+		reasons: [
+			'database is locked',
+			unverifiedReason,
+			`Browser session ${session} was not closed: the command is unavailable.`,
+			resumeReason('run-1'),
+		],
+		operation: null,
+	})
+	assert.equal(await refused, `operational_error checkout\nreason: database is locked\nreason: ${busyReason}\n`)
+	releaseEarly()
+	assert.equal(existsSync(join(early, 'args.json')), false)
+})
+
 test('delegate revise needs every pending decision applied', async (t) => {
 	const workspace = planned(t)
 	const opened = store(t, workspace)
@@ -298,4 +435,49 @@ reply({ status, subject, reasons })`
 	)
 	assert.equal(readFileSync(join(workspace, 'closed.log'), 'utf8'), `-s=${session} close\n`)
 	assert.equal(readFileSync(join(workspace, 'output-dir.txt'), 'utf8'), join(workspace, '.checkmate', 'tmp', 'run-1'))
+})
+
+test('the execute prompt names the instance; the browser closes only for a target with playwright-cli', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened, {
+		tools: [{ name: 'node', kind: 'cli', purpose: 'Send HTTP requests.', version: '24.12.0', reachable: true }],
+	})
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-1', reasons: [] })`
+	)
+	const result = await delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: playwright(workspace),
+	})
+	assert.deepEqual(result.reasons, [
+		'Worker returned completed, but run run-1 is not finished',
+		resumeReason('run-1'),
+	])
+	assert.equal(existsSync(join(workspace, 'closed.log')), false)
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(
+		prompt.includes(
+			'Instance: local. Read its entry values with `checkmate target show checkout-local --instance local`.'
+		),
+		prompt
+	)
+	assert.match(prompt, /Run a command entry at test time\./)
+})
+
+test('the setup prompt names the instances of the target', async (t) => {
+	const workspace = planned(t)
+	const records = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'needs_decision', subject: 'checkout-local', reasons: ['Stopped.'] })`
+	)
+	await delegate(workspace, 'setup', 'checkout-local', { allowedTools: rules, pluginRoot, claude: records })
+	assert.match(readFileSync(join(workspace, 'prompt.txt'), 'utf8'), /checkmate target instance list checkout-local/)
 })

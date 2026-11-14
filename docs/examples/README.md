@@ -18,7 +18,7 @@ These files are real exports. Claude wrote the plans and results, and the test o
 | `live-run`    | [live-run.md](runs/live-run.md)       | [live-run.html](runs/live-run.html)       | [live-run.json](runs/live-run.json)       | Build `fixture-build-1`. T1 and T2 passed. T3 failed with defect F1. Coverage is partial. Accepted. |
 | `live-retest` | [live-retest.md](runs/live-retest.md) | [live-retest.html](runs/live-retest.html) | [live-retest.json](runs/live-retest.json) | Build `fixture-build-2`, a retest of `live-run`. T2 and T3 passed. Acceptance is pending.           |
 
-In both runs, R3 (refunds) stays uncovered, because its gap is deferred. These results were recorded before the requirement status `deferred` existed. A new run records R3 as `deferred`.
+In both runs, R3 (refunds) stays uncovered, because its gap is deferred. These results were recorded before the requirement status `deferred` existed. A new run records R3 as `deferred`. These results were also recorded before instances existed. A new result records `instanceId`, and its summary shows the instance.
 
 ## The live run
 

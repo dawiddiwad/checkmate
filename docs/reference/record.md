@@ -19,9 +19,10 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 - Agents and people write only through commands. `checkmate query "<sql>"` opens the database read-only.
 - Each write runs in one `BEGIN IMMEDIATE` transaction with its operation row. A refused write changes nothing.
 - Rows do not change after a write. Triggers refuse `UPDATE` and `DELETE` on every table, with two exceptions: a decision records the revision that applied it, once, and `plan edit` changes a plan revision that has no approval and no run.
+- Retiring an instance adds a row to `instance_retirements`. The instance row does not change.
 - A plan revision, a profile, and a result are canonical JSON snapshots. The digest is the SHA-256 of that text. A digest detects change. It does not authenticate the actor.
-- The database uses WAL mode, a busy timeout of 5 seconds, and foreign keys. The CLI, a delegated worker, and the review UI can use it at the same time. One host writes to one database.
-- The schema version is 2. Checkmate refuses a database with another version. There is no migration from earlier databases.
+- The database uses WAL mode, a busy timeout of 30 seconds, and foreign keys. The CLI, a delegated worker, and the review UI can use it at the same time. One command writes at a time. Every command waits for the lock, also a read such as `log`, `status`, or `inbox`. A command that cannot get the lock in 30 seconds gives `operational_error` and changes nothing. One host writes to one database.
+- The schema version is 3. Checkmate refuses a database with another version. There is no migration from earlier databases.
 
 ## Actor
 
@@ -42,7 +43,9 @@ The actor is a record. It is not a proof of identity. Checkmate has no authentic
 
 ## Operation log
 
-Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A read, for example `status` or `inbox`, records nothing.
+Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A write that cannot get the database lock records nothing. A read, for example `status` or `inbox`, records nothing.
+
+Each row has a row ID. The row ID increases in the order of the writes. The last field of each line is the row ID.
 
 ```sh
 checkmate log --subject plan:checkout --limit 5
@@ -50,33 +53,37 @@ checkmate log --subject plan:checkout --limit 5
 
 ```text
 completed log
-01M7CVS3TPCHJBVEYTHVCAAHB7	2026-11-14T11:06:15.767Z	po	result accept	completed	run:run-2,plan:checkout,inbox
-01M7CVS3M0B4SXWSEEBHYDMTH4	2026-11-14T11:06:15.552Z	po	run finish	completed	run:run-2,plan:checkout,inbox
+01M7CVS3TPCHJBVEYTHVCAAHB7	2026-11-14T11:06:15.767Z	po	result accept	completed	run:run-2,plan:checkout,inbox	42
+01M7CVS3M0B4SXWSEEBHYDMTH4	2026-11-14T11:06:15.552Z	po	run finish	completed	run:run-2,plan:checkout,inbox	41
 ```
+
+To read only the new operations, give the last row ID that you read: `checkmate log --after 42`. With `--after`, the log lists the operations oldest first. [Get a signal when the oracle must act](../guides/factory.md#get-a-signal-when-the-oracle-must-act) uses this cursor.
 
 The plan history, `plan diff`, and the log together show who changed what, when, and why. When `plan edit` changes a revision in place, the log keeps the edit.
 
 ## Tables
 
-| Table               | Holds                                                                   |
-| ------------------- | ----------------------------------------------------------------------- |
-| `meta`              | The contract version and the schema version.                            |
-| `operations`        | The operation log.                                                      |
-| `target_requests`   | Setup requests from `target open`.                                      |
-| `profiles`          | Target profile revisions.                                               |
-| `plan_requests`     | Plan requests from `plan open`.                                         |
-| `plan_revisions`    | Plan revisions as JSON snapshots.                                       |
-| `decisions`         | Gap answers, and the revision that applied each one.                    |
-| `approvals`         | Verdicts on plan revisions and results, with the digest of the subject. |
-| `runs`              | Runs: plan revision, target revision, build, selection, and policy.     |
-| `run_attempts`      | One row for each start and resume of a run.                             |
-| `assertion_results` | One row for each assertion result.                                      |
-| `outcomes`          | One row for each closed test.                                           |
-| `evidence`          | Evidence rows: test, assertion, kind, name, media type, and digest.     |
-| `blobs`             | Evidence bytes, keyed by SHA-256. Equal bytes are stored once.          |
-| `findings`          | Defects and potential issues.                                           |
-| `run_gaps`          | Gaps that a run found.                                                  |
-| `results`           | Finished runs as JSON snapshots.                                        |
+| Table                  | Holds                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `meta`                 | The contract version and the schema version.                                  |
+| `operations`           | The operation log.                                                            |
+| `target_requests`      | Setup requests from `target open`.                                            |
+| `profiles`             | Target profile revisions.                                                     |
+| `instances`            | Instances of a target with their entry values. One row for each add.          |
+| `instance_retirements` | One row for each retired instance.                                            |
+| `plan_requests`        | Plan requests from `plan open`.                                               |
+| `plan_revisions`       | Plan revisions as JSON snapshots.                                             |
+| `decisions`            | Gap answers, and the revision that applied each one.                          |
+| `approvals`            | Verdicts on plan revisions and results, with the digest of the subject.       |
+| `runs`                 | Runs: plan revision, target revision, instance, build, selection, and policy. |
+| `run_attempts`         | One row for each start and resume of a run.                                   |
+| `assertion_results`    | One row for each assertion result.                                            |
+| `outcomes`             | One row for each closed test.                                                 |
+| `evidence`             | Evidence rows: test, assertion, kind, name, media type, and digest.           |
+| `blobs`                | Evidence bytes, keyed by SHA-256. Equal bytes are stored once.                |
+| `findings`             | Defects and potential issues.                                                 |
+| `run_gaps`             | Gaps that a run found.                                                        |
+| `results`              | Finished runs as JSON snapshots.                                              |
 
 The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan snapshots. `plan_tests` and `plan_gaps` have one row for each revision. Use them with `checkmate query`:
 

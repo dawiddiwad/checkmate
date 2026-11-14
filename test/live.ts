@@ -94,16 +94,33 @@ try {
 		'target',
 		'open',
 		'checkout-local',
-		'--base-url',
-		app.baseUrl,
+		'--entry-point',
+		'web:url:Checkout web application and HTTP API.',
 		'--capabilities',
 		'browser,http',
 		'--operations',
 		'read_catalog,create_fixture_order,apply_fixture_discount',
 	])
+	checkmate(workspace, [
+		'target',
+		'instance',
+		'add',
+		'checkout-local',
+		'local',
+		'--entry',
+		`web=${app.baseUrl}`,
+		'--environment',
+		'local fixture',
+	])
+	const instancesBefore = checkmate(workspace, ['target', 'instance', 'list', 'checkout-local']).instances
 	assert.equal((await stage('setup', 'setup', 'checkout-local')).status, 'completed')
 	const target = checkmate(workspace, ['target', 'show', 'checkout-local'])
 	assert.equal(target.profile.readyForLiveExecution, true)
+	assert.deepEqual(
+		checkmate(workspace, ['target', 'instance', 'list', 'checkout-local']).instances,
+		instancesBefore,
+		'Setup changed the instances of the target'
+	)
 
 	checkmate(workspace, ['plan', 'open', 'checkout', '--target', `checkout-local@${target.revision}`], request)
 	expectStatus('checkout', 'needs_plan', 'planner')
@@ -174,12 +191,15 @@ try {
 		reference,
 		'--build',
 		'fixture-build-1',
+		'--instance',
+		'local',
 		'--partial',
 		'ready_only',
 	])
 	await stage('execute', 'execute', 'live-run')
 	const failed = checkmate(workspace, ['run', 'show', 'live-run'])
 	assert.equal(failed.state, 'finalized')
+	assert.equal(failed.instance.instanceId, 'local')
 	assert(
 		failed.findings.some(
 			(finding: { type: string; requirementIds: string[] }) =>
@@ -197,6 +217,8 @@ try {
 	)
 
 	app.fix()
+	checkmate(workspace, ['target', 'instance', 'add', 'checkout-local', 'local-2', '--entry', `web=${app.baseUrl}`])
+	checkmate(workspace, ['target', 'instance', 'retire', 'checkout-local', 'local'])
 	const retested = testsOf(revised, 'R2')
 		.filter((test) => test.readiness === 'ready')
 		.map((test) => test.id)
@@ -218,6 +240,7 @@ try {
 	await stage('retest', 'execute', 'live-retest')
 	const retest = checkmate(workspace, ['run', 'show', 'live-retest'])
 	assert.equal(retest.state, 'finalized')
+	assert.equal(retest.instance.instanceId, 'local-2')
 	assert(
 		retest.tests.every((test: { outcome: string }) => test.outcome === 'passed'),
 		JSON.stringify(retest.tests)

@@ -502,6 +502,7 @@ export function runsSpec(store: Store): ListSpec {
 			{ label: 'Run', sort: 'run' },
 			{ label: 'Plan', sort: 'plan' },
 			{ label: 'Build', sort: 'build' },
+			{ label: 'Instance', sort: 'instance' },
 			{ label: 'Tests' },
 			{ label: 'Completion', sort: 'completion' },
 			{ label: 'Coverage', sort: 'coverage' },
@@ -535,6 +536,7 @@ function runRow(row: RunRow) {
 		<td><a class="mono" href="/runs/${row.runId}" data-nav-item>${row.runId}</a></td>
 		<td><a class="mono" href="/plans/${row.planId}@${row.revision}">${row.planId}@${row.revision}</a></td>
 		<td class="mono">${row.build}</td>
+		<td class="mono">${row.instanceId}</td>
 		<td>${counts(row.counts)}</td>
 		<td>${row.completion ? pill(row.completion) : html`<span class="muted">running</span>`}</td>
 		<td>${row.coverage ? pill(row.coverage) : html`<span class="muted">–</span>`}</td>
@@ -559,6 +561,7 @@ export function subjectLink(subject: string) {
 	const [kind, id] = subject.split(/:(.*)/)
 	if (kind === 'plan') return html`<a class="mono" href="/plans/${id}">${subject}</a>`
 	if (kind === 'run') return html`<a class="mono" href="/runs/${id}">${subject}</a>`
+	if (kind === 'target') return html`<a class="mono" href="/settings/targets/${id}">${subject}</a>`
 	if (kind === 'inbox') return html`<a class="mono" href="/">${subject}</a>`
 	return html`<span class="mono">${subject}</span>`
 }

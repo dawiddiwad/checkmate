@@ -52,7 +52,7 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 
 | Test file                 | Covers                                                                                          |
 | ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`      | Schema, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs. |
+| `test/store.test.ts`      | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs. |
 | `test/targets.test.ts`    | Setup requests, profile checks, revision order, the default approval policy.                    |
 | `test/plans.test.ts`      | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.    |
 | `test/cross-plan.test.ts` | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.      |
@@ -60,8 +60,8 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 | `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.     |
 | `test/views.test.ts`      | The inbox, the approval policy, the loop state, and the plan, run, and log lists.               |
 | `test/render.test.ts`     | HTML, Markdown, and JSON exports.                                                               |
-| `test/cli.test.ts`        | Compact and JSON output, flags, read-only `query`, actor, standard input, log, export.          |
-| `test/launcher.test.ts`   | `delegate` with a fake Claude CLI: worker output, database checks, deadlines, browser cleanup.  |
+| `test/cli.test.ts`        | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.  |
+| `test/launcher.test.ts`   | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.   |
 | `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture.                                       |
 | `test/package.test.ts`    | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.    |
 | `test/release.test.ts`    | Version rules and the five version files.                                                       |
@@ -78,6 +78,7 @@ npm run test:live
 
 `test:live` runs `test/live.ts` and `test/live-session.ts` with a real Claude Code CLI against the local checkout fixture.
 
+- Claude Code CLI: the tests use the `claude` command on the `PATH`. It is not a development dependency. The live job in CI installs a pinned version.
 - Authentication: set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. With a token, the test uses a temporary `CLAUDE_CONFIG_DIR`. Without authentication, the test fails. It does not skip.
 - Model: the test sets `ANTHROPIC_MODEL` to `claude-haiku-5-5` when it is not set. Checkmate does not select a model.
 - Permissions: the workers get `Read` and `Bash` in a temporary workspace.
@@ -158,7 +159,7 @@ node scripts/render-diagrams.ts
 
 ```sh
 CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots
-for name in inbox plans plan run-gap; do
+for name in inbox plans plan run-gap settings-target; do
   convert /tmp/shots/$name-dark.png -resize 1280x -quality 82 docs/img/ui/$name.jpg
 done
 ```

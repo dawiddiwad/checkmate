@@ -15,7 +15,7 @@ type RunTest = Detail['tests'][number]
 type Assertion = RunTest['assertions'][number]
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const textTypes = ['text/plain', 'application/json', 'text/markdown']
+const textTypes = ['text/plain', 'application/json', 'text/markdown', 'application/xml', 'text/csv']
 const inlineLimit = 64 * 1024
 
 export function size(bytes: number) {
@@ -334,6 +334,16 @@ function cleanup(detail: Detail) {
 			<dt>Target</dt>
 			<dd class="mono">${detail.target}</dd>
 		</div>
+		<div>
+			<dt>Instance</dt>
+			<dd>
+				<a
+					class="mono"
+					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
+					>${detail.instance.instanceId}</a
+				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${pill('retired')}` : ''}
+			</dd>
+		</div>
 		${
 			detail.request.retestOf
 				? html`<div>
@@ -436,8 +446,8 @@ export function runPage(
 	const sub = html`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
 			>${detail.planId}@${detail.revision}</a
 		>
-		· build <code>${detail.build}</code> · started ${clock(detail.startedAt)} ·
-		${plural(detail.attempts.length, 'attempt')}
+		· build <code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code> · started
+		${clock(detail.startedAt)} · ${plural(detail.attempts.length, 'attempt')}
 		${detail.result ? html`· finished ${time(detail.result.finishedAt)} ago` : ''}`
 	const badge = runBadge(detail)
 	const report = detail.result

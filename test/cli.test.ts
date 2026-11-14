@@ -1,10 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
-import { candidate, cli, directory, json, planRequest, profile, promotionDelta, root } from './support.ts'
+import { closeStore } from '../plugin/src/store.ts'
+import {
+	begin,
+	candidate,
+	cli,
+	directory,
+	json,
+	planRequest,
+	profile,
+	promotionDelta,
+	ready,
+	root,
+	store,
+} from './support.ts'
 import type { TestContext } from 'node:test'
 
 function setup(t: TestContext) {
@@ -16,8 +29,8 @@ function setup(t: TestContext) {
 				'target',
 				'open',
 				'checkout-local',
-				'--base-url',
-				value.baseUrl,
+				'--entry-point',
+				'web:url:Checkout web application and HTTP API.',
 				'--capabilities',
 				value.capabilities.join(','),
 				'--operations',
@@ -25,6 +38,7 @@ function setup(t: TestContext) {
 			],
 		],
 		[['target', 'save', 'checkout-local'], value],
+		[['target', 'instance', 'add', 'checkout-local', 'local', '--entry', 'web=http://127.0.0.1:4173']],
 		[['plan', 'open', 'checkout', '--target', 'checkout-local@1'], planRequest()],
 		[['plan', 'save', 'checkout'], candidate()],
 	]
@@ -156,7 +170,7 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 		assert.equal(refused.code, 1, sql)
 		assert.deepEqual(refused.lines, ['rejected query', 'reason: attempt to write a readonly database'])
 	}
-	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 4)
+	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 5)
 	const fresh = directory(t)
 	assert.deepEqual(cli(fresh, ['query', 'SELECT count(*) AS n FROM plan_revisions']).lines, [
 		'completed query rows=1',
@@ -185,6 +199,8 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	assert.equal(json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions[0].actor, 'reviewer')
 	const cases: Array<[string[], string]> = [
 		[['deploy'], 'Unknown command: deploy. Run checkmate --help.'],
+		[['target', 'instance', 'drop', 'x', 'y'], 'Unknown command: target instance drop. Run checkmate --help.'],
+		[['target', 'instance', '--json'], 'Unknown command: target instance. Run checkmate --help.'],
 		[
 			['plan', 'show', 'checkout', '--verbose'],
 			'Unknown option --verbose for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]',
@@ -221,6 +237,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 	cli(workspace, ['plan', 'approve', 'checkout@1', '--rationale', ''])
 	cli(workspace, ['plan', 'approve', 'checkout@1', '--rationale', 'Ok.'])
 	const log = json(workspace, ['log']).body.operations as Array<{
+		rowid: number
 		command: string
 		status: string
 		subjects: string[]
@@ -235,6 +252,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 			['plan approve', 'rejected', []],
 			['plan save', 'needs_decision', ['plan:checkout', 'inbox']],
 			['plan open', 'completed', ['plan:checkout', 'inbox']],
+			['target instance add', 'completed', ['target:checkout-local']],
 			['target save', 'completed', ['target:checkout-local']],
 			['target open', 'completed', ['target:checkout-local']],
 		]
@@ -244,7 +262,20 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.deepEqual((log[2].arguments.candidate as { tests: unknown[] }).tests.length, 3)
 	const compact = cli(workspace, ['log', '--subject', 'target:checkout-local', '--limit', '1'])
 	assert.equal(compact.lines.length, 2)
-	assert.match(compact.lines[1], /^[0-9A-Z]{26}\t\S+\ttester\ttarget save\tcompleted\ttarget:checkout-local$/)
+	assert.match(
+		compact.lines[1],
+		/^[0-9A-Z]{26}\t\S+\ttester\ttarget instance add\tcompleted\ttarget:checkout-local\t3$/
+	)
+	const after = json(workspace, ['log', '--after', '4', '--limit', '2']).body.operations as typeof log
+	assert.deepEqual(
+		after.map((row) => [row.rowid, row.command]),
+		[
+			[5, 'plan save'],
+			[6, 'plan approve'],
+		]
+	)
+	assert.deepEqual(json(workspace, ['log', '--after', '7']).body.operations, [])
+	assert.match(cli(workspace, ['log', '--after', 'x']).lines[1], /Invalid --after: x/)
 	assert.match(cli(workspace, ['log', '--limit', 'ten']).lines[1], /Invalid --limit: ten/)
 	assert.deepEqual(cli(workspace, ['log', '--subject', 'checkout-local']).lines, [
 		'rejected log',
@@ -270,7 +301,7 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	])
 	assert.match(
 		begun.lines[0],
-		/^completed run-1 tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
+		/^completed run-1 instance=local tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
 	)
 	const finished = cli(workspace, [
 		'run',
@@ -311,14 +342,17 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 		/Invalid format/
 	)
 	const shown = cli(workspace, ['run', 'show', 'run-1'])
-	assert.match(shown.lines[0], /^completed run-1 state=finalized plan=checkout@2 build=b1 completion=interrupted/)
+	assert.match(
+		shown.lines[0],
+		/^completed run-1 state=finalized plan=checkout@2 build=b1 instance=local completion=interrupted/
+	)
 	assert.equal(
 		shown.lines[1],
 		'T1\terror\tStandard order total\tRun stopped before the test closed. Actions may have occurred.'
 	)
 	assert.equal(
 		cli(workspace, ['run', 'list']).lines[1],
-		'run-1\tcheckout@2\tb1\tfinalized\tinterrupted\tpartial\tpending'
+		'run-1\tcheckout@2\tb1\tlocal\tfinalized\tinterrupted\tpartial\tpending'
 	)
 })
 
@@ -358,12 +392,49 @@ test('without --actor and CHECKMATE_ACTOR, a write records the git user name, el
 	])
 })
 
+function child(workspace: string, args: string[], input: string) {
+	return new Promise<{ status: string; reasons: string[] }>((resolve, reject) => {
+		const process_ = spawn(process.execPath, [join(root, 'plugin/bin/checkmate.ts'), ...args, '--json'], {
+			cwd: workspace,
+			env: { ...process.env, CHECKMATE_ACTOR: 'tester' },
+		})
+		let output = ''
+		process_.stdout.on('data', (bytes: Buffer) => (output += bytes))
+		process_.on('error', reject)
+		process_.on('close', () => resolve(JSON.parse(output)))
+		process_.stdin.end(input)
+	})
+}
+
+test('parallel writers under lock contention all commit, and none is rejected', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	const runs = Array.from({ length: 8 }, (_, i) => `run-${i + 1}`)
+	runs.forEach((runId, i) => begin(opened, runId, ['T1'], `build-${i}`))
+	closeStore(opened)
+	const evidence = 'x'.repeat(4 * 1024 * 1024)
+	const writes = runs.flatMap((runId) =>
+		['A1', 'A2'].map((assertionId) => {
+			const args = ['run', 'check', runId, 'T1', assertionId, '--result', 'passed', '--observed', 'ok']
+			return child(workspace, [...args, '--evidence', '-'], `${runId} ${assertionId} ${evidence}`)
+		})
+	)
+	const replies = await Promise.all(writes)
+	for (const reply of replies) assert.equal(reply.status, 'completed', reply.reasons.join('; '))
+	const committed = json(workspace, ['query', 'SELECT count(*) AS n FROM assertion_results']).body.rows[0].n
+	assert.equal(committed, writes.length)
+	const logged = json(workspace, ['query', "SELECT status FROM operations WHERE command = 'run check'"]).body.rows
+	assert.equal(logged.length, committed)
+	assert(logged.every((row: { status: string }) => row.status === 'completed'))
+})
+
 test('payload commands read a shell heredoc on standard input', (t) => {
 	const workspace = directory(t)
 	const value = profile()
 	const checkmate = `node ${JSON.stringify(join(root, 'plugin/bin/checkmate.ts'))}`
 	const script = [
-		`${checkmate} target open checkout-local --base-url ${value.baseUrl} --capabilities ${value.capabilities.join(',')} --operations ${value.allowedOperations.join(',')}`,
+		`${checkmate} target open checkout-local --entry-point "web:url:Checkout web application and HTTP API." --capabilities ${value.capabilities.join(',')} --operations ${value.allowedOperations.join(',')}`,
 		`${checkmate} target save checkout-local <<'EOF'\n${JSON.stringify(value, null, 2)}\nEOF`,
 	].join('\n')
 	const output = execFileSync('sh', ['-c', script], {
@@ -459,7 +530,7 @@ test('run gate and run begin with ready_only and no --tests print the selection 
 	assert.match(checked.lines[0], /^completed checkout@1 sha256=[a-f0-9]{8} tests=T1$/)
 	assert.deepEqual(checked.lines.slice(1), ['T2\tleft_out\tblocked by G1', 'T3\tleft_out\tblocked by G2'])
 	const begun = cli(workspace, ['run', 'begin', 'run-1', 'checkout@1', ...early])
-	assert.match(begun.lines[0], /^completed run-1 tests=T1 startedAt=/)
+	assert.match(begun.lines[0], /^completed run-1 instance=local tests=T1 startedAt=/)
 	assert.deepEqual(begun.lines.slice(1), checked.lines.slice(1))
 	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1'])
 	assert.equal(missing.lines[1], 'reason: Select one or more tests with --tests, or add --partial ready_only')
@@ -524,7 +595,8 @@ test('status prints the loop state, who it waits on, and the open items', (t) =>
 		'G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
 		'G2\tgap\tblocking\tWhich orders qualify for refunds?',
 	])
-	assert.equal(json(workspace, ['status', 'checkout']).body.waitsOn, 'oracle')
+	const body = json(workspace, ['status', 'checkout']).body
+	assert.deepEqual([body.waitsOn, body.stage], ['oracle', 'none'])
 	assert.deepEqual(cli(workspace, ['status', 'nothing']).lines, [
 		'rejected nothing',
 		'reason: Unknown plan: nothing. Run plan open first.',

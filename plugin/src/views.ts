@@ -463,13 +463,7 @@ export function planStatus(store: Store, planId: string) {
 			)
 		}
 		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
-		if (!ready.length)
-			return loop(
-				finished.acceptance === 'not_required' ? 'passed' : 'accepted',
-				'none',
-				['No test is ready. Every test is deferred'],
-				[]
-			)
+		if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut)
 		const causes = new Set<string>()
 		const reasons = new Map(
 			ready.map((testId) => {

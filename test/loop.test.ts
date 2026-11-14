@@ -181,51 +181,80 @@ test('a gap ID is unique in a plan, its revisions, and the open gaps of its runs
 	assert.equal((answered.data.adopted as { runId: string }).runId, 'run-uat')
 })
 
-function deferredPrerequisite(t: Parameters<typeof store>[0], outcome: Outcome) {
+function deferredPrerequisite(t: Parameters<typeof store>[0], outcome: Outcome, withT4 = false) {
 	const opened = store(t)
 	ready(opened)
-	start(opened, 'run-1', 'checkout@2', 'b1', ['T1', 'T2'])
+	let tests = ['T1', 'T2']
+	if (withT4) {
+		const assertions = { A1: { check: 'The catalog lists the item.', checkKind: 'deterministic' as const } }
+		const T4 = {
+			title: 'Catalog',
+			requirementIds: ['R1'],
+			capability: 'http',
+			operations: ['read_catalog'],
+			action: 'Read the catalog.',
+			assertions,
+		}
+		patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T4 } } })
+		approved(opened, 'checkout', 3)
+		tests = [...tests, 'T4']
+	}
+	const reference = `checkout@${planRevision(opened, 'checkout').plan.revision}`
+	start(opened, 'run-1', reference, 'b1', tests)
 	recordGap(opened, actor, { runId: 'run-1', gap: gap('G9', 'blocking', ['T1']) })
-	record(opened, 'run-1', { T1: 'passed', T2: outcome })
+	record(opened, 'run-1', { T1: 'passed', T2: outcome, ...(withT4 ? { T4: 'passed' as const } : {}) })
 	accept(opened, 'run-1')
 	assert.deepEqual(state(opened), ['needs_answers', 'oracle', ['1 open blocking gap']])
 	followHints(t, opened)
 	defer(opened, 'G9')
 	revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
-	approved(opened, 'checkout', 4)
-	const status = planStatus(opened, 'checkout')
+	const latest = planRevision(opened, 'checkout').plan.revision
+	approved(opened, 'checkout', latest)
 	assert.deepEqual(
-		[status.state, status.waitsOn, status.why, status.next, status.defects],
+		gate(opened, { reference: `checkout@${latest}`, build: 'b1', partial: 'ready_only' }).reply.data.leftOut,
 		[
-			'accepted',
-			'none',
-			['No test is ready. Every test is deferred', 'T2 deferred: prerequisite T1 is deferred'],
-			[],
-			[],
+			{ testId: 'T1', reason: 'deferred by G9' },
+			{ testId: 'T2', reason: 'deferred: prerequisite T1 is deferred' },
+			{ testId: 'T3', reason: 'deferred by G2' },
 		]
 	)
-	assert.deepEqual(gate(opened, { reference: 'checkout@4', build: 'b1', partial: 'ready_only' }).reply.data.leftOut, [
-		{ testId: 'T1', reason: 'deferred by G9' },
-		{ testId: 'T2', reason: 'deferred: prerequisite T1 is deferred' },
-		{ testId: 'T3', reason: 'deferred by G2' },
-	])
-	return opened
+	followHints(t, opened)
+	return { opened, status: planStatus(opened, 'checkout'), latest }
 }
 
-test('a ready test with a deferred prerequisite counts as deferred, and the plan reaches accepted', (t) => {
-	deferredPrerequisite(t, 'passed')
+test('a ready test with a deferred prerequisite counts as deferred; with no ready test, nothing is verified', (t) => {
+	const { status, latest } = deferredPrerequisite(t, 'passed')
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.why, status.next],
+		[
+			'nothing_to_run',
+			'oracle',
+			['No test is ready', 'T1 deferred by G9', 'T2 deferred: prerequisite T1 is deferred', 'T3 deferred by G2'],
+			[`checkmate plan edit checkout@${latest} --patch`],
+		]
+	)
+})
+
+test('with another ready test that passed, a plan with a derived deferral reaches accepted', (t) => {
+	const { status } = deferredPrerequisite(t, 'passed', true)
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.why, status.next],
+		['accepted', 'none', ['run-1 is accepted', 'T2 deferred: prerequisite T1 is deferred'], []]
+	)
 })
 
 test('status ignores the inconclusive outcome or the defect of a test with a deferred prerequisite', (t) => {
-	deferredPrerequisite(t, 'inconclusive')
-	const failed = deferredPrerequisite(t, 'failed')
-	assert.deepEqual(
-		findingList(failed, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
-		['run-1/F-T2']
-	)
+	for (const outcome of ['inconclusive', 'failed'] as const) {
+		const { opened, status } = deferredPrerequisite(t, outcome, true)
+		assert.deepEqual([status.state, status.defects], ['accepted', []])
+		assert.deepEqual(
+			findingList(opened, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
+			outcome === 'failed' ? ['run-1/F-T2'] : []
+		)
+	}
 })
 
-test('a plan with every test deferred after a run reaches accepted', (t) => {
+test('a plan with every test deferred after a run gives nothing_to_run', (t) => {
 	const opened = store(t)
 	ready(opened)
 	execute(opened, 'run-1', 'checkout@2', 'b1', { T1: 'passed', T2: 'passed' })
@@ -237,7 +266,12 @@ test('a plan with every test deferred after a run reaches accepted', (t) => {
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual(
 		[status.state, status.waitsOn, status.why, status.next],
-		['accepted', 'none', ['No test is ready. Every test is deferred'], []]
+		[
+			'nothing_to_run',
+			'oracle',
+			['No test is ready', 'T1 deferred by G8', 'T2 deferred by G8', 'T3 deferred by G2, G8'],
+			['checkmate plan edit checkout@4 --patch'],
+		]
 	)
 	followHints(t, opened)
 })

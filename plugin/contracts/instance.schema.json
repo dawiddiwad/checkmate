@@ -10,19 +10,22 @@
 			},
 			"additionalProperties": {
 				"type": "string",
-				"minLength": 1
+				"minLength": 1,
+				"maxLength": 2000
 			},
 			"minProperties": 1
 		},
 		"environment": {
 			"type": "string",
-			"minLength": 1
+			"minLength": 1,
+			"maxLength": 500
 		},
 		"references": {
 			"type": "array",
 			"items": {
 				"type": "string",
-				"minLength": 1
+				"minLength": 1,
+				"maxLength": 200
 			},
 			"minItems": 0,
 			"uniqueItems": true

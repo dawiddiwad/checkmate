@@ -146,7 +146,7 @@ function instanceInput(args: Args, stdin: () => unknown) {
 		requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
 		const name = entry.slice(0, at)
 		requireCondition(!(name in values), `Entry point ${name} is given twice`)
-		values[name] = entry.slice(at + 1).trim()
+		values[name] = entry.slice(at + 1)
 	}
 	return {
 		entries: values,
@@ -404,7 +404,15 @@ const commands: Record<string, Command> = {
 				targetId: value(args, 'targetId')!,
 				instanceId: value(args, 'instanceId')!,
 			}),
-		print: (reply) => ({ facts: { recorded: reply.data.recorded } }),
+		print: (reply) => {
+			const started = (reply.data.startedRuns ?? []) as string[]
+			return {
+				facts: { recorded: reply.data.recorded },
+				lines: started.length
+					? [['warning', `Started runs use this instance: ${started.join(', ')}. Its sandbox may be gone.`]]
+					: [],
+			}
+		},
 	},
 	'target instance list': {
 		positionals: ['targetId'],
@@ -418,7 +426,9 @@ const commands: Record<string, Command> = {
 				instance.instanceId,
 				instance.retired ? 'retired' : 'active',
 				instance.environment ?? '-',
-				Object.entries(instance.entries).map(([name, entry]) => `${name}=${entry}`),
+				Object.entries(instance.entries).map(
+					([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`
+				),
 			]),
 		}),
 	},
@@ -1119,6 +1129,10 @@ function format(reply: Reply, json: boolean, print?: Command['print']) {
 	if (json)
 		return JSON.stringify({ status: reply.status, subject: reply.subject, reasons: reply.reasons, ...reply.data })
 	return compact(reply, print ? print(reply) : {})
+}
+
+export function formatReply(name: string, reply: Reply, json: boolean) {
+	return format(reply, json, commands[name]?.print)
 }
 
 const globalFlags: Record<string, FlagKind> = { workspace: 'value', json: 'switch' }

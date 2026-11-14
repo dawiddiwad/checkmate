@@ -110,9 +110,18 @@ function entryPointCheck(entry: EntryPoint): EntryPoint {
 	}
 }
 
+function toolName(value: unknown): string {
+	const name = typeof value === 'string' ? value.trim() : value
+	requireCondition(
+		typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(:[A-Za-z0-9][A-Za-z0-9_-]{0,95})?$/.test(name),
+		`Invalid tool name: ${String(name)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit, with an optional <plugin>: prefix.`
+	)
+	return name
+}
+
 export function toolCheck(tool: RequestedTool): RequestedTool {
 	return {
-		name: requireText(tool.name, 'tool name').trim(),
+		name: toolName(tool.name),
 		kind: requireChoice(tool.kind, toolKinds, `kind of tool ${tool.name}`),
 		purpose: requireText(tool.purpose, `purpose of tool ${tool.name}`),
 	}
@@ -287,8 +296,10 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 		!unknown.length,
 		`Unknown entry point: ${unknown.join(', ')}. The target has: ${entryPoints.map((entry) => entry.name).join(', ')}.`
 	)
+	const entries: Record<string, string> = {}
 	for (const entry of entryPoints) {
-		const text = requireText(instance.entries[entry.name], `value for entry point ${entry.name}`)
+		const text = requireText(instance.entries[entry.name], `value for entry point ${entry.name}`).trim()
+		entries[entry.name] = text
 		if (entry.kind !== 'url') continue
 		let url: URL
 		try {
@@ -301,12 +312,15 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 			`Entry point ${entry.name} has URL credentials. Use authentication references instead.`
 		)
 	}
+	const references = (instance.references ?? []).map((reference) => requireText(reference, 'reference').trim())
+	const repeated = references.find((reference, i) => references.indexOf(reference) !== i)
+	requireCondition(repeated === undefined, `Reference ${repeated} is given twice`)
 	return {
-		entries: Object.fromEntries(entryPoints.map((entry) => [entry.name, instance.entries[entry.name]])),
+		entries,
 		...(instance.environment === undefined
 			? {}
-			: { environment: requireText(instance.environment, 'environment') }),
-		references: instance.references ?? [],
+			: { environment: requireText(instance.environment, 'environment').trim() }),
+		references,
 	}
 }
 
@@ -372,8 +386,14 @@ export function retireInstance(
 			input.instanceId,
 			operationId
 		)
+		const startedRuns = all<{ run_id: string }>(
+			store,
+			'SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid',
+			input.targetId,
+			input.instanceId
+		).map((row) => row.run_id)
 		return {
-			reply: completed(subject, { instanceId: input.instanceId, recorded: true }),
+			reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
 			subjects: [`target:${input.targetId}`],
 		}
 	})

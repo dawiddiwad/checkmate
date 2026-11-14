@@ -1,5 +1,5 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
-import { busyReason, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
+import { busyReason, formatReply, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
 import { readFileSync } from 'node:fs'
 
@@ -58,17 +58,26 @@ function cell(field: string) {
 	return field.replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
 }
 
+function recorded(response: DelegateResponse, json: boolean) {
+	const { operation, command, data, ...reply } = response
+	if (json) return JSON.stringify({ ...reply, ...data, operation })
+	const [first, ...rest] = formatReply(command!, { ...reply, data: data! }, false).split('\n')
+	return [`${first} operation=${operation}`, ...rest].join('\n')
+}
+
 function print(response: DelegateResponse, json: boolean) {
-	const output = json
-		? JSON.stringify(response)
-		: [
-				[
-					response.status,
-					response.subject,
-					...(response.operation ? [`operation=${response.operation}`] : []),
-				].join(' '),
-				...response.reasons.map((reason) => `reason: ${cell(reason)}`),
-			].join('\n')
+	const output = response.command
+		? recorded(response, json)
+		: json
+			? JSON.stringify(response)
+			: [
+					[
+						response.status,
+						response.subject,
+						...(response.operation ? [`operation=${response.operation}`] : []),
+					].join(' '),
+					...response.reasons.map((reason) => `reason: ${cell(reason)}`),
+				].join('\n')
 	process.stdout.write(output + '\n')
 	process.exitCode = response.status === 'completed' || response.status === 'needs_decision' ? 0 : 1
 }

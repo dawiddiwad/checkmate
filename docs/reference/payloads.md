@@ -79,6 +79,7 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 }
 ```
 
+- Checkmate trims spaces and line breaks at the start and end of each entry value, `environment`, and each reference. This is the same for flags and for JSON. It refuses a value that is empty after the trim.
 - `entries` has exactly one value for each entry point of the target. Checkmate refuses a missing name and an unknown name. It checks against the entry points of the setup request, which are equal to the entry points of every revision.
 - A `url` value is a valid URI of any scheme, for example `https:`, `sftp:`, or `salesforce:`. It has no user name and no password.
 - A `command` value is a command line. QA runs it at test time, for example to get a one-time login URL. Checkmate stores the command, never its output.
@@ -86,7 +87,8 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 - `environment` is optional free text.
 - `references` is optional. It names authentication aliases or environment variables, never credential values.
 - An instance does not change. A second add with the same values changes nothing. A second add with other values is refused.
-- `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are.
+- `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are. When started runs use the instance, the reply has a `warning` line that names them. The status stays `completed`.
+- `delegate execute` tells the worker when the instance of the run is retired. The worker stops with a blocking gap when the instance does not respond.
 - An instance ID is not used again in the same target, also after it is retired. For a refreshed sandbox, retire the old instance and add a new one, for example `uat-2`. The plan and the retest chain stay the same.
 
 ## Plan request

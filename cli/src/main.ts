@@ -100,15 +100,21 @@ function refuse(status: 'invalid_request' | 'rejected', subject: string, error: 
 	print({ status, subject, reasons: [(error as Error).message], operation: null }, json)
 }
 
+export function parseDelegate(tokens: string[]) {
+	const parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
+	if (parsed.help) return parsed
+	seconds(parsed.values.timeout, 'timeout')
+	if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
+	if (!stages.includes(parsed.positionals[0] as Stage))
+		throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)
+	return parsed
+}
+
 async function runDelegate(tokens: string[]) {
 	let parsed: Parsed
 	try {
-		parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
+		parsed = parseDelegate(tokens)
 		if (parsed.help) return printHelp(parsed.json)
-		seconds(parsed.values.timeout, 'timeout')
-		if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
-		if (!stages.includes(parsed.positionals[0] as Stage))
-			throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)
 	} catch (error) {
 		return refuse('invalid_request', 'delegate', error, tokens.includes('--json'))
 	}
@@ -127,8 +133,10 @@ async function runDelegate(tokens: string[]) {
 	}
 }
 
-const argv = process.argv.slice(2)
-if (argv[0] === '--version') process.stdout.write(version() + '\n')
-else if (!argv.length || argv[0] === '--help') process.stdout.write(help() + '\n')
-else if (argv[0] === 'delegate') await runDelegate(argv.slice(1))
-else await core(argv)
+if (import.meta.main) {
+	const argv = process.argv.slice(2)
+	if (argv[0] === '--version') process.stdout.write(version() + '\n')
+	else if (!argv.length || argv[0] === '--help') process.stdout.write(help() + '\n')
+	else if (argv[0] === 'delegate') await runDelegate(argv.slice(1))
+	else await core(argv)
+}

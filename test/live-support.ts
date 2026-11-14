@@ -41,6 +41,7 @@ export function liveWorkspace(baseUrl: string) {
 			'# Fixture workspace',
 			'',
 			`The checkout fixture runs at ${baseUrl}. The factory owns the server. Do not change its code.`,
+			'The first instance of target `checkout-local` is `local`, with this URL as its `web` entry.',
 			'The browser config is `.playwright/cli.config.json`. Use `open --idle-timeout=30000`.',
 			'The page `/` has one 400 PLN item. Its checkout button creates an order and shows the total.',
 			'The page has no promotion or loyalty control. Do not test the promotion or loyalty in the browser.',

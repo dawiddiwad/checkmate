@@ -15,6 +15,7 @@ import {
 } from '../plugin/src/store.ts'
 import { closeTest, finishRun, recordGap } from '../plugin/src/runs.ts'
 import { approvePlan, editPlan, planCandidate, planRevision } from '../plugin/src/plans.ts'
+import { retireInstance } from '../plugin/src/targets.ts'
 import { actor, begin, check, directory, failT2, plan, ready, revised, store, target } from './support.ts'
 
 test('opening a workspace creates the schema, WAL mode, and the version rows', (t) => {
@@ -30,6 +31,8 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'decisions',
 		'evidence',
 		'findings',
+		'instance_retirements',
+		'instances',
 		'meta',
 		'operations',
 		'outcomes',
@@ -51,7 +54,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 			.map((row) => ({ ...row })),
 		[
 			{ key: 'contractVersion', value: 'toolkit-2' },
-			{ key: 'schemaVersion', value: '2' },
+			{ key: 'schemaVersion', value: '3' },
 		]
 	)
 	closeStore(opened)
@@ -65,7 +68,7 @@ test('a database with another schema version is refused', (t) => {
 	db.exec('DROP TRIGGER meta_update')
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 1\. Expected 2/)
+	assert.throws(() => openStore(workspace), /schema version 1\. Expected 3/)
 })
 
 function finishedRun(t: Parameters<typeof store>[0]) {
@@ -92,6 +95,7 @@ function finishedRun(t: Parameters<typeof store>[0]) {
 		},
 	})
 	finishRun(opened, actor, { runId: 'run-1', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
 	return opened
 }
 

@@ -88,6 +88,7 @@ test('the Markdown and JSON reports carry the same summary, decisions, and accep
 	assert.match(markdown, /^# Test report: run-1\n/)
 	assert.match(markdown, /- \*\*Completion:\*\* completed/)
 	assert.match(markdown, /- \*\*Acceptance:\*\* approved/)
+	assert.match(markdown, /\| Instance \| local \|/)
 	assert.match(markdown, /## Plan gaps and decisions \(checkout@2\)/)
 	assert.match(
 		markdown,
@@ -97,6 +98,8 @@ test('the Markdown and JSON reports carry the same summary, decisions, and accep
 	const record = JSON.parse(exportRun(opened, 'run-1', 'json'))
 	assert.deepEqual(Object.keys(record).sort(), ['acceptance', 'plan', 'result', 'sha256'])
 	assert.equal(record.result.completion, 'completed')
+	assert.equal(record.result.instanceId, 'local')
+	assert.match(exportRun(opened, 'run-1', 'html'), /<td>Instance<\/td><td>local<\/td>/)
 	assert.equal(record.acceptance.state, 'approved')
 	assert.deepEqual(
 		record.plan.decisions.map((decision: { gapId: string }) => decision.gapId),

@@ -11,11 +11,11 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. Each to
 
 ## Start
 
-- Delegated stage, or a sub-agent that gets a run ID: the parent has begun the run. The prompt names the run ID, plan revision, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
+- Delegated stage, or a sub-agent that gets a run ID: the parent has begun the run. The prompt names the run ID, plan revision, instance, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
 - Same session, new run:
   1. Run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
   2. Use the oracle's run ID. When the oracle gives none, run `checkmate run list` and use the next free `run-<n>`.
-  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build>` once. Add `--retest-of <runId>` for a retest. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
+  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build> --instance <instanceId>` once. Use the instance that the oracle names. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
 
   For an early run while gaps are open, or when the oracle asks for the ready tests, give `--partial ready_only` and no `--tests` to `run gate` and `run begin`. Checkmate selects the ready tests. It prints `tests=<selection>` and a `<testId> left_out <reason>` line for each other test.
 
@@ -25,7 +25,18 @@ Then:
 
 1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result.
 2. Run `checkmate plan show <planId@rev> --tests <T1,T2> --fields dependsOn,preconditions,action,assertions`.
-3. Run `checkmate plan request <planId>` for the tools. Run `checkmate target show <targetId>` when you need the base URL.
+3. Run `checkmate plan request <planId>` for the tools.
+4. Read the instance of the run: `checkmate target show <targetId> --instance <instanceId>`. `run show` prints the instance. The output has one `entry` line for each entry point.
+
+## Instance entries
+
+Use the entry values of the run instance for every action. Do not use another instance.
+
+- `url`: open or call this URL.
+- `value`: use the value as it is, for example an org alias in `--target-org <alias>`.
+- `command`: run the command at test time, before the action that needs it. Use its output, for example a one-time login URL. Do not record the output as an entry value. Do not put a login URL, a token, or other secret output in evidence.
+
+`references` name authentication aliases or environment variables. The host resolves them. Do not record their values.
 
 ## For each selected test
 

@@ -24,6 +24,7 @@ import {
 	runState,
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
+import { findInstance } from './targets.ts'
 
 type RevisionRow = { plan_id: string; revision: number; sha256: string; body: string; at: string; actor: string }
 type ApprovalState = ReturnType<typeof approvalState>
@@ -227,6 +228,7 @@ export function planDetail(store: Store, planId: string, revision: number | null
 			runId: run.runId,
 			revision: run.revision,
 			build: run.build,
+			instanceId: run.instanceId,
 			startedAt: run.startedAt,
 			state: run.state,
 			completion: run.completion,
@@ -284,6 +286,7 @@ export function planStatus(store: Store, planId: string) {
 			gaps: [],
 			pendingDecisions: [],
 			latestRun: null,
+			openRuns: [],
 			defects: [],
 		}
 	}
@@ -314,6 +317,9 @@ export function planStatus(store: Store, planId: string) {
 	]
 	const approval = approvalLabel(planApproval(store, plan, sha256))
 	const runs = runList(store, { planId })
+	const openRuns = runs
+		.filter((run) => run.state === 'started')
+		.map((run) => ({ runId: run.runId, build: run.build, instanceId: run.instanceId }))
 	const started = runs.find((run) => run.state === 'started')
 	const superseded = retestedRuns(store)
 	const finished = runs.filter((run) => run.state === 'finalized' && !superseded.has(run.runId)).at(-1)
@@ -335,7 +341,11 @@ export function planStatus(store: Store, planId: string) {
 			return loop(
 				'run_in_progress',
 				'qa',
-				[`${started.runId} is started on build ${started.build}`],
+				[
+					openRuns.length === 1
+						? `${started.runId} is started on build ${started.build} on instance ${started.instanceId}`
+						: `${openRuns.length} runs are started`,
+				],
 				`checkmate delegate execute ${started.runId}`
 			)
 		if (pendingDecisions.length)
@@ -429,6 +439,7 @@ export function planStatus(store: Store, planId: string) {
 		gaps,
 		pendingDecisions,
 		latestRun,
+		openRuns,
 		defects,
 	}
 }
@@ -476,6 +487,7 @@ export function runList(store: Store, filters: { planId?: string; build?: string
 		planId: row.plan_id,
 		revision: row.plan_revision,
 		build: row.application_build,
+		instanceId: row.instance_id,
 		startedAt: row.started_at,
 		state: row.sha256 ? ('finalized' as const) : ('started' as const),
 		completion: row.completion,
@@ -544,6 +556,7 @@ export function runDetail(store: Store, runId: string) {
 		revision: run.row.plan_revision,
 		planSha256: run.row.plan_sha256,
 		target: `${run.row.target_id}@${run.row.target_revision}`,
+		instance: findInstance(store, run.row.target_id, run.row.instance_id),
 		build: run.row.application_build,
 		startedAt: run.row.started_at,
 		browserSession: run.row.browser_session,
@@ -778,6 +791,7 @@ export function pagedRuns(store: Store, query: ListQuery = {}) {
 		run: (row) => row.runId,
 		plan: (row) => `${row.planId}@${String(row.revision).padStart(9, '0')}`,
 		build: (row) => row.build,
+		instance: (row) => row.instanceId,
 		completion: (row) => row.completion,
 		coverage: (row) => row.coverage,
 		status: (row) => runStatus(row),
@@ -792,6 +806,7 @@ export function pagedRuns(store: Store, query: ListQuery = {}) {
 		row.runId,
 		`${row.planId}@${row.revision}`,
 		row.build,
+		row.instanceId,
 		...Object.entries(row.counts).map(([outcome, count]) => `${count} ${outcome}`),
 		row.completion,
 		row.coverage,

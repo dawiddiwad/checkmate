@@ -4,27 +4,27 @@
 
 The JSON Schemas in `plugin/contracts/` are the authority, and this page explains them with examples. Each example passes its schema and the rules of its command. The contract version is `toolkit-2`.
 
-**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Schemas](#schemas)
+**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Schemas](#schemas)
 
 ## Identifiers
 
-- A target, plan, run, test, gap, or requirement ID has 1 to 96 letters, digits, `_`, or `-`. It starts with a letter or a digit.
+- A target, instance, entry point, plan, run, test, gap, or requirement ID has 1 to 96 letters, digits, `_`, or `-`. It starts with a letter or a digit.
 - A revision reference is `<id>@<revision>`, for example `checkout@2`.
 - An assertion reference is `<testId>.<assertionId>`, for example `T2.A1`.
+- An instance reference is `<targetId>/<instanceId>`, for example `shop/uat`.
 - A cross-plan test reference is `<planId>:<testId>`, for example `login:T3`. A test ID without a prefix is in the same plan.
 - Each plan revision, profile, and result has a SHA-256 digest of its canonical JSON. `--expect-sha <digest>` uses it.
 
 ## Target profile
 
-`target open` records the setup request from flags. The setup stage checks each tool and the target, then sends the profile to `target save <targetId>`.
+`target open` records the setup request from flags. The setup stage checks each tool and the target through an instance, then sends the profile to `target save <targetId>`.
 
 ```json
 {
 	"contractVersion": "toolkit-2",
 	"targetId": "shop",
 	"revision": 1,
-	"baseUrl": "http://127.0.0.1:4173",
-	"environment": "local_fixture",
+	"entryPoints": [{ "name": "web", "kind": "url", "purpose": "Storefront and HTTP API." }],
 	"capabilities": ["browser", "http"],
 	"tools": [
 		{
@@ -45,10 +45,10 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 }
 ```
 
-- `targetId`, `baseUrl`, `capabilities`, and `allowedOperations` are equal to the setup request.
+- `targetId`, `entryPoints`, `capabilities`, and `allowedOperations` are equal to the setup request. So every revision of a target has the same entry points.
+- `entryPoints` has one or more entries with a unique `name`. `kind` is `url`, `command`, or `value`. The profile has no entry values. An instance gives them.
 - `tools` has one entry for each requested tool, with the same name and kind. The setup stage can add `playwright-cli` for `browser` and `node` for `http`. `version` is optional.
 - `reachable` is the result of the setup check. `readyForLiveExecution` cannot be `true` when a requested tool is not reachable. When it is `false`, `target save` gives `needs_decision`, and the gate refuses every run.
-- `baseUrl` uses HTTP or HTTPS, with no user name and no password.
 - `authentication.references` holds environment variable names or browser-state references, never credential values. The host resolves them.
 - `startup.command` is guidance for an authorized host. Checkmate does not start the application.
 - `revision` is the latest revision plus 1. A save of the same revision with the same content changes nothing.
@@ -63,6 +63,31 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 | `result` | A cross-plan dependency needs an accepted result. The inbox lists the result.            | A passed result satisfies a dependency without acceptance. |
 
 Change the policy only with a new profile revision. A plan uses the profile revision that it names.
+
+## Instance
+
+`target instance add <targetId> <instanceId>` records an instance. Give the values with `--entry <entryPoint>=<value>` flags, or send this JSON on standard input:
+
+```json
+{
+	"entries": {
+		"web": "sf org open --target-org shop-uat --url-only --json",
+		"org": "shop-uat"
+	},
+	"environment": "UAT sandbox",
+	"references": ["sf alias shop-uat"]
+}
+```
+
+- `entries` has exactly one value for each entry point of the target. Checkmate refuses a missing name and an unknown name. It checks against the entry points of the setup request, which are equal to the entry points of every revision.
+- A `url` value is a valid URI of any scheme, for example `https:`, `sftp:`, or `salesforce:`. It has no user name and no password.
+- A `command` value is a command line. QA runs it at test time, for example to get a one-time login URL. Checkmate stores the command, never its output.
+- A `value` value is an opaque string, for example an org alias.
+- `environment` is optional free text.
+- `references` is optional. It names authentication aliases or environment variables, never credential values.
+- An instance does not change. A second add with the same values changes nothing. A second add with other values is refused.
+- `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are.
+- An instance ID is not used again in the same target, also after it is retired. For a refreshed sandbox, retire the old instance and add a new one, for example `uat-2`. The plan and the retest chain stay the same.
 
 ## Plan request
 
@@ -275,6 +300,7 @@ QA sends new ambiguity to `run gap <runId>`.
 | Schema                       | Checked by                        |
 | ---------------------------- | --------------------------------- |
 | `profile.schema.json`        | `target save`                     |
+| `instance.schema.json`       | `target instance add`             |
 | `plan-request.schema.json`   | `plan open`                       |
 | `plan-candidate.schema.json` | `plan save`, `plan edit`          |
 | `plan-delta.schema.json`     | `plan revise`                     |

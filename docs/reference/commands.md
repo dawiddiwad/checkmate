@@ -2,16 +2,16 @@
 
 > **Reference** · Every command, its input and output, the statuses, the loop states, `delegate`, and `ui`.
 
-Checkmate has one command set with two entry points. Small values go in flags, structured payloads go in JSON on standard input, and line 1 of every response is the status.
+Checkmate has one command set with two command lines. Small values go in flags, structured payloads go in JSON on standard input, and line 1 of every response is the status.
 
-**On this page:** [Entry points](#entry-points) · [Command list](#command-list) · [Read the state](#read-the-state) · [Loop states](#loop-states) · [Input](#input) · [Output](#output) · [Statuses and exit codes](#statuses-and-exit-codes) · [Run gate and policy](#run-gate-and-policy) · [delegate](#delegate) · [ui](#ui) · [Environment variables](#environment-variables)
+**On this page:** [Two command lines](#two-command-lines) · [Command list](#command-list) · [Read the state](#read-the-state) · [Loop states](#loop-states) · [Input](#input) · [Output](#output) · [Statuses and exit codes](#statuses-and-exit-codes) · [Run gate and policy](#run-gate-and-policy) · [delegate](#delegate) · [ui](#ui) · [Environment variables](#environment-variables)
 
-## Entry points
+## Two command lines
 
-| Entry point | Command                                  | Has                             |
-| ----------- | ---------------------------------------- | ------------------------------- |
-| Plugin      | `node "<plugin root>/dist/checkmate.js"` | Every command except `delegate` |
-| npm CLI     | `checkmate` from `@xoxoai/checkmate`     | Every command and `delegate`    |
+| Command line | Command                                  | Has                             |
+| ------------ | ---------------------------------------- | ------------------------------- |
+| Plugin       | `node "<plugin root>/dist/checkmate.js"` | Every command except `delegate` |
+| npm CLI      | `checkmate` from `@xoxoai/checkmate`     | Every command and `delegate`    |
 
 The skills run the plugin CLI with its absolute path. Claude Code gives the path to a skill when it loads the skill. The plugin has no npm dependencies and no global `checkmate` command.
 
@@ -31,7 +31,11 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 | Target    | `target open <targetId>`                                | Records a setup request.                                        |
 |           | `target request <targetId>`                             | Prints the setup request.                                       |
 |           | `target save <targetId>`                                | Saves a profile from standard input.                            |
-|           | `target show <targetId[@rev]>`                          | Prints a profile.                                               |
+|           | `target list`                                           | Lists each target with its latest revision and instances.       |
+|           | `target show <targetId[@rev]> [--instance <id>]`        | Prints a profile, and the values of one instance.               |
+|           | `target instance add <targetId> <instanceId>`           | Adds an instance from `--entry` flags or standard input.        |
+|           | `target instance retire <targetId> <instanceId>`        | Retires an instance. No new run can start on it.                |
+|           | `target instance list <targetId>`                       | Lists the instances of a target, active and retired.            |
 | Plan      | `plan open <planId> --target <targetId@rev>`            | Records a plan request.                                         |
 |           | `plan request <planId>`                                 | Prints the request with the resolved tools.                     |
 |           | `plan save <planId>`                                    | Saves revision 1 from a candidate.                              |
@@ -46,7 +50,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `plan approve <planId@rev>`, `plan reject <planId@rev>` | Records a verdict on a revision.                                |
 |           | `result accept <runId>`, `result reject <runId>`        | Records a verdict on a result.                                  |
 | Run       | `run gate <planId@rev>`                                 | Checks the gate. Records nothing.                               |
-|           | `run begin <runId> <planId@rev>`                        | Checks the gate and starts a run.                               |
+|           | `run begin <runId> <planId@rev>`                        | Checks the gate and starts a run on one instance.               |
 |           | `run check <runId> <testId> <assertionId>`              | Records one assertion result with evidence.                     |
 |           | `run close <runId> <testId>`                            | Closes a test and derives its outcome.                          |
 |           | `run finding <runId>`, `run gap <runId>`                | Records a finding or a new gap from standard input.             |
@@ -65,6 +69,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 | Question                                 | Command                                              |
 | ---------------------------------------- | ---------------------------------------------------- |
 | What waits for the oracle?               | `checkmate inbox`                                    |
+| Which targets exist? Where do they run?  | `checkmate target list`                              |
 | Where is a plan in the loop? Who acts?   | `checkmate status <planId>`                          |
 | Which plans exist, and what blocks them? | `checkmate plan list`                                |
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                   |
@@ -76,11 +81,14 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 - **inbox.** The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `run_gap`, `plan`, `result`, or `requested`. A `run_gap` line is a gap of a run that the plan does not have yet. Its fourth field is the run ID. A `result` line shows only the latest run of a retest chain.
 - **plan list.** Prints `gaps=`, `approval=`, `blocked=`, `state=`, and `waitsOn=` for each plan. `gaps=` lists the open blocking gaps, also of runs. A request without a revision prints `status=requested`. Filters: `--needs-decision`, `--awaiting-approval`, `--blocked`, and `--waits-on <planner|oracle|qa|factory|none>`.
 - **plan show.** Takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`.
+- **target show.** Prints one `entryPoint` line for each entry point, the `authentication` kind and references, the tools, and one `instance` line for each active instance. With `--instance <instanceId>`, it also prints `entry`, `environment`, and `reference` lines with the values of that instance.
+- **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values.
+- **run list.** Prints the run, the plan revision, the build, the instance, the state, the completion, the coverage, and the acceptance.
 - **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
 
 ## Loop states
 
-`checkmate status <planId>` derives the loop state from the records. Checkmate stores no loop state. Line 1 has `state=` and `waitsOn=`. Then come `why` lines, a `next` line, the open gaps, the pending decisions, and the defects of the latest finished run.
+`checkmate status <planId>` derives the loop state from the records. Checkmate stores no loop state. Line 1 has `state=` and `waitsOn=`. Then come `why` lines, a `next` line, one `started` line for each open run, the open gaps, the pending decisions, and the defects of the latest finished run. A `started` line names the run, the build, and the instance. A matrix of five runs on five instances prints five `started` lines.
 
 ```text
 completed checkout state=needs_revision waitsOn=planner revision=2 approval=pending run=run-1
@@ -92,7 +100,7 @@ next	checkmate delegate revise checkout
 | State               | Waits on | Meaning                                                                                        |
 | ------------------- | -------- | ---------------------------------------------------------------------------------------------- |
 | `needs_plan`        | planner  | The plan request has no revision.                                                              |
-| `run_in_progress`   | qa       | A run of the plan is started.                                                                  |
+| `run_in_progress`   | qa       | One or more runs of the plan are started.                                                      |
 | `needs_revision`    | planner  | A gap answer waits for the revise stage.                                                       |
 | `plan_rejected`     | oracle   | The latest revision is rejected. Change the plan.                                              |
 | `needs_answers`     | oracle   | A gap or a run gap is open without an answer.                                                  |
@@ -121,7 +129,9 @@ The `next` line is a hint for a person or an agent. Do not parse it. `--json` al
   ```
 
 - `run check` and `run close` take `--evidence -` for text on standard input. Read [Evidence input](runs.md#evidence-input).
+- `target open` takes `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. It needs one or more. The name uses letters, digits, `_`, and `-`. The purpose can contain `:`.
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool.
+- `target instance add` takes `--entry <entryPoint>=<value>` once for each entry point, `--environment <text>`, and `--reference <text>` (repeatable). Without `--entry`, it reads the instance JSON on standard input. Read [Payloads](payloads.md#instance).
 - `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of JSON.
 - A decision command takes `--expect-sha <digest>`. It stops when the snapshot has another digest.
 
@@ -157,14 +167,17 @@ The `next` line is a hint for a person or an agent. Do not parse it. `--json` al
 3. With `--partial wait_for_resolution`, no blocking gap is open.
 4. Each selected test exists, is ready, uses a capability and allowed operations of the target, has assertions, and has its local prerequisites in the selection.
 5. Each cross-plan dependency has a finished `passed` result for the same build, accepted when required, and no open blocking gap applies to it.
-6. A retest names a finished run of the same plan and target, with another build.
+6. A retest names a finished run of the same plan and target, with another build. The instance can be different.
 
-`run begin` takes these flags. `run gate` takes the same flags except `--on-new-blocker` and `--timeout`.
+`run begin` also checks the instance. It refuses an unknown instance and a retired instance.
+
+`run begin` takes these flags. `run gate` takes the same flags except `--instance`, `--on-new-blocker`, and `--timeout`.
 
 | Flag               | Values                                      | Default                                       |
 | ------------------ | ------------------------------------------- | --------------------------------------------- |
 | `--tests`          | A list of test IDs.                         | Required, except with `--partial ready_only`. |
 | `--build`          | The application build identity.             | Required.                                     |
+| `--instance`       | An active instance of the target.           | The only active instance of the target.       |
 | `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution`                         |
 | `--on-new-blocker` | `return_to_oracle`, `continue_independent`  | `return_to_oracle`                            |
 | `--timeout`        | 1 to 3600 seconds.                          | 600                                           |
@@ -173,6 +186,8 @@ The `next` line is a hint for a person or an agent. Do not parse it. `--json` al
 - `ready_only` permits a selection of ready tests. Without `--tests`, Checkmate selects the ready tests and prints `<testId> left_out <reason>` for each other test. When no test is ready, the gate refuses the run.
 - `--on-new-blocker` tells QA what to do after it records a new blocking gap. `return_to_oracle` stops and closes the remaining tests as `blocked`. `continue_independent` continues the tests that the gap does not affect. Checkmate records the policy. The agent applies it.
 - A retest needs a new run ID and a new build.
+- Give `--instance` when the target has two or more active instances. `run begin` refuses the run without it. `run gate` does not take `--instance`.
+- For a matrix, begin one run of the same plan revision for each instance, for example `run-uat` with `--instance uat` and `run-staging` with `--instance staging`.
 
 ## delegate
 
@@ -201,7 +216,7 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 **Lock.** When the parent cannot get the database lock before it starts the worker, `delegate` gives `operational_error` with the reason to run the command again. When it cannot get the lock after the worker, the worker can have written already. Then the reason tells you to read `checkmate status` or `checkmate log` before you run `delegate` again.
 
-**After execute.** The parent closes the run's browser session with `playwright-cli -s=<browserSession> close`. When the worker stops before `run finish`, the run stays `started` and its results stay. The response is `interrupted` or `operational_error`, and its reason names `run resume` and `run finish`.
+**After execute.** When the target profile has a `playwright-cli` tool, the parent closes the run's browser session with `playwright-cli -s=<browserSession> close`. For another target, it runs no close command. When the worker stops before `run finish`, the run stays `started` and its results stay. The response is `interrupted` or `operational_error`, and its reason names `run resume` and `run finish`.
 
 **Platforms.** Linux is tested. The launcher refuses Windows.
 
@@ -211,7 +226,7 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 checkmate ui [--workspace <path>] [--port <n>]
 ```
 
-Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SIGINT or SIGTERM. The default port is a free port. The UI writes only when a human submits a form. Read [Review in the browser](../guides/review-ui.md).
+Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SIGINT or SIGTERM. The default port is a free port. The UI writes only when a human submits a form. The Settings button in the top bar opens Settings, with the targets and their instances. Read [Review in the browser](../guides/review-ui.md).
 
 ## Environment variables
 

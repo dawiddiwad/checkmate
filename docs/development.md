@@ -159,7 +159,7 @@ node scripts/render-diagrams.ts
 
 ```sh
 CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots
-for name in inbox plans plan run-gap; do
+for name in inbox plans plan run-gap settings-target; do
   convert /tmp/shots/$name-dark.png -resize 1280x -quality 82 docs/img/ui/$name.jpg
 done
 ```

@@ -22,6 +22,12 @@ export type Gap = {
 	decisionId: string | null
 }
 
+export type Instance = {
+	entries: Record<string, string>
+	environment?: string
+	references?: Array<string>
+}
+
 export type PlanCandidate = {
 	requirements?: Array<{
 		id: string
@@ -203,8 +209,11 @@ export type Profile = {
 	contractVersion: 'toolkit-2'
 	targetId: string
 	revision: number
-	baseUrl: string
-	environment: string
+	entryPoints: Array<{
+		name: string
+		kind: 'url' | 'command' | 'value'
+		purpose: string
+	}>
 	capabilities: Array<string>
 	tools: Array<{
 		name: string
@@ -249,6 +258,7 @@ export type Result = {
 		revision: number
 		sha256: string
 	}
+	instanceId: string
 	applicationBuild: string
 	selectedTestIds: Array<string>
 	retestOf: string | null

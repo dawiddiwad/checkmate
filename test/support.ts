@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { openTarget, saveTarget } from '../plugin/src/targets.ts'
+import { addInstance, openTarget, saveTarget } from '../plugin/src/targets.ts'
 import { answerGap, approvePlan, openPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
 import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
 import { run } from '../plugin/src/cli.ts'
@@ -52,8 +52,7 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 		contractVersion: 'toolkit-2',
 		targetId: 'checkout-local',
 		revision: 1,
-		baseUrl: 'http://127.0.0.1:4173',
-		environment: 'local_fixture',
+		entryPoints: [{ name: 'web', kind: 'url', purpose: 'Checkout web application and HTTP API.' }],
 		capabilities: ['browser', 'http'],
 		tools: [
 			{
@@ -74,15 +73,23 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 	}
 }
 
-export function target(store: Store, overrides: Partial<Profile> = {}) {
+export const webUrl = 'http://127.0.0.1:4173'
+
+export function target(store: Store, overrides: Partial<Profile> = {}, web = webUrl) {
 	const value = profile(overrides)
 	openTarget(store, actor, {
 		targetId: value.targetId,
-		baseUrl: value.baseUrl,
+		entryPoints: value.entryPoints,
 		capabilities: value.capabilities,
 		allowedOperations: value.allowedOperations,
 	})
-	return saveTarget(store, actor, { targetId: value.targetId, profile: value })
+	const saved = saveTarget(store, actor, { targetId: value.targetId, profile: value })
+	addInstance(store, actor, {
+		targetId: value.targetId,
+		instanceId: 'local',
+		instance: { entries: { web }, environment: 'local fixture' },
+	})
+	return saved
 }
 
 export function planRequest(): PlanRequest {

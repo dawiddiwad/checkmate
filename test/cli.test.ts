@@ -203,13 +203,16 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 		[['target', 'instance', '--json'], 'Unknown command: target instance. Run checkmate --help.'],
 		[
 			['plan', 'show', 'checkout', '--verbose'],
-			'Unknown option --verbose for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]',
+			'Unknown option --verbose for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <open|all>]',
 		],
 		[
 			['plan', 'show', 'checkout', '--actor', 'x'],
-			'Unknown option --actor for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]',
+			'Unknown option --actor for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <open|all>]',
 		],
-		[['plan', 'show'], 'Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]'],
+		[
+			['plan', 'show'],
+			'Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <open|all>]',
+		],
 		[['plan', 'show', 'checkout', '--tests'], 'Missing value for --tests'],
 		[['run', 'gate', 'checkout@1', '--build', 'a', '--build', 'b'], 'Option --build is given twice'],
 	]
@@ -275,12 +278,30 @@ test('the operation log has one row per write, records refusals, and lists subje
 		]
 	)
 	assert.deepEqual(json(workspace, ['log', '--after', '7']).body.operations, [])
-	assert.match(cli(workspace, ['log', '--after', 'x']).lines[1], /Invalid --after: x/)
-	assert.match(cli(workspace, ['log', '--limit', 'ten']).lines[1], /Invalid --limit: ten/)
 	assert.deepEqual(cli(workspace, ['log', '--subject', 'checkout-local']).lines, [
-		'rejected log',
+		'invalid_request log',
 		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.',
 	])
+	for (const [flag, text, reason] of [
+		['--after', 'x', 'Invalid --after: x. Use a whole number from 0'],
+		['--limit', 'ten', 'Invalid --limit: ten. Use a whole number from 1 to 1000.'],
+		['--limit', '0', 'Invalid --limit: 0. Use a whole number from 1 to 1000.'],
+		['--limit', '1001', 'Invalid --limit: 1001. Use a whole number from 1 to 1000.'],
+	]) {
+		const refused = cli(workspace, ['log', flag, text])
+		assert.equal(refused.lines[0], 'invalid_request log')
+		assert(refused.lines[1].startsWith(`reason: ${reason}`), refused.output)
+	}
+	const before = json(workspace, ['log']).body.operations.length
+	assert.deepEqual(cli(workspace, ['run', 'check', 'run-9', 'T1', 'A1', '--result', 'maybe']).lines, [
+		'invalid_request run check',
+		'reason: Invalid --result: maybe. Use one of: passed, failed, inconclusive, not_checked.',
+	])
+	assert.equal(
+		cli(workspace, ['run', 'begin', 'run-9', 'checkout@1', '--build', 'b', '--timeout', '0']).lines[0],
+		'invalid_request run begin'
+	)
+	assert.equal(json(workspace, ['log']).body.operations.length, before)
 })
 
 test('a finished run exits 1 when it was interrupted, and export writes each format', (t) => {
@@ -338,8 +359,12 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	)
 	assert.equal(json(workspace, ['export', 'run', 'run-1', '--format', 'json']).body.format, 'json')
 	assert.match(
-		cli(workspace, ['export', 'run', 'run-1', '--format', 'pdf', '--out', 'x.pdf']).lines[1],
-		/Invalid format/
+		cli(workspace, ['export', 'run', 'run-1', '--format', 'pdf', '--out', 'x.pdf']).output,
+		/^invalid_request export run\nreason: Invalid --format: pdf\. Use one of: md, html, json, junit\.$/
+	)
+	assert.match(
+		cli(workspace, ['export', 'plan', 'checkout@2', '--format', 'junit']).output,
+		/^invalid_request export plan\nreason: Invalid --format: junit\. Use one of: md, html, json\.$/
 	)
 	const shown = cli(workspace, ['run', 'show', 'run-1'])
 	assert.match(
@@ -361,7 +386,10 @@ test('--version and --help need no workspace', () => {
 	assert.equal(cli('/nonexistent', ['--version']).output, manifest.version)
 	const help = cli('/nonexistent', ['--help']).output
 	assert.match(help, /^checkmate init$/m)
-	assert.match(help, /checkmate run check <runId> <testId> <assertionId> --result <value> \[--observed <value>\]/)
+	assert.match(
+		help,
+		/checkmate run check <runId> <testId> <assertionId> --result <passed\|failed\|inconclusive\|not_checked> \[--observed <value>\]/
+	)
 })
 
 test('without --actor and CHECKMATE_ACTOR, a write records the git user name, else the login name', (t) => {
@@ -604,8 +632,8 @@ test('status prints the loop state, who it waits on, and the open items', (t) =>
 	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'oracle']).lines[0], 'completed plans count=1')
 	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'qa']).lines[0], 'completed plans count=0')
 	assert.match(
-		cli(workspace, ['plan', 'list', '--waits-on', 'boss']).lines[1],
-		/^reason: Invalid role \(--waits-on\): boss/
+		cli(workspace, ['plan', 'list', '--waits-on', 'boss']).output,
+		/^invalid_request plan list\nreason: Invalid --waits-on: boss\. Use one of: planner, oracle/
 	)
 })
 

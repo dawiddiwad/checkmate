@@ -54,8 +54,8 @@ type DecisionRow = {
 	actor: string
 }
 
-const decisionKinds = ['clarify', 'accept_assumption', 'defer'] as const
-const partialModes = ['wait_for_resolution', 'ready_only'] as const
+export const decisionKinds = ['clarify', 'accept_assumption', 'defer'] as const
+export const partialModes = ['wait_for_resolution', 'ready_only'] as const
 
 export function openPlan(
 	store: Store,

@@ -31,8 +31,8 @@ export type RunReport = {
 	inline: Record<string, { image?: string; text?: string }>
 }
 
-const formats = ['md', 'html', 'json'] as const
-const runFormats = [...formats, 'junit'] as const
+export const formats = ['md', 'html', 'json'] as const
+export const runFormats = [...formats, 'junit'] as const
 const maxInlineImage = 512 * 1024
 const maxInlineText = 16 * 1024
 const inlineImages = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']

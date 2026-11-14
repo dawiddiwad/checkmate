@@ -30,8 +30,15 @@ import {
 	savePlan,
 	showPending,
 	showPlanRequest,
+	decisionKinds,
+	partialModes,
 } from './plans.ts'
 import {
+	assertionResults,
+	cleanupStatuses,
+	closeOutcomes,
+	completions,
+	newBlockerPolicies,
 	acceptResult,
 	beginRun,
 	checkAssertion,
@@ -54,13 +61,13 @@ import {
 	runDetail,
 	runList,
 } from './views.ts'
-import { exportPlan, exportRun } from './render.ts'
+import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
-type FlagKind = 'value' | 'list' | 'repeat' | 'switch'
+type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
 type Context = { actor: string | undefined; stdin: () => unknown; text: () => string }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
@@ -71,6 +78,7 @@ type Command = {
 	write?: boolean
 	stdin?: boolean
 	readOnly?: boolean
+	check?: (args: Args) => void
 	run: (store: Store, args: Args, context: Context) => Reply
 	print?: (reply: Reply) => Printed
 }
@@ -102,9 +110,17 @@ function list(args: Args, name: string) {
 
 function integer(args: Args, name: string) {
 	const text = value(args, name)
-	if (text === undefined) return undefined
-	requireCondition(/^[0-9]+$/.test(text), `Invalid --${name}: ${text}. Use a whole number.`)
-	return Number(text)
+	return text === undefined ? undefined : Number(text)
+}
+
+function optionValue(token: string, kind: FlagKind, text: string) {
+	if (Array.isArray(kind))
+		requireCondition(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(', ')}.`)
+	else if (typeof kind === 'object' && 'min' in kind)
+		requireCondition(
+			/^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
+			`Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
+		)
 }
 
 function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
@@ -485,16 +501,15 @@ const commands: Record<string, Command> = {
 	},
 	'plan show': {
 		positionals: ['reference'],
-		flags: { tests: 'list', fields: 'list', gaps: 'value' },
+		flags: { tests: 'list', fields: 'list', gaps: ['open', 'all'] },
 		run: (store, args) => showPlan(store, args),
 		print: printPlan,
 	},
 	'plan list': {
 		positionals: [],
-		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': 'value' },
+		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': roles },
 		run: (store, args) => {
 			const waitsOn = value(args, 'waits-on')
-			if (waitsOn !== undefined) requireChoice(waitsOn, roles, 'role (--waits-on)')
 			const plans = planList(store).filter(
 				(plan) =>
 					(!args['needs-decision'] || plan.openBlockingGaps.length > 0) &&
@@ -541,7 +556,7 @@ const commands: Record<string, Command> = {
 	},
 	'gap answer': {
 		positionals: ['planId', 'gapId'],
-		flags: { kind: 'value', value: 'value', source: 'value', rationale: 'value', 'expect-sha': 'value' },
+		flags: { kind: decisionKinds, value: 'value', source: 'value', rationale: 'value', 'expect-sha': 'value' },
 		required: ['kind', 'value', 'rationale'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -637,7 +652,7 @@ const commands: Record<string, Command> = {
 	),
 	'run gate': {
 		positionals: ['reference'],
-		flags: { tests: 'list', build: 'value', partial: 'value', 'retest-of': 'value' },
+		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },
 		required: ['build'],
 		run: (store, args) =>
 			gate(store, {
@@ -658,9 +673,9 @@ const commands: Record<string, Command> = {
 			tests: 'list',
 			build: 'value',
 			instance: 'value',
-			partial: 'value',
-			'on-new-blocker': 'value',
-			timeout: 'value',
+			partial: partialModes,
+			'on-new-blocker': newBlockerPolicies,
+			timeout: { min: 1, max: 3600 },
 			'retest-of': 'value',
 		},
 		required: ['build'],
@@ -691,7 +706,7 @@ const commands: Record<string, Command> = {
 	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: 'value', observed: 'value', reason: 'value', evidence: 'repeat' },
+		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
 		required: ['result'],
 		write: true,
 		run: (store, args, context) =>
@@ -711,7 +726,7 @@ const commands: Record<string, Command> = {
 	},
 	'run close': {
 		positionals: ['runId', 'testId'],
-		flags: { outcome: 'value', reason: 'value', evidence: 'repeat' },
+		flags: { outcome: closeOutcomes, reason: 'value', evidence: 'repeat' },
 		write: true,
 		run: (store, args, context) =>
 			closeTest(store, context.actor, {
@@ -743,7 +758,7 @@ const commands: Record<string, Command> = {
 	},
 	'run finish': {
 		positionals: ['runId'],
-		flags: { completion: 'value', cleanup: 'value', 'cleanup-reason': 'value' },
+		flags: { completion: completions, cleanup: cleanupStatuses, 'cleanup-reason': 'value' },
 		required: ['completion', 'cleanup', 'cleanup-reason'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -905,20 +920,22 @@ const commands: Record<string, Command> = {
 		},
 		print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } }),
 	},
-	'export plan': exportCommand('reference', exportPlan),
-	'export run': exportCommand('runId', exportRun),
+	'export plan': exportCommand('reference', formats, exportPlan),
+	'export run': exportCommand('runId', runFormats, exportRun),
 	log: {
 		positionals: [],
-		flags: { subject: 'value', limit: 'value', after: 'value' },
-		run: (store, args) => {
+		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
+		check: (args) => {
 			const subject = value(args, 'subject')
 			requireCondition(
 				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
 				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
 			)
+		},
+		run: (store, args) => {
 			return completed('log', {
 				operations: operationLog(store, {
-					subject,
+					subject: value(args, 'subject'),
 					limit: integer(args, 'limit'),
 					after: integer(args, 'after'),
 				}),
@@ -963,10 +980,14 @@ const commands: Record<string, Command> = {
 	},
 }
 
-function exportCommand(positional: string, render: (store: Store, subject: string, format: string) => string): Command {
+function exportCommand(
+	positional: string,
+	choices: readonly string[],
+	render: (store: Store, subject: string, format: string) => string
+): Command {
 	return {
 		positionals: [positional],
-		flags: { format: 'value', out: 'value' },
+		flags: { format: choices, out: 'value' },
 		required: ['format'],
 		run: (store, args) => {
 			const subject = value(args, positional)!
@@ -1172,7 +1193,8 @@ function parse(name: string, tokens: string[]) {
 		}
 		const next = tokens[++i]
 		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
-		if (kind === 'value') {
+		optionValue(token, kind, next)
+		if (kind !== 'list' && kind !== 'repeat') {
 			if (flag in args) throw new Error(`Option ${token} is given twice`)
 			args[flag] = next
 		} else if (kind === 'list') {
@@ -1186,13 +1208,20 @@ function parse(name: string, tokens: string[]) {
 	if (positionals.length !== command.positionals.length) throw new Error(usage(name))
 	for (const flag of command.required ?? []) if (!(flag in args)) throw new Error(`Missing --${flag}. ${usage(name)}`)
 	command.positionals.forEach((positional, i) => (args[positional] = positionals[i]))
+	command.check?.(args)
 	return args
+}
+
+function placeholder(kind: FlagKind) {
+	if (Array.isArray(kind)) return kind.join('|')
+	if (typeof kind === 'object') return 'n'
+	return kind === 'list' ? 'a,b' : 'value'
 }
 
 function usage(name: string) {
 	const command = commands[name]
 	const flags = Object.entries(command.flags ?? {}).map(([flag, kind]) => {
-		const text = kind === 'switch' ? `--${flag}` : `--${flag} <${kind === 'list' ? 'a,b' : 'value'}>`
+		const text = kind === 'switch' ? `--${flag}` : `--${flag} <${placeholder(kind)}>`
 		return command.required?.includes(flag) ? text : `[${text}]`
 	})
 	return [

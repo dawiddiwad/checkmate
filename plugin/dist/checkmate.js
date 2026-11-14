@@ -8240,6 +8240,11 @@ import { mkdirSync as mkdirSync2, readFileSync, realpathSync, rmSync as rmSync2,
 import { basename, extname, isAbsolute, join as join2, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes = 32 * 1024 * 1024;
+var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
+var closeOutcomes = ["blocked", "not_run", "error"];
+var completions = ["completed", "interrupted", "operational_error"];
+var cleanupStatuses = ["completed", "failed", "not_applicable"];
+var newBlockerPolicies = ["return_to_oracle", "continue_independent"];
 var stoppedReason = "Run stopped before the test closed. Actions may have occurred.";
 var kindByExtension = {
   ".png": "screenshot",
@@ -8517,11 +8522,7 @@ function checkAssertion(store, actor, input) {
         outcomes.get(dependency)?.outcome === "passed",
         `Prerequisite ${dependency} has not passed. Close ${dependency} as passed before you check ${test.id}.`
       );
-    const result = requireChoice(
-      input.result,
-      ["passed", "failed", "inconclusive", "not_checked"],
-      "result (--result)"
-    );
+    const result = requireChoice(input.result, assertionResults, "result (--result)");
     const observed = optionalText(input.observed, "observation (--observed)");
     const reason = optionalText(input.reason, "reason (--reason)");
     files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
@@ -8587,7 +8588,7 @@ function closeTest(store, actor, input) {
       const unchecked = recorded.filter((row) => row.result === "not_checked");
       reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row) => `${test.id}.${row.assertion_id}`).join(", ")}` : null;
     } else {
-      outcome = requireChoice(input.outcome, ["blocked", "not_run", "error"], "outcome (--outcome)");
+      outcome = requireChoice(input.outcome, closeOutcomes, "outcome (--outcome)");
       reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`);
       requireCondition(
         outcome === "error" || !recorded.length,
@@ -8724,17 +8725,9 @@ function finishRun(store, actor, input) {
 function finish(store, actor, input) {
   return write(store, { actor, command: "run finish", subject: input.runId, input }, (operationId, at) => {
     const run2 = startedRun(store, input.runId);
-    const completion = requireChoice(
-      input.completion,
-      ["completed", "interrupted", "operational_error"],
-      "completion (--completion)"
-    );
+    const completion = requireChoice(input.completion, completions, "completion (--completion)");
     const cleanup2 = {
-      status: requireChoice(
-        input.cleanup,
-        ["completed", "failed", "not_applicable"],
-        "cleanup (--cleanup)"
-      ),
+      status: requireChoice(input.cleanup, cleanupStatuses, "cleanup (--cleanup)"),
       reason: requireText(input.cleanupReason, "cleanup reason (--cleanup-reason)")
     };
     const selected = run2.request.selectedTestIds;
@@ -10654,10 +10647,10 @@ function messages(state) {
   return html2`${state.stale ? banner("warn", state.stale) : ""}
 	${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}`;
 }
-function rationaleField(state, placeholder) {
+function rationaleField(state, placeholder2) {
   return html2`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
-		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder}">
+		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder2}">
 ${state.values.rationale ?? ""}</textarea>
 	</div>`;
 }
@@ -13553,9 +13546,16 @@ function list(args, name) {
 }
 function integer(args, name) {
   const text = value(args, name);
-  if (text === void 0) return void 0;
-  requireCondition(/^[0-9]+$/.test(text), `Invalid --${name}: ${text}. Use a whole number.`);
-  return Number(text);
+  return text === void 0 ? void 0 : Number(text);
+}
+function optionValue(token, kind, text) {
+  if (Array.isArray(kind))
+    requireCondition(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(", ")}.`);
+  else if (typeof kind === "object" && "min" in kind)
+    requireCondition(
+      /^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
+      `Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
+    );
 }
 function evidence(args, context) {
   return list(args, "evidence")?.map((spec) => {
@@ -13906,16 +13906,15 @@ var commands = {
   },
   "plan show": {
     positionals: ["reference"],
-    flags: { tests: "list", fields: "list", gaps: "value" },
+    flags: { tests: "list", fields: "list", gaps: ["open", "all"] },
     run: (store, args) => showPlan(store, args),
     print: printPlan
   },
   "plan list": {
     positionals: [],
-    flags: { "needs-decision": "switch", "awaiting-approval": "switch", blocked: "switch", "waits-on": "value" },
+    flags: { "needs-decision": "switch", "awaiting-approval": "switch", blocked: "switch", "waits-on": roles },
     run: (store, args) => {
       const waitsOn = value(args, "waits-on");
-      if (waitsOn !== void 0) requireChoice(waitsOn, roles, "role (--waits-on)");
       const plans = planList(store).filter(
         (plan) => (!args["needs-decision"] || plan.openBlockingGaps.length > 0) && (!args["awaiting-approval"] || plan.approval === "pending") && (!args.blocked || plan.blocked.length > 0) && (waitsOn === void 0 || plan.loop.waitsOn === waitsOn)
       );
@@ -13953,7 +13952,7 @@ var commands = {
   },
   "gap answer": {
     positionals: ["planId", "gapId"],
-    flags: { kind: "value", value: "value", source: "value", rationale: "value", "expect-sha": "value" },
+    flags: { kind: decisionKinds, value: "value", source: "value", rationale: "value", "expect-sha": "value" },
     required: ["kind", "value", "rationale"],
     write: true,
     run: (store, args, { actor }) => answerGap(store, actor, {
@@ -14042,7 +14041,7 @@ var commands = {
   ),
   "run gate": {
     positionals: ["reference"],
-    flags: { tests: "list", build: "value", partial: "value", "retest-of": "value" },
+    flags: { tests: "list", build: "value", partial: partialModes, "retest-of": "value" },
     required: ["build"],
     run: (store, args) => gate(store, {
       reference: value(args, "reference"),
@@ -14062,9 +14061,9 @@ var commands = {
       tests: "list",
       build: "value",
       instance: "value",
-      partial: "value",
-      "on-new-blocker": "value",
-      timeout: "value",
+      partial: partialModes,
+      "on-new-blocker": newBlockerPolicies,
+      timeout: { min: 1, max: 3600 },
       "retest-of": "value"
     },
     required: ["build"],
@@ -14094,7 +14093,7 @@ var commands = {
   },
   "run check": {
     positionals: ["runId", "testId", "assertionId"],
-    flags: { result: "value", observed: "value", reason: "value", evidence: "repeat" },
+    flags: { result: assertionResults, observed: "value", reason: "value", evidence: "repeat" },
     required: ["result"],
     write: true,
     run: (store, args, context) => checkAssertion(store, context.actor, {
@@ -14113,7 +14112,7 @@ var commands = {
   },
   "run close": {
     positionals: ["runId", "testId"],
-    flags: { outcome: "value", reason: "value", evidence: "repeat" },
+    flags: { outcome: closeOutcomes, reason: "value", evidence: "repeat" },
     write: true,
     run: (store, args, context) => closeTest(store, context.actor, {
       runId: value(args, "runId"),
@@ -14143,7 +14142,7 @@ var commands = {
   },
   "run finish": {
     positionals: ["runId"],
-    flags: { completion: "value", cleanup: "value", "cleanup-reason": "value" },
+    flags: { completion: completions, cleanup: cleanupStatuses, "cleanup-reason": "value" },
     required: ["completion", "cleanup", "cleanup-reason"],
     write: true,
     run: (store, args, { actor }) => finishRun(store, actor, {
@@ -14295,20 +14294,22 @@ var commands = {
     },
     print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } })
   },
-  "export plan": exportCommand("reference", exportPlan),
-  "export run": exportCommand("runId", exportRun),
+  "export plan": exportCommand("reference", formats, exportPlan),
+  "export run": exportCommand("runId", runFormats, exportRun),
   log: {
     positionals: [],
-    flags: { subject: "value", limit: "value", after: "value" },
-    run: (store, args) => {
+    flags: { subject: "value", limit: { min: 1, max: 1e3 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
+    check: (args) => {
       const subject = value(args, "subject");
       requireCondition(
         subject === void 0 || subject === "inbox" || /^(target|plan|run):./.test(subject),
         `Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
       );
+    },
+    run: (store, args) => {
       return completed("log", {
         operations: operationLog(store, {
-          subject,
+          subject: value(args, "subject"),
           limit: integer(args, "limit"),
           after: integer(args, "after")
         })
@@ -14352,10 +14353,10 @@ var commands = {
     }
   }
 };
-function exportCommand(positional, render) {
+function exportCommand(positional, choices, render) {
   return {
     positionals: [positional],
-    flags: { format: "value", out: "value" },
+    flags: { format: choices, out: "value" },
     required: ["format"],
     run: (store, args) => {
       const subject = value(args, positional);
@@ -14530,7 +14531,8 @@ function parse(name, tokens) {
     }
     const next = tokens[++i];
     if (next === void 0 || next.startsWith("--")) throw new Error(`Missing value for ${token}`);
-    if (kind === "value") {
+    optionValue(token, kind, next);
+    if (kind !== "list" && kind !== "repeat") {
       if (flag in args) throw new Error(`Option ${token} is given twice`);
       args[flag] = next;
     } else if (kind === "list") {
@@ -14541,12 +14543,18 @@ function parse(name, tokens) {
   if (positionals.length !== command.positionals.length) throw new Error(usage(name));
   for (const flag of command.required ?? []) if (!(flag in args)) throw new Error(`Missing --${flag}. ${usage(name)}`);
   command.positionals.forEach((positional, i) => args[positional] = positionals[i]);
+  command.check?.(args);
   return args;
+}
+function placeholder(kind) {
+  if (Array.isArray(kind)) return kind.join("|");
+  if (typeof kind === "object") return "n";
+  return kind === "list" ? "a,b" : "value";
 }
 function usage(name) {
   const command = commands[name];
   const flags = Object.entries(command.flags ?? {}).map(([flag, kind]) => {
-    const text = kind === "switch" ? `--${flag}` : `--${flag} <${kind === "list" ? "a,b" : "value"}>`;
+    const text = kind === "switch" ? `--${flag}` : `--${flag} <${placeholder(kind)}>`;
     return command.required?.includes(flag) ? text : `[${text}]`;
   });
   return [

@@ -48,6 +48,8 @@ npm run phase:verify
 4. `npm test`: the fast suite. It uses temporary workspaces and needs no network and no Claude credential.
 5. `node test/plugin.ts`: copies `plugin/` out of the repository and runs the bundled CLI without npm install.
 
+The verify job in CI also runs `npm run test:tools` as a separate step after `phase:verify`. `test:tools` runs `test/tools.ts`: a real browser through Playwright CLI and the HTTP API against the checkout fixture. It is not in `npm test`, because it tests the fixture and Playwright CLI, not Checkmate. Run it when you change `test/fixture.ts`, the Playwright CLI version, or `plugin/references/browser.md`.
+
 The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is not `/usr/bin/chromium`. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable directory.
 
 | Test file                       | Covers                                                                                                  |
@@ -63,7 +65,6 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 | `test/cli.test.ts`              | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.          |
 | `test/launcher.test.ts`         | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.           |
 | `test/hook.test.ts`             | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.           |
-| `test/tools.test.ts`            | A real browser and HTTP API against the checkout fixture.                                               |
 | `test/package.test.ts`          | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.            |
 | `test/release.test.ts`          | Version rules and the five version files.                                                               |
 | `test/ui.test.ts`               | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.            |

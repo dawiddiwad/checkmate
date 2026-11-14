@@ -244,7 +244,8 @@ function isBusy(error) {
   return error instanceof Error && "errcode" in error && [5, 6].includes(Number(error.errcode) & 255);
 }
 function busyTimeout(value2 = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
-  return value2 !== void 0 && /^[1-9][0-9]*$/.test(value2) ? Number(value2) : 3e4;
+  const milliseconds = Number(value2);
+  return value2 !== void 0 && /^[1-9][0-9]*$/.test(value2) && milliseconds <= 2147483647 ? milliseconds : 3e4;
 }
 function openStore(workspace) {
   const path = databasePath(workspace);

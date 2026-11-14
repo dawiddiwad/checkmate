@@ -255,7 +255,8 @@ export function isBusy(error: unknown) {
 }
 
 export function busyTimeout(value = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
-	return value !== undefined && /^[1-9][0-9]*$/.test(value) ? Number(value) : 30000
+	const milliseconds = Number(value)
+	return value !== undefined && /^[1-9][0-9]*$/.test(value) && milliseconds <= 2147483647 ? milliseconds : 30000
 }
 
 export function openStore(workspace: string): Store {

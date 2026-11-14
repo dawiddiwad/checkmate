@@ -260,12 +260,12 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 
 ## Environment variables
 
-| Variable                    | Read by        | Effect                                                                                                                |
-| --------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                                                 |
-| `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate      | The wait for the database lock in milliseconds. A value that is not a positive whole number gives the default, 30000. |
-| `ANTHROPIC_MODEL`           | The host       | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it.                              |
-| `PLAYWRIGHT_MCP_OUTPUT_DIR` | Playwright CLI | `delegate execute` sets it to `.checkmate/tmp/<runId>`, so browser output stays there.                                |
+| Variable                    | Read by        | Effect                                                                                                                            |
+| --------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                                                             |
+| `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate      | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
+| `ANTHROPIC_MODEL`           | The host       | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it.                                          |
+| `PLAYWRIGHT_MCP_OUTPUT_DIR` | Playwright CLI | `delegate execute` sets it to `.checkmate/tmp/<runId>`, so browser output stays there.                                            |
 
 The tests read more variables. Read [Development](../development.md).
 

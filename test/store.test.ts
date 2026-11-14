@@ -142,7 +142,8 @@ test('a command waits CHECKMATE_BUSY_TIMEOUT_MS for the lock, else 30 seconds', 
 	const opened = store(t)
 	assert.equal(opened.db.prepare('PRAGMA busy_timeout').get()!.timeout, 30000)
 	assert.equal(busyTimeout('1000'), 1000)
-	for (const value of [undefined, '', '0', '-5', '1.5', 'abc', ' 1000'])
+	assert.equal(busyTimeout('2147483647'), 2147483647)
+	for (const value of [undefined, '', '0', '-5', '1.5', 'abc', ' 1000', '2147483648'])
 		assert.equal(busyTimeout(value), 30000, String(value))
 })
 

@@ -13561,6 +13561,7 @@ data: ${matched.join(",") || "*"}
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve2 } from "node:path";
+import { constants } from "node:sqlite";
 var testFields2 = [
   "title",
   "readiness",
@@ -13895,9 +13896,9 @@ var commands = {
         instance.instanceId,
         instance.retired ? "retired" : "active",
         instance.environment ?? "-",
-        Object.entries(instance.entries).map(
-          ([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`
-        )
+        {
+          preformatted: Object.entries(instance.entries).map(([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`).join(",")
+        }
       ])
     })
   },
@@ -14391,18 +14392,33 @@ var commands = {
   }
 };
 var readOnlyReason = "query is read-only. Use the Checkmate commands to change the record.";
+var readPragmas = [
+  "table_info",
+  "table_xinfo",
+  "table_list",
+  "index_list",
+  "index_info",
+  "index_xinfo",
+  "foreign_key_list",
+  "foreign_key_check",
+  "integrity_check",
+  "quick_check"
+];
 function readOnly(read) {
   try {
     return read();
   } catch (error) {
-    if (error instanceof Error && "errcode" in error && Number(error.errcode) === 8)
+    if (error instanceof Error && "errcode" in error && [8, 23].includes(Number(error.errcode)))
       throw new Error(readOnlyReason, { cause: error });
     throw error;
   }
 }
 function queryStatement(store, sql) {
-  requireCondition(!/^\s*PRAGMA\s+[\w.]+\s*=/i.test(sql), readOnlyReason);
+  store.db.setAuthorizer(
+    (action, name, argument) => action === constants.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name) ? constants.SQLITE_DENY : constants.SQLITE_OK
+  );
   const statement = readOnly(() => store.db.prepare(sql));
+  requireCondition(statement.columns().length > 0, readOnlyReason);
   const rest = sql.slice(statement.sourceSQL.length);
   requireCondition(
     /^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
@@ -14537,6 +14553,7 @@ function writeOutput(store, out, content) {
 function cell2(field2) {
   if (field2 === null || field2 === void 0) return "-";
   if (Array.isArray(field2)) return field2.length ? field2.map(cell2).join(",") : "-";
+  if (typeof field2 === "object" && "preformatted" in field2) return String(field2.preformatted);
   if (typeof field2 === "object") return JSON.stringify(field2);
   return String(field2).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }

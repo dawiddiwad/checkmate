@@ -312,6 +312,15 @@ test('the npm CLI always takes the next token as the --claude-arg value and refu
 	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
 	assert.deepEqual(args.slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
 	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
+	assert.equal(run('--claude-arg', '--model'), 'needs_decision checkout\nreason: Stopped.\n')
+	const dangling = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.deepEqual(dangling.slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(dangling.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	for (const timeout of ['0', 'abc', '3601'])
+		assert.equal(
+			run('--timeout', timeout),
+			`invalid_request delegate\nreason: Invalid --timeout: ${timeout}. Use a whole number from 1 to 3600.\n`
+		)
 })
 
 test('the npm CLI prints the facts of the recorded command with the operation', (t) => {

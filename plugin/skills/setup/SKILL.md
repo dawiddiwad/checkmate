@@ -62,7 +62,7 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 14. When no instance is active, add the first instance after `target save`. Give `--entry` once for each entry point:
 
     ```sh
-    checkmate target instance add <targetId> local --entry web=http://127.0.0.1:4173 --environment "Local fixture"
+    checkmate target instance add <targetId> local --actor claude:setup --entry web=http://127.0.0.1:4173 --environment "Local fixture"
     ```
 
     Add `--reference <name>` for an authentication alias or an environment variable name. Do not write a credential value.

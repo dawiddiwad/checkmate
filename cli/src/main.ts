@@ -55,7 +55,8 @@ function parse(tokens: string[], options: string[]): Parsed {
 
 function seconds(text: string | undefined, name: string) {
 	if (text === undefined) return undefined
-	if (!/^[1-9][0-9]*$/.test(text)) throw new Error(`Invalid --${name}: ${text}. Use a whole number.`)
+	if (!/^[0-9]+$/.test(text) || Number(text) < 1 || Number(text) > 3600)
+		throw new Error(`Invalid --${name}: ${text}. Use a whole number from 1 to 3600.`)
 	return Number(text)
 }
 
@@ -104,6 +105,7 @@ async function runDelegate(tokens: string[]) {
 	try {
 		parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
 		if (parsed.help) return printHelp(parsed.json)
+		seconds(parsed.values.timeout, 'timeout')
 		if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
 		if (!stages.includes(parsed.positionals[0] as Stage))
 			throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)

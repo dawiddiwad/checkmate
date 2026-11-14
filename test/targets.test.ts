@@ -361,6 +361,14 @@ test('target list, show, and instance commands print entry points, authenticatio
 		'piped\tretired\t-\tweb=http://127.0.0.1:5000',
 	])
 	assert.match(cli(workspace, ['target', 'show', 'checkout-local', '--instance', 'nope']).output, /Unknown instance/)
+	json(workspace, ['target', 'instance', 'add', 'checkout-local', 'windows'], {
+		entries: { web: 'file:///C:\\app "x"' },
+	})
+	const listed = cli(workspace, ['target', 'instance', 'list', 'checkout-local']).lines.find((line) =>
+		line.startsWith('windows\t')
+	)!
+	assert.equal(listed, 'windows\tactive\t-\tweb="file:///C:\\\\app \\"x\\""')
+	assert.equal(JSON.parse(listed.split('\t')[3].slice('web='.length)), 'file:///C:\\app "x"')
 	const trimmed = json(workspace, [
 		'target',
 		'instance',

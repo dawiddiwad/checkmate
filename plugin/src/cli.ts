@@ -66,6 +66,7 @@ import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { constants } from 'node:sqlite'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -442,9 +443,11 @@ const commands: Record<string, Command> = {
 				instance.instanceId,
 				instance.retired ? 'retired' : 'active',
 				instance.environment ?? '-',
-				Object.entries(instance.entries).map(
-					([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`
-				),
+				{
+					preformatted: Object.entries(instance.entries)
+						.map(([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`)
+						.join(','),
+				},
 			]),
 		}),
 	},
@@ -981,20 +984,37 @@ const commands: Record<string, Command> = {
 }
 
 const readOnlyReason = 'query is read-only. Use the Checkmate commands to change the record.'
+const readPragmas = [
+	'table_info',
+	'table_xinfo',
+	'table_list',
+	'index_list',
+	'index_info',
+	'index_xinfo',
+	'foreign_key_list',
+	'foreign_key_check',
+	'integrity_check',
+	'quick_check',
+]
 
 function readOnly<T>(read: () => T): T {
 	try {
 		return read()
 	} catch (error) {
-		if (error instanceof Error && 'errcode' in error && Number(error.errcode) === 8)
+		if (error instanceof Error && 'errcode' in error && [8, 23].includes(Number(error.errcode)))
 			throw new Error(readOnlyReason, { cause: error })
 		throw error
 	}
 }
 
 function queryStatement(store: Store, sql: string) {
-	requireCondition(!/^\s*PRAGMA\s+[\w.]+\s*=/i.test(sql), readOnlyReason)
+	store.db.setAuthorizer((action, name, argument) =>
+		action === constants.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name!)
+			? constants.SQLITE_DENY
+			: constants.SQLITE_OK
+	)
 	const statement = readOnly(() => store.db.prepare(sql))
+	requireCondition(statement.columns().length > 0, readOnlyReason)
 	const rest = sql.slice(statement.sourceSQL.length)
 	requireCondition(
 		/^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
@@ -1154,6 +1174,7 @@ function writeOutput(store: Store, out: string, content: string | Uint8Array) {
 function cell(field: unknown): string {
 	if (field === null || field === undefined) return '-'
 	if (Array.isArray(field)) return field.length ? field.map(cell).join(',') : '-'
+	if (typeof field === 'object' && 'preformatted' in field) return String(field.preformatted)
 	if (typeof field === 'object') return JSON.stringify(field)
 	return String(field).replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
 }

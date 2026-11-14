@@ -42,7 +42,7 @@ try {
 	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
 	const stageWrites: Record<string, RegExp> = {
-		setup: /checkmate target save /,
+		setup: /checkmate target (save|instance add) /,
 		plan: /checkmate plan save /,
 		revise: /checkmate plan revise /,
 		execute: /checkmate run (begin|check|close|finding|gap|finish|resume) /,

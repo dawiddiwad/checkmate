@@ -171,6 +171,11 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 		'DROP TABLE meta',
 		'PRAGMA user_version = 5',
 		'pragma main.journal_mode=delete',
+		'PRAGMA journal_mode(DELETE)',
+		'/* note */ PRAGMA user_version = 1',
+		' -- note\nPRAGMA locking_mode = exclusive',
+		"VACUUM INTO '/tmp/checkmate-vacuum.db'",
+		'BEGIN',
 		'VACUUM',
 	]) {
 		const refused = cli(workspace, ['query', sql])
@@ -186,6 +191,7 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 	])
 	assert.equal(cli(workspace, ['query', "SELECT ';' AS x; -- end"]).lines[2], ';')
 	assert.equal(cli(workspace, ['query', 'PRAGMA table_info(meta)']).code, 0)
+	assert.equal(cli(workspace, ['query', 'PRAGMA journal_mode']).lines[2], 'wal')
 	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 5)
 	const fresh = directory(t)
 	assert.deepEqual(cli(fresh, ['query', 'SELECT count(*) AS n FROM plan_revisions']).lines, [

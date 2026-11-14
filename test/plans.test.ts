@@ -421,6 +421,16 @@ test('only a deferred blocking gap defers its tests and their requirements', (t)
 	)
 })
 
+test('the gate gives a missing prerequisite of two selected tests once', (t) => {
+	const opened = store(t)
+	target(opened, { approvals: { plan: 'none', result: 'none' } })
+	const value = candidate()
+	value.tests.push({ ...value.tests[0], id: 'T4', dependsOn: ['T1'] })
+	plan(opened, 'checkout', value)
+	const checked = gate(opened, { reference: 'checkout@1', tests: ['T2', 'T4'], build: 'b', partial: 'ready_only' })
+	assert.deepEqual(checked.reply.reasons, ['Test is not ready: T2', 'Missing prerequisite: T1'])
+})
+
 test('the gate collects every reason in order', (t) => {
 	const opened = store(t)
 	target(opened, { readyForLiveExecution: false, approvals: { plan: 'none', result: 'none' } })

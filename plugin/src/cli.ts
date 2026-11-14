@@ -3,7 +3,7 @@ import type { Plan, Profile } from './types.ts'
 import type { RequestedTool, TargetRequest } from './targets.ts'
 import type { PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
-import { closeStore, completed, openReadOnlyStore, openStore } from './store.ts'
+import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
 import {
@@ -739,7 +739,7 @@ const commands: Record<string, Command> = {
 	'export run': exportCommand('runId', exportRun),
 	log: {
 		positionals: [],
-		flags: { subject: 'value', limit: 'value' },
+		flags: { subject: 'value', limit: 'value', after: 'value' },
 		run: (store, args) => {
 			const subject = value(args, 'subject')
 			requireCondition(
@@ -747,7 +747,11 @@ const commands: Record<string, Command> = {
 				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
 			)
 			return completed('log', {
-				operations: operationLog(store, { subject, limit: integer(args, 'limit') }),
+				operations: operationLog(store, {
+					subject,
+					limit: integer(args, 'limit'),
+					after: integer(args, 'after'),
+				}),
 			})
 		},
 		print: (reply) => ({
@@ -758,6 +762,7 @@ const commands: Record<string, Command> = {
 				operation.command,
 				operation.status,
 				operation.subjects,
+				operation.rowid,
 			]),
 		}),
 	},
@@ -1071,7 +1076,9 @@ export function run(argv: string[], io: Io): Outcome {
 			return { code, output: reply.data.content.replace(/\n$/, '') }
 		return { code, output: format(reply, json, command.print) }
 	} catch (error) {
-		const reply: Reply = { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }
+		const reply: Reply = isBusy(error)
+			? { status: 'operational_error', subject, reasons: [(error as Error).message, busyReason], data: {} }
+			: { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }
 		return { code: 1, output: format(reply, json) }
 	} finally {
 		if (store) closeStore(store)

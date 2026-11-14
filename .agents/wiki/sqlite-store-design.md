@@ -74,7 +74,7 @@ Both paths need Node.js 24.12.0 or later for `node:sqlite`. The host still owns 
 
 ## 6. Schema
 
-All tables use `STRICT`. Foreign keys are on. The database uses WAL mode and `busy_timeout = 5000`, so the CLI and a delegated worker can use it at the same time. Each write command uses one `BEGIN IMMEDIATE` transaction.
+All tables use `STRICT`. Foreign keys are on. The database uses WAL mode and `busy_timeout = 30000`, so the CLI and a delegated worker can use it at the same time. Each write command uses one `BEGIN IMMEDIATE` transaction. A busy or locked error gives `operational_error` and records no operation row.
 
 ```sql
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;

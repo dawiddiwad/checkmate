@@ -1,12 +1,18 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
-import { main as core, run as coreRun } from '../../plugin/src/index.ts'
+import { busyReason, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
 import { readFileSync } from 'node:fs'
 
-type Parsed = { positionals: string[]; values: Record<string, string>; allow: string[]; json: boolean }
+type Parsed = {
+	positionals: string[]
+	values: Record<string, string>
+	allow: string[]
+	claudeArgs: string[]
+	json: boolean
+}
 
 const delegateUsage =
-	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> --allow <rule>... [--timeout <seconds>]'
+	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> --allow <rule>... [--timeout <seconds>] [--claude-arg <arg>]...'
 
 function version() {
 	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string
@@ -18,7 +24,7 @@ function help() {
 }
 
 function parse(tokens: string[], options: string[]): Parsed {
-	const parsed: Parsed = { positionals: [], values: {}, allow: [], json: false }
+	const parsed: Parsed = { positionals: [], values: {}, allow: [], claudeArgs: [], json: false }
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]
 		if (!token.startsWith('--')) {
@@ -32,8 +38,10 @@ function parse(tokens: string[], options: string[]): Parsed {
 		const name = token.slice(2)
 		if (!options.includes(name)) throw new Error(`Unknown option ${token}`)
 		const next = tokens[++i]
-		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
+		if (next === undefined || (next.startsWith('--') && name !== 'claude-arg'))
+			throw new Error(`Missing value for ${token}`)
 		if (name === 'allow') parsed.allow.push(next)
+		else if (name === 'claude-arg') parsed.claudeArgs.push(next)
 		else if (name in parsed.values) throw new Error(`Option ${token} is given twice`)
 		else parsed.values[name] = next
 	}
@@ -70,25 +78,27 @@ function refuse(status: 'invalid_request' | 'rejected', subject: string, error: 
 }
 
 async function runDelegate(tokens: string[]) {
-	const json = tokens.includes('--json')
 	let parsed: Parsed
 	try {
-		parsed = parse(tokens, ['allow', 'timeout', 'workspace'])
+		parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
 		if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
 		if (!stages.includes(parsed.positionals[0] as Stage))
 			throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)
 	} catch (error) {
-		return refuse('invalid_request', 'delegate', error, json)
+		return refuse('invalid_request', 'delegate', error, tokens.includes('--json'))
 	}
 	const [stage, subject] = parsed.positionals as [Stage, string]
 	try {
 		const response = await delegate(parsed.values.workspace ?? process.cwd(), stage, subject, {
 			allowedTools: parsed.allow,
+			claudeArgs: parsed.claudeArgs,
 			timeoutSeconds: seconds(parsed.values.timeout, 'timeout'),
 		})
-		print(response, json)
+		print(response, parsed.json)
 	} catch (error) {
-		refuse('rejected', subject, error, json)
+		if (!isBusy(error)) return refuse('rejected', subject, error, parsed.json)
+		const reasons = [(error as Error).message, busyReason]
+		print({ status: 'operational_error', subject, reasons, operation: null }, parsed.json)
 	}
 }
 

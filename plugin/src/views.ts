@@ -451,8 +451,14 @@ function amount(count: number, noun: string) {
 	return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
+const loopStages: Partial<Record<LoopState, 'plan' | 'revise' | 'execute'>> = {
+	needs_plan: 'plan',
+	needs_revision: 'revise',
+	run_in_progress: 'execute',
+}
+
 function loop(state: LoopState, waitsOn: Role, why: string[], next: string | null) {
-	return { state, waitsOn, why, next }
+	return { state, waitsOn, why, next, stage: loopStages[state] ?? 'none' }
 }
 
 export function runList(store: Store, filters: { planId?: string; build?: string } = {}) {
@@ -581,7 +587,7 @@ export function operationLog(store: Store, filters: { subject?: string; limit?: 
 		store,
 		`SELECT rowid, * FROM operations
 		WHERE (? IS NULL OR EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?)) AND rowid > ?
-		ORDER BY rowid DESC LIMIT ?`,
+		ORDER BY rowid ${filters.after === undefined ? 'DESC' : 'ASC'} LIMIT ?`,
 		filters.subject ?? null,
 		filters.subject ?? null,
 		filters.after ?? 0,

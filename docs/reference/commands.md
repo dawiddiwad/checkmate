@@ -26,7 +26,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 | State     | `init`                                                  | Creates `.checkmate/checkmate.db`. Any command does this too.   |
 |           | `inbox`                                                 | Lists what waits for the oracle.                                |
 |           | `status <planId>`                                       | Prints the loop state of one plan.                              |
-|           | `log [--subject <s>] [--limit <n>]`                     | Lists the operation log, newest first. The default limit is 50. |
+|           | `log [--subject <s>] [--limit <n>] [--after <rowid>]`   | Lists the operation log, newest first. The default limit is 50. |
 |           | `query "<sql>"`                                         | Runs one SQL statement on a read-only connection.               |
 | Target    | `target open <targetId>`                                | Records a setup request.                                        |
 |           | `target request <targetId>`                             | Prints the setup request.                                       |
@@ -76,7 +76,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 - **inbox.** The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `run_gap`, `plan`, `result`, or `requested`. A `run_gap` line is a gap of a run that the plan does not have yet. Its fourth field is the run ID. A `result` line shows only the latest run of a retest chain.
 - **plan list.** Prints `gaps=`, `approval=`, `blocked=`, `state=`, and `waitsOn=` for each plan. `gaps=` lists the open blocking gaps, also of runs. A request without a revision prints `status=requested`. Filters: `--needs-decision`, `--awaiting-approval`, `--blocked`, and `--waits-on <planner|oracle|qa|factory|none>`.
 - **plan show.** Takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`.
-- **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`.
+- **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
 
 ## Loop states
 
@@ -104,6 +104,8 @@ next	checkmate delegate revise checkout
 | `awaits_acceptance` | oracle   | The latest run passed every selected test. Its result waits for acceptance.                    |
 | `accepted`          | none     | The oracle accepted the result.                                                                |
 | `passed`            | none     | The latest run passed. Result acceptance is not required.                                      |
+
+The `next` line is a hint for a person or an agent. Do not parse it. `--json` also gives `stage`: the `delegate` stage that the plan waits on. It is `plan` for `needs_plan`, `revise` for `needs_revision`, `execute` for `run_in_progress`, and `none` for every other state. The subject of `plan` and `revise` is the plan ID. The subject of `execute` is `latestRun.runId`.
 
 `status` tries the states in this order and prints the first one that applies. After a finished run, an open blocking gap gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. A run that a later run retests does not count. An approved revision with open gaps is `ready_to_run` until its first run finishes.
 
@@ -140,7 +142,9 @@ next	checkmate delegate revise checkout
 | `rejected`          | Checkmate refused the command. Nothing changed. Correct the input and try again.         | 1    |
 | `invalid_request`   | The command name or the options are wrong.                                               | 1    |
 | `interrupted`       | A run or a delegated worker stopped at the deadline or on a signal.                      | 1    |
-| `operational_error` | A tool, access, or worker failure stopped the work.                                      | 1    |
+| `operational_error` | A tool, access, lock, or worker failure stopped the work.                                | 1    |
+
+**Lock.** One command writes at a time. Every command waits up to 30 seconds for the database lock, also a read such as `log`, `status`, or `inbox`. When it cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again. The log has no row for that attempt.
 
 `needs_decision` exits with 0. For example, `plan save` with open gaps saves the revision and gives `needs_decision`. `run begin` gives `needs_decision` when the gate refuses the run, and then no run exists. Read line 1, not only the exit code.
 
@@ -173,7 +177,7 @@ next	checkmate delegate revise checkout
 ## delegate
 
 ```sh
-checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--timeout <seconds>] [--workspace <path>] [--json]
+checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--timeout <seconds>] [--claude-arg <arg>]... [--workspace <path>] [--json]
 ```
 
 | Stage     | Subject    | Before the call                         | The parent checks after the call                       |
@@ -187,9 +191,15 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 **Trust.** The parent does not trust the worker's summary. It reads the database and returns the response of the recorded command, with `operation=<id>` on line 1. A worker that reports `completed` without the change gives `operational_error`. In setup, plan, and revise, a worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons, for example a source that it cannot read.
 
-**Permissions.** Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list. Give at least `Read` and `Bash`. A prefix rule such as `Bash(node *)` is not sufficient, because the permission check blocks a heredoc with JSON. `Bash` lets the worker run any shell command in the workspace, so use a trusted workspace. Add rules for the tools of the target or the plan: `mcp__jira` allows every tool of the `jira` server, and `mcp__jira__get_issue` allows one tool. An execute stage that saves screenshots with another tool can need `Write`. The launcher adds no permission bypass.
+**Permissions.** Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list. Give at least `Read` and `Bash`. A prefix rule such as `Bash(node *)` is not sufficient, because the permission check blocks a heredoc with JSON. `Bash` lets the worker run any shell command in the workspace, so use a trusted workspace. Add rules for the tools of the target or the plan: `mcp__jira` allows every tool of the `jira` server, and `mcp__jira__get_issue` allows one tool. An execute stage that saves screenshots with another tool can need `Write`. The launcher adds no permission bypass of its own.
+
+**Claude options.** Give one `--claude-arg <arg>` for each argument to add to the `claude` command. `delegate` adds them in the given order after its own options and before the `--allowedTools` rules, so a value cannot add a tool. The value of `--claude-arg` is the next argument, also when it starts with `--`. For example, `--claude-arg --model --claude-arg claude-haiku-5-5` adds `--model claude-haiku-5-5`, and `--claude-arg --add-dir=../specs` adds `--add-dir=../specs`. `delegate` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--verbose`, and `--plugin-dir`, because the worker contract needs their values. It refuses `--allowedTools` and `--allowed-tools`. Use `--allow` for tools. Claude Code checks the other arguments.
+
+**`--claude-arg` can change permissions.** For example, `--permission-mode`, `--settings`, and `--tools` change what the worker can do. The host owns that choice. Checkmate does not check these arguments for permissions, and it does not record them.
 
 **Deadlines.** `--timeout` sets the deadline in seconds. Setup, plan, and revise use 300 seconds by default. Execute uses the deadline that `run begin` recorded. The launcher stops the worker's process group at the deadline, on SIGINT or SIGTERM, and when the worker output exceeds 4 MiB.
+
+**Lock.** When the parent cannot get the database lock before it starts the worker, `delegate` gives `operational_error` with the reason to run the command again. When it cannot get the lock after the worker, the worker can have written already. Then the reason tells you to read `checkmate status` or `checkmate log` before you run `delegate` again.
 
 **After execute.** The parent closes the run's browser session with `playwright-cli -s=<browserSession> close`. When the worker stops before `run finish`, the run stays `started` and its results stay. The response is `interrupted` or `operational_error`, and its reason names `run resume` and `run finish`.
 

@@ -223,15 +223,19 @@ function removeTemporaryDirectory(store, name) {
   } catch {
   }
 }
+var busyReason = "Another command holds the database lock. Nothing changed. Run the command again.";
+function isBusy(error) {
+  return error instanceof Error && "errcode" in error && [5, 6].includes(Number(error.errcode) & 255);
+}
 function openStore(workspace) {
   const path = databasePath(workspace);
   mkdirSync(join(workspace, ".checkmate"), { recursive: true });
   const db = new DatabaseSync(path);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA busy_timeout = 5000");
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("BEGIN IMMEDIATE");
   try {
+    db.exec("PRAGMA busy_timeout = 30000");
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec("BEGIN IMMEDIATE");
     if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get()) {
       db.exec(tables);
       db.exec(triggers);
@@ -241,7 +245,7 @@ function openStore(workspace) {
     }
     db.exec("COMMIT");
   } catch (error) {
-    db.exec("ROLLBACK");
+    if (db.isTransaction) db.exec("ROLLBACK");
     db.close();
     throw error;
   }
@@ -251,7 +255,7 @@ function openReadOnlyStore(workspace) {
   const path = databasePath(workspace);
   closeStore(openStore(workspace));
   const db = new DatabaseSync(path, { readOnly: true });
-  db.exec("PRAGMA busy_timeout = 5000");
+  db.exec("PRAGMA busy_timeout = 30000");
   return checkedStore(db, workspace, path);
 }
 function checkedStore(db, workspace, path) {
@@ -287,6 +291,7 @@ function write(store, operation, change) {
     return reply;
   } catch (error) {
     if (store.db.isTransaction) store.db.exec("ROLLBACK");
+    if (isBusy(error)) throw error;
     const reason = error instanceof Error ? error.message : String(error);
     store.db.exec("BEGIN IMMEDIATE");
     recordOperation(
@@ -7268,7 +7273,7 @@ function gate(store, input) {
     reply: {
       status: reasons2.length ? "needs_decision" : "completed",
       subject,
-      reasons: reasons2,
+      reasons: [...new Set(reasons2)],
       data: {
         planId: plan.planId,
         revision: plan.revision,
@@ -8528,8 +8533,13 @@ function retestedRuns(store) {
 function amount(count, noun) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
+var loopStages = {
+  needs_plan: "plan",
+  needs_revision: "revise",
+  run_in_progress: "execute"
+};
 function loop(state, waitsOn, why, next) {
-  return { state, waitsOn, why, next };
+  return { state, waitsOn, why, next, stage: loopStages[state] ?? "none" };
 }
 function runList(store, filters = {}) {
   const rows = all(
@@ -8639,7 +8649,7 @@ function operationLog(store, filters = {}) {
     store,
     `SELECT rowid, * FROM operations
 		WHERE (? IS NULL OR EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?)) AND rowid > ?
-		ORDER BY rowid DESC LIMIT ?`,
+		ORDER BY rowid ${filters.after === void 0 ? "DESC" : "ASC"} LIMIT ?`,
     filters.subject ?? null,
     filters.subject ?? null,
     filters.after ?? 0,
@@ -12655,7 +12665,7 @@ var commands = {
   "export run": exportCommand("runId", exportRun),
   log: {
     positionals: [],
-    flags: { subject: "value", limit: "value" },
+    flags: { subject: "value", limit: "value", after: "value" },
     run: (store, args) => {
       const subject = value(args, "subject");
       requireCondition(
@@ -12663,7 +12673,11 @@ var commands = {
         `Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
       );
       return completed("log", {
-        operations: operationLog(store, { subject, limit: integer(args, "limit") })
+        operations: operationLog(store, {
+          subject,
+          limit: integer(args, "limit"),
+          after: integer(args, "after")
+        })
       });
     },
     print: (reply) => ({
@@ -12673,7 +12687,8 @@ var commands = {
         operation.actor,
         operation.command,
         operation.status,
-        operation.subjects
+        operation.subjects,
+        operation.rowid
       ])
     })
   },
@@ -12950,7 +12965,7 @@ function run(argv, io) {
       return { code, output: reply.data.content.replace(/\n$/, "") };
     return { code, output: format(reply, json, command.print) };
   } catch (error) {
-    const reply = { status: "rejected", subject, reasons: [error.message], data: {} };
+    const reply = isBusy(error) ? { status: "operational_error", subject, reasons: [error.message, busyReason], data: {} } : { status: "rejected", subject, reasons: [error.message], data: {} };
     return { code: 1, output: format(reply, json) };
   } finally {
     if (store) closeStore(store);

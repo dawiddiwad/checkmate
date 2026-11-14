@@ -15,6 +15,7 @@ export type Verdict = {
 	subject: string
 	question: string
 	sha256: string
+	token: string
 	digestLabel: string
 	approve: { value: string; label: string; confirm: string; summary: string }
 	reject: { value: string; label: string; confirm: string; summary: string }
@@ -26,9 +27,10 @@ export function emptyState(): FormState {
 	return { values: {}, error: null, stale: null, confirm: false }
 }
 
-function hidden(context: Context, sha256: string) {
+function hidden(context: Context, sha256: string, token = '') {
 	return html`<input type="hidden" name="csrf" value="${context.csrf}" />
-		<input type="hidden" name="sha" value="${sha256}" />`
+		<input type="hidden" name="sha" value="${sha256}" />
+		${token ? html`<input type="hidden" name="decision" value="${token}" />` : ''}`
 }
 
 function actorField(context: Context, state: FormState) {
@@ -56,7 +58,7 @@ ${state.values.rationale ?? ''}</textarea>
 function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 	const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve
 	return html`<form method="post" action="${verdict.action}" class="decision-form">
-		${hidden(context, verdict.sha256)}
+		${hidden(context, verdict.sha256, verdict.token)}
 		<input type="hidden" name="verdict" value="${choice.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ''}" />
 		${context.actor ? '' : html`<input type="hidden" name="actor" value="${state.values.actor ?? ''}" />`}
@@ -85,7 +87,7 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 			${choice.label}
 		</button>`
 	return html`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
-		${hidden(context, verdict.sha256)} ${actorField(context, state)}
+		${hidden(context, verdict.sha256, verdict.token)} ${actorField(context, state)}
 		${rationaleField(state, 'Why do you decide this?')}
 		<div class="confirm-box" data-confirm hidden>
 			<p class="lab">Confirm</p>
@@ -201,8 +203,13 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 	</section>`
 }
 
-export function recordPanel(title: string, content: Html) {
-	return html`<section class="panel decision" aria-labelledby="decide-title" data-region="decision">
+export function recordPanel(title: string, content: Html, decided = '') {
+	return html`<section
+		class="panel decision"
+		aria-labelledby="decide-title"
+		data-region="decision"
+		${decided ? html`data-decided-message="${decided}"` : ''}
+	>
 		<h2 class="lab" id="decide-title">${title}</h2>
 		${content}
 	</section>`

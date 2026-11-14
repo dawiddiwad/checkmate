@@ -9,8 +9,21 @@ import { promisify } from 'node:util'
 import { chromium } from 'playwright-core'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { human, seedDemo } from '../scripts/ui-demo.ts'
-import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
-import { directory, root } from './support.ts'
+import {
+	addInstance,
+	approvePlan,
+	beginRun,
+	checkAssertion,
+	closeStore,
+	closeTest,
+	finishRun,
+	openPlan,
+	openStore,
+	planDetail,
+	recordFinding,
+	savePlan,
+} from '../plugin/src/index.ts'
+import { directory, evidenceFile, root } from './support.ts'
 
 const executablePath = process.env.CHECKMATE_BROWSER_EXECUTABLE
 const skip = executablePath ? false : 'Set CHECKMATE_BROWSER_EXECUTABLE to a Chromium binary'
@@ -23,6 +36,94 @@ test.before(async () => {
 test.after(async () => {
 	await browser?.close()
 })
+
+const long = `Long${'Token'.repeat(60)}`
+
+function seedLong(workspace: string) {
+	const store = openStore(workspace)
+	try {
+		addInstance(store, long, {
+			targetId: 'shop-local',
+			instanceId: 'wide',
+			instance: { entries: { web: `https://shop.example/${long}` }, environment: long },
+		})
+		openPlan(store, long, {
+			planId: 'wide',
+			target: 'shop-local@1',
+			request: {
+				objective: long,
+				requirements: [{ id: 'W1', text: long, source: `brief://${long}`, metadata: { note: long } }],
+				sourceContext: [],
+			},
+		})
+		savePlan(store, long, {
+			planId: 'wide',
+			candidate: {
+				tests: [
+					{
+						id: 'T1',
+						title: long.slice(0, 200),
+						requirementIds: ['W1'],
+						capability: 'browser',
+						operations: ['read_catalog'],
+						dependsOn: [],
+						preconditions: [long],
+						action: long,
+						metadata: { note: long },
+						assertions: [{ id: 'A1', check: long, checkKind: 'deterministic' }],
+					},
+				],
+				gaps: [
+					{
+						id: 'G1',
+						severity: 'non_blocking',
+						status: 'open',
+						requirementIds: ['W1'],
+						testIds: ['T1'],
+						question: long,
+						consequence: long,
+						decisionId: null,
+					},
+				],
+			},
+		})
+		approvePlan(store, long, { reference: 'wide@1', rationale: long })
+		beginRun(store, long, { runId: 'run-wide', reference: 'wide@1', tests: ['T1'], build: 'b1', instance: 'wide' })
+		const reply = checkAssertion(store, long, {
+			runId: 'run-wide',
+			testId: 'T1',
+			assertionId: 'A1',
+			result: 'failed',
+			observed: long,
+			evidence: [evidenceFile(store, 'run-wide', 'observed.txt', long)],
+		})
+		recordFinding(store, long, {
+			runId: 'run-wide',
+			finding: {
+				id: 'F1',
+				type: 'defect',
+				severity: 'high',
+				assertionIds: ['T1.A1'],
+				requirementIds: ['W1'],
+				title: long.slice(0, 200),
+				expected: long,
+				observed: long,
+				reproduction: [long],
+				evidenceIds: reply.data.evidenceIds as string[],
+				metadata: { note: long },
+			},
+		})
+		closeTest(store, long, { runId: 'run-wide', testId: 'T1' })
+		finishRun(store, long, {
+			runId: 'run-wide',
+			completion: 'completed',
+			cleanup: 'completed',
+			cleanupReason: long,
+		})
+	} finally {
+		closeStore(store)
+	}
+}
 
 async function open(t: TestContext, options: BrowserContextOptions = {}) {
 	const workspace = directory(t)
@@ -160,7 +261,7 @@ test('a run page updates live and keeps typed text', { skip }, async (t) => {
 	await page.getByLabel('Rationale').fill('Half-written rationale')
 	await checkmate(workspace, ['result', 'accept', 'run-7', '--rationale', 'Accepted elsewhere.'])
 	await page.locator('[data-region="state"]', { hasText: 'accepted' }).waitFor({ timeout: 2000 })
-	await page.locator('.banner', { hasText: 'run-7 has a new result. Review it before you decide.' }).waitFor()
+	await page.locator('.banner', { hasText: 'run-7 was accepted by worker. Review it before you decide.' }).waitFor()
 	assert.equal(await page.getByLabel('Rationale').inputValue(), 'Half-written rationale')
 	assert.match(page.url(), /\/runs\/run-7$/)
 })
@@ -369,4 +470,80 @@ test('Settings adds and retires an instance from the keyboard and updates live',
 		'web=https://eu.shop.example',
 	])
 	await page.locator('#instance-eu').waitFor()
+})
+
+async function overflow(page: Awaited<ReturnType<typeof open>>['page']) {
+	return page.evaluate(() => {
+		const width = window.innerWidth
+		if (document.documentElement.scrollWidth <= width) return null
+		const wide = [...document.querySelectorAll('body *')]
+			.filter((element) => element.getBoundingClientRect().right > width + 1)
+			.map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+		return `${document.documentElement.scrollWidth} > ${width}: ${wide.slice(-5).join(' ')}`
+	})
+}
+
+for (const width of [1280, 390])
+	test(`long unbroken values do not widen the page at ${width}px`, { skip }, async (t) => {
+		const { page, url, workspace } = await open(t, { viewport: { width, height: 900 } })
+		seedLong(workspace)
+		const pages = [
+			'/',
+			'/plans',
+			'/runs',
+			'/plans/wide@1',
+			'/plans/wide@1/gaps/G1',
+			'/plans/wide@1/edit',
+			'/plans/checkout@2',
+			'/plans/checkout@2/edit',
+			'/runs/run-wide',
+			'/runs/run-7',
+			'/settings/targets/shop-local',
+		]
+		for (const path of pages) {
+			await page.goto(url(path))
+			assert.equal(await overflow(page), null, path)
+		}
+		for (const [path, panel] of [
+			['/runs/run-7', '#decide'],
+			['/plans/wide@1/gaps/G1', '#answer'],
+		]) {
+			await page.goto(url(path))
+			const box = await page.locator(panel).boundingBox()
+			assert(box && box.x >= 0 && box.x + box.width <= width, `${path} ${JSON.stringify(box)}`)
+		}
+	})
+
+test('a #decide or #answer link focuses its form after the browser scrolls', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/plans/search@1#decide'))
+	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
+	await page.waitForTimeout(300)
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'rationale')
+	await page.goto(url('/plans/checkout@2/gaps/G2#answer'))
+	await page.waitForFunction(() => document.activeElement?.closest('#answer') !== null)
+	await page.waitForTimeout(300)
+	assert(await page.evaluate(() => document.activeElement?.closest('#answer') !== null))
+	await page.goto(url('/runs/run-7'))
+	await page.evaluate(() => (location.hash = '#decide'))
+	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
+})
+
+test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/runs/run-7'))
+	const link = page.locator('a[data-view-image]:visible').first()
+	await link.focus()
+	await page.keyboard.press('Enter')
+	const viewer = page.getByRole('dialog', { name: 'Evidence viewer' })
+	await viewer.waitFor()
+	assert.equal(await viewer.getAttribute('aria-modal'), 'true')
+	const inside = () => page.evaluate(() => document.querySelector('[data-viewer]')?.contains(document.activeElement))
+	for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+		await page.keyboard.press(key)
+		assert(await inside(), key)
+	}
+	await page.keyboard.press('Escape')
+	await viewer.waitFor({ state: 'hidden' })
+	assert(await link.evaluate((element) => element === document.activeElement))
 })

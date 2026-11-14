@@ -1,7 +1,7 @@
 import type { Store } from '../store.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
-import { frozenRevision, planCandidate } from '../plans.ts'
+import { frozenRevision, jsonPatch, planCandidate } from '../plans.ts'
 import { planDetail } from '../views.ts'
 import { html, short } from './html.ts'
 import { banner, heading } from './layout.ts'
@@ -9,6 +9,7 @@ import { banner, heading } from './layout.ts'
 type Candidate = ReturnType<typeof planCandidate>
 type Requirement = Candidate['requirements'][number]
 type Test = Candidate['tests'][number]
+type CheckKind = Test['assertions'][number]['checkKind']
 
 export type EditState = {
 	mode: 'form' | 'json'
@@ -17,6 +18,7 @@ export type EditState = {
 	actor: string
 	error: string | null
 	stale: Html | null
+	unsaved: string | null
 }
 
 function words(values: string) {
@@ -33,12 +35,16 @@ function lines(values: string) {
 		.filter(Boolean)
 }
 
+function checkKind(value: string | null, fallback: CheckKind): CheckKind {
+	return value === 'deterministic' || value === 'agent_observation' ? value : fallback
+}
+
 export function candidateFromForm(base: Candidate, form: URLSearchParams): Candidate {
 	const text = (name: string, fallback: string) => (form.get(name) ?? fallback).trim()
 	const covered = new Set(form.getAll('cover'))
 	return {
 		requirements: base.requirements.map((requirement, i) => ({
-			id: requirement.id,
+			...requirement,
 			text: text(`r${i}.text`, requirement.text),
 			source: text(`r${i}.source`, requirement.source),
 		})),
@@ -54,9 +60,9 @@ export function candidateFromForm(base: Candidate, form: URLSearchParams): Candi
 				.filter((requirement) => covered.has(`${test.id} ${requirement.id}`))
 				.map((requirement) => requirement.id),
 			assertions: test.assertions.map((assertion, j) => ({
-				id: assertion.id,
+				...assertion,
 				check: text(`t${i}.a${j}.check`, assertion.check),
-				checkKind: form.get(`t${i}.a${j}.kind`) === 'agent_observation' ? 'agent_observation' : 'deterministic',
+				checkKind: checkKind(form.get(`t${i}.a${j}.kind`), assertion.checkKind),
 			})),
 		})),
 		gaps: base.gaps,
@@ -65,6 +71,30 @@ export function candidateFromForm(base: Candidate, form: URLSearchParams): Candi
 
 export function candidateJson(candidate: unknown) {
 	return JSON.stringify(candidate, null, 2)
+}
+
+function pathName(candidate: Candidate, path: string) {
+	const [, list, index, ...rest] = path.split('/')
+	const items: Array<{ id: string }> =
+		list === 'requirements' ? candidate.requirements : list === 'tests' ? candidate.tests : candidate.gaps
+	return [items[Number(index)]?.id ?? index, ...rest].join('.')
+}
+
+export function formChanges(latest: Candidate, posted: Candidate) {
+	return jsonPatch(latest, posted)
+		.map((operation) => `${pathName(latest, operation.path)}: ${JSON.stringify(operation.value ?? null)}`)
+		.join('\n')
+}
+
+function unsavedPanel(unsaved: string) {
+	return html`<section class="panel unsaved" aria-labelledby="unsaved-title">
+		<h2 class="lab" id="unsaved-title">Your changes (not saved)</h2>
+		<p class="help">
+			The editor below shows the latest version. These values from your form differ from it. Apply the changes
+			again, then save.
+		</p>
+		<pre class="code">${unsaved || 'No difference from the latest version.'}</pre>
+	</section>`
 }
 
 function field(label: string, name: string, value: string, help = '') {
@@ -246,6 +276,7 @@ export function editPage(
 		actor: '',
 		error: null,
 		stale: null,
+		unsaved: null,
 	}
 	const messages = html`${shown.stale ? banner('warn', shown.stale) : ''}
 	${shown.error ? html`<p class="form-error" role="alert">${shown.error}</p>` : ''}`
@@ -265,6 +296,7 @@ export function editPage(
 				>
 			</div>`
 		)}
+		${shown.unsaved === null ? '' : unsavedPanel(shown.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>

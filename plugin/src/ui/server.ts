@@ -8,7 +8,17 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
-import { adoptGaps, answerGap, approvePlan, editPlan, planCandidate, rejectPlan } from '../plans.ts'
+import type { Approval } from '../plans.ts'
+import {
+	adoptGaps,
+	answerGap,
+	approvePlan,
+	decisionToken,
+	editPlan,
+	latestApproval,
+	planCandidate,
+	rejectPlan,
+} from '../plans.ts'
 import { exportPlan, exportRun } from '../render.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
@@ -19,7 +29,7 @@ import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
 import { gapPage, planHistoryList, planPage } from './plan.ts'
-import { candidateFromForm, candidateJson, editPage } from './edit.ts'
+import { candidateFromForm, candidateJson, editPage, formChanges } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
@@ -122,18 +132,17 @@ function cookie(name: string, value: string, maxAge = 60 * 60 * 24 * 365) {
 	return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`
 }
 
-function readForm(req: IncomingMessage): Promise<URLSearchParams> {
+function readForm(req: IncomingMessage): Promise<URLSearchParams | null> {
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = []
 		let length = 0
 		req.on('data', (chunk: Buffer) => {
 			length += chunk.length
-			if (length > maxForm) {
-				reject(new Error('The form is too large.'))
-				req.destroy()
-			} else chunks.push(chunk)
+			if (length <= maxForm) chunks.push(chunk)
 		})
-		req.on('end', () => resolve(new URLSearchParams(Buffer.concat(chunks).toString('utf8'))))
+		req.on('end', () =>
+			resolve(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString('utf8')))
+		)
 		req.on('error', reject)
 	})
 }
@@ -145,7 +154,13 @@ function same(a: string, b: string) {
 }
 
 function safeBack(value: string | null) {
-	return value && value.startsWith('/') && !value.startsWith('//') ? value : '/'
+	if (!value) return '/'
+	try {
+		const decoded = decodeURIComponent(value)
+		return /^\/[^/\\]/.test(decoded) && !/[\t\n\r\\]/.test(decoded) ? value : '/'
+	} catch {
+		return '/'
+	}
 }
 
 function attachmentName(name: string) {
@@ -449,12 +464,16 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		form: URLSearchParams,
 		choices: string[],
 		page: (state: FormState) => Page,
-		record: (actor: string, verdict: string, rationale: string, sha: string) => string,
-		staleCheck: (sha: string) => FormState['stale']
+		record: (actor: string, verdict: string, rationale: string, sha: string, token: string) => string,
+		staleCheck: (sha: string, token: string) => FormState['stale']
 	) {
 		const state = verdictState(form)
 		const { actor, cookies } = actorFrom(request, form)
 		const view = () => page(state)
+		const sha = form.get('sha') ?? ''
+		const token = form.get('decision') ?? ''
+		state.stale = staleCheck(sha, token)
+		if (state.stale) return refuse(request, view, cookies)
 		if (form.get('back')) return refuse(request, () => ({ ...view(), status: 200 }), cookies)
 		if (!choices.includes(state.values.verdict)) state.error = 'Choose a decision.'
 		else if (!actor) state.error = 'Enter your name. Checkmate records it with your decision.'
@@ -465,17 +484,24 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			state.confirm = true
 			return refuse(request, () => ({ ...view(), status: 200 }), cookies)
 		}
-		const sha = form.get('sha') ?? ''
 		let flash: string
 		try {
-			flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha)
+			flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha, token)
 		} catch (error) {
-			state.stale = staleCheck(sha)
+			state.stale = staleCheck(sha, token)
 			if (!state.stale) state.error = plainMessage(error)
 			return refuse(request, view, cookies)
 		}
 		const next = nextItem(flash, cookies)
 		redirect(request.res, next.location, next.cookies)
+	}
+
+	function decidedBanner(subject: string, latest: Approval | undefined, verdicts: Record<string, string>) {
+		const what = latest
+			? html`${subject} was ${verdicts[latest.verdict]} by ${latest.actor} after you opened this page.`
+			: html`${subject} has another decision now.`
+		return html`<strong>${what}</strong> Your decision was not recorded. Your text is kept below. Review the
+			decision, then send again.`
 	}
 
 	function decidePlan(request: Request, form: URLSearchParams, planId: string, revision: number) {
@@ -485,17 +511,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			form,
 			['approve', 'reject'],
 			(state) => planPage(store, context(request), planId, revision, state),
-			(actor, verdict, rationale, sha) => {
-				const input = { reference: subject, rationale, expectSha256: sha }
+			(actor, verdict, rationale, sha, token) => {
+				const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token }
 				if (verdict === 'approve') approvePlan(store, actor, input)
 				else rejectPlan(store, actor, input)
 				return `${verdict === 'approve' ? 'Approved' : 'Rejected'} ${subject}`
 			},
-			(sha) => {
+			(sha, token) => {
 				const detail = planDetail(store, planId, revision)
-				if (detail.sha256 === sha) return null
-				return html`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
-					text is kept below. Review the plan, then send again.`
+				if (detail.sha256 !== sha)
+					return html`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
+						text is kept below. Review the plan, then send again.`
+				if (decisionToken(store, 'plan', subject) === token) return null
+				return decidedBanner(subject, latestApproval(store, 'plan', subject), {
+					approved: 'approved',
+					rejected: 'rejected',
+				})
 			}
 		)
 	}
@@ -506,17 +537,23 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			form,
 			['accept', 'reject'],
 			(state) => runPage(store, context(request), runId, state),
-			(actor, verdict, rationale, sha) => {
-				const input = { runId, rationale, expectSha256: sha }
+			(actor, verdict, rationale, sha, token) => {
+				const input = { runId, rationale, expectSha256: sha, expectDecision: token }
 				if (verdict === 'accept') acceptResult(store, actor, input)
 				else rejectResult(store, actor, input)
 				return `${verdict === 'accept' ? 'Accepted' : 'Rejected'} ${runId}`
 			},
-			(sha) => {
+			(sha, token) => {
 				const result = runDetail(store, runId).result
-				if (result?.sha256 === sha) return null
-				return html`<strong>${runId} has a new result.</strong> Your decision was not recorded. Your text is
-					kept below. Review the result, then send again.`
+				if (!result) return null
+				if (result.sha256 !== sha)
+					return html`<strong>${runId} has a new result.</strong> Your decision was not recorded. Your text is
+						kept below. Review the result, then send again.`
+				if (decisionToken(store, 'result', runId) === token) return null
+				return decidedBanner(runId, latestApproval(store, 'result', runId), {
+					approved: 'accepted',
+					rejected: 'rejected',
+				})
 			}
 		)
 	}
@@ -565,6 +602,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			actor: form.get('actor') ?? '',
 			error: null,
 			stale: null,
+			unsaved: null,
 		}
 		const page = () => editPage(store, context(request), planId, revision, state)
 		let candidate: unknown
@@ -586,13 +624,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data
 		} catch (error) {
 			const latest = planDetail(store, planId)
-			if (latest.latestRevision !== revision || latest.sha256 !== sha)
-				state.stale = html`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
-					saved. Your text is kept below.
-					<a href="/plans/${planId}@${latest.latestRevision}/edit">Open the latest version</a>, then edit
-					again.`
-			else state.error = plainMessage(error)
-			return refuse(request, page, cookies)
+			if (latest.latestRevision === revision && latest.sha256 === sha) {
+				state.error = plainMessage(error)
+				return refuse(request, page, cookies)
+			}
+			const fresh = planCandidate(latest.plan)
+			state.unsaved = mode === 'json' ? state.json : formChanges(fresh, state.candidate)
+			state.candidate = fresh
+			state.json = candidateJson(fresh)
+			state.stale = html`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
+				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
+				it.`
+			return refuse(
+				request,
+				() => editPage(store, context(request), planId, latest.latestRevision, state),
+				cookies
+			)
 		}
 		const saving = `${planId}@${saved.revision}`
 		const flash =
@@ -659,6 +706,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				'Refused: the request comes from another origin.'
 			)
 		const form = await readForm(request.req)
+		if (!form)
+			return errorPage(
+				request,
+				413,
+				'Form too large',
+				'The form has more than 256 KiB of text. Checkmate did not record it. Go back, make the text shorter, then send the form again.'
+			)
 		if (!same(form.get('csrf') ?? '', csrf))
 			return errorPage(
 				request,

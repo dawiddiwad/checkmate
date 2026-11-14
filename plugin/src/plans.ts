@@ -34,7 +34,7 @@ export type GapAnswer = {
 	rationale: string
 	expectSha256?: string
 }
-export type Verdict = { reference: string; rationale: string; expectSha256?: string }
+export type Verdict = { reference: string; rationale: string; expectSha256?: string; expectDecision?: string }
 export type GateInput = {
 	reference: string
 	tests?: string[]
@@ -682,6 +682,7 @@ function decidePlan(store: Store, actor: string | undefined, input: Verdict, ver
 		const revision = planRevision(store, reference.id, reference.revision)
 		const subject = `${reference.id}@${reference.revision}`
 		expectDigest(revision.sha256, input.expectSha256, subject)
+		expectDecision(store, 'plan', subject, input.expectDecision)
 		return {
 			reply: recordApproval(store, actor, operationId, {
 				kind: 'plan',
@@ -740,6 +741,25 @@ export function latestApproval(store: Store, kind: 'plan' | 'result', subject: s
 		WHERE a.subject_kind = ? AND a.subject_id = ? ORDER BY a.rowid DESC LIMIT 1`,
 		kind,
 		subject
+	)
+}
+
+export function decisionToken(store: Store, kind: 'plan' | 'result', subject: string) {
+	return (
+		one<{ id: string }>(
+			store,
+			'SELECT id FROM approvals WHERE subject_kind = ? AND subject_id = ? ORDER BY rowid DESC LIMIT 1',
+			kind,
+			subject
+		)?.id ?? 'none'
+	)
+}
+
+export function expectDecision(store: Store, kind: 'plan' | 'result', subject: string, expected: string | undefined) {
+	if (expected === undefined) return
+	requireCondition(
+		decisionToken(store, kind, subject) === expected,
+		`${subject} has a newer decision. Read it again before you decide.`
 	)
 }
 

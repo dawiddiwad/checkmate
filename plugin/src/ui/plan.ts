@@ -4,7 +4,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { planDetail, planHistory, planStatus } from '../views.ts'
-import { planRunGaps } from '../plans.ts'
+import { decisionToken, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
 import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
@@ -319,7 +319,7 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 	</div>`
 }
 
-function approvalPanel(context: Context, detail: Detail, state: FormState | null) {
+function approvalPanel(store: Store, context: Context, detail: Detail, state: FormState | null) {
 	const subject = `${detail.planId}@${detail.revision}`
 	const latest = detail.approval.latest
 	if (detail.approval.policy === 'none')
@@ -332,7 +332,8 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner('warn', 'This decision was for another digest.') : ''}`
+				${latest.sha256 !== detail.sha256 ? banner('warn', 'This decision was for another digest.') : ''}`,
+			`${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
 		context,
@@ -341,6 +342,7 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 			subject,
 			question: `Approve ${subject}?`,
 			sha256: detail.sha256,
+			token: decisionToken(store, 'plan', subject),
 			digestLabel: 'Plan',
 			approve: {
 				value: 'approve',
@@ -453,7 +455,7 @@ export function planPage(
 					${planHistoryList(store, detail, allHistory)}
 				</section>
 			</div>
-			${side(approvalPanel(context, detail, state))}
+			${side(approvalPanel(store, context, detail, state))}
 		</div>`
 	return {
 		title: subject,

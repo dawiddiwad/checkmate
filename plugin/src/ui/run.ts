@@ -3,7 +3,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
-import { planRevision, planRunGaps } from '../plans.ts'
+import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
 import { clock, hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { downloads, heading } from './layout.ts'
 import { emptyState, recordPanel, verdictPanel } from './forms.ts'
@@ -388,7 +388,7 @@ function inconclusiveList(detail: Detail) {
 	</div>`
 }
 
-function decisionPanel(context: Context, detail: Detail, state: FormState | null) {
+function decisionPanel(store: Store, context: Context, detail: Detail, state: FormState | null) {
 	const result = detail.result
 	if (!result)
 		return recordPanel(
@@ -408,7 +408,8 @@ function decisionPanel(context: Context, detail: Detail, state: FormState | null
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
-				<blockquote>${latest.rationale}</blockquote>`
+				<blockquote>${latest.rationale}</blockquote>`,
+			`${detail.runId} was ${latest.verdict === 'approved' ? 'accepted' : 'rejected'} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
 		context,
@@ -417,6 +418,7 @@ function decisionPanel(context: Context, detail: Detail, state: FormState | null
 			subject: detail.runId,
 			question: `Accept ${detail.runId}?`,
 			sha256: result.sha256,
+			token: decisionToken(store, 'result', detail.runId),
 			digestLabel: 'Result',
 			approve: {
 				value: 'accept',
@@ -502,7 +504,7 @@ export function runPage(
 				</section>
 			</div>
 			<aside class="side" aria-label="Decision">
-				${decisionPanel(context, detail, state)}
+				${decisionPanel(store, context, detail, state)}
 				<p class="back"><a href="/">← Back to inbox</a></p>
 			</aside>
 		</div>`

@@ -356,6 +356,8 @@ main {
 	margin: 0 auto;
 	padding: 28px 24px 64px;
 	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 main:focus {
 	outline: none;
@@ -455,7 +457,11 @@ a.pill:hover {
 	display: inline-flex;
 	flex-wrap: wrap;
 	gap: 4px;
+	max-width: 100%;
 	vertical-align: middle;
+}
+.kv .tag {
+	white-space: normal;
 }
 .tag {
 	font-family: var(--font-mono);
@@ -735,6 +741,7 @@ textarea[readonly] {
 }
 
 .scroll {
+	position: relative;
 	overflow-x: auto;
 	border: 1px solid var(--line);
 	border-radius: 9px;
@@ -744,6 +751,7 @@ table {
 	border-collapse: collapse;
 	width: 100%;
 	font-size: 14px;
+	overflow-wrap: normal;
 }
 th,
 td {
@@ -825,6 +833,7 @@ table.log td.mono {
 .test-b {
 	padding: 0 16px 14px;
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 10px;
 }
 .test-note {
@@ -970,6 +979,7 @@ summary.asr-row:focus-visible {
 .asr-body {
 	padding: 0 16px 12px 86px;
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 8px;
 	font-size: 13.5px;
 }
@@ -1718,6 +1728,7 @@ th a.sort:hover .arrow {
 
 .edit-form {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 8px;
 	max-width: 980px;
 }

@@ -26,7 +26,7 @@ The command prints `completed ui url=<url>`. Open that URL in a browser on the s
 
 <img src="../img/ui/inbox.jpg" alt="The inbox in dark mode with four items: two gaps to answer, one of them from run-7, one plan to approve, and one result to accept." width="100%"/>
 
-The start page. It groups the gaps to answer, the plans to approve, the results to accept, and the plans to draft. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
+The start page. It groups the gaps to answer, the plans to approve, the results to accept, and the plans to draft. The number next to `Inbox` counts the oracle actions only. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
 
 ### Plans
 
@@ -71,7 +71,12 @@ Each change records your name and shows in the Log, as with the command `target 
 2. Click the action, for example `Approve checkout@2`. The panel shows a short summary and a `Confirm` button.
 3. Click `Confirm`. The UI records the decision and opens the next inbox item.
 
-Each form sends the digest of the snapshot that you see. When the record changed after the page loaded, the UI refuses the action, keeps your text, and shows a message.
+Each form sends the digest of the snapshot that you see. A decision form also sends a token of the latest decision on the subject. When the record changed after the page loaded, the UI refuses the action, keeps your text, and shows a message.
+
+- When another oracle decided after the page loaded, the message names the decision and the actor, for example `run-7 was accepted by qa-lead`. Your decision is not recorded. Read the decision, then send yours again.
+- A form that you send a second time, for example after Back in the browser, is refused in the same way. The UI records each decision once.
+- When the plan changed after you opened the editor, the editor shows the latest version. `Your changes (not saved)` lists the values from your form that differ from it. Apply them again, then save.
+- A form with more than 256 KiB of text is refused with the status 413. Nothing is recorded.
 
 ## Your name
 

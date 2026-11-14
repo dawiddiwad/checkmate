@@ -15,7 +15,7 @@ import {
 	validate,
 	withoutEmptyMetadata,
 } from './contracts.ts'
-import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
+import { approvalState, dependencyBlock, expectDecision, gate, latestPlans, recordApproval } from './plans.ts'
 import { runInstance, targetRevision } from './targets.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
@@ -92,7 +92,7 @@ export type CloseInput = {
 }
 export type FinishInput = { runId: string; completion: string; cleanup: string; cleanupReason: string }
 export type ResumeInput = { runId: string; error?: string[]; reason?: string }
-export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string }
+export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string; expectDecision?: string }
 
 export const maxEvidenceBytes = 32 * 1024 * 1024
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
@@ -852,6 +852,7 @@ function decideResult(store: Store, actor: string | undefined, input: ResultVerd
 		const result = runResult(store, input.runId)
 		requireCondition(result, `Run ${input.runId} is not finished. Finish it before you decide on its result.`)
 		expectDigest(result.sha256, input.expectSha256, input.runId)
+		expectDecision(store, 'result', input.runId, input.expectDecision)
 		return {
 			reply: recordApproval(store, actor, operationId, {
 				kind: 'result',

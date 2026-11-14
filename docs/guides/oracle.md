@@ -31,7 +31,7 @@ To see one ticket, run `checkmate status <planId>`. It names the loop state and 
 | Approve or reject | `checkmate plan approve\|reject <planId@rev> --rationale ...`      | Plan page                         |
 | Accept or reject  | `checkmate result accept\|reject <runId> --rationale ...`          | Run page                          |
 
-Each answer, approval, and result decision needs `--rationale`. Add `--expect-sha <digest>` to stop the decision when the snapshot changed after you read it.
+Each answer, approval, and result decision needs `--rationale`. Add `--expect-sha <digest>` to stop the decision when the snapshot changed after you read it. `--expect-sha` checks the digest only. In the review UI, a decision is also refused when another oracle decided on the same subject after the page loaded.
 
 ## Answer a gap
 

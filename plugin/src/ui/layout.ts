@@ -141,14 +141,7 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 	</dl>
 </aside>`
 
-const viewer = html`<div
-	class="viewer"
-	data-viewer
-	hidden
-	role="dialog"
-	aria-modal="false"
-	aria-label="Evidence viewer"
->
+const viewer = html`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
 	<div class="viewer-bar">
 		<span class="viewer-name" data-viewer-name></span>
 		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>

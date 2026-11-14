@@ -28,10 +28,10 @@ A run uses one instance of the target. `run show`, `run list`, `status`, the rev
 - QA uses a `url` entry and a `value` entry as they are.
 - QA runs a `command` entry at test time, for example to get a one-time login URL. Checkmate stores the command, not its output.
 - A retired instance cannot start a run.
-- A retest needs the same plan and target and a new build. It can run on another instance.
+- A retest needs the same plan and target and a new build. It can run on another instance. It can keep the build only on a new instance after the instance of the earlier run is retired.
 - A cross-plan dependency needs a passed result on the same build. A run on any instance counts.
-- A matrix is one run of the same plan revision for each instance. `checkmate status <planId>` prints a `started` line for each open run, with its instance.
-- A refreshed sandbox is a new instance. Retire the old instance, add the new one, and retest on it. The plan and the retest chain stay the same.
+- A matrix is one run of the same plan revision for each instance. `checkmate status <planId>` prints a `started` line for each open run, with its instance. On one build, each instance has its own latest outcome. A pass on one instance does not hide a failure on another instance.
+- A refreshed sandbox is a new instance. Retire the old instance, add the new one, and retest on it. The retest can use the same build. The plan and the retest chain stay the same.
 
 This example uses a Salesforce sandbox. The `web` entry is a command that prints a one-time login URL. The `org` entry is the org alias.
 
@@ -176,8 +176,11 @@ A defect stays open until one of these occurs:
 
 1. A later finished run of the same plan selects each test of the defect, and each of these tests passes.
 2. A later finished run in the retest chain of the defect's run fails a test of the defect and records its own defect for it. The new defect replaces the old defect. The retest chain is the runs that name the run with `--retest-of`, directly or through other retests.
+3. The oracle rejects the result of the defect's run. A rejected result means that the record is wrong. Its tests need a retest.
 
-A started run closes no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. A pass on any instance closes a defect. The cross-plan dependency rule also accepts a pass on any instance.
+"Later" means that the run began after the defect's run. The order in which the runs finished does not matter. A later run counts only when it is on the same instance, on a different build, or in the retest chain of the defect's run. On the same build, a pass on one instance does not close a defect that a run on another instance found. A refreshed sandbox is a new instance, and its retest is in the retest chain.
+
+A started run closes no defect. A rejected run closes no defect and replaces no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. The cross-plan dependency rule is different: it accepts a pass on any instance of the build.
 
 `checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. The defect is still real, so `finding list --open` still lists it.
 

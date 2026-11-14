@@ -171,7 +171,7 @@ try {
 	const reference = `checkout@${revised.revision}`
 	assert.equal(status('checkout').waitsOn, 'oracle')
 	checkmate(workspace, ['plan', 'approve', reference, '--rationale', 'Reviewed the revision.'])
-	assert.match(expectStatus('checkout', 'ready_to_run', 'qa').next, /--partial ready_only/)
+	assert.match(expectStatus('checkout', 'ready_to_run', 'qa').next.join('\n'), /--partial ready_only/)
 
 	const ready = revised.tests.filter((test) => test.readiness === 'ready').map((test) => test.id)
 	const gate = checkmate(workspace, [

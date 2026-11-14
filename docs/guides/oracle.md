@@ -17,7 +17,7 @@ checkout@1/G4	run_gap	non_blocking	run-1	Must the banner wrap?
 run-1	result	checkout@1	b1	partial	passed=1
 ```
 
-The inbox lists the gaps to answer, the gaps of runs that the plan does not have yet (`run_gap`), the plans to approve, the results to accept, and the plan requests without a revision (`requested`). The plan requests wait for the planner, not for you.
+The inbox lists the gaps to answer, the gaps of runs that the plan does not have yet (`run_gap`), the plans to approve, the rejected plans to change, the results to accept, and the plan requests without a revision (`requested`). The plan requests wait for the planner, not for you. The summary of a rejected plan starts with `Rejected. Change the plan.`
 
 To see one ticket, run `checkmate status <planId>`. It names the loop state and who acts next. In the review UI, the inbox is the start page.
 
@@ -49,7 +49,9 @@ Choose one kind:
 | `accept_assumption` | You accept a reasonable assumption. | The gap is `resolved`. The value stays visible in `assumptions`.                                                       | `--value`, `--rationale`             |
 | `defer`             | The question is out of scope now.   | The gap is `deferred`. A blocking gap defers its tests, and coverage stays incomplete. A non-blocking gap only closes. | `--value`, `--rationale`             |
 
-An answer is a pending decision. It does not change the plan. The revise stage applies the answers and writes the next revision: `checkmate delegate revise <planId>`, or `/checkmate:revise <planId>` in Claude Code. Then approve that revision.
+`--source` is necessary only for `clarify`. The `next` hint of `status` always shows `--source "<source>"`, because each kind takes it.
+
+An answer is a pending decision. It does not change the plan. After you answer a gap, `plan edit` cannot change the gap. Only an open gap without a decision can change. When an edit removes a test, it can remove that test from an answered gap. The revise stage applies the answers and writes the next revision: `checkmate delegate revise <planId>`, or `/checkmate:revise <planId>` in Claude Code. Then approve that revision.
 
 A gap can have one pending decision. The gap must be open in the latest revision, or be a gap of a run of the plan.
 
@@ -60,7 +62,9 @@ QA can find a new gap during a run. It does not change the plan by itself. You h
 - **Answer it.** `checkmate gap answer <planId> <gapId>` adds the gap to the plan, then records the answer. The reply prints `from=<runId>`, `revision=`, and `edit=`. To drop a run gap, answer it with `--kind defer`.
 - **Adopt it without an answer.** `checkmate plan adopt-gaps <planId@rev> --run <runId>` adds the open gaps of the run. `--gaps G4,G5` selects gaps. Do this to block the affected tests now.
 
-The inbox lists a run gap until a later revision of the plan has a gap with the same ID. When two runs have a gap with the same ID, bring one in with `--gaps` first.
+A gap ID is unique in a plan. `run gap` refuses an ID that a revision of the plan or a gap of a run of the plan uses: `Gap ID G9 is in use. Use a new ID.` `plan edit` refuses a new gap with the ID of an open run gap. Thus a gap ID names one gap, and the inbox lists a run gap until a later revision of the plan has it.
+
+When a later revision removed a test that a run gap names, Checkmate removes that test from the gap when it adds the gap to the plan. When no test and no requirement stay, the gap gets the requirements of the removed tests. You can still answer the gap.
 
 ## Change a plan
 
@@ -86,7 +90,7 @@ checkmate plan show checkout@2
 checkmate plan approve checkout@2 --rationale "Tests and assertions match the brief."
 ```
 
-When the target requires plan approval, a run needs an approval of the exact revision. A new revision needs a new approval. The target profile sets the policy. Read [Approvals policy](../reference/payloads.md#approvals-policy).
+When the target requires plan approval, a run needs an approval of the exact revision. A new revision needs a new approval. `plan approve`, `plan reject`, and `run begin` refuse a revision that is not the latest revision. The target profile sets the policy. Read [Approvals policy](../reference/payloads.md#approvals-policy).
 
 You can approve a revision that still has open gaps. Then QA can run the ready tests early with `--partial ready_only`.
 
@@ -99,8 +103,9 @@ checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before 
 
 - A run with failed tests can be a correct result. Accept it when the record is true. Acceptance is an oracle record. It is not a release decision by Checkmate.
 - An `inconclusive` test is not a defect. The evidence was not sufficient. Give a more exact answer, change the assertion, or ask for a retest with better evidence.
-- The inbox lists every run that `status` waits on. `status` waits for each run that has the latest outcome of a ready test. Of a retest chain, this can be an earlier run, for example after a narrow retest.
-- Accept a correct record, also when it contains a defect. Acceptance says that the record is correct, not that the build is good. A rejected run makes its passed tests need a retest.
+- The inbox lists only the runs that `status` waits on: each run that has the latest outcome of a ready test, and each run with an open defect of a ready test. Of a retest chain, this can be an earlier run, for example after a narrow retest. In a matrix on one build, each instance has its own latest outcome, so the inbox lists the run of each instance.
+- Accept a correct record, also when it contains a defect. Acceptance says that the record is correct, not that the build is good.
+- Reject a result when the record is wrong. Then its defects are not open, and its tests need a retest. `status` gives `needs_retest`.
 - When result acceptance is required, a cross-plan dependency needs an accepted result.
 
 ## Example

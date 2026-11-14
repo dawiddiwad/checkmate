@@ -1,13 +1,8 @@
 # Examples
 
-These files were exported from a live run with Claude Code on the local checkout fixture (`test/fixture.ts`). The run is `npm run test:live` on 11 November 2026 with `ANTHROPIC_MODEL=claude-haiku-5-5`. [Validation](../VALIDATION.md#live-run) records the stages and durations.
+> **Reference** · Plans and runs exported from a live run with Claude Code, and what that run showed.
 
-The text in the plans and results is the text that Claude and the test oracle wrote. It is not edited.
-
-The current exporter rendered the files again from the stored plan and result snapshots of that run. After the live run, the assertion field `oracleKind` became `checkKind`. The snapshots use the new name, so the plan and result digests are new: each digest is the SHA-256 of the canonical JSON in its file, and a run refers to the new plan digest. The target profile is not in the exports, so its digest stays as recorded. The live database was not kept, so two details come from other records:
-
-- The acceptance of `live-run` uses the actor and rationale of `test/live.ts` (`acceptance-test`, `The defect is real.`). Its time is known to the minute only.
-- The HTTP evidence is inline because its bytes were recovered: each text has the recorded SHA-256 digest. The text evidence of T1 was not recovered, so the report lists it without content.
+These files are real exports. Claude wrote the plans and results, and the test oracle made the decisions, on the local checkout fixture in `test/fixture.ts`.
 
 ## Plans
 
@@ -23,14 +18,41 @@ The current exporter rendered the files again from the stored plan and result sn
 | `live-run`    | [live-run.md](runs/live-run.md)       | [live-run.html](runs/live-run.html)       | [live-run.json](runs/live-run.json)       | Build `fixture-build-1`. T1 and T2 passed. T3 failed with defect F1. Coverage is partial. Accepted. |
 | `live-retest` | [live-retest.md](runs/live-retest.md) | [live-retest.html](runs/live-retest.html) | [live-retest.json](runs/live-retest.json) | Build `fixture-build-2`, a retest of `live-run`. T2 and T3 passed. Acceptance is pending.           |
 
-In both runs, R3 (refunds) stays uncovered, because its gap is deferred. Completion is `completed` and coverage is `partial`. These are separate fields. Checkmate recorded these results before the requirement status `deferred` existed. A new run records R3 as `deferred`, because only an oracle decision leaves it open.
+In both runs, R3 (refunds) stays uncovered, because its gap is deferred. These results were recorded before the requirement status `deferred` existed. A new run records R3 as `deferred`.
 
-## Notes
+## The live run
 
-- The evidence bytes stay in the database. The reports list each evidence item with its name, media type, size, and SHA-256 digest. Read the bytes with `checkmate evidence get <evidenceId> --out <file>`.
-- A JSON run report is `{ "result", "sha256", "acceptance", "plan" }`. A JSON plan export is the stored plan revision.
-- The exports contain no credentials and no local paths. The fixture URL is in the target profile, which the exports do not include.
-- `.prettierignore` excludes this directory, so the files keep the exact bytes of the export.
+`npm run test:live` passed on 11 November 2026 on Linux with Node.js `v24.22.2`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and `ANTHROPIC_MODEL=claude-haiku-5-5`. The workers had `Read`, `Write`, `Edit`, and `Bash` in a temporary workspace.
+
+| Stage             | Seconds | Status           |
+| ----------------- | ------: | ---------------- |
+| Setup             |    16.3 | `completed`      |
+| Plan              |    23.3 | `needs_decision` |
+| Revise            |    17.6 | `completed`      |
+| Execute           |    48.5 | `completed`      |
+| Retest            |    48.7 | `completed`      |
+| Same-session plan |    35.5 | `needs_decision` |
+
+What the run showed:
+
+- Setup saved the profile `checkout-local@1` with the actual tool versions.
+- The plan had two blocking gaps. The first `plan save` was refused, and the worker corrected the candidate. Planning did not run a fixture action.
+- The oracle clarified the promotion rule and deferred refunds. Revise added the assertion to T3. The oracle approved `checkout@2`.
+- Execute found the seeded defect: the quote returned 220 PLN instead of 240 PLN. The oracle accepted the result.
+- After the fixture changed, a retest on a new build passed T2 and T3. The first run did not change.
+
+These values describe one run. They are not performance targets. The model, the load, and tool latency can change them.
+
+## How the files were made
+
+The current exporter rendered the files again from the stored snapshots of that run. After the run, the assertion field `oracleKind` became `checkKind`, so the plan and result digests are new. Each digest is the SHA-256 of the canonical JSON in its file. The target profile is not in the exports, so its digest stays as recorded.
+
+The live database was not kept, so two details come from other records:
+
+- The acceptance of `live-run` uses the actor and rationale of `test/live.ts`. Its time is known to the minute only.
+- The HTTP evidence is inline because its bytes were recovered with the recorded digests. The text evidence of T1 was not recovered, so the report lists it without content.
+
+The evidence bytes stay in the database. The exports contain no credentials and no local paths. `.prettierignore` excludes this directory, so the files keep the exact bytes of the export.
 
 To make the same files from your own database:
 
@@ -39,3 +61,8 @@ checkmate export plan checkout@2 --format md --out docs/examples/plans/checkout-
 checkmate export run live-run --format html --out docs/examples/runs/live-run.html
 checkmate export run live-run --format json > docs/examples/runs/live-run.json
 ```
+
+## Next
+
+- [Runs and evidence](../reference/runs.md#export): what each report contains.
+- [Development](../development.md#live-tests): run the live tests yourself.

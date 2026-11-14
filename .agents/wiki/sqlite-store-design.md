@@ -1,6 +1,6 @@
 # Design: SQLite store and npm CLI
 
-Status: implemented. Contract version: `toolkit-2`. Schema version: 2. All open questions of the first draft are resolved in section 3. Later changes are noted in the sections.
+Status: implemented. This is the original design record for implementers. The user manual is in `docs/`. Contract version: `toolkit-2`. Schema version: 2. All open questions of the first draft are resolved in section 3. Later changes are noted in the sections.
 
 ## 1. Goals
 

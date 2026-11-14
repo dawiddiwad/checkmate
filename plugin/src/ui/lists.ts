@@ -91,11 +91,15 @@ export function inboxPage(store: Store): Page {
 				href="/plans/${plan.planId}@${plan.revision}#decide"
 				data-nav-item
 				data-key="plan:${plan.planId}@${plan.revision}"
-				data-announce="${plan.planId}@${plan.revision} waits for approval"
+				data-announce="${plan.planId}@${plan.revision} ${plan.approval === 'rejected' ? 'was rejected. Change the plan.' : 'waits for approval'}"
 			>
 				<span class="id">${plan.planId}@${plan.revision}</span>
 				<span class="what">${plan.summary}</span>
-				<span class="end"><span class="age">${time(plan.since)}</span></span>
+				<span class="end"
+					>${plan.approval === 'rejected' ? html`${pill('rejected')} ` : ''}<span class="age"
+						>${time(plan.since)}</span
+					></span
+				>
 			</a>`
 	)
 	const results = waiting.results.map(
@@ -129,7 +133,7 @@ export function inboxPage(store: Store): Page {
 	const sub = total ? `${plural(total, 'item')} ${total === 1 ? 'waits' : 'wait'} for you, oldest first.` : null
 	const body =
 		total + requests.length
-			? html`${group('Gaps to answer', gaps, 'gaps')} ${group('Plans to approve', plans, 'plans')}
+			? html`${group('Gaps to answer', gaps, 'gaps')} ${group('Plans to approve or change', plans, 'plans')}
 				${group('Results to accept', results, 'results')} ${group('Plans to draft', requests, 'requests')}`
 			: emptyInbox(store)
 	return {

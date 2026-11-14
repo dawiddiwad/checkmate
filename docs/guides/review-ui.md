@@ -26,7 +26,7 @@ The command prints `completed ui url=<url>`. Open that URL in a browser on the s
 
 <img src="../img/ui/inbox.jpg" alt="The inbox in dark mode with four items: two gaps to answer, one of them from run-7, one plan to approve, and one result to accept." width="100%"/>
 
-The start page. It groups the gaps to answer, the plans to approve, the results to accept, and the plans to draft. The number next to `Inbox` counts the oracle actions only. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
+The start page. It groups the gaps to answer, the plans to approve or change, the results to accept, and the plans to draft. A rejected plan shows `rejected`, and its summary starts with `Rejected. Change the plan.` The number next to `Inbox` counts the oracle actions only. A rejected plan is an oracle action. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
 
 ### Plans
 

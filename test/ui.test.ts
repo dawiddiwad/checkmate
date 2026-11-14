@@ -5,11 +5,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { request } from 'node:http'
 import { execFileSync } from 'node:child_process'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { agent, human, seedDemo } from '../scripts/ui-demo.ts'
 import {
 	answerGap,
+	approvePlan,
 	beginRun,
 	checkAssertion,
 	closeStore,
@@ -28,7 +30,7 @@ import {
 	runDetail,
 	savePlan,
 } from '../plugin/src/index.ts'
-import { directory, evidenceFile, root } from './support.ts'
+import { copied, directory, evidenceFile, root } from './support.ts'
 
 const payload = '<script>alert("gap")</script>'
 
@@ -77,10 +79,15 @@ function seedPayload(workspace: string) {
 	closeStore(store)
 }
 
+const template = directory()
+test.before(() => {
+	seedDemo(template)
+	seedPayload(template)
+})
+test.after(() => rmSync(template, { recursive: true, force: true }))
+
 async function start(t: TestContext) {
-	const workspace = directory(t)
-	seedDemo(workspace)
-	seedPayload(workspace)
+	const workspace = copied(t, template)
 	const ui = await startUi({ workspace, defaultActor: '' })
 	t.after(() => ui.close())
 	return { ui, workspace, port: new URL(ui.url).port }
@@ -266,9 +273,7 @@ test('a gap answer asks for a name once and refuses a stale digest with the type
 })
 
 test('the UI prefills the default actor and records it without a name cookie', async (t) => {
-	const workspace = directory(t)
-	seedDemo(workspace)
-	seedPayload(workspace)
+	const workspace = copied(t, template)
 	const ui = await startUi({ workspace, defaultActor: 'git-user' })
 	t.after(() => ui.close())
 	const page = (await call(ui, '/plans/xss@1/gaps/G1')).body
@@ -425,14 +430,20 @@ test('live events reach subscribed streams only and replay after Last-Event-ID',
 	assert(Date.now() - exited < 1000, `event took ${Date.now() - started} ms`)
 	assert.equal(events[1].data, 'run:run-8')
 	assert(Number(events[1].id) > Number(events[0].id))
-	await new Promise((resolve) => setTimeout(resolve, 400))
-	assert.deepEqual(other.events, [])
+	approvePlan(store, agent, { reference: 'search@1', rationale: 'Clear scope.' })
+	const [later] = await other.next(1)
+	assert.deepEqual(
+		other.events.map((event) => event.data),
+		['plan:search'],
+		'the other stream gets only the later change'
+	)
+	assert(Number(later.id) > Number(events[1].id))
 	const replay = stream(ui, 'run:run-8', { 'Last-Event-ID': String(Number(first.id) - 1) })
 	t.after(() => replay.close())
 	const replayed = await replay.next(2)
 	assert.deepEqual(
 		replayed.map((event) => event.id),
-		events.map((event) => event.id)
+		events.slice(0, 2).map((event) => event.id)
 	)
 })
 

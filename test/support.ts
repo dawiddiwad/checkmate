@@ -2,7 +2,7 @@ import type { TestContext } from 'node:test'
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
 import type { Store } from '../plugin/src/store.ts'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,6 +34,12 @@ export function directory(t?: TestContext) {
 	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
 	t?.after(() => rmSync(path, { recursive: true, force: true }))
 	return path
+}
+
+export function copied(t: TestContext, template: string) {
+	const workspace = directory(t)
+	cpSync(template, workspace, { recursive: true })
+	return workspace
 }
 
 export function store(t: TestContext, workspace = directory(t)): Store {

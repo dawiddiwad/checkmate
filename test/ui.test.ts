@@ -19,7 +19,11 @@ import {
 	instanceList,
 	operationLog,
 	planCandidate,
+	jsonPatch,
+	patchPlan,
 	planDetail,
+	rejectPlan,
+	acceptResult,
 	revisePlan,
 	runDetail,
 	savePlan,
@@ -177,7 +181,12 @@ test('each page renders and escapes stored text', async (t) => {
 test('a decision needs a rationale, a confirm step, and redirects to the next inbox item', async (t) => {
 	const { ui, workspace } = await start(t)
 	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
-	const form = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), verdict: 'approve' }
+	const form = {
+		csrf: field(page, 'csrf'),
+		sha: field(page, 'sha'),
+		decision: field(page, 'decision'),
+		verdict: 'approve',
+	}
 	const empty = await call(ui, '/plans/search@1', {
 		form: { ...form, rationale: '  ', confirmed: '1' },
 		headers: actorCookie,
@@ -290,6 +299,7 @@ test('the server refuses another host, another origin, and a missing form token'
 	const form = {
 		csrf: field(page, 'csrf'),
 		sha: field(page, 'sha'),
+		decision: field(page, 'decision'),
 		verdict: 'approve',
 		rationale: 'Yes.',
 		confirmed: '1',
@@ -480,6 +490,8 @@ test('the inbox and the plan list show a plan request without a revision', async
 	assert.match(home, /data-key="request:draft"/)
 	assert.match(home, /Draft &lt;script&gt;/)
 	assert.match(home, /<code>\/checkmate:plan draft<\/code>/)
+	const actions = [...home.matchAll(/<a\s+class="item"[^>]*data-nav-item/g)].length
+	assert.match(home, new RegExp(`data-region="nav-count">${actions}<`))
 	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
 	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
 	assert.match(
@@ -712,10 +724,21 @@ test('an unapproved plan changes in place and an approved plan gets a new revisi
 	})
 	assert.equal(stale.status, 422)
 	assert.match(stale.body, /search changed after you opened the editor/)
-	assert.match(stale.body, /value="Lost update"/)
+	assert.match(stale.body, /Your changes \(not saved\)[\s\S]*T1\.title: &quot;Lost update&quot;<\/pre>/)
+	assert.doesNotMatch(stale.body, /value="Lost update"/)
+	assert.equal(field(stale.body, 'sha'), after.sha256)
 	assert.notEqual(
 		read(workspace, (store) => planDetail(store, 'search').plan.tests[0].title),
 		'Lost update'
+	)
+	const resent = await call(ui, '/plans/search@1/edit', {
+		form: formBody(editForm(stale.body, {}), ['T1 S1', 'T2 S2']),
+		headers: actorCookie,
+	})
+	assert.equal(resent.status, 303)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').plan.requirements[0].text),
+		'Search returns matching products first.'
 	)
 
 	const checkout = (await call(ui, '/plans/checkout@2/edit', { headers: actorCookie })).body
@@ -944,4 +967,189 @@ test('the plan and run pages show team metadata as key and value tags', async (t
 		/The 40 percent spring promotion applies to the cart total\.(?:(?!<\/td>)[\s\S])*<span class="tag">jira=SHOP-41<\/span>/
 	)
 	for (const page of [plan, run]) assert.doesNotMatch(page, /<(div|p) class="(small|test-note)">\s*<\/(div|p)>/)
+})
+
+test('a form edit keeps every field that the form does not show', async (t) => {
+	const { ui, workspace } = await start(t)
+	const before = read(workspace, (store) => planCandidate(planDetail(store, 'xss').plan))
+	const page = (await call(ui, '/plans/xss@1/edit', { headers: actorCookie })).body
+	const form = editForm(page, { 't0.title': 'Renamed payload test' })
+	delete form['t0.a0.kind']
+	const saved = await call(ui, '/plans/xss@1/edit', { form: formBody(form, ['T1 X1']), headers: actorCookie })
+	assert.equal(saved.status, 303)
+	const after = read(workspace, (store) => planCandidate(planDetail(store, 'xss').plan))
+	assert.deepEqual(jsonPatch(before, after), [
+		{ op: 'replace', path: '/tests/0/title', value: 'Renamed payload test' },
+	])
+})
+
+function approvals(workspace: string, subject: string) {
+	return read(
+		workspace,
+		(store) =>
+			store.db.prepare('SELECT count(*) AS n FROM approvals WHERE subject_id = ?').get(subject)?.n as number
+	)
+}
+
+test('a decision is refused when another oracle decided after the page loaded', async (t) => {
+	const { ui, workspace } = await start(t)
+	const run = (await call(ui, '/runs/run-7', { headers: actorCookie })).body.split('data-verdict-form')[1]
+	const runForm = {
+		csrf: field(run, 'csrf'),
+		sha: field(run, 'sha'),
+		decision: field(run, 'decision'),
+		verdict: 'reject',
+		rationale: 'Evidence is weak.',
+	}
+	read(workspace, (store) => acceptResult(store, 'other-oracle', { runId: 'run-7', rationale: 'Looks fine.' }))
+	const choose = await call(ui, '/runs/run-7', { form: runForm, headers: actorCookie })
+	assert.equal(choose.status, 422)
+	assert.match(choose.body, /run-7 was accepted by other-oracle after you opened this page/)
+	assert.match(choose.body, /Evidence is weak\.<\/textarea/)
+	const confirmed = await call(ui, '/runs/run-7', { form: { ...runForm, confirmed: '1' }, headers: actorCookie })
+	assert.equal(confirmed.status, 422)
+	assert.equal(approvals(workspace, 'run-7'), 1)
+	assert.equal(
+		read(workspace, (store) => runDetail(store, 'run-7').result?.latestDecision?.actor),
+		'other-oracle'
+	)
+
+	const plan = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
+	const planForm = {
+		csrf: field(plan, 'csrf'),
+		sha: field(plan, 'sha'),
+		decision: field(plan, 'decision'),
+		verdict: 'approve',
+		rationale: 'Approve it.',
+		confirmed: '1',
+	}
+	read(workspace, (store) => rejectPlan(store, 'other-oracle', { reference: 'search@1', rationale: 'No.' }))
+	const refused = await call(ui, '/plans/search@1', { form: planForm, headers: actorCookie })
+	assert.equal(refused.status, 422)
+	assert.match(refused.body, /search@1 was rejected by other-oracle after you opened this page/)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').approval.state),
+		'rejected'
+	)
+	const fresh = await call(ui, '/plans/search@1', {
+		form: { ...planForm, decision: field(refused.body, 'decision') },
+		headers: actorCookie,
+	})
+	assert.equal(fresh.status, 303)
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').approval.state),
+		'approved'
+	)
+})
+
+test('a replayed decision is refused and records nothing', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
+	const form = {
+		csrf: field(page, 'csrf'),
+		sha: field(page, 'sha'),
+		decision: field(page, 'decision'),
+		verdict: 'approve',
+		rationale: 'Clear scope.',
+		confirmed: '1',
+	}
+	assert.equal((await call(ui, '/plans/search@1', { form, headers: actorCookie })).status, 303)
+	const replay = await call(ui, '/plans/search@1', { form, headers: actorCookie })
+	assert.equal(replay.status, 422)
+	assert.match(replay.body, /search@1 was approved by qa-lead after you opened this page/)
+	const missing = await call(ui, '/plans/search@1', { form: { ...form, decision: '' }, headers: actorCookie })
+	assert.equal(missing.status, 422)
+	assert.equal(approvals(workspace, 'search@1'), 1)
+})
+
+test('the back link accepts only a path on this server', async (t) => {
+	const { ui } = await start(t)
+	const page = (await call(ui, '/')).body
+	const csrf = field(page, 'csrf')
+	const refused = [
+		'//evil.test',
+		'/\\evil.test',
+		'/%2F/evil.test',
+		'%2F%2Fevil.test',
+		'/%5Cevil.test',
+		'/\t/evil.test',
+	]
+	for (const back of refused) {
+		const reply = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back } })
+		assert.equal(reply.headers.location, '/', back)
+		const theme = await call(ui, '/theme', { form: { csrf, theme: 'dark', back } })
+		assert.equal(theme.headers.location, '/', back)
+		const shown = (await call(ui, `/actor?back=${encodeURIComponent(back)}`)).body
+		assert.match(shown, /<a class="btn" href="\/">Cancel<\/a>/, back)
+	}
+	const kept = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back: '/plans?q=search' } })
+	assert.equal(kept.headers.location, '/plans?q=search')
+})
+
+test('a form over 256 KiB gets a 413 page and nothing is recorded', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
+	const reply = await call(ui, '/plans/search@1', {
+		form: {
+			csrf: field(page, 'csrf'),
+			sha: field(page, 'sha'),
+			decision: field(page, 'decision'),
+			verdict: 'approve',
+			rationale: 'x'.repeat(300 * 1024),
+			confirmed: '1',
+		},
+		headers: actorCookie,
+	})
+	assert.equal(reply.status, 413)
+	assert.match(reply.body, /Form too large/)
+	assert.match(reply.body, /more than 256 KiB/)
+	assert.equal(approvals(workspace, 'search@1'), 0)
+})
+
+test('a stale edit lists only the values that this user changed', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/search@1/edit', { headers: actorCookie })).body
+	read(workspace, (store) =>
+		patchPlan(store, 'cli', {
+			reference: 'search@1',
+			patch: { tests: { T1: { title: 'CLI renamed T1', action: 'CLI action.' } } },
+		})
+	)
+	const posted = editForm(page, { 't1.title': 'UI renamed T2' })
+	for (const mode of ['form', 'json']) {
+		const form =
+			mode === 'form'
+				? formBody(posted, ['T1 S1', 'T2 S2'])
+				: new URLSearchParams({
+						...posted,
+						mode,
+						json: JSON.stringify({
+							...JSON.parse(posted.orig),
+							tests: JSON.parse(posted.orig).tests.map((test: { id: string; title: string }) =>
+								test.id === 'T2' ? { ...test, title: 'UI renamed T2' } : test
+							),
+						}),
+					})
+		const stale = await call(ui, '/plans/search@1/edit', { form, headers: actorCookie })
+		assert.equal(stale.status, 422, mode)
+		const unsaved = /<pre class="code">([^<]*)<\/pre>/.exec(stale.body)?.[1]
+		assert.equal(unsaved, 'T2.title: &quot;UI renamed T2&quot;', mode)
+		assert.match(stale.body, /value="CLI renamed T1"/, mode)
+	}
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').plan.tests[1].title),
+		'Empty state for an unknown term'
+	)
+})
+
+test('a back value with characters outside printable ASCII goes to the inbox', async (t) => {
+	const { ui } = await start(t)
+	const csrf = field((await call(ui, '/')).body, 'csrf')
+	for (const back of ['/%E2%80%A8x', '/a%00b', '/\uFF0F\uFF0Fevil.test', '/a b', '/%ZZ']) {
+		const reply = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back } })
+		assert.equal(reply.status, 303, back)
+		assert.equal(reply.headers.location, '/', back)
+		const shown = await call(ui, `/actor?back=${encodeURIComponent(back)}`)
+		assert.equal(shown.status, 200, back)
+	}
 })

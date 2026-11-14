@@ -19,6 +19,7 @@ import {
 import {
 	approvalState,
 	dependencyBlock,
+	expectDecision,
 	gate,
 	latestPlans,
 	planRevision,
@@ -101,7 +102,7 @@ export type CloseInput = {
 }
 export type FinishInput = { runId: string; completion: string; cleanup: string; cleanupReason: string }
 export type ResumeInput = { runId: string; error?: string[]; reason?: string }
-export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string }
+export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string; expectDecision?: string }
 
 export const maxEvidenceBytes = 32 * 1024 * 1024
 export const assertionResults = ['passed', 'failed', 'inconclusive', 'not_checked'] as const
@@ -857,6 +858,7 @@ function decideResult(store: Store, actor: string | undefined, input: ResultVerd
 		const result = runResult(store, input.runId)
 		requireCondition(result, `Run ${input.runId} is not finished. Finish it before you decide on its result.`)
 		expectDigest(result.sha256, input.expectSha256, input.runId)
+		expectDecision(store, 'result', input.runId, input.expectDecision)
 		return {
 			reply: recordApproval(store, actor, operationId, {
 				kind: 'result',

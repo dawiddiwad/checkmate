@@ -7994,6 +7994,7 @@ function decidePlan(store, actor, input, verdict) {
     const subject = `${reference.id}@${reference.revision}`;
     latestCheck(store, reference.id, reference.revision);
     expectDigest(revision.sha256, input.expectSha256, subject);
+    expectDecision(store, "plan", subject, input.expectDecision);
     return {
       reply: recordApproval(store, actor2, operationId, {
         kind: "plan",
@@ -8035,6 +8036,21 @@ function latestApproval(store, kind, subject) {
 		WHERE a.subject_kind = ? AND a.subject_id = ? ORDER BY a.rowid DESC LIMIT 1`,
     kind,
     subject
+  );
+}
+function decisionToken(store, kind, subject) {
+  return one(
+    store,
+    "SELECT id FROM approvals WHERE subject_kind = ? AND subject_id = ? ORDER BY rowid DESC LIMIT 1",
+    kind,
+    subject
+  )?.id ?? "none";
+}
+function expectDecision(store, kind, subject, expected) {
+  if (expected === void 0) return;
+  requireCondition(
+    decisionToken(store, kind, subject) === expected,
+    `${subject} has a newer decision. Read it again before you decide.`
   );
 }
 function approvalState(store, kind, subject, sha256, policy) {
@@ -9036,6 +9052,7 @@ function decideResult(store, actor, input, verdict) {
     const result = runResult(store, input.runId);
     requireCondition(result, `Run ${input.runId} is not finished. Finish it before you decide on its result.`);
     expectDigest(result.sha256, input.expectSha256, input.runId);
+    expectDecision(store, "result", input.runId, input.expectDecision);
     return {
       reply: recordApproval(store, actor2, operationId, {
         kind: "result",
@@ -10793,14 +10810,7 @@ var shortcuts = html2`<aside class="shortcuts" data-shortcuts hidden aria-labell
 		<dd>Show these shortcuts</dd>
 	</dl>
 </aside>`;
-var viewer = html2`<div
-	class="viewer"
-	data-viewer
-	hidden
-	role="dialog"
-	aria-modal="false"
-	aria-label="Evidence viewer"
->
+var viewer = html2`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
 	<div class="viewer-bar">
 		<span class="viewer-name" data-viewer-name></span>
 		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
@@ -10871,9 +10881,10 @@ function downloads(label, base, note, formats2 = ["html", "md", "json"]) {
 function emptyState() {
   return { values: {}, error: null, stale: null, confirm: false };
 }
-function hidden(context, sha256) {
+function hidden(context, sha256, token = "") {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
-		<input type="hidden" name="sha" value="${sha256}" />`;
+		<input type="hidden" name="sha" value="${sha256}" />
+		${token ? html2`<input type="hidden" name="decision" value="${token}" />` : ""}`;
 }
 function actorField(context, state) {
   if (context.actor) return "";
@@ -10897,7 +10908,7 @@ ${state.values.rationale ?? ""}</textarea>
 function confirmStep(context, verdict, state) {
   const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
   return html2`<form method="post" action="${verdict.action}" class="decision-form">
-		${hidden(context, verdict.sha256)}
+		${hidden(context, verdict.sha256, verdict.token)}
 		<input type="hidden" name="verdict" value="${choice.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ""}" />
 		${context.actor ? "" : html2`<input type="hidden" name="actor" value="${state.values.actor ?? ""}" />`}
@@ -10924,7 +10935,7 @@ function chooseStep(context, verdict, state) {
 			${choice.label}
 		</button>`;
   return html2`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
-		${hidden(context, verdict.sha256)} ${actorField(context, state)}
+		${hidden(context, verdict.sha256, verdict.token)} ${actorField(context, state)}
 		${rationaleField(state, "Why do you decide this?")}
 		<div class="confirm-box" data-confirm hidden>
 			<p class="lab">Confirm</p>
@@ -11026,8 +11037,13 @@ function gapPanel(context, form, state) {
 		</form>
 	</section>`;
 }
-function recordPanel(title, content) {
-  return html2`<section class="panel decision" aria-labelledby="decide-title" data-region="decision">
+function recordPanel(title, content, decided = "") {
+  return html2`<section
+		class="panel decision"
+		aria-labelledby="decide-title"
+		data-region="decision"
+		${decided ? html2`data-decided-message="${decided}"` : ""}
+	>
 		<h2 class="lab" id="decide-title">${title}</h2>
 		${content}
 	</section>`;
@@ -11048,7 +11064,7 @@ function loopState(loop2) {
 	>`;
 }
 function inboxCount(waiting) {
-  return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.requests.length;
+  return waiting.gaps.length + waiting.plans.length + waiting.results.length;
 }
 var countOrder = ["passed", "failed", "inconclusive", "error", "blocked", "not_run"];
 var countLook = {
@@ -11138,8 +11154,8 @@ function inboxPage(store) {
 			</div>`
   );
   const sub = total ? `${plural(total, "item")} ${total === 1 ? "waits" : "wait"} for you, oldest first.` : null;
-  const body = total ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Plans to approve", plans, "plans")}
-			${group("Results to accept", results, "results")} ${group("Plans to draft", requests, "requests")}` : emptyInbox(store);
+  const body = total + requests.length ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Plans to approve", plans, "plans")}
+				${group("Results to accept", results, "results")} ${group("Plans to draft", requests, "requests")}` : emptyInbox(store);
   return {
     title: "Inbox",
     section: "inbox",
@@ -11826,7 +11842,7 @@ function planHistoryList(store, detail, all2) {
 					>` : ""}
 	</div>`;
 }
-function approvalPanel(context, detail, state) {
+function approvalPanel(store, context, detail, state) {
   const subject = `${detail.planId}@${detail.revision}`;
   const latest = detail.approval.latest;
   if (detail.approval.policy === "none")
@@ -11839,7 +11855,8 @@ function approvalPanel(context, detail, state) {
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`
+				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`,
+      `${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
     );
   return verdictPanel(
     context,
@@ -11848,6 +11865,7 @@ function approvalPanel(context, detail, state) {
       subject,
       question: `Approve ${subject}?`,
       sha256: detail.sha256,
+      token: decisionToken(store, "plan", subject),
       digestLabel: "Plan",
       approve: {
         value: "approve",
@@ -11947,7 +11965,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 					${planHistoryList(store, detail, allHistory)}
 				</section>
 			</div>
-			${side(approvalPanel(context, detail, state))}
+			${side(approvalPanel(store, context, detail, state))}
 		</div>`;
   return {
     title: subject,
@@ -12060,12 +12078,15 @@ function words2(values) {
 function lines(values) {
   return values.split("\n").map((value2) => value2.trim()).filter(Boolean);
 }
+function checkKind(value2, fallback) {
+  return value2 === "deterministic" || value2 === "agent_observation" ? value2 : fallback;
+}
 function candidateFromForm(base, form) {
   const text = (name, fallback) => (form.get(name) ?? fallback).trim();
   const covered = new Set(form.getAll("cover"));
   return {
     requirements: base.requirements.map((requirement, i) => ({
-      id: requirement.id,
+      ...requirement,
       text: text(`r${i}.text`, requirement.text),
       source: text(`r${i}.source`, requirement.source)
     })),
@@ -12079,9 +12100,9 @@ function candidateFromForm(base, form) {
       action: text(`t${i}.action`, test.action),
       requirementIds: base.requirements.filter((requirement) => covered.has(`${test.id} ${requirement.id}`)).map((requirement) => requirement.id),
       assertions: test.assertions.map((assertion, j2) => ({
-        id: assertion.id,
+        ...assertion,
         check: text(`t${i}.a${j2}.check`, assertion.check),
-        checkKind: form.get(`t${i}.a${j2}.kind`) === "agent_observation" ? "agent_observation" : "deterministic"
+        checkKind: checkKind(form.get(`t${i}.a${j2}.kind`), assertion.checkKind)
       }))
     })),
     gaps: base.gaps
@@ -12089,6 +12110,34 @@ function candidateFromForm(base, form) {
 }
 function candidateJson(candidate) {
   return JSON.stringify(candidate, null, 2);
+}
+function pathName(candidate, path) {
+  const [, list2, index2, ...rest] = path.split("/");
+  const items = list2 === "requirements" ? candidate.requirements : list2 === "tests" ? candidate.tests : candidate.gaps;
+  return [items[Number(index2)]?.id ?? index2, ...rest].join(".");
+}
+function changeLines(before, after) {
+  return jsonPatch(before, after).map((operation) => `${pathName(before, operation.path)}: ${JSON.stringify(operation.value ?? null)}`).join("\n");
+}
+function ownChanges(form, fresh) {
+  const json = form.get("json") ?? "";
+  try {
+    const orig = JSON.parse(form.get("orig") ?? "");
+    if (form.get("mode") === "json") return changeLines(orig, JSON.parse(json));
+    return changeLines(orig, candidateFromForm(orig, form));
+  } catch {
+    return form.get("mode") === "json" ? json : changeLines(fresh, candidateFromForm(fresh, form));
+  }
+}
+function unsavedPanel(unsaved) {
+  return html2`<section class="panel unsaved" aria-labelledby="unsaved-title">
+		<h2 class="lab" id="unsaved-title">Your changes (not saved)</h2>
+		<p class="help">
+			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
+			then save.
+		</p>
+		<pre class="code">${unsaved || "You changed no values."}</pre>
+	</section>`;
 }
 function field(label, name, value2, help2 = "") {
   return html2`<div class="field-group">
@@ -12187,10 +12236,11 @@ function coverageMatrix(candidate) {
 		</table>
 	</div>`;
 }
-function hidden2(context, sha256, mode) {
+function hidden2(context, sha256, mode, orig) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="sha" value="${sha256}" />
-		<input type="hidden" name="mode" value="${mode}" />`;
+		<input type="hidden" name="mode" value="${mode}" />
+		<input type="hidden" name="orig" value="${orig}" />`;
 }
 function actorLine(context, state, path, mode) {
   if (context.actor)
@@ -12245,7 +12295,9 @@ function editPage(store, context, planId, revision, state = null) {
     json: candidateJson(planCandidate(detail.plan)),
     actor: "",
     error: null,
-    stale: null
+    stale: null,
+    unsaved: null,
+    orig: JSON.stringify(planCandidate(detail.plan))
   };
   const messages2 = html2`${shown.stale ? banner("warn", shown.stale) : ""}
 	${shown.error ? html2`<p class="form-error" role="alert">${shown.error}</p>` : ""}`;
@@ -12264,10 +12316,11 @@ function editPage(store, context, planId, revision, state = null) {
 				>
 			</div>`
   )}
+		${shown.unsaved === null ? "" : unsavedPanel(shown.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages2}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
-				${hidden2(context, detail.sha256, "form")}
+				${hidden2(context, detail.sha256, "form", shown.orig)}
 				<section aria-labelledby="edit-requirements">
 					<h2 id="edit-requirements">
 						Requirements <span class="n">${shown.candidate.requirements.length}</span>
@@ -12288,7 +12341,7 @@ function editPage(store, context, planId, revision, state = null) {
 			<details class="edit-json" ${shown.mode === "json" ? html2`open` : ""}>
 				<summary>Edit as JSON</summary>
 				<form method="post" action="${path}" class="edit-form" data-edit-form>
-					${hidden2(context, detail.sha256, "json")}
+					${hidden2(context, detail.sha256, "json", shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
 						candidate:
@@ -12620,7 +12673,7 @@ function inconclusiveList(detail) {
 		</ul>
 	</div>`;
 }
-function decisionPanel(context, detail, state) {
+function decisionPanel(store, context, detail, state) {
   const result = detail.result;
   if (!result)
     return recordPanel(
@@ -12640,7 +12693,8 @@ function decisionPanel(context, detail, state) {
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
-				<blockquote>${latest.rationale}</blockquote>`
+				<blockquote>${latest.rationale}</blockquote>`,
+      `${detail.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
     );
   return verdictPanel(
     context,
@@ -12649,6 +12703,7 @@ function decisionPanel(context, detail, state) {
       subject: detail.runId,
       question: `Accept ${detail.runId}?`,
       sha256: result.sha256,
+      token: decisionToken(store, "result", detail.runId),
       digestLabel: "Result",
       approve: {
         value: "accept",
@@ -12724,7 +12779,7 @@ function runPage(store, context, runId, state = null, adoptError = null) {
 				</section>
 			</div>
 			<aside class="side" aria-label="Decision">
-				${decisionPanel(context, detail, state)}
+				${decisionPanel(store, context, detail, state)}
 				<p class="back"><a href="/">← Back to inbox</a></p>
 			</aside>
 		</div>`;
@@ -13195,12 +13250,12 @@ function readForm(req) {
     let length = 0;
     req.on("data", (chunk) => {
       length += chunk.length;
-      if (length > maxForm) {
-        reject(new Error("The form is too large."));
-        req.destroy();
-      } else chunks.push(chunk);
+      if (length <= maxForm) chunks.push(chunk);
     });
-    req.on("end", () => resolve3(new URLSearchParams(Buffer.concat(chunks).toString("utf8"))));
+    req.on(
+      "end",
+      () => resolve3(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+    );
     req.on("error", reject);
   });
 }
@@ -13210,7 +13265,13 @@ function same2(a, b) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 function safeBack(value2) {
-  return value2 && value2.startsWith("/") && !value2.startsWith("//") ? value2 : "/";
+  if (!value2) return "/";
+  try {
+    const decoded = decodeURIComponent(value2);
+    return /^\/[^/\\]/.test(decoded) && /^[\x21-\x7e]+$/.test(decoded) && !decoded.includes("\\") ? value2 : "/";
+  } catch {
+    return "/";
+  }
 }
 function attachmentName(name) {
   const plain = name.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -13484,6 +13545,10 @@ data: ${matched.join(",") || "*"}
     const state = verdictState(form);
     const { actor, cookies } = actorFrom(request, form);
     const view = () => page(state);
+    const sha = form.get("sha") ?? "";
+    const token = form.get("decision") ?? "";
+    state.stale = staleCheck(sha, token);
+    if (state.stale) return refuse(request, view, cookies);
     if (form.get("back")) return refuse(request, () => ({ ...view(), status: 200 }), cookies);
     if (!choices.includes(state.values.verdict)) state.error = "Choose a decision.";
     else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
@@ -13494,17 +13559,21 @@ data: ${matched.join(",") || "*"}
       state.confirm = true;
       return refuse(request, () => ({ ...view(), status: 200 }), cookies);
     }
-    const sha = form.get("sha") ?? "";
     let flash;
     try {
-      flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha);
+      flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha, token);
     } catch (error) {
-      state.stale = staleCheck(sha);
+      state.stale = staleCheck(sha, token);
       if (!state.stale) state.error = plainMessage(error);
       return refuse(request, view, cookies);
     }
     const next = nextItem(flash, cookies);
     redirect(request.res, next.location, next.cookies);
+  }
+  function decidedBanner(subject, latest, verdicts) {
+    const what = latest ? html2`${subject} was ${verdicts[latest.verdict]} by ${latest.actor} after you opened this page.` : html2`${subject} has another decision now.`;
+    return html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below. Review the
+			decision, then send again.`;
   }
   function decidePlan2(request, form, planId, revision) {
     const subject = `${planId}@${revision}`;
@@ -13513,17 +13582,22 @@ data: ${matched.join(",") || "*"}
       form,
       ["approve", "reject"],
       (state) => planPage(store, context(request), planId, revision, state),
-      (actor, verdict, rationale, sha) => {
-        const input = { reference: subject, rationale, expectSha256: sha };
+      (actor, verdict, rationale, sha, token) => {
+        const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "approve") approvePlan(store, actor, input);
         else rejectPlan(store, actor, input);
         return `${verdict === "approve" ? "Approved" : "Rejected"} ${subject}`;
       },
-      (sha) => {
+      (sha, token) => {
         const detail = planDetail(store, planId, revision);
-        if (detail.sha256 === sha) return null;
-        return html2`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
-					text is kept below. Review the plan, then send again.`;
+        if (detail.sha256 !== sha)
+          return html2`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
+						text is kept below. Review the plan, then send again.`;
+        if (decisionToken(store, "plan", subject) === token) return null;
+        return decidedBanner(subject, latestApproval(store, "plan", subject), {
+          approved: "approved",
+          rejected: "rejected"
+        });
       }
     );
   }
@@ -13533,17 +13607,23 @@ data: ${matched.join(",") || "*"}
       form,
       ["accept", "reject"],
       (state) => runPage(store, context(request), runId, state),
-      (actor, verdict, rationale, sha) => {
-        const input = { runId, rationale, expectSha256: sha };
+      (actor, verdict, rationale, sha, token) => {
+        const input = { runId, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "accept") acceptResult(store, actor, input);
         else rejectResult(store, actor, input);
         return `${verdict === "accept" ? "Accepted" : "Rejected"} ${runId}`;
       },
-      (sha) => {
+      (sha, token) => {
         const result = runDetail(store, runId).result;
-        if (result?.sha256 === sha) return null;
-        return html2`<strong>${runId} has a new result.</strong> Your decision was not recorded. Your text is
-					kept below. Review the result, then send again.`;
+        if (!result) return null;
+        if (result.sha256 !== sha)
+          return html2`<strong>${runId} has a new result.</strong> Your decision was not recorded. Your text is
+						kept below. Review the result, then send again.`;
+        if (decisionToken(store, "result", runId) === token) return null;
+        return decidedBanner(runId, latestApproval(store, "result", runId), {
+          approved: "accepted",
+          rejected: "rejected"
+        });
       }
     );
   }
@@ -13585,7 +13665,9 @@ data: ${matched.join(",") || "*"}
       json: form.get("json") ?? "",
       actor: form.get("actor") ?? "",
       error: null,
-      stale: null
+      stale: null,
+      unsaved: null,
+      orig: form.get("orig") ?? JSON.stringify(base)
     };
     const page = () => editPage(store, context(request), planId, revision, state);
     let candidate;
@@ -13607,13 +13689,23 @@ data: ${matched.join(",") || "*"}
       saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data;
     } catch (error) {
       const latest = planDetail(store, planId);
-      if (latest.latestRevision !== revision || latest.sha256 !== sha)
-        state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
-					saved. Your text is kept below.
-					<a href="/plans/${planId}@${latest.latestRevision}/edit">Open the latest version</a>, then edit
-					again.`;
-      else state.error = plainMessage(error);
-      return refuse(request, page, cookies);
+      if (latest.latestRevision === revision && latest.sha256 === sha) {
+        state.error = plainMessage(error);
+        return refuse(request, page, cookies);
+      }
+      const fresh = planCandidate(latest.plan);
+      state.unsaved = ownChanges(form, fresh);
+      state.orig = JSON.stringify(fresh);
+      state.candidate = fresh;
+      state.json = candidateJson(fresh);
+      state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
+				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
+				it.`;
+      return refuse(
+        request,
+        () => editPage(store, context(request), planId, latest.latestRevision, state),
+        cookies
+      );
     }
     const saving = `${planId}@${saved.revision}`;
     const flash = saved.edit === "in_place" ? `Saved ${saving} in place` : `Saved ${saving}${planDetail(store, planId).approval.policy === "none" ? "" : ". It needs approval."}`;
@@ -13673,6 +13765,13 @@ data: ${matched.join(",") || "*"}
         "Refused: the request comes from another origin."
       );
     const form = await readForm(request.req);
+    if (!form)
+      return errorPage(
+        request,
+        413,
+        "Form too large",
+        "The form has more than 256 KiB of text. Checkmate did not record it. Go back, make the text shorter, then send the form again."
+      );
     if (!same2(form.get("csrf") ?? "", csrf))
       return errorPage(
         request,

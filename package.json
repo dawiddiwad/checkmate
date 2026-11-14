@@ -19,18 +19,18 @@
 		"build": "npm run generate && node scripts/build-plugin.ts"
 	},
 	"devDependencies": {
-		"@anthropic-ai/claude-code": "2.1.319",
+		"@anthropic-ai/claude-code": "2.1.322",
 		"@eslint/js": "10.0.1",
-		"@playwright/cli": "0.1.23",
-		"@types/node": "26.5.0",
+		"@playwright/cli": "0.1.24",
+		"@types/node": "26.6.6",
 		"ajv": "8.20.0",
 		"ajv-formats": "3.0.1",
 		"esbuild": "0.28.2",
-		"eslint": "10.10.0",
+		"eslint": "10.14.0",
 		"playwright-core": "1.65.0",
-		"prettier": "3.9.6",
+		"prettier": "3.10.0",
 		"typescript": "6.0.3",
-		"typescript-eslint": "8.70.0"
+		"typescript-eslint": "8.72.2"
 	},
 	"repository": {
 		"type": "git",

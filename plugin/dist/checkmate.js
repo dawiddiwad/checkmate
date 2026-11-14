@@ -10178,8 +10178,11 @@ var xmlEntities = {
   "\r": "&#13;",
   "	": "&#9;"
 };
+function validText(value2) {
+  return value2.replace(/[^\t\n\r\u{20}-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/gu, "\uFFFD");
+}
 function xml(value2, pattern) {
-  return value2.replace(/[^\t\n\r\u{20}-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/gu, "\uFFFD").replace(pattern, (character) => xmlEntities[character]);
+  return validText(value2).replace(pattern, (character) => xmlEntities[character]);
 }
 function xmlText(value2) {
   return xml(value2, /[&<>\r]/g);
@@ -10202,7 +10205,7 @@ function junitStatus(report, test) {
   if (test.outcome === "blocked" || test.outcome === "not_run")
     return xmlTag("skipped", { message: `${test.outcome}: ${reason}` });
   if (test.outcome !== "failed") return xmlTag("error", { type: test.outcome, message: reason });
-  const findings2 = report.result.findings.filter((finding) => finding.testIds.includes(test.testId));
+  const findings2 = report.result.findings.filter((finding) => finding.testIds.includes(test.testId)).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
   const defect = findings2.find((finding) => finding.type === "defect");
   const text = findings2.map(
     (finding) => [
@@ -10240,7 +10243,11 @@ function junit(report) {
         value2
       ])
     ]);
-    return xmlTag("testcase", { classname: plan.planId, name: planned.id }, properties + junitStatus(report, test));
+    return xmlTag(
+      "testcase",
+      { classname: plan.planId, name: planned.id, time: report.times[test.testId] ?? 0 },
+      properties + junitStatus(report, test)
+    );
   });
   const suite = xmlTag(
     "testsuite",
@@ -10264,14 +10271,14 @@ ${xmlTag("testsuites", { name: result.runId, ...totals }, suite)}
 }
 function rendered(report, record, format2) {
   if (format2 === "json") return JSON.stringify(record, null, 2) + "\n";
-  return format2 === "md" ? markdown(report) : html(report);
+  return validText(format2 === "md" ? markdown(report) : html(report));
 }
 function renderPlan(plan, sha256, format2) {
   return rendered(planReport(plan, sha256), plan, format2);
 }
 function renderRun(report, format2) {
   if (format2 === "junit") return junit(report);
-  const { inline, ...record } = report;
+  const { inline, times, ...record } = report;
   return rendered(runDocument(report), record, format2);
 }
 function exportPlan(store, reference, format2) {
@@ -10300,8 +10307,21 @@ function runReport(store, runId) {
     acceptance: { state: approvalLabel(state), latest: state.latest },
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
-    inline
+    inline,
+    times: testTimes(store, runId)
   };
+}
+function testTimes(store, runId) {
+  const rows = all(
+    store,
+    `SELECT o.test_id, coalesce(min(a.recorded_at), o.recorded_at) AS first, o.recorded_at AS closed
+		FROM outcomes o LEFT JOIN assertion_results a ON a.run_id = o.run_id AND a.test_id = o.test_id
+		WHERE o.run_id = ? GROUP BY o.test_id`,
+    runId
+  );
+  return Object.fromEntries(
+    rows.map((row) => [row.test_id, Math.max(0, Date.parse(row.closed) - Date.parse(row.first)) / 1e3])
+  );
 }
 function exportRun(store, runId, format2) {
   return renderRun(runReport(store, runId), requireChoice(format2, runFormats, "format (--format)"));

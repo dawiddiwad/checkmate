@@ -234,6 +234,7 @@ checkmate export run run-1 --format junit --out reports/run-1.xml
 - `export run` needs a finished run. `export plan` takes a revision reference, or a plan ID for the latest revision.
 - A run report shows the summary with the instance, the acceptance, the plan approval, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
 - The Markdown and HTML exports show the [metadata](payloads.md#metadata) of the requirements, the tests, and the findings as `key=value` lists.
+- The Markdown and HTML exports replace control characters with U+FFFD, as the JUnit export does.
 - The HTML report is one self-contained file. It shows small images and text evidence inline. It has a print stylesheet, so a browser can save it as a PDF.
 - The JSON run report is `{ "result", "sha256", "acceptance", "planApproval", "plan" }`. `acceptance` and `planApproval` each have `state` and `latest`. `latest` is the latest verdict with its `verdict`, `actor`, `at`, `rationale`, and `sha256`, or `null`. `plan` has the requirements and the tests of the plan revision, with their metadata. A JSON plan export is the stored plan revision.
 
@@ -242,11 +243,12 @@ checkmate export run run-1 --format junit --out reports/run-1.xml
 `export run <runId> --format junit` writes JUnit XML for a CI system or a test management tool.
 
 - The root `<testsuites>` has one `<testsuite>`. Its name is `<planId>@<revision>`. Its properties are `runId`, `build`, `instance`, `target`, `completion`, and `coverage`.
-- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID, for example `T1`.
+- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID, for example `T1`. `time` is the seconds from the first assertion result of the test to its close. A test without an assertion result has `time="0"`.
+- `<testsuites>` and `<testsuite>` have `time`: the seconds from the run start to the run finish.
 - Each test case has properties. `title` is the test title. `requirements` is the list of requirement IDs, separated by commas. Each metadata key gives one more property. Its name is `metadata.<key>`, for example `metadata.xrayKey`. Thus a metadata key cannot replace a built-in property.
 - The JUnit format does not define properties in a test case. Jenkins, GitLab, and Xray read them.
 - `timestamp` is the start time in UTC, to the second, without a time zone, for example `2026-11-14T18:53:46`.
-- `failed` gives `<failure>`. Its `type` is `defect`. Its `message` is the title of the first defect of the test. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test.
+- `failed` gives `<failure>`. Its `type` is `defect`. Its `message` is the title of the first defect of the test in finding ID order, so `F2` comes before `F10`. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test, in the same order.
 - `blocked` and `not_run` give `<skipped>`. `error` and `inconclusive` give `<error>` with the outcome as `type`. `passed` gives no element.
 - Checkmate escapes the text and replaces characters that XML does not permit with U+FFFD.
 - The renderer escapes untrusted text. The HTML has a Content Security Policy that blocks scripts and remote resources.

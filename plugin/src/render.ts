@@ -1,5 +1,6 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
+import { all } from './store.ts'
 import type { Approval } from './plans.ts'
 import type { ApprovalLabel } from './views.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
@@ -29,6 +30,7 @@ export type RunReport = {
 		'planId' | 'revision' | 'objective' | 'requirements' | 'tests' | 'gaps' | 'decisions' | 'assumptions'
 	>
 	inline: Record<string, { image?: string; text?: string }>
+	times: Record<string, number>
 }
 
 export const formats = ['md', 'html', 'json'] as const
@@ -514,10 +516,12 @@ const xmlEntities: Record<string, string> = {
 	'\t': '&#9;',
 }
 
+function validText(value: string) {
+	return value.replace(/[^\t\n\r\u{20}-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/gu, '\uFFFD')
+}
+
 function xml(value: string, pattern: RegExp) {
-	return value
-		.replace(/[^\t\n\r\u{20}-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/gu, '\uFFFD')
-		.replace(pattern, (character) => xmlEntities[character])
+	return validText(value).replace(pattern, (character) => xmlEntities[character])
 }
 
 function xmlText(value: string) {
@@ -547,7 +551,9 @@ function junitStatus(report: RunReport, test: Result['tests'][number]) {
 	if (test.outcome === 'blocked' || test.outcome === 'not_run')
 		return xmlTag('skipped', { message: `${test.outcome}: ${reason}` })
 	if (test.outcome !== 'failed') return xmlTag('error', { type: test.outcome, message: reason })
-	const findings = report.result.findings.filter((finding) => finding.testIds.includes(test.testId))
+	const findings = report.result.findings
+		.filter((finding) => finding.testIds.includes(test.testId))
+		.sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }))
 	const defect = findings.find((finding) => finding.type === 'defect')
 	const text = findings.map((finding) =>
 		[
@@ -586,7 +592,11 @@ function junit(report: RunReport) {
 				value,
 			]),
 		])
-		return xmlTag('testcase', { classname: plan.planId, name: planned.id }, properties + junitStatus(report, test))
+		return xmlTag(
+			'testcase',
+			{ classname: plan.planId, name: planned.id, time: report.times[test.testId] ?? 0 },
+			properties + junitStatus(report, test)
+		)
 	})
 	const suite = xmlTag(
 		'testsuite',
@@ -612,7 +622,7 @@ function junit(report: RunReport) {
 
 function rendered(report: Report, record: unknown, format: Format) {
 	if (format === 'json') return JSON.stringify(record, null, 2) + '\n'
-	return format === 'md' ? markdown(report) : html(report)
+	return validText(format === 'md' ? markdown(report) : html(report))
 }
 
 export function renderPlan(plan: Plan, sha256: string, format: Format) {
@@ -621,7 +631,7 @@ export function renderPlan(plan: Plan, sha256: string, format: Format) {
 
 export function renderRun(report: RunReport, format: RunFormat) {
 	if (format === 'junit') return junit(report)
-	const { inline, ...record } = report
+	const { inline, times, ...record } = report
 	return rendered(runDocument(report), record, format)
 }
 
@@ -655,7 +665,21 @@ export function runReport(store: Store, runId: string): RunReport {
 		planApproval: { state: approvalLabel(approval), latest: approval.latest },
 		plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
 		inline,
+		times: testTimes(store, runId),
 	}
+}
+
+function testTimes(store: Store, runId: string) {
+	const rows = all<{ test_id: string; first: string; closed: string }>(
+		store,
+		`SELECT o.test_id, coalesce(min(a.recorded_at), o.recorded_at) AS first, o.recorded_at AS closed
+		FROM outcomes o LEFT JOIN assertion_results a ON a.run_id = o.run_id AND a.test_id = o.test_id
+		WHERE o.run_id = ? GROUP BY o.test_id`,
+		runId
+	)
+	return Object.fromEntries(
+		rows.map((row) => [row.test_id, Math.max(0, Date.parse(row.closed) - Date.parse(row.first)) / 1000])
+	)
 }
 
 export function exportRun(store: Store, runId: string, format: string) {

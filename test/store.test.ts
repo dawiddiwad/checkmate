@@ -7,6 +7,7 @@ import {
 	closeStore,
 	digest,
 	execute,
+	isBusy,
 	openReadOnlyStore,
 	openStore,
 	ulid,
@@ -130,6 +131,29 @@ test('a decision changes only applied_revision, only once, and only from NULL', 
 		() => opened.db.exec("UPDATE decisions SET applied_revision = 4 WHERE id = 'D9'"),
 		/Decisions are immutable/
 	)
+})
+
+test('a write that meets a lock rolls back and logs no rejection', (t) => {
+	const opened = store(t)
+	const busy = Object.assign(new Error('database is locked'), { errcode: 5 })
+	assert(isBusy(busy))
+	assert(isBusy(Object.assign(new Error('database is locked'), { errcode: 517 })))
+	assert(!isBusy(new Error('database is locked')))
+	assert.throws(
+		() =>
+			write(opened, { actor, command: 'test', subject: 'x', input: null }, (operationId) => {
+				execute(
+					opened,
+					"INSERT INTO target_requests (target_id, body, operation_id) VALUES ('t', '{}', ?)",
+					operationId
+				)
+				throw busy
+			}),
+		/database is locked/
+	)
+	assert.equal(opened.db.isTransaction, false)
+	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM target_requests').get()!.n, 0)
+	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM operations').get()!.n, 0)
 })
 
 test('foreign keys refuse rows that name missing parents', (t) => {

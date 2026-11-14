@@ -11,6 +11,7 @@ export type WorkerResponse = { status: Status; subject: string; reasons: string[
 export type DelegateResponse = WorkerResponse & { operation: string | null }
 export type DelegateOptions = {
 	allowedTools: string[]
+	claudeArgs?: string[]
 	timeoutSeconds?: number
 	claude?: string
 	playwright?: string
@@ -34,6 +35,16 @@ const maxOutputBytes = 4 * 1024 * 1024
 const defaultTimeoutSeconds = 300
 
 export const minimumRules = ['Read', 'Bash']
+
+export const reservedClaudeArgs = [
+	'-p',
+	'--print',
+	'--output-format',
+	'--json-schema',
+	'--plugin-dir',
+	'--allowedTools',
+	'--allowed-tools',
+]
 
 const verifiedBy: Record<Stage, { command: string; key: string }> = {
 	setup: { command: 'target save', key: 'targetId' },
@@ -76,7 +87,18 @@ function readEnvelope(output: string) {
 	return validate('response', envelope.structured_output) as WorkerResponse
 }
 
-export function workerArgs(pluginRoot: string, allowedTools: string[]) {
+function checkClaudeArgs(claudeArgs: string[]) {
+	for (const arg of claudeArgs) {
+		const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`))
+		if (!reserved) continue
+		const instead = reserved.startsWith('--allowed')
+			? 'Use --allow <rule> for tools.'
+			: `delegate sets ${reserved}.`
+		refuse(`--claude-arg ${arg} is not permitted. ${instead}`)
+	}
+}
+
+export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArgs: string[] = []) {
 	const schema = readFileSync(join(pluginRoot, 'contracts', 'response.schema.json'), 'utf8')
 	const args = [
 		'-p',
@@ -91,7 +113,7 @@ export function workerArgs(pluginRoot: string, allowedTools: string[]) {
 		'--no-session-persistence',
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
-	return args
+	return [...args, ...claudeArgs]
 }
 
 export function worker(executable: string, args: string[], options: WorkerOptions): Promise<WorkerResponse> {
@@ -289,6 +311,7 @@ export async function delegate(
 	workspace = resolve(workspace)
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`)
 	if (!options.allowedTools.length) refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`)
+	checkClaudeArgs(options.claudeArgs ?? [])
 	const { after, run } = withStore(workspace, (store) => {
 		checkSubject(store, stage, subject)
 		return { after: lastOperation(store), run: stage === 'execute' ? startedRun(store, subject) : null }
@@ -298,16 +321,20 @@ export async function delegate(
 	let claimed: WorkerResponse | null = null
 	let failure: Error | null = null
 	try {
-		claimed = await worker(options.claude ?? 'claude', workerArgs(pluginRoot, options.allowedTools), {
-			cwd: workspace,
-			prompt: prompt(stage, subject, workspace, pluginRoot, run, timeoutSeconds),
-			timeoutSeconds,
-			env: {
-				...process.env,
-				CHECKMATE_ACTOR: `claude:${stage}`,
-				...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
-			},
-		})
+		claimed = await worker(
+			options.claude ?? 'claude',
+			workerArgs(pluginRoot, options.allowedTools, options.claudeArgs),
+			{
+				cwd: workspace,
+				prompt: prompt(stage, subject, workspace, pluginRoot, run, timeoutSeconds),
+				timeoutSeconds,
+				env: {
+					...process.env,
+					CHECKMATE_ACTOR: `claude:${stage}`,
+					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
+				},
+			}
+		)
 		if (!subjectMatches(claimed.subject, subject))
 			failure = new Error(`Worker response names ${claimed.subject}, not ${subject}`)
 	} catch (error) {

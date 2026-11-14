@@ -232,15 +232,21 @@ export function removeTemporaryDirectory(store: Store, name: string) {
 	} catch {}
 }
 
+export const busyReason = 'Another command holds the database lock. Nothing changed. Run the command again.'
+
+export function isBusy(error: unknown) {
+	return error instanceof Error && 'errcode' in error && [5, 6].includes(Number(error.errcode) & 0xff)
+}
+
 export function openStore(workspace: string): Store {
 	const path = databasePath(workspace)
 	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
 	const db = new DatabaseSync(path)
-	db.exec('PRAGMA journal_mode = WAL')
-	db.exec('PRAGMA busy_timeout = 5000')
-	db.exec('PRAGMA foreign_keys = ON')
-	db.exec('BEGIN IMMEDIATE')
 	try {
+		db.exec('PRAGMA busy_timeout = 30000')
+		db.exec('PRAGMA journal_mode = WAL')
+		db.exec('PRAGMA foreign_keys = ON')
+		db.exec('BEGIN IMMEDIATE')
 		if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get()) {
 			db.exec(tables)
 			db.exec(triggers)
@@ -250,7 +256,7 @@ export function openStore(workspace: string): Store {
 		}
 		db.exec('COMMIT')
 	} catch (error) {
-		db.exec('ROLLBACK')
+		if (db.isTransaction) db.exec('ROLLBACK')
 		db.close()
 		throw error
 	}
@@ -261,7 +267,7 @@ export function openReadOnlyStore(workspace: string): Store {
 	const path = databasePath(workspace)
 	closeStore(openStore(workspace))
 	const db = new DatabaseSync(path, { readOnly: true })
-	db.exec('PRAGMA busy_timeout = 5000')
+	db.exec('PRAGMA busy_timeout = 30000')
 	return checkedStore(db, workspace, path)
 }
 
@@ -307,6 +313,7 @@ export function write(
 		return reply
 	} catch (error) {
 		if (store.db.isTransaction) store.db.exec('ROLLBACK')
+		if (isBusy(error)) throw error
 		const reason = error instanceof Error ? error.message : String(error)
 		store.db.exec('BEGIN IMMEDIATE')
 		recordOperation(

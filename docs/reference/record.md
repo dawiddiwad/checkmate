@@ -20,7 +20,7 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 - Each write runs in one `BEGIN IMMEDIATE` transaction with its operation row. A refused write changes nothing.
 - Rows do not change after a write. Triggers refuse `UPDATE` and `DELETE` on every table, with two exceptions: a decision records the revision that applied it, once, and `plan edit` changes a plan revision that has no approval and no run.
 - A plan revision, a profile, and a result are canonical JSON snapshots. The digest is the SHA-256 of that text. A digest detects change. It does not authenticate the actor.
-- The database uses WAL mode, a busy timeout of 5 seconds, and foreign keys. The CLI, a delegated worker, and the review UI can use it at the same time. One host writes to one database.
+- The database uses WAL mode, a busy timeout of 30 seconds, and foreign keys. The CLI, a delegated worker, and the review UI can use it at the same time. One command writes at a time. A command that cannot get the lock in 30 seconds gives `operational_error` and changes nothing. One host writes to one database.
 - The schema version is 2. Checkmate refuses a database with another version. There is no migration from earlier databases.
 
 ## Actor
@@ -42,7 +42,9 @@ The actor is a record. It is not a proof of identity. Checkmate has no authentic
 
 ## Operation log
 
-Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A read, for example `status` or `inbox`, records nothing.
+Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A write that cannot get the database lock records nothing. A read, for example `status` or `inbox`, records nothing.
+
+Each row has a row ID. The row ID increases in the order of the writes. Field 1 of each line is the row ID.
 
 ```sh
 checkmate log --subject plan:checkout --limit 5
@@ -50,9 +52,11 @@ checkmate log --subject plan:checkout --limit 5
 
 ```text
 completed log
-01M7CVS3TPCHJBVEYTHVCAAHB7	2026-11-14T11:06:15.767Z	po	result accept	completed	run:run-2,plan:checkout,inbox
-01M7CVS3M0B4SXWSEEBHYDMTH4	2026-11-14T11:06:15.552Z	po	run finish	completed	run:run-2,plan:checkout,inbox
+42	01M7CVS3TPCHJBVEYTHVCAAHB7	2026-11-14T11:06:15.767Z	po	result accept	completed	run:run-2,plan:checkout,inbox
+41	01M7CVS3M0B4SXWSEEBHYDMTH4	2026-11-14T11:06:15.552Z	po	run finish	completed	run:run-2,plan:checkout,inbox
 ```
+
+To read only the new operations, give the last row ID that you read: `checkmate log --after 42`. With `--after`, the log lists the operations oldest first. [Get a signal when the oracle must act](../guides/factory.md#get-a-signal-when-the-oracle-must-act) uses this cursor.
 
 The plan history, `plan diff`, and the log together show who changed what, when, and why. When `plan edit` changes a revision in place, the log keeps the edit.
 

@@ -31,6 +31,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read the status on line 1, not only the exit code. Read each `reason:` line.
+- `operational_error` with the reason `Another command holds the database lock` means that nothing changed. Run the same command again.
 - Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
 
 ```sh

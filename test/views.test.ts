@@ -199,21 +199,21 @@ test('paged lists sort, filter by text and dropdown, and report the total', (t) 
 	assert.throws(() => pagedOperations(opened, { offset: -1 }), /Invalid offset: -1/)
 })
 
-test('plan status follows the loop and names the role that the plan waits on', (t) => {
+test('plan status follows the loop and names the role and the delegate stage', (t) => {
 	const opened = store(t)
 	target(opened)
 	const where = () => {
 		const status = planStatus(opened, 'checkout')
-		return `${status.state} ${status.waitsOn}`
+		return `${status.state} ${status.waitsOn} ${status.stage}`
 	}
 	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
-	assert.equal(where(), 'needs_plan planner')
+	assert.equal(where(), 'needs_plan planner plan')
 	savePlan(opened, actor, { planId: 'checkout', candidate: candidate() })
-	assert.equal(where(), 'needs_answers oracle')
+	assert.equal(where(), 'needs_answers oracle none')
 	approved(opened, 'checkout', 1)
-	assert.equal(where(), 'ready_to_run qa')
+	assert.equal(where(), 'ready_to_run qa none')
 	beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', partial: 'ready_only' })
-	assert.equal(where(), 'run_in_progress qa')
+	assert.equal(where(), 'run_in_progress qa execute')
 	const failed = check(opened, 'run-1', 'T1.A1', 'failed')
 	check(opened, 'run-1', 'T1.A2', 'passed')
 	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
@@ -252,9 +252,9 @@ test('plan status follows the loop and names the role that the plan waits on', (
 		rationale: 'R.',
 	})
 	answerGap(opened, actor, { planId: 'checkout', gapId: 'G2', kind: 'defer', value: 'Later.', rationale: 'R.' })
-	assert.equal(where(), 'needs_revision planner')
+	assert.equal(where(), 'needs_revision planner revise')
 	revisePlan(opened, actor, { planId: 'checkout', delta: promotionDelta })
-	assert.equal(where(), 'needs_approval oracle')
+	assert.equal(where(), 'needs_approval oracle none')
 	approved(opened)
 	const fix = planStatus(opened, 'checkout')
 	assert.deepEqual([fix.state, fix.waitsOn, fix.why], ['defects_open', 'factory', ['run-1 has 1 defect on build b1']])
@@ -263,7 +263,7 @@ test('plan status follows the loop and names the role that the plan waits on', (
 		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --retest-of run-1'
 	)
 	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
-	assert.equal(where(), 'run_in_progress qa')
+	assert.equal(where(), 'run_in_progress qa execute')
 	for (const testId of ['T1', 'T2']) {
 		for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `${testId}.${assertionId}`, 'passed')
 		closeTest(opened, actor, { runId: 'run-2', testId })
@@ -274,28 +274,28 @@ test('plan status follows the loop and names the role that the plan waits on', (
 		cleanup: 'completed',
 		cleanupReason: 'Closed.',
 	})
-	assert.equal(where(), 'awaits_acceptance oracle')
+	assert.equal(where(), 'awaits_acceptance oracle none')
 	assert.deepEqual(
 		inbox(opened).results.map((row) => row.runId),
 		['run-2']
 	)
 	assert.equal(planStatus(opened, 'checkout').latestRun?.runId, 'run-2')
 	assert.equal(accept(opened, 'run-1').status, 'completed')
-	assert.equal(where(), 'awaits_acceptance oracle')
+	assert.equal(where(), 'awaits_acceptance oracle none')
 	accept(opened, 'run-2')
-	assert.equal(where(), 'accepted none')
+	assert.equal(where(), 'accepted none none')
 	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { title: 'Order total' } } } })
-	assert.equal(where(), 'needs_approval oracle')
+	assert.equal(where(), 'needs_approval oracle none')
 	approved(opened, 'checkout', 3)
 	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 tested checkout@2, not checkout@3'])
-	assert.equal(where(), 'needs_retest qa')
+	assert.equal(where(), 'needs_retest qa none')
 	assert.equal(
 		planStatus(opened, 'checkout').next,
 		'checkmate run begin <runId> checkout@3 --build b2 --partial ready_only'
 	)
 	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { title: 'Total' } } } })
 	rejectPlan(opened, actor, { reference: 'checkout@4', rationale: 'No.' })
-	assert.equal(where(), 'plan_rejected oracle')
+	assert.equal(where(), 'plan_rejected oracle none')
 	assert.deepEqual(
 		planList(opened).map((row) => [row.planId, row.loop]),
 		[['checkout', { state: 'plan_rejected', waitsOn: 'oracle' }]]

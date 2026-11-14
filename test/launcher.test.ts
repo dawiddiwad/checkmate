@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { delegate, minimumRules, resumeReason, worker } from '../cli/src/launcher.ts'
+import { delegate, minimumRules, reservedClaudeArgs, resumeReason, worker } from '../cli/src/launcher.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
@@ -182,6 +183,83 @@ reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
 	assert(
 		prompt.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
 	)
+})
+
+function requested(t: TestContext) {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	closeStore(opened)
+	return workspace
+}
+
+const recordsArgs = `require('node:fs').writeFileSync('args.json', JSON.stringify(process.argv.slice(2)))
+reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
+
+test('delegate appends each --claude-arg after its own arguments', async (t) => {
+	const workspace = requested(t)
+	const records = claude(workspace, recordsArgs)
+	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs']
+	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, claudeArgs, pluginRoot, claude: records })
+	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.equal(args[0], '-p')
+	assert.deepEqual(args.slice(-7), ['--allowedTools', 'Read', '--allowedTools', 'Bash', ...claudeArgs])
+})
+
+test('delegate refuses a --claude-arg that changes the worker contract', async (t) => {
+	const workspace = requested(t)
+	const missing = '/does-not-exist'
+	for (const arg of [...reservedClaudeArgs, '--output-format=text', '--json-schema={}'])
+		await assert.rejects(
+			delegate(workspace, 'plan', 'checkout', {
+				allowedTools: rules,
+				claudeArgs: [arg],
+				pluginRoot,
+				claude: missing,
+			}),
+			(error: Error) => error.message.startsWith(`--claude-arg ${arg} is not permitted.`)
+		)
+	await assert.rejects(
+		delegate(workspace, 'plan', 'checkout', {
+			allowedTools: rules,
+			claudeArgs: ['--allowedTools', 'Write'],
+			pluginRoot,
+			claude: missing,
+		}),
+		/Use --allow <rule> for tools\./
+	)
+})
+
+test('the npm CLI takes --claude-arg values that start with --', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const output = execFileSync(
+		process.execPath,
+		[
+			join(root, 'cli/src/main.ts'),
+			'delegate',
+			'plan',
+			'checkout',
+			'--allow',
+			'Read',
+			'--allow',
+			'Bash',
+			'--claude-arg',
+			'--model',
+			'--claude-arg',
+			'claude-haiku-5-5',
+			'--workspace',
+			workspace,
+		],
+		{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+	)
+	assert.equal(output, 'needs_decision checkout\nreason: Stopped.\n')
+	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.deepEqual(args.slice(-2), ['--model', 'claude-haiku-5-5'])
 })
 
 test('delegate revise needs every pending decision applied', async (t) => {

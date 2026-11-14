@@ -71,6 +71,11 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 
 	assert.equal(checkmate('--version'), version)
 	assert.match(checkmate('--help'), /checkmate delegate <setup\|plan\|revise\|execute>/)
+	assert.match(
+		checkmate('delegate', '--help'),
+		/^completed delegate\ncheckmate delegate <setup\|plan\|revise\|execute>/
+	)
+	assert.match(checkmate('plan', 'open', '--help'), /^completed plan open\ncheckmate plan open <planId>/)
 	assert.equal(checkmate('init'), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate('plan', 'list'), 'completed plans count=0')
 	checkmate(

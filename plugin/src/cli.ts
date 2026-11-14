@@ -1266,6 +1266,21 @@ function help() {
 	].join('\n')
 }
 
+function commandHelp(argv: string[]): Reply {
+	const words = argv.slice(
+		0,
+		argv.findIndex((word) => word.startsWith('--'))
+	)
+	for (let count = words.length; count > 0; count--) {
+		const prefix = words.slice(0, count).join(' ')
+		if (prefix === 'ui') return completed('ui', { usage: [uiUsage.replace('Usage: ', '')] })
+		const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `))
+		if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace('Usage: ', '')) })
+	}
+	const reason = `Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`
+	return { status: 'invalid_request', subject: 'checkmate', reasons: [reason], data: { usage: [] } }
+}
+
 function version() {
 	return JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version as string
 }
@@ -1283,6 +1298,14 @@ export function run(argv: string[], io: Io): Outcome {
 	if (argv[0] === '--version') return { code: 0, output: version() }
 	if (!argv.length || argv[0] === '--help') return { code: 0, output: help() }
 	const json = argv.includes('--json')
+	if (argv.includes('--help')) {
+		const reply = commandHelp(argv)
+		const code = reply.status === 'completed' ? 0 : 1
+		return {
+			code,
+			output: format(reply, json, (help) => ({ lines: (help.data.usage as string[]).map((line) => [line]) })),
+		}
+	}
 	let name = 'checkmate'
 	let args: Args
 	try {
@@ -1358,7 +1381,7 @@ export async function serveUi(tokens: string[]) {
 }
 
 export async function main(argv: string[]) {
-	if (argv[0] === 'ui') return serveUi(argv.slice(1))
+	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,

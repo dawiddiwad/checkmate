@@ -9,6 +9,7 @@ type Parsed = {
 	allow: string[]
 	claudeArgs: string[]
 	json: boolean
+	help: boolean
 }
 
 const delegateUsage =
@@ -24,7 +25,7 @@ function help() {
 }
 
 function parse(tokens: string[], options: string[]): Parsed {
-	const parsed: Parsed = { positionals: [], values: {}, allow: [], claudeArgs: [], json: false }
+	const parsed: Parsed = { positionals: [], values: {}, allow: [], claudeArgs: [], json: false, help: false }
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]
 		if (!token.startsWith('--')) {
@@ -33,6 +34,10 @@ function parse(tokens: string[], options: string[]): Parsed {
 		}
 		if (token === '--json') {
 			parsed.json = true
+			continue
+		}
+		if (token === '--help') {
+			parsed.help = true
 			continue
 		}
 		const name = token.slice(2)
@@ -82,6 +87,14 @@ function print(response: DelegateResponse, json: boolean) {
 	process.exitCode = response.status === 'completed' || response.status === 'needs_decision' ? 0 : 1
 }
 
+function printHelp(json: boolean) {
+	const usage = [delegateUsage]
+	const output = json
+		? JSON.stringify({ status: 'completed', subject: 'delegate', reasons: [], usage })
+		: ['completed delegate', ...usage].join('\n')
+	process.stdout.write(output + '\n')
+}
+
 function refuse(status: 'invalid_request' | 'rejected', subject: string, error: unknown, json: boolean) {
 	print({ status, subject, reasons: [(error as Error).message], operation: null }, json)
 }
@@ -90,6 +103,7 @@ async function runDelegate(tokens: string[]) {
 	let parsed: Parsed
 	try {
 		parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
+		if (parsed.help) return printHelp(parsed.json)
 		if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
 		if (!stages.includes(parsed.positionals[0] as Stage))
 			throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)

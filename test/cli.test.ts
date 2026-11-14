@@ -406,6 +406,23 @@ test('--version and --help need no workspace', () => {
 		help,
 		/checkmate run check <runId> <testId> <assertionId> --result <passed\|failed\|inconclusive\|not_checked> \[--observed <value>\]/
 	)
+	const group = cli('/nonexistent', ['plan', '--help'])
+	assert.equal(group.code, 0)
+	assert.equal(group.lines[0], 'completed plan')
+	assert(
+		group.lines.slice(1).every((line) => line.startsWith('checkmate plan ')),
+		group.output
+	)
+	assert(group.lines.includes('checkmate plan diff <planId> <from> <to>'), group.output)
+	assert.deepEqual(cli('/nonexistent', ['plan', 'open', '--help']).lines, [
+		'completed plan open',
+		'checkmate plan open <planId> --target <value> [--objective <value>] [--source <value>] [--instructions <value>] [--actor <name>] < payload.json',
+	])
+	assert.deepEqual(json('/nonexistent', ['target', 'instance', 'retire', '--help']).body.usage, [
+		'checkmate target instance retire <targetId> <instanceId> [--actor <name>]',
+	])
+	assert.deepEqual(cli('/nonexistent', ['ui', '--help']).lines, ['completed ui', 'checkmate ui [--port <value>]'])
+	assert.equal(cli('/nonexistent', ['nope', '--help']).lines[0], 'invalid_request checkmate')
 })
 
 test('without --actor and CHECKMATE_ACTOR, a write records the git user name, else the login name', (t) => {

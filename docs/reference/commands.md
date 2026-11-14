@@ -17,7 +17,7 @@ The skills run the plugin CLI with its absolute path. Claude Code gives the path
 
 Every command takes `--workspace <path>` and `--json`. Put options after the command name, for example `checkmate plan list --workspace ../app`. The workspace is the current directory by default. A write takes `--actor <name>`.
 
-`checkmate --help` prints every command with its options. `checkmate --version` prints the npm CLI version.
+`checkmate --help` prints every command with its options. `checkmate <command> --help` prints the usage of that command with `completed` on line 1. For a group, for example `checkmate plan --help`, it prints each command of the group. `checkmate --version` prints the npm CLI version.
 
 ## Command list
 

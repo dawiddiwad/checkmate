@@ -170,7 +170,7 @@ checkmate export run run-2 --format html --out reports/run-2.html
 | The full record of a run, for a program | `checkmate export run <runId> --format json`  |
 | Anything else                           | `checkmate query "<sql>"` (read-only)         |
 
-`status` prints the loop state, the role that it waits on, and the next command:
+`status` prints the loop state, the role that it waits on, and one or more next commands:
 
 ```text
 completed checkout state=needs_answers waitsOn=oracle revision=1 approval=approved run=run-1

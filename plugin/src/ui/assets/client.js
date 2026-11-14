@@ -116,6 +116,7 @@ function openViewer(link) {
 	viewer.querySelector('[data-viewer-name]').textContent = link.dataset.name ?? ''
 	viewer.querySelector('[data-viewer-open]').href = link.href
 	viewer.hidden = false
+	document.querySelector('main').inert = true
 	viewer.querySelector('[data-viewer-close]').focus()
 }
 
@@ -135,6 +136,7 @@ function trapViewer(event) {
 function closeViewer() {
 	if (viewer.hidden) return false
 	viewer.hidden = true
+	document.querySelector('main').inert = false
 	viewer.querySelector('[data-viewer-image]').removeAttribute('src')
 	viewerOpener?.focus()
 	return true

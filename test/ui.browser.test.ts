@@ -538,6 +538,7 @@ test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, a
 	const viewer = page.getByRole('dialog', { name: 'Evidence viewer' })
 	await viewer.waitFor()
 	assert.equal(await viewer.getAttribute('aria-modal'), 'true')
+	assert.equal(await page.evaluate(() => document.querySelector('main')?.inert), true)
 	const inside = () => page.evaluate(() => document.querySelector('[data-viewer]')?.contains(document.activeElement))
 	for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
 		await page.keyboard.press(key)
@@ -545,5 +546,6 @@ test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, a
 	}
 	await page.keyboard.press('Escape')
 	await viewer.waitFor({ state: 'hidden' })
+	assert.equal(await page.evaluate(() => document.querySelector('main')?.inert), false)
 	assert(await link.evaluate((element) => element === document.activeElement))
 })

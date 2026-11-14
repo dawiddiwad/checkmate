@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { Store } from '../plugin/src/store.ts'
 import { testOutcome } from '../plugin/src/contracts.ts'
 import {
+	acceptResult,
 	beginRun,
 	checkAssertion,
 	closeTest,
@@ -603,6 +604,23 @@ test('result accept and reject need a finished run and record the result digest'
 	assert.equal(accepted.data.sha256, runResult(opened, 'run-1')!.sha256)
 	assert.deepEqual(inbox(opened).results, [])
 	assert.equal(runDetail(opened, 'run-1').result!.acceptance, 'approved')
+})
+
+test('a result decision with a stale decision token throws and records no approval', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'])
+	passT1(opened)
+	finish(opened)
+	const approvals = () => opened.db.prepare("SELECT count(*) AS n FROM approvals WHERE subject_id = 'run-1'").get()?.n
+	acceptResult(opened, 'other', { runId: 'run-1', rationale: 'Fine.', expectDecision: 'none' })
+	for (const decide of [acceptResult, rejectResult])
+		assert.throws(
+			() => decide(opened, actor, { runId: 'run-1', rationale: 'No.', expectDecision: 'none' }),
+			/run-1 has a newer decision/
+		)
+	assert.equal(approvals(), 1)
+	assert.equal(runDetail(opened, 'run-1').result!.latestDecision?.actor, 'other')
 })
 
 test('run finish removes the evidence directory of the run with its files', (t) => {

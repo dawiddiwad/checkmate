@@ -20,6 +20,7 @@ import {
 	operationLog,
 	planCandidate,
 	jsonPatch,
+	patchPlan,
 	planDetail,
 	rejectPlan,
 	acceptResult,
@@ -1103,4 +1104,52 @@ test('a form over 256 KiB gets a 413 page and nothing is recorded', async (t) =>
 	assert.match(reply.body, /Form too large/)
 	assert.match(reply.body, /more than 256 KiB/)
 	assert.equal(approvals(workspace, 'search@1'), 0)
+})
+
+test('a stale edit lists only the values that this user changed', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/search@1/edit', { headers: actorCookie })).body
+	read(workspace, (store) =>
+		patchPlan(store, 'cli', {
+			reference: 'search@1',
+			patch: { tests: { T1: { title: 'CLI renamed T1', action: 'CLI action.' } } },
+		})
+	)
+	const posted = editForm(page, { 't1.title': 'UI renamed T2' })
+	for (const mode of ['form', 'json']) {
+		const form =
+			mode === 'form'
+				? formBody(posted, ['T1 S1', 'T2 S2'])
+				: new URLSearchParams({
+						...posted,
+						mode,
+						json: JSON.stringify({
+							...JSON.parse(posted.orig),
+							tests: JSON.parse(posted.orig).tests.map((test: { id: string; title: string }) =>
+								test.id === 'T2' ? { ...test, title: 'UI renamed T2' } : test
+							),
+						}),
+					})
+		const stale = await call(ui, '/plans/search@1/edit', { form, headers: actorCookie })
+		assert.equal(stale.status, 422, mode)
+		const unsaved = /<pre class="code">([^<]*)<\/pre>/.exec(stale.body)?.[1]
+		assert.equal(unsaved, 'T2.title: &quot;UI renamed T2&quot;', mode)
+		assert.match(stale.body, /value="CLI renamed T1"/, mode)
+	}
+	assert.equal(
+		read(workspace, (store) => planDetail(store, 'search').plan.tests[1].title),
+		'Empty state for an unknown term'
+	)
+})
+
+test('a back value with characters outside printable ASCII goes to the inbox', async (t) => {
+	const { ui } = await start(t)
+	const csrf = field((await call(ui, '/')).body, 'csrf')
+	for (const back of ['/%E2%80%A8x', '/a%00b', '/\uFF0F\uFF0Fevil.test', '/a b', '/%ZZ']) {
+		const reply = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back } })
+		assert.equal(reply.status, 303, back)
+		assert.equal(reply.headers.location, '/', back)
+		const shown = await call(ui, `/actor?back=${encodeURIComponent(back)}`)
+		assert.equal(shown.status, 200, back)
+	}
 })

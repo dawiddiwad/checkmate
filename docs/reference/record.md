@@ -98,7 +98,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 - It listens on `127.0.0.1` only. It refuses a request with another `Host` header, and a form from another origin.
 - Each form carries a token from the current start of the UI.
 - Each form sends the digest of the snapshot on the page. A changed snapshot refuses the action.
-- Each decision form also sends a token of the latest approval row of its subject. A new decision on the subject after the page loaded refuses the action, also a replay of the same form.
+- Each decision form also sends a token of the latest approval row of its subject. A new decision on the subject after the page loaded refuses the action, also a replay of the same form. The UI finds a stale page before it calls the core function, so this refusal adds no row to the operation log. A refusal inside the core function adds a `rejected` row, as for the CLI.
 - The `back` value of a form is a path on the UI only. The UI uses `/` for other values.
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
 - Pages send a Content Security Policy that allows only resources from the UI itself.

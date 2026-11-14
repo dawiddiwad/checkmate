@@ -5,6 +5,7 @@ import type { PlanTool } from '../plugin/src/plans.ts'
 import {
 	answerGap,
 	approvePlan,
+	decisionToken,
 	diffPlan,
 	editPlan,
 	gate,
@@ -618,6 +619,31 @@ test('plan edit changes an unapproved latest revision in place and records the o
 		approvePlan(opened, actor, { reference: 'checkout@1', rationale: 'Ok.', expectSha256: after.sha256 }).status,
 		'completed'
 	)
+})
+
+test('a plan decision with a stale decision token throws and records no approval', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened, 'checkout', withG3())
+	revised(opened)
+	const approvals = () =>
+		opened.db.prepare("SELECT count(*) AS n FROM approvals WHERE subject_id = 'checkout@2'").get()?.n
+	assert.equal(decisionToken(opened, 'plan', 'checkout@2'), 'none')
+	rejectPlan(opened, 'other', { reference: 'checkout@2', rationale: 'Not yet.', expectDecision: 'none' })
+	const token = decisionToken(opened, 'plan', 'checkout@2')
+	assert.notEqual(token, 'none')
+	for (const decide of [approvePlan, rejectPlan])
+		assert.throws(
+			() => decide(opened, actor, { reference: 'checkout@2', rationale: 'Ok.', expectDecision: 'none' }),
+			/checkout@2 has a newer decision/
+		)
+	assert.equal(approvals(), 1)
+	const log = opened.db
+		.prepare("SELECT status FROM operations WHERE command = 'plan approve' ORDER BY rowid DESC LIMIT 1")
+		.get()
+	assert.equal(log?.status, 'rejected')
+	approvePlan(opened, actor, { reference: 'checkout@2', rationale: 'Ok.', expectDecision: token })
+	assert.equal(approvals(), 2)
 })
 
 test('editing a rejected revision returns it to pending approval', (t) => {

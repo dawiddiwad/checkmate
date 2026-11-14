@@ -29,7 +29,7 @@ import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
 import { gapPage, planHistoryList, planPage } from './plan.ts'
-import { candidateFromForm, candidateJson, editPage, formChanges } from './edit.ts'
+import { candidateFromForm, candidateJson, editPage, ownChanges } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
@@ -157,7 +157,7 @@ function safeBack(value: string | null) {
 	if (!value) return '/'
 	try {
 		const decoded = decodeURIComponent(value)
-		return /^\/[^/\\]/.test(decoded) && !/[\t\n\r\\]/.test(decoded) ? value : '/'
+		return /^\/[^/\\]/.test(decoded) && /^[\x21-\x7e]+$/.test(decoded) && !decoded.includes('\\') ? value : '/'
 	} catch {
 		return '/'
 	}
@@ -603,6 +603,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			error: null,
 			stale: null,
 			unsaved: null,
+			orig: form.get('orig') ?? JSON.stringify(base),
 		}
 		const page = () => editPage(store, context(request), planId, revision, state)
 		let candidate: unknown
@@ -629,7 +630,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				return refuse(request, page, cookies)
 			}
 			const fresh = planCandidate(latest.plan)
-			state.unsaved = mode === 'json' ? state.json : formChanges(fresh, state.candidate)
+			state.unsaved = ownChanges(form, fresh)
+			state.orig = JSON.stringify(fresh)
 			state.candidate = fresh
 			state.json = candidateJson(fresh)
 			state.stale = html`<strong>${planId} changed after you opened the editor.</strong> Your edits were not

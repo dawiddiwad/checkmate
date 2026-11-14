@@ -19,6 +19,7 @@ export type EditState = {
 	error: string | null
 	stale: Html | null
 	unsaved: string | null
+	orig: string
 }
 
 function words(values: string) {
@@ -80,20 +81,31 @@ function pathName(candidate: Candidate, path: string) {
 	return [items[Number(index)]?.id ?? index, ...rest].join('.')
 }
 
-export function formChanges(latest: Candidate, posted: Candidate) {
-	return jsonPatch(latest, posted)
-		.map((operation) => `${pathName(latest, operation.path)}: ${JSON.stringify(operation.value ?? null)}`)
+function changeLines(before: Candidate, after: unknown) {
+	return jsonPatch(before, after)
+		.map((operation) => `${pathName(before, operation.path)}: ${JSON.stringify(operation.value ?? null)}`)
 		.join('\n')
+}
+
+export function ownChanges(form: URLSearchParams, fresh: Candidate) {
+	const json = form.get('json') ?? ''
+	try {
+		const orig = JSON.parse(form.get('orig') ?? '') as Candidate
+		if (form.get('mode') === 'json') return changeLines(orig, JSON.parse(json))
+		return changeLines(orig, candidateFromForm(orig, form))
+	} catch {
+		return form.get('mode') === 'json' ? json : changeLines(fresh, candidateFromForm(fresh, form))
+	}
 }
 
 function unsavedPanel(unsaved: string) {
 	return html`<section class="panel unsaved" aria-labelledby="unsaved-title">
 		<h2 class="lab" id="unsaved-title">Your changes (not saved)</h2>
 		<p class="help">
-			The editor below shows the latest version. These values from your form differ from it. Apply the changes
-			again, then save.
+			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
+			then save.
 		</p>
-		<pre class="code">${unsaved || 'No difference from the latest version.'}</pre>
+		<pre class="code">${unsaved || 'You changed no values.'}</pre>
 	</section>`
 }
 
@@ -207,10 +219,11 @@ function coverageMatrix(candidate: Candidate) {
 	</div>`
 }
 
-function hidden(context: Context, sha256: string, mode: string) {
+function hidden(context: Context, sha256: string, mode: string, orig: string) {
 	return html`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="sha" value="${sha256}" />
-		<input type="hidden" name="mode" value="${mode}" />`
+		<input type="hidden" name="mode" value="${mode}" />
+		<input type="hidden" name="orig" value="${orig}" />`
 }
 
 function actorLine(context: Context, state: EditState, path: string, mode: string) {
@@ -277,6 +290,7 @@ export function editPage(
 		error: null,
 		stale: null,
 		unsaved: null,
+		orig: JSON.stringify(planCandidate(detail.plan)),
 	}
 	const messages = html`${shown.stale ? banner('warn', shown.stale) : ''}
 	${shown.error ? html`<p class="form-error" role="alert">${shown.error}</p>` : ''}`
@@ -300,7 +314,7 @@ export function editPage(
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
-				${hidden(context, detail.sha256, 'form')}
+				${hidden(context, detail.sha256, 'form', shown.orig)}
 				<section aria-labelledby="edit-requirements">
 					<h2 id="edit-requirements">
 						Requirements <span class="n">${shown.candidate.requirements.length}</span>
@@ -321,7 +335,7 @@ export function editPage(
 			<details class="edit-json" ${shown.mode === 'json' ? html`open` : ''}>
 				<summary>Edit as JSON</summary>
 				<form method="post" action="${path}" class="edit-form" data-edit-form>
-					${hidden(context, detail.sha256, 'json')}
+					${hidden(context, detail.sha256, 'json', shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
 						candidate:

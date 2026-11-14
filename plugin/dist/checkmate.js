@@ -11840,17 +11840,27 @@ function pathName(candidate, path) {
   const items = list2 === "requirements" ? candidate.requirements : list2 === "tests" ? candidate.tests : candidate.gaps;
   return [items[Number(index2)]?.id ?? index2, ...rest].join(".");
 }
-function formChanges(latest, posted) {
-  return jsonPatch(latest, posted).map((operation) => `${pathName(latest, operation.path)}: ${JSON.stringify(operation.value ?? null)}`).join("\n");
+function changeLines(before, after) {
+  return jsonPatch(before, after).map((operation) => `${pathName(before, operation.path)}: ${JSON.stringify(operation.value ?? null)}`).join("\n");
+}
+function ownChanges(form, fresh) {
+  const json = form.get("json") ?? "";
+  try {
+    const orig = JSON.parse(form.get("orig") ?? "");
+    if (form.get("mode") === "json") return changeLines(orig, JSON.parse(json));
+    return changeLines(orig, candidateFromForm(orig, form));
+  } catch {
+    return form.get("mode") === "json" ? json : changeLines(fresh, candidateFromForm(fresh, form));
+  }
 }
 function unsavedPanel(unsaved) {
   return html2`<section class="panel unsaved" aria-labelledby="unsaved-title">
 		<h2 class="lab" id="unsaved-title">Your changes (not saved)</h2>
 		<p class="help">
-			The editor below shows the latest version. These values from your form differ from it. Apply the changes
-			again, then save.
+			The editor below shows the latest version. These are the values that you changed. Apply the changes again,
+			then save.
 		</p>
-		<pre class="code">${unsaved || "No difference from the latest version."}</pre>
+		<pre class="code">${unsaved || "You changed no values."}</pre>
 	</section>`;
 }
 function field(label, name, value2, help2 = "") {
@@ -11950,10 +11960,11 @@ function coverageMatrix(candidate) {
 		</table>
 	</div>`;
 }
-function hidden2(context, sha256, mode) {
+function hidden2(context, sha256, mode, orig) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="sha" value="${sha256}" />
-		<input type="hidden" name="mode" value="${mode}" />`;
+		<input type="hidden" name="mode" value="${mode}" />
+		<input type="hidden" name="orig" value="${orig}" />`;
 }
 function actorLine(context, state, path, mode) {
   if (context.actor)
@@ -12009,7 +12020,8 @@ function editPage(store, context, planId, revision, state = null) {
     actor: "",
     error: null,
     stale: null,
-    unsaved: null
+    unsaved: null,
+    orig: JSON.stringify(planCandidate(detail.plan))
   };
   const messages2 = html2`${shown.stale ? banner("warn", shown.stale) : ""}
 	${shown.error ? html2`<p class="form-error" role="alert">${shown.error}</p>` : ""}`;
@@ -12032,7 +12044,7 @@ function editPage(store, context, planId, revision, state = null) {
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages2}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
-				${hidden2(context, detail.sha256, "form")}
+				${hidden2(context, detail.sha256, "form", shown.orig)}
 				<section aria-labelledby="edit-requirements">
 					<h2 id="edit-requirements">
 						Requirements <span class="n">${shown.candidate.requirements.length}</span>
@@ -12053,7 +12065,7 @@ function editPage(store, context, planId, revision, state = null) {
 			<details class="edit-json" ${shown.mode === "json" ? html2`open` : ""}>
 				<summary>Edit as JSON</summary>
 				<form method="post" action="${path}" class="edit-form" data-edit-form>
-					${hidden2(context, detail.sha256, "json")}
+					${hidden2(context, detail.sha256, "json", shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
 						candidate:
@@ -12980,7 +12992,7 @@ function safeBack(value2) {
   if (!value2) return "/";
   try {
     const decoded = decodeURIComponent(value2);
-    return /^\/[^/\\]/.test(decoded) && !/[\t\n\r\\]/.test(decoded) ? value2 : "/";
+    return /^\/[^/\\]/.test(decoded) && /^[\x21-\x7e]+$/.test(decoded) && !decoded.includes("\\") ? value2 : "/";
   } catch {
     return "/";
   }
@@ -13378,7 +13390,8 @@ data: ${matched.join(",") || "*"}
       actor: form.get("actor") ?? "",
       error: null,
       stale: null,
-      unsaved: null
+      unsaved: null,
+      orig: form.get("orig") ?? JSON.stringify(base)
     };
     const page = () => editPage(store, context(request), planId, revision, state);
     let candidate;
@@ -13405,7 +13418,8 @@ data: ${matched.join(",") || "*"}
         return refuse(request, page, cookies);
       }
       const fresh = planCandidate(latest.plan);
-      state.unsaved = mode === "json" ? state.json : formChanges(fresh, state.candidate);
+      state.unsaved = ownChanges(form, fresh);
+      state.orig = JSON.stringify(fresh);
       state.candidate = fresh;
       state.json = candidateJson(fresh);
       state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not

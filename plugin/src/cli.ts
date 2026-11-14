@@ -1,7 +1,7 @@
 import type { Reply, Store } from './store.ts'
 import type { Plan, Profile } from './types.ts'
 import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from './targets.ts'
-import type { PlanTool } from './plans.ts'
+import type { Approval, PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
 import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
@@ -597,7 +597,13 @@ const commands: Record<string, Command> = {
 			return {
 				facts: { sha256: short(data.sha256), decisions: data.decisions.length },
 				lines: [
-					...data.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+					...data.decisions.map((decision) => [
+						decision.id,
+						decision.gapId,
+						decision.kind,
+						decision.value,
+						decision.rationale,
+					]),
 					...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 					...data.tests.flatMap(testLines),
 				],
@@ -858,6 +864,7 @@ const commands: Record<string, Command> = {
 						finding.title,
 					]),
 					...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
+					...decisionLines(detail.result?.latestDecision),
 				],
 			}
 		},
@@ -952,6 +959,7 @@ const commands: Record<string, Command> = {
 				operation.command,
 				operation.status,
 				operation.subjects,
+				...rationaleOf(operation.arguments),
 				operation.rowid,
 			]),
 		}),
@@ -1106,6 +1114,15 @@ function showPlan(store: Store, args: Args) {
 	})
 }
 
+function decisionLines(decision: Approval | null | undefined) {
+	return decision ? [['decision', decision.verdict, decision.actor, decision.at, decision.rationale]] : []
+}
+
+function rationaleOf(input: unknown) {
+	const rationale = (input as { rationale?: unknown }).rationale
+	return typeof rationale === 'string' && rationale ? [rationale] : []
+}
+
 function testLines(test: Plan['tests'][number]) {
 	return [
 		[test.id, test.readiness, test.capability, test.title],
@@ -1147,13 +1164,21 @@ function printPlan(reply: Reply): Printed {
 			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
 			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
 			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-			...plan.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+			...plan.decisions.map((decision) => [
+				decision.id,
+				decision.gapId,
+				decision.kind,
+				decision.value,
+				decision.rationale,
+			]),
 			...detail.pendingDecisions.map((decision) => [
 				decision.id,
 				decision.gapId,
 				`pending ${decision.kind}`,
 				decision.value,
+				decision.rationale,
 			]),
+			...decisionLines(detail.approval.latest),
 		],
 	}
 }

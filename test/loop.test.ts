@@ -477,7 +477,15 @@ test('a rejected run has no open defects, and its tests need a retest', (t) => {
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual(
 		[status.state, status.why, status.defects],
-		['needs_retest', ["T1's latest pass is in rejected run-1", 'T2 is failed in run-1'], []]
+		[
+			'needs_retest',
+			[
+				'run-1 was rejected by tester: The record is wrong.',
+				"T1's latest pass is in rejected run-1",
+				'T2 is failed in run-1',
+			],
+			[],
+		]
 	)
 	assert.deepEqual(findingList(opened, { open: true }), [])
 	followHints(t, opened)

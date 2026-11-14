@@ -15,7 +15,21 @@ import { busyReason, closeStore, openStore } from '../plugin/src/store.ts'
 import { formatReply } from '../plugin/src/cli.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { retireInstance } from '../plugin/src/targets.ts'
-import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
+import { rejectResult } from '../plugin/src/runs.ts'
+import {
+	actor,
+	begin,
+	candidate,
+	check,
+	directory,
+	passRun,
+	plan,
+	planRequest,
+	ready,
+	root,
+	store,
+	target,
+} from './support.ts'
 import type { TestContext } from 'node:test'
 
 const rules = ['Read', 'Bash']
@@ -566,6 +580,30 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 		),
 		prompt
 	)
+})
+
+test('the execute prompt gives the rationale of a rejected run that the run tests again', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	passRun(opened, 'run-1', 'b1', ['T1'])
+	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'Wrong account.' })
+	passRun(opened, 'run-2', 'b2', ['T1'])
+	rejectResult(opened, 'Dawid', { runId: 'run-2', rationale: 'I need fullsize screenshots for evidence' })
+	begin(opened, 'run-3', ['T1'], 'b2')
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-3', reasons: [] })`
+	)
+	await delegate(workspace, 'execute', 'run-3', { allowedTools: rules, pluginRoot, claude: quits })
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(
+		prompt.includes('The oracle rejected run-2: I need fullsize screenshots for evidence. Address it.\n'),
+		prompt
+	)
+	assert.doesNotMatch(prompt, /run-1|Wrong account/)
 })
 
 test('the setup prompt names the instances of the target', async (t) => {

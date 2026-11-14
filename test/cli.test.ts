@@ -5,18 +5,23 @@ import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { closeStore } from '../plugin/src/store.ts'
+import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
+import { rejectResult } from '../plugin/src/runs.ts'
 import {
 	begin,
 	candidate,
 	cli,
 	directory,
 	json,
+	passRun,
+	plan,
 	planRequest,
 	profile,
 	promotionDelta,
 	ready,
 	root,
 	store,
+	target,
 } from './support.ts'
 import type { TestContext } from 'node:test'
 
@@ -253,6 +258,66 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	assert.match(
 		missing.lines[1],
 		/^reason: Missing --build\. Usage: checkmate run gate <reference> \[--tests <a,b>\] --build <value>/
+	)
+})
+
+test('compact output gives the actor and rationale of a rejected result', (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	passRun(opened, 'run-1', 'b1', ['T1', 'T2'])
+	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'I need fullsize screenshots for evidence' })
+	closeStore(opened)
+	const status = cli(workspace, ['status', 'checkout'])
+	assert.match(status.lines[0], /^completed checkout state=needs_retest waitsOn=qa /)
+	assert.equal(status.lines[1], 'why\trun-1 was rejected by Dawid: I need fullsize screenshots for evidence')
+	const shown = cli(workspace, ['run', 'show', 'run-1'])
+	assert.match(shown.lines[0], / acceptance=rejected$/)
+	assert.match(shown.lines.at(-1)!, /^decision\trejected\tDawid\t\S+Z\tI need fullsize screenshots for evidence$/)
+	assert.match(
+		cli(workspace, ['log', '--limit', '1']).lines[1],
+		/\tDawid\tresult reject\tcompleted\trun:run-1,plan:checkout,inbox\tI need fullsize screenshots for evidence\t\d+$/
+	)
+})
+
+test('compact output gives the rationale of a rejected plan and of gap answers', (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	target(opened)
+	plan(opened)
+	rejectPlan(opened, 'Dawid', { reference: 'checkout@1', rationale: 'Add a refund test.' })
+	closeStore(opened)
+	assert.equal(
+		cli(workspace, ['status', 'checkout']).lines[1],
+		'why\tcheckout@1 was rejected by Dawid: Add a refund test.'
+	)
+	assert.equal(
+		cli(workspace, ['plan', 'show', 'checkout'])
+			.lines.at(-1)!
+			.replace(/\t\S+Z\t/, '\t<at>\t'),
+		'decision\trejected\tDawid\t<at>\tAdd a refund test.'
+	)
+	const reopened = store(t, workspace)
+	answerGap(reopened, 'tester', {
+		planId: 'checkout',
+		gapId: 'G2',
+		kind: 'defer',
+		value: 'Do not check refunds.',
+		rationale: 'Refunds ship next quarter.',
+	})
+	closeStore(reopened)
+	assert.match(
+		cli(workspace, ['plan', 'pending', 'checkout']).lines[1],
+		/^[0-9A-Z]{26}\tG2\tdefer\tDo not check refunds\.\tRefunds ship next quarter\.$/
+	)
+	assert(
+		cli(workspace, ['plan', 'show', 'checkout']).lines.some((line) =>
+			/\tG2\tpending defer\tDo not check refunds\.\tRefunds ship next quarter\.$/.test(line)
+		)
+	)
+	assert.match(
+		cli(workspace, ['log', '--limit', '1']).lines[1],
+		/\tgap answer\t.*\tRefunds ship next quarter\.\t\d+$/
 	)
 })
 

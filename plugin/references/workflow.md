@@ -24,6 +24,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
 | Which runs exist?                        | `checkmate run list [--plan <planId>]`                      |
 | What did a run record?                   | `checkmate run show <runId>`                                |
+| Why did the oracle reject a plan or run? | `checkmate status <planId>`, `checkmate run show <runId>`   |
 | What changed, and who changed it?        | `checkmate log [--subject plan:<planId>\|run:<runId>]`      |
 | Anything else                            | `checkmate query "<sql>"` (read-only, SQLite `SELECT` only) |
 

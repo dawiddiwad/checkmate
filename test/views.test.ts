@@ -302,6 +302,7 @@ test('plan status follows the loop and names the role and the delegate stage', (
 	patchPlan(opened, actor, { reference: 'checkout@4', patch: { tests: { T1: { title: 'Total' } } } })
 	rejectPlan(opened, actor, { reference: 'checkout@5', rationale: 'No.' })
 	assert.equal(where(), 'plan_rejected oracle none')
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['checkout@5 was rejected by tester: No.'])
 	assert.deepEqual(
 		planList(opened).map((row) => [row.planId, row.loop]),
 		[['checkout', { state: 'plan_rejected', waitsOn: 'oracle' }]]
@@ -592,7 +593,10 @@ test('acceptance covers every run that gives a latest outcome', (t) => {
 	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 on build b1 waits for acceptance'])
 	rejectResult(opened, actor, { runId: 'run-1', rationale: 'Wrong build.' })
 	const rejected = planStatus(opened, 'checkout')
-	assert.deepEqual([rejected.state, rejected.why], ['needs_retest', ["T2's latest pass is in rejected run-1"]])
+	assert.deepEqual(
+		[rejected.state, rejected.why],
+		['needs_retest', ['run-1 was rejected by tester: Wrong build.', "T2's latest pass is in rejected run-1"]]
+	)
 	accept(opened, 'run-1')
 	const accepted = planStatus(opened, 'checkout')
 	assert.deepEqual([accepted.state, accepted.why], ['accepted', ['run-1, run-2 are accepted']])

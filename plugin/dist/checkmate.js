@@ -9217,9 +9217,16 @@ function planDetail(store, planId, revision = null) {
   const approval = planApproval(store, selected.plan, selected.sha256);
   const pending = latest.plan.revision === selected.plan.revision ? all(
     store,
-    "SELECT id, gap_id, kind, value, actor FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
+    "SELECT id, gap_id, kind, value, actor, rationale FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind, value: row.value, actor: row.actor })) : [];
+  ).map((row) => ({
+    id: row.id,
+    gapId: row.gap_id,
+    kind: row.kind,
+    value: row.value,
+    actor: row.actor,
+    rationale: row.rationale
+  })) : [];
   return {
     planId,
     revision: selected.plan.revision,
@@ -9380,7 +9387,7 @@ function planStatus(store, planId) {
       return loop(
         "plan_rejected",
         "oracle",
-        [`${subject} is rejected`],
+        [rejection(store, "plan", subject)],
         [`checkmate plan edit ${subject} --patch`]
       );
     const answer = [
@@ -9456,6 +9463,7 @@ function planStatus(store, planId) {
     );
     for (const run2 of incomplete) causes.add(run2.runId);
     const why = [
+      ...openRejections(store, planId).map((item) => rejection(store, "result", item.runId)),
       ...incomplete.map((run2) => `${run2.runId} is ${run2.completion}`),
       ...ready.flatMap((testId) => reasons2.get(testId))
     ];
@@ -9508,6 +9516,20 @@ function planStatus(store, planId) {
     openRuns,
     defects
   };
+}
+function rejection(store, kind, subject) {
+  const decision = latestApproval(store, kind, subject);
+  return `${subject} was rejected by ${decision.actor}: ${decision.rationale}`;
+}
+function openRejections(store, planId) {
+  const { plan } = planRevision(store, planId);
+  const runs = runList(store, { planId });
+  const { ready, latest, rejected } = planRecord(store, plan, runs);
+  return runs.filter((run2) => rejected.has(run2.runId)).map((run2) => ({
+    runId: run2.runId,
+    testIds: ready.filter((testId) => latest.get(testId)?.some((result) => result.runId === run2.runId)),
+    rationale: latestApproval(store, "result", run2.runId).rationale
+  })).filter((item) => item.testIds.length);
 }
 function delegateHint(stage, subject) {
   return `checkmate delegate ${stage} ${subject} --allow Read --allow Bash`;
@@ -14329,7 +14351,13 @@ var commands = {
       return {
         facts: { sha256: short2(data.sha256), decisions: data.decisions.length },
         lines: [
-          ...data.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+          ...data.decisions.map((decision) => [
+            decision.id,
+            decision.gapId,
+            decision.kind,
+            decision.value,
+            decision.rationale
+          ]),
           ...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
           ...data.tests.flatMap(testLines)
         ]
@@ -14574,7 +14602,8 @@ var commands = {
             finding.assertionIds,
             finding.title
           ]),
-          ...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question])
+          ...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
+          ...decisionLines(detail.result?.latestDecision)
         ]
       };
     }
@@ -14667,6 +14696,7 @@ var commands = {
         operation.command,
         operation.status,
         operation.subjects,
+        ...rationaleOf(operation.arguments),
         operation.rowid
       ])
     })
@@ -14796,6 +14826,13 @@ function showPlan(store, args) {
     tests: picked
   });
 }
+function decisionLines(decision) {
+  return decision ? [["decision", decision.verdict, decision.actor, decision.at, decision.rationale]] : [];
+}
+function rationaleOf(input) {
+  const rationale = input.rationale;
+  return typeof rationale === "string" && rationale ? [rationale] : [];
+}
 function testLines(test) {
   return [
     [test.id, test.readiness, test.capability, test.title],
@@ -14834,13 +14871,21 @@ function printPlan(reply) {
       ...plan.requirements.map((requirement) => [requirement.id, coverage2.get(requirement.id), requirement.text]),
       ...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
       ...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-      ...plan.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+      ...plan.decisions.map((decision) => [
+        decision.id,
+        decision.gapId,
+        decision.kind,
+        decision.value,
+        decision.rationale
+      ]),
       ...detail.pendingDecisions.map((decision) => [
         decision.id,
         decision.gapId,
         `pending ${decision.kind}`,
-        decision.value
-      ])
+        decision.value,
+        decision.rationale
+      ]),
+      ...decisionLines(detail.approval.latest)
     ]
   };
 }

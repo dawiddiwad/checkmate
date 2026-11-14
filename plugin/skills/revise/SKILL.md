@@ -7,9 +7,9 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, t
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
-1. Run `checkmate plan pending <planId>`. It prints each pending decision, then the affected gaps and tests with their assertions.
+1. Run `checkmate plan pending <planId>`. It prints each pending decision with its ID, gap, kind, value, and rationale, then the affected gaps and tests with their assertions.
 2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
-3. For each decision, find the change in the affected tests that the decision value requires.
+3. For each decision, find the change in the affected tests that the decision value requires. Read the rationale too. It can limit or explain the value.
 4. Write the delta. Use the shape below.
 5. Send the delta in a heredoc: `checkmate plan revise <planId> --actor claude:revise <<'EOF'`, the JSON, then `EOF`.
 6. If the command refuses the delta, correct it and run step 5 again.

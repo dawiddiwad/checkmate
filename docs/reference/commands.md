@@ -82,10 +82,17 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 
 - **inbox.** The first field of a line is `<planId@rev>/<gapId>`, `<planId@rev>`, `<runId>`, or `<planId>`. The second field is `gap`, `run_gap`, `plan`, `result`, or `requested`. A `run_gap` line is a gap of a run that the plan does not have yet. Its fourth field is the run ID. A `plan` line is a latest revision that waits for approval, or a rejected latest revision. The summary of a rejected revision starts with `Rejected. Change the plan.`, and `--json` gives `approval` as `pending` or `rejected`. A `result` line is a finished run without a decision, when result acceptance is required. The inbox lists every run that needs an oracle verdict before the plan can finish: each run that has the latest outcome of a ready test, and each run with an open defect of a ready test. It lists them also while `status` waits on `qa` or `factory`, because the oracle can accept a result, or reject a false defect, at any time.
 - **plan list.** Prints `gaps=`, `approval=`, `blocked=`, `state=`, and `waitsOn=` for each plan. `gaps=` lists the open blocking gaps, also of runs. A request without a revision prints `status=requested`. Filters: `--needs-decision`, `--awaiting-approval`, `--blocked`, and `--waits-on <planner|oracle|qa|factory|none>`.
-- **plan show.** Takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`.
+- **plan show.** Takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`. A decision line gives the decision ID, the gap, the kind, the value, and the rationale. When the revision has an approval decision, the last line is `decision`, the verdict, the actor, the time, and the rationale.
+- **plan pending.** Prints one line for each pending decision: the decision ID, the gap, the kind, the value, and the rationale. Then it prints the affected gaps and tests.
 - **target show.** Prints one `entryPoint` line for each entry point, the `authentication` kind and references, the tools, and one `instance` line for each active instance. With `--instance <instanceId>`, it also prints `entry`, `environment`, and `reference` lines with the values of that instance.
 - **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values as `<entryPoint>=<value>`. The entries are separated by `,`. A value that contains a space, `,`, `=`, `"`, or `\` is a JSON string, for example `web="https://shop.example.com/?a=b"`. That JSON string is the only escaping layer: `C:\app "x"` prints as `web="C:\\app \"x\""`. Read it with a JSON parser.
 - **target instance retire.** When started runs use the instance, it prints a `warning` line that names them.
+- **run show.** Line 1 has `acceptance=`. When the result has a decision, the last line is `decision`, the verdict, the actor, the time, and the rationale.
+
+  ```text
+  decision	rejected	Dawid	2026-11-14T21:04:53.915Z	I need fullsize screenshots for evidence
+  ```
+
 - **run list.** Prints the run, the plan revision, the build, the instance, the state, the completion, the coverage, and the acceptance.
 - **finding list.** Prints one line for each finding of each run, oldest first: `<runId>/<findingId>`, the plan revision, the build, the instance, the type, the severity, the tests, the metadata as `key=value` pairs separated by `; `, and the title. `--plan <planId>` keeps the findings of one plan. `--open` keeps the [open defects](runs.md#open-defects), also of deferred or removed tests. `status` prints only the open defects of ready tests. For the complete metadata and the other fields, use `--json`. `--json` gives `findings`, and each row has `runId`, `planId`, `revision`, `build`, `instanceId`, `testIds`, `findingId`, `type`, `severity`, `title`, `expected`, `observed`, `reproduction`, `requirementIds`, `assertionIds`, `evidenceIds`, and `metadata`.
 
@@ -94,7 +101,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
   run-1/F1	checkout@2	build-1	local	defect	high	T2	component=pricing; jiraKey=SHOP-142	Promotion stacks with loyalty
   ```
 
-- **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
+- **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. A decision with a rationale (`gap answer`, `plan approve`, `plan reject`, `result accept`, `result reject`) has the rationale before the row ID. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
 
 ## Loop states
 
@@ -112,7 +119,7 @@ next	checkmate delegate revise checkout --allow Read --allow Bash
 | `needs_plan`        | planner  | The plan request has no revision.                                                                                                                                     |
 | `run_in_progress`   | qa       | One or more runs of the plan are started.                                                                                                                             |
 | `needs_revision`    | planner  | A gap answer waits for the revise stage.                                                                                                                              |
-| `plan_rejected`     | oracle   | The latest revision is rejected. Change the plan.                                                                                                                     |
+| `plan_rejected`     | oracle   | The latest revision is rejected. Change the plan. The `why` line gives the actor and the rationale.                                                                   |
 | `needs_answers`     | oracle   | A gap or a run gap is open without an answer.                                                                                                                         |
 | `needs_approval`    | oracle   | The latest revision waits for approval.                                                                                                                               |
 | `ready_to_run`      | qa       | The latest revision is approved or needs no approval, no run is finished, and the gate can select a test.                                                             |
@@ -123,6 +130,8 @@ next	checkmate delegate revise checkout --allow Read --allow Bash
 | `awaits_acceptance` | oracle   | Each ready test passed in its latest run. One or more of these runs wait for acceptance. The `why` lines name them.                                                   |
 | `accepted`          | none     | The oracle accepted each run that has the latest outcome of a ready test.                                                                                             |
 | `passed`            | none     | Each ready test passed in its latest run. Result acceptance is not required.                                                                                          |
+
+When the oracle rejected the latest revision, or a run that has a latest outcome of a ready test, a `why` line gives the decision: `<subject> was rejected by <actor>: <rationale>`. Address the rationale in the next revision or the next run.
 
 A `next` line is a hint for a person or an agent. Do not parse it. Replace each `<placeholder>` with a value, and the command runs. The gate does not refuse a `run begin` hint. A state can give more than one `next` line: one `delegate execute` for each started run, one retest for each run with open defects, one rerun for each run that gives a `needs_retest` reason, and one `result accept` for each run that waits. `--json` gives `next` as a list. A `delegate` hint has the minimum rules `--allow Read --allow Bash`. When the target has two or more active instances, a `run begin` hint has `--instance`: the instance of the earlier run when it is still active, else `<instanceId>`. A rerun uses the build and the instance of the run that needs it. When that instance is retired, the rerun is a retest on a new instance with `--retest-of` and the same build. When a test has a cross-plan dependency, a `run begin` hint names the build on which the dependencies select the most tests, and the newest build on a tie.
 
@@ -222,6 +231,8 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 | `execute` | `runId`    | `run begin`                             | The run is finished.                                   |
 
 `delegate` starts one new `claude -p` session with the bundled plugin, a response schema, `--permission-prompts none`, and `--no-session-persistence`. It sets `CHECKMATE_ACTOR=claude:<stage>` for the worker.
+
+**Rejected results.** When the oracle rejected a run that has a latest outcome of a selected test, the execute prompt has the line `The oracle rejected <runId>: <rationale>. Address it.`
 
 **Trust.** The parent does not trust the worker's summary. It reads the database and returns the response of the recorded command, with `operation=<id>` on line 1. A worker that reports `completed` without the change gives `operational_error`. In setup, plan, and revise, a worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons, for example a source that it cannot read.
 

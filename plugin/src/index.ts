@@ -49,6 +49,7 @@ export {
 	planHistory,
 	runList,
 	runDetail,
+	openRejections,
 	operationLog,
 	changesAfter,
 	evidenceBytes,

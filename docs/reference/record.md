@@ -45,7 +45,7 @@ The actor is a record. It is not a proof of identity. Checkmate has no authentic
 
 Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A write that cannot get the database lock records nothing. A read, for example `status` or `inbox`, records nothing.
 
-Each row has a row ID. The row ID increases in the order of the writes. The last field of each line is the row ID.
+Each row has a row ID. The row ID increases in the order of the writes. The last field of each line is the row ID. A decision line has its rationale before the row ID.
 
 ```sh
 checkmate log --subject plan:checkout --limit 5
@@ -53,7 +53,7 @@ checkmate log --subject plan:checkout --limit 5
 
 ```text
 completed log
-01M7CVS3TPCHJBVEYTHVCAAHB7	2026-11-14T11:06:15.767Z	po	result accept	completed	run:run-2,plan:checkout,inbox	42
+01M7CVS3TPCHJBVEYTHVCAAHB7	2026-11-14T11:06:15.767Z	po	result accept	completed	run:run-2,plan:checkout,inbox	The totals match the receipt.	42
 01M7CVS3M0B4SXWSEEBHYDMTH4	2026-11-14T11:06:15.552Z	po	run finish	completed	run:run-2,plan:checkout,inbox	41
 ```
 

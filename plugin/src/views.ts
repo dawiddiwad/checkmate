@@ -212,11 +212,18 @@ export function planDetail(store: Store, planId: string, revision: number | null
 	const approval = planApproval(store, selected.plan, selected.sha256)
 	const pending =
 		latest.plan.revision === selected.plan.revision
-			? all<{ id: string; gap_id: string; kind: string; value: string; actor: string }>(
+			? all<{ id: string; gap_id: string; kind: string; value: string; actor: string; rationale: string }>(
 					store,
-					'SELECT id, gap_id, kind, value, actor FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
+					'SELECT id, gap_id, kind, value, actor, rationale FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
 					planId
-				).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind, value: row.value, actor: row.actor }))
+				).map((row) => ({
+					id: row.id,
+					gapId: row.gap_id,
+					kind: row.kind,
+					value: row.value,
+					actor: row.actor,
+					rationale: row.rationale,
+				}))
 			: []
 	return {
 		planId,
@@ -404,7 +411,7 @@ export function planStatus(store: Store, planId: string) {
 			return loop(
 				'plan_rejected',
 				'oracle',
-				[`${subject} is rejected`],
+				[rejection(store, 'plan', subject)],
 				[`checkmate plan edit ${subject} --patch`]
 			)
 		const answer = [
@@ -486,6 +493,7 @@ export function planStatus(store: Store, planId: string) {
 		)
 		for (const run of incomplete) causes.add(run.runId)
 		const why = [
+			...openRejections(store, planId).map((item) => rejection(store, 'result', item.runId)),
 			...incomplete.map((run) => `${run.runId} is ${run.completion}`),
 			...ready.flatMap((testId) => reasons.get(testId)!),
 		]
@@ -539,6 +547,25 @@ export function planStatus(store: Store, planId: string) {
 		openRuns,
 		defects,
 	}
+}
+
+function rejection(store: Store, kind: 'plan' | 'result', subject: string) {
+	const decision = latestApproval(store, kind, subject)!
+	return `${subject} was rejected by ${decision.actor}: ${decision.rationale}`
+}
+
+export function openRejections(store: Store, planId: string) {
+	const { plan } = planRevision(store, planId)
+	const runs = runList(store, { planId })
+	const { ready, latest, rejected } = planRecord(store, plan, runs)
+	return runs
+		.filter((run) => rejected.has(run.runId))
+		.map((run) => ({
+			runId: run.runId,
+			testIds: ready.filter((testId) => latest.get(testId)?.some((result) => result.runId === run.runId)),
+			rationale: latestApproval(store, 'result', run.runId)!.rationale,
+		}))
+		.filter((item) => item.testIds.length)
 }
 
 function delegateHint(stage: 'plan' | 'revise' | 'execute', subject: string) {

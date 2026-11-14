@@ -19,6 +19,8 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. Each to
 
   For an early run while gaps are open, or when the oracle asks for the ready tests, give `--partial ready_only` and no `--tests` to `run gate` and `run begin`. Checkmate selects the ready tests. It prints `tests=<selection>` and a `<testId> left_out <reason>` line for each other test.
 
+- Same session, run after a rejected result: run `checkmate status <planId>` first. A `why` line `<runId> was rejected by <actor>: <rationale>` gives the reason of the oracle. `checkmate run show <runId>` prints the same decision on its `decision` line. Do the retest so that it addresses the rationale, for example with the evidence that the oracle asks for. When the rationale needs a plan change, stop and tell the oracle.
+- Delegated stage after a rejected result: the prompt has the line `The oracle rejected <runId>: <rationale>. Address it.` Address the rationale in the run.
 - Same session, stalled run: run `checkmate run resume <runId> --actor claude:execute`. Check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
 
 Then:

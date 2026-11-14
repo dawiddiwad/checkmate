@@ -2,6 +2,7 @@ import type { TestContext } from 'node:test'
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
 import type { Store } from '../plugin/src/store.ts'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -340,6 +341,10 @@ export function followHints(
 				minimumRules.every((rule) => allow.includes(rule)),
 				command
 			)
+			const parsed = execFileSync(process.execPath, [join(root, 'cli/src/main.ts'), ...args, '--help'], {
+				encoding: 'utf8',
+			})
+			assert.match(parsed, /^completed delegate\n/, `${command}\n${parsed}`)
 			continue
 		}
 		const copy = directory(t)

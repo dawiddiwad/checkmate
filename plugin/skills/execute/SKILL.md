@@ -34,6 +34,7 @@ Use the entry values of the run instance for every action. Do not use another in
 
 - `url`: open or call this URL.
 - `value`: use the value as it is, for example an org alias in `--target-org <alias>`.
+- Run a `command` entry exactly as recorded and alone. Do not edit it, chain it, or pipe it into other commands. Stop and record a `blocked` gap when the command would change state outside `allowedOperations`, when the host refuses the permission, or when the command fails. Do not work around a refusal.
 - `command`: run the command at test time, before the action that needs it. Use its output, for example a one-time login URL. Do not record the output as an entry value. Do not put a login URL, a token, or other secret output in evidence.
 
 `references` name authentication aliases or environment variables. The host resolves them. Do not record their values.

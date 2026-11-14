@@ -346,7 +346,9 @@ export function planStatus(store: Store, planId: string) {
 						? `${started.runId} is started on build ${started.build} on instance ${started.instanceId}`
 						: `${openRuns.length} runs are started`,
 				],
-				`checkmate delegate execute ${started.runId}`
+				openRuns.length === 1
+					? `checkmate delegate execute ${started.runId}`
+					: 'checkmate delegate execute <runId>, for each started run'
 			)
 		if (pendingDecisions.length)
 			return loop(

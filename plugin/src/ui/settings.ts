@@ -212,7 +212,14 @@ function entryList(instance: InstanceRecord) {
 			([name, value]) =>
 				html`<div>
 					<dt class="mono">${name}</dt>
-					<dd><code>${value}</code></dd>
+					<dd>
+						<code
+							>${join(
+								value.split(' ').map((word) => html`<span class="word">${word}</span>`),
+								' '
+							)}</code
+						>
+					</dd>
 				</div>`
 		)}
 	</dl>`
@@ -227,10 +234,10 @@ function actorInput(context: Context, id: string) {
 }
 
 function retireControl(context: Context, targetId: string, instance: InstanceRecord, retire: RetireState) {
-	if (instance.retired) return html`<span class="muted small">by ${instance.retired.actor}</span>`
+	if (instance.retired) return html`<span class="muted small">retired by ${instance.retired.actor}</span>`
 	const failed = retire?.instanceId === instance.instanceId ? retire.error : null
 	return html`<details class="retire" ${failed ? html`open` : ''} data-open-key="retire:${instance.instanceId}">
-		<summary class="btn small">Retire</summary>
+		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
 		<form
 			method="post"
 			action="/settings/targets/${targetId}/instances/${instance.instanceId}/retire"
@@ -269,7 +276,7 @@ function instancesTable(context: Context, targetId: string, instances: InstanceR
 							<td>${entryList(instance)}</td>
 							<td>${instance.environment ?? none()}</td>
 							<td>${words(instance.references)}</td>
-							<td class="nowrap">${instance.addedBy} · ${time(instance.addedAt)}</td>
+							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
 							<td>${instance.retired ? pill('retired') : pill('active')}</td>
 							<td>${retireControl(context, targetId, instance, retire)}</td>
 						</tr>`
@@ -389,6 +396,12 @@ export function targetPage(
 				</section>
 				<section aria-labelledby="instances" data-region="instances">
 					<h2 id="instances">Instances <span class="n">${instances.length}</span></h2>
+					${
+						retire &&
+						!instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired)
+							? html`<p class="form-error" role="alert">${retire.error}</p>`
+							: ''
+					}
 					${instancesTable(context, targetId, instances, retire)}
 				</section>
 				${shape}

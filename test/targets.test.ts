@@ -274,7 +274,7 @@ test('instances are added and retired without a new revision; retired IDs are no
 	)
 	assert.throws(
 		() => addInstance(opened, actor, { targetId: 'crm', instanceId: 'uat', instance: sandbox }),
-		/Instance crm\/uat exists/
+		/Instance crm\/uat is retired\. Use a new instance ID/
 	)
 	addInstance(opened, actor, { targetId: 'crm', instanceId: 'uat-2', instance: sandbox })
 	const list = instanceList(opened, 'crm')
@@ -357,8 +357,18 @@ test('target list, show, and instance commands print entry points, authenticatio
 		'piped\tretired\t-\tweb=http://127.0.0.1:5000',
 	])
 	assert.match(cli(workspace, ['target', 'show', 'checkout-local', '--instance', 'nope']).output, /Unknown instance/)
+	const trimmed = json(workspace, [
+		'target',
+		'instance',
+		'add',
+		'checkout-local',
+		'trimmed',
+		'--entry',
+		'web=  http://127.0.0.1:6000 ',
+	])
+	assert.deepEqual(trimmed.body.entries, { web: 'http://127.0.0.1:6000' })
 	assert.match(
 		cli(workspace, ['target', 'instance', 'drop', 'checkout-local']).output,
-		/Unknown command: target instance/
+		/Unknown command: target instance drop\. Run/
 	)
 })

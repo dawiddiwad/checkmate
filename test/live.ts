@@ -101,16 +101,25 @@ try {
 		'--operations',
 		'read_catalog,create_fixture_order,apply_fixture_discount',
 	])
+	checkmate(workspace, [
+		'target',
+		'instance',
+		'add',
+		'checkout-local',
+		'local',
+		'--entry',
+		`web=${app.baseUrl}`,
+		'--environment',
+		'local fixture',
+	])
+	const instancesBefore = checkmate(workspace, ['target', 'instance', 'list', 'checkout-local']).instances
 	assert.equal((await stage('setup', 'setup', 'checkout-local')).status, 'completed')
 	const target = checkmate(workspace, ['target', 'show', 'checkout-local'])
 	assert.equal(target.profile.readyForLiveExecution, true)
 	assert.deepEqual(
-		target.instances.map((instance: { instanceId: string; entries: unknown }) => [
-			instance.instanceId,
-			instance.entries,
-		]),
-		[['local', { web: app.baseUrl }]],
-		'Setup did not add the first instance'
+		checkmate(workspace, ['target', 'instance', 'list', 'checkout-local']).instances,
+		instancesBefore,
+		'Setup changed the instances of the target'
 	)
 
 	checkmate(workspace, ['plan', 'open', 'checkout', '--target', `checkout-local@${target.revision}`], request)

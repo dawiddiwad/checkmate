@@ -75,7 +75,7 @@ function targetRequestCheck(input: Omit<TargetRequest, 'tools'> & { tools?: Requ
 	requireIdentifier(input.targetId, 'target ID')
 	requireCondition(
 		Array.isArray(input.entryPoints) && input.entryPoints.length > 0,
-		'Missing entry points. Give one or more --entry-point <name>:<url|command|value>[:<purpose>].'
+		'Missing entry points. Give one or more --entry-point <name>:<url|command|value>:<purpose>.'
 	)
 	const entryPoints = input.entryPoints.map(entryPointCheck)
 	requireCondition(
@@ -328,7 +328,11 @@ export function addInstance(
 		)
 		if (existing) {
 			requireCondition(
-				existing.body === canonical(instance) && !retirement(store, input.targetId, instanceId),
+				!retirement(store, input.targetId, instanceId),
+				`Instance ${subject} is retired. Use a new instance ID.`
+			)
+			requireCondition(
+				existing.body === canonical(instance),
 				`Instance ${subject} exists. An instance does not change. Use a new instance ID.`
 			)
 			return { reply: completed(subject, { ...instance, instanceId, recorded: false }), subjects: [] }

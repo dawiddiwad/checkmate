@@ -1962,7 +1962,15 @@ a.icon-btn[aria-current='page'] {
 }
 .entries dd {
 	margin: 0;
-	overflow-wrap: anywhere;
+}
+.entries code {
+	overflow-wrap: normal;
+}
+.entries .word {
+	white-space: nowrap;
+}
+.main-col > section {
+	min-width: 0;
 }
 .retire > summary {
 	list-style: none;

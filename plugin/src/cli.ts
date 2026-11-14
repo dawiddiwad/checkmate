@@ -145,7 +145,7 @@ function instanceInput(args: Args, stdin: () => unknown) {
 		requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
 		const name = entry.slice(0, at)
 		requireCondition(!(name in values), `Entry point ${name} is given twice`)
-		values[name] = entry.slice(at + 1)
+		values[name] = entry.slice(at + 1).trim()
 	}
 	return {
 		entries: values,
@@ -1106,7 +1106,7 @@ function commandName(argv: string[]) {
 	}
 	for (let count = words.length; count > 0; count--)
 		if (commands[words.slice(0, count).join(' ')]) return words.slice(0, count).join(' ')
-	throw new Error(`Unknown command: ${words.slice(0, 2).join(' ') || '(none)'}. Run checkmate --help.`)
+	throw new Error(`Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`)
 }
 
 function parse(name: string, tokens: string[]) {

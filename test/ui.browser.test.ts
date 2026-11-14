@@ -348,7 +348,7 @@ test('Settings adds and retires an instance from the keyboard and updates live',
 	await row.locator('summary', { hasText: 'Retire' }).focus()
 	await page.keyboard.press('Enter')
 	await row.getByRole('button', { name: 'Confirm retire' }).click()
-	await page.locator('#instance-uat').getByText('retired').waitFor()
+	await page.locator('#instance-uat').getByText('retired by qa-lead').waitFor()
 	await checkmate(workspace, [
 		'target',
 		'instance',

@@ -377,6 +377,7 @@ test('plan status lists every open run of a matrix with its instance', (t) => {
 		instances.map((instanceId, i) => [`run-${i + 1}`, instanceId])
 	)
 	assert.deepEqual(status.why, ['5 runs are started'])
+	assert.equal(status.next, 'checkmate delegate execute <runId>, for each started run')
 	const printed = cli(opened.workspace, ['status', 'checkout']).lines
 	assert(printed.includes('run-3\tstarted\tbuild=build-1\tinstance=staging'), printed.join('\n'))
 	assert.deepEqual(

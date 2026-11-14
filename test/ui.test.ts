@@ -15,6 +15,7 @@ import {
 	closeStore,
 	openPlan,
 	openStore,
+	addInstance,
 	instanceList,
 	operationLog,
 	planCandidate,
@@ -868,4 +869,46 @@ test('the run page shows XML and CSV evidence inline as text', async (t) => {
 	const page = (await call(ui, '/runs/run-8')).body
 	assert.match(page, /<pre tabindex="0">&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/)
 	assert.match(page, /<pre tabindex="0">sku,total\nLAMP-01,400\n<\/pre>/)
+})
+
+test('instance values are escaped in the table and the form; a javascript: URL entry is text only', async (t) => {
+	const { ui, workspace } = await start(t)
+	const hostile = 'javascript:alert("x")//<script>alert(1)</script>'
+	read(workspace, (store) =>
+		addInstance(store, agent, {
+			targetId: 'shop-local',
+			instanceId: 'hostile',
+			instance: { entries: { web: hostile }, environment: '<script>alert(2)</script>"' },
+		})
+	)
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	assert(!page.includes('<script>alert'), 'raw script in the page')
+	assert.match(
+		page,
+		/<span class="word">javascript:alert\(&quot;x&quot;\)\/\/&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/span>/
+	)
+	assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;&quot;/)
+	assert.doesNotMatch(page, /href="javascript:/i)
+	const csrf = field(page, 'csrf')
+	const refused = await call(ui, '/settings/targets/shop-local/instances', {
+		form: { csrf, instanceId: 'x"><script>', 'entry.web': '"><script>alert(3)</script>' },
+		headers: actorCookie,
+	})
+	assert.equal(refused.status, 422)
+	assert(!refused.body.includes('<script>alert(3)'), 'raw script in the form')
+	assert.match(refused.body, /value="&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;"/)
+	assert.match(refused.body, /value="x&quot;&gt;&lt;script&gt;"/)
+})
+
+test('a retire of an unknown instance shows a visible error; each Retire control names its instance', async (t) => {
+	const { ui } = await start(t)
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	assert.match(page, /aria-label="Retire staging"/)
+	assert.match(page, /retired by checkmate-agent/)
+	const unknown = await call(ui, '/settings/targets/shop-local/instances/nope/retire', {
+		form: { csrf: field(page, 'csrf'), confirmed: '1' },
+		headers: actorCookie,
+	})
+	assert.equal(unknown.status, 422)
+	assert.match(unknown.body, /<p class="form-error" role="alert">Unknown instance: shop-local\/nope\./)
 })

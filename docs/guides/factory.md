@@ -69,9 +69,14 @@ Add or retire an instance at any time. This needs no new profile revision and no
 
 ```sh
 checkmate target instance add shop staging --entry web=https://staging.shop.example --environment "Shared staging"
-checkmate target instance retire shop local
+checkmate target instance add shop preview --entry web=https://preview.shop.example --environment "Old preview"
+checkmate target instance retire shop preview
 checkmate target instance list shop
 ```
+
+The examples below use the active instances `local` and `staging`.
+
+A `command` entry runs a program at test time, for example `sf org open --target-org <alias> --url-only --json`. The `--allow` rules of `delegate execute` must cover the programs that the command entries use, for example `--allow "Bash(sf *)"`.
 
 ### 2. Iteration 1: plan and run early
 

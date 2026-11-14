@@ -6674,7 +6674,7 @@ function targetRequestCheck(input) {
   requireIdentifier(input.targetId, "target ID");
   requireCondition(
     Array.isArray(input.entryPoints) && input.entryPoints.length > 0,
-    "Missing entry points. Give one or more --entry-point <name>:<url|command|value>[:<purpose>]."
+    "Missing entry points. Give one or more --entry-point <name>:<url|command|value>:<purpose>."
   );
   const entryPoints = input.entryPoints.map(entryPointCheck);
   requireCondition(
@@ -6901,7 +6901,11 @@ function addInstance(store, actor, input) {
     );
     if (existing) {
       requireCondition(
-        existing.body === canonical(instance) && !retirement(store, input.targetId, instanceId),
+        !retirement(store, input.targetId, instanceId),
+        `Instance ${subject} is retired. Use a new instance ID.`
+      );
+      requireCondition(
+        existing.body === canonical(instance),
         `Instance ${subject} exists. An instance does not change. Use a new instance ID.`
       );
       return { reply: completed(subject, { ...instance, instanceId, recorded: false }), subjects: [] };
@@ -8829,7 +8833,7 @@ function planStatus(store, planId) {
         [
           openRuns.length === 1 ? `${started.runId} is started on build ${started.build} on instance ${started.instanceId}` : `${openRuns.length} runs are started`
         ],
-        `checkmate delegate execute ${started.runId}`
+        openRuns.length === 1 ? `checkmate delegate execute ${started.runId}` : "checkmate delegate execute <runId>, for each started run"
       );
     if (pendingDecisions2.length)
       return loop(
@@ -12075,7 +12079,14 @@ function entryList(instance) {
 		${Object.entries(instance.entries).map(
     ([name, value2]) => html2`<div>
 					<dt class="mono">${name}</dt>
-					<dd><code>${value2}</code></dd>
+					<dd>
+						<code
+							>${join4(
+      value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
+      " "
+    )}</code
+						>
+					</dd>
 				</div>`
   )}
 	</dl>`;
@@ -12088,10 +12099,10 @@ function actorInput(context, id2) {
 	</div>`;
 }
 function retireControl(context, targetId, instance, retire) {
-  if (instance.retired) return html2`<span class="muted small">by ${instance.retired.actor}</span>`;
+  if (instance.retired) return html2`<span class="muted small">retired by ${instance.retired.actor}</span>`;
   const failed = retire?.instanceId === instance.instanceId ? retire.error : null;
   return html2`<details class="retire" ${failed ? html2`open` : ""} data-open-key="retire:${instance.instanceId}">
-		<summary class="btn small">Retire</summary>
+		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
 		<form
 			method="post"
 			action="/settings/targets/${targetId}/instances/${instance.instanceId}/retire"
@@ -12128,7 +12139,7 @@ function instancesTable(context, targetId, instances, retire) {
 							<td>${entryList(instance)}</td>
 							<td>${instance.environment ?? none2()}</td>
 							<td>${words3(instance.references)}</td>
-							<td class="nowrap">${instance.addedBy} · ${time(instance.addedAt)}</td>
+							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
 							<td>${instance.retired ? pill("retired") : pill("active")}</td>
 							<td>${retireControl(context, targetId, instance, retire)}</td>
 						</tr>`
@@ -12234,6 +12245,7 @@ function targetPage(store, context, targetId, revision, form = null, retire = nu
 				</section>
 				<section aria-labelledby="instances" data-region="instances">
 					<h2 id="instances">Instances <span class="n">${instances.length}</span></h2>
+					${retire && !instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired) ? html2`<p class="form-error" role="alert">${retire.error}</p>` : ""}
 					${instancesTable(context, targetId, instances, retire)}
 				</section>
 				${shape}
@@ -12979,7 +12991,7 @@ function instanceInput(args, stdin) {
     requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`);
     const name = entry.slice(0, at);
     requireCondition(!(name in values), `Entry point ${name} is given twice`);
-    values[name] = entry.slice(at + 1);
+    values[name] = entry.slice(at + 1).trim();
   }
   return {
     entries: values,
@@ -13861,7 +13873,7 @@ function commandName(argv) {
   }
   for (let count = words4.length; count > 0; count--)
     if (commands[words4.slice(0, count).join(" ")]) return words4.slice(0, count).join(" ");
-  throw new Error(`Unknown command: ${words4.slice(0, 2).join(" ") || "(none)"}. Run checkmate --help.`);
+  throw new Error(`Unknown command: ${words4.join(" ") || "(none)"}. Run checkmate --help.`);
 }
 function parse(name, tokens) {
   const command = commands[name];

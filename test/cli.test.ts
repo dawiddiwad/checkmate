@@ -199,6 +199,8 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	assert.equal(json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions[0].actor, 'reviewer')
 	const cases: Array<[string[], string]> = [
 		[['deploy'], 'Unknown command: deploy. Run checkmate --help.'],
+		[['target', 'instance', 'drop', 'x', 'y'], 'Unknown command: target instance drop. Run checkmate --help.'],
+		[['target', 'instance', '--json'], 'Unknown command: target instance. Run checkmate --help.'],
 		[
 			['plan', 'show', 'checkout', '--verbose'],
 			'Unknown option --verbose for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]',

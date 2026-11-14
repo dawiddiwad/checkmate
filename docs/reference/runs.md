@@ -4,6 +4,8 @@
 
 QA records one result for each assertion, and Checkmate derives each test outcome from those results. Completion, test outcomes, and coverage are three separate fields, so a finished run with failed tests is a correct result.
 
+<img src="../img/run.png" alt="Diagram: the record of run-1 on plan checkout@2, build b1, with tests T1 and T2. T1, Standard total, passed: its assertion T1.A1, Total is 400 PLN, passed with evidence T1-A1.json and its sha256. T2, Promotion, failed: its assertion T2.A1, totalPLN equals 240, failed with the observation totalPLN 220 and evidence T2-A1.json. Defect F1 names T2.A1 and its evidence. The run can also record new gaps for the oracle. On the right, four separate answers: completion is completed, outcome is passed 1 and failed 1, coverage is complete, and the oracle's acceptance is accepted. Each assertion result is final, and Checkmate derives the test outcome from the assertion results." width="100%"/>
+
 **On this page:** [Run commands](#run-commands) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
 
 ## Run commands
@@ -132,13 +134,18 @@ A tool or access failure is an `error` outcome, not a defect. New ambiguity is a
 
 `run finish` closes each open selected test as `error` with the reason `Run stopped before the test closed. Actions may have occurred.` It records each unselected test as `not_run`.
 
-**Requirement status.**
+Each requirement gets one coverage status:
 
-- `tested`: it has planned tests, no open or deferred blocking gap applies, and each of its tests is `passed` or `failed`.
-- `deferred`: only an oracle decision leaves it open. A deferred blocking gap applies, and its other tests are `passed` or `failed`.
-- `uncovered`: any other case, with a reason.
+| Status      | When                                                                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tested`    | It has planned tests, no open or deferred blocking gap applies to it, and each of its tests is `passed` or `failed`.                                |
+| `deferred`  | Only an oracle decision leaves it open: a deferred blocking gap applies, no open blocking gap applies, and each other test is `passed` or `failed`. |
+| `uncovered` | Any other case. The reason says why.                                                                                                                |
 
-**Coverage.** `complete` when every requirement is tested, `partial` when one or more tests ran, else `not_executed`. A narrow retest keeps the requirements of unselected tests uncovered. Outcome counts count only the selected tests.
+- Coverage is `complete` when every requirement is `tested`, `partial` when one or more tests ran, and else `not_executed`.
+- Outcome counts count only the selected tests. Coverage still lists every requirement of the plan.
+- A narrow retest keeps the requirements of unselected tests uncovered.
+- A deferred non-blocking gap does not change coverage.
 
 The exit code of `run finish` is 0 for `completed` and 1 for `interrupted` or `operational_error`. An exit code is not a release decision. Neither is result acceptance by the oracle.
 
@@ -173,7 +180,7 @@ The review UI offers the same exports. [Examples](../examples/README.md) has exp
 - Checkmate does not sanitize evidence. It stores what QA sent.
 - Do not capture credentials, cookies, authorization headers, or full raw transcripts.
 - The workspace owner owns access to the database and how long it keeps evidence. Checkmate cannot delete rows. To remove evidence, delete the database file, or start a new one for each retention period.
-- A digest shows that the bytes did not change after the write. It does not show that an observation is true, that the evidence came from the target, or that QA read it correctly.
+- A digest shows that the bytes did not change after the write. [Limits](record.md#limits) lists what the checks do not show.
 
 ## Next
 

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<title>Checkmate diagrams</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+	@font-face { font-family: 'Space Grotesk'; src: url('../../plugin/src/ui/assets/fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; }
+	@font-face { font-family: 'Inter'; src: url('../../plugin/src/ui/assets/fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
+	@font-face { font-family: 'JetBrains Mono'; src: url('../../plugin/src/ui/assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; }
+	body { display: flex; flex-direction: column; gap: 40px; padding: 20px; }
+	figure { margin: 0; width: 900px; position: relative; background: var(--bg); overflow: hidden; }
+	figure svg { position: absolute; left: 0; top: 0; overflow: visible; }
+	.bar { position: absolute; left: 0; top: 0; width: 900px; height: 48px; border-bottom: 1px solid var(--line); }
+	.bar h2 { margin: 0; padding-left: 16px; font: 600 22px/48px var(--display); }
+	.bar .mark { position: absolute; right: 18px; top: 17px; gap: 4px; }
+	.bar .mark i { width: 14px; height: 14px; }
+	.box { position: absolute; border: 2px solid var(--line-strong); border-radius: 8px; background: var(--card); }
+	.note { position: absolute; font: 400 16px/24px var(--body); color: var(--muted); }
+	.note code, .cmd { font-family: var(--mono); color: var(--text); }
+	.line { stroke: var(--wire); stroke-width: 2; fill: none; }
+	.head { fill: var(--wire); }
+	.loopback { stroke: var(--amber); stroke-width: 3; fill: none; stroke-linecap: round; }
+	.loophead { fill: var(--amber); }
+
+	#roles { height: 560px; }
+	.role { width: 236px; height: 124px; padding: 12px 16px; }
+	.role b { display: block; font: 600 20px/28px var(--display); }
+	.role p { margin: 4px 0 0; font: 400 15px/21px var(--body); color: var(--muted); }
+	.role.planner { border-color: var(--planner-line); }
+	.role.oracle { border-color: var(--oracle-line); }
+	.role.qa { border-color: var(--qa-line); }
+	.role.factory { border-color: var(--factory-line); }
+	.verb { position: absolute; font: 500 14px/20px var(--mono); color: var(--faint); }
+	.record-box { left: 332px; top: 84px; width: 236px; height: 316px; background: #121a28; border-color: var(--blue-line); border-radius: 10px; }
+	.record-box .top { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border-bottom: 1px solid var(--blue-line); font: 600 18px var(--display); }
+	.record-box .top .mark { gap: 3px; }
+	.record-box .top .mark i { width: 11px; height: 11px; }
+	.record-box .file { padding: 10px 14px 4px; font: 500 13px var(--mono); color: var(--muted); }
+	.record-box ul { list-style: none; margin: 0; padding: 4px 14px; }
+	.record-box li { display: flex; align-items: center; gap: 10px; height: 38px; font: 500 16px var(--mono); }
+	.record-box li i { width: 10px; height: 10px; border-radius: 2px; flex: none; background: var(--faint); }
+	.badge { position: absolute; font: 500 15px/30px var(--mono); color: var(--muted); border: 1px dashed var(--human-line); border-radius: 15px; padding: 0 14px; background: var(--card); white-space: nowrap; }
+
+	#life { height: 712px; }
+	.state { position: absolute; left: 28px; width: 236px; height: 52px; padding: 5px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--card); }
+	.state b { display: block; font: 600 16px/22px var(--mono); }
+	.state span { display: block; font: 400 13px/18px var(--body); color: var(--muted); }
+	.state.planner { border-color: var(--planner-line); }
+	.state.oracle { border-color: var(--oracle-line); }
+	.state.qa { border-color: var(--qa-line); }
+	.state.factory { border-color: var(--factory-line); }
+	.state.none { border-color: var(--green); }
+	.step-card { position: absolute; left: 324px; width: 404px; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--card); white-space: nowrap; }
+	.step-card b { width: 70px; flex: none; font: 600 16px var(--display); }
+	.step-card span { flex: 1; font: 400 16px var(--body); }
+	.step-card code { font: 500 13px var(--mono); color: var(--muted); }
+	.step-card.quiet { border-style: dashed; background: var(--bg); }
+	.loop-label { position: absolute; left: 776px; width: 112px; font: 500 14px/20px var(--body); color: var(--amber); }
+
+	#run { height: 632px; }
+	.node { position: absolute; display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--card); white-space: nowrap; font: 400 15px var(--body); }
+	.node b { font: 600 16px var(--mono); }
+	.node .muted { color: var(--muted); }
+	.node.runnode { border: 2px solid var(--qa-line); background: var(--qa-bg); }
+	.node.defect { border-color: var(--red-line); background: var(--red-bg); }
+	.node.evidence { border-style: dashed; }
+	.pill { font: 500 13px/22px var(--mono); padding: 0 8px; border-radius: 11px; border: 1px solid; }
+	.pill.pass { color: var(--green); border-color: var(--oracle-line); background: var(--oracle-bg); }
+	.pill.fail { color: var(--red); border-color: var(--red-line); background: var(--red-bg); }
+	.pill.plain { color: var(--text); border-color: var(--line-strong); }
+	.pill.accepted { color: var(--bg); border-color: var(--green); background: var(--green); font-weight: 600; }
+	.tree { stroke: var(--line-strong); stroke-width: 2; fill: none; }
+	.field { position: absolute; left: 604px; width: 268px; padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); }
+	.field b { display: block; font: 600 17px/24px var(--display); }
+	.field p { margin: 2px 0 8px; font: 400 14px/20px var(--body); color: var(--muted); }
+	.field.oracle { border-color: var(--oracle-line); }
+	.column-title { position: absolute; font: 600 13px/20px var(--mono); letter-spacing: 1.5px; color: var(--faint); }
+</style>
+
+<figure id="roles">
+	<div class="bar"><h2>Four roles share one record.</h2><div class="mark"><i></i><i></i><i></i><i></i></div></div>
+	<svg width="900" height="560">
+		<path class="line" d="M268 146 H322" /><polygon class="head" points="330 146 320 140 320 152" />
+		<path class="line" d="M632 146 H578" /><polygon class="head" points="570 146 580 140 580 152" />
+		<path class="line" d="M632 338 H578" /><polygon class="head" points="570 338 580 332 580 344" />
+		<path class="line" d="M322 338 H276" /><polygon class="head" points="268 338 278 332 278 344" /><polygon class="head" points="330 338 320 332 320 344" />
+		<path class="line" d="M450 402 V436" stroke-dasharray="4 4" />
+	</svg>
+	<div class="box role planner" style="left: 28px; top: 84px"><b class="planner">Planner</b><p>Turns a ticket into tests. Writes a gap for each unclear requirement.</p></div>
+	<div class="box role oracle" style="left: 636px; top: 84px"><b class="oracle">Oracle</b><p>Answers gaps. Approves plans. Accepts results. An agent or a person.</p></div>
+	<div class="box role factory" style="left: 28px; top: 276px"><b class="factory">Factory</b><p>Runs the agents and their sandboxes. Builds and fixes the code.</p></div>
+	<div class="box role qa" style="left: 636px; top: 276px"><b class="qa">QA</b><p>Runs the tests, early and again on each new build.</p></div>
+	<div class="verb" style="left: 274px; top: 120px">writes</div>
+	<div class="verb" style="left: 580px; top: 120px">writes</div>
+	<div class="verb" style="left: 580px; top: 312px">writes</div>
+	<div class="verb" style="left: 280px; top: 312px">reads</div>
+	<div class="note" style="left: 28px; top: 404px; width: 272px; font-size: 13px; line-height: 18px">It writes only through the commands that it runs, such as <code>run begin</code>.</div>
+	<div class="box record-box">
+		<div class="top"><div class="mark"><i></i><i></i><i></i><i></i></div>checkmate</div>
+		<div class="file">.checkmate/checkmate.db</div>
+		<ul>
+			<li><i></i>targets</li>
+			<li><i style="background: var(--planner)"></i><span class="planner">plans, gaps</span></li>
+			<li><i style="background: var(--oracle)"></i><span class="oracle">decisions</span></li>
+			<li><i style="background: var(--qa)"></i><span class="qa">runs, evidence</span></li>
+			<li><i style="background: var(--qa)"></i><span class="qa">findings</span></li>
+			<li><i></i>operation log</li>
+		</ul>
+	</div>
+	<div class="badge" style="left: 356px; top: 440px">human · review UI</div>
+	<div class="note" style="left: 220px; top: 476px; width: 460px; text-align: center">A human can make the oracle's decisions in the review UI.</div>
+	<div class="note" style="left: 28px; top: 516px; width: 844px; text-align: center; color: var(--faint)">Checkmate keeps the record. It does not start, schedule, or message agents, and it does not change code.</div>
+</figure>
+
+<figure id="life">
+	<div class="bar"><h2>One plan, from ticket to accepted result.</h2><div class="mark"><i></i><i></i><i></i><i></i></div></div>
+	<div class="column-title" style="left: 28px; top: 64px">LOOP STATE · WAITS ON</div>
+	<div class="column-title" style="left: 324px; top: 64px">NEXT STEP</div>
+	<svg width="900" height="712">
+		<path class="line" d="M264 122 H316" /><polygon class="head" points="324 122 314 116 314 128" />
+		<path class="line" d="M264 186 H316" /><polygon class="head" points="324 186 314 180 314 192" />
+		<path class="line" d="M264 250 H316" /><polygon class="head" points="324 250 314 244 314 256" />
+		<path class="line" d="M264 314 H316" /><polygon class="head" points="324 314 314 308 314 320" />
+		<path class="line" d="M264 378 H316" /><polygon class="head" points="324 378 314 372 314 384" />
+		<path class="line" d="M264 442 H316" /><polygon class="head" points="324 442 314 436 314 448" />
+		<path class="line" d="M146 468 V490 Q146 506 162 506 H316" /><polygon class="head" points="324 506 314 500 314 512" />
+		<path class="line" d="M264 570 H316" /><polygon class="head" points="324 570 314 564 314 576" />
+		<path class="loopback" d="M728 378 H756 M728 506 H756 Q764 506 764 498 V194 Q764 186 756 186 H738" />
+		<polygon class="loophead" points="730 186 742 179 742 193" />
+	</svg>
+	<div class="state planner" style="top: 96px"><b class="planner">needs_plan</b><span>waits on planner</span></div>
+	<div class="state oracle" style="top: 160px"><b class="oracle">needs_answers</b><span>waits on oracle</span></div>
+	<div class="state planner" style="top: 224px"><b class="planner">needs_revision</b><span>waits on planner</span></div>
+	<div class="state oracle" style="top: 288px"><b class="oracle">needs_approval</b><span>waits on oracle</span></div>
+	<div class="state qa" style="top: 352px"><b class="qa">ready_to_run</b><span>waits on qa</span></div>
+	<div class="state factory" style="top: 416px"><b class="factory">defects_open</b><span>waits on factory</span></div>
+	<div class="state oracle" style="top: 544px"><b class="oracle">awaits_acceptance</b><span>waits on oracle</span></div>
+	<div class="state none" style="top: 608px"><b class="ok">accepted</b><span>waits on none</span></div>
+	<div class="step-card" style="top: 96px"><b class="planner">Planner</b><span>Writes plan@1 with gap G1.</span><code>plan save</code></div>
+	<div class="step-card" style="top: 160px"><b class="oracle">Oracle</b><span>Answers G1.</span><code>gap answer</code></div>
+	<div class="step-card" style="top: 224px"><b class="planner">Planner</b><span>Writes plan@2.</span><code>plan revise</code></div>
+	<div class="step-card" style="top: 288px"><b class="oracle">Oracle</b><span>Approves plan@2.</span><code>plan approve</code></div>
+	<div class="step-card" style="top: 352px"><b class="qa">QA</b><span>Runs the tests on build b1.</span><code>run begin</code></div>
+	<div class="step-card quiet" style="top: 416px"><b class="factory">Factory</b><span>Fixes the code. Builds b2.</span></div>
+	<div class="step-card" style="top: 480px"><b class="qa">QA</b><span>Retests on build b2.</span><code>--retest-of</code></div>
+	<div class="step-card" style="top: 544px"><b class="oracle">Oracle</b><span>Accepts the result.</span><code>result accept</code></div>
+	<div class="step-card quiet" style="top: 608px"><span style="color: var(--muted)">Nothing waits. The record keeps every step.</span></div>
+	<div class="loop-label" style="top: 300px">A run finds a new gap.</div>
+	<div class="note" style="left: 28px; top: 672px; width: 844px"><code>checkmate status &lt;planId&gt;</code> prints this state. The review UI shows it too.</div>
+</figure>
+
+<figure id="run">
+	<div class="bar"><h2>A run records what QA saw, one assertion at a time.</h2><div class="mark"><i></i><i></i><i></i><i></i></div></div>
+	<div class="column-title" style="left: 28px; top: 64px">THE RECORD OF RUN-1</div>
+	<div class="column-title" style="left: 604px; top: 64px">FOUR SEPARATE ANSWERS</div>
+	<svg width="900" height="640">
+		<path class="tree" d="M48 140 V538" />
+		<path class="tree" d="M48 174 H68 M48 330 H68 M48 538 H68" />
+		<path class="tree" d="M96 196 V226 H116" />
+		<path class="tree" d="M144 248 V278 H164" />
+		<path class="tree" d="M96 352 V486 H116 M96 382 H116" />
+		<path class="tree" d="M144 404 V434 H164" />
+	</svg>
+	<div class="node runnode" style="left: 28px; top: 96px"><b class="qa">run-1</b><span class="muted">plan checkout@2 · build b1 · tests T1, T2</span></div>
+	<div class="node" style="left: 68px; top: 152px"><b>T1</b><span class="muted">Standard total</span><span class="pill pass">passed</span></div>
+	<div class="node" style="left: 116px; top: 204px"><b>T1.A1</b><span class="muted">Total is 400 PLN.</span><span class="pill pass">passed</span></div>
+	<div class="node evidence" style="left: 164px; top: 256px"><span class="muted">evidence</span><b style="font-weight: 500">T1-A1.json</b><span class="muted">sha256</span></div>
+	<div class="node" style="left: 68px; top: 308px"><b>T2</b><span class="muted">Promotion</span><span class="pill fail">failed</span></div>
+	<div class="node" style="left: 116px; top: 360px"><b>T2.A1</b><span class="muted">totalPLN equals 240.</span><span class="pill fail">failed</span></div>
+	<div class="node evidence" style="left: 164px; top: 412px"><span class="muted">observed</span><span>totalPLN 220.</span><span class="muted">evidence</span><b style="font-weight: 500">T2-A1.json</b></div>
+	<div class="node defect" style="left: 116px; top: 464px"><b class="bad">F1</b><span>defect</span><span class="muted">names T2.A1 and its evidence</span></div>
+	<div class="node" style="left: 68px; top: 516px"><b class="warn">new gaps</b><span class="muted">questions the run found, for the oracle</span></div>
+	<div class="note" style="left: 28px; top: 584px; width: 844px">Each assertion result is final. Checkmate derives the test outcome from the assertion results.</div>
+	<div class="field" style="top: 96px"><b>Completion</b><p>Did the run finish its work?</p><span class="pill plain">completed</span></div>
+	<div class="field" style="top: 200px"><b>Outcome</b><p>What happened to each test?</p><span class="pill pass">passed 1</span> <span class="pill fail">failed 1</span></div>
+	<div class="field" style="top: 304px"><b>Coverage</b><p>Which requirements did it test?</p><span class="pill plain">complete</span></div>
+	<div class="field oracle" style="top: 408px"><b class="oracle">Acceptance</b><p>The oracle's decision on the result.</p><span class="pill accepted">accepted</span></div>
+</figure>
+</html>

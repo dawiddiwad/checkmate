@@ -17,9 +17,9 @@ checkout@1/G4	run_gap	non_blocking	run-1	Must the banner wrap?
 run-1	result	checkout@1	b1	partial	passed=1
 ```
 
-The inbox lists the gaps to answer, the gaps of runs that the plan does not have yet (`run_gap`), the plans to approve, the results to accept, and the plan requests without a revision (`requested`). Of a retest chain, only the latest run waits for acceptance.
+The inbox lists the gaps to answer, the gaps of runs that the plan does not have yet (`run_gap`), the plans to approve, the results to accept, and the plan requests without a revision (`requested`). The plan requests wait for the planner, not for you.
 
-In the review UI, the inbox is the start page.
+To see one ticket, run `checkmate status <planId>`. It names the loop state and who acts next. In the review UI, the inbox is the start page.
 
 ## The decisions
 
@@ -31,7 +31,7 @@ In the review UI, the inbox is the start page.
 | Approve or reject | `checkmate plan approve\|reject <planId@rev> --rationale ...`      | Plan page                         |
 | Accept or reject  | `checkmate result accept\|reject <runId> --rationale ...`          | Run page                          |
 
-Every decision needs a rationale. Add `--expect-sha <digest>` to stop the decision when the snapshot changed after you read it.
+Each answer, approval, and result decision needs `--rationale`. Add `--expect-sha <digest>` to stop the decision when the snapshot changed after you read it.
 
 ## Answer a gap
 
@@ -43,13 +43,13 @@ checkmate gap answer checkout G1 --kind clarify --source decisions#promotion \
 
 Choose one kind:
 
-| Kind                | Use it when                           | Effect in the next revision                                                             | Needs                                |
-| ------------------- | ------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
-| `clarify`           | You know the answer and its source.   | The gap is `resolved`. The planner writes the assertions that it makes known.           | `--value`, `--rationale`, `--source` |
-| `accept_assumption` | You accept a value without a source.  | The gap is `resolved`. The value stays visible in `assumptions`.                        | `--value`, `--rationale`             |
-| `defer`             | The question is out of scope for now. | The gap is `deferred`. A blocking gap defers its tests. A non-blocking gap only closes. | `--value`, `--rationale`             |
+| Kind                | Use it when                         | Effect in the next revision                                                                                            | Needs                                |
+| ------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `clarify`           | You know the answer.                | The gap is `resolved`. The planner writes the assertions that the answer makes known.                                  | `--value`, `--rationale`, `--source` |
+| `accept_assumption` | You accept a reasonable assumption. | The gap is `resolved`. The value stays visible in `assumptions`.                                                       | `--value`, `--rationale`             |
+| `defer`             | The question is out of scope now.   | The gap is `deferred`. A blocking gap defers its tests, and coverage stays incomplete. A non-blocking gap only closes. | `--value`, `--rationale`             |
 
-An answer is a pending decision. The revise stage applies it and writes the next revision. Then approve that revision.
+An answer is a pending decision. It does not change the plan. The revise stage applies the answers and writes the next revision: `checkmate delegate revise <planId>`, or `/checkmate:revise <planId>` in Claude Code. Then approve that revision.
 
 A gap can have one pending decision. The gap must be open in the latest revision, or be a gap of a run of the plan.
 
@@ -60,7 +60,7 @@ QA can find a new gap during a run. It does not change the plan by itself. You h
 - **Answer it.** `checkmate gap answer <planId> <gapId>` adds the gap to the plan, then records the answer. The reply prints `from=<runId>`, `revision=`, and `edit=`. To drop a run gap, answer it with `--kind defer`.
 - **Adopt it without an answer.** `checkmate plan adopt-gaps <planId@rev> --run <runId>` adds the open gaps of the run. `--gaps G4,G5` selects gaps. Do this to block the affected tests now.
 
-The inbox lists a run gap until a later revision of the plan has a gap with the same ID.
+The inbox lists a run gap until a later revision of the plan has a gap with the same ID. When two runs have a gap with the same ID, bring one in with `--gaps` first.
 
 ## Change a plan
 
@@ -88,6 +88,8 @@ checkmate plan approve checkout@2 --rationale "Tests and assertions match the br
 
 When the target requires plan approval, a run needs an approval of the exact revision. A new revision needs a new approval. The target profile sets the policy. Read [Approvals policy](../reference/payloads.md#approvals-policy).
 
+You can approve a revision that still has open gaps. Then QA can run the ready tests early with `--partial ready_only`.
+
 ## Accept a result
 
 ```sh
@@ -95,7 +97,10 @@ checkmate run show run-1
 checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before release."
 ```
 
-A run with failed tests can be a correct result. Acceptance is an oracle record. It is not a release decision by Checkmate. When result acceptance is required, a cross-plan dependency needs an accepted result.
+- A run with failed tests can be a correct result. Accept it when the record is true. Acceptance is an oracle record. It is not a release decision by Checkmate.
+- An `inconclusive` test is not a defect. The evidence was not sufficient. Give a more exact answer, change the assertion, or ask for a retest with better evidence.
+- Of a retest chain, only the latest run waits for acceptance.
+- When result acceptance is required, a cross-plan dependency needs an accepted result.
 
 ## Example
 

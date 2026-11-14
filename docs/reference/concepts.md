@@ -4,6 +4,8 @@
 
 Checkmate keeps one QA record for a workspace. Agents and people change the record only through commands, and each change has a name and a reason.
 
+<img src="../img/roles.png" alt="Diagram: four roles share one record. In the centre, the Checkmate record, .checkmate/checkmate.db, with targets, plans and gaps, decisions, runs and evidence, findings, and the operation log. The planner turns a ticket into tests and writes a gap for each unclear requirement. The oracle answers gaps, approves plans, and accepts results, and is an agent or a person. QA runs the tests, early and again on each new build. Planner, oracle, and QA write to the record. The factory runs the agents and their sandboxes and builds and fixes the code. It reads the record, and it writes only through the commands that it runs, such as run begin. Below the record, a human can make the oracle's decisions in the review UI. Checkmate keeps the record. It does not start, schedule, or message agents, and it does not change code." width="100%"/>
+
 ## The roles
 
 | Role    | Job                                                                                 |
@@ -88,7 +90,7 @@ QA can run the ready tests early, before the feature exists. Then most tests fai
 
 The oracle owns the scope, the decisions, and release decisions. The factory owns application startup and fixes. The workspace owner owns the evidence and how long it stays.
 
-Content of the target cannot authorize a change to a request or a plan. The rule checks are not a sandbox. Checkmate validates structure and relationships. It cannot prove that an observation is true.
+Content of the target cannot authorize a change to a request or a plan. [Limits](record.md#limits) lists what the checks show and what they do not show.
 
 ## Next
 

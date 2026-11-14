@@ -118,7 +118,7 @@ npm must trust this repository and `.github/workflows/ci.yml`. The workflow toke
 
 ## Media
 
-The manual uses two kinds of media, both dark.
+The manual uses three kinds of media, all dark. They share the tokens in `docs/media/style.css` and the fonts in `plugin/src/ui/assets/fonts/`.
 
 ### Onboarding animation
 
@@ -136,7 +136,21 @@ Render it with Chromium and FFmpeg installed:
 node scripts/render-onboarding.ts
 ```
 
-Set `CHECKMATE_BROWSER_EXECUTABLE` when Chromium is not at `/usr/bin/chromium`. The page loads its fonts from `plugin/src/ui/assets/fonts/`. Prettier does not format these pages, because their text keeps exact whitespace.
+Set `CHECKMATE_BROWSER_EXECUTABLE` when Chromium is not at `/usr/bin/chromium`. Prettier does not format `docs/media/*.html`, because their text keeps exact whitespace.
+
+### Diagrams
+
+`docs/media/diagrams.html` holds three static figures, 900 pixels wide. Each `<figure>` becomes `docs/img/<id>.png` at twice that size:
+
+- `roles.png`: the four roles around the record. [Concepts](reference/concepts.md) shows it.
+- `life.png`: the loop states of one plan and the next step of each. [Run Checkmate from a factory](guides/factory.md) shows it.
+- `run.png`: the record of one run and the four separate answers. [Runs and evidence](reference/runs.md) shows it.
+
+Use the terms of the pages and values that a real run prints, for example the states of `checkmate status`. Render all three with Chromium installed:
+
+```sh
+node scripts/render-diagrams.ts
+```
 
 ### Review UI screenshots
 
@@ -144,7 +158,7 @@ Set `CHECKMATE_BROWSER_EXECUTABLE` when Chromium is not at `/usr/bin/chromium`. 
 
 ```sh
 CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots
-for name in inbox plans plan run-gap run; do
+for name in inbox plans plan run-gap; do
   convert /tmp/shots/$name-dark.png -resize 1280x -quality 82 docs/img/ui/$name.jpg
 done
 ```

@@ -113,7 +113,7 @@ next	checkmate delegate revise checkout
 | `accepted`          | none     | The oracle accepted the result.                                                                |
 | `passed`            | none     | The latest run passed. Result acceptance is not required.                                      |
 
-The `next` line is a hint for a person or an agent. Do not parse it. `--json` also gives `stage`: the `delegate` stage that the plan waits on. It is `plan` for `needs_plan`, `revise` for `needs_revision`, `execute` for `run_in_progress`, and `none` for every other state. The subject of `plan` and `revise` is the plan ID. The subject of `execute` is `latestRun.runId`.
+The `next` line is a hint for a person or an agent. Do not parse it. `--json` also gives `stage`: the `delegate` stage that the plan waits on. It is `plan` for `needs_plan`, `revise` for `needs_revision`, `execute` for `run_in_progress`, and `none` for every other state. The subject of `plan` and `revise` is the plan ID. The subjects of `execute` are the run IDs in `openRuns`, one for each started run. With one started run, `latestRun.runId` is the same run.
 
 `status` tries the states in this order and prints the first one that applies. After a finished run, an open blocking gap gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. A run that a later run retests does not count. An approved revision with open gaps is `ready_to_run` until its first run finishes.
 

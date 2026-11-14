@@ -372,6 +372,7 @@ test('plan status lists every open run of a matrix with its instance', (t) => {
 	instances.forEach((instanceId, i) => begin(opened, `run-${i + 1}`, ['T1'], 'build-1', { instance: instanceId }))
 	const status = planStatus(opened, 'checkout')
 	assert.equal(status.state, 'run_in_progress')
+	assert.equal(status.stage, 'execute')
 	assert.deepEqual(
 		status.openRuns.map((run) => [run.runId, run.instanceId]),
 		instances.map((instanceId, i) => [`run-${i + 1}`, instanceId])

@@ -178,7 +178,7 @@ G1	gap	blocking	Does the promotion stack with the loyalty discount?
 F1	defect	run-1	medium	T1.A1	Wrong total
 ```
 
-The `next` line is a hint. A program reads `stage` from `checkmate status <planId> --json`: `plan`, `revise`, `execute`, or `none`. [Loop states](../reference/commands.md#loop-states) gives the subject of each stage.
+The `next` line is a hint. A program reads `stage` from `checkmate status <planId> --json`: `plan`, `revise`, `execute`, or `none`. [Loop states](../reference/commands.md#loop-states) gives the subject of each stage. For `execute`, delegate each run in `openRuns`: a matrix has one started run for each instance.
 
 `delegate` does not trust the summary of the worker. It reads the database and returns the response of the recorded command. [Loop states](../reference/commands.md#loop-states) lists every state.
 

@@ -4,7 +4,7 @@
 
 The JSON Schemas in `plugin/contracts/` are the authority, and this page explains them with examples. Each example passes its schema and the rules of its command. The contract version is `toolkit-2`.
 
-**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Metadata](#metadata) · [Schemas](#schemas)
+**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Metadata](#metadata) · [Limits](#limits) · [Schemas](#schemas)
 
 ## Identifiers
 
@@ -340,6 +340,25 @@ A test in a candidate can carry its Xray key the same way: `"metadata": { "prior
 - A value is a string of 0 to 500 characters, a number, or a boolean. A list or an object is refused. Give a list as one string, for example `"checkout,regression"`.
 - Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
 - The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as `metadata.<key>` properties.
+
+## Limits
+
+The schemas refuse a payload that breaks one of these limits:
+
+| Item                                                                        | Limit                                                                 |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| An ID                                                                       | 1 to 96 characters. Read [Identifiers](#identifiers).                 |
+| A text field, for example a `title`, `check`, or `question`                 | 1 or more characters. An empty string is refused.                     |
+| A test `title`                                                              | 200 characters or fewer                                               |
+| An instance entry value                                                     | 2000 characters or fewer                                              |
+| An instance `environment`                                                   | 500 characters or fewer                                               |
+| An instance reference                                                       | 200 characters or fewer                                               |
+| [`metadata`](#metadata)                                                     | 20 keys or fewer. A string value has 500 characters or fewer.         |
+| Finding `assertionIds`, `requirementIds`, `reproduction`, and `evidenceIds` | 1 or more items. Record evidence with `run check` before the finding. |
+| Test `requirementIds` and `operations`                                      | 1 or more items                                                       |
+| Request `requirements`, when present                                        | 1 or more items                                                       |
+| Profile `entryPoints`, `capabilities`, and `allowedOperations`              | 1 or more items                                                       |
+| Profile `startup.command`, when not `null`                                  | 1 or more items                                                       |
 
 ## Schemas
 

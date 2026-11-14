@@ -577,7 +577,7 @@ test('payload commands read a shell heredoc on standard input', (t) => {
 	assert.match(output, /^completed checkout-local@1 sha256=[a-f0-9]{8} recorded=true$/m)
 })
 
-test('inbox lists gaps to answer, plans to approve, and results to accept', (t) => {
+test('inbox lists gaps to answer, plans to approve, results to accept, and plan requests', (t) => {
 	const workspace = setup(t)
 	const first = cli(workspace, ['inbox'])
 	assert.equal(first.code, 0)
@@ -590,6 +590,16 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 		first.lines[3],
 		/^checkout@1\tplan\t[a-f0-9]{8}\t3 tests: 1 ready, 2 blocked, 0 deferred; 2 open gaps$/
 	)
+	const request = { objective: 'Draft later.', requirements: [{ id: 'R1', text: 'Later.', source: 'brief#1' }] }
+	cli(workspace, ['plan', 'open', 'later', '--target', 'checkout-local@1'], request)
+	const waiting = cli(workspace, ['inbox'])
+	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=1')
+	assert.equal(waiting.lines.at(-1), 'later\trequested\tcheckout-local@1\tDraft later.')
+	const plans = cli(workspace, ['plan', 'list'])
+	assert.equal(plans.lines[0], 'completed plans count=2')
+	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
+	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=needs_plan\twaitsOn=planner')
+	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 	revise(workspace)
 	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])
 	cli(workspace, ['run', 'begin', 'run-1', 'checkout@2', '--tests', 'T1', '--build', 'b1'])
@@ -606,28 +616,15 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 	])
 	const later = cli(workspace, ['inbox'])
 	assert.deepEqual(later.lines, [
-		'completed inbox gaps=0 plans=0 results=1 requests=0',
+		'completed inbox gaps=0 plans=0 results=1 requests=1',
 		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1',
+		'later\trequested\tcheckout-local@1\tDraft later.',
 	])
 	const body = json(workspace, ['inbox']).body
 	assert.deepEqual(
 		[body.gaps, body.plans, body.results.map((row: { runId: string }) => row.runId)],
 		[[], [], ['run-1']]
 	)
-})
-
-test('inbox and plan list show a plan request without a revision', (t) => {
-	const workspace = setup(t)
-	const request = { objective: 'Draft later.', requirements: [{ id: 'R1', text: 'Later.', source: 'brief#1' }] }
-	cli(workspace, ['plan', 'open', 'later', '--target', 'checkout-local@1'], request)
-	const waiting = cli(workspace, ['inbox'])
-	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=1')
-	assert.equal(waiting.lines.at(-1), 'later\trequested\tcheckout-local@1\tDraft later.')
-	const plans = cli(workspace, ['plan', 'list'])
-	assert.equal(plans.lines[0], 'completed plans count=2')
-	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
-	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=needs_plan\twaitsOn=planner')
-	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 })
 
 test('plan open takes the objective, sources, and instructions as flags', (t) => {

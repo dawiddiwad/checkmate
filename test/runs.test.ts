@@ -20,7 +20,20 @@ import {
 import { adoptGaps, answerGap, patchPlan, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
 import { inbox, runDetail } from '../plugin/src/views.ts'
 import { addInstance, retireInstance } from '../plugin/src/targets.ts'
-import { accept, actor, approved, begin, check, evidenceFile, failT2, plan, ready, store } from './support.ts'
+import {
+	accept,
+	actor,
+	approved,
+	begin,
+	check,
+	evidenceFile,
+	failT2,
+	plan,
+	ready,
+	revised,
+	store,
+	target,
+} from './support.ts'
 
 const finish = (opened: Store, runId = 'run-1', completion = 'completed', cleanup = 'completed') =>
 	finishRun(opened, actor, { runId, completion, cleanup, cleanupReason: 'Closed the browser.' })
@@ -639,9 +652,16 @@ test('run finish removes the evidence directory of the run with its files', (t) 
 	assert.equal(existsSync(tmp), false)
 })
 
-test('run begin uses the only active instance, a named instance, and never a retired one', (t) => {
+test('run begin checks the instance before the gate, uses the only active instance or a named one, and never a retired one', (t) => {
 	const opened = store(t)
-	ready(opened)
+	target(opened)
+	plan(opened)
+	assert.throws(
+		() => beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', instance: 'nope' }),
+		/Unknown instance: checkout-local\/nope/
+	)
+	revised(opened)
+	approved(opened)
 	assert.equal(begin(opened, 'run-1', ['T1']).data.instanceId, 'local')
 	const staging = { entries: { web: 'https://staging.example.com' }, environment: 'Staging' }
 	addInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'staging', instance: staging })

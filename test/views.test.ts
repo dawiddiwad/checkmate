@@ -533,46 +533,44 @@ function passOn(opened: ReturnType<typeof store>, runId: string, reference: stri
 	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
 }
 
-test('status ignores the defect of a deferred test, and finding list --open still lists it', (t) => {
-	const opened = store(t)
-	ready(opened)
-	begin(opened, 'run-1', ['T1', 'T2'], 'b1')
-	for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
-	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
-	check(opened, 'run-1', 'T2.A1', 'passed')
-	failT2(opened, 'run-1')
-	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
-	const reference = deferT2(opened, 'run-1')
-	const status = planStatus(opened, 'checkout')
-	assert.equal(planDetail(opened, 'checkout').plan.tests.find((test) => test.id === 'T2')?.readiness, 'deferred')
-	assert.deepEqual(
-		[status.state, status.defects, status.why],
-		['awaits_acceptance', [], ['run-1 on build b1 waits for acceptance']]
-	)
-	assert.deepEqual(
-		findingList(opened, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
-		['run-1/F1']
-	)
-	passOn(opened, 'run-2', reference, ['T1'])
-	const after = planStatus(opened, 'checkout')
-	assert.deepEqual([after.state, after.why], ['awaits_acceptance', ['run-2 on build b2 waits for acceptance']])
-	accept(opened, 'run-2')
-	assert.equal(planStatus(opened, 'checkout').state, 'accepted')
-})
-
-test('status ignores the inconclusive outcome of a deferred test', (t) => {
-	const opened = store(t)
-	ready(opened)
-	begin(opened, 'run-1', ['T1', 'T2'], 'b1')
-	for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
-	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
-	check(opened, 'run-1', 'T2.A1', 'passed')
-	check(opened, 'run-1', 'T2.A2', 'inconclusive')
-	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
-	const reference = deferT2(opened, 'run-1')
-	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 on build b1 waits for acceptance'])
-	passOn(opened, 'run-2', reference, ['T1'])
-	assert.equal(planStatus(opened, 'checkout').state, 'awaits_acceptance')
+test('status ignores the defect or the inconclusive outcome of a deferred test, and finding list --open still lists the defect', (t) => {
+	for (const outcome of ['failed', 'inconclusive'] as const) {
+		const opened = store(t)
+		ready(opened)
+		begin(opened, 'run-1', ['T1', 'T2'], 'b1')
+		for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
+		closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+		check(opened, 'run-1', 'T2.A1', 'passed')
+		if (outcome === 'failed') failT2(opened, 'run-1')
+		else check(opened, 'run-1', 'T2.A2', 'inconclusive')
+		closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
+		const reference = deferT2(opened, 'run-1')
+		const status = planStatus(opened, 'checkout')
+		assert.equal(
+			planDetail(opened, 'checkout').plan.tests.find((test) => test.id === 'T2')?.readiness,
+			'deferred',
+			outcome
+		)
+		assert.deepEqual(
+			[status.state, status.defects, status.why],
+			['awaits_acceptance', [], ['run-1 on build b1 waits for acceptance']],
+			outcome
+		)
+		assert.deepEqual(
+			findingList(opened, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
+			outcome === 'failed' ? ['run-1/F1'] : [],
+			outcome
+		)
+		passOn(opened, 'run-2', reference, ['T1'])
+		const after = planStatus(opened, 'checkout')
+		assert.deepEqual(
+			[after.state, after.why],
+			['awaits_acceptance', ['run-2 on build b2 waits for acceptance']],
+			outcome
+		)
+		accept(opened, 'run-2')
+		assert.equal(planStatus(opened, 'checkout').state, 'accepted', outcome)
+	}
 })
 
 test('acceptance covers every run that gives a latest outcome', (t) => {

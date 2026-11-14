@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { join } from 'node:path'
+import type { Stage } from '../cli/src/launcher.ts'
 import {
 	delegate,
 	minimumRules,
@@ -188,24 +189,24 @@ reply({ status, subject, reasons })`
 	assert.deepEqual(operation, { id: saved.operation, actor: 'claude:plan' })
 })
 
-test('the delegated prompt names the plugin CLI and tells the worker not to ask or wait for the oracle', async (t) => {
-	const workspace = directory(t)
-	const opened = store(t, workspace)
-	target(opened)
-	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
-	closeStore(opened)
-	const records = claude(
-		workspace,
-		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
-reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
-	)
-	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, pluginRoot, claude: records })
-	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
-	assert.match(prompt, /Do not ask the oracle\. Do not wait for the oracle\./)
-	assert.doesNotMatch(prompt, /person/)
+test('the delegated prompt names the plugin CLI and the commands of the stage, and tells the worker not to ask or wait for the oracle', async (t) => {
+	const workspace = requested(t)
+	const prompt = async (stage: Stage, subject: string) => {
+		const records = claude(
+			workspace,
+			`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] })`
+		)
+		await delegate(workspace, stage, subject, { allowedTools: rules, pluginRoot, claude: records })
+		return readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	}
+	const plan = await prompt('plan', 'checkout')
+	assert.match(plan, /Do not ask the oracle\. Do not wait for the oracle\./)
+	assert.doesNotMatch(plan, /person/)
 	assert(
-		prompt.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
+		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
 	)
+	assert.match(await prompt('setup', 'checkout-local'), /checkmate target instance list checkout-local/)
 })
 
 function requested(t: TestContext) {
@@ -264,38 +265,7 @@ test('delegate refuses a --claude-arg that changes the worker contract', async (
 	)
 })
 
-test('the npm CLI takes --claude-arg values that start with --', (t) => {
-	const workspace = requested(t)
-	const bin = join(workspace, 'bin')
-	mkdirSync(bin)
-	claude(bin, recordsArgs)
-	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
-	const output = execFileSync(
-		process.execPath,
-		[
-			join(root, 'cli/src/main.ts'),
-			'delegate',
-			'plan',
-			'checkout',
-			'--allow',
-			'Read',
-			'--allow',
-			'Bash',
-			'--claude-arg',
-			'--model',
-			'--claude-arg',
-			'claude-haiku-5-5',
-			'--workspace',
-			workspace,
-		],
-		{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
-	)
-	assert.equal(output, 'needs_decision checkout\nreason: Stopped.\n')
-	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.deepEqual(args.slice(1, 3), ['--model', 'claude-haiku-5-5'])
-})
-
-test('the npm CLI always takes the next token as the --claude-arg value and refuses a missing one', (t) => {
+test('the npm CLI always takes the next token as the --claude-arg value, also one that starts with --, and refuses a missing one', (t) => {
 	const workspace = requested(t)
 	const bin = join(workspace, 'bin')
 	mkdirSync(bin)
@@ -322,14 +292,18 @@ test('the npm CLI always takes the next token as the --claude-arg value and refu
 			return (error as { stdout: string }).stdout
 		}
 	}
+	const args = () => JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.equal(
+		run('--claude-arg', '--model', '--claude-arg', 'claude-haiku-5-5', '--workspace', workspace),
+		'needs_decision checkout\nreason: Stopped.\n'
+	)
+	assert.deepEqual(args().slice(1, 3), ['--model', 'claude-haiku-5-5'])
 	assert.equal(run('--claude-arg', '--json', '--claude-arg', '--help'), 'needs_decision checkout\nreason: Stopped.\n')
-	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.deepEqual(args.slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
+	assert.deepEqual(args().slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
 	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
 	assert.equal(run('--claude-arg', '--model'), 'needs_decision checkout\nreason: Stopped.\n')
-	const dangling = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.deepEqual(dangling.slice(0, 3), ['-p', '--model', '--plugin-dir'])
-	assert.deepEqual(dangling.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	assert.deepEqual(args().slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(args().slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
 	for (const timeout of ['0', 'abc', '3601'])
 		assert.equal(
 			run('--timeout', timeout),
@@ -606,15 +580,4 @@ reply({ status: 'completed', subject: 'run-3', reasons: [] })`
 		prompt
 	)
 	assert.doesNotMatch(prompt, /run-1|Wrong account/)
-})
-
-test('the setup prompt names the instances of the target', async (t) => {
-	const workspace = planned(t)
-	const records = claude(
-		workspace,
-		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
-reply({ status: 'needs_decision', subject: 'checkout-local', reasons: ['Stopped.'] })`
-	)
-	await delegate(workspace, 'setup', 'checkout-local', { allowedTools: rules, pluginRoot, claude: records })
-	assert.match(readFileSync(join(workspace, 'prompt.txt'), 'utf8'), /checkmate target instance list checkout-local/)
 })

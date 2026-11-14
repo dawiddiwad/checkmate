@@ -161,52 +161,32 @@ test('a setup request names tools; the profile records each one and an unreachab
 	assert(shown.lines.includes('tool\tplaywright-cli\tcli\t0.1.23\treachable\tDrive the browser.'), shown.output)
 })
 
-test('target open reads repeatable --tool name:kind:purpose options', (t) => {
+test('target open reads repeatable --tool and --entry-point name:kind:purpose options', (t) => {
 	const workspace = store(t).workspace
-	const open = (...tools: string[]) =>
-		cli(workspace, [
-			'target',
-			'open',
-			'web',
-			'--entry-point',
-			'web:url:Web application.',
-			'--capabilities',
-			'browser',
-			'--operations',
-			'read',
-			...tools.flatMap((tool) => ['--tool', tool]),
-		])
-	assert.match(open('playwright-cli:browser').output, /Invalid --tool: playwright-cli:browser/)
+	const open = (targetId: string, ...flags: string[]) =>
+		cli(workspace, ['target', 'open', targetId, ...flags, '--capabilities', 'browser', '--operations', 'read'])
+	const tools = (...values: string[]) =>
+		open('web', '--entry-point', 'web:url:Web application.', ...values.flatMap((tool) => ['--tool', tool]))
+	const entries = (...values: string[]) => open('crm', ...values.flatMap((entry) => ['--entry-point', entry]))
+	assert.match(tools('playwright-cli:browser').output, /Invalid --tool: playwright-cli:browser/)
 	assert.equal(
-		open('playwright-cli:cli:Drive the browser: click and read.', 'checkmate:ui:skill:Show results.').code,
+		tools('playwright-cli:cli:Drive the browser: click and read.', 'checkmate:ui:skill:Show results.').code,
 		0
 	)
 	assert.deepEqual(cli(workspace, ['target', 'request', 'web']).lines.slice(-2), [
 		'tool\tplaywright-cli\tcli\tDrive the browser: click and read.',
 		'tool\tcheckmate:ui\tskill\tShow results.',
 	])
-})
-
-test('target open reads repeatable --entry-point name:kind:purpose options', (t) => {
-	const workspace = store(t).workspace
-	const open = (...entries: string[]) =>
-		cli(workspace, [
-			'target',
-			'open',
-			'crm',
-			...entries.flatMap((entry) => ['--entry-point', entry]),
-			'--capabilities',
-			'browser',
-			'--operations',
-			'read',
-		])
-	assert.match(open('web:url').output, /Invalid --entry-point: web:url\. Use <name>:<url\|command\|value>:<purpose>/)
-	assert.match(open('web:socket:Web.').output, /Invalid --entry-point: web:socket:Web\./)
+	assert.match(
+		entries('web:url').output,
+		/Invalid --entry-point: web:url\. Use <name>:<url\|command\|value>:<purpose>/
+	)
+	assert.match(entries('web:socket:Web.').output, /Invalid --entry-point: web:socket:Web\./)
 	assert.match(
 		cli(workspace, ['target', 'open', 'crm', '--capabilities', 'a', '--operations', 'b']).output,
 		/Missing --entry-point/
 	)
-	assert.equal(open('web:command:Login URL: one-time.', 'org:value:Org alias.').code, 0)
+	assert.equal(entries('web:command:Login URL: one-time.', 'org:value:Org alias.').code, 0)
 	assert.deepEqual(cli(workspace, ['target', 'request', 'crm']).lines.slice(1, 3), [
 		'entryPoint\tweb\tcommand\tLogin URL: one-time.',
 		'entryPoint\torg\tvalue\tOrg alias.',

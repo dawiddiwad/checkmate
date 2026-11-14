@@ -354,11 +354,20 @@ test('a concurrent revise from a second connection is refused', (t) => {
 	)
 })
 
-test('the gate needs an approval of the exact revision, and a new revision needs a new approval', (t) => {
+test('the gate needs an approval of the exact latest revision, and a new revision needs a new approval', (t) => {
 	const opened = store(t)
 	target(opened)
 	plan(opened, 'checkout', withG3())
 	revised(opened)
+	for (const decide of [approvePlan, rejectPlan])
+		assert.throws(
+			() => decide(opened, actor, { reference: 'checkout@1', rationale: 'Old.' }),
+			/checkout@1 is not the latest revision. Use checkout@2/
+		)
+	assert.throws(
+		() => beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', partial: 'ready_only' }),
+		/checkout@1 is not the latest revision. Use checkout@2/
+	)
 	assert.deepEqual(gate(opened, gateInput).reply.reasons, ['Plan checkout@2 is not approved'])
 	rejectPlan(opened, actor, { reference: 'checkout@2', rationale: 'Not yet.' })
 	assert.equal(planDetail(opened, 'checkout').approval.state, 'rejected')

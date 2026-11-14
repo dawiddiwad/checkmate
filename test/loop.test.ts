@@ -7,7 +7,6 @@ import {
 	gate,
 	openPlan,
 	patchPlan,
-	rejectPlan,
 	planRevision,
 	revisePlan,
 	savePlan,
@@ -453,22 +452,6 @@ test('an open blocking run gap stops the gate for its tests; ready_only leaves t
 	])
 })
 
-test('a superseded revision cannot be approved, rejected, or run', (t) => {
-	const opened = store(t)
-	target(opened)
-	plan(opened)
-	revised(opened)
-	for (const decide of [approvePlan, rejectPlan])
-		assert.throws(
-			() => decide(opened, actor, { reference: 'checkout@1', rationale: 'Old.' }),
-			/checkout@1 is not the latest revision. Use checkout@2/
-		)
-	assert.throws(
-		() => beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', partial: 'ready_only' }),
-		/checkout@1 is not the latest revision. Use checkout@2/
-	)
-})
-
 test('a rejected run has no open defects, and its tests need a retest', (t) => {
 	const opened = store(t)
 	ready(opened)
@@ -530,16 +513,6 @@ test('status names every run of a matrix in begin order and gives the instance i
 		]
 	)
 	followHints(t, opened)
-})
-
-test('run begin checks the instance before the gate', (t) => {
-	const opened = store(t)
-	target(opened)
-	plan(opened)
-	assert.throws(
-		() => beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', instance: 'nope' }),
-		/Unknown instance: checkout-local\/nope/
-	)
 })
 
 test('a retest keeps the build only on a new instance after the old instance is retired', (t) => {

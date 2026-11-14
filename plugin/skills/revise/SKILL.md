@@ -34,6 +34,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 Rules:
 
 - Change only tests that `plan pending` prints. Change only `action`, `preconditions`, and `assertions`.
+- A delta does not change `metadata`. The team fields of each test stay in the next revision. Do not put team fields in a check. To change `metadata`, the oracle uses `plan edit --patch`.
 - In `assertions`, a known ID changes that assertion. A new ID adds an assertion. `null` removes an assertion. Do not reuse a removed ID.
 - A new assertion needs both `check` and `checkKind`. A change can give only the changed field.
 - `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision.

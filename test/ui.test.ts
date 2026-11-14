@@ -617,10 +617,10 @@ test('Bring into plan adopts one run gap with the digest guard and the actor', a
 	assert.match(stale.body, /checkout changed after you opened this page/)
 })
 
-test('a finished run downloads its report as HTML, Markdown, or JSON', async (t) => {
+test('a finished run downloads its report as HTML, Markdown, JSON, or JUnit XML', async (t) => {
 	const { ui } = await start(t)
 	const page = (await call(ui, '/runs/run-7')).body
-	for (const format of ['html', 'md', 'json'])
+	for (const format of ['html', 'md', 'json', 'junit'])
 		assert.match(page, new RegExp(`href="/runs/run-7/report.${format}" download`))
 	assert.match(page, /print to PDF/)
 	const html = await call(ui, '/runs/run-7/report.html')
@@ -637,6 +637,12 @@ test('a finished run downloads its report as HTML, Markdown, or JSON', async (t)
 	const json = await call(ui, '/runs/run-7/report.json')
 	assert.equal(json.headers['content-type'], 'application/json; charset=utf-8')
 	assert.equal(JSON.parse(json.body).result.runId, 'run-7')
+	const junit = await call(ui, '/runs/run-7/report.junit')
+	assert.equal(junit.headers['content-type'], 'application/xml; charset=utf-8')
+	assert.match(String(junit.headers['content-disposition']), /filename="run-7-junit.xml"/)
+	assert.match(junit.body, /^<\?xml version="1.0" encoding="UTF-8"\?>\n<testsuites name="run-7"/)
+	assert.doesNotMatch((await call(ui, '/plans/checkout@2')).body, /export\.junit/)
+	assert.equal((await call(ui, '/plans/checkout@2/export.junit')).status, 404)
 	assert.doesNotMatch((await call(ui, '/runs/run-8')).body, /report\.html/)
 	assert.equal((await call(ui, '/runs/run-8/report.html')).status, 409)
 	assert.equal((await call(ui, '/runs/nothing/report.html')).status, 404)
@@ -911,4 +917,19 @@ test('a retire of an unknown instance shows a visible error; each Retire control
 	})
 	assert.equal(unknown.status, 422)
 	assert.match(unknown.body, /<p class="form-error" role="alert">Unknown instance: shop-local\/nope\./)
+})
+
+test('the plan and run pages show team metadata as key and value tags', async (t) => {
+	const { ui } = await start(t)
+	const plan = (await call(ui, '/plans/checkout@2')).body
+	assert.match(
+		plan,
+		/<dt>Metadata<\/dt>\s*<dd>\s*<span class="kv" aria-label="Metadata"\s*><span class="tag">component=pricing<\/span><span class="tag">priority=high<\/span>/
+	)
+	assert.match(plan, /<span class="tag">xrayKey=SHOP-T7<\/span>/)
+	assert.match(plan, /<span class="tag">jira=SHOP-41<\/span>/)
+	const run = (await call(ui, '/runs/run-7')).body
+	assert.match(run, /<span class="tag">component=pricing<\/span>/)
+	assert.match(run, /<span class="tag">jiraKey=SHOP-142<\/span>/)
+	assert.match(run, /<span class="tag">regression=true<\/span>/)
 })

@@ -96,7 +96,7 @@ test('the Markdown and JSON reports carry the same summary, decisions, and accep
 	)
 	assert.doesNotMatch(markdown, /base64/)
 	const record = JSON.parse(exportRun(opened, 'run-1', 'json'))
-	assert.deepEqual(Object.keys(record).sort(), ['acceptance', 'plan', 'result', 'sha256'])
+	assert.deepEqual(Object.keys(record).sort(), ['acceptance', 'plan', 'planApproval', 'result', 'sha256'])
 	assert.equal(record.result.completion, 'completed')
 	assert.equal(record.result.instanceId, 'local')
 	assert.match(exportRun(opened, 'run-1', 'html'), /<td>Instance<\/td><td>local<\/td>/)

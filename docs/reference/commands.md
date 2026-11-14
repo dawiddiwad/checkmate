@@ -57,7 +57,8 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `run finish <runId>`                                    | Checks the run and stores the result.                           |
 |           | `run resume <runId>`                                    | Records a new attempt for a stalled run.                        |
 |           | `run show <runId>`, `run list`                          | Prints a run, or lists runs.                                    |
-| Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, or `json`.                     |
+|           | `finding list [--plan <planId>] [--open]`               | Lists the findings of all runs, one line for each finding.      |
+| Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only). |
 |           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                        |
 |           | `ui`                                                    | Starts the review UI.                                           |
 | npm only  | `delegate <stage> <subject>`                            | Runs a stage in a new Claude Code session.                      |
@@ -75,6 +76,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                   |
 | Which runs exist?                        | `checkmate run list [--plan <planId>] [--build <b>]` |
 | What did a run record?                   | `checkmate run show <runId> [--tests T1,T2]`         |
+| Which defects are open?                  | `checkmate finding list --open [--plan <planId>]`    |
 | What changed, and who changed it?        | `checkmate log [--subject <subject>]`                |
 | Anything else                            | `checkmate query "<sql>"`                            |
 
@@ -84,6 +86,13 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 - **target show.** Prints one `entryPoint` line for each entry point, the `authentication` kind and references, the tools, and one `instance` line for each active instance. With `--instance <instanceId>`, it also prints `entry`, `environment`, and `reference` lines with the values of that instance.
 - **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values.
 - **run list.** Prints the run, the plan revision, the build, the instance, the state, the completion, the coverage, and the acceptance.
+- **finding list.** Prints one line for each finding of each run, oldest first: `<runId>/<findingId>`, the plan revision, the build, the instance, the type, the severity, the tests, the metadata as `key=value`, and the title. `--plan <planId>` keeps the findings of one plan. `--open` keeps the open defects: the defects that `status` prints for each plan. These are the defects of the latest finished run of the plan that no retest replaces. `--json` gives `findings`, and each row has `runId`, `planId`, `revision`, `build`, `instanceId`, `testIds`, `findingId`, `type`, `severity`, `title`, `expected`, `observed`, `reproduction`, `requirementIds`, `assertionIds`, `evidenceIds`, and `metadata`.
+
+  ```text
+  completed findings count=1
+  run-1/F1	checkout@2	build-1	local	defect	high	T2	component=pricing,jiraKey=SHOP-142	Promotion stacks with loyalty
+  ```
+
 - **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
 
 ## Loop states
@@ -142,6 +151,7 @@ The `next` line is a hint for a person or an agent. Do not parse it. `--json` al
 - `reason:` lines follow.
 - `--json` prints `{ "status", "subject", "reasons", ... }`.
 - `export` prints the report. With `--out <path>`, it writes a new file and prints the response. It refuses an existing file.
+- A schema error names the field. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. Read [Payloads](payloads.md#schemas).
 
 ## Statuses and exit codes
 

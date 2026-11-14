@@ -533,6 +533,7 @@ export function runDetail(store: Store, runId: string) {
 			return {
 				testId: test.id,
 				title: test.title,
+				metadata: test.metadata ?? {},
 				outcome: closed?.outcome ?? null,
 				reason: closed?.reason ?? null,
 				evidence: evidence.filter((item) => item.testId === test.id && item.assertionId === null),
@@ -581,6 +582,48 @@ export function runDetail(store: Store, runId: string) {
 				}
 			: null,
 	}
+}
+
+export function findingList(store: Store, filters: { planId?: string; open?: boolean } = {}) {
+	if (filters.planId !== undefined) planRequest(store, filters.planId)
+	const rows = all<RunRow & { body: string }>(
+		store,
+		`SELECT r.*, f.body FROM findings f JOIN runs r ON r.run_id = f.run_id
+		WHERE (? IS NULL OR r.plan_id = ?) ORDER BY f.rowid`,
+		filters.planId ?? null,
+		filters.planId ?? null
+	)
+	const open = new Set(
+		filters.open
+			? [...new Set(rows.map((row) => row.plan_id))].flatMap((planId) =>
+					planStatus(store, planId).defects.map((defect) => `${defect.runId}/${defect.findingId}`)
+				)
+			: []
+	)
+	return rows
+		.map((row) => {
+			const finding = JSON.parse(row.body) as Result['findings'][number]
+			return {
+				runId: row.run_id,
+				planId: row.plan_id,
+				revision: row.plan_revision,
+				build: row.application_build,
+				instanceId: row.instance_id,
+				testIds: finding.testIds,
+				findingId: finding.id,
+				type: finding.type,
+				severity: finding.severity,
+				title: finding.title,
+				expected: finding.expected,
+				observed: finding.observed,
+				reproduction: finding.reproduction,
+				requirementIds: finding.requirementIds,
+				assertionIds: finding.assertionIds,
+				evidenceIds: finding.evidenceIds,
+				metadata: finding.metadata ?? {},
+			}
+		})
+		.filter((row) => !filters.open || open.has(`${row.runId}/${row.findingId}`))
 }
 
 type OperationRow = {

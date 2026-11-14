@@ -64,6 +64,9 @@
 					"source": {
 						"type": "string",
 						"minLength": 1
+					},
+					"metadata": {
+						"$ref": "#/definitions/metadata"
 					}
 				},
 				"required": ["id", "text", "source"],
@@ -274,6 +277,9 @@
 					},
 					"minItems": 0,
 					"uniqueItems": true
+				},
+				"metadata": {
+					"$ref": "#/definitions/metadata"
 				}
 			},
 			"required": [
@@ -308,6 +314,17 @@
 			},
 			"required": ["id", "check", "checkKind"],
 			"additionalProperties": false
+		},
+		"metadata": {
+			"type": "object",
+			"propertyNames": {
+				"pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+			},
+			"additionalProperties": {
+				"type": ["string", "number", "boolean"],
+				"maxLength": 500
+			},
+			"maxProperties": 20
 		}
 	}
 }

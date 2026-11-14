@@ -216,17 +216,30 @@ A crash or a deadline does not finish a run. The run stays `started`, and the re
 checkmate export run run-1 --format md
 checkmate export run run-1 --format html --out reports/run-1.html
 checkmate export plan checkout@2 --format json
+checkmate export run run-1 --format junit --out reports/run-1.xml
 ```
 
-- `--format` is `md`, `html`, or `json`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
+- `--format` is `md`, `html`, or `json`. `export run` also takes `junit`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
 - `export run` needs a finished run. `export plan` takes a revision reference, or a plan ID for the latest revision.
-- A run report shows the summary with the instance, the acceptance, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- A run report shows the summary with the instance, the acceptance, the plan approval, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- The Markdown and HTML exports show the [metadata](payloads.md#metadata) of the requirements, the tests, and the findings as `key=value` lists.
 - The HTML report is one self-contained file. It shows small images and text evidence inline. It has a print stylesheet, so a browser can save it as a PDF.
-- The JSON run report is `{ "result", "sha256", "acceptance", "plan" }`. A JSON plan export is the stored plan revision.
+- The JSON run report is `{ "result", "sha256", "acceptance", "planApproval", "plan" }`. `acceptance` and `planApproval` each have `state` and `latest`. `latest` is the latest verdict with its `verdict`, `actor`, `at`, `rationale`, and `sha256`, or `null`. `plan` has the requirements and the tests of the plan revision, with their metadata. A JSON plan export is the stored plan revision.
+
+### JUnit XML
+
+`export run <runId> --format junit` writes JUnit XML for a CI system or a test management tool.
+
+- The root `<testsuites>` has one `<testsuite>`. Its name is `<planId>@<revision>`. Its properties are `runId`, `build`, `instance`, `target`, `completion`, and `coverage`.
+- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID and the title, for example `T1 Standard order total`.
+- The properties of a test case are `requirements`, with the requirement IDs separated by commas, and one property for each metadata key. A metadata key such as `test_key` gives the Xray property name.
+- `failed` gives `<failure>`. Its `message` is the title of the first finding of the test. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test.
+- `blocked` and `not_run` give `<skipped>`. `error` and `inconclusive` give `<error>` with the outcome as `type`. `passed` gives no element.
+- Checkmate escapes the text and replaces characters that XML does not permit with U+FFFD.
 - The renderer escapes untrusted text. The HTML has a Content Security Policy that blocks scripts and remote resources.
 - An export is a view. The database is the authority. Do not edit an export to change a verdict.
 
-The review UI offers the same exports. [Examples](../examples/README.md) has exports from a live run.
+The review UI offers the same exports. The run page also offers JUnit XML. [Examples](../examples/README.md) has exports from a live run.
 
 ## Retention
 

@@ -9,6 +9,7 @@ export type Finding = {
 	observed: string
 	reproduction: Array<string>
 	evidenceIds: Array<string>
+	metadata?: Record<string, string | number | boolean>
 }
 
 export type Gap = {
@@ -33,6 +34,7 @@ export type PlanCandidate = {
 		id: string
 		text: string
 		source: string
+		metadata?: Record<string, string | number | boolean>
 	}>
 	tests: Array<{
 		id: string
@@ -48,6 +50,7 @@ export type PlanCandidate = {
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
 		}>
+		metadata?: Record<string, string | number | boolean>
 	}>
 	gaps: Array<{
 		id: string
@@ -84,6 +87,7 @@ export type PlanPatch = {
 		{
 			text?: string
 			source?: string
+			metadata?: Record<string, string | number | boolean>
 		} | null
 	>
 	tests?: Record<
@@ -103,6 +107,7 @@ export type PlanPatch = {
 					checkKind?: 'deterministic' | 'agent_observation'
 				} | null
 			>
+			metadata?: Record<string, string | number | boolean>
 		} | null
 	>
 	gaps?: Record<
@@ -123,6 +128,7 @@ export type PlanRequest = {
 		id: string
 		text: string
 		source: string
+		metadata?: Record<string, string | number | boolean>
 	}>
 	sourceContext?: Array<{
 		uri: string
@@ -157,6 +163,7 @@ export type Plan = {
 		id: string
 		text: string
 		source: string
+		metadata?: Record<string, string | number | boolean>
 	}>
 	tests: Array<{
 		id: string
@@ -174,6 +181,7 @@ export type Plan = {
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
 		}>
+		metadata?: Record<string, string | number | boolean>
 	}>
 	gaps: Array<{
 		id: string
@@ -292,6 +300,7 @@ export type Result = {
 		evidenceIds: Array<string>
 		testIds: Array<string>
 		assertionIds: Array<string>
+		metadata?: Record<string, string | number | boolean>
 	}>
 	newGaps: Array<{
 		id: string

@@ -20,6 +20,9 @@
 							"source": {
 								"type": "string",
 								"minLength": 1
+							},
+							"metadata": {
+								"$ref": "plan.schema.json#/definitions/metadata"
 							}
 						},
 						"additionalProperties": false,
@@ -64,6 +67,9 @@
 							},
 							"assertions": {
 								"$ref": "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions"
+							},
+							"metadata": {
+								"$ref": "plan.schema.json#/definitions/metadata"
 							}
 						},
 						"additionalProperties": false,

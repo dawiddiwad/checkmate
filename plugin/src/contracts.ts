@@ -45,9 +45,21 @@ export function same(a: unknown, b: unknown) {
 
 export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
-	const errors = () => (check.errors ?? []).map((error) => `${name}${error.instancePath} ${error.message}`).join(', ')
+	const errors = () =>
+		(check.errors ?? [])
+			.filter((error) => error.keyword !== 'propertyNames')
+			.map((error) => schemaError(`${name}${error.instancePath}`, error))
+			.join(', ')
 	requireCondition(check(value), `Invalid ${name}: ${errors()}`)
 	return value as Documents[K]
+}
+
+function schemaError(path: string, error: NonNullable<validators.Validator['errors']>[number]) {
+	if (error.keyword === 'additionalProperties')
+		return `${path} has unknown field "${error.params.additionalProperty}"`
+	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`
+	if (error.propertyName !== undefined) return `${path} field name "${error.propertyName}" ${error.message}`
+	return `${path} ${error.message}`
 }
 
 export function requireIdentifier(value: unknown, name: string): string {

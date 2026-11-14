@@ -1,5 +1,11 @@
 export type Validator = ((value: unknown) => boolean) & {
-	errors?: Array<{ instancePath: string; message?: string }> | null
+	errors?: Array<{
+		instancePath: string
+		keyword: string
+		params: { additionalProperty?: string; allowedValues?: unknown[] }
+		propertyName?: string
+		message?: string
+	}> | null
 }
 export const finding: Validator
 export const gap: Validator

@@ -158,15 +158,17 @@ checkmate export run run-2 --format html --out reports/run-2.html
 
 ## Read the record
 
-| Question                                | Command                                      |
-| --------------------------------------- | -------------------------------------------- |
-| Where is this ticket? Who acts next?    | `checkmate status <planId>`                  |
-| What waits for the oracle?              | `checkmate inbox`                            |
-| Which tickets wait for the factory?     | `checkmate plan list --waits-on factory`     |
-| What did a run record?                  | `checkmate run show <runId>`                 |
-| What changed, and who changed it?       | `checkmate log --subject plan:<planId>`      |
-| The full record of a run, for a program | `checkmate export run <runId> --format json` |
-| Anything else                           | `checkmate query "<sql>"` (read-only)        |
+| Question                                | Command                                       |
+| --------------------------------------- | --------------------------------------------- |
+| Where is this ticket? Who acts next?    | `checkmate status <planId>`                   |
+| What waits for the oracle?              | `checkmate inbox`                             |
+| Which tickets wait for the factory?     | `checkmate plan list --waits-on factory`      |
+| What did a run record?                  | `checkmate run show <runId>`                  |
+| Which defects are open?                 | `checkmate finding list --open --json`        |
+| Test results for CI                     | `checkmate export run <runId> --format junit` |
+| What changed, and who changed it?       | `checkmate log --subject plan:<planId>`       |
+| The full record of a run, for a program | `checkmate export run <runId> --format json`  |
+| Anything else                           | `checkmate query "<sql>"` (read-only)         |
 
 `status` prints the loop state, the role that it waits on, and the next command:
 

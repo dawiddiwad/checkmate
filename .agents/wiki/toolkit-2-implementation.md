@@ -271,7 +271,7 @@ Export plain functions over a `Store`. The UI and the CLI use the same functions
 
 - `inbox(store)`: `{ gaps: [{planId, revision, gapId, question, severity, since, runId}], plans: [{planId, revision, sha256, approval, since, summary}], results: [{runId, planId, revision, build, counts, coverage, sha256, since}], requests: [{planId, target, objective, since}] }`.
   Gaps: open gaps of latest revisions without a pending decision, and run gaps that the plan does not have yet (`runId` set). Plans: latest revisions that wait for approval, or that are
-  rejected. Results: pending results of the runs that `planStatus` uses: runs with a latest outcome of a ready test, and runs with an open defect of a ready test. Requests:
+  rejected. Results: pending results of every run that needs an oracle verdict before the plan can finish: runs with a latest outcome of a ready test, and runs with an open defect of a ready test. Requests:
   plan requests without a revision. `planList` also lists them with `status: 'requested'` and `revision: null`.
 - `planList(store)`, `planDetail(store, planId, revision?)`, `planHistory(store, planId)` (revisions with operation,
   actor, time, field changes against the previous revision), `runList(store, filters)`, `runDetail(store, runId)`

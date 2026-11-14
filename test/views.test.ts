@@ -290,13 +290,17 @@ test('plan status follows the loop and names the role and the delegate stage', (
 	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { title: 'Order total' } } } })
 	assert.equal(where(), 'needs_approval oracle none')
 	approved(opened, 'checkout', 3)
-	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 tested checkout@2, not checkout@3'])
+	assert.equal(where(), 'accepted none none')
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 is accepted'])
+	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { action: 'Check out once.' } } } })
+	approved(opened, 'checkout', 4)
 	assert.equal(where(), 'needs_retest qa none')
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['T1 has not run on checkout@4'])
 	assert.deepEqual(planStatus(opened, 'checkout').next, [
-		'checkmate run begin <runId> checkout@3 --build b2 --partial ready_only',
+		'checkmate run begin <runId> checkout@4 --build b2 --partial ready_only',
 	])
-	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { title: 'Total' } } } })
-	rejectPlan(opened, actor, { reference: 'checkout@4', rationale: 'No.' })
+	patchPlan(opened, actor, { reference: 'checkout@4', patch: { tests: { T1: { title: 'Total' } } } })
+	rejectPlan(opened, actor, { reference: 'checkout@5', rationale: 'No.' })
 	assert.equal(where(), 'plan_rejected oracle none')
 	assert.deepEqual(
 		planList(opened).map((row) => [row.planId, row.loop]),
@@ -542,7 +546,7 @@ test('status ignores the defect of a deferred test, and finding list --open stil
 	assert.equal(planDetail(opened, 'checkout').plan.tests.find((test) => test.id === 'T2')?.readiness, 'deferred')
 	assert.deepEqual(
 		[status.state, status.defects, status.why],
-		['needs_retest', [], [`run-1 tested checkout@2, not ${reference}`]]
+		['awaits_acceptance', [], ['run-1 on build b1 waits for acceptance']]
 	)
 	assert.deepEqual(
 		findingList(opened, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
@@ -565,7 +569,7 @@ test('status ignores the inconclusive outcome of a deferred test', (t) => {
 	check(opened, 'run-1', 'T2.A2', 'inconclusive')
 	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
 	const reference = deferT2(opened, 'run-1')
-	assert.deepEqual(planStatus(opened, 'checkout').why, [`run-1 tested checkout@2, not ${reference}`])
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 on build b1 waits for acceptance'])
 	passOn(opened, 'run-2', reference, ['T1'])
 	assert.equal(planStatus(opened, 'checkout').state, 'awaits_acceptance')
 })

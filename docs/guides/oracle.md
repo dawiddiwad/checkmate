@@ -103,7 +103,7 @@ checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before 
 
 - A run with failed tests can be a correct result. Accept it when the record is true. Acceptance is an oracle record. It is not a release decision by Checkmate.
 - An `inconclusive` test is not a defect. The evidence was not sufficient. Give a more exact answer, change the assertion, or ask for a retest with better evidence.
-- The inbox lists only the runs that `status` waits on: each run that has the latest outcome of a ready test, and each run with an open defect of a ready test. Of a retest chain, this can be an earlier run, for example after a narrow retest. In a matrix on one build, each instance has its own latest outcome, so the inbox lists the run of each instance.
+- The inbox lists every run that needs your verdict before the plan can finish: each run that has the latest outcome of a ready test, and each run with an open defect of a ready test. It lists them also while `status` waits on QA or the factory. You can accept a result, or reject a false defect, at any time. Of a retest chain, this can be an earlier run, for example after a narrow retest. In a matrix on one build, each instance has its own latest outcome, so the inbox lists the run of each instance.
 - Accept a correct record, also when it contains a defect. Acceptance says that the record is correct, not that the build is good.
 - Reject a result when the record is wrong. Then its defects are not open, and its tests need a retest. `status` gives `needs_retest`.
 - When result acceptance is required, a cross-plan dependency needs an accepted result.

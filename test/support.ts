@@ -9,7 +9,15 @@ import { fileURLToPath } from 'node:url'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
 import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
-import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
+import {
+	beginRun,
+	checkAssertion,
+	closeTest,
+	finishRun,
+	acceptResult,
+	recordFinding,
+	runState,
+} from '../plugin/src/runs.ts'
 import { run } from '../plugin/src/cli.ts'
 import { planStatus } from '../plugin/src/views.ts'
 import { minimumRules, stages } from '../cli/src/launcher.ts'
@@ -334,6 +342,27 @@ export function followHints(t: TestContext, opened: Store, planId = 'checkout', 
 		const outcome = cli(copy, args, stdin)
 		assert.equal(outcome.code, 0, `${command}\n${outcome.output}`)
 		if (args[0] === 'run') assert.match(outcome.lines[0], /^completed /, `${command}\n${outcome.output}`)
+		const copied = openStore(copy)
+		try {
+			if (args[0] === 'status') {
+				assert(planStatus(copied, args[1]).next.length, `${command} leads to a plan with no next step`)
+				continue
+			}
+			if (args[0] === 'run') passAll(copied, args[2])
+			const shape = (value: typeof status) => [value.state, value.why, value.openRuns.map((run) => run.runId)]
+			assert.notDeepEqual(shape(planStatus(copied, planId)), shape(status), `${command} changes nothing`)
+		} finally {
+			closeStore(copied)
+		}
 	}
 	return status
+}
+
+function passAll(opened: Store, runId: string) {
+	const run = runState(opened, runId)
+	for (const test of run.plan.tests.filter((item) => run.request.selectedTestIds.includes(item.id))) {
+		for (const assertion of test.assertions) check(opened, runId, `${test.id}.${assertion.id}`, 'passed')
+		closeTest(opened, actor, { runId, testId: test.id })
+	}
+	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
 }

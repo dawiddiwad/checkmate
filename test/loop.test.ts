@@ -186,7 +186,7 @@ test('a deferred prerequisite gives nothing_to_run, and the hint is not a run th
 	ready(opened)
 	start(opened, 'run-1', 'checkout@2', 'b1', ['T1', 'T2'])
 	recordGap(opened, actor, { runId: 'run-1', gap: gap('G9', 'blocking', ['T1']) })
-	record(opened, 'run-1', { T1: 'passed', T2: 'passed' })
+	record(opened, 'run-1', { T1: 'passed', T2: 'inconclusive' })
 	accept(opened, 'run-1')
 	assert.deepEqual(state(opened), ['needs_answers', 'oracle', ['1 open blocking gap']])
 	followHints(t, opened)
@@ -460,14 +460,14 @@ test('status names every run of a matrix in begin order and gives the instance i
 		inbox(opened).results.map((row) => row.runId),
 		['run-a', 'run-b']
 	)
-	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { title: 'Order total' } } } })
+	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { action: 'Check out once.' } } } })
 	approved(opened, 'checkout', 3)
 	const retest = planStatus(opened, 'checkout')
 	assert.deepEqual(
 		[retest.state, retest.why, retest.next],
 		[
 			'needs_retest',
-			['run-a tested checkout@2, not checkout@3', 'run-b tested checkout@2, not checkout@3'],
+			['T1 has not run on checkout@3'],
 			['checkmate run begin <runId> checkout@3 --build b1 --instance local --partial ready_only'],
 		]
 	)
@@ -504,4 +504,138 @@ test('a retest keeps the build only on a new instance after the old instance is 
 	assert.equal(retest('run-2', 'local-2').status, 'completed')
 	record(opened, 'run-2', { T1: 'passed', T2: 'passed' })
 	assert.deepEqual(state(opened), ['awaits_acceptance', 'oracle', ['run-2 on build b1 waits for acceptance']])
+})
+
+function follow(opened: Store, runId: string, hint: string) {
+	const build = / --build (\S+)/.exec(hint)![1]
+	const instanceId = / --instance (\S+)/.exec(hint)?.[1]
+	const retestOf = / --retest-of (\S+)/.exec(hint)?.[1]
+	execute(
+		opened,
+		runId,
+		hint.split(' ')[4],
+		build,
+		{ T1: 'passed', T2: 'passed' },
+		{ instance: instanceId, retestOf }
+	)
+}
+
+test('a retest hint names the instance of the run that needs it, so following it ends needs_retest', (t) => {
+	const matrix = (reject: boolean) => {
+		const opened = store(t)
+		ready(opened)
+		instance(opened, 'qa')
+		execute(
+			opened,
+			'run-a',
+			'checkout@2',
+			'b1',
+			{ T1: 'passed', T2: reject ? 'passed' : 'inconclusive' },
+			{
+				instance: 'qa',
+			}
+		)
+		execute(opened, 'run-b', 'checkout@2', 'b1', { T1: 'passed', T2: 'passed' }, { instance: 'local' })
+		if (reject) rejectResult(opened, actor, { runId: 'run-a', rationale: 'The record is wrong.' })
+		const status = planStatus(opened, 'checkout')
+		assert.deepEqual(
+			[status.state, status.next],
+			['needs_retest', ['checkmate run begin <runId> checkout@2 --build b1 --instance qa --partial ready_only']]
+		)
+		assert.deepEqual(
+			inbox(opened).results.map((row) => row.runId),
+			reject ? ['run-b'] : ['run-a', 'run-b']
+		)
+		followHints(t, opened)
+		follow(opened, 'run-c', status.next[0])
+		assert.equal(planStatus(opened, 'checkout').state, 'awaits_acceptance')
+	}
+	matrix(false)
+	matrix(true)
+})
+
+test('a retest hint for a run on a retired instance is a retest on a new instance with the same build', (t) => {
+	const opened = store(t)
+	ready(opened)
+	execute(opened, 'run-a', 'checkout@2', 'b1', { T1: 'passed', T2: 'inconclusive' })
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	instance(opened, 'local-2')
+	const status = planStatus(opened, 'checkout')
+	assert.deepEqual(status.next, [
+		'checkmate run begin <runId> checkout@2 --build b1 --partial ready_only --retest-of run-a',
+	])
+	followHints(t, opened)
+	follow(opened, 'run-b', status.next[0])
+	assert.equal(planStatus(opened, 'checkout').state, 'awaits_acceptance')
+
+	const defect = store(t)
+	ready(defect)
+	execute(defect, 'run-a', 'checkout@2', 'b1', { T1: 'passed', T2: 'failed' })
+	retireInstance(defect, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	instance(defect, 'local-2')
+	assert.equal(planStatus(defect, 'checkout').state, 'defects_open')
+	followHints(t, defect)
+})
+
+test('a cross-plan dependency that passed on another build gives a run on that build', (t) => {
+	const opened = store(t)
+	ready(opened)
+	payPlan(opened)
+	execute(opened, 'c-1', 'checkout@2', 'b1', { T1: 'passed' })
+	accept(opened, 'c-1')
+	assert.deepEqual(planStatus(opened, 'pay').next, [
+		'checkmate run begin <runId> pay@1 --build b1 --partial ready_only',
+	])
+	followHints(t, opened, 'pay')
+
+	const other = store(t)
+	ready(other)
+	payPlan(other)
+	execute(other, 'c-2', 'checkout@2', 'b2', { T1: 'passed' })
+	accept(other, 'c-2')
+	execute(other, 'pay-1', 'pay@1', 'b2', { P1: 'inconclusive' })
+	rejectResult(other, actor, { runId: 'c-2', rationale: 'The record is wrong.' })
+	execute(other, 'c-3', 'checkout@2', 'b3', { T1: 'passed', T2: 'passed' })
+	accept(other, 'c-3')
+	assert.equal(planStatus(other, 'checkout').state, 'accepted')
+	const status = planStatus(other, 'pay')
+	assert.deepEqual(
+		[status.state, status.next],
+		['needs_retest', ['checkmate run begin <runId> pay@1 --build b3 --partial ready_only']]
+	)
+	followHints(t, other, 'pay')
+})
+
+test('before the first run, a non-blocking gap does not hide a cross-plan block', (t) => {
+	const opened = store(t)
+	ready(opened)
+	payPlan(opened)
+	patchPlan(opened, actor, { reference: 'pay@1', patch: { gaps: { N1: patchGap('N1', 'non_blocking', ['P1']) } } })
+	approvePlan(opened, actor, { reference: 'pay@2', rationale: 'Ok.' })
+	const status = planStatus(opened, 'pay')
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.next],
+		['nothing_to_run', 'qa', ['checkmate status checkout']]
+	)
+	followHints(t, opened, 'pay')
+})
+
+test('a gap ID that an earlier revision removed cannot come back', (t) => {
+	const opened = store(t)
+	ready(opened)
+	patchPlan(opened, actor, {
+		reference: 'checkout@2',
+		patch: { gaps: { G8: patchGap('G8', 'non_blocking', ['T1']) } },
+	})
+	approved(opened, 'checkout', 3)
+	patchPlan(opened, actor, { reference: 'checkout@3', patch: { gaps: { G8: null } } })
+	approved(opened, 'checkout', 4)
+	assert.throws(
+		() =>
+			patchPlan(opened, actor, {
+				reference: 'checkout@4',
+				patch: { gaps: { G8: patchGap('G8', 'blocking', ['T2']) } },
+			}),
+		/Gap ID G8 is in use. Use a new ID/
+	)
 })

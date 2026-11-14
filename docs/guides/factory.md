@@ -147,7 +147,7 @@ A cross-plan dependency needs a passed result on the same build. A run on any in
 
 ### 4. Accept
 
-When the retest passes, the oracle accepts the result. Otherwise the factory fixes the code, and QA retests again. The inbox lists every run that `status` waits on. `status` reaches `accepted` when the oracle accepts each run that has the latest outcome of a ready test. A narrow retest leaves the other tests with their outcomes from the earlier run, so accept that run too.
+When the retest passes, the oracle accepts the result. Otherwise the factory fixes the code, and QA retests again. The inbox lists every run that needs an oracle verdict before the plan can finish. `status` reaches `accepted` when the oracle accepts each run that has the latest outcome of a ready test. A narrow retest leaves the other tests with their outcomes from the earlier run, so accept that run too.
 
 ```sh
 checkmate result accept run-2 --rationale "All tests pass on the new build."

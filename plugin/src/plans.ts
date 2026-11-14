@@ -268,7 +268,11 @@ function gapEditCheck(store: Store, plan: Plan, candidate: { tests: Array<{ id: 
 	}
 	const open = planRunGaps(store, plan.planId).filter((item) => !item.adopted)
 	for (const gap of gaps.filter((gap) => !plan.gaps.some((old) => old.id === gap.id)))
-		requireCondition(!open.some((item) => item.gap.id === gap.id), `Gap ID ${gap.id} is in use. Use a new ID.`)
+		requireCondition(
+			!one(store, 'SELECT 1 FROM plan_gaps WHERE plan_id = ? AND gap_id = ?', plan.planId, gap.id) &&
+				!open.some((item) => item.gap.id === gap.id),
+			`Gap ID ${gap.id} is in use. Use a new ID.`
+		)
 }
 
 export function adoptGaps(

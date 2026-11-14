@@ -154,8 +154,8 @@ test('dark mode follows the system and the header toggle overrides it', { skip }
 	assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
 })
 
-test('list filters, sorting, and pages update in place and keep the URL', { skip }, async (t) => {
-	const { page, url } = await open(t)
+test('list filters, sorting, and pages update in place, keep the URL, and update live', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
 	await page.goto(url('/log'))
 	await page.evaluate(() => ((window as unknown as { marker: number }).marker = 1))
 	const marker = () => page.evaluate(() => (window as unknown as { marker?: number }).marker)
@@ -191,10 +191,6 @@ test('list filters, sorting, and pages update in place and keep the URL', { skip
 	await page.getByLabel('Search plans').fill('login')
 	await page.waitForURL(/\/plans\?q=login$/)
 	await page.locator('[data-list-count]', { hasText: 'Showing 1–1 of 1 plan' }).waitFor()
-})
-
-test('a filtered list updates live', { skip }, async (t) => {
-	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans?q=search'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 	await page.locator('tr[data-key="plan:search"]', { hasText: 'pending' }).waitFor()
@@ -291,10 +287,11 @@ async function overflow(page: Awaited<ReturnType<typeof open>>['page']) {
 	})
 }
 
-for (const width of [1280, 390])
-	test(`long unbroken values do not widen the page at ${width}px`, { skip }, async (t) => {
-		const { page, url, workspace } = await open(t, { viewport: { width, height: 900 } })
-		seedLong(workspace)
+test('long unbroken values do not widen the page at 1280px and 390px', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	seedLong(workspace)
+	for (const width of [1280, 390]) {
+		await page.setViewportSize({ width, height: 900 })
 		const pages = [
 			'/',
 			'/plans',
@@ -320,4 +317,5 @@ for (const width of [1280, 390])
 			const box = await page.locator(panel).boundingBox()
 			assert(box && box.x >= 0 && box.x + box.width <= width, `${path} ${JSON.stringify(box)}`)
 		}
-	})
+	}
+})

@@ -7,7 +7,7 @@ import { approval, focusedKey, launch, open, skip, stop } from './browser.ts'
 test.before(launch)
 test.after(stop)
 
-test('the inbox works from the keyboard', { skip }, async (t) => {
+test('the inbox works from the keyboard and a #decide or #answer link focuses its form', { skip }, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
@@ -28,6 +28,17 @@ test('the inbox works from the keyboard', { skip }, async (t) => {
 	await page.goto(url('/plans'))
 	await page.keyboard.press('/')
 	assert.equal(await page.evaluate(() => document.activeElement?.id), 'q')
+	await page.goto(url('/plans/search@1#decide'))
+	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
+	await page.waitForTimeout(300)
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'rationale')
+	await page.goto(url('/plans/checkout@2/gaps/G2#answer'))
+	await page.waitForFunction(() => document.activeElement?.closest('#answer') !== null)
+	await page.waitForTimeout(300)
+	assert(await page.evaluate(() => document.activeElement?.closest('#answer') !== null))
+	await page.goto(url('/runs/run-7'))
+	await page.evaluate(() => (location.hash = '#decide'))
+	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
 })
 
 test('a gap answer goes from the form to the next inbox item', { skip }, async (t) => {
@@ -76,7 +87,7 @@ test('approval confirms in place without a modal', { skip }, async (t) => {
 	assert.equal(dialogs, 0)
 })
 
-test('forms work with JavaScript disabled', { skip }, async (t) => {
+test('forms and list filters work with JavaScript disabled', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t, { javaScriptEnabled: false })
 	await page.goto(url('/plans/search@1'))
 	await page.getByLabel('Rationale').fill('Reviewed without scripts.')
@@ -90,10 +101,6 @@ test('forms work with JavaScript disabled', { skip }, async (t) => {
 	await page.getByLabel('Rationale').fill('Matches the policy draft.')
 	await page.getByRole('button', { name: 'Record answer' }).click()
 	await page.getByRole('status').filter({ hasText: 'Answered checkout · G2' }).waitFor()
-})
-
-test('list filters work with JavaScript disabled', { skip }, async (t) => {
-	const { page, url } = await open(t, { javaScriptEnabled: false })
 	await page.goto(url('/runs'))
 	await page.getByLabel('Status').selectOption('started')
 	await page.getByRole('button', { name: 'Filter' }).click()
@@ -142,21 +149,6 @@ test('Bring into plan on the run page adds the run gap to the plan', { skip }, a
 	const store = openStore(workspace)
 	t.after(() => closeStore(store))
 	assert(planDetail(store, 'checkout').plan.gaps.some((gap) => gap.id === 'G4'))
-})
-
-test('a #decide or #answer link focuses its form after the browser scrolls', { skip }, async (t) => {
-	const { page, url } = await open(t)
-	await page.goto(url('/plans/search@1#decide'))
-	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
-	await page.waitForTimeout(300)
-	assert.equal(await page.evaluate(() => document.activeElement?.id), 'rationale')
-	await page.goto(url('/plans/checkout@2/gaps/G2#answer'))
-	await page.waitForFunction(() => document.activeElement?.closest('#answer') !== null)
-	await page.waitForTimeout(300)
-	assert(await page.evaluate(() => document.activeElement?.closest('#answer') !== null))
-	await page.goto(url('/runs/run-7'))
-	await page.evaluate(() => (location.hash = '#decide'))
-	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
 })
 
 test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, async (t) => {

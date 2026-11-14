@@ -95,6 +95,8 @@ A passed live run does not prove that a worker always follows the skills. [Examp
 
 The plan candidate validator is the plan schema without `coverage`. The generator derives it, so it has no schema file.
 
+The design record of the store and the review UI is `.agents/wiki/sqlite-store-design.md`. It explains the decisions behind the schema. When it differs from the code, the code and the schemas win.
+
 ## Releases
 
 Each merged pull request to `main` starts the release job in `.github/workflows/ci.yml` after `verify` passes.

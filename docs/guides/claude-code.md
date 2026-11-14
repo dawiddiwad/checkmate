@@ -98,7 +98,7 @@ After each stage, Claude shows a table of the items that matter, a `Done:` line,
 
 ## Example
 
-The `Next:` line after a plan with gaps:
+A report after a plan with gaps:
 
 ```md
 | Gap | Severity | Tests | Question                                            |

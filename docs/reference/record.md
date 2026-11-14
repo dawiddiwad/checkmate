@@ -2,7 +2,7 @@
 
 > **Reference** · The database behind Checkmate: where it is, what it keeps, who wrote each row, and what it does not protect.
 
-All state is in one SQLite file in the application workspace. Rows do not change after a write, and each command leaves one row in the operation log.
+All state is in one SQLite file in the application workspace. Rows do not change after a write, and each write leaves one row in the operation log.
 
 **On this page:** [Location](#location) · [Rules](#rules) · [Actor](#actor) · [Operation log](#operation-log) · [Tables](#tables) · [Review UI](#review-ui) · [Limits](#limits)
 
@@ -42,7 +42,7 @@ The actor is a record. It is not a proof of identity. Checkmate has no authentic
 
 ## Operation log
 
-Each command records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`.
+Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A read, for example `status` or `inbox`, records nothing.
 
 ```sh
 checkmate log --subject plan:checkout --limit 5

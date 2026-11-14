@@ -41,6 +41,24 @@ try {
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
 	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
+	const stageWrites: Record<string, RegExp> = {
+		setup: /checkmate target save /,
+		plan: /checkmate plan save /,
+		revise: /checkmate plan revise /,
+		execute: /checkmate run (begin|check|close|finding|gap|finish|resume) /,
+	}
+	const documents = [
+		...Object.keys(stageWrites).map((stage) => [stage, `skills/${stage}/SKILL.md`]),
+		['plan', 'references/workflow.md'],
+		['execute', 'references/http.md'],
+		['execute', 'references/browser.md'],
+	]
+	for (const [stage, path] of documents) {
+		const lines = (await readFile(join(source, path), 'utf8')).split('\n')
+		const writes = lines.filter((line) => stageWrites[stage].test(line))
+		if (path.startsWith('skills/')) assert(writes.length, path)
+		for (const line of writes) assert.match(line, new RegExp(`--actor claude:${stage}\\b`), `${path}: ${line}`)
+	}
 	const ui = spawn(process.execPath, [bundle, 'ui', '--workspace', workspace], { cwd: directory })
 	try {
 		const [first] = (await once(ui.stdout, 'data')) as [Buffer]

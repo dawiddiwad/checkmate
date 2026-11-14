@@ -19,7 +19,7 @@ console.log(JSON.stringify(exchange))
 Record the assertion with the printed exchange as evidence. Copy the printed line exactly:
 
 ```sh
-checkmate run check <runId> T2 A1 --result passed --observed "totalPLN is 240" --evidence -:http_exchange <<'EOF'
+checkmate run check <runId> T2 A1 --actor claude:execute --result passed --observed "totalPLN is 240" --evidence -:http_exchange <<'EOF'
 {"method":"GET","path":"/quote","status":200,"totalPLN":240}
 EOF
 ```

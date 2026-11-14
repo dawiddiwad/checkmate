@@ -36,7 +36,7 @@ Every write records an actor. Checkmate uses the first value that it finds:
 Checkmate refuses a write without an actor.
 
 - `delegate` sets `CHECKMATE_ACTOR=claude:<stage>` for its worker.
-- A skill in the same session records agent work as `claude:<stage>` when `CHECKMATE_ACTOR` is not set.
+- A skill passes `--actor claude:<stage>` on each stage write, so the record shows `claude:<stage>` in the same session too.
 - The review UI fills in the same default. A human can change the name in the header.
 
 The actor is a record. It is not a proof of identity. Checkmate has no authentication and no access control.

@@ -58,7 +58,7 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 10. For a browser tool, open `about:blank` in a new isolated session with the browser config of the project. Put the browser output in `.checkmate/tmp/setup-<targetId>/`. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
 11. Use the running application. Start it only when the owner of the application authorized a startup command.
 12. Write the profile. Use the shape below.
-13. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.
+13. Send the profile in a heredoc: `checkmate target save <targetId> --actor claude:setup <<'EOF'`, the JSON, then `EOF`.
 14. When no instance is active, add the first instance after `target save`. Give `--entry` once for each entry point:
 
     ```sh

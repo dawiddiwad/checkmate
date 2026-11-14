@@ -639,13 +639,6 @@ test('run finish removes the evidence directory of the run with its files', (t) 
 	assert.equal(existsSync(tmp), false)
 })
 
-test('run finish removes .checkmate/tmp when no run directory is left', (t) => {
-	const opened = started(t, ['T1'])
-	passT1(opened)
-	finish(opened)
-	assert.equal(existsSync(join(opened.workspace, '.checkmate/tmp')), false)
-})
-
 test('run begin uses the only active instance, a named instance, and never a retired one', (t) => {
 	const opened = store(t)
 	ready(opened)

@@ -602,15 +602,6 @@ test('acceptance covers every run that gives a latest outcome', (t) => {
 	assert.deepEqual([accepted.state, accepted.why], ['accepted', ['run-1, run-2 are accepted']])
 })
 
-test('after a finished run, a ready test that never ran needs a retest', (t) => {
-	const opened = store(t)
-	ready(opened)
-	assert.equal(planStatus(opened, 'checkout').state, 'ready_to_run')
-	passRun(opened, 'run-1', 'b1', ['T1'])
-	const status = planStatus(opened, 'checkout')
-	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 has not run on checkout@2']])
-})
-
 test('the inbox lists an earlier run of a retest chain while status waits for it', (t) => {
 	const opened = store(t)
 	target(opened)

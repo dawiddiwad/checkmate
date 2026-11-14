@@ -1,6 +1,6 @@
 {
 	"name": "checkmate",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"description": "Plan tests, resolve gaps, and collect evidence.",
 	"author": {
 		"name": "Dawid Dobrowolski"

@@ -295,13 +295,23 @@ export function accept(store: Store, runId: string) {
 	return acceptResult(store, actor, { runId, rationale: 'Looks right.' })
 }
 
-export function followHints(t: TestContext, opened: Store, planId = 'checkout', fill: Record<string, string> = {}) {
+export function followHints(
+	t: TestContext,
+	opened: Store,
+	planId = 'checkout',
+	fill: Record<string, string> = {},
+	seen: string[] = [],
+	depth = 2
+) {
 	const status = planStatus(opened, planId)
+	const shape = (value: typeof status) =>
+		JSON.stringify([value.state, value.why, value.openRuns.map((run) => run.runId)])
+	assert(!seen.includes(shape(status)), `The hints of ${planId} go in a cycle: ${shape(status)}`)
 	const plan = status.revision === null ? null : planRevision(opened, planId).plan
 	const values: Record<string, string> = {
-		'<runId>': 'hint-run',
-		'<new build>': 'hint-build',
-		'<build>': 'hint-build',
+		'<runId>': `hint-run-${depth}`,
+		'<new build>': `hint-build-${depth}`,
+		'<build>': `hint-build-${depth}`,
 		'<gapId>': status.gaps[0]?.gapId ?? 'none',
 		'<kind>': 'defer',
 		'<answer>': 'Hint answer.',
@@ -349,8 +359,9 @@ export function followHints(t: TestContext, opened: Store, planId = 'checkout', 
 				continue
 			}
 			if (args[0] === 'run') passAll(copied, args[2])
-			const shape = (value: typeof status) => [value.state, value.why, value.openRuns.map((run) => run.runId)]
-			assert.notDeepEqual(shape(planStatus(copied, planId)), shape(status), `${command} changes nothing`)
+			const after = shape(planStatus(copied, planId))
+			assert.notEqual(after, shape(status), `${command} changes nothing`)
+			if (depth > 1) followHints(t, copied, planId, fill, [...seen, shape(status)], depth - 1)
 		} finally {
 			closeStore(copied)
 		}

@@ -182,7 +182,7 @@ A defect stays open until one of these occurs:
 
 A started run closes no defect. A rejected run closes no defect and replaces no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. The cross-plan dependency rule is different: it accepts a pass on any instance of the build.
 
-`checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. The defect is still real, so `finding list --open` still lists it.
+`checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. A test whose local prerequisite is deferred also counts as deferred. The defect is still real, so `finding list --open` still lists it.
 
 ## Completion and coverage
 

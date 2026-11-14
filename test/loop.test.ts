@@ -181,12 +181,12 @@ test('a gap ID is unique in a plan, its revisions, and the open gaps of its runs
 	assert.equal((answered.data.adopted as { runId: string }).runId, 'run-uat')
 })
 
-test('a deferred prerequisite gives nothing_to_run, and the hint is not a run the gate refuses', (t) => {
+function deferredPrerequisite(t: Parameters<typeof store>[0], outcome: Outcome) {
 	const opened = store(t)
 	ready(opened)
 	start(opened, 'run-1', 'checkout@2', 'b1', ['T1', 'T2'])
 	recordGap(opened, actor, { runId: 'run-1', gap: gap('G9', 'blocking', ['T1']) })
-	record(opened, 'run-1', { T1: 'passed', T2: 'inconclusive' })
+	record(opened, 'run-1', { T1: 'passed', T2: outcome })
 	accept(opened, 'run-1')
 	assert.deepEqual(state(opened), ['needs_answers', 'oracle', ['1 open blocking gap']])
 	followHints(t, opened)
@@ -195,22 +195,37 @@ test('a deferred prerequisite gives nothing_to_run, and the hint is not a run th
 	approved(opened, 'checkout', 4)
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual(
-		[status.state, status.waitsOn, status.why, status.next],
+		[status.state, status.waitsOn, status.why, status.next, status.defects],
 		[
-			'nothing_to_run',
-			'oracle',
-			['T1 deferred by G9', 'T2 needs T1, which is left out', 'T3 deferred by G2'],
-			['checkmate plan edit checkout@4 --patch'],
+			'accepted',
+			'none',
+			['No test is ready. Every test is deferred', 'T2 deferred: prerequisite T1 is deferred'],
+			[],
+			[],
 		]
 	)
-	assert.equal(
-		gate(opened, { reference: 'checkout@4', build: 'b1', partial: 'ready_only' }).reply.status,
-		'needs_decision'
-	)
-	followHints(t, opened)
+	assert.deepEqual(gate(opened, { reference: 'checkout@4', build: 'b1', partial: 'ready_only' }).reply.data.leftOut, [
+		{ testId: 'T1', reason: 'deferred by G9' },
+		{ testId: 'T2', reason: 'deferred: prerequisite T1 is deferred' },
+		{ testId: 'T3', reason: 'deferred by G2' },
+	])
+	return opened
+}
+
+test('a ready test with a deferred prerequisite counts as deferred, and the plan reaches accepted', (t) => {
+	deferredPrerequisite(t, 'passed')
 })
 
-test('a plan with every test deferred after a run gives nothing_to_run', (t) => {
+test('status ignores the inconclusive outcome or the defect of a test with a deferred prerequisite', (t) => {
+	deferredPrerequisite(t, 'inconclusive')
+	const failed = deferredPrerequisite(t, 'failed')
+	assert.deepEqual(
+		findingList(failed, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
+		['run-1/F-T2']
+	)
+})
+
+test('a plan with every test deferred after a run reaches accepted', (t) => {
 	const opened = store(t)
 	ready(opened)
 	execute(opened, 'run-1', 'checkout@2', 'b1', { T1: 'passed', T2: 'passed' })
@@ -220,11 +235,14 @@ test('a plan with every test deferred after a run gives nothing_to_run', (t) => 
 	revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
 	approved(opened, 'checkout', 4)
 	const status = planStatus(opened, 'checkout')
-	assert.deepEqual([status.state, status.waitsOn, status.why[0]], ['nothing_to_run', 'oracle', 'No test is ready'])
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.why, status.next],
+		['accepted', 'none', ['No test is ready. Every test is deferred'], []]
+	)
 	followHints(t, opened)
 })
 
-function payPlan(opened: Store) {
+function payPlan(opened: Store, dependencies = ['T1']) {
 	openPlan(opened, actor, {
 		planId: 'pay',
 		target: 'checkout-local@1',
@@ -233,19 +251,17 @@ function payPlan(opened: Store) {
 	savePlan(opened, actor, {
 		planId: 'pay',
 		candidate: {
-			tests: [
-				{
-					id: 'P1',
-					title: 'Pay',
-					requirementIds: ['P'],
-					capability: 'http',
-					operations: ['read_catalog'],
-					dependsOn: ['checkout:T1'],
-					preconditions: [],
-					action: 'Pay.',
-					assertions: [{ id: 'A1', check: 'Paid.', checkKind: 'deterministic' }],
-				},
-			],
+			tests: dependencies.map((testId, i) => ({
+				id: `P${i + 1}`,
+				title: 'Pay',
+				requirementIds: ['P'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [`checkout:${testId}`],
+				preconditions: [],
+				action: 'Pay.',
+				assertions: [{ id: 'A1', check: 'Paid.', checkKind: 'deterministic' }],
+			})),
 			gaps: [],
 		},
 	})
@@ -638,4 +654,42 @@ test('a gap ID that an earlier revision removed cannot come back', (t) => {
 			}),
 		/Gap ID G8 is in use. Use a new ID/
 	)
+})
+
+test('a changed requirement text or a new requirement of a test needs a retest', (t) => {
+	const opened = store(t)
+	ready(opened)
+	execute(opened, 'run-1', 'checkout@2', 'b1', { T1: 'passed', T2: 'passed' })
+	accept(opened, 'run-1')
+	const text = 'A standard order for a 400 PLN item has a total of 500 PLN.'
+	patchPlan(opened, actor, { reference: 'checkout@2', patch: { requirements: { R1: { text } } } })
+	approved(opened, 'checkout', 3)
+	assert.deepEqual(state(opened), ['needs_retest', 'qa', ['T1 has not run on checkout@3']])
+	followHints(t, opened)
+	execute(opened, 'run-2', 'checkout@3', 'b1', { T1: 'passed', T2: 'passed' })
+	accept(opened, 'run-2')
+	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T2: { requirementIds: ['R2', 'R1'] } } } })
+	approved(opened, 'checkout', 4)
+	assert.deepEqual(state(opened), ['needs_retest', 'qa', ['T2 has not run on checkout@4']])
+	followHints(t, opened)
+})
+
+test('a cross-plan build hint names the build that selects the most tests, the newest on a tie', (t) => {
+	const opened = store(t)
+	ready(opened)
+	payPlan(opened, ['T1', 'T2'])
+	execute(opened, 'c-1', 'checkout@2', 'b1', { T1: 'passed', T2: 'passed' })
+	accept(opened, 'c-1')
+	execute(opened, 'c-2', 'checkout@2', 'b2', { T1: 'passed' })
+	accept(opened, 'c-2')
+	assert.deepEqual(planStatus(opened, 'pay').next, [
+		'checkmate run begin <runId> pay@1 --build b1 --partial ready_only',
+	])
+	followHints(t, opened, 'pay')
+	execute(opened, 'c-3', 'checkout@2', 'b3', { T1: 'passed', T2: 'passed' })
+	accept(opened, 'c-3')
+	assert.deepEqual(planStatus(opened, 'pay').next, [
+		'checkmate run begin <runId> pay@1 --build b3 --partial ready_only',
+	])
+	followHints(t, opened, 'pay')
 })

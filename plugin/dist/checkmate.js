@@ -8083,11 +8083,31 @@ function blockingRunGaps(store, planId) {
 function runGapAffecting(runGaps2, test) {
   return runGaps2.find((item) => gapsAffecting([item.gap], test).length > 0);
 }
+function deferredPrerequisites(plan) {
+  const deferred = /* @__PURE__ */ new Map();
+  const root = (id2) => {
+    const test = plan.tests.find((item) => item.id === id2);
+    if (test?.readiness === "deferred") return id2;
+    return deferred.get(id2);
+  };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const test of plan.tests.filter((item) => item.readiness === "ready" && !deferred.has(item.id))) {
+      const prerequisite = test.dependsOn.filter((id2) => !id2.includes(":")).find(root);
+      if (!prerequisite) continue;
+      deferred.set(test.id, root(prerequisite));
+      changed = true;
+    }
+  }
+  return deferred;
+}
 function readySelection(store, plan, build) {
   const leftOut = [];
   const runGaps2 = blockingRunGaps(store, plan.planId);
+  const deferred = deferredPrerequisites(plan);
   for (const test of plan.tests) {
-    const reason = notReadyReason(store, plan, test, build, runGaps2);
+    const prerequisite = deferred.get(test.id);
+    const reason = prerequisite ? `deferred: prerequisite ${prerequisite} is deferred` : notReadyReason(store, plan, test, build, runGaps2);
     if (reason) leftOut.push({ testId: test.id, reason });
   }
   let selected = plan.tests.map((test) => test.id).filter((id2) => !leftOut.some((item) => item.testId === id2));
@@ -9247,6 +9267,15 @@ function planStatus(store, planId) {
       JSON.stringify(others)
     ).map((row) => row.build);
   };
+  const bestBuild = (count) => {
+    let best;
+    let most = 0;
+    for (const build of dependencyBuilds()) {
+      const selected = count(build);
+      if (selected > most) [best, most] = [build, selected];
+    }
+    return best;
+  };
   const nothingToRun = (build, leftOut) => {
     const why = [
       ...ready.length ? [] : ["No test is ready"],
@@ -9303,7 +9332,7 @@ function planStatus(store, planId) {
     if (!finished) {
       const selection = readySelection(store, plan, null);
       if (selection.tests.length) {
-        const build = dependencyBuilds().find((item) => readySelection(store, plan, item).tests.length) ?? "<build>";
+        const build = bestBuild((item) => readySelection(store, plan, item).tests.length) ?? "<build>";
         return loop(
           "ready_to_run",
           "qa",
@@ -9334,7 +9363,13 @@ function planStatus(store, planId) {
       );
     }
     if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer);
-    if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut);
+    if (!ready.length)
+      return loop(
+        finished.acceptance === "not_required" ? "passed" : "accepted",
+        "none",
+        ["No test is ready. Every test is deferred"],
+        []
+      );
     const causes = /* @__PURE__ */ new Set();
     const reasons2 = new Map(
       ready.map((testId) => {
@@ -9366,7 +9401,9 @@ function planStatus(store, planId) {
       const caused = runs.filter((run2) => causes.has(run2.runId));
       let next = (caused.length ? caused : [finished]).filter((run2) => selectable(run2.build)).map(rerun);
       if (!next.length) {
-        const build = dependencyBuilds().find(selectable);
+        const build = bestBuild(
+          (item) => readySelection(store, plan, item).tests.filter((testId) => needed.includes(testId)).length
+        );
         if (build)
           next = [`checkmate run begin <runId> ${subject} --build ${build}${instance()} --partial ready_only`];
       }
@@ -9387,10 +9424,19 @@ function planStatus(store, planId) {
       return loop("accepted", "none", [`${names} ${supplying.length === 1 ? "is" : "are"} accepted`], []);
     return loop("passed", "none", [`${names} passed. Result acceptance is not required`], []);
   };
+  const loopState2 = state();
+  loopState2.why = [
+    .../* @__PURE__ */ new Set([
+      ...loopState2.why,
+      ...[...record.derived].map(
+        ([testId, prerequisite]) => `${testId} deferred: prerequisite ${prerequisite} is deferred`
+      )
+    ])
+  ];
   return {
     planId,
     revision: plan.revision,
-    ...state(),
+    ...loopState2,
     approval,
     gaps,
     pendingDecisions: pendingDecisions2,
@@ -9419,21 +9465,34 @@ function rejectedRuns(store, planId, runs = runList(store, { planId })) {
 function planRecord(store, plan, runs) {
   const results = finalizedResults(store, plan.planId);
   const rejected = rejectedRuns(store, plan.planId, runs);
-  const ready = plan.tests.filter((test) => test.readiness === "ready").map((test) => test.id);
+  const derived = deferredPrerequisites(plan);
+  const ready = plan.tests.filter((test) => test.readiness === "ready" && !derived.has(test.id)).map((test) => test.id);
   const latest = latestOutcomes(store, plan, results);
   const supplied = results.filter((result) => ready.some((testId) => latest.get(testId)?.includes(result))).map((result) => result.runId);
   const defects = openDefects(results, rejected).filter(
     ({ finding }) => finding.testIds.some((testId) => ready.includes(testId))
   );
-  return { results, rejected, ready, latest, supplied, defects };
+  return { results, rejected, ready, derived, latest, supplied, defects };
 }
 function selectedOutcome(result, testId) {
   if (!result.selectedTestIds.includes(testId)) return null;
   return result.tests.find((test) => test.testId === testId)?.outcome ?? null;
 }
-function testDefinition(test) {
-  const { action, preconditions, assertions, dependsOn, capability, operations } = test;
-  return digest(canonical({ action, preconditions, assertions, dependsOn, capability, operations }));
+function testDefinition(plan, test) {
+  const { action, preconditions, assertions, dependsOn, capability, operations, requirementIds } = test;
+  const requirements = requirementIds.map((id2) => plan.requirements.find((item) => item.id === id2)?.text ?? null);
+  return digest(
+    canonical({
+      action,
+      preconditions,
+      assertions,
+      dependsOn,
+      capability,
+      operations,
+      requirementIds,
+      requirements
+    })
+  );
 }
 function retests(later, earlier, byRun) {
   for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
@@ -9445,14 +9504,15 @@ function supersedes(later, earlier, byRun) {
 }
 function latestOutcomes(store, plan, results) {
   const byRun = new Map(results.map((result) => [result.runId, result]));
-  const current = new Map(plan.tests.map((test) => [test.id, testDefinition(test)]));
+  const current = new Map(plan.tests.map((test) => [test.id, testDefinition(plan, test)]));
   const tested = /* @__PURE__ */ new Map();
   const latest = /* @__PURE__ */ new Map();
   for (const result of results) {
     const revision = result.plan.revision;
     if (!tested.has(revision)) tested.set(revision, planRevision(store, plan.planId, revision).plan);
     for (const test of tested.get(revision).tests) {
-      if (!result.selectedTestIds.includes(test.id) || current.get(test.id) !== testDefinition(test)) continue;
+      if (!result.selectedTestIds.includes(test.id) || current.get(test.id) !== testDefinition(tested.get(revision), test))
+        continue;
       const kept = (latest.get(test.id) ?? []).filter((earlier) => !supersedes(result, earlier, byRun));
       latest.set(test.id, [...kept, result]);
     }

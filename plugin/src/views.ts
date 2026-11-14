@@ -11,6 +11,7 @@ import {
 	planRequest,
 	planRevision,
 	planRunGaps,
+	deferredPrerequisites,
 	readySelection,
 } from './plans.ts'
 import {
@@ -358,6 +359,15 @@ export function planStatus(store: Store, planId: string) {
 			JSON.stringify(others)
 		).map((row) => row.build)
 	}
+	const bestBuild = (count: (build: string) => number) => {
+		let best: string | undefined
+		let most = 0
+		for (const build of dependencyBuilds()) {
+			const selected = count(build)
+			if (selected > most) [best, most] = [build, selected]
+		}
+		return best
+	}
 	const nothingToRun = (build: string | null, leftOut: Array<{ testId: string; reason: string }>) => {
 		const why = [
 			...(ready.length ? [] : ['No test is ready']),
@@ -418,8 +428,7 @@ export function planStatus(store: Store, planId: string) {
 		if (!finished) {
 			const selection = readySelection(store, plan, null)
 			if (selection.tests.length) {
-				const build =
-					dependencyBuilds().find((item) => readySelection(store, plan, item).tests.length) ?? '<build>'
+				const build = bestBuild((item) => readySelection(store, plan, item).tests.length) ?? '<build>'
 				return loop(
 					'ready_to_run',
 					'qa',
@@ -454,7 +463,13 @@ export function planStatus(store: Store, planId: string) {
 			)
 		}
 		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
-		if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut)
+		if (!ready.length)
+			return loop(
+				finished.acceptance === 'not_required' ? 'passed' : 'accepted',
+				'none',
+				['No test is ready. Every test is deferred'],
+				[]
+			)
 		const causes = new Set<string>()
 		const reasons = new Map(
 			ready.map((testId) => {
@@ -487,7 +502,9 @@ export function planStatus(store: Store, planId: string) {
 			const caused = runs.filter((run) => causes.has(run.runId))
 			let next = (caused.length ? caused : [finished]).filter((run) => selectable(run.build)).map(rerun)
 			if (!next.length) {
-				const build = dependencyBuilds().find(selectable)
+				const build = bestBuild(
+					(item) => readySelection(store, plan, item).tests.filter((testId) => needed.includes(testId)).length
+				)
 				if (build)
 					next = [`checkmate run begin <runId> ${subject} --build ${build}${instance()} --partial ready_only`]
 			}
@@ -508,10 +525,19 @@ export function planStatus(store: Store, planId: string) {
 			return loop('accepted', 'none', [`${names} ${supplying.length === 1 ? 'is' : 'are'} accepted`], [])
 		return loop('passed', 'none', [`${names} passed. Result acceptance is not required`], [])
 	}
+	const loopState = state()
+	loopState.why = [
+		...new Set([
+			...loopState.why,
+			...[...record.derived].map(
+				([testId, prerequisite]) => `${testId} deferred: prerequisite ${prerequisite} is deferred`
+			),
+		]),
+	]
 	return {
 		planId,
 		revision: plan.revision,
-		...state(),
+		...loopState,
 		approval,
 		gaps,
 		pendingDecisions,
@@ -545,7 +571,10 @@ function rejectedRuns(store: Store, planId: string, runs = runList(store, { plan
 function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) {
 	const results = finalizedResults(store, plan.planId)
 	const rejected = rejectedRuns(store, plan.planId, runs)
-	const ready = plan.tests.filter((test) => test.readiness === 'ready').map((test) => test.id)
+	const derived = deferredPrerequisites(plan)
+	const ready = plan.tests
+		.filter((test) => test.readiness === 'ready' && !derived.has(test.id))
+		.map((test) => test.id)
 	const latest = latestOutcomes(store, plan, results)
 	const supplied = results
 		.filter((result) => ready.some((testId) => latest.get(testId)?.includes(result)))
@@ -553,7 +582,7 @@ function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) 
 	const defects = openDefects(results, rejected).filter(({ finding }) =>
 		finding.testIds.some((testId) => ready.includes(testId))
 	)
-	return { results, rejected, ready, latest, supplied, defects }
+	return { results, rejected, ready, derived, latest, supplied, defects }
 }
 
 function selectedOutcome(result: Result, testId: string) {
@@ -561,9 +590,21 @@ function selectedOutcome(result: Result, testId: string) {
 	return result.tests.find((test) => test.testId === testId)?.outcome ?? null
 }
 
-function testDefinition(test: Plan['tests'][number]) {
-	const { action, preconditions, assertions, dependsOn, capability, operations } = test
-	return digest(canonical({ action, preconditions, assertions, dependsOn, capability, operations }))
+function testDefinition(plan: Plan, test: Plan['tests'][number]) {
+	const { action, preconditions, assertions, dependsOn, capability, operations, requirementIds } = test
+	const requirements = requirementIds.map((id) => plan.requirements.find((item) => item.id === id)?.text ?? null)
+	return digest(
+		canonical({
+			action,
+			preconditions,
+			assertions,
+			dependsOn,
+			capability,
+			operations,
+			requirementIds,
+			requirements,
+		})
+	)
 }
 
 function retests(later: Result, earlier: Result, byRun: Map<string, Result>) {
@@ -582,14 +623,18 @@ function supersedes(later: Result, earlier: Result, byRun: Map<string, Result>) 
 
 function latestOutcomes(store: Store, plan: Plan, results: Result[]) {
 	const byRun = new Map(results.map((result) => [result.runId, result]))
-	const current = new Map(plan.tests.map((test) => [test.id, testDefinition(test)]))
+	const current = new Map(plan.tests.map((test) => [test.id, testDefinition(plan, test)]))
 	const tested = new Map<number, Plan>()
 	const latest = new Map<string, Result[]>()
 	for (const result of results) {
 		const revision = result.plan.revision
 		if (!tested.has(revision)) tested.set(revision, planRevision(store, plan.planId, revision).plan)
 		for (const test of tested.get(revision)!.tests) {
-			if (!result.selectedTestIds.includes(test.id) || current.get(test.id) !== testDefinition(test)) continue
+			if (
+				!result.selectedTestIds.includes(test.id) ||
+				current.get(test.id) !== testDefinition(tested.get(revision)!, test)
+			)
+				continue
 			const kept = (latest.get(test.id) ?? []).filter((earlier) => !supersedes(result, earlier, byRun))
 			latest.set(test.id, [...kept, result])
 		}

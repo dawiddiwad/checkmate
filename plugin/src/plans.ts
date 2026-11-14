@@ -911,11 +911,34 @@ function runGapAffecting(runGaps: RunGap[], test: Test) {
 	return runGaps.find((item) => gapsAffecting([item.gap], test).length > 0)
 }
 
+export function deferredPrerequisites(plan: Plan) {
+	const deferred = new Map<string, string>()
+	const root = (id: string) => {
+		const test = plan.tests.find((item) => item.id === id)
+		if (test?.readiness === 'deferred') return id
+		return deferred.get(id)
+	}
+	for (let changed = true; changed;) {
+		changed = false
+		for (const test of plan.tests.filter((item) => item.readiness === 'ready' && !deferred.has(item.id))) {
+			const prerequisite = test.dependsOn.filter((id) => !id.includes(':')).find(root)
+			if (!prerequisite) continue
+			deferred.set(test.id, root(prerequisite)!)
+			changed = true
+		}
+	}
+	return deferred
+}
+
 export function readySelection(store: Store, plan: Plan, build: string | null) {
 	const leftOut: LeftOut[] = []
 	const runGaps = blockingRunGaps(store, plan.planId)
+	const deferred = deferredPrerequisites(plan)
 	for (const test of plan.tests) {
-		const reason = notReadyReason(store, plan, test, build, runGaps)
+		const prerequisite = deferred.get(test.id)
+		const reason = prerequisite
+			? `deferred: prerequisite ${prerequisite} is deferred`
+			: notReadyReason(store, plan, test, build, runGaps)
 		if (reason) leftOut.push({ testId: test.id, reason })
 	}
 	let selected = plan.tests.map((test) => test.id).filter((id) => !leftOut.some((item) => item.testId === id))

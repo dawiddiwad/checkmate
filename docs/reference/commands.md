@@ -152,7 +152,7 @@ The `next` line is a hint for a person or an agent. Do not parse it. `--json` al
 - `reason:` lines follow.
 - `--json` prints `{ "status", "subject", "reasons", ... }`.
 - `export` prints the report. With `--out <path>`, it writes a new file and prints the response. It refuses an existing file.
-- A schema error names the field. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. Read [Payloads](payloads.md#schemas).
+- A schema error names the field. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. A value of the wrong type gives `<payload>/<path> must be <type>`. When a field takes more than one type, for example a string or an object, the error names only the type of the value that you sent. When no type agrees, it lists all types, for example `must be string, number, or boolean`. Read [Payloads](payloads.md#schemas).
 - An option value that is not in its fixed list or not in its range gives `invalid_request`, for example `log --limit 0`, `log --subject bogus`, or `export run run-1 --format pdf`. The usage line shows a fixed list as `<a|b>`. The command does not start, and the log has no row.
 
 ## Statuses and exit codes

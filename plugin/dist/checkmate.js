@@ -6722,13 +6722,30 @@ function same(a, b) {
 }
 function validate(name, value2) {
   const check = validators_exports[name.replace(/-./g, (match) => match[1].toUpperCase())];
-  const errors = () => (check.errors ?? []).filter(
-    (error) => !["propertyNames", "anyOf"].includes(error.keyword) && !(error.keyword === "type" && error.params.type === "null")
-  ).map((error) => schemaError(`${name}${error.instancePath}`, error)).join(", ");
+  const errors = () => unionErrors(check.errors ?? []).filter((error) => error.keyword !== "propertyNames").map((error) => schemaError(`${name}${error.instancePath}`, error)).join(", ");
   requireCondition(check(value2), `Invalid ${name}: ${errors()}`);
   return value2;
 }
+function unionErrors(errors) {
+  let kept = errors;
+  for (const union of errors.filter((error) => ["anyOf", "oneOf"].includes(error.keyword))) {
+    const misses = kept.filter(
+      (error) => error.keyword === "type" && error.instancePath === union.instancePath && error.schemaPath.startsWith(union.schemaPath) && /^\/[0-9]+\/type$/.test(error.schemaPath.slice(union.schemaPath.length))
+    );
+    const under = (error) => error.instancePath === union.instancePath || error.instancePath.startsWith(`${union.instancePath}/`);
+    const matched = kept.some((error) => error !== union && !misses.includes(error) && under(error));
+    const merged = { ...misses[0], params: { type: misses.flatMap((error) => error.params.type ?? []) } };
+    const replacement = matched ? [] : misses.length ? [merged] : [union];
+    kept = kept.flatMap((error) => error === union ? replacement : misses.includes(error) ? [] : [error]);
+  }
+  return kept;
+}
+function typeList(types) {
+  if (types.length < 3) return types.join(" or ");
+  return `${types.slice(0, -1).join(", ")}, or ${types.at(-1)}`;
+}
 function schemaError(path, error) {
+  if (error.keyword === "type") return `${path} must be ${typeList([error.params.type ?? []].flat())}`;
   if (error.keyword === "additionalProperties")
     return `${path} has unknown field "${error.params.additionalProperty}"`;
   if (error.keyword === "enum") return `${path} must be one of: ${error.params.allowedValues?.join(", ")}`;

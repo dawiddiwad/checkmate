@@ -215,6 +215,23 @@ test('a schema error names the unknown field, the allowed values, and the bad me
 		/finding\/metadata field name "bad key" must match pattern/
 	)
 	assert.throws(() => validate('finding', { ...finding, severity: 'low', title: '' }), /finding\/title must NOT have/)
+	const request = { objective: 'o', context: { sources: ['a'] } }
+	assert.throws(
+		() => validate('plan-request', { ...request, tools: [{ name: 'x', kind: 'binary', purpose: 'p' }] }),
+		new Error('Invalid plan-request: plan-request/tools/0/kind must be one of: cli, mcp, skill')
+	)
+	assert.throws(
+		() => validate('plan-request', { ...request, tools: [5] }),
+		new Error('Invalid plan-request: plan-request/tools/0 must be string or object')
+	)
+	assert.throws(
+		() => validate('plan-patch', { tests: { T1: 5 } }),
+		new Error('Invalid plan-patch: plan-patch/tests/T1 must be object or null')
+	)
+	assert.throws(
+		() => validate('finding', { ...finding, severity: 'low', priority: undefined, metadata: { tags: ['a'] } }),
+		/, finding\/metadata\/tags must be string, number, or boolean$/
+	)
 })
 
 test('finding list prints one row per finding across runs, and --open keeps only open defects', (t) => {

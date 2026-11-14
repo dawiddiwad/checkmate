@@ -46,19 +46,43 @@ export function same(a: unknown, b: unknown) {
 export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
 	const errors = () =>
-		(check.errors ?? [])
-			.filter(
-				(error) =>
-					!['propertyNames', 'anyOf'].includes(error.keyword) &&
-					!(error.keyword === 'type' && error.params.type === 'null')
-			)
+		unionErrors(check.errors ?? [])
+			.filter((error) => error.keyword !== 'propertyNames')
 			.map((error) => schemaError(`${name}${error.instancePath}`, error))
 			.join(', ')
 	requireCondition(check(value), `Invalid ${name}: ${errors()}`)
 	return value as Documents[K]
 }
 
-function schemaError(path: string, error: NonNullable<validators.Validator['errors']>[number]) {
+type SchemaError = NonNullable<validators.Validator['errors']>[number]
+
+function unionErrors(errors: SchemaError[]): SchemaError[] {
+	let kept = errors
+	for (const union of errors.filter((error) => ['anyOf', 'oneOf'].includes(error.keyword))) {
+		const misses = kept.filter(
+			(error) =>
+				error.keyword === 'type' &&
+				error.instancePath === union.instancePath &&
+				error.schemaPath.startsWith(union.schemaPath) &&
+				/^\/[0-9]+\/type$/.test(error.schemaPath.slice(union.schemaPath.length))
+		)
+		const under = (error: SchemaError) =>
+			error.instancePath === union.instancePath || error.instancePath.startsWith(`${union.instancePath}/`)
+		const matched = kept.some((error) => error !== union && !misses.includes(error) && under(error))
+		const merged = { ...misses[0], params: { type: misses.flatMap((error) => error.params.type ?? []) } }
+		const replacement = matched ? [] : misses.length ? [merged] : [union]
+		kept = kept.flatMap((error) => (error === union ? replacement : misses.includes(error) ? [] : [error]))
+	}
+	return kept
+}
+
+function typeList(types: string[]) {
+	if (types.length < 3) return types.join(' or ')
+	return `${types.slice(0, -1).join(', ')}, or ${types.at(-1)}`
+}
+
+function schemaError(path: string, error: SchemaError) {
+	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
 	if (error.keyword === 'additionalProperties')
 		return `${path} has unknown field "${error.params.additionalProperty}"`
 	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`

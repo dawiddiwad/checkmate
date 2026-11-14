@@ -18,6 +18,7 @@ import {
 } from '../plugin/src/runs.ts'
 import { adoptGaps, answerGap, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
 import { inbox, runDetail } from '../plugin/src/views.ts'
+import { addInstance, retireInstance } from '../plugin/src/targets.ts'
 import { accept, actor, approved, begin, check, evidenceFile, failT2, plan, ready, store } from './support.ts'
 
 const finish = (opened: Store, runId = 'run-1', completion = 'completed', cleanup = 'completed') =>
@@ -624,4 +625,66 @@ test('run finish removes .checkmate/tmp when no run directory is left', (t) => {
 	passT1(opened)
 	finish(opened)
 	assert.equal(existsSync(join(opened.workspace, '.checkmate/tmp')), false)
+})
+
+test('run begin uses the only active instance, a named instance, and never a retired one', (t) => {
+	const opened = store(t)
+	ready(opened)
+	assert.equal(begin(opened, 'run-1', ['T1']).data.instanceId, 'local')
+	const staging = { entries: { web: 'https://staging.example.com' }, environment: 'Staging' }
+	addInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'staging', instance: staging })
+	const start = (runId: string, instance?: string) =>
+		beginRun(opened, actor, { runId, reference: 'checkout@2', tests: ['T1'], build: 'b', instance })
+	assert.throws(
+		() => start('run-2'),
+		/Target checkout-local has 2 active instances: local, staging\. Name one with --instance/
+	)
+	assert.throws(() => start('run-2', 'prod'), /Unknown instance: checkout-local\/prod/)
+	assert.equal(start('run-2', 'staging').data.instanceId, 'staging')
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'staging' })
+	assert.throws(() => start('run-3', 'staging'), /Instance checkout-local\/staging is retired\. A retired instance/)
+	assert.equal(start('run-3').data.instanceId, 'local')
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	assert.throws(() => start('run-4'), /Target checkout-local has no active instance/)
+	assert.deepEqual(
+		opened.db
+			.prepare('SELECT run_id, instance_id FROM runs ORDER BY rowid')
+			.all()
+			.map((row) => [row.run_id, row.instance_id]),
+		[
+			['run-1', 'local'],
+			['run-2', 'staging'],
+			['run-3', 'local'],
+		]
+	)
+	assert.equal(runDetail(opened, 'run-2').instance.environment, 'Staging')
+	assert(runDetail(opened, 'run-2').instance.retired)
+})
+
+test('a retest of a refreshed sandbox runs on the new instance with the same plan and chain', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	passT1(opened)
+	finish(opened)
+	assert.equal(runResult(opened, 'run-1')!.result.instanceId, 'local')
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	addInstance(opened, actor, {
+		targetId: 'checkout-local',
+		instanceId: 'local-2',
+		instance: { entries: { web: 'http://127.0.0.1:4174' } },
+	})
+	const retest = beginRun(opened, actor, {
+		runId: 'run-2',
+		reference: 'checkout@2',
+		tests: ['T1'],
+		build: 'build-2',
+		retestOf: 'run-1',
+	})
+	assert.equal(retest.status, 'completed', retest.reasons.join('; '))
+	assert.equal(retest.data.instanceId, 'local-2')
+	passT1(opened, 'run-2')
+	finish(opened, 'run-2')
+	const result = runResult(opened, 'run-2')!.result
+	assert.deepEqual([result.retestOf, result.instanceId, result.plan.planId], ['run-1', 'local-2', 'checkout'])
 })

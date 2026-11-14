@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up a Checkmate target profile from a recorded setup request. Check tools and access. Save the profile with target save.
+description: Set up a Checkmate target profile from a recorded setup request. Check tools and access. Save the profile with target save, and add the first instance.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
@@ -19,41 +19,62 @@ The factory, or the oracle in the same session, names tools with `checkmate targ
 
 The references `browser.md` and `http.md` are optional recipes for the default tools `playwright-cli` and `node`. Read one only when the profile uses that tool.
 
+## Entry points and instances
+
+A target has entry points. An entry point has a `name`, a `kind`, and a `purpose`:
+
+- `url`: a URL of any scheme, for example `https://shop.example.com`.
+- `command`: a command that QA runs at test time, for example a command that prints a one-time login URL.
+- `value`: an opaque value, for example an org alias.
+
+An instance is one place where the target runs, for example `local`, `uat`, or `staging`. An instance gives one value for each entry point. Checkmate records the value of a `command` entry, not its output. Adding or retiring an instance needs no new profile revision and no approval.
+
 ## Steps
 
-1. Run `checkmate target request <targetId>`. It prints the base URL, capabilities, allowed operations, and requested tools.
+1. Run `checkmate target request <targetId>`. It prints the entry points, capabilities, allowed operations, and requested tools.
    - If it refuses with `Unknown target`, and you are in the same session, record the request from the oracle's message:
 
      ```sh
-     checkmate target open <targetId> --base-url <url> --capabilities browser,http \
+     checkmate target open <targetId> --entry-point "web:url:Storefront." --capabilities browser,http \
        --operations read_catalog,create_fixture_order --tool "playwright-cli:cli:Drive the browser."
      ```
 
-   - Give `--tool` once for each tool that the oracle names. Ask the oracle for a missing base URL, capability, or operation. Do not invent operations.
+   - Give `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. Give `--tool` once for each tool that the oracle names. Ask the oracle for a missing entry point, capability, or operation. Do not invent operations.
    - In a delegated stage or a sub-agent, do not record a request. Return `needs_decision` with the reason.
 2. Run `checkmate target show <targetId>`. If a profile exists, keep its local choices. Save a new revision only for a change.
-3. Read the project instructions, for example `AGENTS.md`. Source code is optional.
-4. Check Node.js 24.12.0 or later.
-5. Make the tool list. Use each requested tool. When the request names no tool for a capability, suggest a default: `playwright-cli` (`cli`) for `browser`, `node` (`cli`) for `http`.
-6. Check that each tool is reachable:
+3. Run `checkmate target instance list <targetId>`. When an instance is active, use it for the checks below. When no instance is active, find the first instance:
+   - Take the entry values from the oracle's message or from the project instructions, for example `AGENTS.md`.
+   - Name the instance after the place where the target runs, for example `local`. Use the name that the oracle or the project instructions give.
+   - When a value is missing, ask the oracle in the same session. In a delegated stage or a sub-agent, return `needs_decision` with the missing entry point as the reason.
+4. Read the project instructions, for example `AGENTS.md`. Source code is optional.
+5. Check Node.js 24.12.0 or later.
+6. Make the tool list. Use each requested tool. When the request names no tool for a capability, suggest a default: `playwright-cli` (`cli`) for `browser`, `node` (`cli`) for `http`.
+7. Check that each tool is reachable:
    - `cli`: run `command -v <name>`, then `<name> --version`. Record the actual version.
    - `mcp`: check that the MCP server tools are available in this session.
    - `skill`: check that the skill is available in this session.
-7. Record each tool with `reachable` set to the result of the check.
-8. Check the target with a read-only request. Do not run test actions.
-9. For a browser tool, open `about:blank` in a new isolated session with the browser config of the project. Put the browser output in `.checkmate/tmp/setup-<targetId>/`. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
-10. Use the running application. Start it only when the owner of the application authorized a startup command.
-11. Write the profile. Use the shape below.
-12. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.
-13. Return the response of `target save`. In the same session, report to the oracle in the format of `workflow.md`: a table of the tools, then `Done:` and `Next:`. The next step is usually a plan: `/checkmate:plan <planId> for <targetId>@<revision>` with the objective and the sources. When `readyForLiveExecution` is `false`, name the missing tool or check instead.
+8. Record each tool with `reachable` set to the result of the check.
+9. Check the target through the entry values of the instance with a read-only request. For a `command` entry, run the command and use its output only for this check. Do not run test actions.
+10. For a browser tool, open `about:blank` in a new isolated session with the browser config of the project. Put the browser output in `.checkmate/tmp/setup-<targetId>/`. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
+11. Use the running application. Start it only when the owner of the application authorized a startup command.
+12. Write the profile. Use the shape below.
+13. Send the profile in a heredoc: `checkmate target save <targetId> <<'EOF'`, the JSON, then `EOF`.
+14. When no instance is active, add the first instance after `target save`. Give `--entry` once for each entry point:
+
+    ```sh
+    checkmate target instance add <targetId> local --entry web=http://127.0.0.1:4173 --environment "Local fixture"
+    ```
+
+    Add `--reference <name>` for an authentication alias or an environment variable name. Do not write a credential value.
+
+15. Return the response of `target save`. In the same session, report to the oracle in the format of `workflow.md`: a table of the tools, then `Done:` and `Next:`. The next step is usually a plan: `/checkmate:plan <planId> for <targetId>@<revision>` with the objective and the sources. When `readyForLiveExecution` is `false`, name the missing tool or check instead.
 
 ```json
 {
 	"contractVersion": "toolkit-2",
 	"targetId": "<from the request>",
 	"revision": 1,
-	"baseUrl": "<from the request>",
-	"environment": "local_fixture",
+	"entryPoints": [{ "name": "web", "kind": "url", "purpose": "<from the request>" }],
 	"capabilities": ["<from the request>"],
 	"tools": [
 		{
@@ -72,7 +93,8 @@ The references `browser.md` and `http.md` are optional recipes for the default t
 }
 ```
 
-- Copy `targetId`, `baseUrl`, `capabilities`, and `allowedOperations` exactly from the request.
+- Copy `targetId`, `entryPoints`, `capabilities`, and `allowedOperations` exactly from the request.
+- Do not put an entry value, a URL, or an environment name in the profile. These belong to an instance.
 - Give `tools` one entry for each requested tool. Copy its name, kind, and purpose from the request. Add the default tools that you suggested. Do not add a Claude entry.
 - Give `version` only when you know it, for example from `--version`. Do not write `unknown`.
 - A capability is a label for plan tests. It does not need a fixed executable.

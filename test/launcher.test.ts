@@ -436,3 +436,48 @@ reply({ status, subject, reasons })`
 	assert.equal(readFileSync(join(workspace, 'closed.log'), 'utf8'), `-s=${session} close\n`)
 	assert.equal(readFileSync(join(workspace, 'output-dir.txt'), 'utf8'), join(workspace, '.checkmate', 'tmp', 'run-1'))
 })
+
+test('the execute prompt names the instance; the browser closes only for a target with playwright-cli', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened, {
+		tools: [{ name: 'node', kind: 'cli', purpose: 'Send HTTP requests.', version: '24.12.0', reachable: true }],
+	})
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-1', reasons: [] })`
+	)
+	const result = await delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: playwright(workspace),
+	})
+	assert.deepEqual(result.reasons, [
+		'Worker returned completed, but run run-1 is not finished',
+		resumeReason('run-1'),
+	])
+	assert.equal(existsSync(join(workspace, 'closed.log')), false)
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(
+		prompt.includes(
+			'Instance: local. Read its entry values with `checkmate target show checkout-local --instance local`.'
+		),
+		prompt
+	)
+	assert.match(prompt, /Run a command entry at test time\./)
+})
+
+test('the setup prompt names the instances of the target', async (t) => {
+	const workspace = planned(t)
+	const records = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'needs_decision', subject: 'checkout-local', reasons: ['Stopped.'] })`
+	)
+	await delegate(workspace, 'setup', 'checkout-local', { allowedTools: rules, pluginRoot, claude: records })
+	assert.match(readFileSync(join(workspace, 'prompt.txt'), 'utf8'), /checkmate target instance list checkout-local/)
+})

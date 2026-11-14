@@ -15,7 +15,7 @@ import {
 	validate,
 } from './contracts.ts'
 import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
-import { targetRevision } from './targets.ts'
+import { runInstance, targetRevision } from './targets.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -27,6 +27,7 @@ export type RunRow = {
 	plan_sha256: string
 	target_id: string
 	target_revision: number
+	instance_id: string
 	application_build: string
 	request: string
 	started_at: string
@@ -65,6 +66,7 @@ export type BeginInput = {
 	reference: string
 	tests?: string[]
 	build: string
+	instance?: string
 	partial?: string
 	onNewBlocker?: string
 	timeoutSeconds?: number
@@ -98,7 +100,6 @@ const kindByExtension: Record<string, EvidenceRow['kind']> = {
 	'.jpg': 'screenshot',
 	'.jpeg': 'screenshot',
 	'.webp': 'screenshot',
-	'.json': 'http_exchange',
 	'.zip': 'trace',
 	'.trace': 'trace',
 }
@@ -109,6 +110,8 @@ const mediaTypes: Record<string, string> = {
 	'.webp': 'image/webp',
 	'.gif': 'image/gif',
 	'.json': 'application/json',
+	'.xml': 'application/xml',
+	'.csv': 'text/csv',
 	'.txt': 'text/plain',
 	'.log': 'text/plain',
 	'.md': 'text/markdown',
@@ -210,6 +213,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 			if (checked.reply.status !== 'completed')
 				return { reply: { ...checked.reply, subject: runId }, subjects: [] }
 			const { plan, sha256 } = checked.revision
+			const instance = runInstance(store, plan.target.targetId, input.instance)
 			const request: RunRequest = {
 				selectedTestIds: checked.tests,
 				partialExecution: checked.partial,
@@ -220,13 +224,14 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 			const browserSession = `cm-${randomUUID()}`
 			execute(
 				store,
-				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, application_build, request, started_at, browser_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, instance_id, application_build, request, started_at, browser_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 				runId,
 				plan.planId,
 				plan.revision,
 				sha256,
 				plan.target.targetId,
 				plan.target.revision,
+				instance.instanceId,
 				checked.build,
 				canonical(request),
 				at,
@@ -245,6 +250,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				reply: completed(runId, {
 					runId,
 					plan: `${plan.planId}@${plan.revision}`,
+					instanceId: instance.instanceId,
 					tests: checked.tests,
 					leftOut: checked.reply.data.leftOut,
 					startedAt: at,
@@ -714,6 +720,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			runId: input.runId,
 			plan: { planId: run.plan.planId, revision: run.plan.revision, sha256: run.row.plan_sha256 },
 			target: run.plan.target,
+			instanceId: run.row.instance_id,
 			applicationBuild: run.row.application_build,
 			selectedTestIds: selected,
 			retestOf: run.request.retestOf,

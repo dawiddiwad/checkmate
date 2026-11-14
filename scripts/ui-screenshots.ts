@@ -71,6 +71,8 @@ try {
 	await dark.evaluate(() => document.querySelector('#findings')?.scrollIntoView({ block: 'start' }))
 	await dark.screenshot({ path: join(directory, 'run-gap-dark.png') })
 	console.log(join(directory, 'run-gap-dark.png'))
+	await shot(dark, '/settings/targets', 'settings-targets-dark')
+	await shot(dark, '/settings/targets/shop-local', 'settings-target-dark', false)
 } finally {
 	await browser.close()
 	await ui.close()

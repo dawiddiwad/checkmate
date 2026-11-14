@@ -24,6 +24,7 @@ type RunRow = {
 	plan_revision: number
 	target_id: string
 	target_revision: number
+	instance_id: string
 	application_build: string
 	request: string
 	browser_session: string
@@ -203,6 +204,17 @@ function pendingDecisions(store: Store, planId: string) {
 	)!.count
 }
 
+function usesPlaywright(store: Store, run: RunRow) {
+	const profile = one<{ body: string }>(
+		store,
+		'SELECT body FROM profiles WHERE target_id = ? AND revision = ?',
+		run.target_id,
+		run.target_revision
+	)!
+	const tools = (JSON.parse(profile.body) as { tools: Array<{ name: string; kind: string }> }).tools
+	return tools.some((tool) => tool.name === 'playwright-cli' && tool.kind === 'cli')
+}
+
 function startedRun(store: Store, runId: string) {
 	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)
 	if (!run) refuse(`Unknown run: ${runId}. Run \`checkmate run begin\` before delegate execute.`)
@@ -250,6 +262,7 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	if (stage === 'setup')
 		return [
 			`Target: ${subject}. Read the setup request with \`checkmate target request ${subject}\`.`,
+			`Read the instances with \`checkmate target instance list ${subject}\`. Check the target through an active instance.`,
 			`Save the profile with \`checkmate target save ${subject}\`.`,
 		]
 	if (stage === 'plan')
@@ -267,6 +280,7 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 	return [
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run!.plan_id}@${run!.plan_revision}. Target: ${run!.target_id}@${run!.target_revision}. Build: ${run!.application_build}.`,
+		`Instance: ${run!.instance_id}. Read its entry values with \`checkmate target show ${run!.target_id} --instance ${run!.instance_id}\`. Run a command entry at test time. Do not record its output as a value.`,
 		`Selected tests: ${request.selectedTestIds.join(',')}. New blocker policy: ${request.onNewBlocker}.`,
 		`Browser session: ${run!.browser_session}. Send text evidence with \`--evidence -\`. Binary evidence directory: .checkmate/tmp/${subject}/.`,
 		`Read the open tests with \`checkmate run show ${subject}\`. Finish with \`checkmate run finish ${subject}\` before the deadline.`,
@@ -318,9 +332,10 @@ export async function delegate(
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`)
 	if (!options.allowedTools.length) refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`)
 	checkClaudeArgs(options.claudeArgs ?? [])
-	const { after, run } = withStore(workspace, (store) => {
+	const { after, run, browser } = withStore(workspace, (store) => {
 		checkSubject(store, stage, subject)
-		return { after: lastOperation(store), run: stage === 'execute' ? startedRun(store, subject) : null }
+		const run = stage === 'execute' ? startedRun(store, subject) : null
+		return { after: lastOperation(store), run, browser: run ? usesPlaywright(store, run) : false }
 	})
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
 	const timeoutSeconds = options.timeoutSeconds ?? run?.deadline_seconds ?? defaultTimeoutSeconds
@@ -346,9 +361,10 @@ export async function delegate(
 	} catch (error) {
 		failure = error instanceof Error ? error : new Error('Unknown worker failure')
 	}
-	const cleanup = run
-		? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
-		: null
+	const cleanup =
+		run && browser
+			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
+			: null
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
 	let verified: Verified | null
 	try {

@@ -3,6 +3,7 @@ export type Validator = ((value: unknown) => boolean) & {
 }
 export const finding: Validator
 export const gap: Validator
+export const instance: Validator
 export const plan: Validator
 export const planCandidate: Validator
 export const planDelta: Validator

@@ -53,14 +53,30 @@ An argument can change the permissions of the worker, for example `--permission-
 
 ### 1. Set up the target
 
-Set up the target once. Name the tools that the stages can use with `--tool <name>:<cli|mcp|skill>:<purpose>`. When no tool is named for a capability, the setup stage adds `playwright-cli` for `browser` and `node` for `http`.
+Set up the target once. Name each entry point with `--entry-point <name>:<url|command|value>:<purpose>`. Name the tools that the stages can use with `--tool <name>:<cli|mcp|skill>:<purpose>`. When no tool is named for a capability, the setup stage adds `playwright-cli` for `browser` and `node` for `http`.
+
+Then add the first instance: the place where the application runs. An instance gives a value for each entry point. The setup stage checks the target through it.
 
 ```sh
-checkmate target open shop --base-url "$BASE_URL" --capabilities browser,http \
+checkmate target open shop --entry-point "web:url:Storefront and HTTP API." --capabilities browser,http \
   --operations read_catalog,create_order \
   --tool "playwright-cli:cli:Drive the browser." --tool "jira:mcp:Read the ticket."
+checkmate target instance add shop local --entry "web=$BASE_URL" --environment "CI preview"
 checkmate delegate setup shop --allow Read --allow Bash
 ```
+
+Add or retire an instance at any time. This needs no new profile revision and no approval:
+
+```sh
+checkmate target instance add shop staging --entry web=https://staging.shop.example --environment "Shared staging"
+checkmate target instance add shop preview --entry web=https://preview.shop.example --environment "Old preview"
+checkmate target instance retire shop preview
+checkmate target instance list shop
+```
+
+The examples below use the active instances `local` and `staging`.
+
+A `command` entry runs a program at test time, for example `sf org open --target-org <alias> --url-only --json`. The `--allow` rules of `delegate execute` must cover the programs that the command entries use, for example `--allow "Bash(sf *)"`.
 
 ### 2. Iteration 1: plan and run early
 
@@ -76,14 +92,14 @@ The oracle approves the revision, and QA runs the ready tests early. Most tests 
 
 ```sh
 checkmate plan approve checkout@1 --rationale "Run the ready tests early."
-checkmate run begin run-1 checkout@1 --build "$GIT_SHA" --partial ready_only
+checkmate run begin run-1 checkout@1 --build "$GIT_SHA" --instance local --partial ready_only
 checkmate delegate execute run-1 --allow Read --allow Bash
 ```
 
 Without `--tests`, `--partial ready_only` selects the ready tests. It prints one line for each test that it leaves out:
 
 ```text
-completed run-1 tests=T1 startedAt=... browserSession=... deadlineSeconds=600 evidenceDirectory=.checkmate/tmp/run-1/
+completed run-1 instance=local tests=T1 startedAt=... browserSession=... deadlineSeconds=600 evidenceDirectory=.checkmate/tmp/run-1/
 T2	left_out	blocked by G1
 ```
 
@@ -110,11 +126,24 @@ The factory reads the findings, fixes the code, and makes a new build. QA retest
 ```sh
 checkmate status checkout    # state=defects_open waitsOn=factory
 checkmate export run run-1 --format md
-checkmate run begin run-2 checkout@3 --tests T1,T2,T3,T4 --build "$NEW_SHA" --retest-of run-1
+checkmate run begin run-2 checkout@3 --tests T1,T2,T3,T4 --build "$NEW_SHA" --instance local --retest-of run-1
 checkmate delegate execute run-2 --allow Read --allow Bash
 ```
 
-A narrow retest, with fewer tests, keeps the requirements of the other tests uncovered.
+A narrow retest, with fewer tests, keeps the requirements of the other tests uncovered. A retest can run on another instance, for example on a refreshed sandbox.
+
+### Run a matrix
+
+To run one plan revision on many instances, begin one run for each instance. `checkmate status checkout` prints one `started` line for each open run, with its instance:
+
+```sh
+checkmate run begin run-3-local checkout@3 --build "$NEW_SHA" --instance local --partial ready_only
+checkmate run begin run-3-staging checkout@3 --build "$NEW_SHA" --instance staging --partial ready_only
+checkmate delegate execute run-3-local --allow Read --allow Bash
+checkmate delegate execute run-3-staging --allow Read --allow Bash
+```
+
+A cross-plan dependency needs a passed result on the same build. A run on any instance counts.
 
 ### 4. Accept
 
@@ -149,7 +178,7 @@ G1	gap	blocking	Does the promotion stack with the loyalty discount?
 F1	defect	run-1	medium	T1.A1	Wrong total
 ```
 
-The `next` line is a hint. A program reads `stage` from `checkmate status <planId> --json`: `plan`, `revise`, `execute`, or `none`. [Loop states](../reference/commands.md#loop-states) gives the subject of each stage.
+The `next` line is a hint. A program reads `stage` from `checkmate status <planId> --json`: `plan`, `revise`, `execute`, or `none`. [Loop states](../reference/commands.md#loop-states) gives the subject of each stage. For `execute`, delegate each run in `openRuns`: a matrix has one started run for each instance.
 
 `delegate` does not trust the summary of the worker. It reads the database and returns the response of the recorded command. [Loop states](../reference/commands.md#loop-states) lists every state.
 

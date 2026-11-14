@@ -1,11 +1,21 @@
 import type { Reply, Store } from './store.ts'
 import type { Plan, Profile } from './types.ts'
-import type { RequestedTool, TargetRequest } from './targets.ts'
+import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from './targets.ts'
 import type { PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
 import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
-import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
+import {
+	addInstance,
+	entryPointKinds,
+	instanceList,
+	openTarget,
+	retireInstance,
+	saveTarget,
+	showTarget,
+	showTargetRequest,
+	targetList,
+} from './targets.ts'
 import {
 	adoptGaps,
 	answerGap,
@@ -109,6 +119,49 @@ function toolSpec(spec: string): RequestedTool {
 	return { name: match[1], kind: match[2] as RequestedTool['kind'], purpose: match[3] }
 }
 
+function entryPointSpec(spec: string): EntryPoint {
+	const match = /^([^:]+):([^:]+):(.+)$/.exec(spec)
+	requireCondition(
+		match && (entryPointKinds as readonly string[]).includes(match[2]),
+		`Invalid --entry-point: ${spec}. Use <name>:<url|command|value>:<purpose>.`
+	)
+	return { name: match[1], kind: match[2] as EntryPoint['kind'], purpose: match[3] }
+}
+
+function instanceInput(args: Args, stdin: () => unknown) {
+	const entries = list(args, 'entry')
+	const environment = value(args, 'environment')
+	const references = list(args, 'reference')
+	if (entries === undefined) {
+		requireCondition(
+			environment === undefined && !references,
+			'Give --entry with --environment and --reference, or send the instance on standard input'
+		)
+		return stdin()
+	}
+	const values: Record<string, string> = {}
+	for (const entry of entries) {
+		const at = entry.indexOf('=')
+		requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
+		const name = entry.slice(0, at)
+		requireCondition(!(name in values), `Entry point ${name} is given twice`)
+		values[name] = entry.slice(at + 1).trim()
+	}
+	return {
+		entries: values,
+		...(environment === undefined ? {} : { environment }),
+		...(references ? { references } : {}),
+	}
+}
+
+function instanceLines(instance: InstanceRecord) {
+	return [
+		...Object.entries(instance.entries).map(([name, entry]) => ['entry', name, entry]),
+		...(instance.environment ? [['environment', instance.environment]] : []),
+		...instance.references.map((reference) => ['reference', reference]),
+	]
+}
+
 function planRequestInput(args: Args, stdin: () => unknown) {
 	const objective = value(args, 'objective')
 	const sources = list(args, 'source')
@@ -204,6 +257,12 @@ const commands: Record<string, Command> = {
 				lines: [
 					...status.why.map((line) => ['why', line]),
 					...(status.next ? [['next', status.next]] : []),
+					...status.openRuns.map((run) => [
+						run.runId,
+						'started',
+						`build=${run.build}`,
+						`instance=${run.instanceId}`,
+					]),
 					...status.gaps.map((gap) =>
 						gap.runId
 							? [gap.gapId, 'run_gap', gap.severity, gap.runId, gap.question]
@@ -229,13 +288,13 @@ const commands: Record<string, Command> = {
 	},
 	'target open': {
 		positionals: ['targetId'],
-		flags: { 'base-url': 'value', capabilities: 'list', operations: 'list', tool: 'repeat' },
-		required: ['base-url', 'capabilities', 'operations'],
+		flags: { 'entry-point': 'repeat', capabilities: 'list', operations: 'list', tool: 'repeat' },
+		required: ['entry-point', 'capabilities', 'operations'],
 		write: true,
 		run: (store, args, { actor }) =>
 			openTarget(store, actor, {
 				targetId: value(args, 'targetId')!,
-				baseUrl: value(args, 'base-url')!,
+				entryPoints: (list(args, 'entry-point') ?? []).map(entryPointSpec),
 				capabilities: list(args, 'capabilities') ?? [],
 				allowedOperations: list(args, 'operations') ?? [],
 				tools: (list(args, 'tool') ?? []).map(toolSpec),
@@ -249,7 +308,7 @@ const commands: Record<string, Command> = {
 			const request = reply.data.request as TargetRequest
 			return {
 				lines: [
-					['baseUrl', request.baseUrl],
+					...request.entryPoints.map((entry) => ['entryPoint', entry.name, entry.kind, entry.purpose]),
 					['capabilities', request.capabilities],
 					['operations', request.allowedOperations],
 					...request.tools.map((tool) => ['tool', tool.name, tool.kind, tool.purpose]),
@@ -265,17 +324,36 @@ const commands: Record<string, Command> = {
 			saveTarget(store, actor, { targetId: value(args, 'targetId')!, profile: stdin() }),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), recorded: reply.data.recorded } }),
 	},
+	'target list': {
+		positionals: [],
+		run: (store) => completed('targets', { targets: targetList(store) }),
+		print: (reply) => ({
+			facts: { count: (reply.data.targets as unknown[]).length },
+			lines: (reply.data.targets as ReturnType<typeof targetList>).map((target) => [
+				target.revision === null ? target.targetId : `${target.targetId}@${target.revision}`,
+				`capabilities=${cell(target.capabilities)}`,
+				`instances=${target.activeInstances}`,
+			]),
+		}),
+	},
 	'target show': {
 		positionals: ['reference'],
-		run: (store, args) => showTarget(store, value(args, 'reference')!),
+		flags: { instance: 'value' },
+		run: (store, args) => showTarget(store, value(args, 'reference')!, value(args, 'instance')),
 		print: (reply) => {
 			const profile = reply.data.profile as Profile
 			const approvals = reply.data.approvals as { plan: string; result: string }
+			const instance = reply.data.instance as InstanceRecord | undefined
 			return {
-				facts: { sha256: short(reply.data.sha256), ready: profile.readyForLiveExecution },
+				facts: {
+					sha256: short(reply.data.sha256),
+					ready: profile.readyForLiveExecution,
+					instance: instance?.instanceId,
+					retired: instance ? Boolean(instance.retired) : undefined,
+				},
 				lines: [
-					['baseUrl', profile.baseUrl],
-					['environment', profile.environment],
+					...profile.entryPoints.map((entry) => ['entryPoint', entry.name, entry.kind, entry.purpose]),
+					['authentication', profile.authentication.kind, profile.authentication.references],
 					['capabilities', profile.capabilities],
 					['operations', profile.allowedOperations],
 					['approvals', `plan=${approvals.plan}`, `result=${approvals.result}`],
@@ -287,9 +365,61 @@ const commands: Record<string, Command> = {
 						tool.reachable ? 'reachable' : 'unreachable',
 						tool.purpose,
 					]),
+					...(reply.data.instances as InstanceRecord[]).map((item) => [
+						'instance',
+						item.instanceId,
+						item.environment ?? '-',
+					]),
+					...(instance ? instanceLines(instance) : []),
 				],
 			}
 		},
+	},
+	'target instance add': {
+		positionals: ['targetId', 'instanceId'],
+		flags: { entry: 'repeat', environment: 'value', reference: 'repeat' },
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) =>
+			addInstance(store, actor, {
+				targetId: value(args, 'targetId')!,
+				instanceId: value(args, 'instanceId')!,
+				instance: instanceInput(args, stdin),
+			}),
+		print: (reply) => ({
+			facts: { recorded: reply.data.recorded },
+			lines: Object.entries(reply.data.entries as Record<string, string>).map(([name, entry]) => [
+				'entry',
+				name,
+				entry,
+			]),
+		}),
+	},
+	'target instance retire': {
+		positionals: ['targetId', 'instanceId'],
+		write: true,
+		run: (store, args, { actor }) =>
+			retireInstance(store, actor, {
+				targetId: value(args, 'targetId')!,
+				instanceId: value(args, 'instanceId')!,
+			}),
+		print: (reply) => ({ facts: { recorded: reply.data.recorded } }),
+	},
+	'target instance list': {
+		positionals: ['targetId'],
+		run: (store, args) => {
+			const targetId = value(args, 'targetId')!
+			return completed(targetId, { instances: instanceList(store, targetId) })
+		},
+		print: (reply) => ({
+			facts: { count: (reply.data.instances as unknown[]).length },
+			lines: (reply.data.instances as InstanceRecord[]).map((instance) => [
+				instance.instanceId,
+				instance.retired ? 'retired' : 'active',
+				instance.environment ?? '-',
+				Object.entries(instance.entries).map(([name, entry]) => `${name}=${entry}`),
+			]),
+		}),
 	},
 	'plan open': {
 		positionals: ['planId'],
@@ -516,6 +646,7 @@ const commands: Record<string, Command> = {
 		flags: {
 			tests: 'list',
 			build: 'value',
+			instance: 'value',
 			partial: 'value',
 			'on-new-blocker': 'value',
 			timeout: 'value',
@@ -529,6 +660,7 @@ const commands: Record<string, Command> = {
 				reference: value(args, 'reference')!,
 				tests: list(args, 'tests'),
 				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
 				partial: value(args, 'partial'),
 				onNewBlocker: value(args, 'on-new-blocker'),
 				timeoutSeconds: integer(args, 'timeout'),
@@ -536,6 +668,7 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({
 			facts: {
+				instance: reply.data.instanceId,
 				tests: reply.data.tests,
 				startedAt: reply.data.startedAt,
 				browserSession: reply.data.browserSession,
@@ -673,6 +806,7 @@ const commands: Record<string, Command> = {
 					state: detail.state,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
+					instance: detail.instance.instanceId,
 					completion: detail.result?.completion,
 					coverage: detail.result?.coverage.status,
 					acceptance: detail.result?.acceptance,
@@ -710,6 +844,7 @@ const commands: Record<string, Command> = {
 				run.runId,
 				`${run.planId}@${run.revision}`,
 				run.build,
+				run.instanceId,
 				run.state,
 				run.completion,
 				run.coverage,
@@ -964,9 +1099,13 @@ function format(reply: Reply, json: boolean, print?: Command['print']) {
 const globalFlags: Record<string, FlagKind> = { workspace: 'value', json: 'switch' }
 
 function commandName(argv: string[]) {
-	const words = argv.slice(0, 2).filter((word) => !word.startsWith('--'))
-	if (words.length === 2 && commands[words.join(' ')]) return words.join(' ')
-	if (commands[words[0]]) return words[0]
+	const words: string[] = []
+	for (const word of argv.slice(0, 3)) {
+		if (word.startsWith('--')) break
+		words.push(word)
+	}
+	for (let count = words.length; count > 0; count--)
+		if (commands[words.slice(0, count).join(' ')]) return words.slice(0, count).join(' ')
 	throw new Error(`Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`)
 }
 

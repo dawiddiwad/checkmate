@@ -12,7 +12,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '2'
+const schemaVersion = '3'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -40,6 +40,20 @@ CREATE TABLE profiles (
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference},
 	PRIMARY KEY (target_id, revision)
+) STRICT;
+CREATE TABLE instances (
+	target_id TEXT NOT NULL REFERENCES target_requests(target_id),
+	instance_id TEXT NOT NULL,
+	body TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (target_id, instance_id)
+) STRICT;
+CREATE TABLE instance_retirements (
+	target_id TEXT NOT NULL,
+	instance_id TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (target_id, instance_id),
+	FOREIGN KEY (target_id, instance_id) REFERENCES instances(target_id, instance_id)
 ) STRICT;
 CREATE TABLE plan_requests (
 	plan_id TEXT PRIMARY KEY,
@@ -91,6 +105,7 @@ CREATE TABLE runs (
 	plan_sha256 TEXT NOT NULL,
 	target_id TEXT NOT NULL,
 	target_revision INTEGER NOT NULL,
+	instance_id TEXT NOT NULL,
 	application_build TEXT NOT NULL,
 	request TEXT NOT NULL,
 	started_at TEXT NOT NULL,
@@ -98,7 +113,8 @@ CREATE TABLE runs (
 	deadline_seconds INTEGER NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference},
 	FOREIGN KEY (plan_id, plan_revision) REFERENCES plan_revisions(plan_id, revision),
-	FOREIGN KEY (target_id, target_revision) REFERENCES profiles(target_id, revision)
+	FOREIGN KEY (target_id, target_revision) REFERENCES profiles(target_id, revision),
+	FOREIGN KEY (target_id, instance_id) REFERENCES instances(target_id, instance_id)
 ) STRICT;
 CREATE TABLE run_attempts (
 	run_id TEXT NOT NULL REFERENCES runs(run_id),

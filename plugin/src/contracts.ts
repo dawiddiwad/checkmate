@@ -1,6 +1,7 @@
 import type {
 	Finding,
 	Gap,
+	Instance,
 	Plan,
 	PlanCandidate,
 	PlanDelta,
@@ -25,6 +26,7 @@ export type Documents = {
 	'plan-patch': PlanPatch
 	plan: Plan
 	gap: Gap
+	instance: Instance
 	finding: Finding
 	result: Result
 	response: Response
@@ -109,9 +111,7 @@ export function references(ids: string[], map: ReadonlyMap<string, unknown>, nam
 export function profileCheck(value: unknown): Profile {
 	const profile = validate('profile', value)
 	index(profile.tools, 'name', 'tool')
-	const url = new URL(profile.baseUrl)
-	requireCondition(['http:', 'https:'].includes(url.protocol), 'Target must use HTTP or HTTPS')
-	requireCondition(!url.username && !url.password, 'Use credential references, not URL credentials')
+	index(profile.entryPoints, 'name', 'entry point')
 	for (const tool of profile.tools)
 		requireCondition(
 			tool.version === undefined || !/resolve-and-pin|unknown/i.test(tool.version),

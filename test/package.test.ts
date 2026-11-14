@@ -77,12 +77,16 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		'target',
 		'open',
 		'checkout-local',
-		'--base-url',
-		'http://127.0.0.1:9',
+		'--entry-point',
+		'web:url:Checkout API.',
 		'--capabilities',
 		'http',
 		'--operations',
 		'read_catalog'
+	)
+	assert.equal(
+		checkmate('target', 'instance', 'add', 'checkout-local', 'local', '--entry', 'web=http://127.0.0.1:9'),
+		'completed checkout-local/local recorded=true\nentry\tweb\thttp://127.0.0.1:9'
 	)
 	assert.equal(
 		checkmate('delegate', 'setup', 'checkout-local', '--allow', 'Read', '--timeout', '30'),

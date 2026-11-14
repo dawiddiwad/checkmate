@@ -166,6 +166,7 @@ function runsTable(detail: Detail) {
 					<th scope="col">Run</th>
 					<th scope="col">Revision</th>
 					<th scope="col">Build</th>
+					<th scope="col">Instance</th>
 					<th scope="col">Tests</th>
 					<th scope="col">Completion</th>
 					<th scope="col">Acceptance</th>
@@ -181,6 +182,7 @@ function runsTable(detail: Detail) {
 								<a class="mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>
 							</td>
 							<td class="mono">${run.build}</td>
+							<td class="mono">${run.instanceId}</td>
 							<td>${counts(run.counts)}</td>
 							<td>${run.completion ? pill(run.completion) : html`<span class="muted">running</span>`}</td>
 							<td>${runStatus(run)}</td>

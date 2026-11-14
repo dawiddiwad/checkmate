@@ -14,6 +14,7 @@ import {
 	planStatus,
 	runList,
 } from '../plugin/src/views.ts'
+import { addInstance } from '../plugin/src/targets.ts'
 import {
 	accept,
 	actor,
@@ -21,6 +22,7 @@ import {
 	begin,
 	candidate,
 	check,
+	cli,
 	failT2,
 	passRun,
 	plan,
@@ -354,5 +356,33 @@ test('plan status puts blocking gaps before defects and defects before non-block
 	assert.deepEqual(
 		minor.defects.map((defect) => defect.findingId),
 		['F1']
+	)
+})
+
+test('plan status lists every open run of a matrix with its instance', (t) => {
+	const opened = store(t)
+	ready(opened)
+	const instances = ['local', 'uat', 'staging', 'eu', 'us']
+	for (const instanceId of instances.slice(1))
+		addInstance(opened, actor, {
+			targetId: 'checkout-local',
+			instanceId,
+			instance: { entries: { web: `https://${instanceId}.example.com` } },
+		})
+	instances.forEach((instanceId, i) => begin(opened, `run-${i + 1}`, ['T1'], 'build-1', { instance: instanceId }))
+	const status = planStatus(opened, 'checkout')
+	assert.equal(status.state, 'run_in_progress')
+	assert.equal(status.stage, 'execute')
+	assert.deepEqual(
+		status.openRuns.map((run) => [run.runId, run.instanceId]),
+		instances.map((instanceId, i) => [`run-${i + 1}`, instanceId])
+	)
+	assert.deepEqual(status.why, ['5 runs are started'])
+	assert.equal(status.next, 'checkmate delegate execute <runId>, for each started run')
+	const printed = cli(opened.workspace, ['status', 'checkout']).lines
+	assert(printed.includes('run-3\tstarted\tbuild=build-1\tinstance=staging'), printed.join('\n'))
+	assert.deepEqual(
+		runList(opened).map((run) => run.instanceId),
+		instances
 	)
 })

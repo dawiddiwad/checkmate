@@ -324,14 +324,17 @@ export function planStatus(store: Store, planId: string) {
 	const results = finalizedResults(store, planId)
 	const finished = runs.find((run) => run.runId === results.at(-1)?.runId)
 	const latestRun = started ?? finished ?? null
-	const defects = openDefects(results).map(({ runId, finding }) => ({
-		runId,
-		findingId: finding.id,
-		severity: finding.severity,
-		testIds: finding.testIds,
-		assertionIds: finding.assertionIds,
-		title: finding.title,
-	}))
+	const ready = plan.tests.filter((test) => test.readiness === 'ready').map((test) => test.id)
+	const defects = openDefects(results)
+		.filter(({ finding }) => finding.testIds.some((testId) => ready.includes(testId)))
+		.map(({ runId, finding }) => ({
+			runId,
+			findingId: finding.id,
+			severity: finding.severity,
+			testIds: finding.testIds,
+			assertionIds: finding.assertionIds,
+			title: finding.title,
+		}))
 	const latest = latestOutcomes(results)
 	const state = (): ReturnType<typeof loop> => {
 		const run = `checkmate run begin <runId> ${subject} --build <build>`
@@ -372,13 +375,12 @@ export function planStatus(store: Store, planId: string) {
 						[`${subject} waits for approval`],
 						`checkmate plan approve ${subject} --rationale "<why>"`
 					)
-		const ready = plan.tests.filter((test) => test.readiness === 'ready').length
 		if (!finished) {
-			if (ready)
+			if (ready.length)
 				return loop(
 					'ready_to_run',
 					'qa',
-					[`${ready} of ${plan.tests.length} tests are ready`],
+					[`${ready.length} of ${plan.tests.length} tests are ready`],
 					`${run} --partial ready_only`
 				)
 			return gaps.length
@@ -408,17 +410,22 @@ export function planStatus(store: Store, planId: string) {
 		}
 		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
 		const result = results.at(-1)!
-		const unpassed = plan.tests.flatMap((test) => {
-			const last = latest.get(test.id)
-			return last && last.outcome !== 'passed' ? [{ testId: test.id, ...last }] : []
+		const supplied = [...new Set(ready.flatMap((testId) => latest.get(testId)?.runId ?? []))]
+		const supplying = runs.filter((run) => (supplied.length ? supplied : [finished.runId]).includes(run.runId))
+		const rejected = supplying.filter((run) => run.acceptance === 'rejected').map((run) => run.runId)
+		const testReasons = ready.flatMap((testId) => {
+			const last = latest.get(testId)
+			if (!last) return [`${testId} has not run`]
+			if (last.outcome !== 'passed') return [`${testId} is ${last.outcome} in ${last.runId}`]
+			if (rejected.includes(last.runId)) return [`${testId}'s latest pass is in rejected ${last.runId}`]
+			return []
 		})
 		const why = [
 			...(finished.revision !== plan.revision
 				? [`${finished.runId} tested ${planId}@${finished.revision}, not ${subject}`]
 				: []),
 			...(result.completion !== 'completed' ? [`${finished.runId} is ${result.completion}`] : []),
-			...unpassed.map((test) => `${test.testId} is ${test.outcome} in ${test.runId}`),
-			...(finished.acceptance === 'rejected' ? [`Result ${finished.runId} is rejected`] : []),
+			...testReasons,
 		]
 		if (why.length)
 			return loop(
@@ -427,15 +434,18 @@ export function planStatus(store: Store, planId: string) {
 				why,
 				`checkmate run begin <runId> ${subject} --build ${finished.build} --partial ready_only`
 			)
-		if (finished.acceptance === 'pending')
+		const waiting = supplying.filter((run) => run.acceptance === 'pending')
+		if (waiting.length)
 			return loop(
 				'awaits_acceptance',
 				'oracle',
-				[`${finished.runId} passed on build ${finished.build}`],
-				`checkmate result accept ${finished.runId} --rationale "<why>"`
+				waiting.map((run) => `${run.runId} on build ${run.build} waits for acceptance`),
+				`checkmate result accept ${waiting[0].runId} --rationale "<why>"`
 			)
-		if (finished.acceptance === 'approved') return loop('accepted', 'none', [`${finished.runId} is accepted`], null)
-		return loop('passed', 'none', [`${finished.runId} passed. Result acceptance is not required`], null)
+		const names = supplying.map((run) => run.runId).join(', ')
+		if (supplying.every((run) => run.acceptance === 'approved'))
+			return loop('accepted', 'none', [`${names} ${supplying.length === 1 ? 'is' : 'are'} accepted`], null)
+		return loop('passed', 'none', [`${names} passed. Result acceptance is not required`], null)
 	}
 	return {
 		planId,
@@ -646,7 +656,7 @@ export function findingList(store: Store, filters: { planId?: string; open?: boo
 	const open = new Set(
 		filters.open
 			? [...new Set(rows.map((row) => row.plan_id))].flatMap((planId) =>
-					planStatus(store, planId).defects.map((defect) => `${defect.runId}/${defect.findingId}`)
+					openDefects(finalizedResults(store, planId)).map(({ runId, finding }) => `${runId}/${finding.id}`)
 				)
 			: []
 	)

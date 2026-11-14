@@ -99,7 +99,7 @@ checkmate result accept run-1 --rationale "The defect in T3 is real. Fix before 
 
 - A run with failed tests can be a correct result. Accept it when the record is true. Acceptance is an oracle record. It is not a release decision by Checkmate.
 - An `inconclusive` test is not a defect. The evidence was not sufficient. Give a more exact answer, change the assertion, or ask for a retest with better evidence.
-- Of a retest chain, only the latest run waits for acceptance.
+- Of a retest chain, the inbox lists only the latest run. `status` waits for each run that has the latest outcome of a ready test, also an earlier run of the chain.
 - When result acceptance is required, a cross-plan dependency needs an accepted result.
 
 ## Example

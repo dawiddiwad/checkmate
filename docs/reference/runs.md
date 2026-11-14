@@ -177,7 +177,9 @@ A defect stays open until one of these occurs:
 1. A later finished run of the same plan selects each test of the defect, and each of these tests passes.
 2. A later finished run in the retest chain of the defect's run fails a test of the defect and records its own defect for it. The new defect replaces the old defect. The retest chain is the runs that name the run with `--retest-of`, directly or through other retests.
 
-A started run closes no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. `checkmate status` and `checkmate finding list --open` use this rule.
+A started run closes no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. A pass on any instance closes a defect. The cross-plan dependency rule also accepts a pass on any instance.
+
+`checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. The defect is still real, so `finding list --open` still lists it.
 
 ## Completion and coverage
 

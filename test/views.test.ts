@@ -1,9 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { answerGap, openPlan, patchPlan, rejectPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
-import { beginRun, closeTest, finishRun, recordFinding, recordGap } from '../plugin/src/runs.ts'
+import { beginRun, closeTest, finishRun, recordFinding, recordGap, rejectResult } from '../plugin/src/runs.ts'
 import {
 	changesAfter,
+	findingList,
 	inbox,
 	operationLog,
 	pagedOperations,
@@ -308,7 +309,14 @@ test('plan status reports a passed run without acceptance when the policy needs 
 	const opened = store(t)
 	ready(opened, { approvals: { plan: 'none', result: 'none' } })
 	passRun(opened, 'run-1', 'b1')
-	assert.deepEqual([planStatus(opened, 'checkout').state, planStatus(opened, 'checkout').waitsOn], ['passed', 'none'])
+	const narrow = planStatus(opened, 'checkout')
+	assert.deepEqual([narrow.state, narrow.why], ['needs_retest', ['T2 has not run']])
+	passRun(opened, 'run-2', 'b1', ['T1', 'T2'])
+	const status = planStatus(opened, 'checkout')
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.why],
+		['passed', 'none', ['run-2 passed. Result acceptance is not required']]
+	)
 })
 
 test('plan status puts blocking gaps before defects and defects before non-blocking gaps', (t) => {
@@ -477,4 +485,110 @@ test('the latest outcome of each test decides needs_retest when no defect is ope
 	passRun(opened, 'run-2', 'b2', ['T1'])
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 is blocked in run-1']])
+})
+
+function deferT2(opened: ReturnType<typeof store>, runId: string) {
+	recordGap(opened, actor, {
+		runId,
+		gap: {
+			id: 'G7',
+			severity: 'blocking',
+			status: 'open',
+			requirementIds: [],
+			testIds: ['T2'],
+			question: 'Is the promotion in scope?',
+			consequence: 'T2 cannot assert a total.',
+			decisionId: null,
+		},
+	})
+	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
+	answerGap(opened, actor, { planId: 'checkout', gapId: 'G7', kind: 'defer', value: 'Later.', rationale: 'R.' })
+	revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
+	const revision = planDetail(opened, 'checkout').revision
+	approved(opened, 'checkout', revision)
+	return `checkout@${revision}`
+}
+
+function passOn(opened: ReturnType<typeof store>, runId: string, reference: string, tests: string[]) {
+	beginRun(opened, actor, { runId, reference, tests, build: 'b2' })
+	for (const testId of tests) {
+		for (const assertionId of ['A1', 'A2']) check(opened, runId, `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, actor, { runId, testId })
+	}
+	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+}
+
+test('status ignores the defect of a deferred test, and finding list --open still lists it', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1', 'T2'], 'b1')
+	for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	check(opened, 'run-1', 'T2.A1', 'passed')
+	failT2(opened, 'run-1')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
+	const reference = deferT2(opened, 'run-1')
+	const status = planStatus(opened, 'checkout')
+	assert.equal(planDetail(opened, 'checkout').plan.tests.find((test) => test.id === 'T2')?.readiness, 'deferred')
+	assert.deepEqual(
+		[status.state, status.defects, status.why],
+		['needs_retest', [], [`run-1 tested checkout@2, not ${reference}`]]
+	)
+	assert.deepEqual(
+		findingList(opened, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
+		['run-1/F1']
+	)
+	passOn(opened, 'run-2', reference, ['T1'])
+	const after = planStatus(opened, 'checkout')
+	assert.deepEqual([after.state, after.why], ['awaits_acceptance', ['run-2 on build b2 waits for acceptance']])
+	accept(opened, 'run-2')
+	assert.equal(planStatus(opened, 'checkout').state, 'accepted')
+})
+
+test('status ignores the inconclusive outcome of a deferred test', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1', 'T2'], 'b1')
+	for (const reference of ['T1.A1', 'T1.A2']) check(opened, 'run-1', reference, 'passed')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	check(opened, 'run-1', 'T2.A1', 'passed')
+	check(opened, 'run-1', 'T2.A2', 'inconclusive')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
+	const reference = deferT2(opened, 'run-1')
+	assert.deepEqual(planStatus(opened, 'checkout').why, [`run-1 tested checkout@2, not ${reference}`])
+	passOn(opened, 'run-2', reference, ['T1'])
+	assert.equal(planStatus(opened, 'checkout').state, 'awaits_acceptance')
+})
+
+test('acceptance covers every run that gives a latest outcome', (t) => {
+	const opened = store(t)
+	ready(opened)
+	passRun(opened, 'run-1', 'b1', ['T1', 'T2'])
+	passRun(opened, 'run-2', 'b2', ['T1'])
+	const waiting = planStatus(opened, 'checkout')
+	assert.deepEqual(
+		[waiting.state, waiting.why, waiting.next],
+		[
+			'awaits_acceptance',
+			['run-1 on build b1 waits for acceptance', 'run-2 on build b2 waits for acceptance'],
+			'checkmate result accept run-1 --rationale "<why>"',
+		]
+	)
+	accept(opened, 'run-2')
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 on build b1 waits for acceptance'])
+	rejectResult(opened, actor, { runId: 'run-1', rationale: 'Wrong build.' })
+	const rejected = planStatus(opened, 'checkout')
+	assert.deepEqual([rejected.state, rejected.why], ['needs_retest', ["T2's latest pass is in rejected run-1"]])
+	accept(opened, 'run-1')
+	const accepted = planStatus(opened, 'checkout')
+	assert.deepEqual([accepted.state, accepted.why], ['accepted', ['run-1, run-2 are accepted']])
+})
+
+test('after a finished run, a ready test that never ran needs a retest', (t) => {
+	const opened = store(t)
+	ready(opened)
+	assert.equal(planStatus(opened, 'checkout').state, 'ready_to_run')
+	passRun(opened, 'run-1', 'b1', ['T1'])
+	const status = planStatus(opened, 'checkout')
+	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 has not run']])
 })

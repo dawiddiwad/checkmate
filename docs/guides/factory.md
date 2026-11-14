@@ -28,7 +28,7 @@ reason: G1: Does the promotion stack with the loyalty discount?
 
 `completed` and `needs_decision` exit with 0. `needs_decision` is a correct result: the oracle must decide or give input. Read line 1, not only the exit code. [Commands](../reference/commands.md#statuses-and-exit-codes) lists every status.
 
-Many workers can write to one workspace at the same time. One command writes at a time, and the others wait up to 30 seconds. When a command cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again.
+Many workers can write to one workspace at the same time. One command writes at a time, and the others wait up to 30 seconds. Reads such as `log`, `status`, and `inbox` also wait. When a command cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again.
 
 ## Give permissions to a worker
 
@@ -38,14 +38,16 @@ A prefix rule such as `Bash(node *)` is not sufficient. The worker sends JSON to
 
 ## Give Claude Code options to a worker
 
-Add `--claude-arg <arg>` once for each argument of the `claude` command. `delegate` adds the arguments after its own arguments, in the same order. The value can start with `--`.
+Add `--claude-arg <arg>` once for each argument of the `claude` command. `delegate` adds the arguments in the same order, after its own options and before the tool rules of `--allow`. The value can start with `--`.
 
 ```sh
 checkmate delegate plan checkout --allow Read --allow Bash \
   --claude-arg --model --claude-arg claude-haiku-5-5
 ```
 
-`delegate` refuses `-p`, `--print`, `--output-format`, `--json-schema`, `--plugin-dir`, `--allowedTools`, and `--allowed-tools`. Checkmate needs its own values for these. Give tool rules with `--allow`. The host owns the model and the other options.
+`delegate` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--verbose`, `--plugin-dir`, `--allowedTools`, and `--allowed-tools`. Checkmate needs its own values for these. Give tool rules with `--allow`.
+
+An argument can change the permissions of the worker, for example `--permission-mode`, `--settings`, or `--tools`. The host owns the model, the permissions, and the other options. Checkmate does not record these arguments.
 
 ## One ticket through the loop
 
@@ -157,7 +159,7 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
 
 `checkmate log --after <rowid> --json` lists only the operations after a row ID, oldest first. Each operation has `rowid` and `subjects`. Keep the last row ID that you read, and give it on the next call. An operation that changes what waits for the oracle has the subject `inbox`.
 
-1. Save this script as `.claude/hooks/checkmate-signal.mjs` in the project. It stops when the Bash command does not run Checkmate. It keeps the last row ID in `.claude/hooks/.checkmate-cursor`, because Checkmate keeps no file other than its database. When a new operation has the subject `inbox` and `checkmate inbox` is not empty, it sends one line to `ORACLE_WEBHOOK_URL`.
+1. Save this script as `.claude/hooks/checkmate-signal.mjs` in the project. It stops when the Bash command does not run Checkmate. It keeps the last row ID in `.claude/hooks/.checkmate-cursor`, because Checkmate keeps no file other than its database. When a new operation has the subject `inbox` and `checkmate inbox` is not empty, it sends one line to `ORACLE_WEBHOOK_URL`. It saves the row ID only after the send worked, or when no send was necessary. When the send fails, the next run tries again.
 
    ```js
    import { execFileSync } from 'node:child_process'
@@ -178,23 +180,26 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
    } catch {}
    const { operations } = checkmate('log', '--after', after, '--limit', '1000')
    if (!operations.length) process.exit(0)
-   writeFileSync(cursor, String(operations.at(-1).rowid))
-   if (!operations.some((operation) => operation.subjects.includes('inbox'))) process.exit(0)
 
-   const inbox = checkmate('inbox')
-   const counts = { gaps: inbox.gaps.length, plans: inbox.plans.length, results: inbox.results.length }
-   if (!counts.gaps && !counts.plans && !counts.results) process.exit(0)
-   await fetch(process.env.ORACLE_WEBHOOK_URL, {
-   	method: 'POST',
-   	headers: { 'content-type': 'application/json' },
-   	body: JSON.stringify({
-   		text: `Checkmate waits for the oracle: ${counts.gaps} gaps, ${counts.plans} plans, ${counts.results} results.`,
-   	}),
-   	signal: AbortSignal.timeout(5000),
-   })
+   if (operations.some((operation) => operation.subjects.includes('inbox'))) {
+   	const inbox = checkmate('inbox')
+   	const { gaps, plans, results, requests } = inbox
+   	if (gaps.length + plans.length + results.length + requests.length) {
+   		const response = await fetch(process.env.ORACLE_WEBHOOK_URL, {
+   			method: 'POST',
+   			headers: { 'content-type': 'application/json' },
+   			body: JSON.stringify({
+   				text: `Checkmate inbox: ${gaps.length} gaps, ${plans.length} plans, ${results.length} results, ${requests.length} requests.`,
+   			}),
+   			signal: AbortSignal.timeout(5000),
+   		})
+   		if (!response.ok) process.exit(1)
+   	}
+   }
+   writeFileSync(cursor, String(operations.at(-1).rowid))
    ```
 
-2. Add the hook to `.claude/settings.json` in the project. `PostToolUse` runs after a command that exits with 0. `PostToolUseFailure` runs after a command that exits with 1, for example `rejected`.
+2. Add the hook to `.claude/settings.json` in the project. `PostToolUse` runs after a command that exits with 0. `PostToolUseFailure` runs after a command that exits with 1, for example `rejected`. With `"async": true`, the hook runs in the background, and Claude does not wait for it.
 
    ```json
    {
@@ -203,7 +208,11 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
    			{
    				"matcher": "Bash",
    				"hooks": [
-   					{ "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/checkmate-signal.mjs" }
+   					{
+   						"type": "command",
+   						"command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/checkmate-signal.mjs",
+   						"async": true
+   					}
    				]
    			}
    		],
@@ -211,7 +220,11 @@ A factory can tell the oracle that work waits, for example in a chat channel. Ch
    			{
    				"matcher": "Bash",
    				"hooks": [
-   					{ "type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/checkmate-signal.mjs" }
+   					{
+   						"type": "command",
+   						"command": "node \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/checkmate-signal.mjs",
+   						"async": true
+   					}
    				]
    			}
    		]
@@ -226,7 +239,7 @@ The hook reads `tool_input.command` and `hook_event_name` from the hook input on
 
 - **Delegated stages.** A `delegate` worker is a `claude -p` session in the workspace. It loads the hooks in `.claude/settings.json` of the project, so the same hook runs for the writes of a worker.
 - **A quieter alternative.** Add the same script as a `Stop` hook, without a matcher. It then runs once when Claude finishes a response, not after each command. The script reads the log for each `Stop` event.
-- **Limits.** Only commands that Claude Code runs start a hook. A write from the review UI, from CI, from a script, or from another agent harness starts no hook. For these writes, read `checkmate log --after <rowid> --json` or `checkmate inbox --json` on a schedule.
+- **Limits.** Two hooks that run at the same time can send the same line twice. Only commands that Claude Code runs start a hook. A write from the review UI, from CI, from a script, or from another agent harness starts no hook. For these writes, read `checkmate log --after <rowid> --json` or `checkmate inbox --json` on a schedule.
 
 The [hooks reference of Claude Code](https://code.claude.com/docs/en/hooks) has the hook events, the input fields, and the settings files.
 

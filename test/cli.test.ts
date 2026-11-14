@@ -258,7 +258,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.deepEqual((log[2].arguments.candidate as { tests: unknown[] }).tests.length, 3)
 	const compact = cli(workspace, ['log', '--subject', 'target:checkout-local', '--limit', '1'])
 	assert.equal(compact.lines.length, 2)
-	assert.match(compact.lines[1], /^2\t[0-9A-Z]{26}\t\S+\ttester\ttarget save\tcompleted\ttarget:checkout-local$/)
+	assert.match(compact.lines[1], /^[0-9A-Z]{26}\t\S+\ttester\ttarget save\tcompleted\ttarget:checkout-local\t2$/)
 	const after = json(workspace, ['log', '--after', '3', '--limit', '2']).body.operations as typeof log
 	assert.deepEqual(
 		after.map((row) => [row.rowid, row.command]),
@@ -396,7 +396,7 @@ function child(workspace: string, args: string[], input: string) {
 	})
 }
 
-test('parallel writers commit or give operational_error, and a lock is never rejected', async (t) => {
+test('parallel writers under lock contention all commit, and none is rejected', async (t) => {
 	const workspace = directory(t)
 	const opened = store(t, workspace)
 	ready(opened)
@@ -411,12 +411,9 @@ test('parallel writers commit or give operational_error, and a lock is never rej
 		})
 	)
 	const replies = await Promise.all(writes)
-	for (const reply of replies) {
-		assert(['completed', 'operational_error'].includes(reply.status), reply.reasons.join('; '))
-		if (reply.status === 'operational_error') assert.match(reply.reasons.join(' '), /Run the command again/)
-	}
+	for (const reply of replies) assert.equal(reply.status, 'completed', reply.reasons.join('; '))
 	const committed = json(workspace, ['query', 'SELECT count(*) AS n FROM assertion_results']).body.rows[0].n
-	assert.equal(committed, replies.filter((reply) => reply.status === 'completed').length)
+	assert.equal(committed, writes.length)
 	const logged = json(workspace, ['query', "SELECT status FROM operations WHERE command = 'run check'"]).body.rows
 	assert.equal(logged.length, committed)
 	assert(logged.every((row: { status: string }) => row.status === 'completed'))

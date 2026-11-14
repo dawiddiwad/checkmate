@@ -1,10 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { delegate, minimumRules, reservedClaudeArgs, resumeReason, worker } from '../cli/src/launcher.ts'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import {
+	delegate,
+	minimumRules,
+	reservedClaudeArgs,
+	resumeReason,
+	unverifiedReason,
+	worker,
+} from '../cli/src/launcher.ts'
+import { busyReason, closeStore, openStore } from '../plugin/src/store.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
 import type { TestContext } from 'node:test'
@@ -197,14 +204,15 @@ function requested(t: TestContext) {
 const recordsArgs = `require('node:fs').writeFileSync('args.json', JSON.stringify(process.argv.slice(2)))
 reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
 
-test('delegate appends each --claude-arg after its own arguments', async (t) => {
+test('delegate puts each --claude-arg before the tool rules, so a value cannot add a tool', async (t) => {
 	const workspace = requested(t)
 	const records = claude(workspace, recordsArgs)
-	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs']
+	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs', 'Write']
 	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, claudeArgs, pluginRoot, claude: records })
 	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
 	assert.equal(args[0], '-p')
-	assert.deepEqual(args.slice(-7), ['--allowedTools', 'Read', '--allowedTools', 'Bash', ...claudeArgs])
+	assert.deepEqual(args.slice(-8), [...claudeArgs, '--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	assert.equal(args.indexOf('Write'), args.indexOf('--allowedTools') - 1)
 })
 
 test('delegate refuses a --claude-arg that changes the worker contract', async (t) => {
@@ -259,7 +267,58 @@ test('the npm CLI takes --claude-arg values that start with --', (t) => {
 	)
 	assert.equal(output, 'needs_decision checkout\nreason: Stopped.\n')
 	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.deepEqual(args.slice(-2), ['--model', 'claude-haiku-5-5'])
+	assert.deepEqual(args.slice(-6, -4), ['--model', 'claude-haiku-5-5'])
+})
+
+function hold(workspace: string) {
+	const holder = openStore(workspace)
+	holder.db.exec('BEGIN IMMEDIATE')
+	return () => {
+		holder.db.exec('ROLLBACK')
+		closeStore(holder)
+	}
+}
+
+test('a lock gives operational_error: retry before the worker, read the record after it', async (t) => {
+	const early = requested(t)
+	const bin = join(early, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const releaseEarly = hold(early)
+	const refused = new Promise<string>((resolve) =>
+		execFile(
+			process.execPath,
+			[join(root, 'cli/src/main.ts'), 'delegate', 'plan', 'checkout', '--allow', 'Read', '--allow', 'Bash'],
+			{ cwd: early, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' },
+			(_, stdout) => resolve(stdout)
+		)
+	)
+	const { workspace, session } = started(t)
+	const quits = claude(workspace, `reply({ status: 'completed', subject: 'run-1', reasons: [] })`)
+	const pending = delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: '/missing-playwright',
+	})
+	const releaseLate = hold(workspace)
+	const late = await pending
+	releaseLate()
+	assert.deepEqual(late, {
+		status: 'operational_error',
+		subject: 'run-1',
+		reasons: [
+			'database is locked',
+			unverifiedReason,
+			`Browser session ${session} was not closed: the command is unavailable.`,
+			resumeReason('run-1'),
+		],
+		operation: null,
+	})
+	assert.equal(await refused, `operational_error checkout\nreason: database is locked\nreason: ${busyReason}\n`)
+	releaseEarly()
+	assert.equal(existsSync(join(early, 'args.json')), false)
 })
 
 test('delegate revise needs every pending decision applied', async (t) => {

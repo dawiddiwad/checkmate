@@ -12682,13 +12682,13 @@ var commands = {
     },
     print: (reply) => ({
       lines: reply.data.operations.map((operation) => [
-        operation.rowid,
         operation.id,
         operation.at,
         operation.actor,
         operation.command,
         operation.status,
-        operation.subjects
+        operation.subjects,
+        operation.rowid
       ])
     })
   },

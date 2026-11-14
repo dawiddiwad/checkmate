@@ -1,5 +1,5 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
-import { isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
+import { busyReason, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
 import { readFileSync } from 'node:fs'
 
@@ -73,17 +73,11 @@ function print(response: DelegateResponse, json: boolean) {
 	process.exitCode = response.status === 'completed' || response.status === 'needs_decision' ? 0 : 1
 }
 
-function refuse(
-	status: 'invalid_request' | 'rejected' | 'operational_error',
-	subject: string,
-	error: unknown,
-	json: boolean
-) {
+function refuse(status: 'invalid_request' | 'rejected', subject: string, error: unknown, json: boolean) {
 	print({ status, subject, reasons: [(error as Error).message], operation: null }, json)
 }
 
 async function runDelegate(tokens: string[]) {
-	const json = tokens.includes('--json')
 	let parsed: Parsed
 	try {
 		parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
@@ -91,7 +85,7 @@ async function runDelegate(tokens: string[]) {
 		if (!stages.includes(parsed.positionals[0] as Stage))
 			throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)
 	} catch (error) {
-		return refuse('invalid_request', 'delegate', error, json)
+		return refuse('invalid_request', 'delegate', error, tokens.includes('--json'))
 	}
 	const [stage, subject] = parsed.positionals as [Stage, string]
 	try {
@@ -100,9 +94,11 @@ async function runDelegate(tokens: string[]) {
 			claudeArgs: parsed.claudeArgs,
 			timeoutSeconds: seconds(parsed.values.timeout, 'timeout'),
 		})
-		print(response, json)
+		print(response, parsed.json)
 	} catch (error) {
-		refuse(isBusy(error) ? 'operational_error' : 'rejected', subject, error, json)
+		if (!isBusy(error)) return refuse('rejected', subject, error, parsed.json)
+		const reasons = [(error as Error).message, busyReason]
+		print({ status: 'operational_error', subject, reasons, operation: null }, parsed.json)
 	}
 }
 

@@ -1,5 +1,5 @@
 import type { Status, Store } from '../../plugin/src/index.ts'
-import { closeStore, openStore, validate } from '../../plugin/src/index.ts'
+import { closeStore, isBusy, openStore, validate } from '../../plugin/src/index.ts'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -40,7 +40,9 @@ export const reservedClaudeArgs = [
 	'-p',
 	'--print',
 	'--output-format',
+	'--input-format',
 	'--json-schema',
+	'--verbose',
 	'--plugin-dir',
 	'--allowedTools',
 	'--allowed-tools',
@@ -58,6 +60,9 @@ export function defaultPluginRoot() {
 	if (existsSync(join(bundled, '.claude-plugin', 'plugin.json'))) return bundled
 	return fileURLToPath(new URL('../../plugin', import.meta.url))
 }
+
+export const unverifiedReason =
+	'The worker may have written already. Read `checkmate status` or `checkmate log` before you run delegate again.'
 
 export function resumeReason(runId: string) {
 	return `Recorded results stay. Run \`checkmate run resume ${runId}\` or \`checkmate run finish ${runId} ...\``
@@ -93,7 +98,7 @@ function checkClaudeArgs(claudeArgs: string[]) {
 		if (!reserved) continue
 		const instead = reserved.startsWith('--allowed')
 			? 'Use --allow <rule> for tools.'
-			: `delegate sets ${reserved}.`
+			: `delegate needs its own control of ${reserved}.`
 		refuse(`--claude-arg ${arg} is not permitted. ${instead}`)
 	}
 }
@@ -111,9 +116,10 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 		'--permission-prompts',
 		'none',
 		'--no-session-persistence',
+		...claudeArgs,
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
-	return [...args, ...claudeArgs]
+	return args
 }
 
 export function worker(executable: string, args: string[], options: WorkerOptions): Promise<WorkerResponse> {
@@ -343,8 +349,19 @@ export async function delegate(
 	const cleanup = run
 		? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
 		: null
-	const verified = withStore(workspace, (store) => verify(store, stage, subject, after))
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
+	let verified: Verified | null
+	try {
+		verified = withStore(workspace, (store) => verify(store, stage, subject, after))
+	} catch (error) {
+		if (!isBusy(error)) throw error
+		return {
+			status: 'operational_error',
+			subject,
+			reasons: [...(failure ? [failure.message] : []), (error as Error).message, unverifiedReason, ...extra],
+			operation: null,
+		}
+	}
 	if (failure) {
 		const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
 		return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }

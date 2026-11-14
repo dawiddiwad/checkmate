@@ -97,7 +97,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 
 ## Limits
 
-- Checkmate checks structure and relationships. It cannot prove that an observation is true.
+- Checkmate validates structure and relationships. It cannot prove that an observation is true.
 - The rule checks and the path checks are not a sandbox. Use a trusted local workspace.
 - Checkmate does not sanitize evidence and cannot delete rows. The workspace owner owns retention.
 - Linux is the measured platform. macOS was not tested. The `delegate` launcher refuses Windows.

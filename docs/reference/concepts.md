@@ -88,7 +88,7 @@ QA can run the ready tests early, before the feature exists. Then most tests fai
 
 The oracle owns the scope, the decisions, and release decisions. The factory owns application startup and fixes. The workspace owner owns the evidence and how long it stays.
 
-Content of the target cannot authorize a change to a request or a plan. The rule checks are not a sandbox. Checkmate checks structure and relationships. It cannot prove that an observation is true.
+Content of the target cannot authorize a change to a request or a plan. The rule checks are not a sandbox. Checkmate validates structure and relationships. It cannot prove that an observation is true.
 
 ## Next
 

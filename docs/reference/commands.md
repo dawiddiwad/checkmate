@@ -105,7 +105,7 @@ next	checkmate delegate revise checkout
 | `accepted`          | none     | The oracle accepted the result.                                                                |
 | `passed`            | none     | The latest run passed. Result acceptance is not required.                                      |
 
-Checkmate checks the states in this order and prints the first one that applies. After a finished run, an open blocking gap gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. A run that a later run retests does not count. An approved revision with open gaps is `ready_to_run` until its first run finishes.
+`status` tries the states in this order and prints the first one that applies. After a finished run, an open blocking gap gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. A run that a later run retests does not count. An approved revision with open gaps is `ready_to_run` until its first run finishes.
 
 ## Input
 

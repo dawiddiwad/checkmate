@@ -1,6 +1,6 @@
 # Payloads
 
-> **Reference** · The JSON that the commands take on standard input, with the rules that Checkmate checks.
+> **Reference** · The JSON that the commands take on standard input, with the rules that Checkmate applies.
 
 The JSON Schemas in `plugin/contracts/` are the authority, and this page explains them with examples. Each example passes its schema and the rules of its command. The contract version is `toolkit-2`.
 

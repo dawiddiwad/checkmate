@@ -102,7 +102,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 | A payload has the right shape and valid references. | That an observation is true.            |
 | A plan follows the plan rules before it is stored.  | That the evidence came from the target. |
 | A run starts only through the gate.                 | That QA read the evidence correctly.    |
-| Stored bytes did not change after the write.        | Who the actor really is.                |
+| A digest detects a change to the stored bytes.      | Who the actor really is.                |
 
 - The rule checks and the path checks are not a sandbox. Use a trusted local workspace.
 - Checkmate does not sanitize evidence and cannot delete rows. The workspace owner owns retention.

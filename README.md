@@ -18,7 +18,7 @@ Checkmate turns a ticket into tests that an agent can run. It records the open q
 - The **factory** runs the agents and their sandboxes, and builds the code. Checkmate does not start, schedule, or message agents, and it does not change code.
 - The record is one SQLite file: `.checkmate/checkmate.db`. A human can make the oracle's decisions in the review UI at any time.
 
-## Solo start: the plugin in Claude Code
+## Solo mode: the plugin in Claude Code
 
 You are the oracle. Install the plugin from the marketplace. You do not need npm.
 
@@ -37,7 +37,7 @@ Then set up a target, plan a ticket, and open the review UI:
 
 Read [Test in Claude Code](docs/guides/claude-code.md).
 
-## Team start: the CLI in your factory
+## Team mode: the CLI in your factory
 
 Your agents share the work. Install the CLI:
 
@@ -59,7 +59,7 @@ checkmate status checkout
 
 Read [Run Checkmate from a factory](docs/guides/factory.md).
 
-Both ways need Node.js 24.12.0 or later and Claude Code. The team start also needs a logged-in `claude` command. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
+Both modes need Node.js 24.12.0 or later and Claude Code. Team mode also needs a logged-in `claude` command. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
 
 ## Documentation
 

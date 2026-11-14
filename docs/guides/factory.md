@@ -141,9 +141,11 @@ F1	defect	run-1	medium	T1.A1	Wrong total
 A deadline, a signal, or a crash does not finish a run. The run stays `started`, and the recorded results stay. `delegate` returns `interrupted` or `operational_error`.
 
 - `checkmate run resume <runId>` lists each test that is not closed, with its assertions that have no result. Then delegate `execute` again.
-- A test that was open when the worker stopped shows `Actions may have occurred`. Checkmate does not repeat it.
+- Checkmate does not repeat a test. Each open test shows `Actions may have occurred`, and the oracle decides to continue it or to close it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error`.
 - `checkmate run finish <runId> ...` ends the run with the results that it has.
+
+[Resume](../reference/runs.md#resume) has the rules.
 
 ## Use a sub-agent instead of delegate
 

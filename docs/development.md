@@ -118,11 +118,11 @@ npm must trust this repository and `.github/workflows/ci.yml`. The workflow toke
 
 ## Media
 
-The manual uses three kinds of media, all dark. They share the tokens in `docs/media/style.css` and the fonts in `plugin/src/ui/assets/fonts/`.
+The manual uses three kinds of media, all dark. The animation and the diagrams share the tokens in `docs/media/style.css` and the fonts of the review UI in `plugin/src/ui/assets/fonts/`.
 
 ### Onboarding animation
 
-`docs/img/onboarding.gif` comes from `docs/media/onboarding.html`, with the tokens in `docs/media/style.css` and the arrows from `docs/media/swimlane.js`. The animation is 900 by 756 pixels.
+`docs/img/onboarding.gif` comes from `docs/media/onboarding.html`, with the arrows from `docs/media/swimlane.js`. The animation is 900 by 756 pixels.
 
 - The top band is a ring: the planner and the oracle on the top edge, the factory and QA on the bottom edge, the record in the centre, and the human badge below. The amber path on the left goes from QA back to the planner.
 - The lower band is a swimlane: one lane for each role, the record lane at the bottom, and time from left to right. A dashed step in the oracle lane is a human in the review UI.
@@ -146,7 +146,7 @@ Set `CHECKMATE_BROWSER_EXECUTABLE` when Chromium is not at `/usr/bin/chromium`. 
 - `life.png`: the loop states of one plan and the next step of each. [Run Checkmate from a factory](guides/factory.md) shows it.
 - `run.png`: the record of one run and the four separate answers. [Runs and evidence](reference/runs.md) shows it.
 
-Use the terms of the pages and values that a real run prints, for example the states of `checkmate status`. Render all three with Chromium installed:
+Use the terms of the manual and values that a real run prints, for example the states that `checkmate status` prints. Render all three with Chromium installed:
 
 ```sh
 node scripts/render-diagrams.ts

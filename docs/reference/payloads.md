@@ -104,9 +104,10 @@ For requirements or plan tools, send JSON on standard input:
 {
 	"objective": "Verify checkout totals.",
 	"requirements": [
-		{ "id": "R1", "text": "A standard order for one 400 PLN item has a total of 400 PLN.", "source": "brief#standard" }
+		{ "id": "R1", "text": "A standard order for one 400 PLN item has a total of 400 PLN.", "source": "brief#standard" },
+		{ "id": "R2", "text": "A 40 percent promotion applies with the loyalty discount.", "source": "brief#promotion" }
 	],
-	"sourceContext": [{ "uri": "brief", "content": "The shop sells one item at 400 PLN." }],
+	"sourceContext": [{ "uri": "brief", "content": "The shop sells one item at 400 PLN. A promotion is 40 percent." }],
 	"tools": ["playwright-cli", { "name": "confluence", "kind": "mcp", "purpose": "Read the pricing page." }]
 }
 ```
@@ -130,7 +131,12 @@ A requirement can have [`metadata`](#metadata).
 
 ## Plan candidate
 
-The plan stage sends a candidate to `plan save <planId>`. Checkmate builds revision 1 from the request and the candidate.
+The plan stage sends a candidate to `plan save <planId>`. Checkmate builds revision 1 from the request and the candidate. The example passes with the [plan request](#plan-request) example.
+
+A candidate has `requirements` only when the request has no requirements:
+
+- When the request has `requirements`, the candidate does not contain `requirements`. Checkmate copies them from the request.
+- When the request has only `context.sources`, the candidate must contain `requirements`. The `source` of each starts with a context source, for example `{ "id": "R1", "text": "…", "source": "jira:SHOP-12#ac-1" }`.
 
 ```json
 {

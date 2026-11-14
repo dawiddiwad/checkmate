@@ -104,6 +104,11 @@ export type ResumeInput = { runId: string; error?: string[]; reason?: string }
 export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string }
 
 export const maxEvidenceBytes = 32 * 1024 * 1024
+export const assertionResults = ['passed', 'failed', 'inconclusive', 'not_checked'] as const
+export const closeOutcomes = ['blocked', 'not_run', 'error'] as const
+export const completions = ['completed', 'interrupted', 'operational_error'] as const
+export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
+export const newBlockerPolicies = ['return_to_oracle', 'continue_independent'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
 const kindByExtension: Record<string, EvidenceRow['kind']> = {
 	'.png': 'screenshot',
@@ -416,11 +421,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 				outcomes.get(dependency)?.outcome === 'passed',
 				`Prerequisite ${dependency} has not passed. Close ${dependency} as passed before you check ${test.id}.`
 			)
-		const result = requireChoice(
-			input.result,
-			['passed', 'failed', 'inconclusive', 'not_checked'] as const,
-			'result (--result)'
-		)
+		const result = requireChoice(input.result, assertionResults, 'result (--result)')
 		const observed = optionalText(input.observed, 'observation (--observed)')
 		const reason = optionalText(input.reason, 'reason (--reason)')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
@@ -490,7 +491,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 					? `Assertions not checked: ${unchecked.map((row) => `${test.id}.${row.assertion_id}`).join(', ')}`
 					: null
 		} else {
-			outcome = requireChoice(input.outcome, ['blocked', 'not_run', 'error'] as const, 'outcome (--outcome)')
+			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
 			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
 			requireCondition(
 				outcome === 'error' || !recorded.length,
@@ -632,17 +633,9 @@ export function finishRun(store: Store, actor: string | undefined, input: Finish
 function finish(store: Store, actor: string | undefined, input: FinishInput) {
 	return write(store, { actor, command: 'run finish', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
-		const completion = requireChoice(
-			input.completion,
-			['completed', 'interrupted', 'operational_error'] as const,
-			'completion (--completion)'
-		)
+		const completion = requireChoice(input.completion, completions, 'completion (--completion)')
 		const cleanup = {
-			status: requireChoice(
-				input.cleanup,
-				['completed', 'failed', 'not_applicable'] as const,
-				'cleanup (--cleanup)'
-			),
+			status: requireChoice(input.cleanup, cleanupStatuses, 'cleanup (--cleanup)'),
 			reason: requireText(input.cleanupReason, 'cleanup reason (--cleanup-reason)'),
 		}
 		const selected = run.request.selectedTestIds

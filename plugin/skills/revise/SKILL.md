@@ -11,7 +11,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
 3. For each decision, find the change in the affected tests that the decision value requires.
 4. Write the delta. Use the shape below.
-5. Send the delta in a heredoc: `checkmate plan revise <planId> <<'EOF'`, the JSON, then `EOF`.
+5. Send the delta in a heredoc: `checkmate plan revise <planId> --actor claude:revise <<'EOF'`, the JSON, then `EOF`.
 6. If the command refuses the delta, correct it and run step 5 again.
 7. Return the response of `plan revise`.
 8. In the same session, report to the oracle in the format of `workflow.md`. Show the changed tests (Test, Readiness, Title) and the gaps that are still open. In `Next:`, name the plan approval: `checkmate plan approve <planId@rev> --rationale "<why>"`, or the review UI.

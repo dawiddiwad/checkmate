@@ -4,7 +4,7 @@
 
 The JSON Schemas in `plugin/contracts/` are the authority, and this page explains them with examples. Each example passes its schema and the rules of its command. The contract version is `toolkit-2`.
 
-**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Metadata](#metadata) · [Schemas](#schemas)
+**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Metadata](#metadata) · [Limits](#limits) · [Schemas](#schemas)
 
 ## Identifiers
 
@@ -79,6 +79,7 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 }
 ```
 
+- Checkmate trims spaces and line breaks at the start and end of each entry value, `environment`, and each reference. This is the same for flags and for JSON. It refuses a value that is empty after the trim.
 - `entries` has exactly one value for each entry point of the target. Checkmate refuses a missing name and an unknown name. It checks against the entry points of the setup request, which are equal to the entry points of every revision.
 - A `url` value is a valid URI of any scheme, for example `https:`, `sftp:`, or `salesforce:`. It has no user name and no password.
 - A `command` value is a command line. QA runs it at test time, for example to get a one-time login URL. Checkmate stores the command, never its output.
@@ -86,7 +87,8 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 - `environment` is optional free text.
 - `references` is optional. It names authentication aliases or environment variables, never credential values.
 - An instance does not change. A second add with the same values changes nothing. A second add with other values is refused.
-- `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are.
+- `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are. When started runs use the instance, the reply has a `warning` line that names them. The status stays `completed`.
+- `delegate execute` tells the worker when the instance of the run is retired. The worker stops with a blocking gap when the instance does not respond.
 - An instance ID is not used again in the same target, also after it is retired. For a refreshed sandbox, retire the old instance and add a new one, for example `uat-2`. The plan and the retest chain stay the same. A retest on the new instance can keep the build.
 
 ## Plan request
@@ -104,9 +106,10 @@ For requirements or plan tools, send JSON on standard input:
 {
 	"objective": "Verify checkout totals.",
 	"requirements": [
-		{ "id": "R1", "text": "A standard order for one 400 PLN item has a total of 400 PLN.", "source": "brief#standard" }
+		{ "id": "R1", "text": "A standard order for one 400 PLN item has a total of 400 PLN.", "source": "brief#standard" },
+		{ "id": "R2", "text": "A 40 percent promotion applies with the loyalty discount.", "source": "brief#promotion" }
 	],
-	"sourceContext": [{ "uri": "brief", "content": "The shop sells one item at 400 PLN." }],
+	"sourceContext": [{ "uri": "brief", "content": "The shop sells one item at 400 PLN. A promotion is 40 percent." }],
 	"tools": ["playwright-cli", { "name": "confluence", "kind": "mcp", "purpose": "Read the pricing page." }]
 }
 ```
@@ -130,7 +133,12 @@ A requirement can have [`metadata`](#metadata).
 
 ## Plan candidate
 
-The plan stage sends a candidate to `plan save <planId>`. Checkmate builds revision 1 from the request and the candidate.
+The plan stage sends a candidate to `plan save <planId>`. Checkmate builds revision 1 from the request and the candidate. The example passes with the [plan request](#plan-request) example.
+
+A candidate has `requirements` only when the request has no requirements:
+
+- When the request has `requirements`, the candidate does not contain `requirements`. Checkmate copies them from the request.
+- When the request has only `context.sources`, the candidate must contain `requirements`. The `source` of each starts with a context source, for example `{ "id": "R1", "text": "…", "source": "jira:SHOP-12#ac-1" }`.
 
 ```json
 {
@@ -335,6 +343,25 @@ A test in a candidate can carry its Xray key the same way: `"metadata": { "prior
 - A value is a string of 0 to 500 characters, a number, or a boolean. A list or an object is refused. Give a list as one string, for example `"checkout,regression"`.
 - Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
 - The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as `metadata.<key>` properties.
+
+## Limits
+
+The schemas refuse a payload that breaks one of these limits:
+
+| Item                                                                        | Limit                                                                 |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| An ID                                                                       | 1 to 96 characters. Read [Identifiers](#identifiers).                 |
+| A text field, for example a `title`, `check`, or `question`                 | 1 or more characters. An empty string is refused.                     |
+| A test `title`                                                              | 200 characters or fewer                                               |
+| An instance entry value                                                     | 2000 characters or fewer                                              |
+| An instance `environment`                                                   | 500 characters or fewer                                               |
+| An instance reference                                                       | 200 characters or fewer                                               |
+| [`metadata`](#metadata)                                                     | 20 keys or fewer. A string value has 500 characters or fewer.         |
+| Finding `assertionIds`, `requirementIds`, `reproduction`, and `evidenceIds` | 1 or more items. Record evidence with `run check` before the finding. |
+| Test `requirementIds` and `operations`                                      | 1 or more items                                                       |
+| Request `requirements`, when present                                        | 1 or more items                                                       |
+| Profile `entryPoints`, `capabilities`, and `allowedOperations`              | 1 or more items                                                       |
+| Profile `startup.command`, when not `null`                                  | 1 or more items                                                       |
 
 ## Schemas
 

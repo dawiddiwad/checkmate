@@ -215,6 +215,23 @@ test('a schema error names the unknown field, the allowed values, and the bad me
 		/finding\/metadata field name "bad key" must match pattern/
 	)
 	assert.throws(() => validate('finding', { ...finding, severity: 'low', title: '' }), /finding\/title must NOT have/)
+	const request = { objective: 'o', context: { sources: ['a'] } }
+	assert.throws(
+		() => validate('plan-request', { ...request, tools: [{ name: 'x', kind: 'binary', purpose: 'p' }] }),
+		new Error('Invalid plan-request: plan-request/tools/0/kind must be one of: cli, mcp, skill')
+	)
+	assert.throws(
+		() => validate('plan-request', { ...request, tools: [5] }),
+		new Error('Invalid plan-request: plan-request/tools/0 must be string or object')
+	)
+	assert.throws(
+		() => validate('plan-patch', { tests: { T1: 5 } }),
+		new Error('Invalid plan-patch: plan-patch/tests/T1 must be object or null')
+	)
+	assert.throws(
+		() => validate('finding', { ...finding, severity: 'low', priority: undefined, metadata: { tags: ['a'] } }),
+		/, finding\/metadata\/tags must be string, number, or boolean$/
+	)
 })
 
 test('finding list prints one row per finding across runs, and --open keeps only open defects', (t) => {
@@ -294,11 +311,11 @@ test('the JUnit export is well-formed XML with one suite, one case per selected 
 	assert.match(xml, /<property name="build" value="build-1"\/><property name="instance" value="local"\/>/)
 	assert.match(
 		xml,
-		/<testcase classname="checkout" name="T1"><properties><property name="title" value="Standard order total"\/><property name="requirements" value="R1"\/><\/properties><\/testcase>/
+		/<testcase classname="checkout" name="T1" time="[0-9.]+"><properties><property name="title" value="Standard order total"\/><property name="requirements" value="R1"\/><\/properties><\/testcase>/
 	)
 	assert.match(
 		xml,
-		/<testcase classname="checkout" name="T2"><properties><property name="title" value="Promotion quote"\/><property name="requirements" value="R2"\/><property name="metadata.component" value="pricing"\/><property name="metadata.priority" value="high"\/><property name="metadata.xrayKey" value="SHOP-T7"\/><\/properties>/
+		/<testcase classname="checkout" name="T2" time="[0-9.]+"><properties><property name="title" value="Promotion quote"\/><property name="requirements" value="R2"\/><property name="metadata.component" value="pricing"\/><property name="metadata.priority" value="high"\/><property name="metadata.xrayKey" value="SHOP-T7"\/><\/properties>/
 	)
 	assert.match(
 		xml,
@@ -310,6 +327,48 @@ test('the JUnit export is well-formed XML with one suite, one case per selected 
 	)
 	assert.equal(exportRun(opened, 'run-1', 'junit'), xml)
 	assert.throws(() => exportPlan(opened, 'checkout@2', 'junit'), /Invalid format \(--format\): junit/)
+})
+
+test('the JUnit failure names the first defect by finding ID, and every export replaces control characters', (t) => {
+	const opened = store(t)
+	tagged(opened)
+	begin(opened, 'run-1', ['T1', 'T2'], 'build-1')
+	check(opened, 'run-1', 'T1.A1', 'passed')
+	check(opened, 'run-1', 'T1.A2', 'passed')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	check(opened, 'run-1', 'T2.A1', 'passed')
+	const reply = check(opened, 'run-1', 'T2.A2', 'failed', { observed: 'totalPLN is 220.' })
+	for (const [id, title] of [
+		['F10', 'Tenth defect'],
+		['F2', 'Second defect\u0007'],
+	])
+		recordFinding(opened, actor, {
+			runId: 'run-1',
+			finding: {
+				id,
+				type: 'defect',
+				severity: 'high',
+				assertionIds: ['T2.A2'],
+				requirementIds: ['R2'],
+				title,
+				expected: 'totalPLN equals 240.',
+				observed: 'totalPLN is 220.',
+				reproduction: ['Apply SPRING40.'],
+				evidenceIds: reply.data.evidenceIds as string[],
+			},
+		})
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
+	finishRun(opened, actor, { runId: 'run-1', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	const xml = exportRun(opened, 'run-1', 'junit')
+	wellFormed(xml)
+	assert.match(xml, /<failure type="defect" message="Second defect\uFFFD">F2 defect high/)
+	assert(xml.indexOf('F2 defect') < xml.indexOf('F10 defect'))
+	assert.match(xml, /<testcase classname="checkout" name="T2" time="[0-9.]+">/)
+	for (const format of ['md', 'html']) {
+		const text = exportRun(opened, 'run-1', format)
+		assert(![...text].some((character) => character < ' ' && !'\t\n\r'.includes(character)), format)
+		assert.match(text, /Second defect\uFFFD/, format)
+	}
 })
 
 test('the JUnit export skips tests that did not run and reports errors and inconclusive tests', (t) => {
@@ -326,6 +385,7 @@ test('the JUnit export skips tests that did not run and reports errors and incon
 	assert.match(xml, /tests="2" failures="0" errors="1" skipped="1"/)
 	assert.match(xml, /<error type="inconclusive" message="The &lt;page&gt; did not load\."\/>/)
 	assert.match(xml, /<skipped message="blocked: T1 did not pass\."\/>/)
+	assert.match(xml, /<testcase classname="checkout" name="T2" time="0">/)
 })
 
 test('the exports show metadata and the JSON run export names who approved the plan and accepted the result', (t) => {

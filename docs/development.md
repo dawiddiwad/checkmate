@@ -62,6 +62,7 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 | `test/render.test.ts`     | HTML, Markdown, and JSON exports.                                                               |
 | `test/cli.test.ts`        | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.  |
 | `test/launcher.test.ts`   | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.   |
+| `test/hook.test.ts`       | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.   |
 | `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture.                                       |
 | `test/package.test.ts`    | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.    |
 | `test/release.test.ts`    | Version rules and the five version files.                                                       |

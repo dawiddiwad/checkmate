@@ -1,5 +1,5 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
-import { busyReason, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
+import { busyReason, formatReply, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
 import { readFileSync } from 'node:fs'
 
@@ -9,6 +9,7 @@ type Parsed = {
 	allow: string[]
 	claudeArgs: string[]
 	json: boolean
+	help: boolean
 }
 
 const delegateUsage =
@@ -24,7 +25,7 @@ function help() {
 }
 
 function parse(tokens: string[], options: string[]): Parsed {
-	const parsed: Parsed = { positionals: [], values: {}, allow: [], claudeArgs: [], json: false }
+	const parsed: Parsed = { positionals: [], values: {}, allow: [], claudeArgs: [], json: false, help: false }
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]
 		if (!token.startsWith('--')) {
@@ -33,6 +34,10 @@ function parse(tokens: string[], options: string[]): Parsed {
 		}
 		if (token === '--json') {
 			parsed.json = true
+			continue
+		}
+		if (token === '--help') {
+			parsed.help = true
 			continue
 		}
 		const name = token.slice(2)
@@ -50,7 +55,8 @@ function parse(tokens: string[], options: string[]): Parsed {
 
 function seconds(text: string | undefined, name: string) {
 	if (text === undefined) return undefined
-	if (!/^[1-9][0-9]*$/.test(text)) throw new Error(`Invalid --${name}: ${text}. Use a whole number.`)
+	if (!/^[0-9]+$/.test(text) || Number(text) < 1 || Number(text) > 3600)
+		throw new Error(`Invalid --${name}: ${text}. Use a whole number from 1 to 3600.`)
 	return Number(text)
 }
 
@@ -58,19 +64,36 @@ function cell(field: string) {
 	return field.replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
 }
 
+function recorded(response: DelegateResponse, json: boolean) {
+	const { operation, command, data, ...reply } = response
+	if (json) return JSON.stringify({ ...reply, ...data, operation })
+	const [first, ...rest] = formatReply(command!, { ...reply, data: data! }, false).split('\n')
+	return [`${first} operation=${operation}`, ...rest].join('\n')
+}
+
 function print(response: DelegateResponse, json: boolean) {
-	const output = json
-		? JSON.stringify(response)
-		: [
-				[
-					response.status,
-					response.subject,
-					...(response.operation ? [`operation=${response.operation}`] : []),
-				].join(' '),
-				...response.reasons.map((reason) => `reason: ${cell(reason)}`),
-			].join('\n')
+	const output = response.command
+		? recorded(response, json)
+		: json
+			? JSON.stringify(response)
+			: [
+					[
+						response.status,
+						response.subject,
+						...(response.operation ? [`operation=${response.operation}`] : []),
+					].join(' '),
+					...response.reasons.map((reason) => `reason: ${cell(reason)}`),
+				].join('\n')
 	process.stdout.write(output + '\n')
 	process.exitCode = response.status === 'completed' || response.status === 'needs_decision' ? 0 : 1
+}
+
+function printHelp(json: boolean) {
+	const usage = [delegateUsage]
+	const output = json
+		? JSON.stringify({ status: 'completed', subject: 'delegate', reasons: [], usage })
+		: ['completed delegate', ...usage].join('\n')
+	process.stdout.write(output + '\n')
 }
 
 function refuse(status: 'invalid_request' | 'rejected', subject: string, error: unknown, json: boolean) {
@@ -81,6 +104,8 @@ async function runDelegate(tokens: string[]) {
 	let parsed: Parsed
 	try {
 		parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
+		if (parsed.help) return printHelp(parsed.json)
+		seconds(parsed.values.timeout, 'timeout')
 		if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
 		if (!stages.includes(parsed.positionals[0] as Stage))
 			throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)

@@ -16,7 +16,7 @@ import {
 	targetRevision,
 } from '../plugin/src/targets.ts'
 import { operationLog } from '../plugin/src/views.ts'
-import { actor, cli, json, profile, store, target } from './support.ts'
+import { actor, begin, cli, json, profile, ready, store, target } from './support.ts'
 
 const request = {
 	targetId: 'checkout-local',
@@ -128,6 +128,10 @@ test('a setup request names tools; the profile records each one and an unreachab
 		/Invalid kind of tool playwright-cli: binary/
 	)
 	assert.throws(() => openTarget(opened, actor, { ...request, tools: [tools[0], tools[0]] }), /Duplicate tool name/)
+	assert.throws(
+		() => openTarget(opened, actor, { ...request, tools: [{ ...tools[0], name: 'my tool,x' }] }),
+		/Invalid tool name: my tool,x\. Use 1 to 96 letters/
+	)
 	openTarget(opened, actor, { ...request, tools })
 	assert.deepEqual(showTargetRequest(opened, 'checkout-local').data.request, { ...request, tools })
 	const save = (overrides: Parameters<typeof profile>[0]) =>
@@ -353,10 +357,18 @@ test('target list, show, and instance commands print entry points, authenticatio
 	assert.deepEqual(cli(workspace, ['target', 'instance', 'list', 'checkout-local']).lines, [
 		'completed checkout-local count=3',
 		'local\tactive\tlocal fixture\tweb=http://127.0.0.1:4173',
-		'staging\tactive\tStaging\tweb=https://staging.example.com/?a=b',
+		'staging\tactive\tStaging\tweb="https://staging.example.com/?a=b"',
 		'piped\tretired\t-\tweb=http://127.0.0.1:5000',
 	])
 	assert.match(cli(workspace, ['target', 'show', 'checkout-local', '--instance', 'nope']).output, /Unknown instance/)
+	json(workspace, ['target', 'instance', 'add', 'checkout-local', 'windows'], {
+		entries: { web: 'file:///C:\\app "x"' },
+	})
+	const listed = cli(workspace, ['target', 'instance', 'list', 'checkout-local']).lines.find((line) =>
+		line.startsWith('windows\t')
+	)!
+	assert.equal(listed, 'windows\tactive\t-\tweb="file:///C:\\\\app \\"x\\""')
+	assert.equal(JSON.parse(listed.split('\t')[3].slice('web='.length)), 'file:///C:\\app "x"')
 	const trimmed = json(workspace, [
 		'target',
 		'instance',
@@ -367,8 +379,42 @@ test('target list, show, and instance commands print entry points, authenticatio
 		'web=  http://127.0.0.1:6000 ',
 	])
 	assert.deepEqual(trimmed.body.entries, { web: 'http://127.0.0.1:6000' })
+	const padded = json(workspace, ['target', 'instance', 'add', 'checkout-local', 'padded'], {
+		entries: { web: ' http://127.0.0.1:7000\n' },
+		environment: ' Padded ',
+		references: [' login '],
+	})
+	assert.deepEqual(
+		[padded.body.entries, padded.body.environment, padded.body.references],
+		[{ web: 'http://127.0.0.1:7000' }, 'Padded', ['login']]
+	)
+	for (const instance of [
+		{ entries: { web: '   ' } },
+		{ entries: { web: 'http://127.0.0.1:7001' }, environment: ' ' },
+		{ entries: { web: 'http://127.0.0.1:7001' }, references: ['\t'] },
+		{ entries: { web: 'http://127.0.0.1:7001' }, references: ['a', ' a'] },
+		{ entries: { web: `http://127.0.0.1:7001/${'x'.repeat(2000)}` } },
+	])
+		assert.equal(
+			json(workspace, ['target', 'instance', 'add', 'checkout-local', 'bad'], instance).body.status,
+			'rejected'
+		)
+	assert.match(
+		cli(workspace, ['target', 'instance', 'add', 'checkout-local', 'bad', '--entry', 'web=  ']).output,
+		/Missing value for entry point web/
+	)
 	assert.match(
 		cli(workspace, ['target', 'instance', 'drop', 'checkout-local']).output,
 		/Unknown command: target instance drop\. Run/
 	)
+})
+
+test('target instance retire warns when started runs use the instance', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	assert.deepEqual(cli(opened.workspace, ['target', 'instance', 'retire', 'checkout-local', 'local']).lines, [
+		'completed checkout-local/local recorded=true',
+		'warning\tStarted runs use this instance: run-1. Its sandbox may be gone.',
+	])
 })

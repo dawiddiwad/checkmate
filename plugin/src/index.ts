@@ -58,4 +58,4 @@ export {
 	pagedOperations,
 } from './views.ts'
 export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
-export { run, main } from './cli.ts'
+export { run, main, formatReply } from './cli.ts'

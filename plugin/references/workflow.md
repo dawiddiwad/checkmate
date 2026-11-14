@@ -36,7 +36,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 - Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
 
 ```sh
-checkmate plan save <planId> <<'EOF'
+checkmate plan save <planId> --actor claude:plan <<'EOF'
 { "tests": [], "gaps": [] }
 EOF
 ```
@@ -52,7 +52,7 @@ EOF
 
 Every write records an actor. Commands use `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name.
 
-- Stage work is agent work: `target save`, `plan save`, `plan revise`, and the `run` commands. When `CHECKMATE_ACTOR` is not set, add `--actor claude:<stage>` to each of these writes, for example `--actor claude:execute`. Else the record shows the git user name, not the agent.
+- Stage work is agent work: `target save`, `target instance add` in setup, `plan save`, `plan revise`, and the `run` commands. Always add `--actor claude:<stage>` to each of these writes, for example `checkmate run close <runId> T1 --actor claude:execute`. Else the record can show the git user name, not the agent. `--actor` wins over `CHECKMATE_ACTOR`, and `delegate` sets `CHECKMATE_ACTOR` to the same value.
 - Oracle decisions are `gap answer`, `plan adopt-gaps`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the oracle tells you the decision in this session. Keep the default actor, or give the oracle's name with `--actor`.
 
 ## Who runs a stage

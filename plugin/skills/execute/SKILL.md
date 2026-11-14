@@ -15,11 +15,11 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. Each to
 - Same session, new run:
   1. Run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
   2. Use the oracle's run ID. When the oracle gives none, run `checkmate run list` and use the next free `run-<n>`.
-  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build> --instance <instanceId>` once. Use the instance that the oracle names. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
+  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build> --instance <instanceId> --actor claude:execute` once. Use the instance that the oracle names. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
 
   For an early run while gaps are open, or when the oracle asks for the ready tests, give `--partial ready_only` and no `--tests` to `run gate` and `run begin`. Checkmate selects the ready tests. It prints `tests=<selection>` and a `<testId> left_out <reason>` line for each other test.
 
-- Same session, stalled run: run `checkmate run resume <runId>`. Check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
+- Same session, stalled run: run `checkmate run resume <runId> --actor claude:execute`. Check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
 
 Then:
 
@@ -47,15 +47,15 @@ Run prerequisites first. A local `dependsOn` test must pass before the dependent
 2. For each assertion, record the result with text evidence on standard input. Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
 
 ```sh
-checkmate run check <runId> T1 A1 --result passed --observed "<what you saw>" --evidence - <<'EOF'
+checkmate run check <runId> T1 A1 --actor claude:execute --result passed --observed "<what you saw>" --evidence - <<'EOF'
 <the page text or the JSON exchange that shows the observation>
 EOF
 ```
 
 3. Checkmate stores JSON text as `application/json` and other text as `text/plain`. Add a kind when it is not an observation, for example `--evidence -:http_exchange`.
 4. For binary evidence, for example a screenshot, write one new file in `.checkmate/tmp/<runId>/`. Add `--evidence .checkmate/tmp/<runId>/T1-A1.png`. Checkmate deletes the file after it stores it. You can give one text and one or more files.
-5. When each assertion has a result, run `checkmate run close <runId> <testId>`. Checkmate calculates the outcome.
-6. For a test that you did not start, run `checkmate run close <runId> <testId> --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure.
+5. When each assertion has a result, run `checkmate run close <runId> <testId> --actor claude:execute`. Checkmate calculates the outcome.
+6. For a test that you did not start, run `checkmate run close <runId> <testId> --actor claude:execute --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure.
 
 ## Assertion results
 
@@ -69,7 +69,7 @@ Compare with the exact check text. Do not change the check. Do not call a tool f
 
 ## Findings and gaps
 
-Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSON, then `EOF`. Use this shape:
+Send each finding in a heredoc: `checkmate run finding <runId> --actor claude:execute <<'EOF'`, the JSON, then `EOF`. Use this shape:
 
 ```json
 {
@@ -89,13 +89,13 @@ Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSO
 - Give every field of the example. `requirementIds` are the requirements of the named tests.
 - You can add `metadata` with team fields, for example `"metadata": { "jiraKey": "SHOP-142", "component": "pricing", "labels": "checkout,regression" }`. Use it for a priority, a component, labels, or a Jira or Xray key that the oracle or the test gives. Do not put team fields in the title. A value is a string, a number, or a boolean.
 - A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
-- For new ambiguity, write a gap with `"status": "open"` and a new ID. Send it in a heredoc: `checkmate run gap <runId> <<'EOF'`, the JSON, then `EOF`.
+- For new ambiguity, write a gap with `"status": "open"` and a new ID. Send it in a heredoc: `checkmate run gap <runId> --actor claude:execute <<'EOF'`, the JSON, then `EOF`.
 - After a new blocking gap, apply the new blocker policy of the run. A delegated prompt names it. Else read `request.onNewBlocker` from `checkmate run show <runId> --json`. `return_to_oracle`: stop further actions, and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect, and close the affected tests as `blocked`.
 
 ## Finish
 
 1. When the run used a browser, close the browser session: `playwright-cli -s=<browserSession> close`.
-2. Run `checkmate run finish <runId> --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
+2. Run `checkmate run finish <runId> --actor claude:execute --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
    - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail.
    - `operational_error`: a tool, access, or cleanup failure stopped the run.
    - `interrupted`: the deadline is near. Finish before the deadline.

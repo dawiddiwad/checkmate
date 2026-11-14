@@ -55,8 +55,8 @@ type DecisionRow = {
 	actor: string
 }
 
-const decisionKinds = ['clarify', 'accept_assumption', 'defer'] as const
-const partialModes = ['wait_for_resolution', 'ready_only'] as const
+export const decisionKinds = ['clarify', 'accept_assumption', 'defer'] as const
+export const partialModes = ['wait_for_resolution', 'ready_only'] as const
 
 export function openPlan(
 	store: Store,
@@ -1052,34 +1052,51 @@ export function dependencyBlock(store: Store, reference: string, build: string |
 
 export function planChanges(before: Plan, after: Plan): string[] {
 	const lines: string[] = []
+	const show = (value: unknown) => (value === undefined ? '(none)' : JSON.stringify(value))
 	const fields = (prefix: string, a: object, b: object, skip: string[] = []) => {
 		const x = a as Record<string, unknown>
 		const y = b as Record<string, unknown>
 		for (const key of [...new Set([...Object.keys(x), ...Object.keys(y)])].sort())
 			if (!skip.includes(key) && !same(x[key], y[key]))
-				lines.push(`${prefix} ${key}: ${JSON.stringify(x[key])} → ${JSON.stringify(y[key])}`)
+				lines.push(`${prefix} ${key}: ${show(x[key])} → ${show(y[key])}`)
 	}
-	for (const test of after.tests) {
-		const old = before.tests.find((item) => item.id === test.id)
-		if (!old) {
-			lines.push(`${test.id} added`)
-			continue
+	const items = <T extends { id: string }>(
+		old: T[],
+		next: T[],
+		label: (item: T) => string,
+		skip: string[] = [],
+		inner: (a: T, b: T) => void = () => {}
+	) => {
+		for (const item of old)
+			if (!next.some((other) => other.id === item.id)) lines.push(`${item.id} removed: ${show(label(item))}`)
+		for (const item of next) {
+			const previous = old.find((other) => other.id === item.id)
+			if (!previous) {
+				lines.push(`${item.id} added: ${show(label(item))}`)
+				continue
+			}
+			fields(item.id, previous, item, skip)
+			inner(previous, item)
 		}
-		fields(test.id, old, test, ['assertions'])
-		for (const assertion of old.assertions)
-			if (!test.assertions.some((item) => item.id === assertion.id))
-				lines.push(`${test.id}.${assertion.id} removed`)
-		for (const assertion of test.assertions) {
-			const previous = old.assertions.find((item) => item.id === assertion.id)
-			if (previous) fields(`${test.id}.${assertion.id}`, previous, assertion)
-			else lines.push(`${test.id}.${assertion.id} added: ${JSON.stringify(assertion.check)}`)
+	}
+	items(before.requirements, after.requirements, (requirement) => requirement.text)
+	items(
+		before.tests,
+		after.tests,
+		(test) => test.title,
+		['assertions'],
+		(old, test) => {
+			for (const assertion of old.assertions)
+				if (!test.assertions.some((item) => item.id === assertion.id))
+					lines.push(`${test.id}.${assertion.id} removed: ${show(assertion.check)}`)
+			for (const assertion of test.assertions) {
+				const previous = old.assertions.find((item) => item.id === assertion.id)
+				if (previous) fields(`${test.id}.${assertion.id}`, previous, assertion)
+				else lines.push(`${test.id}.${assertion.id} added: ${show(assertion.check)}`)
+			}
 		}
-	}
-	for (const gap of after.gaps) {
-		const old = before.gaps.find((item) => item.id === gap.id)
-		if (old) fields(gap.id, old, gap)
-		else lines.push(`${gap.id} added`)
-	}
+	)
+	items(before.gaps, after.gaps, (gap) => gap.question)
 	for (const decision of after.decisions.filter((item) => !before.decisions.some((old) => old.id === item.id)))
 		lines.push(`decision ${decision.id} ${decision.kind} ${decision.gapId}: ${JSON.stringify(decision.value)}`)
 	for (const assumption of after.assumptions.filter(

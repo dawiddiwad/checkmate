@@ -17,51 +17,51 @@ The skills run the plugin CLI with its absolute path. Claude Code gives the path
 
 Every command takes `--workspace <path>` and `--json`. Put options after the command name, for example `checkmate plan list --workspace ../app`. The workspace is the current directory by default. A write takes `--actor <name>`.
 
-`checkmate --help` prints every command with its options. `checkmate --version` prints the npm CLI version.
+`checkmate --help` prints every command with its options. `checkmate <command> --help` prints the usage of that command with `completed` on line 1. For a group, for example `checkmate plan --help`, it prints each command of the group. `checkmate --version` prints the npm CLI version.
 
 ## Command list
 
-| Group     | Command                                                 | Does                                                            |
-| --------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| State     | `init`                                                  | Creates `.checkmate/checkmate.db`. Any command does this too.   |
-|           | `inbox`                                                 | Lists what waits for the oracle.                                |
-|           | `status <planId>`                                       | Prints the loop state of one plan.                              |
-|           | `log [--subject <s>] [--limit <n>] [--after <rowid>]`   | Lists the operation log, newest first. The default limit is 50. |
-|           | `query "<sql>"`                                         | Runs one SQL statement on a read-only connection.               |
-| Target    | `target open <targetId>`                                | Records a setup request.                                        |
-|           | `target request <targetId>`                             | Prints the setup request.                                       |
-|           | `target save <targetId>`                                | Saves a profile from standard input.                            |
-|           | `target list`                                           | Lists each target with its latest revision and instances.       |
-|           | `target show <targetId[@rev]> [--instance <id>]`        | Prints a profile, and the values of one instance.               |
-|           | `target instance add <targetId> <instanceId>`           | Adds an instance from `--entry` flags or standard input.        |
-|           | `target instance retire <targetId> <instanceId>`        | Retires an instance. No new run can start on it.                |
-|           | `target instance list <targetId>`                       | Lists the instances of a target, active and retired.            |
-| Plan      | `plan open <planId> --target <targetId@rev>`            | Records a plan request.                                         |
-|           | `plan request <planId>`                                 | Prints the request with the resolved tools.                     |
-|           | `plan save <planId>`                                    | Saves revision 1 from a candidate.                              |
-|           | `plan show <planId[@rev]>`                              | Prints a revision. Without `@rev`, the latest.                  |
-|           | `plan list`                                             | Lists each plan at its latest revision.                         |
-|           | `plan pending <planId>`                                 | Prints the pending decisions and the tests they affect.         |
-|           | `plan revise <planId>`                                  | Saves the next revision from a delta.                           |
-|           | `plan diff <planId> <from> <to>`                        | Prints the field changes and a JSON Patch.                      |
-| Decisions | `gap answer <planId> <gapId>`                           | Records an answer to a gap.                                     |
-|           | `plan edit <planId@rev> [--patch]`                      | Changes the latest revision.                                    |
-|           | `plan adopt-gaps <planId@rev> --run <runId>`            | Adds the gaps of a run to the plan.                             |
-|           | `plan approve <planId@rev>`, `plan reject <planId@rev>` | Records a verdict on the latest revision.                       |
-|           | `result accept <runId>`, `result reject <runId>`        | Records a verdict on a result.                                  |
-| Run       | `run gate <planId@rev>`                                 | Checks the gate. Records nothing.                               |
-|           | `run begin <runId> <planId@rev>`                        | Checks the gate and starts a run on one instance.               |
-|           | `run check <runId> <testId> <assertionId>`              | Records one assertion result with evidence.                     |
-|           | `run close <runId> <testId>`                            | Closes a test and derives its outcome.                          |
-|           | `run finding <runId>`, `run gap <runId>`                | Records a finding or a new gap from standard input.             |
-|           | `run finish <runId>`                                    | Checks the run and stores the result.                           |
-|           | `run resume <runId>`                                    | Records a new attempt for a stalled run.                        |
-|           | `run show <runId>`, `run list`                          | Prints a run, or lists runs.                                    |
-|           | `finding list [--plan <planId>] [--open]`               | Lists the findings of all runs, one line for each finding.      |
-| Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only). |
-|           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                        |
-|           | `ui`                                                    | Starts the review UI.                                           |
-| npm only  | `delegate <stage> <subject>`                            | Runs a stage in a new Claude Code session.                      |
+| Group     | Command                                                 | Does                                                                                                                              |
+| --------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| State     | `init`                                                  | Creates `.checkmate/checkmate.db`. Any command does this too.                                                                     |
+|           | `inbox`                                                 | Lists what waits for the oracle.                                                                                                  |
+|           | `status <planId>`                                       | Prints the loop state of one plan.                                                                                                |
+|           | `log [--subject <s>] [--limit <n>] [--after <rowid>]`   | Lists the operation log, newest first. The limit is 1 to 1000. The default is 50.                                                 |
+|           | `query "<sql>"`                                         | Runs one SQL statement on a read-only connection. It refuses a second statement, a write, and a statement without result columns. |
+| Target    | `target open <targetId>`                                | Records a setup request.                                                                                                          |
+|           | `target request <targetId>`                             | Prints the setup request.                                                                                                         |
+|           | `target save <targetId>`                                | Saves a profile from standard input.                                                                                              |
+|           | `target list`                                           | Lists each target with its latest revision and instances.                                                                         |
+|           | `target show <targetId[@rev]> [--instance <id>]`        | Prints a profile, and the values of one instance.                                                                                 |
+|           | `target instance add <targetId> <instanceId>`           | Adds an instance from `--entry` flags or standard input.                                                                          |
+|           | `target instance retire <targetId> <instanceId>`        | Retires an instance. No new run can start on it.                                                                                  |
+|           | `target instance list <targetId>`                       | Lists the instances of a target, active and retired.                                                                              |
+| Plan      | `plan open <planId> --target <targetId@rev>`            | Records a plan request.                                                                                                           |
+|           | `plan request <planId>`                                 | Prints the request with the resolved tools.                                                                                       |
+|           | `plan save <planId>`                                    | Saves revision 1 from a candidate.                                                                                                |
+|           | `plan show <planId[@rev]>`                              | Prints a revision. Without `@rev`, the latest.                                                                                    |
+|           | `plan list`                                             | Lists each plan at its latest revision.                                                                                           |
+|           | `plan pending <planId>`                                 | Prints the pending decisions and the tests they affect.                                                                           |
+|           | `plan revise <planId>`                                  | Saves the next revision from a delta.                                                                                             |
+|           | `plan diff <planId> <from> <to>`                        | Prints the field changes and a JSON Patch.                                                                                        |
+| Decisions | `gap answer <planId> <gapId>`                           | Records an answer to a gap.                                                                                                       |
+|           | `plan edit <planId@rev> [--patch]`                      | Changes the latest revision.                                                                                                      |
+|           | `plan adopt-gaps <planId@rev> --run <runId>`            | Adds the gaps of a run to the plan.                                                                                               |
+|           | `plan approve <planId@rev>`, `plan reject <planId@rev>` | Records a verdict on the latest revision.                                                                                         |
+|           | `result accept <runId>`, `result reject <runId>`        | Records a verdict on a result.                                                                                                    |
+| Run       | `run gate <planId@rev>`                                 | Checks the gate. Records nothing.                                                                                                 |
+|           | `run begin <runId> <planId@rev>`                        | Checks the gate and starts a run on one instance.                                                                                 |
+|           | `run check <runId> <testId> <assertionId>`              | Records one assertion result with evidence.                                                                                       |
+|           | `run close <runId> <testId>`                            | Closes a test and derives its outcome.                                                                                            |
+|           | `run finding <runId>`, `run gap <runId>`                | Records a finding or a new gap from standard input.                                                                               |
+|           | `run finish <runId>`                                    | Checks the run and stores the result.                                                                                             |
+|           | `run resume <runId>`                                    | Records a new attempt for a stalled run.                                                                                          |
+|           | `run show <runId>`, `run list`                          | Prints a run, or lists runs.                                                                                                      |
+|           | `finding list [--plan <planId>] [--open]`               | Lists the findings of all runs, one line for each finding.                                                                        |
+| Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
+|           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                                                                                          |
+|           | `ui`                                                    | Starts the review UI.                                                                                                             |
+| npm only  | `delegate <stage> <subject>`                            | Runs a stage in a new Claude Code session.                                                                                        |
 
 The run commands are in [Runs and evidence](runs.md). The payloads are in [Payloads](payloads.md).
 
@@ -84,7 +84,8 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 - **plan list.** Prints `gaps=`, `approval=`, `blocked=`, `state=`, and `waitsOn=` for each plan. `gaps=` lists the open blocking gaps, also of runs. A request without a revision prints `status=requested`. Filters: `--needs-decision`, `--awaiting-approval`, `--blocked`, and `--waits-on <planner|oracle|qa|factory|none>`.
 - **plan show.** Takes `--tests T1,T2`, `--fields <fields>`, and `--gaps open|all`.
 - **target show.** Prints one `entryPoint` line for each entry point, the `authentication` kind and references, the tools, and one `instance` line for each active instance. With `--instance <instanceId>`, it also prints `entry`, `environment`, and `reference` lines with the values of that instance.
-- **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values.
+- **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values as `<entryPoint>=<value>`. The entries are separated by `,`. A value that contains a space, `,`, `=`, `"`, or `\` is a JSON string, for example `web="https://shop.example.com/?a=b"`. That JSON string is the only escaping layer: `C:\app "x"` prints as `web="C:\\app \"x\""`. Read it with a JSON parser.
+- **target instance retire.** When started runs use the instance, it prints a `warning` line that names them.
 - **run list.** Prints the run, the plan revision, the build, the instance, the state, the completion, the coverage, and the acceptance.
 - **finding list.** Prints one line for each finding of each run, oldest first: `<runId>/<findingId>`, the plan revision, the build, the instance, the type, the severity, the tests, the metadata as `key=value` pairs separated by `; `, and the title. `--plan <planId>` keeps the findings of one plan. `--open` keeps the [open defects](runs.md#open-defects), also of deferred or removed tests. `status` prints only the open defects of ready tests. For the complete metadata and the other fields, use `--json`. `--json` gives `findings`, and each row has `runId`, `planId`, `revision`, `build`, `instanceId`, `testIds`, `findingId`, `type`, `severity`, `title`, `expected`, `observed`, `reproduction`, `requirementIds`, `assertionIds`, `evidenceIds`, and `metadata`.
 
@@ -146,7 +147,7 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 
 - `run check` and `run close` take `--evidence -` for text on standard input. Read [Evidence input](runs.md#evidence-input).
 - `target open` takes `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. It needs one or more. The name uses letters, digits, `_`, and `-`. The purpose can contain `:`.
-- `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool.
+- `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool. The name uses letters, digits, `_`, and `-`, as an entry point name does, with an optional `<plugin>:` prefix, for example `checkmate:ui`. A tool object in a plan request has the same rule.
 - `target instance add` takes `--entry <entryPoint>=<value>` once for each entry point, `--environment <text>`, and `--reference <text>` (repeatable). Without `--entry`, it reads the instance JSON on standard input. Read [Payloads](payloads.md#instance).
 - `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of JSON.
 - A decision command takes `--expect-sha <digest>`. It stops when the snapshot has another digest.
@@ -158,7 +159,8 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 - `reason:` lines follow.
 - `--json` prints `{ "status", "subject", "reasons", ... }`.
 - `export` prints the report. With `--out <path>`, it writes a new file and prints the response. It refuses an existing file.
-- A schema error names the field. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. Read [Payloads](payloads.md#schemas).
+- A schema error names the field. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. A value of the wrong type gives `<payload>/<path> must be <type>`. When a field takes more than one type, for example a string or an object, the error names only the type of the value that you sent. When no type agrees, it lists all types, for example `must be string, number, or boolean`. Read [Payloads](payloads.md#schemas).
+- An option value that is not in its fixed list or not in its range gives `invalid_request`, for example `log --limit 0`, `log --subject bogus`, or `export run run-1 --format pdf`. The usage line shows a fixed list as `<a|b>`. The command does not start, and the log has no row.
 
 ## Statuses and exit codes
 
@@ -225,11 +227,11 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 **Permissions.** Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list. Give at least `Read` and `Bash`. A prefix rule such as `Bash(node *)` is not sufficient, because the permission check blocks a heredoc with JSON. `Bash` lets the worker run any shell command in the workspace, so use a trusted workspace. Add rules for the tools of the target or the plan: `mcp__jira` allows every tool of the `jira` server, and `mcp__jira__get_issue` allows one tool. An execute stage that saves screenshots with another tool can need `Write`. The launcher adds no permission bypass of its own.
 
-**Claude options.** Give one `--claude-arg <arg>` for each argument to add to the `claude` command. `delegate` adds them in the given order after its own options and before the `--allowedTools` rules, so a value cannot add a tool. The value of `--claude-arg` is the next argument, also when it starts with `--`. For example, `--claude-arg --model --claude-arg claude-haiku-5-5` adds `--model claude-haiku-5-5`, and `--claude-arg --add-dir=../specs` adds `--add-dir=../specs`. `delegate` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--verbose`, and `--plugin-dir`, because the worker contract needs their values. It refuses `--allowedTools` and `--allowed-tools`. Use `--allow` for tools. Claude Code checks the other arguments.
+**Claude options.** Give one `--claude-arg <arg>` for each argument to add to the `claude` command. `delegate` adds them in the given order directly after `-p`, before its own options. The `--allowedTools` rules come last. So a flag without its value, for example `--claude-arg --model` alone, takes `--plugin-dir` as its value, so Claude does not get the plugin and can refuse the command. It cannot take a tool rule. Put each `--claude-arg` after the subject. The value of `--claude-arg` is always the next argument, also when it starts with `--`, for example `--claude-arg --json`. One `--claude-arg` takes one argument only. So `--claude-arg --model --workspace X` adds only `--model`, and `delegate` reads `--workspace X` as its own option. Give the model name in a second `--claude-arg`. A `--claude-arg` without a next argument gives `invalid_request`. For example, `--claude-arg --model --claude-arg claude-haiku-5-5` adds `--model claude-haiku-5-5`, and `--claude-arg --add-dir=../specs` adds `--add-dir=../specs`. `delegate` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--verbose`, and `--plugin-dir`, because the worker contract needs their values. It refuses `--allowedTools` and `--allowed-tools`. Use `--allow` for tools. Claude Code checks the other arguments.
 
 **`--claude-arg` can change permissions.** For example, `--permission-mode`, `--settings`, and `--tools` change what the worker can do. The host owns that choice. Checkmate does not check these arguments for permissions, and it does not record them.
 
-**Deadlines.** `--timeout` sets the deadline in seconds. Setup, plan, and revise use 300 seconds by default. Execute uses the deadline that `run begin` recorded. The launcher stops the worker's process group at the deadline, on SIGINT or SIGTERM, and when the worker output exceeds 4 MiB.
+**Deadlines.** `--timeout` sets the deadline in seconds, from 1 to 3600. Another value gives `invalid_request`. Setup, plan, and revise use 300 seconds by default. Execute uses the deadline that `run begin` recorded. The launcher stops the worker's process group at the deadline, on SIGINT or SIGTERM, and when the worker output exceeds 4 MiB.
 
 **Lock.** When the parent cannot get the database lock before it starts the worker, `delegate` gives `operational_error` with the reason to run the command again. When it cannot get the lock after the worker, the worker can have written already. Then the reason tells you to read `checkmate status` or `checkmate log` before you run `delegate` again.
 

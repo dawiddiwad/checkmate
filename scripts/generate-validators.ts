@@ -43,6 +43,7 @@ const outputs = [
 			'export type Validator = ((value: unknown) => boolean) & {\n' +
 			'\terrors?: Array<{\n' +
 			'\t\tinstancePath: string\n' +
+			'\t\tschemaPath: string\n' +
 			'\t\tkeyword: string\n' +
 			'\t\tparams: { additionalProperty?: string; allowedValues?: unknown[]; type?: string | string[] }\n' +
 			'\t\tpropertyName?: string\n' +

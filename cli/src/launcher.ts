@@ -1,4 +1,4 @@
-import type { Status, Store } from '../../plugin/src/index.ts'
+import type { Reply, Status, Store } from '../../plugin/src/index.ts'
 import { closeStore, isBusy, openStore, validate } from '../../plugin/src/index.ts'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url'
 export const stages = ['setup', 'plan', 'revise', 'execute'] as const
 export type Stage = (typeof stages)[number]
 export type WorkerResponse = { status: Status; subject: string; reasons: string[] }
-export type DelegateResponse = WorkerResponse & { operation: string | null }
+export type DelegateResponse = WorkerResponse & {
+	operation: string | null
+	command?: string
+	data?: Record<string, unknown>
+}
 export type DelegateOptions = {
 	allowedTools: string[]
 	claudeArgs?: string[]
@@ -29,8 +33,9 @@ type RunRow = {
 	request: string
 	browser_session: string
 	deadline_seconds: number
+	retired: number
 }
-type Verified = { operation: string; reply: WorkerResponse }
+type Verified = { operation: string; reply: Reply }
 
 const maxOutputBytes = 4 * 1024 * 1024
 const defaultTimeoutSeconds = 300
@@ -108,6 +113,7 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 	const schema = readFileSync(join(pluginRoot, 'contracts', 'response.schema.json'), 'utf8')
 	const args = [
 		'-p',
+		...claudeArgs,
 		'--plugin-dir',
 		pluginRoot,
 		'--output-format',
@@ -117,7 +123,6 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 		'--permission-prompts',
 		'none',
 		'--no-session-persistence',
-		...claudeArgs,
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
 	return args
@@ -216,7 +221,12 @@ function usesPlaywright(store: Store, run: RunRow) {
 }
 
 function startedRun(store: Store, runId: string) {
-	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)
+	const run = one<RunRow>(
+		store,
+		`SELECT r.*, EXISTS (SELECT 1 FROM instance_retirements x WHERE x.target_id = r.target_id AND x.instance_id = r.instance_id) AS retired
+		FROM runs r WHERE r.run_id = ?`,
+		runId
+	)
 	if (!run) refuse(`Unknown run: ${runId}. Run \`checkmate run begin\` before delegate execute.`)
 	if (one(store, 'SELECT 1 FROM results WHERE run_id = ?', runId))
 		refuse(`Run ${runId} is finished. A finished run does not change.`)
@@ -254,8 +264,7 @@ function verify(store: Store, stage: Stage, subject: string, after: number): Ver
 		return null
 	if (stage === 'revise' && pendingDecisions(store, subject)) return null
 	if (stage === 'execute' && !one(store, 'SELECT 1 FROM results WHERE run_id = ?', subject)) return null
-	const reply = JSON.parse(row.response) as WorkerResponse
-	return { operation: row.id, reply: { status: reply.status, subject: reply.subject, reasons: reply.reasons } }
+	return { operation: row.id, reply: JSON.parse(row.response) as Reply }
 }
 
 function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
@@ -281,6 +290,11 @@ function stagePrompt(stage: Stage, subject: string, run: RunRow | null) {
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run!.plan_id}@${run!.plan_revision}. Target: ${run!.target_id}@${run!.target_revision}. Build: ${run!.application_build}.`,
 		`Instance: ${run!.instance_id}. Read its entry values with \`checkmate target show ${run!.target_id} --instance ${run!.instance_id}\`. Run a command entry at test time. Do not record its output as a value.`,
+		...(run!.retired
+			? [
+					`Instance ${run!.instance_id} is retired; its sandbox may be gone. Stop with a blocked gap if it does not respond.`,
+				]
+			: []),
 		`Selected tests: ${request.selectedTestIds.join(',')}. New blocker policy: ${request.onNewBlocker}.`,
 		`Browser session: ${run!.browser_session}. Send text evidence with \`--evidence -\`. Binary evidence directory: .checkmate/tmp/${subject}/.`,
 		`Read the open tests with \`checkmate run show ${subject}\`. Finish with \`checkmate run finish ${subject}\` before the deadline.`,
@@ -384,9 +398,12 @@ export async function delegate(
 	}
 	if (verified)
 		return {
-			...verified.reply,
+			status: verified.reply.status,
+			subject: verified.reply.subject,
 			reasons: [...verified.reply.reasons, ...(cleanup ? [cleanup] : [])],
 			operation: verified.operation,
+			command: verifiedBy[stage].command,
+			data: verified.reply.data,
 		}
 	if (!run && claimed!.status === 'needs_decision' && claimed!.reasons.length)
 		return { status: 'needs_decision', subject, reasons: claimed!.reasons, operation: null }

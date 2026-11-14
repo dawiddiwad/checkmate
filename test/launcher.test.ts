@@ -12,7 +12,9 @@ import {
 	worker,
 } from '../cli/src/launcher.ts'
 import { busyReason, closeStore, openStore } from '../plugin/src/store.ts'
+import { formatReply } from '../plugin/src/cli.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
+import { retireInstance } from '../plugin/src/targets.ts'
 import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
 import type { TestContext } from 'node:test'
 
@@ -204,15 +206,24 @@ function requested(t: TestContext) {
 const recordsArgs = `require('node:fs').writeFileSync('args.json', JSON.stringify(process.argv.slice(2)))
 reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
 
-test('delegate puts each --claude-arg before the tool rules, so a value cannot add a tool', async (t) => {
+test('delegate puts each --claude-arg right after -p, so a dangling flag cannot take a tool rule', async (t) => {
 	const workspace = requested(t)
 	const records = claude(workspace, recordsArgs)
+	const read = () => JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
 	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs', 'Write']
 	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, claudeArgs, pluginRoot, claude: records })
-	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.equal(args[0], '-p')
-	assert.deepEqual(args.slice(-8), [...claudeArgs, '--allowedTools', 'Read', '--allowedTools', 'Bash'])
-	assert.equal(args.indexOf('Write'), args.indexOf('--allowedTools') - 1)
+	const args = read()
+	assert.deepEqual(args.slice(0, 6), ['-p', ...claudeArgs, '--plugin-dir'])
+	assert.deepEqual(args.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	await delegate(workspace, 'plan', 'checkout', {
+		allowedTools: rules,
+		claudeArgs: ['--model'],
+		pluginRoot,
+		claude: records,
+	})
+	const dangling = read()
+	assert.deepEqual(dangling.slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(dangling.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
 })
 
 test('delegate refuses a --claude-arg that changes the worker contract', async (t) => {
@@ -267,7 +278,78 @@ test('the npm CLI takes --claude-arg values that start with --', (t) => {
 	)
 	assert.equal(output, 'needs_decision checkout\nreason: Stopped.\n')
 	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
-	assert.deepEqual(args.slice(-6, -4), ['--model', 'claude-haiku-5-5'])
+	assert.deepEqual(args.slice(1, 3), ['--model', 'claude-haiku-5-5'])
+})
+
+test('the npm CLI always takes the next token as the --claude-arg value and refuses a missing one', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const run = (...flags: string[]) => {
+		try {
+			return execFileSync(
+				process.execPath,
+				[
+					join(root, 'cli/src/main.ts'),
+					'delegate',
+					'plan',
+					'checkout',
+					'--allow',
+					'Read',
+					'--allow',
+					'Bash',
+					...flags,
+				],
+				{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+			)
+		} catch (error) {
+			return (error as { stdout: string }).stdout
+		}
+	}
+	assert.equal(run('--claude-arg', '--json', '--claude-arg', '--help'), 'needs_decision checkout\nreason: Stopped.\n')
+	const args = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.deepEqual(args.slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
+	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
+	assert.equal(run('--claude-arg', '--model'), 'needs_decision checkout\nreason: Stopped.\n')
+	const dangling = JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.deepEqual(dangling.slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(dangling.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	for (const timeout of ['0', 'abc', '3601'])
+		assert.equal(
+			run('--timeout', timeout),
+			`invalid_request delegate\nreason: Invalid --timeout: ${timeout}. Use a whole number from 1 to 3600.\n`
+		)
+})
+
+test('the npm CLI prints the facts of the recorded command with the operation', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(
+		bin,
+		`const out = checkmate(['plan', 'save', 'checkout', '--json'], ${JSON.stringify(JSON.stringify(candidate()))})
+const { status, subject, reasons } = JSON.parse(out)
+reply({ status, subject, reasons })`
+	)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const output = execFileSync(
+		process.execPath,
+		[join(root, 'cli/src/main.ts'), 'delegate', 'plan', 'checkout', '--allow', 'Read', '--allow', 'Bash'],
+		{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+	)
+	const lines = output.trim().split('\n')
+	const [operation] = query<{ id: string; response: string }>(
+		workspace,
+		"SELECT id, response FROM operations WHERE command = 'plan save' AND status != 'rejected'"
+	)
+	const sha256 = JSON.parse(operation.response).data.sha256 as string
+	assert.deepEqual(lines, [
+		`needs_decision checkout@1 sha256=${sha256.slice(0, 8)} operation=${operation.id}`,
+		'reason: G1: Does the promotion stack with loyalty?',
+		'reason: G2: Which orders qualify for refunds?',
+	])
 })
 
 function hold(workspace: string) {
@@ -419,14 +501,21 @@ reply({ status, subject, reasons })`
 		playwright: playwright(workspace),
 	})
 	assert.deepEqual(
-		{ ...result, operation: undefined },
+		{ ...result, operation: undefined, data: undefined },
 		{
 			status: 'completed',
 			subject: 'run-1',
 			reasons: [],
 			operation: undefined,
+			command: 'run finish',
+			data: undefined,
 		}
 	)
+	assert.equal(typeof result.data!.coverage, 'string')
+	assert.match(String(result.data!.sha256), /^[a-f0-9]{64}$/)
+	const printed = formatReply('run finish', { ...result, data: result.data! }, false).split('\n')
+	assert.match(printed[0], /^completed run-1 coverage=\S+ sha256=[a-f0-9]{8}$/)
+	assert.deepEqual(printed.slice(1), ['passed\t1'])
 	assert.deepEqual(
 		query<{ actor: string }>(workspace, "SELECT actor FROM operations WHERE command = 'run finish'").map(
 			(row) => row.actor
@@ -444,6 +533,8 @@ test('the execute prompt names the instance; the browser closes only for a targe
 		tools: [{ name: 'node', kind: 'cli', purpose: 'Send HTTP requests.', version: '24.12.0', reachable: true }],
 	})
 	begin(opened, 'run-1', ['T1'], 'build-1')
+	const retired = retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	assert.deepEqual([retired.status, retired.data.startedRuns], ['completed', ['run-1']])
 	closeStore(opened)
 	const quits = claude(
 		workspace,
@@ -469,6 +560,12 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 		prompt
 	)
 	assert.match(prompt, /Run a command entry at test time\./)
+	assert(
+		prompt.includes(
+			'Instance local is retired; its sandbox may be gone. Stop with a blocked gap if it does not respond.'
+		),
+		prompt
+	)
 })
 
 test('the setup prompt names the instances of the target', async (t) => {

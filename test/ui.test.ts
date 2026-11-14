@@ -327,7 +327,7 @@ test('the server refuses another host, another origin, and a missing form token'
 	assert.equal(allowed.status, 303)
 })
 
-test('evidence keeps its media type; only images and plain text show inline', async (t) => {
+test('evidence keeps its media type; images show inline, and plain text, XML, and CSV show inline as text', async (t) => {
 	const { ui, workspace } = await start(t)
 	const evidence = read(workspace, (store) =>
 		runDetail(store, 'run-7').tests.flatMap((test) => test.assertions.flatMap((assertion) => assertion.evidence))
@@ -345,6 +345,25 @@ test('evidence keeps its media type; only images and plain text show inline', as
 	const run = (await call(ui, '/runs/run-7')).body
 	assert.match(run, /<img src="\/evidence\//)
 	assert.match(run, /&quot;totalPLN&quot;: 220/)
+	read(workspace, (store) => {
+		const open = runDetail(store, 'run-8')
+			.tests.flatMap((test) => test.assertions.map((assertion) => ({ test, assertion })))
+			.find((item) => item.assertion.result === null)!
+		checkAssertion(store, agent, {
+			runId: 'run-8',
+			testId: open.test.testId,
+			assertionId: open.assertion.assertionId,
+			result: 'passed',
+			observed: 'The feed lists one item.',
+			evidence: [
+				evidenceFile(store, 'run-8', 'feed.xml', '<feed><item>Lamp</item></feed>'),
+				evidenceFile(store, 'run-8', 'rows.csv', 'sku,total\nLAMP-01,400\n'),
+			],
+		})
+	})
+	const feed = (await call(ui, '/runs/run-8')).body
+	assert.match(feed, /<pre tabindex="0">&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/)
+	assert.match(feed, /<pre tabindex="0">sku,total\nLAMP-01,400\n<\/pre>/)
 })
 
 type Event = { id: string; data: string }
@@ -912,29 +931,6 @@ test('the Add instance form records the actor and the Retire button needs its co
 	assert.match((await call(ui, '/log')).body, /href="\/settings\/targets\/shop-local">target:shop-local/)
 })
 
-test('the run page shows XML and CSV evidence inline as text', async (t) => {
-	const { ui, workspace } = await start(t)
-	read(workspace, (store) => {
-		const open = runDetail(store, 'run-8')
-			.tests.flatMap((test) => test.assertions.map((assertion) => ({ test, assertion })))
-			.find((item) => item.assertion.result === null)!
-		checkAssertion(store, agent, {
-			runId: 'run-8',
-			testId: open.test.testId,
-			assertionId: open.assertion.assertionId,
-			result: 'passed',
-			observed: 'The feed lists one item.',
-			evidence: [
-				evidenceFile(store, 'run-8', 'feed.xml', '<feed><item>Lamp</item></feed>'),
-				evidenceFile(store, 'run-8', 'rows.csv', 'sku,total\nLAMP-01,400\n'),
-			],
-		})
-	})
-	const page = (await call(ui, '/runs/run-8')).body
-	assert.match(page, /<pre tabindex="0">&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/)
-	assert.match(page, /<pre tabindex="0">sku,total\nLAMP-01,400\n<\/pre>/)
-})
-
 test('instance values are escaped in the table and the form; a javascript: URL entry is text only', async (t) => {
 	const { ui, workspace } = await start(t)
 	const hostile = 'javascript:alert("x")//<script>alert(1)</script>'
@@ -1090,7 +1086,7 @@ test('a replayed decision is refused and records nothing', async (t) => {
 	assert.equal(approvals(workspace, 'search@1'), 1)
 })
 
-test('the back link accepts only a path on this server', async (t) => {
+test('the back link accepts only a path on this server in printable ASCII', async (t) => {
 	const { ui } = await start(t)
 	const page = (await call(ui, '/')).body
 	const csrf = field(page, 'csrf')
@@ -1101,14 +1097,21 @@ test('the back link accepts only a path on this server', async (t) => {
 		'%2F%2Fevil.test',
 		'/%5Cevil.test',
 		'/\t/evil.test',
+		'/%E2%80%A8x',
+		'/a%00b',
+		'/\uFF0F\uFF0Fevil.test',
+		'/a b',
+		'/%ZZ',
 	]
 	for (const back of refused) {
 		const reply = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back } })
+		assert.equal(reply.status, 303, back)
 		assert.equal(reply.headers.location, '/', back)
 		const theme = await call(ui, '/theme', { form: { csrf, theme: 'dark', back } })
 		assert.equal(theme.headers.location, '/', back)
-		const shown = (await call(ui, `/actor?back=${encodeURIComponent(back)}`)).body
-		assert.match(shown, /<a class="btn" href="\/">Cancel<\/a>/, back)
+		const shown = await call(ui, `/actor?back=${encodeURIComponent(back)}`)
+		assert.equal(shown.status, 200, back)
+		assert.match(shown.body, /<a class="btn" href="\/">Cancel<\/a>/, back)
 	}
 	const kept = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back: '/plans?q=search' } })
 	assert.equal(kept.headers.location, '/plans?q=search')
@@ -1168,16 +1171,4 @@ test('a stale edit lists only the values that this user changed', async (t) => {
 		read(workspace, (store) => planDetail(store, 'search').plan.tests[1].title),
 		'Empty state for an unknown term'
 	)
-})
-
-test('a back value with characters outside printable ASCII goes to the inbox', async (t) => {
-	const { ui } = await start(t)
-	const csrf = field((await call(ui, '/')).body, 'csrf')
-	for (const back of ['/%E2%80%A8x', '/a%00b', '/\uFF0F\uFF0Fevil.test', '/a b', '/%ZZ']) {
-		const reply = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back } })
-		assert.equal(reply.status, 303, back)
-		assert.equal(reply.headers.location, '/', back)
-		const shown = await call(ui, `/actor?back=${encodeURIComponent(back)}`)
-		assert.equal(shown.status, 200, back)
-	}
 })

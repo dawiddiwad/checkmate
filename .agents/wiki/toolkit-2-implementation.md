@@ -237,7 +237,7 @@ Errors print `rejected <subject>` and `reason: <message>` (or JSON) and exit 1. 
 | `run check <runId> <testId> <assertionId> --result passed\|failed\|inconclusive\|not_checked [--observed <text>] [--reason <text>] [--evidence -[:kind]] [--evidence <path>[:kind]]…` | Rules in design section 7 and 9. `-` reads one text from stdin. Evidence paths are relative to the workspace and must be inside `.checkmate/tmp/<runId>/`. Kind defaults from extension: `.png/.jpg/.jpeg/.webp` screenshot, `.json` http_exchange, `.zip/.trace` trace, else observation. Max 32 MiB each. Delete the file after the commit.               |
 | `run close <runId> <testId> [--outcome blocked\|not_run\|error --reason <text>]`                                                                                                      | Derive outcome, or record the given one. Print the outcome.                                                                                                                                                                                                                                                                                                 |
 | `run finding <runId> < finding.json`                                                                                                                                                  | Check and store. A defect names only failed assertions. Evidence IDs belong to the named assertions or their tests.                                                                                                                                                                                                                                         |
-| `run gap <runId> < gap.json`                                                                                                                                                          | New, open, unknown ID, references exist in the plan.                                                                                                                                                                                                                                                                                                        |
+| `run gap <runId> < gap.json`                                                                                                                                                          | New, open, references exist in the plan. The ID is new in the plan and in every gap of its runs.                                                                                                                                                                                                                                                                                                       |
 | `run finish <runId> --completion completed\|interrupted\|operational_error --cleanup completed\|failed\|not_applicable --cleanup-reason <text>`                                       | Rules in design section 10. For interrupted/operational_error, unclosed selected tests are stored as `error` with reason `Run stopped before the test closed. Actions may have occurred.`                                                                                                                                                                   |
 | `run resume <runId> [--error T3,T4 --reason <text>]`                                                                                                                                  | New attempt. List unclosed tests and their assertions without results.                                                                                                                                                                                                                                                                                      |
 | `run show <runId> [--tests …]` / `run list [--plan <id>] [--build <b>]`                                                                                                               | Read.                                                                                                                                                                                                                                                                                                                                                       |
@@ -250,18 +250,18 @@ Errors print `rejected <subject>` and `reason: <message>` (or JSON) and exit 1. 
 
 ## Gate rules
 
-In order, collect every reason (do not stop at the first):
+First refuse a revision that is not the latest (`checkout@1 is not the latest revision. Use checkout@2.`). `run begin` checks the instance before the gate. Then, in order, collect every reason (do not stop at the first):
 
 1. Target profile of the plan has `readyForLiveExecution`.
 2. Plan approval policy `required`: the latest approval row for `plan:<planId>@<rev>` is `approved` and its digest is
    the revision digest. Reason: `Plan checkout@2 is not approved`.
-3. `wait_for_resolution`: each open blocking gap → `Open blocking gap: G1`.
+3. `wait_for_resolution`: each open blocking gap → `Open blocking gap: G1`. Each open blocking run gap that affects a selected test → `Open blocking gap G9 of run-1 affects T1`. `ready_only` leaves such a test out.
 4. Each selected test: exists; readiness `ready`; capability and operations in the profile; one or more assertions;
    local `dependsOn` selected (`Missing prerequisite: T1`).
 5. Cross-plan `dependsOn` (`login:T3`): see design section 8. Reason text:
    `Blocked by login:T3: <cause>` where cause is `no finalized result for build <b>`, `latest result run-4 shows failed`,
-   `result run-4 is not accepted`, or `open blocking gap G2 in login`.
-6. Retest: previous run finalized, same planId and target, different run ID and build.
+   `result run-4 is not accepted`, or `open blocking gap G2 in login`. A pass on any instance of the build satisfies the dependency.
+6. Retest: previous run finalized, same planId and target, different run ID and build. The same build is allowed only on another instance when the instance of the previous run is retired.
 
 `run begin` refuses a run ID that exists.
 
@@ -269,9 +269,9 @@ In order, collect every reason (do not stop at the first):
 
 Export plain functions over a `Store`. The UI and the CLI use the same functions.
 
-- `inbox(store)`: `{ gaps: [{planId, revision, gapId, question, severity, since, runId}], plans: [{planId, revision, sha256, since, summary}], results: [{runId, planId, revision, build, counts, coverage, sha256, since}], requests: [{planId, target, objective, since}] }`.
-  Gaps: open gaps of latest revisions without a pending decision, and run gaps that the plan does not have yet (`runId` set). Plans: latest revisions with approval policy
-  required and no approval row. Results: finalized runs with result policy required and no approval row, except a run that a later run retests. Requests:
+- `inbox(store)`: `{ gaps: [{planId, revision, gapId, question, severity, since, runId}], plans: [{planId, revision, sha256, approval, since, summary}], results: [{runId, planId, revision, build, counts, coverage, sha256, since}], requests: [{planId, target, objective, since}] }`.
+  Gaps: open gaps of latest revisions without a pending decision, and run gaps that the plan does not have yet (`runId` set). Plans: latest revisions that wait for approval, or that are
+  rejected. Results: pending results of every run that needs an oracle verdict before the plan can finish: runs with a latest outcome of a ready test, and runs with an open defect of a ready test. Requests:
   plan requests without a revision. `planList` also lists them with `status: 'requested'` and `revision: null`.
 - `planList(store)`, `planDetail(store, planId, revision?)`, `planHistory(store, planId)` (revisions with operation,
   actor, time, field changes against the previous revision), `runList(store, filters)`, `runDetail(store, runId)`

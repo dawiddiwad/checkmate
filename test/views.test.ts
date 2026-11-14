@@ -25,6 +25,7 @@ import {
 	check,
 	cli,
 	failT2,
+	followHints,
 	passRun,
 	plan,
 	planRequest,
@@ -206,7 +207,7 @@ test('plan status follows the loop and names the role and the delegate stage', (
 	const opened = store(t)
 	target(opened)
 	const where = () => {
-		const status = planStatus(opened, 'checkout')
+		const status = followHints(t, opened)
 		return `${status.state} ${status.waitsOn} ${status.stage}`
 	}
 	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
@@ -261,10 +262,9 @@ test('plan status follows the loop and names the role and the delegate stage', (
 	approved(opened)
 	const fix = planStatus(opened, 'checkout')
 	assert.deepEqual([fix.state, fix.waitsOn, fix.why], ['defects_open', 'factory', ['run-1 has 1 defect on build b1']])
-	assert.equal(
-		fix.next,
-		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --retest-of run-1'
-	)
+	assert.deepEqual(fix.next, [
+		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --partial ready_only --retest-of run-1',
+	])
 	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
 	assert.equal(where(), 'run_in_progress qa execute')
 	for (const testId of ['T1', 'T2']) {
@@ -290,14 +290,17 @@ test('plan status follows the loop and names the role and the delegate stage', (
 	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T1: { title: 'Order total' } } } })
 	assert.equal(where(), 'needs_approval oracle none')
 	approved(opened, 'checkout', 3)
-	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 tested checkout@2, not checkout@3'])
+	assert.equal(where(), 'accepted none none')
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-2 is accepted'])
+	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { action: 'Check out once.' } } } })
+	approved(opened, 'checkout', 4)
 	assert.equal(where(), 'needs_retest qa none')
-	assert.equal(
-		planStatus(opened, 'checkout').next,
-		'checkmate run begin <runId> checkout@3 --build b2 --partial ready_only'
-	)
-	patchPlan(opened, actor, { reference: 'checkout@3', patch: { tests: { T1: { title: 'Total' } } } })
-	rejectPlan(opened, actor, { reference: 'checkout@4', rationale: 'No.' })
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['T1 has not run on checkout@4'])
+	assert.deepEqual(planStatus(opened, 'checkout').next, [
+		'checkmate run begin <runId> checkout@4 --build b2 --partial ready_only',
+	])
+	patchPlan(opened, actor, { reference: 'checkout@4', patch: { tests: { T1: { title: 'Total' } } } })
+	rejectPlan(opened, actor, { reference: 'checkout@5', rationale: 'No.' })
 	assert.equal(where(), 'plan_rejected oracle none')
 	assert.deepEqual(
 		planList(opened).map((row) => [row.planId, row.loop]),
@@ -310,7 +313,7 @@ test('plan status reports a passed run without acceptance when the policy needs 
 	ready(opened, { approvals: { plan: 'none', result: 'none' } })
 	passRun(opened, 'run-1', 'b1')
 	const narrow = planStatus(opened, 'checkout')
-	assert.deepEqual([narrow.state, narrow.why], ['needs_retest', ['T2 has not run']])
+	assert.deepEqual([narrow.state, narrow.why], ['needs_retest', ['T2 has not run on checkout@2']])
 	passRun(opened, 'run-2', 'b1', ['T1', 'T2'])
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual(
@@ -385,9 +388,17 @@ test('plan status lists every open run of a matrix with its instance', (t) => {
 		status.openRuns.map((run) => [run.runId, run.instanceId]),
 		instances.map((instanceId, i) => [`run-${i + 1}`, instanceId])
 	)
-	assert.deepEqual(status.why, ['5 runs are started'])
-	assert.equal(status.next, 'checkmate delegate execute <runId>, for each started run')
+	assert.deepEqual(
+		status.why,
+		instances.map((instanceId, i) => `run-${i + 1} is started on build build-1 on instance ${instanceId}`)
+	)
+	assert.deepEqual(
+		status.next,
+		instances.map((_, i) => `checkmate delegate execute run-${i + 1} --allow Read --allow Bash`)
+	)
+	assert.equal(status.latestRun?.runId, 'run-5')
 	const printed = cli(opened.workspace, ['status', 'checkout']).lines
+	assert.match(printed[0], / run=run-5$/)
 	assert(printed.includes('run-3\tstarted\tbuild=build-1\tinstance=staging'), printed.join('\n'))
 	assert.deepEqual(
 		runList(opened).map((run) => run.instanceId),
@@ -459,10 +470,9 @@ test('a retest in the chain that finds the defect again replaces it; a run outsi
 	failedRun(opened, 'run-1', 'b1')
 	failedRun(opened, 'run-2', 'b2', { retestOf: 'run-1' })
 	assert.deepEqual(openDefects(opened), ['defects_open', ['run-2/F1']])
-	assert.equal(
-		planStatus(opened, 'checkout').next,
-		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --retest-of run-2'
-	)
+	assert.deepEqual(planStatus(opened, 'checkout').next, [
+		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --partial ready_only --retest-of run-2',
+	])
 	failedRun(opened, 'run-3', 'b3', { retestOf: 'run-2' })
 	assert.deepEqual(openDefects(opened), ['defects_open', ['run-3/F1']])
 	failedRun(opened, 'run-4', 'b4')
@@ -471,6 +481,10 @@ test('a retest in the chain that finds the defect again replaces it; a run outsi
 		'run-3 has 1 defect on build b3',
 		'run-4 has 1 defect on build b4',
 	])
+	assert.deepEqual(
+		planStatus(opened, 'checkout').next.map((line) => line.split(' ').at(-1)),
+		['run-3', 'run-4']
+	)
 })
 
 test('the latest outcome of each test decides needs_retest when no defect is open', (t) => {
@@ -532,7 +546,7 @@ test('status ignores the defect of a deferred test, and finding list --open stil
 	assert.equal(planDetail(opened, 'checkout').plan.tests.find((test) => test.id === 'T2')?.readiness, 'deferred')
 	assert.deepEqual(
 		[status.state, status.defects, status.why],
-		['needs_retest', [], [`run-1 tested checkout@2, not ${reference}`]]
+		['awaits_acceptance', [], ['run-1 on build b1 waits for acceptance']]
 	)
 	assert.deepEqual(
 		findingList(opened, { open: true }).map((row) => `${row.runId}/${row.findingId}`),
@@ -555,7 +569,7 @@ test('status ignores the inconclusive outcome of a deferred test', (t) => {
 	check(opened, 'run-1', 'T2.A2', 'inconclusive')
 	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
 	const reference = deferT2(opened, 'run-1')
-	assert.deepEqual(planStatus(opened, 'checkout').why, [`run-1 tested checkout@2, not ${reference}`])
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 on build b1 waits for acceptance'])
 	passOn(opened, 'run-2', reference, ['T1'])
 	assert.equal(planStatus(opened, 'checkout').state, 'awaits_acceptance')
 })
@@ -571,7 +585,7 @@ test('acceptance covers every run that gives a latest outcome', (t) => {
 		[
 			'awaits_acceptance',
 			['run-1 on build b1 waits for acceptance', 'run-2 on build b2 waits for acceptance'],
-			'checkmate result accept run-1 --rationale "<why>"',
+			['checkmate result accept run-1 --rationale "<why>"', 'checkmate result accept run-2 --rationale "<why>"'],
 		]
 	)
 	accept(opened, 'run-2')
@@ -590,7 +604,7 @@ test('after a finished run, a ready test that never ran needs a retest', (t) => 
 	assert.equal(planStatus(opened, 'checkout').state, 'ready_to_run')
 	passRun(opened, 'run-1', 'b1', ['T1'])
 	const status = planStatus(opened, 'checkout')
-	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 has not run']])
+	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 has not run on checkout@2']])
 })
 
 test('the inbox lists an earlier run of a retest chain while status waits for it', (t) => {

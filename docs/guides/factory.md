@@ -130,7 +130,7 @@ checkmate run begin run-2 checkout@3 --tests T1,T2,T3,T4 --build "$NEW_SHA" --in
 checkmate delegate execute run-2 --allow Read --allow Bash
 ```
 
-A narrow retest, with fewer tests, keeps the requirements of the other tests uncovered. A retest can run on another instance, for example on a refreshed sandbox.
+A narrow retest, with fewer tests, keeps the requirements of the other tests uncovered. A retest can run on another instance. A retest needs a new build, except on a refreshed sandbox: retire the old instance, add the new one, and retest on the new instance with the same build.
 
 ### Run a matrix
 
@@ -143,11 +143,11 @@ checkmate delegate execute run-3-local --allow Read --allow Bash
 checkmate delegate execute run-3-staging --allow Read --allow Bash
 ```
 
-A cross-plan dependency needs a passed result on the same build. A run on any instance counts.
+A cross-plan dependency needs a passed result on the same build. A run on any instance counts. For the plan itself, each instance has its own latest outcome on a build: a pass on one instance does not hide a failure on another instance.
 
 ### 4. Accept
 
-When the retest passes, the oracle accepts the result. Otherwise the factory fixes the code, and QA retests again. The inbox lists every run that `status` waits on. `status` reaches `accepted` when the oracle accepts each run that has the latest outcome of a ready test. A narrow retest leaves the other tests with their outcomes from the earlier run, so accept that run too.
+When the retest passes, the oracle accepts the result. Otherwise the factory fixes the code, and QA retests again. The inbox lists every run that needs an oracle verdict before the plan can finish. `status` reaches `accepted` when the oracle accepts each run that has the latest outcome of a ready test. A narrow retest leaves the other tests with their outcomes from the earlier run, so accept that run too.
 
 ```sh
 checkmate result accept run-2 --rationale "All tests pass on the new build."
@@ -175,12 +175,12 @@ checkmate export run run-2 --format html --out reports/run-2.html
 ```text
 completed checkout state=needs_answers waitsOn=oracle revision=1 approval=approved run=run-1
 why	1 open blocking gap
-next	checkmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --rationale "<why>"
+next	checkmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"
 G1	gap	blocking	Does the promotion stack with the loyalty discount?
 F1	defect	run-1	medium	T1.A1	Wrong total
 ```
 
-The `next` line is a hint. A program reads `stage` from `checkmate status <planId> --json`: `plan`, `revise`, `execute`, or `none`. [Loop states](../reference/commands.md#loop-states) gives the subject of each stage. For `execute`, delegate each run in `openRuns`: a matrix has one started run for each instance.
+A `next` line is a hint. Replace the placeholders, and the command runs. A program reads `stage` from `checkmate status <planId> --json`: `plan`, `revise`, `execute`, or `none`. [Loop states](../reference/commands.md#loop-states) gives the subject of each stage. For `execute`, delegate each run in `openRuns`: a matrix has one started run for each instance.
 
 `delegate` does not trust the summary of the worker. It reads the database and returns the response of the recorded command. [Loop states](../reference/commands.md#loop-states) lists every state.
 

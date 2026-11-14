@@ -7,10 +7,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { addInstance, openTarget, saveTarget } from '../plugin/src/targets.ts'
-import { answerGap, approvePlan, openPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
-import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
+import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
+import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
+import {
+	beginRun,
+	checkAssertion,
+	closeTest,
+	finishRun,
+	acceptResult,
+	recordFinding,
+	runState,
+} from '../plugin/src/runs.ts'
 import { run } from '../plugin/src/cli.ts'
+import { planStatus } from '../plugin/src/views.ts'
+import { minimumRules, stages } from '../cli/src/launcher.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
 export const actor = 'tester'
@@ -283,4 +293,87 @@ export function failT2(store: Store, runId: string) {
 
 export function accept(store: Store, runId: string) {
 	return acceptResult(store, actor, { runId, rationale: 'Looks right.' })
+}
+
+export function followHints(
+	t: TestContext,
+	opened: Store,
+	planId = 'checkout',
+	fill: Record<string, string> = {},
+	seen: string[] = [],
+	depth = 2
+) {
+	const status = planStatus(opened, planId)
+	const shape = (value: typeof status) =>
+		JSON.stringify([value.state, value.why, value.openRuns.map((run) => run.runId)])
+	assert(!seen.includes(shape(status)), `The hints of ${planId} go in a cycle: ${shape(status)}`)
+	const plan = status.revision === null ? null : planRevision(opened, planId).plan
+	const values: Record<string, string> = {
+		'<runId>': `hint-run-${depth}`,
+		'<new build>': `hint-build-${depth}`,
+		'<build>': `hint-build-${depth}`,
+		'<gapId>': status.gaps[0]?.gapId ?? 'none',
+		'<kind>': 'defer',
+		'<answer>': 'Hint answer.',
+		'<source>': 'hints#1',
+		'<why>': 'Hint rationale.',
+		'<instanceId>': plan
+			? instanceList(opened, plan.target.targetId).find((instance) => !instance.retired)!.instanceId
+			: 'none',
+		...fill,
+	}
+	for (const hint of status.next) {
+		let command = hint.replace(/^Build a fix, then /, '')
+		for (const [placeholder, value] of Object.entries(values)) command = command.split(placeholder).join(value)
+		assert.doesNotMatch(command, /<[a-zA-Z ]+>/, command)
+		const args = (command.match(/"[^"]*"|\S+/g) ?? []).map((token) => token.replace(/^"|"$/g, ''))
+		assert.equal(args.shift(), 'checkmate', command)
+		if (args[0] === 'delegate') {
+			assert(stages.includes(args[1] as (typeof stages)[number]), command)
+			const allow = args.slice(3).filter((_, i) => i % 2 === 1)
+			assert.deepEqual(
+				args.slice(3).filter((_, i) => i % 2 === 0),
+				allow.map(() => '--allow'),
+				command
+			)
+			assert(
+				minimumRules.every((rule) => allow.includes(rule)),
+				command
+			)
+			continue
+		}
+		const copy = directory(t)
+		mkdirSync(join(copy, '.checkmate'))
+		opened.db.exec(`VACUUM INTO '${join(copy, '.checkmate', 'checkmate.db')}'`)
+		const stdin =
+			args[0] === 'plan' && args[1] === 'edit'
+				? { tests: { [plan!.tests[0].id]: { title: 'Hint title.' } } }
+				: undefined
+		const outcome = cli(copy, args, stdin)
+		assert.equal(outcome.code, 0, `${command}\n${outcome.output}`)
+		if (args[0] === 'run') assert.match(outcome.lines[0], /^completed /, `${command}\n${outcome.output}`)
+		const copied = openStore(copy)
+		try {
+			if (args[0] === 'status') {
+				assert(planStatus(copied, args[1]).next.length, `${command} leads to a plan with no next step`)
+				continue
+			}
+			if (args[0] === 'run') passAll(copied, args[2])
+			const after = shape(planStatus(copied, planId))
+			assert.notEqual(after, shape(status), `${command} changes nothing`)
+			if (depth > 1) followHints(t, copied, planId, fill, [...seen, shape(status)], depth - 1)
+		} finally {
+			closeStore(copied)
+		}
+	}
+	return status
+}
+
+function passAll(opened: Store, runId: string) {
+	const run = runState(opened, runId)
+	for (const test of run.plan.tests.filter((item) => run.request.selectedTestIds.includes(item.id))) {
+		for (const assertion of test.assertions) check(opened, runId, `${test.id}.${assertion.id}`, 'passed')
+		closeTest(opened, actor, { runId, testId: test.id })
+	}
+	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
 }

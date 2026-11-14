@@ -1,6 +1,6 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
-import { all, one } from './store.ts'
+import { all, canonical, digest, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
 import {
 	approvalState,
@@ -11,6 +11,8 @@ import {
 	planRequest,
 	planRevision,
 	planRunGaps,
+	deferredPrerequisites,
+	readySelection,
 } from './plans.ts'
 import {
 	outcomeCounts,
@@ -24,7 +26,7 @@ import {
 	runState,
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
-import { findInstance } from './targets.ts'
+import { findInstance, instanceList } from './targets.ts'
 
 type RevisionRow = { plan_id: string; revision: number; sha256: string; body: string; at: string; actor: string }
 type ApprovalState = ReturnType<typeof approvalState>
@@ -112,42 +114,37 @@ export function inbox(store: Store) {
 		])
 		.sort(bySince)
 	const plans = revisions
-		.filter((row) => {
-			const state = planApproval(store, row.plan, row.sha256)
-			return state.policy === 'required' && !state.approved && !state.rejected
-		})
-		.map((row) => ({
+		.map((row) => ({ row, approval: approvalLabel(planApproval(store, row.plan, row.sha256)) }))
+		.filter(({ approval }) => approval === 'pending' || approval === 'rejected')
+		.map(({ row, approval }) => ({
 			planId: row.plan_id,
 			revision: row.revision,
 			sha256: row.sha256,
+			approval,
 			since: row.at,
-			summary: planSummary(row.plan),
+			summary: `${approval === 'rejected' ? 'Rejected. Change the plan. ' : ''}${planSummary(row.plan)}`,
 		}))
 		.sort(bySince)
-	const superseded = retestedRuns(store)
-	const supplying = new Set(revisions.flatMap((row) => supplyingRuns(row.plan, finalizedResults(store, row.plan_id))))
-	const results = all<RunRow & { finished_at: string; sha256: string; coverage: string }>(
-		store,
-		'SELECT r.*, s.finished_at, s.sha256, s.coverage FROM runs r JOIN results s ON s.run_id = r.run_id ORDER BY s.rowid'
-	)
-		.filter((row) => {
-			const state = resultAcceptance(store, row, row.sha256)
-			return (
-				state.policy === 'required' &&
-				!state.latest &&
-				(!superseded.has(row.run_id) || supplying.has(row.run_id))
-			)
-		})
-		.map((row) => ({
-			runId: row.run_id,
-			planId: row.plan_id,
-			revision: row.plan_revision,
-			build: row.application_build,
-			counts: selectedCounts(runResult(store, row.run_id)!.result),
-			coverage: row.coverage,
-			sha256: row.sha256,
-			since: row.finished_at,
-		}))
+	const results = revisions.flatMap((row) => {
+		const runs = runList(store, { planId: row.plan_id })
+		const record = planRecord(store, row.plan, runs)
+		const waited = new Set([...record.supplied, ...record.defects.map((item) => item.runId)])
+		return runs
+			.filter((run) => waited.has(run.runId) && run.acceptance === 'pending')
+			.map((run) => {
+				const result = record.results.find((item) => item.runId === run.runId)!
+				return {
+					runId: run.runId,
+					planId: run.planId,
+					revision: run.revision,
+					build: run.build,
+					counts: selectedCounts(result),
+					coverage: run.coverage!,
+					sha256: run.sha256!,
+					since: result.finishedAt,
+				}
+			})
+	})
 	return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) }
 }
 
@@ -286,7 +283,7 @@ export function planStatus(store: Store, planId: string) {
 		return {
 			planId,
 			revision: null,
-			...loop('needs_plan', 'planner', [], `checkmate delegate plan ${planId}`),
+			...loop('needs_plan', 'planner', [], [delegateHint('plan', planId)]),
 			approval: null,
 			gaps: [],
 			pendingDecisions: [],
@@ -325,47 +322,94 @@ export function planStatus(store: Store, planId: string) {
 	const openRuns = runs
 		.filter((run) => run.state === 'started')
 		.map((run) => ({ runId: run.runId, build: run.build, instanceId: run.instanceId }))
-	const started = runs.find((run) => run.state === 'started')
-	const results = finalizedResults(store, planId)
-	const finished = runs.find((run) => run.runId === results.at(-1)?.runId)
-	const latestRun = started ?? finished ?? null
-	const ready = plan.tests.filter((test) => test.readiness === 'ready').map((test) => test.id)
-	const defects = openDefects(results)
-		.filter(({ finding }) => finding.testIds.some((testId) => ready.includes(testId)))
-		.map(({ runId, finding }) => ({
-			runId,
-			findingId: finding.id,
-			severity: finding.severity,
-			testIds: finding.testIds,
-			assertionIds: finding.assertionIds,
-			title: finding.title,
-		}))
-	const latest = latestOutcomes(results)
+	const record = planRecord(store, plan, runs)
+	const finished = runs.find((run) => run.runId === record.results.at(-1)?.runId)
+	const latestRun = runs.at(-1) ?? null
+	const { ready, latest, supplied, rejected } = record
+	const defects = record.defects.map(({ runId, finding }) => ({
+		runId,
+		findingId: finding.id,
+		severity: finding.severity,
+		testIds: finding.testIds,
+		assertionIds: finding.assertionIds,
+		title: finding.title,
+	}))
+	const active = instanceList(store, plan.target.targetId).filter((instance) => !instance.retired)
+	const instance = (runId?: string) => {
+		if (active.length < 2) return ''
+		const used = runs.find((run) => run.runId === runId)?.instanceId
+		return ` --instance ${active.some((item) => item.instanceId === used) ? used : '<instanceId>'}`
+	}
+	const rerun = (run: (typeof runs)[number]) => {
+		const retired = !active.some((item) => item.instanceId === run.instanceId)
+		return `checkmate run begin <runId> ${subject} --build ${run.build}${instance(run.runId)} --partial ready_only${retired ? ` --retest-of ${run.runId}` : ''}`
+	}
+	const dependencyBuilds = () => {
+		const others = [
+			...new Set(
+				plan.tests.flatMap((test) =>
+					test.dependsOn.filter((id) => id.includes(':')).map((id) => id.split(':')[0])
+				)
+			),
+		]
+		return all<{ build: string }>(
+			store,
+			`SELECT r.application_build AS build FROM runs r JOIN results s ON s.run_id = r.run_id
+			WHERE r.plan_id IN (SELECT value FROM json_each(?)) GROUP BY r.application_build ORDER BY max(r.rowid) DESC`,
+			JSON.stringify(others)
+		).map((row) => row.build)
+	}
+	const bestBuild = (count: (build: string) => number) => {
+		let best: string | undefined
+		let most = 0
+		for (const build of dependencyBuilds()) {
+			const selected = count(build)
+			if (selected > most) [best, most] = [build, selected]
+		}
+		return best
+	}
+	const nothingToRun = (build: string | null, leftOut: Array<{ testId: string; reason: string }>) => {
+		const why = [
+			...(ready.length ? [] : ['No test is ready']),
+			...leftOut.map((item) => `${item.testId} ${item.reason}`),
+		]
+		const blocked = plan.tests
+			.filter((test) => ready.includes(test.id))
+			.flatMap((test) => test.dependsOn.filter((id) => id.includes(':') && dependencyBlock(store, id, build)))
+		if (blocked.length)
+			return loop(
+				'nothing_to_run',
+				'qa',
+				why,
+				[...new Set(blocked.map((id) => id.split(':')[0]))].map((other) => `checkmate status ${other}`)
+			)
+		return loop('nothing_to_run', 'oracle', why, [`checkmate plan edit ${subject} --patch`])
+	}
 	const state = (): ReturnType<typeof loop> => {
-		const run = `checkmate run begin <runId> ${subject} --build <build>`
-		if (started)
+		if (openRuns.length)
 			return loop(
 				'run_in_progress',
 				'qa',
-				[
-					openRuns.length === 1
-						? `${started.runId} is started on build ${started.build} on instance ${started.instanceId}`
-						: `${openRuns.length} runs are started`,
-				],
-				openRuns.length === 1
-					? `checkmate delegate execute ${started.runId}`
-					: 'checkmate delegate execute <runId>, for each started run'
+				openRuns.map((run) => `${run.runId} is started on build ${run.build} on instance ${run.instanceId}`),
+				openRuns.map((run) => delegateHint('execute', run.runId))
 			)
 		if (pendingDecisions.length)
 			return loop(
 				'needs_revision',
 				'planner',
 				pendingDecisions.map((item) => `${item.gapId} has a pending ${item.kind} decision`),
-				`checkmate delegate revise ${planId}`
+				[delegateHint('revise', planId)]
 			)
 		if (approval === 'rejected')
-			return loop('plan_rejected', 'oracle', [`${subject} is rejected`], `checkmate plan edit ${subject} --patch`)
-		const answer = `checkmate gap answer ${planId} <gapId> --kind <kind> --value "<answer>" --rationale "<why>"`
+			return loop(
+				'plan_rejected',
+				'oracle',
+				[`${subject} is rejected`],
+				[`checkmate plan edit ${subject} --patch`]
+			)
+		const answer = [
+			`checkmate gap answer ${planId} <gapId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
+		]
 		if (approval === 'pending')
 			return gaps.length
 				? loop(
@@ -378,31 +422,33 @@ export function planStatus(store: Store, planId: string) {
 						'needs_approval',
 						'oracle',
 						[`${subject} waits for approval`],
-						`checkmate plan approve ${subject} --rationale "<why>"`
+						[`checkmate plan approve ${subject} --rationale "<why>"`]
 					)
+		const blocking = gaps.filter((gap) => gap.severity === 'blocking')
 		if (!finished) {
-			if (ready.length)
+			const selection = readySelection(store, plan, null)
+			if (selection.tests.length) {
+				const build = bestBuild((item) => readySelection(store, plan, item).tests.length) ?? '<build>'
 				return loop(
 					'ready_to_run',
 					'qa',
-					[`${ready.length} of ${plan.tests.length} tests are ready`],
-					`${run} --partial ready_only`
+					[`${selection.tests.length} of ${plan.tests.length} tests are ready`],
+					[`checkmate run begin <runId> ${subject} --build ${build}${instance()} --partial ready_only`]
 				)
-			return gaps.length
-				? loop('needs_answers', 'oracle', [`No test is ready. ${amount(gaps.length, 'open gap')}`], answer)
-				: loop(
-						'nothing_to_run',
+			}
+			return blocking.length
+				? loop(
+						'needs_answers',
 						'oracle',
-						['No test is ready and no gap is open'],
-						`checkmate plan edit ${subject} --patch`
+						[`No test is ready. ${amount(blocking.length, 'open blocking gap')}`],
+						answer
 					)
+				: nothingToRun(null, selection.leftOut)
 		}
-		const blocking = gaps.filter((gap) => gap.severity === 'blocking')
 		if (blocking.length)
 			return loop('needs_answers', 'oracle', [amount(blocking.length, 'open blocking gap')], answer)
 		if (defects.length) {
 			const defective = runs.filter((run) => defects.some((defect) => defect.runId === run.runId))
-			const retest = `checkmate run begin <runId> ${subject} --build <new build> --retest-of ${defective.at(-1)!.runId}`
 			return loop(
 				'defects_open',
 				'factory',
@@ -410,52 +456,82 @@ export function planStatus(store: Store, planId: string) {
 					(run) =>
 						`${run.runId} has ${amount(defects.filter((defect) => defect.runId === run.runId).length, 'defect')} on build ${run.build}`
 				),
-				`Build a fix, then ${retest}`
+				defective.map(
+					(run) =>
+						`Build a fix, then checkmate run begin <runId> ${subject} --build <new build>${instance(run.runId)} --partial ready_only --retest-of ${run.runId}`
+				)
 			)
 		}
 		if (gaps.length) return loop('needs_answers', 'oracle', [amount(gaps.length, 'open gap')], answer)
-		const result = results.at(-1)!
-		const supplied = supplyingRuns(plan, results)
-		const supplying = runs.filter((run) => (supplied.length ? supplied : [finished.runId]).includes(run.runId))
-		const rejected = supplying.filter((run) => run.acceptance === 'rejected').map((run) => run.runId)
-		const testReasons = ready.flatMap((testId) => {
-			const last = latest.get(testId)
-			if (!last) return [`${testId} has not run`]
-			if (last.outcome !== 'passed') return [`${testId} is ${last.outcome} in ${last.runId}`]
-			if (rejected.includes(last.runId)) return [`${testId}'s latest pass is in rejected ${last.runId}`]
-			return []
-		})
+		if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut)
+		const causes = new Set<string>()
+		const reasons = new Map(
+			ready.map((testId) => {
+				const entries = latest.get(testId) ?? []
+				if (!entries.length) return [testId, [`${testId} has not run on ${subject}`]]
+				return [
+					testId,
+					entries.flatMap((result) => {
+						const outcome = selectedOutcome(result, testId)
+						if (outcome === 'passed' && !rejected.has(result.runId)) return []
+						causes.add(result.runId)
+						if (outcome !== 'passed') return [`${testId} is ${outcome} in ${result.runId}`]
+						return [`${testId}'s latest pass is in rejected ${result.runId}`]
+					}),
+				]
+			})
+		)
+		const incomplete = runs.filter(
+			(run) => (supplied.includes(run.runId) || run.runId === finished.runId) && run.completion !== 'completed'
+		)
+		for (const run of incomplete) causes.add(run.runId)
 		const why = [
-			...(finished.revision !== plan.revision
-				? [`${finished.runId} tested ${planId}@${finished.revision}, not ${subject}`]
-				: []),
-			...(result.completion !== 'completed' ? [`${finished.runId} is ${result.completion}`] : []),
-			...testReasons,
+			...incomplete.map((run) => `${run.runId} is ${run.completion}`),
+			...ready.flatMap((testId) => reasons.get(testId)!),
 		]
-		if (why.length)
-			return loop(
-				'needs_retest',
-				'qa',
-				why,
-				`checkmate run begin <runId> ${subject} --build ${finished.build} --partial ready_only`
-			)
+		if (why.length) {
+			const needed = incomplete.length ? ready : ready.filter((testId) => reasons.get(testId)!.length)
+			const selectable = (build: string) =>
+				readySelection(store, plan, build).tests.some((testId) => needed.includes(testId))
+			const caused = runs.filter((run) => causes.has(run.runId))
+			let next = (caused.length ? caused : [finished]).filter((run) => selectable(run.build)).map(rerun)
+			if (!next.length) {
+				const build = bestBuild(
+					(item) => readySelection(store, plan, item).tests.filter((testId) => needed.includes(testId)).length
+				)
+				if (build)
+					next = [`checkmate run begin <runId> ${subject} --build ${build}${instance()} --partial ready_only`]
+			}
+			if (!next.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut)
+			return loop('needs_retest', 'qa', why, [...new Set(next)])
+		}
+		const supplying = runs.filter((run) => supplied.includes(run.runId))
 		const waiting = supplying.filter((run) => run.acceptance === 'pending')
 		if (waiting.length)
 			return loop(
 				'awaits_acceptance',
 				'oracle',
 				waiting.map((run) => `${run.runId} on build ${run.build} waits for acceptance`),
-				`checkmate result accept ${waiting[0].runId} --rationale "<why>"`
+				waiting.map((run) => `checkmate result accept ${run.runId} --rationale "<why>"`)
 			)
 		const names = supplying.map((run) => run.runId).join(', ')
 		if (supplying.every((run) => run.acceptance === 'approved'))
-			return loop('accepted', 'none', [`${names} ${supplying.length === 1 ? 'is' : 'are'} accepted`], null)
-		return loop('passed', 'none', [`${names} passed. Result acceptance is not required`], null)
+			return loop('accepted', 'none', [`${names} ${supplying.length === 1 ? 'is' : 'are'} accepted`], [])
+		return loop('passed', 'none', [`${names} passed. Result acceptance is not required`], [])
 	}
+	const loopState = state()
+	loopState.why = [
+		...new Set([
+			...loopState.why,
+			...[...record.derived].map(
+				([testId, prerequisite]) => `${testId} deferred: prerequisite ${prerequisite} is deferred`
+			),
+		]),
+	]
 	return {
 		planId,
 		revision: plan.revision,
-		...state(),
+		...loopState,
 		approval,
 		gaps,
 		pendingDecisions,
@@ -463,6 +539,10 @@ export function planStatus(store: Store, planId: string) {
 		openRuns,
 		defects,
 	}
+}
+
+function delegateHint(stage: 'plan' | 'revise' | 'execute', subject: string) {
+	return `checkmate delegate ${stage} ${subject} --allow Read --allow Bash`
 }
 
 function loopOf(store: Store, planId: string) {
@@ -473,9 +553,30 @@ function loopOf(store: Store, planId: string) {
 function finalizedResults(store: Store, planId: string) {
 	return all<{ body: string }>(
 		store,
-		'SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY s.rowid',
+		'SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid',
 		planId
 	).map((row) => JSON.parse(row.body) as Result)
+}
+
+function rejectedRuns(store: Store, planId: string, runs = runList(store, { planId })) {
+	return new Set(runs.filter((run) => run.acceptance === 'rejected').map((run) => run.runId))
+}
+
+function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) {
+	const results = finalizedResults(store, plan.planId)
+	const rejected = rejectedRuns(store, plan.planId, runs)
+	const derived = deferredPrerequisites(plan)
+	const ready = plan.tests
+		.filter((test) => test.readiness === 'ready' && !derived.has(test.id))
+		.map((test) => test.id)
+	const latest = latestOutcomes(store, plan, results)
+	const supplied = results
+		.filter((result) => ready.some((testId) => latest.get(testId)?.includes(result)))
+		.map((result) => result.runId)
+	const defects = openDefects(results, rejected).filter(({ finding }) =>
+		finding.testIds.some((testId) => ready.includes(testId))
+	)
+	return { results, rejected, ready, derived, latest, supplied, defects }
 }
 
 function selectedOutcome(result: Result, testId: string) {
@@ -483,34 +584,69 @@ function selectedOutcome(result: Result, testId: string) {
 	return result.tests.find((test) => test.testId === testId)?.outcome ?? null
 }
 
-function supplyingRuns(plan: Plan, results: Result[]) {
-	const latest = latestOutcomes(results)
-	return [
-		...new Set(
-			plan.tests.filter((test) => test.readiness === 'ready').flatMap((test) => latest.get(test.id)?.runId ?? [])
-		),
-	]
+function testDefinition(plan: Plan, test: Plan['tests'][number]) {
+	const { action, preconditions, assertions, dependsOn, capability, operations, requirementIds } = test
+	const requirements = requirementIds.map((id) => plan.requirements.find((item) => item.id === id)?.text ?? null)
+	return digest(
+		canonical({
+			action,
+			preconditions,
+			assertions,
+			dependsOn,
+			capability,
+			operations,
+			requirementIds,
+			requirements,
+		})
+	)
 }
 
-function latestOutcomes(results: Result[]) {
-	const latest = new Map<string, { outcome: string; runId: string }>()
-	for (const result of results)
-		for (const testId of result.selectedTestIds)
-			latest.set(testId, { outcome: selectedOutcome(result, testId)!, runId: result.runId })
+function retests(later: Result, earlier: Result, byRun: Map<string, Result>) {
+	for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
+		if (runId === earlier.runId) return true
+	return false
+}
+
+function supersedes(later: Result, earlier: Result, byRun: Map<string, Result>) {
+	return (
+		later.instanceId === earlier.instanceId ||
+		later.applicationBuild !== earlier.applicationBuild ||
+		retests(later, earlier, byRun)
+	)
+}
+
+function latestOutcomes(store: Store, plan: Plan, results: Result[]) {
+	const byRun = new Map(results.map((result) => [result.runId, result]))
+	const current = new Map(plan.tests.map((test) => [test.id, testDefinition(plan, test)]))
+	const tested = new Map<number, Plan>()
+	const latest = new Map<string, Result[]>()
+	for (const result of results) {
+		const revision = result.plan.revision
+		if (!tested.has(revision)) tested.set(revision, planRevision(store, plan.planId, revision).plan)
+		for (const test of tested.get(revision)!.tests) {
+			if (
+				!result.selectedTestIds.includes(test.id) ||
+				current.get(test.id) !== testDefinition(tested.get(revision)!, test)
+			)
+				continue
+			const kept = (latest.get(test.id) ?? []).filter((earlier) => !supersedes(result, earlier, byRun))
+			latest.set(test.id, [...kept, result])
+		}
+	}
 	return latest
 }
 
-export function openDefects(results: Result[]) {
-	return results.flatMap((result, i) => {
-		const later = results.slice(i + 1)
-		const chain = new Set([result.runId])
-		for (const run of later) if (run.retestOf !== null && chain.has(run.retestOf)) chain.add(run.runId)
+export function openDefects(results: Result[], rejected: Set<string>) {
+	const byRun = new Map(results.map((result) => [result.runId, result]))
+	const counted = results.filter((result) => !rejected.has(result.runId))
+	return counted.flatMap((result, i) => {
+		const later = counted.slice(i + 1).filter((run) => supersedes(run, result, byRun))
 		const fixed = (testIds: string[]) =>
 			later.some((run) => testIds.every((testId) => selectedOutcome(run, testId) === 'passed'))
 		const found = (testIds: string[]) =>
 			later.some(
 				(run) =>
-					chain.has(run.runId) &&
+					retests(run, result, byRun) &&
 					run.findings.some(
 						(other) =>
 							other.type === 'defect' &&
@@ -525,15 +661,6 @@ export function openDefects(results: Result[]) {
 	})
 }
 
-export function retestedRuns(store: Store) {
-	return new Set(
-		all<{ run_id: string }>(
-			store,
-			"SELECT DISTINCT request ->> '$.retestOf' AS run_id FROM runs WHERE request ->> '$.retestOf' IS NOT NULL"
-		).map((row) => row.run_id)
-	)
-}
-
 function amount(count: number, noun: string) {
 	return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
@@ -544,7 +671,7 @@ const loopStages: Partial<Record<LoopState, 'plan' | 'revise' | 'execute'>> = {
 	run_in_progress: 'execute',
 }
 
-function loop(state: LoopState, waitsOn: Role, why: string[], next: string | null) {
+function loop(state: LoopState, waitsOn: Role, why: string[], next: string[]) {
 	return { state, waitsOn, why, next, stage: loopStages[state] ?? 'none' }
 }
 
@@ -670,7 +797,9 @@ export function findingList(store: Store, filters: { planId?: string; open?: boo
 	const open = new Set(
 		filters.open
 			? [...new Set(rows.map((row) => row.plan_id))].flatMap((planId) =>
-					openDefects(finalizedResults(store, planId)).map(({ runId, finding }) => `${runId}/${finding.id}`)
+					openDefects(finalizedResults(store, planId), rejectedRuns(store, planId)).map(
+						({ runId, finding }) => `${runId}/${finding.id}`
+					)
 				)
 			: []
 	)

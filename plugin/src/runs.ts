@@ -10,12 +10,21 @@ import {
 	requireIdentifier,
 	requireText,
 	resultCoverage,
+	revisionReference,
 	testOutcome,
 	testReference,
 	validate,
 	withoutEmptyMetadata,
 } from './contracts.ts'
-import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
+import {
+	approvalState,
+	dependencyBlock,
+	gate,
+	latestPlans,
+	planRevision,
+	planRunGaps,
+	recordApproval,
+} from './plans.ts'
 import { runInstance, targetRevision } from './targets.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
@@ -210,11 +219,11 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 3600,
 				`Invalid timeout: ${timeoutSeconds}. Use 1 to 3600 seconds.`
 			)
-			const checked = gate(store, input)
+			const instance = runInstance(store, plannedTarget(store, input.reference), input.instance)
+			const checked = gate(store, { ...input, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed')
 				return { reply: { ...checked.reply, subject: runId }, subjects: [] }
 			const { plan, sha256 } = checked.revision
-			const instance = runInstance(store, plan.target.targetId, input.instance)
 			const request: RunRequest = {
 				selectedTestIds: checked.tests,
 				partialExecution: checked.partial,
@@ -266,6 +275,11 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 	if (reply.status === 'completed')
 		mkdirSync(join(store.workspace, evidenceDirectory(input.runId)), { recursive: true })
 	return reply
+}
+
+function plannedTarget(store: Store, text: string) {
+	const reference = revisionReference(requireText(text, 'plan reference'), 'plan reference')
+	return planRevision(store, reference.id, reference.revision).plan.target.targetId
 }
 
 type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
@@ -574,13 +588,11 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 			gap.status === 'open' && gap.decisionId === null,
 			`Runtime gap ${gap.id} must be open and have no decision`
 		)
+		const planId = run.plan.planId
 		requireCondition(
-			!run.plan.gaps.some((old) => old.id === gap.id),
-			`Gap ${gap.id} exists in ${run.plan.planId}@${run.plan.revision}. Use a new gap ID.`
-		)
-		requireCondition(
-			!one(store, 'SELECT 1 FROM run_gaps WHERE run_id = ? AND id = ?', input.runId, gap.id),
-			`Gap ${gap.id} exists in run ${input.runId}. Use a new gap ID.`
+			!one(store, 'SELECT 1 FROM plan_gaps WHERE plan_id = ? AND gap_id = ?', planId, gap.id) &&
+				!planRunGaps(store, planId).some((item) => item.gap.id === gap.id),
+			`Gap ID ${gap.id} is in use. Use a new ID.`
 		)
 		for (const id of gap.requirementIds)
 			requireCondition(

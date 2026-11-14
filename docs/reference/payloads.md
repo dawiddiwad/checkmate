@@ -87,7 +87,7 @@ Change the policy only with a new profile revision. A plan uses the profile revi
 - `references` is optional. It names authentication aliases or environment variables, never credential values.
 - An instance does not change. A second add with the same values changes nothing. A second add with other values is refused.
 - `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are.
-- An instance ID is not used again in the same target, also after it is retired. For a refreshed sandbox, retire the old instance and add a new one, for example `uat-2`. The plan and the retest chain stay the same.
+- An instance ID is not used again in the same target, also after it is retired. For a refreshed sandbox, retire the old instance and add a new one, for example `uat-2`. The plan and the retest chain stay the same. A retest on the new instance can keep the build.
 
 ## Plan request
 
@@ -225,6 +225,8 @@ Checkmate builds the next revision:
 - `plan edit` names the latest revision.
 - A revision with no approval and no run changes in place. Else Checkmate saves the next revision.
 - A gap with a pending decision stays open.
+- Only an open gap without a decision can change. An answered or deferred gap stays the same. An edit that removes a test can remove that test from such a gap.
+- A new gap cannot use the ID of an open gap of a run of the plan.
 - An assertion ID that an earlier revision used cannot come back with a new meaning.
 - The reply prints `edit=in_place` or `edit=new_revision`.
 
@@ -294,7 +296,8 @@ QA sends new ambiguity to `run gap <runId>`.
 }
 ```
 
-- A runtime gap is open, has no decision, and has an ID that is new in the plan and the run.
+- A runtime gap is open and has no decision. Its ID is new in each revision of the plan and in each gap of each run of the plan. Else `run gap` gives `Gap ID <id> is in use. Use a new ID.`
+- An open blocking runtime gap stops the gate for the tests that it affects. `--partial ready_only` leaves them out.
 - Its requirements and tests exist.
 - A blocking runtime gap keeps the requirements that it names uncovered in the result. A gap with two empty lists keeps every requirement uncovered.
 - It does not change the plan. The oracle answers or adopts it. Read [Answer a gap from a run](../guides/oracle.md#answer-a-gap-from-a-run).

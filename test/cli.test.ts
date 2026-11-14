@@ -591,7 +591,7 @@ test('status prints the loop state, who it waits on, and the open items', (t) =>
 		'completed checkout state=needs_answers waitsOn=oracle revision=1 approval=pending',
 		'why\t2 open gaps',
 		'why\tcheckout@1 waits for approval',
-		'next\tcheckmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --rationale "<why>"',
+		'next\tcheckmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"',
 		'G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
 		'G2\tgap\tblocking\tWhich orders qualify for refunds?',
 	])

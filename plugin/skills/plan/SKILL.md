@@ -90,5 +90,6 @@ Rules:
 - Do not write an assertion with an unknown expected value. Write an open blocking gap for it. A test with only unknown checks has `"assertions": []`.
 - A gap applies to the tests in `testIds` and to every test of the requirements in `requirementIds`. To block one test, name the test and leave `requirementIds` empty.
 - Do not write `readiness`, `gapIds`, `coverage`, decisions, or assumptions. Checkmate calculates them.
+- Put team fields in `metadata`, for example `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`. Use it for a priority, a component, labels, or a Jira or Xray key from the sources. Do not put team fields in a title, an action, or a check. A value is a string, a number, or a boolean. Give labels as one string, for example `"checkout,regression"`. Keep the `metadata` of a requirement in the request unchanged.
 - Do not run test actions during planning. Do not open the application.
 - Do not answer a gap. The oracle decides with `checkmate gap answer` or in the review UI.

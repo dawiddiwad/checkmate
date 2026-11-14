@@ -13,6 +13,7 @@ import {
 	testOutcome,
 	testReference,
 	validate,
+	withoutEmptyMetadata,
 } from './contracts.ts'
 import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
 import { runInstance, targetRevision } from './targets.ts'
@@ -555,7 +556,7 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 			'INSERT INTO findings (id, run_id, body, operation_id) VALUES (?, ?, ?, ?)',
 			finding.id,
 			input.runId,
-			canonical({ ...finding, testIds }),
+			canonical({ ...withoutEmptyMetadata(finding), testIds }),
 			operationId
 		)
 		return {

@@ -46,7 +46,7 @@ The tests, gaps, requirements and coverage, runs, decisions, and history of one 
 
 <img src="../img/ui/run-gap.jpg" alt="The run page of run-7 in dark mode. It shows defect F1 with expected and observed values and reproduction steps, the new gap G4 with the Answer and Bring into plan buttons, the coverage table, and the Accept run-7 panel on the right." width="100%"/>
 
-The outcomes, the assertions with evidence, the findings, the new gaps, the coverage, and the result decision. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`. The decision panel lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, or JSON.
+The outcomes, the assertions with evidence, the findings, the new gaps, the coverage, and the result decision. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`. The decision panel lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, JSON, or JUnit XML. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags.
 
 ### Runs and Log
 

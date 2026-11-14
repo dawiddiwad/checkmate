@@ -451,6 +451,12 @@ a.pill:hover {
 	flex-wrap: wrap;
 	vertical-align: middle;
 }
+.kv {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	vertical-align: middle;
+}
 .tag {
 	font-family: var(--font-mono);
 	font-size: 11px;

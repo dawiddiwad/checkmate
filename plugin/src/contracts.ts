@@ -45,9 +45,25 @@ export function same(a: unknown, b: unknown) {
 
 export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
-	const errors = () => (check.errors ?? []).map((error) => `${name}${error.instancePath} ${error.message}`).join(', ')
+	const errors = () =>
+		(check.errors ?? [])
+			.filter(
+				(error) =>
+					!['propertyNames', 'anyOf'].includes(error.keyword) &&
+					!(error.keyword === 'type' && error.params.type === 'null')
+			)
+			.map((error) => schemaError(`${name}${error.instancePath}`, error))
+			.join(', ')
 	requireCondition(check(value), `Invalid ${name}: ${errors()}`)
 	return value as Documents[K]
+}
+
+function schemaError(path: string, error: NonNullable<validators.Validator['errors']>[number]) {
+	if (error.keyword === 'additionalProperties')
+		return `${path} has unknown field "${error.params.additionalProperty}"`
+	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`
+	if (error.propertyName !== undefined) return `${path} field name "${error.propertyName}" ${error.message}`
+	return `${path} ${error.message}`
 }
 
 export function requireIdentifier(value: unknown, name: string): string {
@@ -159,13 +175,20 @@ export function planCoverage(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>
 	})
 }
 
+export function withoutEmptyMetadata<T extends { metadata?: object }>(item: T): T {
+	if (!item.metadata || Object.keys(item.metadata).length) return item
+	const { metadata, ...rest } = item
+	return rest as T
+}
+
 export function derivePlan(draft: PlanDraft): Plan {
 	const tests = draft.tests.map((test) => ({
-		...test,
+		...withoutEmptyMetadata(test),
 		gapIds: gapsAffecting(draft.gaps, test).map((gap) => gap.id),
 		readiness: testReadiness(draft.gaps, test),
 	}))
-	return { ...draft, tests, coverage: planCoverage({ ...draft, tests }) }
+	const requirements = draft.requirements.map(withoutEmptyMetadata)
+	return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) }
 }
 
 export function planCheck(value: unknown): Plan {

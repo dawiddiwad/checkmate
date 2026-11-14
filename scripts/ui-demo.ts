@@ -127,6 +127,7 @@ const checkoutRequest: PlanRequest = {
 			id: 'R2',
 			text: 'The 40 percent spring promotion applies to the cart total.',
 			source: 'brief://checkout#spring',
+			metadata: { jira: 'SHOP-41' },
 		},
 		{ id: 'R3', text: 'Customers can refund eligible orders.', source: 'brief://checkout#refunds' },
 		{ id: 'R4', text: 'The checkout page announces the promotion.', source: 'brief://checkout#banner' },
@@ -159,6 +160,7 @@ const checkoutCandidate: PlanCandidate = {
 			dependsOn: ['T1'],
 			preconditions: ['Cart with one 400 PLN item and a 20 PLN loyalty credit.'],
 			action: 'Apply the code SPRING40 and read the quote.',
+			metadata: { priority: 'high', component: 'pricing', xrayKey: 'SHOP-T7' },
 			assertions: [
 				{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' },
 				{ id: 'A2', check: 'totalPLN equals 220.', checkKind: 'deterministic' },
@@ -496,6 +498,7 @@ function seedCheckoutRun(store: Store) {
 				'Read totalPLN in the quote response.',
 			],
 			evidenceIds: failed.data.evidenceIds as string[],
+			metadata: { jiraKey: 'SHOP-142', component: 'pricing', regression: true },
 		},
 	})
 	closeTest(store, agent, { runId: 'run-7', testId: 'T2' })

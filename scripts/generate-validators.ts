@@ -12,7 +12,7 @@ const output = new URL('../plugin/src/validators.js', import.meta.url)
 const declarations = new URL('../plugin/src/validators.d.ts', import.meta.url)
 const files = (await readdir(contracts)).filter((file) => file.endsWith('.schema.json')).sort()
 
-const ajv = new Ajv({ allErrors: true, code: { source: true, esm: true } })
+const ajv = new Ajv({ allErrors: true, allowUnionTypes: true, code: { source: true, esm: true } })
 addFormats.default(ajv)
 const exports: Record<string, string> = {}
 for (const file of files) {
@@ -41,7 +41,13 @@ const outputs = [
 		path: declarations,
 		text:
 			'export type Validator = ((value: unknown) => boolean) & {\n' +
-			'\terrors?: Array<{ instancePath: string; message?: string }> | null\n' +
+			'\terrors?: Array<{\n' +
+			'\t\tinstancePath: string\n' +
+			'\t\tkeyword: string\n' +
+			'\t\tparams: { additionalProperty?: string; allowedValues?: unknown[]; type?: string | string[] }\n' +
+			'\t\tpropertyName?: string\n' +
+			'\t\tmessage?: string\n' +
+			'\t}> | null\n' +
 			'}\n' +
 			Object.keys(exports)
 				.sort()

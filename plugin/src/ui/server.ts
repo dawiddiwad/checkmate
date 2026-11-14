@@ -42,7 +42,7 @@ const routes = {
 	planExport: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/export\\.(html|md|json)$`),
 	run: new RegExp(`^/runs/(${id})$`),
 	runGap: new RegExp(`^/runs/(${id})/gaps/(${id})$`),
-	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json)$`),
+	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json|junit)$`),
 	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
 	target: new RegExp(`^/settings/targets/(${id})$`),
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
@@ -56,6 +56,7 @@ const documentTypes: Record<string, string> = {
 	html: 'text/html; charset=utf-8',
 	md: 'text/markdown; charset=utf-8',
 	json: 'application/json; charset=utf-8',
+	junit: 'application/xml; charset=utf-8',
 }
 const themes: Theme[] = ['system', 'light', 'dark']
 const maxForm = 256 * 1024
@@ -351,7 +352,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					'Report not ready',
 					`${runId} is in progress. The report is ready when it finishes.`
 				)
-			return download(request, exportRun(store, runId, format), format, `${runId}-report.${format}`)
+			const name = format === 'junit' ? `${runId}-junit.xml` : `${runId}-report.${format}`
+			return download(request, exportRun(store, runId, format), format, name)
 		}
 		const gap = routes.gap.exec(pathname)
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))

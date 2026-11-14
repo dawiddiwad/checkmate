@@ -35,7 +35,9 @@ function seedPayload(workspace: string) {
 		target: 'shop-local@1',
 		request: {
 			objective: 'Escape stored text.',
-			requirements: [{ id: 'X1', text: 'Stored text is data.', source: 'brief://xss' }],
+			requirements: [
+				{ id: 'X1', text: 'Stored text is data.', source: 'brief://xss', metadata: { 'x.note': payload } },
+			],
 			sourceContext: [],
 		},
 	})
@@ -52,6 +54,7 @@ function seedPayload(workspace: string) {
 					dependsOn: [],
 					preconditions: [],
 					action: 'Read the page.',
+					metadata: { 'x-key_1': `"><img src=x onerror=alert(1)>${payload}` },
 					assertions: [{ id: 'A1', check: 'Nothing runs.', checkKind: 'deterministic' }],
 				},
 			],
@@ -159,6 +162,10 @@ test('each page renders and escapes stored text', async (t) => {
 	}
 	for (const path of ['/', '/plans/xss@1', '/plans/xss@1/gaps/G1'])
 		assert.match((await call(ui, path)).body, /&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;/, path)
+	const metadata = (await call(ui, '/plans/xss@1')).body
+	assert.match(metadata, /<span class="tag">x\.note=&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;<\/span>/)
+	assert.match(metadata, /<span class="tag">x-key_1=&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;&lt;script&gt;/)
+	assert.doesNotMatch(metadata, /<img src=x/)
 	assert.equal((await call(ui, '/plans/checkout')).headers.location, '/plans/checkout@2')
 	const missing = await call(ui, '/plans/nothing@1')
 	assert.equal(missing.status, 404)
@@ -575,7 +582,7 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 	)
 })
 
-test('a retested run leaves the inbox and keeps its decision form on the run page', async (t) => {
+test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {
 	const { ui, workspace } = await start(t)
 	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
 	read(workspace, (store) =>
@@ -588,7 +595,7 @@ test('a retested run leaves the inbox and keeps its decision form on the run pag
 			retestOf: 'run-7',
 		})
 	)
-	assert.doesNotMatch((await call(ui, '/')).body, /data-key="run:run-7"/)
+	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
 	assert.match((await call(ui, '/runs/run-7')).body, /name="verdict"\s*value="accept"/)
 })
 
@@ -617,10 +624,10 @@ test('Bring into plan adopts one run gap with the digest guard and the actor', a
 	assert.match(stale.body, /checkout changed after you opened this page/)
 })
 
-test('a finished run downloads its report as HTML, Markdown, or JSON', async (t) => {
+test('a finished run downloads its report as HTML, Markdown, JSON, or JUnit XML', async (t) => {
 	const { ui } = await start(t)
 	const page = (await call(ui, '/runs/run-7')).body
-	for (const format of ['html', 'md', 'json'])
+	for (const format of ['html', 'md', 'json', 'junit'])
 		assert.match(page, new RegExp(`href="/runs/run-7/report.${format}" download`))
 	assert.match(page, /print to PDF/)
 	const html = await call(ui, '/runs/run-7/report.html')
@@ -637,6 +644,12 @@ test('a finished run downloads its report as HTML, Markdown, or JSON', async (t)
 	const json = await call(ui, '/runs/run-7/report.json')
 	assert.equal(json.headers['content-type'], 'application/json; charset=utf-8')
 	assert.equal(JSON.parse(json.body).result.runId, 'run-7')
+	const junit = await call(ui, '/runs/run-7/report.junit')
+	assert.equal(junit.headers['content-type'], 'application/xml; charset=utf-8')
+	assert.match(String(junit.headers['content-disposition']), /filename="run-7-junit.xml"/)
+	assert.match(junit.body, /^<\?xml version="1.0" encoding="UTF-8"\?>\n<testsuites name="run-7"/)
+	assert.doesNotMatch((await call(ui, '/plans/checkout@2')).body, /export\.junit/)
+	assert.equal((await call(ui, '/plans/checkout@2/export.junit')).status, 404)
 	assert.doesNotMatch((await call(ui, '/runs/run-8')).body, /report\.html/)
 	assert.equal((await call(ui, '/runs/run-8/report.html')).status, 409)
 	assert.equal((await call(ui, '/runs/nothing/report.html')).status, 404)
@@ -911,4 +924,24 @@ test('a retire of an unknown instance shows a visible error; each Retire control
 	})
 	assert.equal(unknown.status, 422)
 	assert.match(unknown.body, /<p class="form-error" role="alert">Unknown instance: shop-local\/nope\./)
+})
+
+test('the plan and run pages show team metadata as key and value tags', async (t) => {
+	const { ui } = await start(t)
+	const plan = (await call(ui, '/plans/checkout@2')).body
+	assert.match(
+		plan,
+		/<dt>Metadata<\/dt>\s*<dd>\s*<span class="kv" aria-label="Metadata"\s*><span class="tag">component=pricing<\/span><span class="tag">priority=high<\/span>/
+	)
+	assert.match(plan, /<span class="tag">xrayKey=SHOP-T7<\/span>/)
+	assert.match(plan, /<span class="tag">jira=SHOP-41<\/span>/)
+	const run = (await call(ui, '/runs/run-7')).body
+	assert.match(run, /<span class="tag">component=pricing<\/span>/)
+	assert.match(run, /<span class="tag">jiraKey=SHOP-142<\/span>/)
+	assert.match(run, /<span class="tag">regression=true<\/span>/)
+	assert.match(
+		run,
+		/The 40 percent spring promotion applies to the cart total\.(?:(?!<\/td>)[\s\S])*<span class="tag">jira=SHOP-41<\/span>/
+	)
+	for (const page of [plan, run]) assert.doesNotMatch(page, /<(div|p) class="(small|test-note)">\s*<\/(div|p)>/)
 })

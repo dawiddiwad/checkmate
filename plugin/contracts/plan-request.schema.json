@@ -23,6 +23,9 @@
 					"source": {
 						"type": "string",
 						"minLength": 1
+					},
+					"metadata": {
+						"$ref": "plan.schema.json#/definitions/metadata"
 					}
 				},
 				"required": ["id", "text", "source"],

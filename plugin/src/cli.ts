@@ -44,6 +44,7 @@ import {
 } from './runs.ts'
 import {
 	evidenceBytes,
+	findingList,
 	inbox,
 	operationLog,
 	planDetail,
@@ -849,6 +850,30 @@ const commands: Record<string, Command> = {
 				run.completion,
 				run.coverage,
 				run.acceptance,
+			]),
+		}),
+	},
+	'finding list': {
+		positionals: [],
+		flags: { plan: 'value', open: 'switch' },
+		run: (store, args) =>
+			completed('findings', {
+				findings: findingList(store, { planId: value(args, 'plan'), open: Boolean(args.open) }),
+			}),
+		print: (reply) => ({
+			facts: { count: (reply.data.findings as unknown[]).length },
+			lines: (reply.data.findings as ReturnType<typeof findingList>).map((finding) => [
+				`${finding.runId}/${finding.findingId}`,
+				`${finding.planId}@${finding.revision}`,
+				finding.build,
+				finding.instanceId,
+				finding.type,
+				finding.severity,
+				finding.testIds,
+				Object.entries(finding.metadata)
+					.map(([key, field]) => `${key}=${field}`)
+					.join('; ') || null,
+				finding.title,
 			]),
 		}),
 	},

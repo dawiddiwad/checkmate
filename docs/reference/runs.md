@@ -170,6 +170,17 @@ A command can take one text and one or more files together.
 
 A tool or access failure is an `error` outcome, not a defect. New ambiguity is a gap: record it with `run gap`. The payloads are in [Payloads](payloads.md#finding).
 
+### Open defects
+
+A defect stays open until one of these occurs:
+
+1. A later finished run of the same plan selects each test of the defect, and each of these tests passes.
+2. A later finished run in the retest chain of the defect's run fails a test of the defect and records its own defect for it. The new defect replaces the old defect. The retest chain is the runs that name the run with `--retest-of`, directly or through other retests.
+
+A started run closes no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. A pass on any instance closes a defect. The cross-plan dependency rule also accepts a pass on any instance.
+
+`checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. The defect is still real, so `finding list --open` still lists it.
+
 ## Completion and coverage
 
 | Field        | Values                                                            | Describes                                   |
@@ -216,17 +227,32 @@ A crash or a deadline does not finish a run. The run stays `started`, and the re
 checkmate export run run-1 --format md
 checkmate export run run-1 --format html --out reports/run-1.html
 checkmate export plan checkout@2 --format json
+checkmate export run run-1 --format junit --out reports/run-1.xml
 ```
 
-- `--format` is `md`, `html`, or `json`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
+- `--format` is `md`, `html`, or `json`. `export run` also takes `junit`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
 - `export run` needs a finished run. `export plan` takes a revision reference, or a plan ID for the latest revision.
-- A run report shows the summary with the instance, the acceptance, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- A run report shows the summary with the instance, the acceptance, the plan approval, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- The Markdown and HTML exports show the [metadata](payloads.md#metadata) of the requirements, the tests, and the findings as `key=value` lists.
 - The HTML report is one self-contained file. It shows small images and text evidence inline. It has a print stylesheet, so a browser can save it as a PDF.
-- The JSON run report is `{ "result", "sha256", "acceptance", "plan" }`. A JSON plan export is the stored plan revision.
+- The JSON run report is `{ "result", "sha256", "acceptance", "planApproval", "plan" }`. `acceptance` and `planApproval` each have `state` and `latest`. `latest` is the latest verdict with its `verdict`, `actor`, `at`, `rationale`, and `sha256`, or `null`. `plan` has the requirements and the tests of the plan revision, with their metadata. A JSON plan export is the stored plan revision.
+
+### JUnit XML
+
+`export run <runId> --format junit` writes JUnit XML for a CI system or a test management tool.
+
+- The root `<testsuites>` has one `<testsuite>`. Its name is `<planId>@<revision>`. Its properties are `runId`, `build`, `instance`, `target`, `completion`, and `coverage`.
+- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID, for example `T1`.
+- Each test case has properties. `title` is the test title. `requirements` is the list of requirement IDs, separated by commas. Each metadata key gives one more property. Its name is `metadata.<key>`, for example `metadata.xrayKey`. Thus a metadata key cannot replace a built-in property.
+- The JUnit format does not define properties in a test case. Jenkins, GitLab, and Xray read them.
+- `timestamp` is the start time in UTC, to the second, without a time zone, for example `2026-11-14T18:53:46`.
+- `failed` gives `<failure>`. Its `type` is `defect`. Its `message` is the title of the first defect of the test. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test.
+- `blocked` and `not_run` give `<skipped>`. `error` and `inconclusive` give `<error>` with the outcome as `type`. `passed` gives no element.
+- Checkmate escapes the text and replaces characters that XML does not permit with U+FFFD.
 - The renderer escapes untrusted text. The HTML has a Content Security Policy that blocks scripts and remote resources.
 - An export is a view. The database is the authority. Do not edit an export to change a verdict.
 
-The review UI offers the same exports. [Examples](../examples/README.md) has exports from a live run.
+The review UI offers the same exports. The run page also offers JUnit XML. [Examples](../examples/README.md) has exports from a live run.
 
 ## Retention
 

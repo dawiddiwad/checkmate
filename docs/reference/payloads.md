@@ -4,7 +4,7 @@
 
 The JSON Schemas in `plugin/contracts/` are the authority, and this page explains them with examples. Each example passes its schema and the rules of its command. The contract version is `toolkit-2`.
 
-**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Schemas](#schemas)
+**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Metadata](#metadata) · [Schemas](#schemas)
 
 ## Identifiers
 
@@ -119,6 +119,8 @@ For requirements or plan tools, send JSON on standard input:
 | `context`       | No       | `sources`: where the requirements come from. `instructions`: how to read them.               |
 | `tools`         | No       | A string selects a profile tool. An object `{ "name", "kind", "purpose" }` adds a plan tool. |
 
+A requirement can have [`metadata`](#metadata).
+
 - A request needs `requirements` or one or more `context.sources`.
 - Without requirements, the plan stage writes them. The `source` of each starts with a context source, for example `jira:SHOP-12#ac-2`.
 - When `tools` names profile tools, the plan keeps only those. Without names, the plan keeps all profile tools. An object must not use the name of a profile tool.
@@ -185,6 +187,7 @@ Rules:
 - Do not write an assertion with an unknown expected value. Write an open blocking gap. In the example, T2 is `blocked`.
 - `dependsOn` names local tests or cross-plan tests. The named plan and test exist. Checkmate refuses a dependency cycle across all plans.
 - Revision 1 has no decisions and no assumptions.
+- A test and a requirement of the candidate can have [`metadata`](#metadata).
 
 `plan save` gives `needs_decision` with one reason for each open blocking gap.
 
@@ -249,6 +252,7 @@ Checkmate builds the next revision:
 - A new ID adds the item. A new requirement needs `text` and `source`. A new test needs `title`, `requirementIds`, `capability`, `operations`, and `action`. A new gap needs `severity`, `requirementIds`, `testIds`, `question`, and `consequence`, and it is `open`.
 - `null` removes the item. `assertions` works as in the [plan delta](#plan-delta).
 - A patch cannot set gap `status` or `decisionId`. Use `gap answer`.
+- `metadata` of a requirement or a test is replaced as a whole. Send `{}` to remove it. A plan delta cannot change metadata.
 
 `plan adopt-gaps` builds a candidate from the gaps of a run, and the same rules apply.
 
@@ -271,7 +275,7 @@ QA sends each finding to `run finding <runId>`.
 }
 ```
 
-`evidenceIds` are the IDs that `run check` printed. [Findings](runs.md#findings) has the rules.
+`evidenceIds` are the IDs that `run check` printed. A finding can have [`metadata`](#metadata). [Findings](runs.md#findings) has the rules.
 
 ## Runtime gap
 
@@ -295,6 +299,40 @@ QA sends new ambiguity to `run gap <runId>`.
 - A blocking runtime gap keeps the requirements that it names uncovered in the result. A gap with two empty lists keeps every requirement uncovered.
 - It does not change the plan. The oracle answers or adopts it. Read [Answer a gap from a run](../guides/oracle.md#answer-a-gap-from-a-run).
 
+## Metadata
+
+`metadata` holds team fields, for example a priority, a component, labels, or a Jira or Xray key. It is optional on a requirement, a test, and a finding. Put team fields in `metadata`. Do not put them in a title or a check.
+
+```json
+{
+	"id": "F1",
+	"type": "defect",
+	"severity": "high",
+	"assertionIds": ["T2.A1"],
+	"requirementIds": ["R2"],
+	"title": "Promotion stacks with the loyalty discount",
+	"expected": "totalPLN equals 240.",
+	"observed": "GET /quote?promotion=true&loyalty=true returned totalPLN 220.",
+	"reproduction": ["Request GET /quote?promotion=true&loyalty=true.", "Read totalPLN."],
+	"evidenceIds": ["01M75A0ZVZC156GNSTPZ9G4MYX"],
+	"metadata": {
+		"jiraKey": "SHOP-142",
+		"component": "pricing",
+		"labels": "checkout,regression",
+		"storyPoints": 3,
+		"blocker": true
+	}
+}
+```
+
+A test in a candidate can carry its Xray key the same way: `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`.
+
+- `metadata` is an object with 0 to 20 keys.
+- A key has 1 to 64 letters, digits, `_`, `.`, or `-`. It starts with a letter.
+- A value is a string of 0 to 500 characters, a number, or a boolean. A list or an object is refused. Give a list as one string, for example `"checkout,regression"`.
+- Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
+- The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as `metadata.<key>` properties.
+
 ## Schemas
 
 | Schema                       | Checked by                        |
@@ -311,7 +349,11 @@ QA sends new ambiguity to `run gap <runId>`.
 | `result.schema.json`         | each stored result                |
 | `response.schema.json`       | the output of a delegated worker  |
 
-A payload with an unknown field, a missing field, or a wrong type is refused before any rule check.
+A payload with an unknown field, a missing field, or a wrong type is refused before any rule check. The reason names the field, for example:
+
+```text
+reason: Invalid finding: finding has unknown field "priority", finding/severity must be one of: low, medium, high, critical
+```
 
 ## Next
 

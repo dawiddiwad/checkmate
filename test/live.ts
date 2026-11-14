@@ -248,7 +248,12 @@ try {
 	assert.equal(retest.result.coverage.status, 'partial')
 	assert.equal(checkmate(workspace, ['run', 'show', 'live-run']).result.completion, 'completed')
 	const inbox = checkmate(workspace, ['inbox'])
-	assert(!inbox.results.some((result: { runId: string }) => result.runId === 'live-run'), JSON.stringify(inbox))
+	const listed = inbox.results.map((result: { runId: string }) => result.runId)
+	assert(listed.includes('live-retest'), JSON.stringify(inbox))
+	const supplies = revised.tests.some(
+		(test) => test.readiness === 'ready' && !retested.includes(test.id) && !prerequisites.includes(test.id)
+	)
+	assert.equal(listed.includes('live-run'), supplies, JSON.stringify(inbox))
 	checkmate(workspace, ['result', 'accept', 'live-run', '--rationale', 'The defect is real.'])
 	checkmate(workspace, ['result', 'accept', 'live-retest', '--rationale', 'The fix passed the retest.'])
 	const final = status('checkout')

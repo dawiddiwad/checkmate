@@ -87,6 +87,7 @@ Send each finding in a heredoc: `checkmate run finding <runId> <<'EOF'`, the JSO
 ```
 
 - Give every field of the example. `requirementIds` are the requirements of the named tests.
+- You can add `metadata` with team fields, for example `"metadata": { "jiraKey": "SHOP-142", "component": "pricing", "labels": "checkout,regression" }`. Use it for a priority, a component, labels, or a Jira or Xray key that the oracle or the test gives. Do not put team fields in the title. A value is a string, a number, or a boolean.
 - A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
 - For new ambiguity, write a gap with `"status": "open"` and a new ID. Send it in a heredoc: `checkmate run gap <runId> <<'EOF'`, the JSON, then `EOF`.
 - After a new blocking gap, apply the new blocker policy of the run. A delegated prompt names it. Else read `request.onNewBlocker` from `checkmate run show <runId> --json`. `return_to_oracle`: stop further actions, and close the remaining tests as `blocked`. `continue_independent`: continue the tests that the gap does not affect, and close the affected tests as `blocked`.

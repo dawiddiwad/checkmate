@@ -200,15 +200,22 @@ export function banner(tone: 'warn' | 'info' | 'fail', content: Html | string) {
 	return html`<div class="banner ${tone}" role="${tone === 'info' ? 'status' : 'alert'}">${content}</div>`
 }
 
-export function downloads(label: string, base: string, note: string) {
-	const item = (format: string, name: string, hint: string) =>
+const downloadNames: Record<string, [string, string]> = {
+	html: ['HTML', 'print-ready'],
+	md: ['Markdown', '.md'],
+	json: ['JSON', 'data'],
+	junit: ['JUnit XML', 'for CI'],
+}
+
+export function downloads(label: string, base: string, note: string, formats = ['html', 'md', 'json']) {
+	const item = (format: string) =>
 		html`<a href="${base}.${format}" download data-download="${format}"
-			>${name} <span class="muted small">${hint}</span></a
+			>${downloadNames[format][0]} <span class="muted small">${downloadNames[format][1]}</span></a
 		>`
 	return html`<details class="menu" data-menu>
 		<summary class="btn small" title="${note}">${label}</summary>
 		<div class="menu-list">
-			${item('html', 'HTML', 'print-ready')} ${item('md', 'Markdown', '.md')} ${item('json', 'JSON', 'data')}
+			${formats.map(item)}
 			<p class="menu-note">${note}</p>
 		</div>
 	</details>`

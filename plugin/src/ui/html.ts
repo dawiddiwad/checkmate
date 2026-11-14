@@ -127,6 +127,17 @@ export function time(iso: string, text = age(iso)) {
 	return html`<time datetime="${iso}" title="${clock(iso)}">${text}</time>`
 }
 
+export function hasMetadata(values: Record<string, unknown> | undefined) {
+	return Object.keys(values ?? {}).length > 0
+}
+
+export function metadataList(values: Record<string, string | number | boolean> = {}) {
+	const entries = Object.entries(values)
+	return html`<span class="kv" aria-label="Metadata"
+		>${entries.map(([key, value]) => html`<span class="tag">${key}=${String(value)}</span>`)}</span
+	>`
+}
+
 export function plural(count: number, one: string, many = `${one}s`) {
 	return `${count} ${count === 1 ? one : many}`
 }

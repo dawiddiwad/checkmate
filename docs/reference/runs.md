@@ -170,6 +170,15 @@ A command can take one text and one or more files together.
 
 A tool or access failure is an `error` outcome, not a defect. New ambiguity is a gap: record it with `run gap`. The payloads are in [Payloads](payloads.md#finding).
 
+### Open defects
+
+A defect stays open until one of these occurs:
+
+1. A later finished run of the same plan selects each test of the defect, and each of these tests passes.
+2. A later finished run in the retest chain of the defect's run fails a test of the defect and records its own defect for it. The new defect replaces the old defect. The retest chain is the runs that name the run with `--retest-of`, directly or through other retests.
+
+A started run closes no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. `checkmate status` and `checkmate finding list --open` use this rule.
+
 ## Completion and coverage
 
 | Field        | Values                                                            | Describes                                   |
@@ -231,9 +240,11 @@ checkmate export run run-1 --format junit --out reports/run-1.xml
 `export run <runId> --format junit` writes JUnit XML for a CI system or a test management tool.
 
 - The root `<testsuites>` has one `<testsuite>`. Its name is `<planId>@<revision>`. Its properties are `runId`, `build`, `instance`, `target`, `completion`, and `coverage`.
-- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID and the title, for example `T1 Standard order total`.
-- The properties of a test case are `requirements`, with the requirement IDs separated by commas, and one property for each metadata key. A metadata key such as `test_key` gives the Xray property name.
-- `failed` gives `<failure>`. Its `message` is the title of the first finding of the test. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test.
+- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID, for example `T1`.
+- Each test case has properties. `title` is the test title. `requirements` is the list of requirement IDs, separated by commas. Each metadata key gives one more property. Its name is `metadata.<key>`, for example `metadata.xrayKey`. Thus a metadata key cannot replace a built-in property.
+- The JUnit format does not define properties in a test case. Jenkins, GitLab, and Xray read them.
+- `timestamp` is the start time in UTC, to the second, without a time zone, for example `2026-11-14T18:53:46`.
+- `failed` gives `<failure>`. Its `type` is `defect`. Its `message` is the title of the first defect of the test. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test.
 - `blocked` and `not_run` give `<skipped>`. `error` and `inconclusive` give `<error>` with the outcome as `type`. `passed` gives no element.
 - Checkmate escapes the text and replaces characters that XML does not permit with U+FFFD.
 - The renderer escapes untrusted text. The HTML has a Content Security Policy that blocks scripts and remote resources.

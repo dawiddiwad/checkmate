@@ -6,7 +6,7 @@ import type { FormState } from './forms.ts'
 import { planDetail, planHistory, planStatus } from '../views.ts'
 import { planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
-import { html, join, metadataList, pill, plural, short, time, words } from './html.ts'
+import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
@@ -71,7 +71,7 @@ export function testCard(detail: Detail, test: Test) {
 						</ul>`,
 				],
 				['Action', test.action],
-				['Metadata', Object.keys(test.metadata ?? {}).length > 0 && metadataList(test.metadata)],
+				['Metadata', hasMetadata(test.metadata) && metadataList(test.metadata)],
 			])}
 		</div>
 		${
@@ -214,7 +214,7 @@ function requirementsTable(plan: Plan) {
 						<td>
 							${requirement.text}
 							<div class="muted small">Source <code>${requirement.source}</code></div>
-							${requirement.metadata ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}
+							${hasMetadata(requirement.metadata) ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}
 						</td>
 						<td>${ids(coverage?.testIds ?? [], (id) => html`<a class="mono" href="#${id}">${id}</a>`)}</td>
 						<td>${coverage ? pill(coverage.status) : ''}</td>

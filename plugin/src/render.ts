@@ -548,6 +548,7 @@ function junitStatus(report: RunReport, test: Result['tests'][number]) {
 		return xmlTag('skipped', { message: `${test.outcome}: ${reason}` })
 	if (test.outcome !== 'failed') return xmlTag('error', { type: test.outcome, message: reason })
 	const findings = report.result.findings.filter((finding) => finding.testIds.includes(test.testId))
+	const defect = findings.find((finding) => finding.type === 'defect')
 	const text = findings.map((finding) =>
 		[
 			`${finding.id} ${finding.type} ${finding.severity}: ${finding.title}`,
@@ -559,7 +560,7 @@ function junitStatus(report: RunReport, test: Result['tests'][number]) {
 	)
 	return xmlTag(
 		'failure',
-		{ type: findings[0]?.type ?? 'failed', message: findings[0]?.title ?? reason },
+		{ type: defect?.type ?? 'failed', message: defect?.title ?? reason },
 		xmlText(text.join('\n\n') || reason)
 	)
 }
@@ -578,18 +579,22 @@ function junit(report: RunReport) {
 	const cases = tests.map((test) => {
 		const planned = plan.tests.find((item) => item.id === test.testId)!
 		const properties = xmlProperties([
+			['title', planned.title],
 			['requirements', planned.requirementIds.join(',')],
-			...Object.entries(planned.metadata ?? {}),
+			...Object.entries(planned.metadata ?? {}).map(([key, value]): [string, string | number | boolean] => [
+				`metadata.${key}`,
+				value,
+			]),
 		])
-		return xmlTag(
-			'testcase',
-			{ classname: plan.planId, name: `${planned.id} ${planned.title}` },
-			properties + junitStatus(report, test)
-		)
+		return xmlTag('testcase', { classname: plan.planId, name: planned.id }, properties + junitStatus(report, test))
 	})
 	const suite = xmlTag(
 		'testsuite',
-		{ name: `${result.plan.planId}@${result.plan.revision}`, ...totals, timestamp: result.startedAt },
+		{
+			name: `${result.plan.planId}@${result.plan.revision}`,
+			...totals,
+			timestamp: result.startedAt.slice(0, 19),
+		},
 		xmlProperties([
 			['runId', result.runId],
 			['build', result.applicationBuild],

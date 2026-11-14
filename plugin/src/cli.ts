@@ -870,7 +870,9 @@ const commands: Record<string, Command> = {
 				finding.type,
 				finding.severity,
 				finding.testIds,
-				Object.entries(finding.metadata).map(([key, field]) => `${key}=${field}`),
+				Object.entries(finding.metadata)
+					.map(([key, field]) => `${key}=${field}`)
+					.join('; ') || null,
 				finding.title,
 			]),
 		}),

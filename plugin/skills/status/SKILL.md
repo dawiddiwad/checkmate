@@ -10,7 +10,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 Checkmate stores no loop state. `checkmate status` derives it from the records. Do not read the database file with another tool. Do not look for scheduled jobs.
 
 1. Find the plan ID in the question. If the question names no plan, run `checkmate plan list`. It prints `state=` and `waitsOn=` for each plan. If one plan matches the question, use it. Else report the plan list and stop.
-2. Run `checkmate status <planId>`. Line 1 has `state=`, `waitsOn=`, the revision, the approval, and the latest run. The other lines are `why`, `next`, one `started` line with the build and the instance for each open run, the open gaps, the pending decisions, and the defects of the latest finished run.
+2. Run `checkmate status <planId>`. Line 1 has `state=`, `waitsOn=`, the revision, the approval, and the latest run. The other lines are `why`, `next`, one `started` line with the build and the instance for each open run, the open gaps, the pending decisions, and the open defects of all finished runs. A defect stays open until a later finished run passes each of its tests, or a retest in its chain records the defect again.
 3. If the question is about a run, also run `checkmate run show <runId>`. If the question is about all open work, also run `checkmate inbox`.
 4. Report in the format of `workflow.md`:
    - A table with one row for the plan: plan and revision, state, waits on, approval, and latest run. Add one row for each open run with its instance. Add one row for each open gap, pending decision, or defect that the status prints.

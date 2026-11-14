@@ -44,7 +44,7 @@ const outputs = [
 			'\terrors?: Array<{\n' +
 			'\t\tinstancePath: string\n' +
 			'\t\tkeyword: string\n' +
-			'\t\tparams: { additionalProperty?: string; allowedValues?: unknown[] }\n' +
+			'\t\tparams: { additionalProperty?: string; allowedValues?: unknown[]; type?: string | string[] }\n' +
 			'\t\tpropertyName?: string\n' +
 			'\t\tmessage?: string\n' +
 			'\t}> | null\n' +

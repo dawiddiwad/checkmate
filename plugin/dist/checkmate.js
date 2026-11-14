@@ -6710,7 +6710,9 @@ function same(a, b) {
 }
 function validate(name, value2) {
   const check = validators_exports[name.replace(/-./g, (match) => match[1].toUpperCase())];
-  const errors = () => (check.errors ?? []).filter((error) => error.keyword !== "propertyNames").map((error) => schemaError(`${name}${error.instancePath}`, error)).join(", ");
+  const errors = () => (check.errors ?? []).filter(
+    (error) => !["propertyNames", "anyOf"].includes(error.keyword) && !(error.keyword === "type" && error.params.type === "null")
+  ).map((error) => schemaError(`${name}${error.instancePath}`, error)).join(", ");
   requireCondition(check(value2), `Invalid ${name}: ${errors()}`);
   return value2;
 }
@@ -6806,13 +6808,19 @@ function planCoverage(plan) {
     return { requirementId: requirement.id, testIds: tests.map((test) => test.id), status };
   });
 }
+function withoutEmptyMetadata(item) {
+  if (!item.metadata || Object.keys(item.metadata).length) return item;
+  const { metadata, ...rest } = item;
+  return rest;
+}
 function derivePlan(draft) {
   const tests = draft.tests.map((test) => ({
-    ...test,
+    ...withoutEmptyMetadata(test),
     gapIds: gapsAffecting(draft.gaps, test).map((gap) => gap.id),
     readiness: testReadiness(draft.gaps, test)
   }));
-  return { ...draft, tests, coverage: planCoverage({ ...draft, tests }) };
+  const requirements = draft.requirements.map(withoutEmptyMetadata);
+  return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) };
 }
 function planCheck(value2) {
   const plan = validate("plan", value2);
@@ -8612,7 +8620,7 @@ function recordFinding(store, actor, input) {
       "INSERT INTO findings (id, run_id, body, operation_id) VALUES (?, ?, ?, ?)",
       finding.id,
       input.runId,
-      canonical({ ...finding, testIds }),
+      canonical({ ...withoutEmptyMetadata(finding), testIds }),
       operationId
     );
     return {
@@ -9140,16 +9148,18 @@ function planStatus(store, planId) {
   const runs = runList(store, { planId });
   const openRuns = runs.filter((run2) => run2.state === "started").map((run2) => ({ runId: run2.runId, build: run2.build, instanceId: run2.instanceId }));
   const started = runs.find((run2) => run2.state === "started");
-  const superseded = retestedRuns(store);
-  const finished = runs.filter((run2) => run2.state === "finalized" && !superseded.has(run2.runId)).at(-1);
+  const results = finalizedResults(store, planId);
+  const finished = runs.find((run2) => run2.runId === results.at(-1)?.runId);
   const latestRun = started ?? finished ?? null;
-  const defects = finished ? runFindings(store, finished.runId).filter((finding) => finding.type === "defect").map((finding) => ({
-    runId: finished.runId,
+  const defects = openDefects(results).map(({ runId, finding }) => ({
+    runId,
     findingId: finding.id,
     severity: finding.severity,
+    testIds: finding.testIds,
     assertionIds: finding.assertionIds,
     title: finding.title
-  })) : [];
+  }));
+  const latest = latestOutcomes(results);
   const state = () => {
     const run2 = `checkmate run begin <runId> ${subject} --build <build>`;
     if (started)
@@ -9202,23 +9212,28 @@ function planStatus(store, planId) {
     const blocking = gaps.filter((gap) => gap.severity === "blocking");
     if (blocking.length)
       return loop("needs_answers", "oracle", [amount(blocking.length, "open blocking gap")], answer);
-    const retest = `checkmate run begin <runId> ${subject} --build <new build> --retest-of ${finished.runId}`;
-    if (defects.length)
+    if (defects.length) {
+      const defective = runs.filter((run3) => defects.some((defect) => defect.runId === run3.runId));
+      const retest = `checkmate run begin <runId> ${subject} --build <new build> --retest-of ${defective.at(-1).runId}`;
       return loop(
         "defects_open",
         "factory",
-        [`${finished.runId} has ${amount(defects.length, "defect")} on build ${finished.build}`],
+        defective.map(
+          (run3) => `${run3.runId} has ${amount(defects.filter((defect) => defect.runId === run3.runId).length, "defect")} on build ${run3.build}`
+        ),
         `Build a fix, then ${retest}`
       );
+    }
     if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer);
-    const result = runResult(store, finished.runId).result;
-    const unpassed = result.tests.filter(
-      (test) => result.selectedTestIds.includes(test.testId) && test.outcome !== "passed"
-    );
+    const result = results.at(-1);
+    const unpassed = plan.tests.flatMap((test) => {
+      const last = latest.get(test.id);
+      return last && last.outcome !== "passed" ? [{ testId: test.id, ...last }] : [];
+    });
     const why = [
       ...finished.revision !== plan.revision ? [`${finished.runId} tested ${planId}@${finished.revision}, not ${subject}`] : [],
       ...result.completion !== "completed" ? [`${finished.runId} is ${result.completion}`] : [],
-      ...unpassed.map((test) => `${test.testId} is ${test.outcome} in ${finished.runId}`),
+      ...unpassed.map((test) => `${test.testId} is ${test.outcome} in ${test.runId}`),
       ...finished.acceptance === "rejected" ? [`Result ${finished.runId} is rejected`] : []
     ];
     if (why.length)
@@ -9253,6 +9268,40 @@ function planStatus(store, planId) {
 function loopOf(store, planId) {
   const { state, waitsOn } = planStatus(store, planId);
   return { state, waitsOn };
+}
+function finalizedResults(store, planId) {
+  return all(
+    store,
+    "SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY s.rowid",
+    planId
+  ).map((row) => JSON.parse(row.body));
+}
+function selectedOutcome(result, testId) {
+  if (!result.selectedTestIds.includes(testId)) return null;
+  return result.tests.find((test) => test.testId === testId)?.outcome ?? null;
+}
+function latestOutcomes(results) {
+  const latest = /* @__PURE__ */ new Map();
+  for (const result of results)
+    for (const testId of result.selectedTestIds)
+      latest.set(testId, { outcome: selectedOutcome(result, testId), runId: result.runId });
+  return latest;
+}
+function openDefects(results) {
+  return results.flatMap((result, i) => {
+    const later = results.slice(i + 1);
+    const chain = /* @__PURE__ */ new Set([result.runId]);
+    for (const run2 of later) if (run2.retestOf !== null && chain.has(run2.retestOf)) chain.add(run2.runId);
+    const fixed = (testIds) => later.some((run2) => testIds.every((testId) => selectedOutcome(run2, testId) === "passed"));
+    const found = (testIds) => later.some(
+      (run2) => chain.has(run2.runId) && run2.findings.some(
+        (other) => other.type === "defect" && other.testIds.some(
+          (testId) => testIds.includes(testId) && selectedOutcome(run2, testId) === "failed"
+        )
+      )
+    );
+    return result.findings.filter((finding) => finding.type === "defect" && !fixed(finding.testIds) && !found(finding.testIds)).map((finding) => ({ runId: result.runId, finding }));
+  });
 }
 function retestedRuns(store) {
   return new Set(
@@ -10084,6 +10133,7 @@ function junitStatus(report, test) {
     return xmlTag("skipped", { message: `${test.outcome}: ${reason}` });
   if (test.outcome !== "failed") return xmlTag("error", { type: test.outcome, message: reason });
   const findings2 = report.result.findings.filter((finding) => finding.testIds.includes(test.testId));
+  const defect = findings2.find((finding) => finding.type === "defect");
   const text = findings2.map(
     (finding) => [
       `${finding.id} ${finding.type} ${finding.severity}: ${finding.title}`,
@@ -10095,7 +10145,7 @@ function junitStatus(report, test) {
   );
   return xmlTag(
     "failure",
-    { type: findings2[0]?.type ?? "failed", message: findings2[0]?.title ?? reason },
+    { type: defect?.type ?? "failed", message: defect?.title ?? reason },
     xmlText(text.join("\n\n") || reason)
   );
 }
@@ -10113,18 +10163,22 @@ function junit(report) {
   const cases = tests.map((test) => {
     const planned = plan.tests.find((item) => item.id === test.testId);
     const properties = xmlProperties([
+      ["title", planned.title],
       ["requirements", planned.requirementIds.join(",")],
-      ...Object.entries(planned.metadata ?? {})
+      ...Object.entries(planned.metadata ?? {}).map(([key, value2]) => [
+        `metadata.${key}`,
+        value2
+      ])
     ]);
-    return xmlTag(
-      "testcase",
-      { classname: plan.planId, name: `${planned.id} ${planned.title}` },
-      properties + junitStatus(report, test)
-    );
+    return xmlTag("testcase", { classname: plan.planId, name: planned.id }, properties + junitStatus(report, test));
   });
   const suite = xmlTag(
     "testsuite",
-    { name: `${result.plan.planId}@${result.plan.revision}`, ...totals, timestamp: result.startedAt },
+    {
+      name: `${result.plan.planId}@${result.plan.revision}`,
+      ...totals,
+      timestamp: result.startedAt.slice(0, 19)
+    },
     xmlProperties([
       ["runId", result.runId],
       ["build", result.applicationBuild],
@@ -10324,9 +10378,11 @@ function clock(iso) {
 function time(iso, text = age(iso)) {
   return html2`<time datetime="${iso}" title="${clock(iso)}">${text}</time>`;
 }
+function hasMetadata(values) {
+  return Object.keys(values ?? {}).length > 0;
+}
 function metadataList(values = {}) {
   const entries = Object.entries(values);
-  if (!entries.length) return "";
   return html2`<span class="kv" aria-label="Metadata"
 		>${entries.map(([key, value2]) => html2`<span class="tag">${key}=${String(value2)}</span>`)}</span
 	>`;
@@ -11271,7 +11327,7 @@ function testCard(detail, test) {
 						</ul>`
     ],
     ["Action", test.action],
-    ["Metadata", Object.keys(test.metadata ?? {}).length > 0 && metadataList(test.metadata)]
+    ["Metadata", hasMetadata(test.metadata) && metadataList(test.metadata)]
   ])}
 		</div>
 		${test.assertions.length ? html2`<ul class="checklist" aria-label="Assertions of ${test.id}">
@@ -11391,7 +11447,7 @@ function requirementsTable(plan) {
 						<td>
 							${requirement.text}
 							<div class="muted small">Source <code>${requirement.source}</code></div>
-							${requirement.metadata ? html2`<div class="small">${metadataList(requirement.metadata)}</div>` : ""}
+							${hasMetadata(requirement.metadata) ? html2`<div class="small">${metadataList(requirement.metadata)}</div>` : ""}
 						</td>
 						<td>${ids(coverage2?.testIds ?? [], (id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`)}</td>
 						<td>${coverage2 ? pill(coverage2.status) : ""}</td>
@@ -12070,7 +12126,7 @@ function testCard2(store, detail, test) {
 				passed${recorded < test.assertions.length ? ` \xB7 ${test.assertions.length - recorded} without result` : ""}</span
 			>
 		</header>
-		${Object.keys(test.metadata).length ? html2`<p class="test-note">${metadataList(test.metadata)}</p>` : ""}
+		${hasMetadata(test.metadata) ? html2`<p class="test-note">${metadataList(test.metadata)}</p>` : ""}
 		${test.reason ? html2`<p class="test-note">${test.reason}</p>` : ""}
 		${test.evidence.length ? html2`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ""}
 		<ul class="asrs">
@@ -12128,7 +12184,7 @@ function findings(store, detail) {
       ", "
     )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
 						</p>
-						${finding.metadata ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
+						${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
 						${evidenceChips(evidence2.filter((item) => finding.evidenceIds.includes(item.id)))}
 					</div>
 				</article>`
@@ -12179,6 +12235,7 @@ function coverage(store, detail) {
   const result = detail.result;
   if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
   const plan = planDetail(store, detail.planId, detail.revision).plan;
+  const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -12194,8 +12251,11 @@ function coverage(store, detail) {
     (row) => html2`<tr>
 							<td class="mono">${row.requirementId}</td>
 							<td>
-								${plan.requirements.find((item) => item.id === row.requirementId)?.text ?? ""}
+								${requirements.get(row.requirementId)?.text ?? ""}
 								${row.reason ? html2`<div class="muted small">${row.reason}</div>` : ""}
+								${hasMetadata(requirements.get(row.requirementId)?.metadata) ? html2`<div class="small">
+												${metadataList(requirements.get(row.requirementId)?.metadata)}
+											</div>` : ""}
 							</td>
 							<td class="mono">${row.testIds.join(", ") || "\u2013"}</td>
 							<td>${pill(row.status)}</td>
@@ -14142,7 +14202,7 @@ var commands = {
         finding.type,
         finding.severity,
         finding.testIds,
-        Object.entries(finding.metadata).map(([key, field2]) => `${key}=${field2}`),
+        Object.entries(finding.metadata).map(([key, field2]) => `${key}=${field2}`).join("; ") || null,
         finding.title
       ])
     })

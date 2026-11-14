@@ -4,7 +4,7 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { planRevision, planRunGaps } from '../plans.ts'
-import { clock, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
+import { clock, hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { downloads, heading } from './layout.ts'
 import { emptyState, recordPanel, verdictPanel } from './forms.ts'
 import { counts } from './lists.ts'
@@ -147,7 +147,7 @@ function testCard(store: Store, detail: Detail, test: RunTest) {
 				}</span
 			>
 		</header>
-		${Object.keys(test.metadata).length ? html`<p class="test-note">${metadataList(test.metadata)}</p>` : ''}
+		${hasMetadata(test.metadata) ? html`<p class="test-note">${metadataList(test.metadata)}</p>` : ''}
 		${test.reason ? html`<p class="test-note">${test.reason}</p>` : ''}
 		${test.evidence.length ? html`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ''}
 		<ul class="asrs">
@@ -213,7 +213,7 @@ function findings(store: Store, detail: Detail) {
 								', '
 							)}${finding.requirementIds.length ? ` · requirements ${finding.requirementIds.join(', ')}` : ''}
 						</p>
-						${finding.metadata ? html`<p>${metadataList(finding.metadata)}</p>` : ''}
+						${hasMetadata(finding.metadata) ? html`<p>${metadataList(finding.metadata)}</p>` : ''}
 						${evidenceChips(evidence.filter((item) => finding.evidenceIds.includes(item.id)))}
 					</div>
 				</article>`
@@ -280,6 +280,7 @@ function coverage(store: Store, detail: Detail) {
 	const result = detail.result
 	if (!result) return html`<p class="empty-line">Coverage is known when the run finishes.</p>`
 	const plan = planDetail(store, detail.planId, detail.revision).plan
+	const requirements = new Map(plan.requirements.map((item) => [item.id, item]))
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -296,8 +297,15 @@ function coverage(store: Store, detail: Detail) {
 						html`<tr>
 							<td class="mono">${row.requirementId}</td>
 							<td>
-								${plan.requirements.find((item) => item.id === row.requirementId)?.text ?? ''}
+								${requirements.get(row.requirementId)?.text ?? ''}
 								${row.reason ? html`<div class="muted small">${row.reason}</div>` : ''}
+								${
+									hasMetadata(requirements.get(row.requirementId)?.metadata)
+										? html`<div class="small">
+												${metadataList(requirements.get(row.requirementId)?.metadata)}
+											</div>`
+										: ''
+								}
 							</td>
 							<td class="mono">${row.testIds.join(', ') || '–'}</td>
 							<td>${pill(row.status)}</td>

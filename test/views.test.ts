@@ -386,3 +386,95 @@ test('plan status lists every open run of a matrix with its instance', (t) => {
 		instances
 	)
 })
+
+function failedRun(opened: ReturnType<typeof store>, runId: string, build: string, extra = {}) {
+	begin(opened, runId, ['T1', 'T2'], build, extra)
+	for (const reference of ['T1.A1', 'T1.A2']) check(opened, runId, reference, 'passed')
+	closeTest(opened, actor, { runId, testId: 'T1' })
+	check(opened, runId, 'T2.A1', 'passed')
+	failT2(opened, runId)
+	closeTest(opened, actor, { runId, testId: 'T2' })
+	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
+}
+
+function openDefects(opened: ReturnType<typeof store>) {
+	const status = planStatus(opened, 'checkout')
+	return [status.state, status.defects.map((defect) => `${defect.runId}/${defect.findingId}`)]
+}
+
+test('a narrow run that passes other tests does not close a defect or reach acceptance', (t) => {
+	const opened = store(t)
+	ready(opened)
+	failedRun(opened, 'run-1', 'b1')
+	passRun(opened, 'run-2', 'b2', ['T1'])
+	assert.deepEqual(openDefects(opened), ['defects_open', ['run-1/F1']])
+	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 has 1 defect on build b1'])
+	accept(opened, 'run-2')
+	assert.equal(planStatus(opened, 'checkout').state, 'defects_open')
+})
+
+test('a started retest does not close a defect', (t) => {
+	const opened = store(t)
+	ready(opened)
+	failedRun(opened, 'run-1', 'b1')
+	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
+	assert.deepEqual(openDefects(opened), ['run_in_progress', ['run-1/F1']])
+	assert.deepEqual(
+		cli(opened.workspace, ['finding', 'list', '--open'])
+			.lines.slice(0, 2)
+			.map((line) => line.split('\t')[0]),
+		['completed findings count=1', 'run-1/F1']
+	)
+})
+
+test('a narrow retest closes a defect only when it passes every test of the defect', (t) => {
+	const opened = store(t)
+	ready(opened)
+	failedRun(opened, 'run-1', 'b1')
+	begin(opened, 'run-2', ['T1'], 'b2', { retestOf: 'run-1' })
+	for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `T1.${assertionId}`, 'passed')
+	closeTest(opened, actor, { runId: 'run-2', testId: 'T1' })
+	finishRun(opened, actor, { runId: 'run-2', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	assert.deepEqual(openDefects(opened), ['defects_open', ['run-1/F1']])
+	begin(opened, 'run-3', ['T1', 'T2'], 'b3', { retestOf: 'run-2' })
+	for (const testId of ['T1', 'T2']) {
+		for (const assertionId of ['A1', 'A2']) check(opened, 'run-3', `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, actor, { runId: 'run-3', testId })
+	}
+	finishRun(opened, actor, { runId: 'run-3', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	assert.deepEqual(openDefects(opened), ['awaits_acceptance', []])
+})
+
+test('a retest in the chain that finds the defect again replaces it; a run outside the chain does not', (t) => {
+	const opened = store(t)
+	ready(opened)
+	failedRun(opened, 'run-1', 'b1')
+	failedRun(opened, 'run-2', 'b2', { retestOf: 'run-1' })
+	assert.deepEqual(openDefects(opened), ['defects_open', ['run-2/F1']])
+	assert.equal(
+		planStatus(opened, 'checkout').next,
+		'Build a fix, then checkmate run begin <runId> checkout@2 --build <new build> --retest-of run-2'
+	)
+	failedRun(opened, 'run-3', 'b3', { retestOf: 'run-2' })
+	assert.deepEqual(openDefects(opened), ['defects_open', ['run-3/F1']])
+	failedRun(opened, 'run-4', 'b4')
+	assert.deepEqual(openDefects(opened), ['defects_open', ['run-3/F1', 'run-4/F1']])
+	assert.deepEqual(planStatus(opened, 'checkout').why, [
+		'run-3 has 1 defect on build b3',
+		'run-4 has 1 defect on build b4',
+	])
+})
+
+test('the latest outcome of each test decides needs_retest when no defect is open', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1', 'T2'], 'b1')
+	check(opened, 'run-1', 'T1.A1', 'inconclusive')
+	check(opened, 'run-1', 'T1.A2', 'passed')
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
+	closeTest(opened, actor, { runId: 'run-1', testId: 'T2', outcome: 'blocked', reason: 'T1 is inconclusive.' })
+	finishRun(opened, actor, { runId: 'run-1', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	passRun(opened, 'run-2', 'b2', ['T1'])
+	const status = planStatus(opened, 'checkout')
+	assert.deepEqual([status.state, status.why], ['needs_retest', ['T2 is blocked in run-1']])
+})

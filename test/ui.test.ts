@@ -35,7 +35,9 @@ function seedPayload(workspace: string) {
 		target: 'shop-local@1',
 		request: {
 			objective: 'Escape stored text.',
-			requirements: [{ id: 'X1', text: 'Stored text is data.', source: 'brief://xss' }],
+			requirements: [
+				{ id: 'X1', text: 'Stored text is data.', source: 'brief://xss', metadata: { 'x.note': payload } },
+			],
 			sourceContext: [],
 		},
 	})
@@ -52,6 +54,7 @@ function seedPayload(workspace: string) {
 					dependsOn: [],
 					preconditions: [],
 					action: 'Read the page.',
+					metadata: { 'x-key_1': `"><img src=x onerror=alert(1)>${payload}` },
 					assertions: [{ id: 'A1', check: 'Nothing runs.', checkKind: 'deterministic' }],
 				},
 			],
@@ -159,6 +162,10 @@ test('each page renders and escapes stored text', async (t) => {
 	}
 	for (const path of ['/', '/plans/xss@1', '/plans/xss@1/gaps/G1'])
 		assert.match((await call(ui, path)).body, /&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;/, path)
+	const metadata = (await call(ui, '/plans/xss@1')).body
+	assert.match(metadata, /<span class="tag">x\.note=&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;<\/span>/)
+	assert.match(metadata, /<span class="tag">x-key_1=&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;&lt;script&gt;/)
+	assert.doesNotMatch(metadata, /<img src=x/)
 	assert.equal((await call(ui, '/plans/checkout')).headers.location, '/plans/checkout@2')
 	const missing = await call(ui, '/plans/nothing@1')
 	assert.equal(missing.status, 404)
@@ -932,4 +939,9 @@ test('the plan and run pages show team metadata as key and value tags', async (t
 	assert.match(run, /<span class="tag">component=pricing<\/span>/)
 	assert.match(run, /<span class="tag">jiraKey=SHOP-142<\/span>/)
 	assert.match(run, /<span class="tag">regression=true<\/span>/)
+	assert.match(
+		run,
+		/The 40 percent spring promotion applies to the cart total\.(?:(?!<\/td>)[\s\S])*<span class="tag">jira=SHOP-41<\/span>/
+	)
+	for (const page of [plan, run]) assert.doesNotMatch(page, /<(div|p) class="(small|test-note)">\s*<\/(div|p)>/)
 })

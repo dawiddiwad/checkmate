@@ -108,6 +108,50 @@ test('metadata goes unchanged from the request, candidate, patch, and finding in
 	assert.deepEqual(next.tests[0].metadata, { priority: 'low' })
 	assert.deepEqual(next.requirements[0].metadata, { jira: 'SHOP-40' })
 	assert.deepEqual(next.tests[1].metadata, latest.tests[1].metadata)
+	const before = planRevision(opened, 'checkout')
+	patchPlan(opened, actor, {
+		reference: `checkout@${before.plan.revision}`,
+		patch: { tests: { T1: { metadata: { priority: 'low' } } } },
+	})
+	const cleared = patchPlan(opened, actor, {
+		reference: `checkout@${before.plan.revision}`,
+		patch: { tests: { T1: { metadata: {} } }, requirements: { R1: { metadata: {} } } },
+	})
+	const after = planRevision(opened, 'checkout').plan
+	assert.equal('metadata' in after.tests[0], false)
+	assert.equal('metadata' in after.requirements[0], false)
+	const plain = patchPlan(opened, actor, {
+		reference: `checkout@${before.plan.revision}`,
+		patch: { tests: { T1: { title: after.tests[0].title } } },
+	})
+	assert.equal(plain.data.sha256, cleared.data.sha256)
+})
+
+test('an empty metadata object on a finding is not stored', (t) => {
+	const opened = store(t)
+	tagged(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	const reply = check(opened, 'run-1', 'T1.A1', 'failed')
+	recordFinding(opened, actor, {
+		runId: 'run-1',
+		finding: {
+			id: 'F1',
+			type: 'defect',
+			severity: 'low',
+			assertionIds: ['T1.A1'],
+			requirementIds: ['R1'],
+			title: 'Wrong total',
+			expected: '400 PLN',
+			observed: '380 PLN',
+			reproduction: ['Check out.'],
+			evidenceIds: reply.data.evidenceIds as string[],
+			metadata: {},
+		},
+	})
+	assert.deepEqual(findingList(opened)[0].metadata, {})
+	assert.equal(cli(opened.workspace, ['finding', 'list']).lines[1].split('\t')[7], '-')
+	const stored = opened.db.prepare("SELECT body FROM findings WHERE id = 'F1'").get() as { body: string }
+	assert.equal('metadata' in JSON.parse(stored.body), false)
 })
 
 test('metadata takes up to 20 named string, number, or boolean values', () => {
@@ -156,7 +200,15 @@ test('a schema error names the unknown field, the allowed values, and the bad me
 	)
 	assert.throws(
 		() => validate('plan-patch', { tests: { T1: { priority: 'high' } } }),
-		/plan-patch\/tests\/T1 has unknown field "priority"/
+		new Error('Invalid plan-patch: plan-patch/tests/T1 has unknown field "priority"')
+	)
+	assert.throws(
+		() => validate('plan-patch', { tests: { T1: { assertions: { A1: { check: 'x', weight: 2 } } } } }),
+		new Error('Invalid plan-patch: plan-patch/tests/T1/assertions/A1 has unknown field "weight"')
+	)
+	assert.throws(
+		() => validate('plan-patch', { tests: { T1: { title: 5 } } }),
+		new Error('Invalid plan-patch: plan-patch/tests/T1/title must be string')
 	)
 	assert.throws(
 		() => validate('finding', { ...finding, severity: 'low', priority: undefined, metadata: { 'bad key': 1 } }),
@@ -198,10 +250,10 @@ test('finding list prints one row per finding across runs, and --open keeps only
 	assert.equal(compact.lines[0], 'completed findings count=1')
 	assert.equal(
 		compact.lines[1],
-		'run-1/F1\tcheckout@2\tbuild-1\tlocal\tdefect\thigh\tT2\tblocker=true,component=pricing,jiraKey=SHOP-142,labels=checkout,regression,storyPoints=3\tPromotion stacks with "loyalty" & <credit>'
+		'run-1/F1\tcheckout@2\tbuild-1\tlocal\tdefect\thigh\tT2\tblocker=true; component=pricing; jiraKey=SHOP-142; labels=checkout,regression; storyPoints=3\tPromotion stacks with "loyalty" & <credit>'
 	)
 	passRun(opened, 'run-2', 'build-2', ['T1'])
-	assert.equal(findingList(opened, { open: true }).length, 0)
+	assert.equal(findingList(opened, { open: true }).length, 1)
 	failed(opened, 'run-3', 'build-3', { retestOf: 'run-1' })
 	assert.deepEqual(
 		findingList(opened, { open: true }).map((row) => row.runId),
@@ -237,16 +289,16 @@ test('the JUnit export is well-formed XML with one suite, one case per selected 
 	assert.match(xml, /<testsuites name="run-1" tests="2" failures="1" errors="0" skipped="0" time="[0-9.]+">/)
 	assert.match(
 		xml,
-		/<testsuite name="checkout@2" tests="2" failures="1" errors="0" skipped="0" time="[0-9.]+" timestamp="/
+		/<testsuite name="checkout@2" tests="2" failures="1" errors="0" skipped="0" time="[0-9.]+" timestamp="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}">/
 	)
 	assert.match(xml, /<property name="build" value="build-1"\/><property name="instance" value="local"\/>/)
 	assert.match(
 		xml,
-		/<testcase classname="checkout" name="T1 Standard order total"><properties><property name="requirements" value="R1"\/><\/properties><\/testcase>/
+		/<testcase classname="checkout" name="T1"><properties><property name="title" value="Standard order total"\/><property name="requirements" value="R1"\/><\/properties><\/testcase>/
 	)
 	assert.match(
 		xml,
-		/<testcase classname="checkout" name="T2 Promotion quote"><properties><property name="requirements" value="R2"\/><property name="component" value="pricing"\/><property name="priority" value="high"\/><property name="xrayKey" value="SHOP-T7"\/><\/properties>/
+		/<testcase classname="checkout" name="T2"><properties><property name="title" value="Promotion quote"\/><property name="requirements" value="R2"\/><property name="metadata.component" value="pricing"\/><property name="metadata.priority" value="high"\/><property name="metadata.xrayKey" value="SHOP-T7"\/><\/properties>/
 	)
 	assert.match(
 		xml,

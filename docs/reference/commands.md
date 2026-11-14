@@ -86,18 +86,18 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 - **target show.** Prints one `entryPoint` line for each entry point, the `authentication` kind and references, the tools, and one `instance` line for each active instance. With `--instance <instanceId>`, it also prints `entry`, `environment`, and `reference` lines with the values of that instance.
 - **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values.
 - **run list.** Prints the run, the plan revision, the build, the instance, the state, the completion, the coverage, and the acceptance.
-- **finding list.** Prints one line for each finding of each run, oldest first: `<runId>/<findingId>`, the plan revision, the build, the instance, the type, the severity, the tests, the metadata as `key=value`, and the title. `--plan <planId>` keeps the findings of one plan. `--open` keeps the open defects: the defects that `status` prints for each plan. These are the defects of the latest finished run of the plan that no retest replaces. `--json` gives `findings`, and each row has `runId`, `planId`, `revision`, `build`, `instanceId`, `testIds`, `findingId`, `type`, `severity`, `title`, `expected`, `observed`, `reproduction`, `requirementIds`, `assertionIds`, `evidenceIds`, and `metadata`.
+- **finding list.** Prints one line for each finding of each run, oldest first: `<runId>/<findingId>`, the plan revision, the build, the instance, the type, the severity, the tests, the metadata as `key=value` pairs separated by `; `, and the title. `--plan <planId>` keeps the findings of one plan. `--open` keeps the [open defects](runs.md#open-defects), the same defects that `status` prints. For the complete metadata and the other fields, use `--json`. `--json` gives `findings`, and each row has `runId`, `planId`, `revision`, `build`, `instanceId`, `testIds`, `findingId`, `type`, `severity`, `title`, `expected`, `observed`, `reproduction`, `requirementIds`, `assertionIds`, `evidenceIds`, and `metadata`.
 
   ```text
   completed findings count=1
-  run-1/F1	checkout@2	build-1	local	defect	high	T2	component=pricing,jiraKey=SHOP-142	Promotion stacks with loyalty
+  run-1/F1	checkout@2	build-1	local	defect	high	T2	component=pricing; jiraKey=SHOP-142	Promotion stacks with loyalty
   ```
 
 - **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
 
 ## Loop states
 
-`checkmate status <planId>` derives the loop state from the records. Checkmate stores no loop state. Line 1 has `state=` and `waitsOn=`. Then come `why` lines, a `next` line, one `started` line for each open run, the open gaps, the pending decisions, and the defects of the latest finished run. A `started` line names the run, the build, and the instance. A matrix of five runs on five instances prints five `started` lines.
+`checkmate status <planId>` derives the loop state from the records. Checkmate stores no loop state. Line 1 has `state=` and `waitsOn=`. Then come `why` lines, a `next` line, one `started` line for each open run, the open gaps, the pending decisions, and the [open defects](runs.md#open-defects) of all finished runs. A `started` line names the run, the build, and the instance. A matrix of five runs on five instances prints five `started` lines.
 
 ```text
 completed checkout state=needs_revision waitsOn=planner revision=2 approval=pending run=run-1
@@ -106,25 +106,25 @@ next	checkmate delegate revise checkout
 01M7CVYCKGM0TNPWADTFZGRZ0J	pending	G1	clarify
 ```
 
-| State               | Waits on | Meaning                                                                                        |
-| ------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `needs_plan`        | planner  | The plan request has no revision.                                                              |
-| `run_in_progress`   | qa       | One or more runs of the plan are started.                                                      |
-| `needs_revision`    | planner  | A gap answer waits for the revise stage.                                                       |
-| `plan_rejected`     | oracle   | The latest revision is rejected. Change the plan.                                              |
-| `needs_answers`     | oracle   | A gap or a run gap is open without an answer.                                                  |
-| `needs_approval`    | oracle   | The latest revision waits for approval.                                                        |
-| `ready_to_run`      | qa       | The latest revision is approved or needs no approval, no run is finished, and a test is ready. |
-| `nothing_to_run`    | oracle   | No test is ready and no gap is open.                                                           |
-| `defects_open`      | factory  | The latest finished run has defects. Build a fix, then retest.                                 |
-| `needs_retest`      | qa       | The latest run did not pass every test, tested an older revision, or is rejected.              |
-| `awaits_acceptance` | oracle   | The latest run passed every selected test. Its result waits for acceptance.                    |
-| `accepted`          | none     | The oracle accepted the result.                                                                |
-| `passed`            | none     | The latest run passed. Result acceptance is not required.                                      |
+| State               | Waits on | Meaning                                                                                                                     |
+| ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `needs_plan`        | planner  | The plan request has no revision.                                                                                           |
+| `run_in_progress`   | qa       | One or more runs of the plan are started.                                                                                   |
+| `needs_revision`    | planner  | A gap answer waits for the revise stage.                                                                                    |
+| `plan_rejected`     | oracle   | The latest revision is rejected. Change the plan.                                                                           |
+| `needs_answers`     | oracle   | A gap or a run gap is open without an answer.                                                                               |
+| `needs_approval`    | oracle   | The latest revision waits for approval.                                                                                     |
+| `ready_to_run`      | qa       | The latest revision is approved or needs no approval, no run is finished, and a test is ready.                              |
+| `nothing_to_run`    | oracle   | No test is ready and no gap is open.                                                                                        |
+| `defects_open`      | factory  | A finished run has an open defect. Build a fix, then retest.                                                                |
+| `needs_retest`      | qa       | The latest outcome of a test is not `passed`, or the latest run tested an older revision, did not complete, or is rejected. |
+| `awaits_acceptance` | oracle   | No defect is open, and the latest outcome of each test that ran is `passed`. The latest result waits for acceptance.        |
+| `accepted`          | none     | The oracle accepted the result.                                                                                             |
+| `passed`            | none     | The latest run passed. Result acceptance is not required.                                                                   |
 
 The `next` line is a hint for a person or an agent. Do not parse it. `--json` also gives `stage`: the `delegate` stage that the plan waits on. It is `plan` for `needs_plan`, `revise` for `needs_revision`, `execute` for `run_in_progress`, and `none` for every other state. The subject of `plan` and `revise` is the plan ID. The subjects of `execute` are the run IDs in `openRuns`, one for each started run. With one started run, `latestRun.runId` is the same run.
 
-`status` tries the states in this order and prints the first one that applies. After a finished run, an open blocking gap gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. A run that a later run retests does not count. An approved revision with open gaps is `ready_to_run` until its first run finishes.
+`status` tries the states in this order and prints the first one that applies. After a finished run, an open blocking gap gives `needs_answers` first, then open defects give `defects_open`, then an open non-blocking gap gives `needs_answers`. The latest outcome of a test comes from the latest finished run that selected the test. A started run changes no outcome and closes no defect. An approved revision with open gaps is `ready_to_run` until its first run finishes.
 
 ## Input
 

@@ -252,7 +252,7 @@ Checkmate builds the next revision:
 - A new ID adds the item. A new requirement needs `text` and `source`. A new test needs `title`, `requirementIds`, `capability`, `operations`, and `action`. A new gap needs `severity`, `requirementIds`, `testIds`, `question`, and `consequence`, and it is `open`.
 - `null` removes the item. `assertions` works as in the [plan delta](#plan-delta).
 - A patch cannot set gap `status` or `decisionId`. Use `gap answer`.
-- `metadata` of a requirement or a test is replaced as a whole. Send `{}` to clear it. A plan delta cannot change metadata.
+- `metadata` of a requirement or a test is replaced as a whole. Send `{}` to remove it. A plan delta cannot change metadata.
 
 `plan adopt-gaps` builds a candidate from the gaps of a run, and the same rules apply.
 
@@ -330,8 +330,8 @@ A test in a candidate can carry its Xray key the same way: `"metadata": { "prior
 - `metadata` is an object with 0 to 20 keys.
 - A key has 1 to 64 letters, digits, `_`, `.`, or `-`. It starts with a letter.
 - A value is a string of 0 to 500 characters, a number, or a boolean. A list or an object is refused. Give a list as one string, for example `"checkout,regression"`.
-- Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
-- The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as properties.
+- Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
+- The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as `metadata.<key>` properties.
 
 ## Schemas
 

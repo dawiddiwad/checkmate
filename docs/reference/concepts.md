@@ -23,13 +23,13 @@ In solo mode, you are the oracle, and Claude Code does the work of the planner a
 
 Checkmate has five stages. Between the stages, the oracle decides.
 
-| Stage   | Does                                                        | Skill                | Next decision                |
-| ------- | ----------------------------------------------------------- | -------------------- | ---------------------------- |
-| Setup   | Checks the tools and the target. Saves a target profile.    | `/checkmate:setup`   | None.                        |
-| Plan    | Writes revision 1 of a plan: requirements, tests, and gaps. | `/checkmate:plan`    | Answer the gaps.             |
-| Revise  | Applies the answers. Writes the next revision.              | `/checkmate:revise`  | Approve the revision.        |
-| Execute | Runs the tests. Records results, evidence, and findings.    | `/checkmate:execute` | Accept or reject the result. |
-| Report  | Exports a plan or a run as HTML, Markdown, or JSON.         | `/checkmate:report`  | None.                        |
+| Stage   | Does                                                                        | Skill                | Next decision                |
+| ------- | --------------------------------------------------------------------------- | -------------------- | ---------------------------- |
+| Setup   | Checks the tools and the target. Saves a target profile.                    | `/checkmate:setup`   | None.                        |
+| Plan    | Writes revision 1 of a plan: requirements, tests, and gaps.                 | `/checkmate:plan`    | Answer the gaps.             |
+| Revise  | Applies the answers. Writes the next revision.                              | `/checkmate:revise`  | Approve the revision.        |
+| Execute | Runs the tests. Records results, evidence, and findings.                    | `/checkmate:execute` | Accept or reject the result. |
+| Report  | Exports a plan or a run as HTML, Markdown, or JSON, and a run as JUnit XML. | `/checkmate:report`  | None.                        |
 
 The plugin has two more skills. `/checkmate:status` tells where a plan is in the loop. `/checkmate:ui` starts the review UI.
 
@@ -63,7 +63,7 @@ The plugin has two more skills. `/checkmate:status` tells where a plan is in the
 
 **Run.** One execution of selected tests of a plan revision on one build and one instance. A retest is a new run on a new build. It can use another instance. A matrix is a set of runs of one plan revision, one run for each instance.
 
-**Finding.** A defect or a potential issue that a run found.
+**Finding.** A defect or a potential issue that a run found. A defect stays open until a later run passes its tests or a retest finds it again. Read [Open defects](runs.md#open-defects).
 
 **Evidence.** The bytes that show an observation, for example a page excerpt, an HTTP exchange, or a screenshot.
 

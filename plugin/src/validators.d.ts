@@ -2,7 +2,7 @@ export type Validator = ((value: unknown) => boolean) & {
 	errors?: Array<{
 		instancePath: string
 		keyword: string
-		params: { additionalProperty?: string; allowedValues?: unknown[] }
+		params: { additionalProperty?: string; allowedValues?: unknown[]; type?: string | string[] }
 		propertyName?: string
 		message?: string
 	}> | null

@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Execute an approved Checkmate plan revision. Record each assertion result with evidence, close each test, record findings and gaps, and finish the run.
+description: Execute an approved Checkmate plan revision, or retest an earlier run on a new build after a fix. Use for a request to run, re-run, or retest the tests of a plan or a run ID such as run-1. Record each assertion result with evidence, close each test, record findings and gaps, and finish the run.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to begin a run and how to report.

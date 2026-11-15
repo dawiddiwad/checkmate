@@ -1,20 +1,20 @@
 ---
 name: plan
-description: Create revision 1 of a Checkmate test plan from a recorded plan request. Write tests with explicit assertions, and gaps for unknown behavior.
+description: Create revision 1 of a Checkmate test plan for a ticket or a change, from a recorded plan request. Write tests with explicit assertions, and gaps for unknown behavior. Not for running or retesting tests.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to record a missing request and how to report.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
-A plan request has an `objective`, and `requirements` or `context.sources`, or both. When it has requirements, the plan covers exactly these requirements. When it has only sources, you write the requirements from the sources. `plan request` prints the tools of this plan. Use only these tools to read the sources.
+A plan request has an `objective`, and `requirements` or `context.sources`, or both. When it has requirements, the plan covers exactly these requirements. When it has only sources, you write the requirements from the sources. `plan request` prints the tools of this plan. Read a local file source, for example `ticket.md` or `docs/`, with the file tools of the host. Use the listed tools for other sources, for example a Jira ticket.
 
 Save the plan with `plan save` before 75% of the deadline is used, also when it is not complete. A saved plan with gaps is better than no plan.
 
 ## Steps
 
 1. Run `checkmate plan request <planId>`. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations. When it refuses with `Unknown plan`, return `needs_decision` with the reason. In the same session, follow `session.md`.
-2. Read each context source with the listed tools. Follow the instructions. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.
+2. Read each context source. Use the file tools of the host for a local file, and the listed tools for other sources. Follow the instructions. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.
 3. Read the project instructions, for example `AGENTS.md`, `CLAUDE.md`, and `README.md`. Find how to drive the application: through the UI, through an API, or both. Use this to choose the capability of each test. Read the product documentation that they name, for example `docs/`.
 4. If the request has no requirements, write them from the sources. Give each requirement an `id`, a `text`, and a `source` that starts with the context source, for example `jira:SHOP-12#ac-1`. Add `requirements` to the candidate.
 5. List the vague terms of each requirement. Read [Vague terms](#vague-terms). For each term that changes an expected value, write an open blocking gap with `"requirementIds": []` and the affected tests in `testIds`. Do not pick a value.

@@ -1,6 +1,6 @@
 ---
 name: status
-description: Answer where a Checkmate plan is in the loop, who it waits on, and what comes next. Use for a question about the state of a plan, a ticket, a run, or the inbox. Reads only.
+description: Answer where a Checkmate plan is in the loop, who it waits on, and what comes next. Use for a question about the state of a plan, a ticket, a run, or the inbox, or about what to do next. Reads only. Does not begin, run, or retest a run.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md` for the command rules and `${CLAUDE_PLUGIN_ROOT}/references/session.md` for the report format.

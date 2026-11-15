@@ -1,15 +1,18 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "lite-record.schema.json",
+	"description": "The record of one tested build, in one lite record call. Test freely with the app, the API, and the docs. Then record the full build. A build has one record. When Checkmate refuses, read reason and hint, correct the payload, and send it again. Only the PM answers questions and accepts records.",
 	"type": "object",
 	"properties": {
 		"items": {
+			"description": "New rules that you found during the test and that no item covers. Leave out this field when you have none.",
 			"type": "array",
 			"items": {
-				"$ref": "plan.schema.json#/properties/requirements/items"
+				"$ref": "#/definitions/item"
 			}
 		},
 		"checks": {
+			"description": "Give each item one or more checks on each build. For a regression item, do the baseline steps again exactly. For each rule, also try the boundary value, the other entry point (API or UI), the state after an undo or a removal, and a second view of the same value (a list, an export, a header).",
 			"type": "array",
 			"items": {
 				"$ref": "#/definitions/check"
@@ -17,18 +20,21 @@
 			"minItems": 1
 		},
 		"defects": {
+			"description": "The new defects of this build, each with a new ID. Give an earlier defect a verdict in retests. Do not record it again. A failed check must name each defect. When no item covers a defect, add an item and a failed check. Leave out this field when you have none.",
 			"type": "array",
 			"items": {
 				"$ref": "#/definitions/defect"
 			}
 		},
 		"retests": {
+			"description": "A verdict for each open earlier defect. Do the steps of each open defect again before you explore.",
 			"type": "array",
 			"items": {
 				"$ref": "#/definitions/retest"
 			}
 		},
 		"questions": {
+			"description": "New questions about points that are still not settled. Do not ask a question again. Leave out this field when you have none.",
 			"type": "array",
 			"items": {
 				"$ref": "#/definitions/question"
@@ -37,6 +43,42 @@
 	},
 	"required": ["checks"],
 	"additionalProperties": false,
+	"examples": [
+		{
+			"checks": [
+				{
+					"item": "R1",
+					"check": "Borrow a sixth book.",
+					"result": "failed",
+					"observed": "The loan is created.",
+					"defect": "D1"
+				},
+				{
+					"item": "R2",
+					"check": "Return L1 3 days late. GET /api/loans/L1.",
+					"result": "passed",
+					"observed": "Fee 1.50.",
+					"value": "fee 1.50"
+				}
+			],
+			"defects": [
+				{
+					"id": "D1",
+					"title": "A sixth loan is accepted",
+					"severity": "high",
+					"steps": ["Borrow 5 books.", "Borrow one more."],
+					"expected": "Refused (ticket.md, criterion 1).",
+					"actual": "201 Created.",
+					"evidence": [
+						"evidence/d1.png",
+						{
+							"text": "POST /api/loans: 201"
+						}
+					]
+				}
+			]
+		}
+	],
 	"definitions": {
 		"identifier": {
 			"type": "string",
@@ -47,6 +89,7 @@
 			"minLength": 1
 		},
 		"evidence": {
+			"description": "File paths relative to the workspace, for example evidence/r1.png, or {\"text\": \"<what you saw>\"}. Save screenshots, responses, and logs as files.",
 			"type": "array",
 			"items": {
 				"anyOf": [
@@ -71,31 +114,57 @@
 				]
 			}
 		},
+		"item": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"description": "A new unique item ID, for example R9.",
+					"$ref": "#/definitions/identifier"
+				},
+				"text": {
+					"description": "The rule, in one sentence.",
+					"$ref": "#/definitions/text"
+				},
+				"source": {
+					"description": "Where the rule comes from: exploration, or docs/<file>#<section>.",
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["id", "text", "source"],
+			"additionalProperties": false
+		},
 		"check": {
 			"type": "object",
 			"properties": {
 				"item": {
+					"description": "The ID of the item that this check verifies.",
 					"$ref": "#/definitions/identifier"
 				},
 				"check": {
+					"description": "What you did, in one sentence. For a regression item, give the baseline steps.",
 					"$ref": "#/definitions/text"
 				},
 				"result": {
+					"description": "passed or failed when the check ran. blocked when it cannot run. not_run when you did not run it. A criterion item needs passed, failed, or blocked.",
 					"enum": ["passed", "failed", "blocked", "not_run"]
 				},
 				"observed": {
+					"description": "What you saw. Necessary for passed and failed.",
 					"$ref": "#/definitions/text"
 				},
 				"value": {
+					"description": "Necessary for a regression item: the value after the baseline steps, in the form of the baseline. A different value is a failure, unless the ticket or a PM answer changes the rule. Then give the cause in reason.",
 					"$ref": "lite-checklist.schema.json#/definitions/value"
 				},
 				"reason": {
+					"description": "Necessary for blocked and not_run: why the check did not run. On a passed regression check with a new value: why the new value is correct.",
 					"$ref": "#/definitions/text"
 				},
 				"evidence": {
 					"$ref": "#/definitions/evidence"
 				},
 				"defect": {
+					"description": "Necessary on a failed check, and only there: the ID of a defect in defects, or of an open earlier defect with the verdict not_fixed.",
 					"$ref": "#/definitions/identifier"
 				}
 			},
@@ -106,15 +175,19 @@
 			"type": "object",
 			"properties": {
 				"id": {
+					"description": "A new defect ID, for example D1.",
 					"$ref": "#/definitions/identifier"
 				},
 				"title": {
+					"description": "A short title that names the incorrect behaviour.",
 					"$ref": "#/definitions/text"
 				},
 				"severity": {
+					"description": "The effect on the user.",
 					"enum": ["low", "medium", "high", "critical"]
 				},
 				"steps": {
+					"description": "The exact steps that show the defect, one step in each entry.",
 					"type": "array",
 					"items": {
 						"$ref": "#/definitions/text"
@@ -122,12 +195,15 @@
 					"minItems": 1
 				},
 				"expected": {
+					"description": "The correct result, and the ticket, doc, or PM answer that states it.",
 					"$ref": "#/definitions/text"
 				},
 				"actual": {
+					"description": "The result that you saw.",
 					"$ref": "#/definitions/text"
 				},
 				"evidence": {
+					"description": "Necessary: one or more entries that show the incorrect result: a screenshot, a response body, or a log. Use the form of checks[].evidence.",
 					"$ref": "#/definitions/evidence"
 				}
 			},
@@ -138,15 +214,19 @@
 			"type": "object",
 			"properties": {
 				"defect": {
+					"description": "The ID of the open earlier defect.",
 					"$ref": "#/definitions/identifier"
 				},
 				"verdict": {
+					"description": "fixed or not_fixed. For not_fixed, also add a failed check that names this ID in defect.",
 					"enum": ["fixed", "not_fixed"]
 				},
 				"observed": {
+					"description": "What you saw when you did the steps of the defect again.",
 					"$ref": "#/definitions/text"
 				},
 				"evidence": {
+					"description": "Necessary: one or more entries that show the result on this build.",
 					"$ref": "#/definitions/evidence"
 				}
 			},
@@ -157,12 +237,15 @@
 			"type": "object",
 			"properties": {
 				"id": {
+					"description": "A new question ID, for example Q1.",
 					"$ref": "#/definitions/identifier"
 				},
 				"question": {
+					"description": "One clear question for the PM.",
 					"$ref": "#/definitions/text"
 				},
 				"items": {
+					"description": "The IDs of the items that the answer changes.",
 					"type": "array",
 					"items": {
 						"$ref": "#/definitions/identifier"

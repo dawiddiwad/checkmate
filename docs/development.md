@@ -42,7 +42,7 @@ npm run phase:verify
 
 `phase:verify` runs, in order:
 
-1. `type:check`: the generated types, validators, and plugin bundle match their sources, and TypeScript has no errors.
+1. `type:check`: the generated types, validators, lite payload tables, and plugin bundle match their sources, and TypeScript has no errors.
 2. `lint:check`: ESLint on `plugin`, `cli`, `scripts`, and `test`.
 3. `format:check`: Prettier.
 4. `npm test`: the fast suite. It uses temporary workspaces and needs no network and no Claude credential.
@@ -137,7 +137,7 @@ claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read Writ
 ## Contracts
 
 1. Edit the schemas in `plugin/contracts/`.
-2. Run `npm run generate`. It writes `plugin/src/types.ts` and `plugin/src/validators.js`.
+2. Run `npm run generate`. It writes `plugin/src/types.ts`, `plugin/src/validators.js`, and the lite payload tables in `docs/reference/payloads.md`.
 3. Do not edit the generated files. `npm run type:check` fails when they differ from the schemas.
 4. Update the skills and this manual.
 

@@ -58,8 +58,9 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `run resume <runId>`                                    | Records a new attempt for a stalled run.                                                                                          |
 |           | `run show <runId>`, `run list`                          | Prints a run, or lists runs.                                                                                                      |
 |           | `finding list [--plan <planId>] [--open]`               | Lists the findings of all runs, one line for each finding.                                                                        |
-| Lite      | `lite checklist <planId> --target <targetId@rev>`       | Records a checklist and questions as revision 1 of a lite plan.                                                                   |
-|           | `lite show <planId>`                                    | Prints the items, the questions with their answers, the runs, and the open defects.                                               |
+| Lite      | `lite guide [<planId>]`                                 | Prints the lite steps, the payload fields of the next step with an example, the state, and the next steps.                        |
+|           | `lite checklist <planId> --target <targetId@rev>`       | Records a checklist and questions as revision 1 of a lite plan.                                                                   |
+|           | `lite show <planId>`                                    | Prints the items, the questions with their answers, the runs, the open defects, and the next steps.                               |
 |           | `lite record <planId> --build <build>`                  | Records one tested build as a new revision and a finished run. Read [Lite mode](#lite-mode).                                      |
 | Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
 |           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                                                                                          |
@@ -264,7 +265,7 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 
 ## Lite mode
 
-Lite mode keeps Checkmate as the record and the gate, but not as the test method. The agent tests freely and records each build in one call. One agent session does all of the steps, with the `lite` skill:
+Lite mode keeps Checkmate as the record and the gate, but not as the test method. The agent tests freely and records each build in one call. One agent session does all of the steps, with the `lite` skill or with `lite guide`:
 
 1. Before the build, `lite checklist` records the checklist items (the requirements) and the questions (non-blocking gaps). The target profile must have `"approvals": {"plan": "none", ...}`. Lite mode has no setup, plan approval, or revise stage.
 2. The oracle answers each question with `gap answer`.
@@ -273,6 +274,8 @@ Lite mode keeps Checkmate as the record and the gate, but not as the test method
 The checklist states `criteria`, the count of numbered acceptance criteria in the ticket. An item with `"criterion": <n>` is the item of criterion `n`. Checkmate stores its source as `<ticket file>#ac-<n>` and the number in the metadata `criterion`. `lite checklist` refuses the checklist when a number from 1 to `criteria` has no item.
 
 An item with a `baseline` is a regression item. The baseline has the exact request or steps, the value on the base app, and the value that the docs state. Checkmate stores them in the metadata `baselineSteps`, `baselineValue`, and `documented`.
+
+`lite guide [<planId>]` prints what an agent needs without a skill. It prints the three steps and, for the next step, the command, each payload field with its description, and an example. The text comes from the `description` and `examples` of the two lite schemas. Without a plan, or for a plan without a checklist, the next step is `lite checklist`. For a plan with a checklist, the next step is `lite record`: the guide also prints the `lite show` lines and `need` lines. Each `need` line names a field and the items or open defects that the record must give it. `lite show` and `lite guide` end with the same `next:` lines.
 
 `lite checklist` also accepts a plan that `plan open` opened and that has no revision. It keeps the open request and the target of that request.
 
@@ -291,7 +294,7 @@ An item with a `baseline` is a regression item. The baseline has the exact reque
 - an open earlier defect has no retest verdict with evidence,
 - the build already has a record.
 
-Checkmate compares the values after it removes the extra spaces. It adds the value, the baseline, and the reason to the `observed` text of the check. The refusal has a `reason` and a `hint`. Nothing is recorded. When the plan has no checklist, `lite show` and `lite record` refuse with a hint to run `lite checklist`. Evidence is a file path in the workspace or inline text. Checkmate does not delete the file.
+Checkmate compares the values after it removes the extra spaces. It adds the value, the baseline, and the reason to the `observed` text of the check. The refusal has a `reason` and a `hint`. The reason or the hint names the payload field, for example `checks[1].defect` or `retests[].evidence`. Nothing is recorded. When the plan has no checklist, `lite show` and `lite record` refuse with a hint to run `lite checklist`. Evidence is a file path in the workspace or inline text. Checkmate does not delete the file.
 
 `status`, `run show`, `finding list`, `export`, the review UI, and `result accept` read lite records as they read other records. The `next` lines of `status` name the commands of the full loop.
 

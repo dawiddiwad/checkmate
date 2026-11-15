@@ -55,7 +55,6 @@ export type LiteRecord = {
 		id: string
 		text: string
 		source: string
-		metadata?: Record<string, string | number | boolean>
 	}>
 	checks: Array<{
 		item: string

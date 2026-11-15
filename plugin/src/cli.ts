@@ -72,6 +72,8 @@ import {
 	runList,
 } from './views.ts'
 import { recordBuild, recordChecklist, showLite } from './lite.ts'
+import type { Field } from './guide.ts'
+import { guideLite } from './guide.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
@@ -212,6 +214,50 @@ function leftOutLines(reply: Reply) {
 
 function short(sha256: unknown) {
 	return typeof sha256 === 'string' ? sha256.slice(0, 8) : sha256
+}
+
+type LiteState = {
+	sha256?: string
+	items: Plan['requirements']
+	questions: Array<{ id: string; status: string; question: string; kind: string | null; answer: string | null }>
+	runs: Array<{ runId: string; build: string; coverage: string | null; acceptance: string | null }>
+	defects: Array<{ runId: string; id: string; severity: string; title: string; items: string[] }>
+	next: string[]
+}
+
+function liteLines(data: LiteState) {
+	return [
+		...data.items.map((item) => ['item', item.id, item.text, item.source]),
+		...data.items
+			.filter((item) => item.metadata?.baselineValue !== undefined)
+			.map((item) => [
+				'baseline',
+				item.id,
+				`steps=${item.metadata!.baselineSteps}`,
+				`value=${item.metadata!.baselineValue}`,
+				`documented=${item.metadata!.documented}`,
+			]),
+		...data.questions.map((question) => [
+			'question',
+			question.id,
+			question.status,
+			question.question,
+			...(question.answer ? [question.kind, question.answer] : []),
+		]),
+		...data.runs.map((run) => ['run', run.runId, run.build, run.coverage, run.acceptance]),
+		...data.defects.map((defect) => [
+			'open_defect',
+			defect.id,
+			defect.runId,
+			defect.severity,
+			defect.items,
+			defect.title,
+		]),
+	]
+}
+
+function nextLines(next: string[]) {
+	return next.map((line) => [`next: ${line}`])
 }
 
 const commands: Record<string, Command> = {
@@ -694,53 +740,45 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), questions: reply.data.questions } }),
 	},
+	'lite guide': {
+		positionals: ['planId?'],
+		run: (store, args) => guideLite(store, value(args, 'planId')),
+		print: (reply) => {
+			const data = reply.data as LiteState & {
+				step: string
+				steps: string[]
+				command: string
+				about: string
+				fields: Field[]
+				example: unknown
+				need?: Array<[string, string[], string]>
+			}
+			return {
+				facts: { step: data.step, ...(data.sha256 ? { sha256: short(data.sha256) } : {}) },
+				lines: [
+					...data.steps.map((step) => ['step', step]),
+					['about', data.about],
+					...data.fields.map((field) => [
+						'field',
+						field.path,
+						field.type,
+						field.required ? 'required' : 'optional',
+						field.description,
+					]),
+					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
+					...(data.items ? liteLines(data) : []),
+					...(data.need ?? []).map((need) => ['need', ...need]),
+					...nextLines(data.next),
+				],
+			}
+		},
+	},
 	'lite show': {
 		positionals: ['planId'],
 		run: (store, args) => showLite(store, value(args, 'planId')!),
 		print: (reply) => {
-			const data = reply.data as ReturnType<typeof showLite>['data'] & {
-				items: Plan['requirements']
-				questions: Array<{
-					id: string
-					status: string
-					question: string
-					kind: string | null
-					answer: string | null
-				}>
-				runs: Array<{ runId: string; build: string; coverage: string | null; acceptance: string | null }>
-				defects: Array<{ runId: string; id: string; severity: string; title: string; items: string[] }>
-			}
-			return {
-				facts: { sha256: short(data.sha256) },
-				lines: [
-					...data.items.map((item) => ['item', item.id, item.text, item.source]),
-					...data.items
-						.filter((item) => item.metadata?.baselineValue !== undefined)
-						.map((item) => [
-							'baseline',
-							item.id,
-							`steps=${item.metadata!.baselineSteps}`,
-							`value=${item.metadata!.baselineValue}`,
-							`documented=${item.metadata!.documented}`,
-						]),
-					...data.questions.map((question) => [
-						'question',
-						question.id,
-						question.status,
-						question.question,
-						...(question.answer ? [question.kind, question.answer] : []),
-					]),
-					...data.runs.map((run) => ['run', run.runId, run.build, run.coverage, run.acceptance]),
-					...data.defects.map((defect) => [
-						'open_defect',
-						defect.id,
-						defect.runId,
-						defect.severity,
-						defect.items,
-						defect.title,
-					]),
-				],
-			}
+			const data = reply.data as LiteState
+			return { facts: { sha256: short(data.sha256) }, lines: [...liteLines(data), ...nextLines(data.next)] }
 		},
 	},
 	'lite record': {
@@ -1448,14 +1486,19 @@ function parse(name: string, tokens: string[]) {
 				.filter(Boolean)
 		} else args[flag] = [...((args[flag] as string[] | undefined) ?? []), next]
 	}
-	if (positionals.length !== command.positionals.length)
+	const needed = command.positionals.filter((positional) => !positional.endsWith('?')).length
+	if (positionals.length < needed || positionals.length > command.positionals.length)
 		throw wrong(
-			`${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(' ') || 'none'}`
+			`${name} needs ${needed === command.positionals.length ? needed : `${needed} to ${command.positionals.length}`} argument(s), not ${positionals.length}: ${command.positionals.map(positionalUsage).join(' ') || 'none'}`
 		)
 	for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`)
-	command.positionals.forEach((positional, i) => (args[positional] = positionals[i]))
+	positionals.forEach((positional, i) => (args[command.positionals[i].replace(/\?$/, '')] = positional))
 	command.check?.(args)
 	return args
+}
+
+function positionalUsage(positional: string) {
+	return positional.endsWith('?') ? `[<${positional.slice(0, -1)}>]` : `<${positional}>`
 }
 
 function placeholder(kind: FlagKind) {
@@ -1473,7 +1516,7 @@ function usage(name: string) {
 	return [
 		'Usage: checkmate',
 		name,
-		...command.positionals.map((positional) => `<${positional}>`),
+		...command.positionals.map(positionalUsage),
 		...flags,
 		...(command.write ? ['[--actor <name>]'] : []),
 		...(command.stdin ? ["<<'EOF' <json> EOF"] : []),
@@ -1546,7 +1589,8 @@ export function run(argv: string[], io: Io): Outcome {
 		return { code: 1, output: format(refused('invalid_request', name, error), json) }
 	}
 	const command = commands[name]
-	const subject = command.positionals.length && name !== 'query' ? String(args[command.positionals[0]]) : name
+	const first = command.positionals[0]?.replace(/\?$/, '')
+	const subject = first && name !== 'query' ? String(args[first] ?? name) : name
 	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
 	let store: Store | undefined
 	try {

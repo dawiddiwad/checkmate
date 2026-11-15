@@ -82,7 +82,7 @@ export function same(a: unknown, b: unknown) {
 	return canonical(a) === canonical(b)
 }
 
-export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
+export function validate<K extends keyof Documents>(name: K, value: unknown, hint?: string): Documents[K] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
 	const errors = () =>
 		unionErrors(check.errors ?? [])
@@ -92,7 +92,8 @@ export function validate<K extends keyof Documents>(name: K, value: unknown): Do
 	requireWellFormed(
 		check(value),
 		`Invalid ${name}: ${errors()}`,
-		`Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
+		hint ??
+			`Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
 	)
 	return value as Documents[K]
 }
@@ -179,10 +180,10 @@ export function expectDigest(actual: string, expected: string | undefined, subje
 	)
 }
 
-export function index<T, K extends keyof T>(items: T[], key: K, name: string): Map<T[K], T> {
+export function index<T, K extends keyof T>(items: T[], key: K, name: string, hint?: string): Map<T[K], T> {
 	const map = new Map<T[K], T>()
 	for (const item of items) {
-		requireWellFormed(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`)
+		requireWellFormed(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`, hint)
 		map.set(item[key], item)
 	}
 	return map

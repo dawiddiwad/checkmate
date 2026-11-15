@@ -4,6 +4,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TestContext } from 'node:test'
 import { cli, directory, json, profile } from './support.ts'
+import { liteSchema } from '../plugin/src/guide.ts'
+import { validate } from '../plugin/src/contracts.ts'
 
 const approvals = { plan: 'none' as const, result: 'required' as const }
 
@@ -320,7 +322,7 @@ test('lite record compares each regression item with its baseline', (t) => {
 		[
 			'a passed check with another value',
 			(record) => (regression(record).value = '1 item'),
-			/R2 is passed, but the value "1 item" is not the baseline "2 items"/,
+			/R2 \(checks\[1\]\) is passed, but the value "1 item" is not the baseline "2 items"/,
 		],
 		[
 			'a criterion with only not_run checks',
@@ -346,4 +348,68 @@ test('lite record compares each regression item with its baseline', (t) => {
 		test.assertions[0].observed,
 		'Two items stay. Value: 1 item. Baseline: 2 items. Reason: The ticket keeps one item after a reload.'
 	)
+})
+
+test('every lite payload field has a description and each schema example is valid', () => {
+	for (const name of ['lite-checklist', 'lite-record'] as const) {
+		const schema = liteSchema(name)
+		assert.ok(schema.about, name)
+		for (const field of schema.fields) assert.ok(field.description, `${name} ${field.path}`)
+		assert.doesNotThrow(() => validate(name, schema.example), name)
+	}
+})
+
+test('lite guide prints the next step, its fields, an example, the state, and the next lines', (t) => {
+	const workspace = targetOnly(t)
+	const first = cli(workspace, ['lite', 'guide'])
+	assert.equal(first.code, 0)
+	assert.match(first.lines[0], /^completed lite guide step=checklist/)
+	assert.ok(first.output.length < 6000, `${first.output.length} characters`)
+	for (const path of ['items[].baseline.steps', 'questions[].items'])
+		assert.ok(
+			first.lines.some((line) => line.startsWith(`field\t${path}\t`)),
+			path
+		)
+	assert.ok(first.output.includes("checkmate lite checklist <planId> --target checkout-local@1 <<'EOF'"))
+	assert.ok(first.lines.at(-1)!.startsWith('next: Record the checklist in one call'))
+
+	const example = liteSchema('lite-checklist').example
+	const recorded = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], example)
+	assert.equal(recorded.code, 0, JSON.stringify(recorded.body))
+	const guide = json(workspace, ['lite', 'guide', 'checkout']).body
+	assert.equal(guide.step, 'record')
+	assert.deepEqual(guide.need, [
+		['checks[].item', ['R1', 'R2'], 'one or more checks for each item'],
+		['checks[].result', ['R1'], 'passed, failed, or blocked'],
+		['checks[].value', ['R2'], 'the value after the baseline steps'],
+	])
+	assert.ok(!guide.fields.some((field: { path: string }) => field.path.startsWith('retests')))
+	writeFileSync(join(workspace, 'evidence', 'd1.png'), 'shot')
+	const b1 = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], liteSchema('lite-record').example)
+	assert.equal(b1.code, 0, JSON.stringify(b1.body))
+
+	const printed = cli(workspace, ['lite', 'guide', 'checkout'])
+	assert.ok(printed.output.length < 7000, `${printed.output.length} characters`)
+	assert.ok(printed.lines.includes('open_defect\tD1\tcheckout-run-1\thigh\tR1\tA sixth loan is accepted'))
+	assert.ok(printed.lines.includes('need\tretests[].defect\tD1\ta verdict with evidence'))
+	assert.ok(printed.lines.some((line) => line.startsWith('field\tretests[].verdict\t')))
+	const next = printed.lines.filter((line) => line.startsWith('next: '))
+	assert.ok(next.includes('next: Give a verdict in retests for each open defect: D1.'))
+	assert.deepEqual(cli(workspace, ['lite', 'show', 'checkout']).lines.slice(-next.length), next)
+})
+
+test('lite refusals name the field and give a hint', (t) => {
+	const workspace = setup(t)
+	const send = (record: unknown) => json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record)
+	const passed = b1Record()
+	Object.assign(passed.checks[1], { defect: 'D1' })
+	const named = send(passed)
+	assert.match(named.body.reasons[1], /of R2 \(checks\[1\]\) is passed\. Only a failed check names a defect/)
+	assert.match(named.body.hint, /Remove "defect" from checks\[1\]/)
+	const unknown = send({ ...b1Record(), note: 'x' })
+	assert.match(unknown.body.reasons[1], /lite-record has unknown field "note"/)
+	assert.match(unknown.body.hint, /Run checkmate lite guide checkout to read the fields/)
+	const twice = b1Record()
+	twice.defects.push({ ...twice.defects[0] })
+	assert.match(send(twice).body.hint, /defects\[\]/)
 })

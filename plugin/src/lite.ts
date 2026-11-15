@@ -50,9 +50,11 @@ const cleanup = {
 	status: 'not_applicable' as const,
 	reason: 'Lite record. The agent tested before the record and owns the cleanup.',
 }
-const liteCommands = 'Lite mode uses only lite checklist, lite show, and lite record.'
-const evidenceHint =
-	'Add "evidence": ["<file path in the workspace>"] or "evidence": [{"text": "<what you saw>"}]. Give one or more items.'
+const liteCommands = 'Lite mode uses only lite guide, lite checklist, lite show, and lite record.'
+const evidenceHint = (path: string) =>
+	`Add to ${path} one or more entries: "<file path in the workspace>" or {"text": "<what you saw>"}.`
+const fieldsHint = (planId: string, command: string) =>
+	`Fix each named field. Run checkmate lite guide ${planId} to read the fields. Then send ${command} again.`
 
 function liteTest(id: string, item: string, check: string, profile: Profile) {
 	return {
@@ -73,11 +75,12 @@ function questionGaps(store: Store, planId: string, questions: Question[] = []):
 	const used = all<{ gap_id: string }>(store, 'SELECT DISTINCT gap_id FROM plan_gaps WHERE plan_id = ?', planId).map(
 		(row) => row.gap_id
 	)
-	index(questions, 'id', 'question')
+	index(questions, 'id', 'question', 'Give each entry of questions[] its own "id".')
 	for (const question of questions)
 		requireCondition(
 			!used.includes(question.id),
-			`Question ID ${question.id} is in use. Use a new ID, for example ${unusedId('Q', used)}.`
+			`Question ID ${question.id} is in use. Use a new ID, for example ${unusedId('Q', used)}.`,
+			'Give questions[].id an ID that no earlier question uses. Ask only new questions.'
 		)
 	return questions.map((question) => ({
 		id: question.id,
@@ -112,13 +115,13 @@ function criteriaCheck(checklist: LiteChecklist) {
 	requireWellFormed(
 		!extra.length,
 		`Criterion numbers above the "criteria" count ${checklist.criteria}: ${extra.join(', ')}`,
-		'Set "criteria" to the count of numbered acceptance criteria in the ticket. Then send lite checklist again.'
+		'Set "criteria" to the count of numbered acceptance criteria in the ticket. Or correct items[].criterion. Then send lite checklist again.'
 	)
 	const missing = Array.from({ length: checklist.criteria }, (_, i) => i + 1).filter((n) => !named.includes(n))
 	requireCondition(
 		!missing.length,
 		`Acceptance criteria without an item: ${missing.join(', ')}`,
-		'Add one item for each numbered acceptance criterion, with "criterion": <number>. Do not merge two criteria in one item. Then send lite checklist again.'
+		'Add to items[] one item for each numbered acceptance criterion, with "criterion": <number>. Do not merge two criteria in one item. Then send lite checklist again.'
 	)
 }
 
@@ -172,8 +175,8 @@ export function recordChecklist(
 				`Run lite checklist ${planId} --target ${opened.target_id}@${opened.target_revision}.`
 			)
 		}
-		const checklist = validate('lite-checklist', input.checklist)
-		index(checklist.items, 'id', 'checklist item')
+		const checklist = validate('lite-checklist', input.checklist, fieldsHint(planId, 'lite checklist'))
+		index(checklist.items, 'id', 'checklist item', 'Give each entry of items[] its own "id".')
 		criteriaCheck(checklist)
 		const items = checklist.items.map(checklistItem)
 		const request = validate('plan-request', { objective: checklist.objective, requirements: items })
@@ -228,43 +231,45 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 	const defects = record.defects ?? []
 	const retests = record.retests ?? []
 	const ids = items.map((item) => item.id)
-	for (const check of record.checks) {
-		const name = `Check "${check.check}" of ${check.item}`
+	for (const [i, check] of record.checks.entries()) {
+		const path = `checks[${i}]`
+		const name = `Check "${check.check}" of ${check.item} (${path})`
 		const item = items.find((known) => known.id === check.item)
 		requireWellFormed(
 			item,
 			`${name} names an unknown item`,
-			`Add the item to items, or use one of: ${ids.join(', ')}.`
+			`Set ${path}.item to one of: ${ids.join(', ')}. Or add the item to items[].`
 		)
 		if (check.result === 'passed' || check.result === 'failed')
 			requireWellFormed(
 				check.observed,
 				`${name} is ${check.result} without observed`,
-				'Add "observed": "<what you saw>".'
+				`Add "observed": "<what you saw>" to ${path}.`
 			)
 		else
 			requireWellFormed(
 				check.reason,
 				`${name} is ${check.result} without a reason`,
-				'Add "reason": "<why the check did not run>".'
+				`Add "reason": "<why the check did not run>" to ${path}.`
 			)
 		requireWellFormed(
 			check.result === 'failed' || check.defect === undefined,
-			`${name} is ${check.result}. Only a failed check names a defect.`
+			`${name} is ${check.result}. Only a failed check names a defect.`,
+			`Remove "defect" from ${path}. Or set "result": "failed" when the check found the defect.`
 		)
 		const baseline = item.metadata?.baselineValue
 		if (baseline !== undefined && check.result === 'passed' && check.value !== undefined)
 			requireCondition(
 				plain(check.value) === plain(String(baseline)) || check.reason,
 				`${name} is passed, but the value "${check.value}" is not the baseline "${baseline}"`,
-				'Record the check as failed with a defect. Or add "reason": "<why the new value is correct, for example the ticket changes this rule>".'
+				`Record ${path} as failed with a defect. Or add "reason": "<why the new value is correct, for example the ticket changes this rule>".`
 			)
 	}
 	const unchecked = ids.filter((id) => !record.checks.some((check) => check.item === id))
 	requireCondition(
 		!unchecked.length,
 		`Checklist items without a check: ${unchecked.join(', ')}`,
-		'Add one or more checks for each item with the result passed, failed, blocked, or not_run. Give a reason for blocked and not_run.'
+		'Add to checks[] one or more checks for each item with the result passed, failed, blocked, or not_run. Give a reason for blocked and not_run.'
 	)
 	const checksOf = (item: Item) => record.checks.filter((check) => check.item === item.id)
 	const unmeasured = items
@@ -274,7 +279,7 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 	requireCondition(
 		!unmeasured.length,
 		`Regression items without a value: ${unmeasured.join(', ')}`,
-		`Do the baseline steps of each regression item again on this build. Add a passed or failed check with "observed" and "value": "<what you saw, in the form of the baseline>". Run lite show ${planId} to read the baselines.`
+		`Do the baseline steps of each regression item again on this build. Add to checks[] a passed or failed check with "observed" and "value": "<what you saw, in the form of the baseline>". Run lite show ${planId} to read the baselines.`
 	)
 	const unresolved = items
 		.filter((item) => item.metadata?.criterion !== undefined)
@@ -283,9 +288,9 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 	requireCondition(
 		!unresolved.length,
 		`Acceptance criteria items with only not_run checks: ${unresolved.join(', ')}`,
-		'Check each acceptance criterion on each build. Give passed or failed with observed. Give blocked with a reason only when the check cannot run.'
+		'Check each acceptance criterion on each build. Set checks[].result to passed or failed with observed. Give blocked with a reason only when the check cannot run.'
 	)
-	const defectIds = [...index(defects, 'id', 'defect').keys()]
+	const defectIds = [...index(defects, 'id', 'defect', 'Give each entry of defects[] its own "id".').keys()]
 	const notFixed = retests.filter((retest) => retest.verdict === 'not_fixed').map((retest) => retest.defect)
 	const orphans = record.checks.filter(
 		(check) => check.result === 'failed' && ![...defectIds, ...notFixed].includes(check.defect ?? '')
@@ -293,16 +298,16 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 	requireCondition(
 		!orphans.length,
 		`Failed checks without a defect: ${orphans.map((check) => `${check.item} "${check.check}"`).join(', ')}`,
-		'Add each defect to defects. Write its ID in the "defect" field of each failed check. A check can also name an earlier defect with the verdict not_fixed.'
+		'Add each defect to defects[]. Write its ID in checks[].defect of each failed check. A check can also name an earlier defect with the verdict not_fixed.'
 	)
 	const unlinked = defectIds.filter((id) => !record.checks.some((check) => check.defect === id))
 	requireCondition(
 		!unlinked.length,
 		`Defects without a failed check: ${unlinked.join(', ')}`,
-		'Write the defect ID in the "defect" field of a failed check. For a defect that no item covers, add an item and a failed check.'
+		'Write the defect ID in checks[].defect of a failed check. For a defect that no item covers, add an entry to items[] and a failed check.'
 	)
 	const bare = defects.filter((defect) => !defect.evidence?.length).map((defect) => defect.id)
-	requireCondition(!bare.length, `Defects without evidence: ${bare.join(', ')}`, evidenceHint)
+	requireCondition(!bare.length, `Defects without evidence: ${bare.join(', ')}`, evidenceHint('defects[].evidence'))
 	const used = all<{ id: string }>(
 		store,
 		'SELECT f.id FROM findings f JOIN runs r ON r.run_id = f.run_id WHERE r.plan_id = ?',
@@ -312,26 +317,30 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 		requireCondition(
 			!used.includes(id),
 			`Defect ID ${id} is in use by an earlier build. Use a new ID, for example ${unusedId('D', [...used, ...defectIds])}.`,
-			'Give an earlier defect a verdict in retests. Do not record it again.'
+			'Give defects[].id a new ID. Give an earlier defect a verdict in retests[]. Do not record it again.'
 		)
-	index(retests, 'defect', 'retest verdict')
+	index(retests, 'defect', 'retest verdict', 'Give one entry of retests[] for each open defect.')
 	const open = earlier.map((defect) => defect.findingId)
 	for (const retest of retests)
 		requireWellFormed(
 			open.includes(retest.defect),
 			`Defect ${retest.defect} is not an open earlier defect`,
 			open.length
-				? `Give a verdict for each of: ${open.join(', ')}.`
+				? `Set retests[].defect to one of: ${open.join(', ')}.`
 				: 'Leave out retests. No earlier defect is open.'
 		)
 	const missing = open.filter((id) => !retests.some((retest) => retest.defect === id))
 	requireCondition(
 		!missing.length,
 		`Earlier defects without a retest verdict: ${missing.join(', ')}`,
-		'Add {"defect": "<id>", "verdict": "fixed" or "not_fixed", "observed": "<what you saw>", "evidence": [...]} to retests for each one.'
+		'Add {"defect": "<id>", "verdict": "fixed" or "not_fixed", "observed": "<what you saw>", "evidence": [...]} to retests[] for each one.'
 	)
 	const unproven = retests.filter((retest) => !retest.evidence?.length).map((retest) => retest.defect)
-	requireCondition(!unproven.length, `Retest verdicts without evidence: ${unproven.join(', ')}`, evidenceHint)
+	requireCondition(
+		!unproven.length,
+		`Retest verdicts without evidence: ${unproven.join(', ')}`,
+		evidenceHint('retests[].evidence')
+	)
 }
 
 function stored(
@@ -414,7 +423,7 @@ export function recordBuild(
 		const base = litePlan(store, input.planId)
 		const planId = base.plan.planId
 		const build = requireText(input.build, 'application build (--build)')
-		const record = validate('lite-record', input.record)
+		const record = validate('lite-record', input.record, fieldsHint(planId, 'lite record'))
 		const last = one<{ run_id: string; application_build: string }>(
 			store,
 			'SELECT run_id, application_build FROM runs WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1',
@@ -441,7 +450,12 @@ export function recordBuild(
 		const decisions = pendingDecisions(store, planId)
 		applyDecisions(draft, decisions)
 		draft.requirements.push(...(record.items ?? []))
-		index(draft.requirements, 'id', 'checklist item')
+		index(
+			draft.requirements,
+			'id',
+			'checklist item',
+			`Give each entry of items[] an ID that the checklist does not use. Run lite show ${planId} to read the item IDs.`
+		)
 		const questions = questionGaps(store, planId, record.questions)
 		draft.gaps.push(...questions)
 		completeness(store, planId, draft.requirements, record, earlier)
@@ -602,6 +616,22 @@ export function recordBuild(
 	})
 }
 
+export function checklistNext(planId: string, target: string) {
+	return [
+		'Study the ticket, the docs, and the base app. Measure each baseline on the base app. Do not test the change yet.',
+		`Record the checklist in one call: checkmate lite checklist ${planId} --target ${target}, with the JSON payload on standard input.`,
+	]
+}
+
+export function recordNext(planId: string, open: string[]) {
+	return [
+		'On each new build: read the answers and the baselines, test the build freely, and keep evidence in files.',
+		`Record the full build in one call: checkmate lite record ${planId} --build <build>, with the JSON payload on standard input.`,
+		...(open.length ? [`Give a verdict in retests for each open defect: ${open.join(', ')}.`] : []),
+		`Run checkmate lite guide ${planId} to read each payload field and an example.`,
+	]
+}
+
 export function showLite(store: Store, planId: string) {
 	const { plan, sha256 } = litePlan(store, planId)
 	const pending = pendingDecisions(store, planId)
@@ -639,5 +669,9 @@ export function showLite(store: Store, planId: string) {
 		questions,
 		runs,
 		defects,
+		next: recordNext(
+			planId,
+			defects.map((defect) => defect.id)
+		),
 	})
 }

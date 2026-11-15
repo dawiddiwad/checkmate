@@ -61,9 +61,9 @@ export type LiteRecord = {
 		text: string
 		source: string
 	}>
-	checks: Array<{
+	checks?: Array<{
 		item: string
-		check: string
+		check?: string
 		result?: 'passed' | 'failed' | 'blocked' | 'not_run'
 		observed?: string
 		value?: string

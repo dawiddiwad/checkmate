@@ -113,11 +113,11 @@
 					"type": "object",
 					"properties": {
 						"steps": {
-							"description": "The exact request or UI steps. Each build does the same steps again.",
+							"description": "The exact request or UI steps, from a state that each build can reach again. Each build does the same steps again.",
 							"$ref": "#/definitions/value"
 						},
 						"value": {
-							"description": "The value that you saw on the base app. Use a short exact value, for example 409 \"Book is on loan\" or fee 1.50.",
+							"description": "The value that you saw on the base app. Use a short exact value, for example 409 \"Book is on loan\" or fee 1.50. Do not put generated IDs, times, or data that other tests change in the value.",
 							"$ref": "#/definitions/value"
 						},
 						"documented": {

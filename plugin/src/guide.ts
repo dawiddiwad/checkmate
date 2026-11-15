@@ -24,7 +24,7 @@ const files: Record<string, Schema> = {
 
 export const liteSteps = [
 	'1. Before the build, while the base app runs: lite checklist records the items, the baselines, and the questions.',
-	'2. On the first build: lite show, free testing, then one lite record.',
+	'2. On the first build: lite show, then free testing. Save a first lite record with --draft early, and add parts with --draft while you test. A last lite record without --draft completes the build.',
 	'3. On each later build: the same, with retest verdicts.',
 	'Use only the lite commands. Send each JSON payload on standard input in a quoted heredoc.',
 ]
@@ -71,10 +71,9 @@ function brief(fields: Field[], names: string[]) {
 	const list = (name: string, required: boolean) =>
 		fields
 			.filter((field) => parent(field) === name && field.required === required)
-			.map((field) => {
-				const own = field.path.slice(field.path.indexOf('.', name.length) + 1)
-				return field.type.includes('|') ? `${own} (${field.type})` : own
-			})
+			.map((field) => ({ field, own: field.path.slice(field.path.indexOf('.', name.length) + 1) }))
+			.filter(({ own }) => !own.includes('.'))
+			.map(({ field, own }) => (field.type.includes('|') ? `${own} (${field.type})` : own))
 			.join(', ')
 	const summary = (name: string) =>
 		[
@@ -136,14 +135,25 @@ export function guideLite(store: Store, planId: string | undefined) {
 		],
 		['retests[].defect', open, 'a verdict with evidence'],
 	].filter(([, list]) => list.length)
-	const fields = open.length ? record.fields : record.fields.filter((field) => !field.path.startsWith('retests'))
+	const later = (state.runs as unknown[]).length > 0
+	const fields = record.fields
+		.filter((field) => open.length || !field.path.startsWith('retests'))
+		.filter((field) => !later || /^(checks|retests)\b/.test(field.path))
 	return completed(planId, {
 		...state,
+		...(later
+			? {
+					items: [],
+					questions: (state.questions as Array<{ status: string }>).filter(
+						(question) => question.status !== 'resolved'
+					),
+				}
+			: {}),
 		step: 'record',
 		command: `checkmate lite record ${planId} --build <build>`,
 		about: record.about,
-		fields: brief(fields, ['items', 'defects', 'retests', 'questions', 'changes']),
-		...((state.runs as unknown[]).length ? {} : { example: record.example }),
+		fields: brief(fields, ['items', 'defects', 'retests', 'questions', 'changes', ...(later ? ['checks'] : [])]),
+		...(later ? {} : { example: record.example }),
 		need,
 		next: [],
 	})

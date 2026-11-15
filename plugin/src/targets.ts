@@ -224,7 +224,11 @@ export function targetRevision(store: Store, targetId: string, revision: number 
 		targetId,
 		...(revision === null ? [] : [revision])
 	)
-	requireCondition(row, `Unknown target profile: ${targetId}${revision === null ? '' : `@${revision}`}`)
+	requireCondition(
+		row,
+		`Unknown target profile: ${targetId}${revision === null ? '' : `@${revision}`}`,
+		`Run checkmate target list to read the saved targets of this workspace: ${store.workspace}.`
+	)
 	return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 }
 }
 

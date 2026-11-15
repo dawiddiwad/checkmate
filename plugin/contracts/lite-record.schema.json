@@ -1,7 +1,7 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "lite-record.schema.json",
-	"description": "One tested build, in one lite record call. Leave out each optional field that you do not need. When Checkmate refuses, read reason and hint, correct the payload, and send it again. Only the PM answers questions and accepts records.",
+	"description": "One tested build. Send it in parts while you test: each lite record call with --draft saves its parts. The last call without --draft adds its parts, or {}, and Checkmate checks the full record. A part replaces an earlier part with the same ID, or a check with the same item and check. Leave out each optional field that you do not need. When Checkmate refuses, read each reason and hint. A refused call saves nothing and the drafts stay, so send again only the refused parts, with the fixes. Only the PM answers questions and accepts records.",
 	"type": "object",
 	"properties": {
 		"items": {
@@ -16,8 +16,7 @@
 			"type": "array",
 			"items": {
 				"$ref": "#/definitions/check"
-			},
-			"minItems": 1
+			}
 		},
 		"defects": {
 			"description": "The new defects of this build, each with exact steps, the expected result and its source (the ticket, a doc, or a PM answer), and evidence. A failed check names each defect. When no item covers it, add an item. Give an earlier defect a verdict in retests.",
@@ -48,7 +47,6 @@
 			}
 		}
 	},
-	"required": ["checks"],
 	"additionalProperties": false,
 	"examples": [
 		{
@@ -62,7 +60,6 @@
 				},
 				{
 					"item": "R2",
-					"check": "Return L1 3 days late. GET /api/loans/L1.",
 					"value": "fee 1.50"
 				}
 			],
@@ -74,12 +71,7 @@
 					"steps": ["Borrow 5 books.", "Borrow one more."],
 					"expected": "Refused (ticket.md, criterion 1).",
 					"actual": "201 Created.",
-					"evidence": [
-						"evidence/d1.png",
-						{
-							"text": "POST /api/loans: 201"
-						}
-					]
+					"evidence": ["evidence/d1.png", "POST /api/loans: 201"]
 				}
 			]
 		}
@@ -94,7 +86,7 @@
 			"minLength": 1
 		},
 		"evidence": {
-			"description": "File paths in the workspace (screenshots, responses, logs), for example evidence/r1.png, or {\"text\": \"<what you saw>\"}.",
+			"description": "Each entry is a file path in the workspace (a screenshot, a response, a log), for example evidence/r1.png, or a short text of what you saw, for example GET /api/loans/L1: 200 fee 1.50. One file can be the evidence of several checks.",
 			"type": "array",
 			"items": {
 				"anyOf": [
@@ -146,7 +138,7 @@
 					"$ref": "#/definitions/identifier"
 				},
 				"check": {
-					"description": "What you did, in one sentence.",
+					"description": "What you did, in one sentence. Leave it out on a check of a repeat line: Checkmate uses the steps of the line.",
 					"$ref": "#/definitions/text"
 				},
 				"result": {
@@ -158,11 +150,11 @@
 					"$ref": "#/definitions/text"
 				},
 				"value": {
-					"description": "Necessary for each repeat line: do its steps again and give the value that you see. Checkmate compares it with the reference value after it removes the spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form (1.50 is 1.5, 007 is 7). All other text must be equal. Equal: passed. Different: failed, and the check needs defect or intended. On an item without a reference value, a passed check with value sets the reference value.",
+					"description": "Necessary for each repeat line: do its steps again and give the value that you see. Checkmate compares it with the reference value after it removes the spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form (1.50 is 1.5, 007 is 7). All other text must be equal. Equal: passed. Different: the check needs defect (failed), intended (passed), or a result and a reason when the difference is not in the rule, for example a generated ID or data that your tests changed. On an item without a reference value, a passed check with value sets the reference value.",
 					"$ref": "lite-checklist.schema.json#/definitions/value"
 				},
 				"reason": {
-					"description": "Necessary for blocked and not_run: why the check did not run.",
+					"description": "Necessary for blocked and not_run: why the check did not run. With a value that is different from the reference value and no defect or intended: why the difference is not in the rule.",
 					"$ref": "#/definitions/text"
 				},
 				"intended": {
@@ -189,7 +181,7 @@
 					"$ref": "#/definitions/identifier"
 				}
 			},
-			"required": ["item", "check"],
+			"required": ["item"],
 			"additionalProperties": false
 		},
 		"defect": {

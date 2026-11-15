@@ -3,7 +3,7 @@ import type { Plan, Profile } from './types.ts'
 import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from './targets.ts'
 import type { Approval, PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
-import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
+import { busyReason, closeStore, completed, databasePath, isBusy, openReadOnlyStore, openStore } from './store.ts'
 import {
 	Refusal,
 	dependencyWarnings,
@@ -77,7 +77,7 @@ import { guideLite } from './guide.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
 
@@ -792,7 +792,7 @@ const commands: Record<string, Command> = {
 	},
 	'lite record': {
 		positionals: ['planId'],
-		flags: { build: 'value', instance: 'value' },
+		flags: { build: 'value', instance: 'value', draft: 'switch' },
 		required: ['build'],
 		write: true,
 		stdin: true,
@@ -801,21 +801,34 @@ const commands: Record<string, Command> = {
 				planId: value(args, 'planId')!,
 				build: value(args, 'build')!,
 				instance: value(args, 'instance'),
+				...(args.draft ? { draft: true } : {}),
 				record: stdin(),
 			}),
-		print: (reply) => ({
-			facts: { plan: reply.data.plan, coverage: reply.data.coverage, sha256: short(reply.data.sha256) },
-			lines: [
-				...Object.entries(reply.data.counts as Record<string, number>),
-				...(reply.data.defects as string[]).map((id) => ['defect', id]),
-				...(reply.data.retest as Array<{ runId: string; findingId: string; verdict: string }>).map((item) => [
-					'retest',
-					`${item.runId}/${item.findingId}`,
-					item.verdict,
-				]),
-				...(reply.data.questions as string[]).map((id) => ['question', id]),
-			],
-		}),
+		print: (reply) =>
+			reply.data.draft
+				? {
+						facts: { draft: reply.data.build, parts: reply.data.parts },
+						lines: [
+							...Object.entries(reply.data.counts as Record<string, number>).filter(([, count]) => count),
+							...(reply.data.missing as string[]).map((reason) => ['missing', reason]),
+							['next', 'Add parts with --draft. Complete the build with a last call without --draft.'],
+						],
+					}
+				: {
+						facts: {
+							plan: reply.data.plan,
+							coverage: reply.data.coverage,
+							sha256: short(reply.data.sha256),
+						},
+						lines: [
+							...Object.entries(reply.data.counts as Record<string, number>),
+							...(reply.data.defects as string[]).map((id) => ['defect', id]),
+							...(reply.data.retest as Array<{ runId: string; findingId: string; verdict: string }>).map(
+								(item) => ['retest', `${item.runId}/${item.findingId}`, item.verdict]
+							),
+							...(reply.data.questions as string[]).map((id) => ['question', id]),
+						],
+					},
 	},
 	'run gate': {
 		positionals: ['reference'],
@@ -1600,7 +1613,7 @@ export function run(argv: string[], io: Io): Outcome {
 	const command = commands[name]
 	const first = command.positionals[0]?.replace(/\?$/, '')
 	const subject = first && name !== 'query' ? String(args[first] ?? name) : name
-	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
+	const workspace = workspaceOf(io.cwd, value(args, 'workspace'))
 	let store: Store | undefined
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
@@ -1617,6 +1630,14 @@ export function run(argv: string[], io: Io): Outcome {
 		return { code: 1, output: format(reply, json) }
 	} finally {
 		if (store) closeStore(store)
+	}
+}
+
+function workspaceOf(cwd: string, given: string | undefined) {
+	if (given !== undefined) return resolve(cwd, given)
+	for (let directory = resolve(cwd); ; directory = dirname(directory)) {
+		if (existsSync(databasePath(directory))) return directory
+		if (dirname(directory) === directory) return resolve(cwd)
 	}
 }
 
@@ -1639,7 +1660,7 @@ function uiOptions(tokens: string[], cwd: string) {
 		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
 		`Invalid --port: ${values.port}. Use 0 to 65535.`
 	)
-	return { workspace: resolve(cwd, values.workspace ?? '.'), port }
+	return { workspace: workspaceOf(cwd, values.workspace), port }
 }
 
 export async function serveUi(tokens: string[]) {

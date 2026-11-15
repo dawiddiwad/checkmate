@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TestContext } from 'node:test'
-import { cli, directory, json, profile } from './support.ts'
+import { actor, cli, directory, json, profile } from './support.ts'
 import { liteSchema } from '../plugin/src/guide.ts'
 import { validate } from '../plugin/src/contracts.ts'
+import { run } from '../plugin/src/cli.ts'
 
 const approvals = { plan: 'none' as const, result: 'required' as const }
 
@@ -532,4 +533,98 @@ test('lite refusals name the field and give a hint', (t) => {
 	const twice = b1Record()
 	twice.defects.push({ ...twice.defects[0] })
 	assert.match(send(twice).body.hint, /defects\[\]/)
+})
+
+test('lite record saves drafts and checks the full record only on the last call', (t) => {
+	const workspace = setup(t)
+	const send = (record: unknown, draft = true) =>
+		json(workspace, ['lite', 'record', 'checkout', '--build', 'b1', ...(draft ? ['--draft'] : [])], record)
+	const full = b1Record()
+	const first = send({ checks: [full.checks[0]], defects: full.defects })
+	assert.equal(first.code, 0, JSON.stringify(first.body))
+	assert.equal(first.body.parts, 1)
+	assert.deepEqual(first.body.missing, ['Checklist items without a check: R2'])
+	assert.equal(json(workspace, ['run', 'list', '--plan', 'checkout']).body.runs.length, 0)
+	const printed = cli(workspace, ['lite', 'record', 'checkout', '--build', 'b1', '--draft'], {
+		checks: [{ ...full.checks[1], observed: 'Two items stay after the reload.' }],
+	})
+	assert.match(printed.lines[0], /^completed checkout draft=b1 parts=2/)
+	assert.ok(printed.lines.includes('checks\t2'))
+	assert.ok(!printed.lines.some((line) => line.startsWith('missing')))
+
+	const refused = send({ items: full.items }, false)
+	assert.equal(refused.code, 1)
+	assert.match(refused.body.reasons[1], /Checklist items without a check: R3/)
+	const done = send({ items: full.items, checks: [full.checks[2]], questions: full.questions }, false)
+	assert.equal(done.code, 0, JSON.stringify(done.body))
+	assert.deepEqual(done.body.counts, { blocked: 1, failed: 1, passed: 1 })
+	const shown = json(workspace, ['run', 'show', 'checkout-run-1']).body
+	const kept = shown.tests.find((item: { testId: string }) => item.testId === 'R2-1')
+	assert.match(kept.assertions[0].observed, /^Two items stay after the reload\./)
+	assert.equal(send({ checks: full.checks }).body.reasons[1], 'Build b1 has a record: checkout-run-1.')
+	assert.equal(send({}, false).code, 1)
+})
+
+test('lite record lists every missing part in one refusal', (t) => {
+	const workspace = setup(t)
+	const record = b1Record()
+	record.checks.pop()
+	delete (record.checks[1] as { value?: string }).value
+	record.defects.push({ ...record.defects[0], id: 'D2', evidence: ['evidence/missing.txt'] })
+	const refused = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record)
+	assert.equal(refused.code, 1)
+	const reason = refused.body.reasons[1]
+	for (const part of [
+		/\(1\) Checklist items without a check: R3/,
+		/\(2\) Items with a reference value and no check with value: R2/,
+		/\(3\) Defects without a failed check: D2/,
+		/\(4\) defects\[1\]\.evidence\[0\]: Evidence file not found: evidence\/missing\.txt/,
+	])
+		assert.match(reason, part)
+	assert.match(refused.body.hint, /\(2\) .*\{"item": "R2", "value": "<what you saw>"\}/)
+	assert.match(refused.body.hint, /"result": "failed", "observed": "<what you saw>", "defect": "D2"\}/)
+})
+
+test('a different value with a reason records the result without a defect and keeps the reference', (t) => {
+	const workspace = setup(t)
+	const record = b1Record()
+	record.checks[1] = {
+		item: 'R2',
+		value: '3 items',
+		result: 'passed',
+		reason: 'The third item is the one that this test added.',
+	} as never
+	record.checks[2] = {
+		item: 'R3',
+		check: 'Checkout of an empty cart.',
+		result: 'passed',
+		observed: 'Refused.',
+		evidence: ['POST /checkout: 409 Cart is empty'],
+	} as never
+	const b1 = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record)
+	assert.equal(b1.code, 0, JSON.stringify(b1.body))
+	assert.deepEqual(b1.body.counts, { failed: 1, passed: 2 })
+	const shown = json(workspace, ['run', 'show', 'checkout-run-1']).body
+	const test = shown.tests.find((item: { testId: string }) => item.testId === 'R2-1')
+	assert.equal(test.title, 'GET /cart after a reload')
+	assert.match(test.assertions[0].observed, /Reason: The third item is the one that this test added\./)
+	const guide = cli(workspace, ['lite', 'guide', 'checkout']).lines
+	assert.ok(guide.includes('repeat\tR2\tsteps=GET /cart after a reload\treference=2 items (checklist)'))
+	assert.ok(!guide.some((line) => line.startsWith('item\t')))
+	assert.ok(guide.some((line) => line.startsWith('field\tchecks\t') && line.includes('Required fields: item.')))
+})
+
+test('the workspace is the nearest directory with a Checkmate store', (t) => {
+	const workspace = setup(t)
+	const inner = join(workspace, 'repo', 'src')
+	mkdirSync(inner, { recursive: true })
+	const outcome = run(['lite', 'show', 'checkout', '--json'], {
+		cwd: inner,
+		env: { CHECKMATE_ACTOR: actor },
+		stdin: () => '',
+	})
+	assert.equal(outcome.code, 0, outcome.output)
+	assert.equal(JSON.parse(outcome.output).planId, 'checkout')
+	const missing = json(workspace, ['lite', 'checklist', 'other', '--target', 'other-target@1'], checklist())
+	assert.match(missing.body.hint, /Run checkmate target list/)
 })

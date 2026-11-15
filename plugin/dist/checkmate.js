@@ -540,7 +540,7 @@ var F = Object.prototype.hasOwnProperty;
 var j = Pe().default;
 var z = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
 var Te = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-var K = new RegExp("^[A-Za-z][A-Za-z0-9_.-]{0,63}$", "u");
+var C = new RegExp("^[A-Za-z][A-Za-z0-9_.-]{0,63}$", "u");
 function Le(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
@@ -823,7 +823,7 @@ function Le(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
         }
         for (let i in r) {
           let c = s;
-          if (typeof i == "string" && !K.test(i)) {
+          if (typeof i == "string" && !C.test(i)) {
             let u = { instancePath: t + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: i };
             e === null ? e = [u] : e.push(u), s++;
           }
@@ -1619,17 +1619,13 @@ function Y(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, root
   }
   return Y.errors = e, s === 0;
 }
-var Ne = { type: "object", properties: { item: { description: "The item ID.", $ref: "#/definitions/identifier" }, check: { description: "What you did, in one sentence.", $ref: "#/definitions/text" }, result: { description: "passed, failed, blocked (the check cannot run), or not_run (you did not run it). A criterion item needs passed, failed, or blocked. Leave it out with value on an item with a repeat line.", enum: ["passed", "failed", "blocked", "not_run"] }, observed: { description: "What you saw. Necessary for passed and failed without value.", $ref: "#/definitions/text" }, value: { description: "Necessary for each repeat line: do its steps again and give the value that you see. Checkmate compares it with the reference value after it removes the spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form (1.50 is 1.5, 007 is 7). All other text must be equal. Equal: passed. Different: failed, and the check needs defect or intended. On an item without a reference value, a passed check with value sets the reference value.", $ref: "lite-checklist.schema.json#/definitions/value" }, reason: { description: "Necessary for blocked and not_run: why the check did not run.", $ref: "#/definitions/text" }, intended: { description: "Only for a different value that is correct because the ticket or a PM answer changes the rule. Then the check is passed and the value becomes the reference value.", type: "object", properties: { note: { description: "Why the new value is correct.", $ref: "#/definitions/text" }, source: { description: "The ticket line, PM answer, or doc that changes the rule, for example Q1.", $ref: "#/definitions/text" } }, required: ["note", "source"], additionalProperties: false }, evidence: { $ref: "#/definitions/evidence" }, defect: { description: "Necessary on a failed check, and only there: a new defect ID from defects, or an open defect with the verdict not_fixed.", $ref: "#/definitions/identifier" } }, required: ["item", "check"], additionalProperties: false };
-var ye = { description: 'File paths in the workspace (screenshots, responses, logs), for example evidence/r1.png, or {"text": "<what you saw>"}.', type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { text: { type: "string", minLength: 1 }, kind: { enum: ["observation", "http_exchange"] } }, required: ["text"], additionalProperties: false }] } };
+var Ne = { type: "object", properties: { item: { description: "The item ID.", $ref: "#/definitions/identifier" }, check: { description: "What you did, in one sentence. Leave it out on a check of a repeat line: Checkmate uses the steps of the line.", $ref: "#/definitions/text" }, result: { description: "passed, failed, blocked (the check cannot run), or not_run (you did not run it). A criterion item needs passed, failed, or blocked. Leave it out with value on an item with a repeat line.", enum: ["passed", "failed", "blocked", "not_run"] }, observed: { description: "What you saw. Necessary for passed and failed without value.", $ref: "#/definitions/text" }, value: { description: "Necessary for each repeat line: do its steps again and give the value that you see. Checkmate compares it with the reference value after it removes the spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form (1.50 is 1.5, 007 is 7). All other text must be equal. Equal: passed. Different: the check needs defect (failed), intended (passed), or a result and a reason when the difference is not in the rule, for example a generated ID or data that your tests changed. On an item without a reference value, a passed check with value sets the reference value.", $ref: "lite-checklist.schema.json#/definitions/value" }, reason: { description: "Necessary for blocked and not_run: why the check did not run. With a value that is different from the reference value and no defect or intended: why the difference is not in the rule.", $ref: "#/definitions/text" }, intended: { description: "Only for a different value that is correct because the ticket or a PM answer changes the rule. Then the check is passed and the value becomes the reference value.", type: "object", properties: { note: { description: "Why the new value is correct.", $ref: "#/definitions/text" }, source: { description: "The ticket line, PM answer, or doc that changes the rule, for example Q1.", $ref: "#/definitions/text" } }, required: ["note", "source"], additionalProperties: false }, evidence: { $ref: "#/definitions/evidence" }, defect: { description: "Necessary on a failed check, and only there: a new defect ID from defects, or an open defect with the verdict not_fixed.", $ref: "#/definitions/identifier" } }, required: ["item"], additionalProperties: false };
+var ye = { description: "Each entry is a file path in the workspace (a screenshot, a response, a log), for example evidence/r1.png, or a short text of what you saw, for example GET /api/loans/L1: 200 fee 1.50. One file can be the evidence of several checks.", type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { text: { type: "string", minLength: 1 }, kind: { enum: ["observation", "http_exchange"] } }, required: ["text"], additionalProperties: false }] } };
 function X(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.item === void 0) {
       let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "item" }, message: "must have required property 'item'" };
-      e === null ? e = [r] : e.push(r), s++;
-    }
-    if (a.check === void 0) {
-      let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
       e === null ? e = [r] : e.push(r), s++;
     }
     for (let r in a) if (!F.call(Ne.properties, r)) {
@@ -2295,10 +2291,6 @@ function te(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
 function Re(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
-    if (a.checks === void 0) {
-      let P = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "checks" }, message: "must have required property 'checks'" };
-      e === null ? e = [P] : e.push(P), s++;
-    }
     for (let P in a) if (!(P === "items" || P === "checks" || P === "defects" || P === "retests" || P === "questions" || P === "changes")) {
       let r = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: P }, message: "must NOT have additional properties" };
       e === null ? e = [r] : e.push(r), s++;
@@ -2316,10 +2308,6 @@ function Re(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
     if (a.checks !== void 0) {
       let P = a.checks;
       if (Array.isArray(P)) {
-        if (P.length < 1) {
-          let i = { instancePath: t + "/checks", schemaPath: "#/properties/checks/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-          e === null ? e = [i] : e.push(i), s++;
-        }
         let r = P.length;
         for (let i = 0; i < r; i++) X(P[i], { instancePath: t + "/checks/" + i, parentData: P, parentDataProperty: i, rootData: _ }) || (e = e === null ? X.errors : e.concat(X.errors), s = e.length);
       } else {
@@ -2448,7 +2436,7 @@ function re(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
             }
             for (let d in o) {
               let p = s;
-              if (typeof d == "string" && !K.test(d)) {
+              if (typeof d == "string" && !C.test(d)) {
                 let m = { instancePath: t + "/" + u + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: d };
                 e === null ? e = [m] : e.push(m), s++;
               }
@@ -2860,7 +2848,7 @@ function Fe(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
                 }
                 for (let m in p) {
                   let n = s;
-                  if (typeof m == "string" && !K.test(m)) {
+                  if (typeof m == "string" && !C.test(m)) {
                     let l = { instancePath: t + "/tests/" + o + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: m };
                     e === null ? e = [l] : e.push(l), s++;
                   }
@@ -3134,9 +3122,9 @@ function Fe(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
   }
   return Fe.errors = e, s === 0;
 }
-var zs = Ke;
+var zs = Ce;
 var us = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-delta.schema.json", type: "object", properties: { tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { type: "object", properties: { action: { type: "string", minLength: 1 }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, assertions: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 } }, additionalProperties: false, minProperties: 1 } } }, required: ["tests"], additionalProperties: false };
-function Ke(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
+function Ce(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.tests === void 0) {
@@ -3314,13 +3302,13 @@ function Ke(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
     let c = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [c] : e.push(c), s++;
   }
-  return Ke.errors = e, s === 0;
+  return Ce.errors = e, s === 0;
 }
-var Zs = Ce;
+var Zs = Ke;
 var ds = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-patch.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { title: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/title" }, requirementIds: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds" }, capability: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/capability" }, operations: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/operations" }, dependsOn: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn" }, preconditions: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions" }, action: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/action" }, assertions: { $ref: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions" }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, gaps: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { severity: { $ref: "gap.schema.json#/properties/severity" }, requirementIds: { $ref: "gap.schema.json#/properties/requirementIds" }, testIds: { $ref: "gap.schema.json#/properties/testIds" }, question: { $ref: "gap.schema.json#/properties/question" }, consequence: { $ref: "gap.schema.json#/properties/consequence" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } } }, additionalProperties: false, minProperties: 1 };
 var cs = { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 };
 var hs = { enum: ["blocking", "non_blocking"] };
-function Ce(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
+function Ke(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (Object.keys(a).length < 1) {
@@ -3390,7 +3378,7 @@ function Ce(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
                 }
                 for (let v in y) {
                   let A = s;
-                  if (typeof v == "string" && !K.test(v)) {
+                  if (typeof v == "string" && !C.test(v)) {
                     let q = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: v };
                     e === null ? e = [q] : e.push(q), s++;
                   }
@@ -3754,7 +3742,7 @@ function Ce(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
                 }
                 for (let v in y) {
                   let A = s;
-                  if (typeof v == "string" && !K.test(v)) {
+                  if (typeof v == "string" && !C.test(v)) {
                     let q = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: v };
                     e === null ? e = [q] : e.push(q), s++;
                   }
@@ -3973,7 +3961,7 @@ function Ce(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return Ce.errors = e, s === 0;
+  return Ke.errors = e, s === 0;
 }
 var _s = We;
 var fs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-request.schema.json", type: "object", properties: { objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, sourceContext: { type: "array", items: { type: "object", properties: { uri: { type: "string", minLength: 1 }, content: { type: "string", minLength: 1 } }, required: ["uri", "content"], additionalProperties: false }, minItems: 0, uniqueItems: true }, context: { type: "object", properties: { sources: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, instructions: { type: "string", minLength: 1 } }, required: ["sources"], additionalProperties: false }, tools: { type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }] }, minItems: 0, uniqueItems: true } }, required: ["objective"], additionalProperties: false };
@@ -4072,7 +4060,7 @@ function We(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
                 }
                 for (let m in p) {
                   let n = s;
-                  if (typeof m == "string" && !K.test(m)) {
+                  if (typeof m == "string" && !C.test(m)) {
                     let l = { instancePath: t + "/requirements/" + o + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: m };
                     e === null ? e = [l] : e.push(l), s++;
                   }
@@ -4756,7 +4744,7 @@ function ae(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
         }
         for (let i in r) {
           let c = s;
-          if (typeof i == "string" && !K.test(i)) {
+          if (typeof i == "string" && !C.test(i)) {
             let u = { instancePath: t + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: i };
             e === null ? e = [u] : e.push(u), s++;
           }
@@ -5050,7 +5038,7 @@ function Me(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
                 }
                 for (let l in n) {
                   let w = s;
-                  if (typeof l == "string" && !K.test(l)) {
+                  if (typeof l == "string" && !C.test(l)) {
                     let f = { instancePath: t + "/requirements/" + p + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: l };
                     e === null ? e = [f] : e.push(f), s++;
                   }
@@ -5672,7 +5660,7 @@ function Me(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
   return Me.errors = e, s === 0;
 }
 var $s = Be;
-var C = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+var K = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
 function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
@@ -5720,7 +5708,7 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
       let i = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "readyForLiveExecution" }, message: "must have required property 'readyForLiveExecution'" };
       e === null ? e = [i] : e.push(i), s++;
     }
-    for (let i in a) if (!F.call(C.properties, i)) {
+    for (let i in a) if (!F.call(K.properties, i)) {
       let c = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: i }, message: "must NOT have additional properties" };
       e === null ? e = [c] : e.push(c), s++;
     }
@@ -5793,7 +5781,7 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
             if (d.kind !== void 0) {
               let p = d.kind;
               if (!(p === "url" || p === "command" || p === "value")) {
-                let m = { instancePath: t + "/entryPoints/" + o + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let m = { instancePath: t + "/entryPoints/" + o + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: K.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [m] : e.push(m), s++;
               }
             }
@@ -5914,7 +5902,7 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
             if (d.kind !== void 0) {
               let p = d.kind;
               if (!(p === "cli" || p === "mcp" || p === "skill")) {
-                let m = { instancePath: t + "/tools/" + o + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let m = { instancePath: t + "/tools/" + o + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: K.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [m] : e.push(m), s++;
               }
             }
@@ -5982,7 +5970,7 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
         if (i.kind !== void 0) {
           let c = i.kind;
           if (!(c === "none" || c === "environment" || c === "browser_session")) {
-            let u = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+            let u = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: K.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
@@ -6091,7 +6079,7 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
         if (i.owner !== void 0) {
           let c = i.owner;
           if (!(c === "factory" || c === "checkmate")) {
-            let u = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: C.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            let u = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: K.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
@@ -6186,7 +6174,7 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
         if (i.owner !== void 0) {
           let c = i.owner;
           if (!(c === "factory" || c === "checkmate")) {
-            let u = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: C.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            let u = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: K.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
@@ -6273,14 +6261,14 @@ function Be(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
         if (i.plan !== void 0) {
           let c = i.plan;
           if (!(c === "required" || c === "none")) {
-            let u = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: C.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
+            let u = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: K.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
         if (i.result !== void 0) {
           let c = i.result;
           if (!(c === "required" || c === "none")) {
-            let u = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: C.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
+            let u = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: K.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
@@ -7394,7 +7382,7 @@ function Ue(a, { instancePath: t = "", parentData: N, parentDataProperty: Z, roo
                 }
                 for (let y in g) {
                   let v = s;
-                  if (typeof y == "string" && !K.test(y)) {
+                  if (typeof y == "string" && !C.test(y)) {
                     let A = { instancePath: t + "/findings/" + f + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: y };
                     e === null ? e = [A] : e.push(A), s++;
                   }
@@ -8095,8 +8083,8 @@ function unionErrors(errors) {
     );
     const under = (error) => error.instancePath === union.instancePath || error.instancePath.startsWith(`${union.instancePath}/`);
     const matched = kept.some((error) => error !== union && !misses.includes(error) && under(error));
-    const merged = { ...misses[0], params: { type: misses.flatMap((error) => error.params.type ?? []) } };
-    const replacement = matched ? [] : misses.length ? [merged] : [union];
+    const merged2 = { ...misses[0], params: { type: misses.flatMap((error) => error.params.type ?? []) } };
+    const replacement = matched ? [] : misses.length ? [merged2] : [union];
     kept = kept.flatMap((error) => error === union ? replacement : misses.includes(error) ? [] : [error]);
   }
   return kept;
@@ -8563,7 +8551,11 @@ function targetRevision(store, targetId, revision = null) {
     targetId,
     ...revision === null ? [] : [revision]
   );
-  requireCondition(row, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
+  requireCondition(
+    row,
+    `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`,
+    `Run checkmate target list to read the saved targets of this workspace: ${store.workspace}.`
+  );
   return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 };
 }
 function showTarget(store, reference2, instanceId) {
@@ -11602,6 +11594,8 @@ function pagedOperations(store, query = {}) {
 }
 
 // plugin/src/lite.ts
+import { existsSync } from "node:fs";
+import { resolve as resolve2 } from "node:path";
 var recordedBy = "lite";
 var consequence = "Until the oracle answers, the check of the item uses the ticket and the docs.";
 var cleanup = {
@@ -11609,7 +11603,7 @@ var cleanup = {
   reason: "Lite record. The agent tested before the record and owns the cleanup."
 };
 var liteCommands = "Lite mode uses only lite guide, lite checklist, lite show, and lite record.";
-var evidenceHint = (path) => `Add to ${path} one or more entries: "<file path in the workspace>" or {"text": "<what you saw>"}.`;
+var evidenceHint = (path) => `Add to ${path} one or more entries: "<file path in the workspace>" or "<what you saw>".`;
 var fieldsHint = (planId, command) => `Fix each named field. Run checkmate lite guide ${planId} to read the fields. Then send ${command} again.`;
 function liteTest(id2, item, check2, profile) {
   return {
@@ -11793,79 +11787,123 @@ function observedText(item, check2) {
     check2.reason && `Reason: ${check2.reason}`
   ].filter(Boolean).join(" ");
 }
-function settledResult(item, check2, name, path) {
+function settledResult(item, check2, name, path, need) {
   const known = reference(item);
   if (!known || check2.value === void 0) {
-    requireWellFormed(
+    need(
       check2.result,
       `${name} has no result`,
-      `Add "result": "passed", "failed", "blocked", or "not_run" to ${path}. Only a check with value on an item with a reference value can leave it out.`
+      `Add "result": "passed", "failed", "blocked", or "not_run" to ${path}. Only a check with value on an item with a reference value can leave it out.`,
+      "malformed"
     );
-    return check2.result;
+    return check2.result ?? "passed";
   }
   const values = `the value "${check2.value}" and the reference value "${known.value}" (${known.from})`;
   const same3 = normalised(check2.value) === normalised(known.value);
-  requireCondition(
-    same3 || check2.defect || check2.intended,
-    `${name}: ${values} are different`,
-    `When the new value is wrong, add "defect": "<defect ID>" to ${path} and the defect to defects[]. When the new value is correct, add "intended": {"note": "<why>", "source": "<the ticket line or PM answer that changes the rule>"} to ${path}. Checkmate then sets the result.`
-  );
+  if (!same3 && !check2.defect && !check2.intended) {
+    need(
+      check2.result && check2.result !== "failed" && check2.reason,
+      `${name}: ${values} are different`,
+      `Give ${path} one of these. When the new value is wrong: "defect": "<defect ID>", and the defect in defects[]. When the ticket or a PM answer changes the rule: "intended": {"note": "<why>", "source": "<the ticket line or PM answer>"}. When the difference is not in the rule (for example a generated ID, a time, or data that your tests changed), or the steps did not reach the same state: "result": "passed", "blocked", or "not_run", and "reason": "<why>".`
+    );
+    return check2.result ?? "passed";
+  }
   const result = same3 || !check2.defect ? "passed" : "failed";
-  requireCondition(
+  need(
     check2.result === void 0 || check2.result === result,
     `${name} is ${check2.result}, but ${values} are ${same3 ? "equal" : "different"}`,
     `Leave out "result" in ${path}. Checkmate sets it from value. To record another result, add a second check without value.`
   );
   return result;
 }
+var fragment = (value2) => JSON.stringify(value2).replace(/,"/g, ', "').replace(/":/g, '": ');
+function evidenceProblem(store, spec, path) {
+  if (typeof spec !== "string" || inline(store, spec)) return void 0;
+  try {
+    readEvidence(store, "./", spec);
+    return void 0;
+  } catch (error) {
+    return `${path}: ${error.message}`;
+  }
+}
 function completeness(store, planId, items, record, earlier) {
+  const problems = [];
+  const need = (condition, reason, hint, kind = "prohibited") => {
+    if (!condition) problems.push({ kind, reason, hint });
+    return Boolean(condition);
+  };
   const defects = record.defects ?? [];
   const retests2 = record.retests ?? [];
   const ids2 = items.map((item) => item.id);
-  const checks = record.checks.map((check2, i) => {
+  const checks = (record.checks ?? []).flatMap((check2, i) => {
     const path = `checks[${i}]`;
-    const name = `Check "${check2.check}" of ${check2.item} (${path})`;
     const item = items.find((known) => known.id === check2.item);
-    requireWellFormed(
+    const text = check2.check ?? (item && reference(item)?.steps);
+    const name = `Check "${text ?? ""}" of ${check2.item} (${path})`;
+    need(
       item,
       `${name} names an unknown item`,
-      `Set ${path}.item to one of: ${ids2.join(", ")}. Or add the item to items[].`
+      `Set ${path}.item to one of: ${ids2.join(", ")}. Or add the item to items[].`,
+      "malformed"
     );
-    const result = settledResult(item, check2, name, path);
+    need(
+      !item || text,
+      `${name} has no "check"`,
+      `Add "check": "<what you did>" to ${path}. Only a check of a repeat line can leave it out.`,
+      "malformed"
+    );
+    if (!item || !text) return [];
+    const result = settledResult(item, check2, name, path, need);
     if (result === "passed" || result === "failed")
-      requireWellFormed(
+      need(
         check2.observed || check2.value,
         `${name} is ${result} without observed`,
-        `Add "observed": "<what you saw>" to ${path}.`
+        `Add "observed": "<what you saw>" to ${path}.`,
+        "malformed"
       );
     else
-      requireWellFormed(
+      need(
         check2.reason,
         `${name} is ${result} without a reason`,
-        `Add "reason": "<why the check did not run>" to ${path}.`
+        `Add "reason": "<why the check did not run>" to ${path}.`,
+        "malformed"
       );
-    requireWellFormed(
+    need(
       result === "failed" || check2.defect === void 0,
       `${name} is ${result}. Only a failed check names a defect.`,
-      `Remove "defect" from ${path}. Or set "result": "failed" when the check found the defect.`
+      `Remove "defect" from ${path}. Or set "result": "failed" when the check found the defect.`,
+      "malformed"
     );
-    return { ...check2, result };
+    for (const [n, spec] of (check2.evidence ?? []).entries()) {
+      const missing2 = evidenceProblem(store, spec, `${path}.evidence[${n}]`);
+      need(
+        !missing2,
+        missing2,
+        "Save the file in the workspace first. Or give the text of what you saw.",
+        "malformed"
+      );
+    }
+    return [{ ...check2, check: text, result }];
   });
   const unchecked = ids2.filter((id2) => !checks.some((check2) => check2.item === id2));
-  requireCondition(
+  need(
     !unchecked.length,
     `Checklist items without a check: ${unchecked.join(", ")}`,
-    "Add to checks[] one or more checks for each item with the result passed, failed, blocked, or not_run. Give a reason for blocked and not_run."
+    `Add to checks[] one or more checks for each item: ${unchecked.map((item) => fragment({ item, check: "<what you did>", result: "passed", observed: "<what you saw>" })).join(", ")}. The result can also be failed, blocked, or not_run. Give a reason for blocked and not_run.`
   );
   const checksOf = (item) => checks.filter((check2) => check2.item === item.id);
-  const unmeasured = items.filter((item) => reference(item)).filter((item) => !checksOf(item).some((check2) => check2.value !== void 0)).map((item) => item.id);
-  requireCondition(
+  const unmeasured = items.filter((item) => reference(item) && !unchecked.includes(item.id)).filter(
+    (item) => !checksOf(item).some(
+      (check2) => check2.value !== void 0 || check2.result === "blocked" && check2.reason
+    )
+  ).map((item) => item.id);
+  need(
     !unmeasured.length,
     `Items with a reference value and no check with value: ${unmeasured.join(", ")}`,
-    `For each repeat line of lite guide ${planId}, do the steps again on this build. Add to checks[] a check with "value": "<what you saw>". Checkmate sets the result.`
+    `For each repeat line of lite guide ${planId}, do the steps again on this build. Add to checks[]: ${unmeasured.map((item) => fragment({ item, value: "<what you saw>" })).join(", ")}. Checkmate sets the result. When the steps cannot run, give "result": "blocked" and "reason": "<why>" in place of value.`
   );
-  const unresolved = items.filter((item) => item.metadata?.criterion !== void 0).filter((item) => checksOf(item).every((check2) => check2.result === "not_run")).map((item) => item.id);
-  requireCondition(
+  const unresolved = items.filter((item) => item.metadata?.criterion !== void 0).filter((item) => checksOf(item).length && checksOf(item).every((check2) => check2.result === "not_run")).map((item) => item.id);
+  need(
     !unresolved.length,
     `Acceptance criteria items with only not_run checks: ${unresolved.join(", ")}`,
     "Check each acceptance criterion on each build. Set checks[].result to passed or failed with observed. Give blocked with a reason only when the check cannot run."
@@ -11875,26 +11913,36 @@ function completeness(store, planId, items, record, earlier) {
   const orphans = checks.filter(
     (check2) => check2.result === "failed" && ![...defectIds, ...notFixed].includes(check2.defect ?? "")
   );
-  requireCondition(
+  need(
     !orphans.length,
     `Failed checks without a defect: ${orphans.map((check2) => `${check2.item} "${check2.check}"`).join(", ")}`,
-    "Add each defect to defects[]. Write its ID in checks[].defect of each failed check. A check can also name an earlier defect with the verdict not_fixed."
+    `Add "defect": "<defect ID>" to each failed check, and the defect to defects[]: ${fragment({ id: "<defect ID>", title: "<what is wrong>", severity: "medium", steps: ["<step>"], expected: "<the correct result and its source>", actual: "<what you saw>", evidence: ["<file path or what you saw>"] })}. A check can also name an earlier defect with the verdict not_fixed.`
   );
   const unlinked = defectIds.filter((id2) => !checks.some((check2) => check2.defect === id2));
-  requireCondition(
+  need(
     !unlinked.length,
     `Defects without a failed check: ${unlinked.join(", ")}`,
-    "Write the defect ID in checks[].defect of a failed check. For a defect that no item covers, add an entry to items[] and a failed check."
+    `Write the defect ID in checks[].defect of a failed check: ${unlinked.map((defect) => fragment({ item: "<item ID>", check: "<what you did>", result: "failed", observed: "<what you saw>", defect })).join(", ")}. For a defect that no item covers, add an entry to items[] first.`
   );
   const bare = defects.filter((defect) => !defect.evidence?.length).map((defect) => defect.id);
-  requireCondition(!bare.length, `Defects without evidence: ${bare.join(", ")}`, evidenceHint("defects[].evidence"));
+  need(!bare.length, `Defects without evidence: ${bare.join(", ")}`, evidenceHint("defects[].evidence"));
+  for (const [i, defect] of defects.entries())
+    for (const [n, spec] of (defect.evidence ?? []).entries()) {
+      const missing2 = evidenceProblem(store, spec, `defects[${i}].evidence[${n}]`);
+      need(
+        !missing2,
+        missing2,
+        "Save the file in the workspace first. Or give the text of what you saw.",
+        "malformed"
+      );
+    }
   const used = all(
     store,
     "SELECT f.id FROM findings f JOIN runs r ON r.run_id = f.run_id WHERE r.plan_id = ?",
     planId
   ).map((row) => row.id);
   for (const id2 of defectIds)
-    requireCondition(
+    need(
       !used.includes(id2),
       `Defect ID ${id2} is in use by an earlier build. Use a new ID, for example ${unusedId("D", [...used, ...defectIds])}.`,
       "Give defects[].id a new ID. Give an earlier defect a verdict in retests[]. Do not record it again."
@@ -11902,30 +11950,50 @@ function completeness(store, planId, items, record, earlier) {
   index(retests2, "defect", "retest verdict", "Give one entry of retests[] for each open defect.");
   const open = earlier.map((defect) => defect.findingId);
   for (const retest of retests2)
-    requireWellFormed(
+    need(
       open.includes(retest.defect),
       `Defect ${retest.defect} is not an open earlier defect`,
-      open.length ? `Set retests[].defect to one of: ${open.join(", ")}.` : "Leave out retests. No earlier defect is open."
+      open.length ? `Set retests[].defect to one of: ${open.join(", ")}.` : "Leave out retests. No earlier defect is open.",
+      "malformed"
     );
   const missing = open.filter((id2) => !retests2.some((retest) => retest.defect === id2));
-  requireCondition(
+  need(
     !missing.length,
     `Earlier defects without a retest verdict: ${missing.join(", ")}`,
-    'Add {"defect": "<id>", "verdict": "fixed" or "not_fixed", "observed": "<what you saw>", "evidence": [...]} to retests[] for each one.'
+    `Add to retests[]: ${missing.map((defect) => fragment({ defect, verdict: "fixed", observed: "<what you saw>", evidence: ["<file path or what you saw>"] })).join(", ")}. The verdict is fixed or not_fixed.`
   );
   const unproven = retests2.filter((retest) => !retest.evidence?.length).map((retest) => retest.defect);
-  requireCondition(
+  need(
     !unproven.length,
     `Retest verdicts without evidence: ${unproven.join(", ")}`,
     evidenceHint("retests[].evidence")
   );
-  return checks;
+  for (const [i, retest] of retests2.entries())
+    for (const [n, spec] of (retest.evidence ?? []).entries()) {
+      const missing2 = evidenceProblem(store, spec, `retests[${i}].evidence[${n}]`);
+      need(
+        !missing2,
+        missing2,
+        "Save the file in the workspace first. Or give the text of what you saw.",
+        "malformed"
+      );
+    }
+  return { checks, problems };
+}
+function refuse(problems) {
+  if (!problems.length) return;
+  const numbered = (text, i) => problems.length > 1 ? `(${i + 1}) ${text}` : text;
+  throw new Refusal(
+    problems.some((problem) => problem.kind === "prohibited") ? "prohibited" : "malformed",
+    problems.map((problem, i) => numbered(problem.reason, i)).join(" "),
+    problems.map((problem, i) => numbered(problem.hint, i)).join(" ")
+  );
 }
 function newReferences(items, checks, build) {
   for (const item of items) {
     const known = reference(item);
     const adopted = checks.find(
-      (check2) => check2.item === item.id && check2.value !== void 0 && check2.result === "passed" && (!known || normalised(check2.value) !== normalised(known.value))
+      (check2) => check2.item === item.id && check2.value !== void 0 && check2.result === "passed" && (!known || check2.intended && normalised(check2.value) !== normalised(known.value))
     );
     if (adopted)
       item.metadata = {
@@ -11936,9 +12004,12 @@ function newReferences(items, checks, build) {
       };
   }
 }
+function inline(store, spec) {
+  return /\s/.test(spec.trim()) && !existsSync(resolve2(store.workspace, spec));
+}
 function stored(store, runId, testId, assertion, name, evidence2, operationId) {
   const files2 = evidence2.map(
-    (spec, i) => typeof spec === "string" ? readEvidence(store, "./", spec) : textEvidence(spec, `${name}-${i + 1}`)
+    (spec, i) => typeof spec !== "string" ? textEvidence(spec, `${name}-${i + 1}`) : inline(store, spec) ? textEvidence({ text: spec }, `${name}-${i + 1}`) : readEvidence(store, "./", spec)
   );
   return storeEvidence(store, runId, testId, assertion, files2, operationId);
 }
@@ -11979,15 +12050,42 @@ function insertFinding(store, runId, finding, testIds, operationId) {
     operationId
   );
 }
+var partKeys = {
+  items: (entry) => entry.id,
+  checks: (entry) => `${entry.item} ${entry.check ?? ""}`,
+  defects: (entry) => entry.id,
+  retests: (entry) => entry.defect,
+  questions: (entry) => entry.id,
+  changes: (entry) => entry.area
+};
+function merged(parts) {
+  const record = {};
+  for (const part of parts)
+    for (const [field2, key] of Object.entries(partKeys)) {
+      const next = part[field2] ?? [];
+      const kept = (record[field2] ?? []).filter((entry) => !next.some((added) => key(added) === key(entry)));
+      if (kept.length || next.length) record[field2] = [...kept, ...next];
+    }
+  return record;
+}
+function draftParts(store, planId, build, since) {
+  return all(
+    store,
+    "SELECT arguments FROM operations WHERE command = 'lite record' AND status = 'completed' AND at > ? ORDER BY at, id",
+    since
+  ).map(
+    (row) => JSON.parse(row.arguments)
+  ).filter((saved) => saved.draft && saved.planId === planId && saved.build === build).map((saved) => saved.record);
+}
 function recordBuild(store, actor, input) {
   return write(store, { actor, command: "lite record", subject: input.planId, input }, (operationId, at, actor2) => {
     const base = litePlan(store, input.planId);
     const planId = base.plan.planId;
     const build = requireText(input.build, "application build (--build)");
-    const record = validate("lite-record", input.record, fieldsHint(planId, "lite record"));
+    const part = validate("lite-record", input.record, fieldsHint(planId, "lite record"));
     const last = one(
       store,
-      "SELECT run_id, application_build FROM runs WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1",
+      "SELECT run_id, application_build, started_at FROM runs WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1",
       planId
     );
     requireCondition(
@@ -11995,6 +12093,8 @@ function recordBuild(store, actor, input) {
       `Build ${build} has a record: ${last?.run_id}.`,
       `A build has one record. Run lite show ${planId} to read it. Record the next build with lite record ${planId} --build <build>.`
     );
+    const parts = [...draftParts(store, planId, build, last?.started_at ?? ""), part];
+    const record = merged(parts);
     const previous = last?.run_id ?? null;
     if (previous) retestCheck(store, previous, base.plan, build, input.instance);
     const earlier = previous ? retestDefects(store, previous) : [];
@@ -12027,7 +12127,21 @@ function recordBuild(store, actor, input) {
           draft.requirements.map((item) => item.id)
         )
       ];
-    const settled = completeness(store, planId, draft.requirements, record, earlier);
+    const { checks: settled, problems } = completeness(store, planId, draft.requirements, record, earlier);
+    if (input.draft)
+      return {
+        reply: completed(planId, {
+          draft: true,
+          build,
+          parts: parts.length,
+          counts: Object.fromEntries(
+            Object.keys(partKeys).map((field2) => [field2, (record[field2] ?? []).length])
+          ),
+          missing: problems.map((problem) => problem.reason)
+        }),
+        subjects: [`plan:${planId}`]
+      };
+    refuse(problems);
     const requirements = structuredClone(draft.requirements);
     newReferences(draft.requirements, settled, build);
     const usedTests = all(
@@ -12194,8 +12308,9 @@ function checklistNext(planId, target) {
 }
 function recordNext(planId, open) {
   return [
-    "On each new build: read the answers, test the build freely, do the steps of each repeat line again, and keep evidence in files.",
-    `Record the full build in one call: checkmate lite record ${planId} --build <build>, with the JSON payload on standard input.`,
+    "On each new build: read the answers, test the build freely, do the steps of each repeat line again, and keep evidence in files or short text.",
+    `Save a first draft early and add to it while you test: checkmate lite record ${planId} --build <build> --draft, with the JSON payload on standard input. A part replaces an earlier part with the same ID, or a check with the same item and check.`,
+    `Complete the record with a last call without --draft, with the last parts or {}. Checkmate adds them to the drafts and checks the full record. A refused call saves nothing. The drafts stay, so send again only the parts of the refused call, with the fixes.`,
     ...open.length ? [`Give a verdict in retests for each open defect: ${open.join(", ")}.`] : []
   ];
 }
@@ -12371,11 +12486,11 @@ var lite_checklist_schema_default = {
           type: "object",
           properties: {
             steps: {
-              description: "The exact request or UI steps. Each build does the same steps again.",
+              description: "The exact request or UI steps, from a state that each build can reach again. Each build does the same steps again.",
               $ref: "#/definitions/value"
             },
             value: {
-              description: 'The value that you saw on the base app. Use a short exact value, for example 409 "Book is on loan" or fee 1.50.',
+              description: 'The value that you saw on the base app. Use a short exact value, for example 409 "Book is on loan" or fee 1.50. Do not put generated IDs, times, or data that other tests change in the value.',
               $ref: "#/definitions/value"
             },
             documented: {
@@ -12420,7 +12535,7 @@ var lite_checklist_schema_default = {
 var lite_record_schema_default = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "lite-record.schema.json",
-  description: "One tested build, in one lite record call. Leave out each optional field that you do not need. When Checkmate refuses, read reason and hint, correct the payload, and send it again. Only the PM answers questions and accepts records.",
+  description: "One tested build. Send it in parts while you test: each lite record call with --draft saves its parts. The last call without --draft adds its parts, or {}, and Checkmate checks the full record. A part replaces an earlier part with the same ID, or a check with the same item and check. Leave out each optional field that you do not need. When Checkmate refuses, read each reason and hint. A refused call saves nothing and the drafts stay, so send again only the refused parts, with the fixes. Only the PM answers questions and accepts records.",
   type: "object",
   properties: {
     items: {
@@ -12435,8 +12550,7 @@ var lite_record_schema_default = {
       type: "array",
       items: {
         $ref: "#/definitions/check"
-      },
-      minItems: 1
+      }
     },
     defects: {
       description: "The new defects of this build, each with exact steps, the expected result and its source (the ticket, a doc, or a PM answer), and evidence. A failed check names each defect. When no item covers it, add an item. Give an earlier defect a verdict in retests.",
@@ -12467,7 +12581,6 @@ var lite_record_schema_default = {
       }
     }
   },
-  required: ["checks"],
   additionalProperties: false,
   examples: [
     {
@@ -12481,7 +12594,6 @@ var lite_record_schema_default = {
         },
         {
           item: "R2",
-          check: "Return L1 3 days late. GET /api/loans/L1.",
           value: "fee 1.50"
         }
       ],
@@ -12493,12 +12605,7 @@ var lite_record_schema_default = {
           steps: ["Borrow 5 books.", "Borrow one more."],
           expected: "Refused (ticket.md, criterion 1).",
           actual: "201 Created.",
-          evidence: [
-            "evidence/d1.png",
-            {
-              text: "POST /api/loans: 201"
-            }
-          ]
+          evidence: ["evidence/d1.png", "POST /api/loans: 201"]
         }
       ]
     }
@@ -12513,7 +12620,7 @@ var lite_record_schema_default = {
       minLength: 1
     },
     evidence: {
-      description: 'File paths in the workspace (screenshots, responses, logs), for example evidence/r1.png, or {"text": "<what you saw>"}.',
+      description: "Each entry is a file path in the workspace (a screenshot, a response, a log), for example evidence/r1.png, or a short text of what you saw, for example GET /api/loans/L1: 200 fee 1.50. One file can be the evidence of several checks.",
       type: "array",
       items: {
         anyOf: [
@@ -12565,7 +12672,7 @@ var lite_record_schema_default = {
           $ref: "#/definitions/identifier"
         },
         check: {
-          description: "What you did, in one sentence.",
+          description: "What you did, in one sentence. Leave it out on a check of a repeat line: Checkmate uses the steps of the line.",
           $ref: "#/definitions/text"
         },
         result: {
@@ -12577,11 +12684,11 @@ var lite_record_schema_default = {
           $ref: "#/definitions/text"
         },
         value: {
-          description: "Necessary for each repeat line: do its steps again and give the value that you see. Checkmate compares it with the reference value after it removes the spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form (1.50 is 1.5, 007 is 7). All other text must be equal. Equal: passed. Different: failed, and the check needs defect or intended. On an item without a reference value, a passed check with value sets the reference value.",
+          description: "Necessary for each repeat line: do its steps again and give the value that you see. Checkmate compares it with the reference value after it removes the spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form (1.50 is 1.5, 007 is 7). All other text must be equal. Equal: passed. Different: the check needs defect (failed), intended (passed), or a result and a reason when the difference is not in the rule, for example a generated ID or data that your tests changed. On an item without a reference value, a passed check with value sets the reference value.",
           $ref: "lite-checklist.schema.json#/definitions/value"
         },
         reason: {
-          description: "Necessary for blocked and not_run: why the check did not run.",
+          description: "Necessary for blocked and not_run: why the check did not run. With a value that is different from the reference value and no defect or intended: why the difference is not in the rule.",
           $ref: "#/definitions/text"
         },
         intended: {
@@ -12608,7 +12715,7 @@ var lite_record_schema_default = {
           $ref: "#/definitions/identifier"
         }
       },
-      required: ["item", "check"],
+      required: ["item"],
       additionalProperties: false
     },
     defect: {
@@ -12706,7 +12813,7 @@ var files = {
 };
 var liteSteps = [
   "1. Before the build, while the base app runs: lite checklist records the items, the baselines, and the questions.",
-  "2. On the first build: lite show, free testing, then one lite record.",
+  "2. On the first build: lite show, then free testing. Save a first lite record with --draft early, and add parts with --draft while you test. A last lite record without --draft completes the build.",
   "3. On each later build: the same, with retest verdicts.",
   "Use only the lite commands. Send each JSON payload on standard input in a quoted heredoc."
 ];
@@ -12738,10 +12845,7 @@ function fieldsOf(node, file, prefix) {
 }
 function brief(fields, names) {
   const parent = (field2) => names.find((name) => field2.path.startsWith(`${name}[].`) || field2.path.startsWith(`${name}.`));
-  const list2 = (name, required) => fields.filter((field2) => parent(field2) === name && field2.required === required).map((field2) => {
-    const own = field2.path.slice(field2.path.indexOf(".", name.length) + 1);
-    return field2.type.includes("|") ? `${own} (${field2.type})` : own;
-  }).join(", ");
+  const list2 = (name, required) => fields.filter((field2) => parent(field2) === name && field2.required === required).map((field2) => ({ field: field2, own: field2.path.slice(field2.path.indexOf(".", name.length) + 1) })).filter(({ own }) => !own.includes(".")).map(({ field: field2, own }) => field2.type.includes("|") ? `${own} (${field2.type})` : own).join(", ");
   const summary = (name) => [
     list2(name, true) && `Required fields: ${list2(name, true)}.`,
     list2(name, false) && `Optional fields: ${list2(name, false)}.`
@@ -12790,14 +12894,21 @@ function guideLite(store, planId) {
     ],
     ["retests[].defect", open, "a verdict with evidence"]
   ].filter(([, list2]) => list2.length);
-  const fields = open.length ? record.fields : record.fields.filter((field2) => !field2.path.startsWith("retests"));
+  const later = state.runs.length > 0;
+  const fields = record.fields.filter((field2) => open.length || !field2.path.startsWith("retests")).filter((field2) => !later || /^(checks|retests)\b/.test(field2.path));
   return completed(planId, {
     ...state,
+    ...later ? {
+      items: [],
+      questions: state.questions.filter(
+        (question) => question.status !== "resolved"
+      )
+    } : {},
     step: "record",
     command: `checkmate lite record ${planId} --build <build>`,
     about: record.about,
-    fields: brief(fields, ["items", "defects", "retests", "questions", "changes"]),
-    ...state.runs.length ? {} : { example: record.example },
+    fields: brief(fields, ["items", "defects", "retests", "questions", "changes", ...later ? ["checks"] : []]),
+    ...later ? {} : { example: record.example },
     need,
     next: []
   });
@@ -13350,7 +13461,7 @@ function renderPlan(plan, sha256, format2) {
 }
 function renderRun(report, format2) {
   if (format2 === "junit") return junit(report);
-  const { inline, times, ...record } = report;
+  const { inline: inline2, times, ...record } = report;
   return rendered(runDocument(report), record, format2);
 }
 function exportPlan(store, reference2, format2) {
@@ -13365,13 +13476,13 @@ function runReport(store, runId) {
   const state = resultAcceptance(store, run2.row, finished.sha256);
   const approval = planApproval(store, run2.plan, run2.row.plan_sha256);
   const { planId, revision, objective, requirements, tests, gaps, decisions, assumptions } = run2.plan;
-  const inline = {};
+  const inline2 = {};
   for (const entry of finished.result.evidence) {
     const image = inlineImages.includes(entry.mediaType) && entry.size <= maxInlineImage;
     const text = inlineTexts.includes(entry.mediaType) && entry.size <= maxInlineText;
     if (!image && !text) continue;
     const bytes = Buffer.from(evidenceBytes(store, entry.id).bytes);
-    inline[entry.id] = image ? { image: `data:${entry.mediaType};base64,${bytes.toString("base64")}` } : { text: bytes.toString("utf8") };
+    inline2[entry.id] = image ? { image: `data:${entry.mediaType};base64,${bytes.toString("base64")}` } : { text: bytes.toString("utf8") };
   }
   return {
     result: finished.result,
@@ -13379,7 +13490,7 @@ function runReport(store, runId) {
     acceptance: { state: approvalLabel(state), latest: state.latest },
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
-    inline,
+    inline: inline2,
     times: testTimes(store, runId)
   };
 }
@@ -13402,7 +13513,7 @@ function exportRun(store, runId, format2) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // plugin/src/actor.ts
@@ -16060,7 +16171,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath(new URL(candidate, import.meta.url));
-    if (existsSync(path + file)) return path;
+    if (existsSync2(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -16107,7 +16218,7 @@ function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -16116,7 +16227,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve3(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve4(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -16225,9 +16336,9 @@ data: ${matched.join(",") || "*"}
     } catch {
       return errorPage(request, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
     }
-    const inline = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
+    const inline2 = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
     send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
+      "Content-Disposition": `${inline2 ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
       "Cache-Control": "private, max-age=31536000, immutable"
     });
   }
@@ -16352,7 +16463,7 @@ data: ${matched.join(",") || "*"}
   function values(form, names) {
     return Object.fromEntries(names.map((name) => [name, form.get(name) ?? ""]));
   }
-  function refuse(request, page, cookies = []) {
+  function refuse2(request, page, cookies = []) {
     const shown = page();
     render(request, { ...shown, status: shown.status ?? 422 }, cookies);
   }
@@ -16375,7 +16486,7 @@ data: ${matched.join(",") || "*"}
       "A clarification needs a source. Name where the answer comes from."
     );
     check2(Boolean(state.values.rationale.trim()), "Write a rationale. Checkmate records it with your answer.");
-    if (state.error) return refuse(request, page, cookies);
+    if (state.error) return refuse2(request, page, cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -16395,7 +16506,7 @@ data: ${matched.join(",") || "*"}
 						>Review revision ${latest.latestRevision}</a
 					>, then send again.`;
       else state.error = plainMessage(error);
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies);
     redirect(request.res, next.location, next.cookies);
@@ -16410,16 +16521,16 @@ data: ${matched.join(",") || "*"}
     const sha = form.get("sha") ?? "";
     const token = form.get("decision") ?? "";
     state.stale = staleCheck(sha, token);
-    if (state.stale) return refuse(request, view, cookies);
-    if (form.get("back")) return refuse(request, () => ({ ...view(), status: 200 }), cookies);
+    if (state.stale) return refuse2(request, view, cookies);
+    if (form.get("back")) return refuse2(request, () => ({ ...view(), status: 200 }), cookies);
     if (!choices.includes(state.values.verdict)) state.error = "Choose a decision.";
     else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
     else if (!state.values.rationale.trim())
       state.error = "Write a rationale. Checkmate records it with your decision.";
-    if (state.error) return refuse(request, view, cookies);
+    if (state.error) return refuse2(request, view, cookies);
     if (form.get("confirmed") !== "1") {
       state.confirm = true;
-      return refuse(request, () => ({ ...view(), status: 200 }), cookies);
+      return refuse2(request, () => ({ ...view(), status: 200 }), cookies);
     }
     let flash;
     try {
@@ -16427,7 +16538,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       state.stale = staleCheck(sha, token);
       if (!state.stale) state.error = plainMessage(error);
-      return refuse(request, view, cookies);
+      return refuse2(request, view, cookies);
     }
     const next = nextItem(flash, cookies);
     redirect(request.res, next.location, next.cookies);
@@ -16494,7 +16605,7 @@ data: ${matched.join(",") || "*"}
     const planId = runDetail(store, runId).planId;
     const sha = form.get("sha") ?? "";
     const page = (message) => () => runPage(store, context(request), runId, null, { gapId, message });
-    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the change."), cookies);
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the change."), cookies);
     const latest = planDetail(store, planId);
     let adopted;
     try {
@@ -16507,7 +16618,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       const message = latest.sha256 === sha ? plainMessage(error) : html2`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
 							the plan. Review the plan, then send again.`;
-      return refuse(request, page(message), cookies);
+      return refuse2(request, page(message), cookies);
     }
     redirect(request.res, `/runs/${runId}#${gapId}`, [
       ...cookies,
@@ -16545,7 +16656,7 @@ data: ${matched.join(",") || "*"}
       candidate = state.candidate;
     }
     if (!actor) state.error ??= "Enter your name. Checkmate records it with the edit.";
-    if (state.error) return refuse(request, page, cookies);
+    if (state.error) return refuse2(request, page, cookies);
     let saved;
     try {
       saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data;
@@ -16553,7 +16664,7 @@ data: ${matched.join(",") || "*"}
       const latest = planDetail(store, planId);
       if (latest.latestRevision === revision && latest.sha256 === sha) {
         state.error = plainMessage(error);
-        return refuse(request, page, cookies);
+        return refuse2(request, page, cookies);
       }
       const fresh = planCandidate(latest.plan);
       state.unsaved = ownChanges(form, fresh);
@@ -16563,7 +16674,7 @@ data: ${matched.join(",") || "*"}
       state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
 				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
 				it.`;
-      return refuse(
+      return refuse2(
         request,
         () => editPage(store, context(request), planId, latest.latestRevision, state),
         cookies
@@ -16589,12 +16700,12 @@ data: ${matched.join(",") || "*"}
     const instanceId = state.values.instanceId.trim();
     if (!actor) state.error = "Enter your name. Checkmate records it with the instance.";
     else if (!instanceId) state.error = "Enter an instance ID.";
-    if (state.error) return refuse(request, page, cookies);
+    if (state.error) return refuse2(request, page, cookies);
     try {
       addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
       ...cookies,
@@ -16605,12 +16716,12 @@ data: ${matched.join(",") || "*"}
     const { actor, cookies } = actorFrom(request, form);
     const page = (error) => () => targetPage(store, context(request), targetId, null, null, { instanceId, error });
     if (form.get("confirmed") !== "1")
-      return refuse(request, page("Confirm that you want to retire the instance."), cookies);
-    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the change."), cookies);
+      return refuse2(request, page("Confirm that you want to retire the instance."), cookies);
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the change."), cookies);
     try {
       retireInstance(store, actor, { targetId, instanceId });
     } catch (error) {
-      return refuse(request, page(plainMessage(error)), cookies);
+      return refuse2(request, page(plainMessage(error)), cookies);
     }
     redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
       ...cookies,
@@ -16699,9 +16810,9 @@ data: ${matched.join(",") || "*"}
   const server = createServer((req, res) => {
     void handle(req, res);
   });
-  await new Promise((resolve3, reject) => {
+  await new Promise((resolve4, reject) => {
     server.once("error", reject);
-    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve3());
+    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve4());
   });
   const address = server.address();
   port = typeof address === "object" && address ? address.port : 0;
@@ -16712,8 +16823,8 @@ data: ${matched.join(",") || "*"}
       clearInterval(heartbeat);
       for (const client of clients) client.res.end();
       clients.clear();
-      await new Promise((resolve3) => {
-        server.close(() => resolve3());
+      await new Promise((resolve4) => {
+        server.close(() => resolve4());
         server.closeAllConnections();
       });
       closeStore(watch);
@@ -16723,8 +16834,8 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
-import { dirname, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync3, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
+import { dirname, resolve as resolve3 } from "node:path";
 import { constants } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -17345,7 +17456,7 @@ EOF` }
   },
   "lite record": {
     positionals: ["planId"],
-    flags: { build: "value", instance: "value" },
+    flags: { build: "value", instance: "value", draft: "switch" },
     required: ["build"],
     write: true,
     stdin: true,
@@ -17353,21 +17464,31 @@ EOF` }
       planId: value(args, "planId"),
       build: value(args, "build"),
       instance: value(args, "instance"),
+      ...args.draft ? { draft: true } : {},
       record: stdin()
     }),
-    print: (reply) => ({
-      facts: { plan: reply.data.plan, coverage: reply.data.coverage, sha256: short2(reply.data.sha256) },
+    print: (reply) => reply.data.draft ? {
+      facts: { draft: reply.data.build, parts: reply.data.parts },
+      lines: [
+        ...Object.entries(reply.data.counts).filter(([, count]) => count),
+        ...reply.data.missing.map((reason) => ["missing", reason]),
+        ["next", "Add parts with --draft. Complete the build with a last call without --draft."]
+      ]
+    } : {
+      facts: {
+        plan: reply.data.plan,
+        coverage: reply.data.coverage,
+        sha256: short2(reply.data.sha256)
+      },
       lines: [
         ...Object.entries(reply.data.counts),
         ...reply.data.defects.map((id2) => ["defect", id2]),
-        ...reply.data.retest.map((item) => [
-          "retest",
-          `${item.runId}/${item.findingId}`,
-          item.verdict
-        ]),
+        ...reply.data.retest.map(
+          (item) => ["retest", `${item.runId}/${item.findingId}`, item.verdict]
+        ),
         ...reply.data.questions.map((id2) => ["question", id2])
       ]
-    })
+    }
   },
   "run gate": {
     positionals: ["reference"],
@@ -17884,7 +18005,7 @@ function printPlan(reply) {
   };
 }
 function writeOutput(store, out, content) {
-  const path = resolve2(store.workspace, out);
+  const path = resolve3(store.workspace, out);
   mkdirSync3(dirname(path), { recursive: true });
   try {
     writeFileSync(path, content, { flag: "wx" });
@@ -18080,7 +18201,7 @@ function run(argv, io) {
   const command = commands[name];
   const first = command.positionals[0]?.replace(/\?$/, "");
   const subject = first && name !== "query" ? String(args[first] ?? name) : name;
-  const workspace = resolve2(io.cwd, value(args, "workspace") ?? ".");
+  const workspace = workspaceOf(io.cwd, value(args, "workspace"));
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
@@ -18095,6 +18216,13 @@ function run(argv, io) {
     return { code: 1, output: format(reply, json) };
   } finally {
     if (store) closeStore(store);
+  }
+}
+function workspaceOf(cwd, given) {
+  if (given !== void 0) return resolve3(cwd, given);
+  for (let directory2 = resolve3(cwd); ; directory2 = dirname(directory2)) {
+    if (existsSync3(databasePath(directory2))) return directory2;
+    if (dirname(directory2) === directory2) return resolve3(cwd);
   }
 }
 function uiOptions(tokens, cwd) {
@@ -18116,7 +18244,7 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: resolve2(cwd, values.workspace ?? "."), port };
+  return { workspace: workspaceOf(cwd, values.workspace), port };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");

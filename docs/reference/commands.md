@@ -15,7 +15,7 @@ Checkmate has one command set with two command lines. Small values go in flags, 
 
 The skills run the plugin CLI with its absolute path. Claude Code gives the path to a skill when it loads the skill. The plugin has no npm dependencies and no global `checkmate` command.
 
-Every command takes `--workspace <path>` and `--json`. Put options after the command name, for example `checkmate plan list --workspace ../app`. The workspace is the current directory by default. A write takes `--actor <name>`.
+Every command takes `--workspace <path>` and `--json`. Put options after the command name, for example `checkmate plan list --workspace ../app`. The workspace is the nearest directory with a `.checkmate` store, from the current directory up. When no directory has a store, the workspace is the current directory. A write takes `--actor <name>`.
 
 `checkmate --help` prints every command with its options. `checkmate <command> --help` prints the usage of that command with `completed` on line 1. For a group, for example `checkmate plan --help`, it prints each command of the group. `checkmate --version` prints the npm CLI version.
 
@@ -61,7 +61,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 | Lite      | `lite guide [<planId>]`                                 | Prints the payload fields of the next step with an example, the state, the repeat lines, and what the record needs.               |
 |           | `lite checklist <planId> --target <targetId@rev>`       | Records a checklist and questions as revision 1 of a lite plan.                                                                   |
 |           | `lite show <planId>`                                    | Prints the items, the repeat lines, the questions with their answers, the runs, the open defects, and the next steps.             |
-|           | `lite record <planId> --build <build>`                  | Records one tested build as a new revision and a finished run. Read [Lite mode](#lite-mode).                                      |
+|           | `lite record <planId> --build <build> [--draft]`        | Records one tested build as a new revision and a finished run, or saves a part with `--draft`. Read [Lite mode](#lite-mode).      |
 | Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
 |           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                                                                                          |
 |           | `ui`                                                    | Starts the review UI.                                                                                                             |
@@ -265,11 +265,11 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 
 ## Lite mode
 
-Lite mode keeps Checkmate as the record and the gate, but not as the test method. The agent tests freely and records each build in one call. One agent session does all of the steps, with the `lite` skill or with `lite guide`:
+Lite mode keeps Checkmate as the record and the gate, but not as the test method. The agent tests freely and records each build in one call or in parts. One agent session does all of the steps, with the `lite` skill or with `lite guide`:
 
 1. Before the build, `lite checklist` records the checklist items (the requirements) and the questions (non-blocking gaps). The target profile must have `"approvals": {"plan": "none", ...}`. Lite mode has no setup, plan approval, or revise stage.
 2. The oracle answers each question with `gap answer`.
-3. After each build, `lite show` prints the answers, the repeat lines, and the open defects. Then `lite record` records the full build.
+3. After each build, `lite show` prints the answers, the repeat lines, and the open defects. Then `lite record` records the build. A call with `--draft` saves a part of the record. The last call without `--draft` completes the build.
 
 The checklist states `criteria`, the count of numbered acceptance criteria in the ticket. An item with `"criterion": <n>` is the item of criterion `n`. Checkmate stores its source as `<ticket file>#ac-<n>` and the number in the metadata `criterion`. `lite checklist` refuses the checklist when a number from 1 to `criteria` has no item.
 
@@ -279,11 +279,13 @@ An item without a baseline gets a reference value from a build record: the `valu
 
 The optional field `changes` of the checklist and of the record lists the areas that the diff or the ticket changes, each with a `source` and the `items` that cover it. Checkmate stores the list in the plan revision as `changes` and adds the entries of each record. `lite show` and `lite guide` print a `suggest` line for each area that no item covers. No rule of Checkmate needs this field.
 
-`lite guide [<planId>]` prints what an agent needs without a skill. The text comes from the `description` and `examples` of the two lite schemas. Without a plan, or for a plan without a checklist, the next step is `lite checklist`: the guide prints the three steps, the command, each payload field with its description, an example, and `next:` lines. For a plan with a checklist, the next step is `lite record`. The guide prints the fields of the record, the `lite show` lines without the item sources, and `need` lines. It prints the entry fields of `items`, `defects`, `retests`, `questions`, and `changes` as one line each, and the `retests` field only when a defect is open. It prints the example until the plan has a run, and then only the command. Each `need` line names a field and the items or open defects that the record must give it. `lite show` ends with `next:` lines.
+`lite guide [<planId>]` prints what an agent needs without a skill. The text comes from the `description` and `examples` of the two lite schemas. Without a plan, or for a plan without a checklist, the next step is `lite checklist`: the guide prints the three steps, the command, each payload field with its description, an example, and `next:` lines. For a plan with a checklist, the next step is `lite record`. The guide prints the fields of the record, the `lite show` lines without the item sources, and `need` lines. When the plan has a run, the guide prints only the `checks` and `retests` fields, as one line each, and no `item` lines or resolved questions. It prints the entry fields of `items`, `defects`, `retests`, `questions`, and `changes` as one line each, and the `retests` field only when a defect is open. It prints the example until the plan has a run, and then only the command. Each `need` line names a field and the items or open defects that the record must give it. `lite show` ends with `next:` lines.
 
 `lite checklist` also accepts a plan that `plan open` opened and that has no revision. It keeps the open request and the target of that request.
 
-`lite record` stores one transaction:
+`lite record --draft` checks the payload against the schema and saves it as a part of the record of the build. It does not store a revision or a run. It prints the count of each field in the parts and a `missing` line for each rule that the full record does not satisfy yet. The parts of the drafts and of the last call make one record. A part replaces an earlier part with the same `id`, the same `defect` in `retests`, the same `area` in `changes`, or a check with the same `item` and `check`. The drafts of a build stay until the build has a record. A refused call saves nothing.
+
+`lite record` without `--draft` stores one transaction:
 
 - A new plan revision. It applies the pending decisions and adds the new items and questions. It has one test for each check. A check test has the ID `<item>-<n>`, one assertion `A1`, and the metadata `recordedBy: lite`.
 - A finished run `<planId>-run-<n>` that selects each test of the revision. A later run is a retest of the run before it.
@@ -293,15 +295,17 @@ The optional field `changes` of the checklist and of the record lists the areas 
 
 - an item has no check, or a criterion item has only `not_run` checks,
 - a check has no `result`, and it is not a check with `value` on an item with a reference value,
-- an item with a reference value has no check with `value`,
-- the `value` is not the reference value, and the check has no `defect` and no `intended` change,
+- an item with a reference value has no check with `value` and no `blocked` check with a `reason`,
+- a check has no `check` text, and it is not a check of an item with a reference value,
+- the `value` is not the reference value, and the check has no `defect`, no `intended` change, and no `result` other than `failed` with a `reason`,
 - the `result` of a check with `value` is not the result that Checkmate sets from the value,
 - `changes[].items` names an unknown item,
 - a failed check has no defect, or a defect has no failed check or no evidence,
+- an evidence path names no file,
 - an open earlier defect has no retest verdict with evidence,
 - the build already has a record.
 
-For a check with `value` on an item with a reference value, Checkmate sets the result. It removes the spaces at the two ends of each value, changes each sequence of spaces to one space, and writes each number in one form: it removes the zeros before the integer part and after the decimal part, so `1.50` is `1.5` and `007` is `7`. All other text, letter case, and units must be the same. It does no other matching. Equal values give `passed`. Different values give `failed` with the `defect` of the check, or `passed` with the `intended` change. It adds the value, the reference value, the intended change, and the reason to the `observed` text of the check. The refusal has a `reason` and a `hint`. The reason or the hint names the payload field, for example `checks[1].defect` or `retests[].evidence`. Nothing is recorded. When the plan has no checklist, `lite show` and `lite record` refuse with a hint to run `lite checklist`. Evidence is a file path in the workspace or inline text. Checkmate does not delete the file.
+For a check with `value` on an item with a reference value, Checkmate sets the result. It removes the spaces at the two ends of each value, changes each sequence of spaces to one space, and writes each number in one form: it removes the zeros before the integer part and after the decimal part, so `1.50` is `1.5` and `007` is `7`. All other text, letter case, and units must be the same. It does no other matching. Equal values give `passed`. Different values give `failed` with the `defect` of the check, or `passed` with the `intended` change. When the difference is not in the rule, for example a generated ID or data that the tests changed, the check gives its own `result` (`passed`, `blocked`, or `not_run`) and a `reason`. Only an `intended` change or the first passed value sets a new reference value. A check of an item with a reference value can leave out `check`: Checkmate uses the steps of the repeat line. It adds the value, the reference value, the intended change, and the reason to the `observed` text of the check. The refusal has a `reason` and a `hint`. When the record breaks more than one rule, the reason and the hint list each rule with a number, for example `(1)` and `(2)`. The hint gives the JSON fragment to add when it can. The reason or the hint names the payload field, for example `checks[1].defect` or `retests[].evidence`. Nothing is recorded. When the plan has no checklist, `lite show` and `lite record` refuse with a hint to run `lite checklist`. Evidence is a file path in the workspace, a short text, or `{"text": "<what you saw>"}`. A string with a space that names no file is text. One file can be the evidence of several checks. Checkmate does not delete the file.
 
 `status`, `run show`, `finding list`, `export`, the review UI, and `result accept` read lite records as they read other records. The `next` lines of `status` name the commands of the full loop.
 

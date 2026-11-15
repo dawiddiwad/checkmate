@@ -23,6 +23,7 @@ app-docs
 # Local run state
 .checkmate/checkmate.db*
 .checkmate/tmp/
+plugin/evals/results/
 .playwright/
 
 # npm CLI build output, its plugin copy, README, and license, created at pack time

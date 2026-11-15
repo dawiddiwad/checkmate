@@ -4,7 +4,7 @@
 
 The plugin is plain TypeScript that Node.js runs directly, with no runtime npm dependencies. Every change goes through `npm run phase:verify`, and a merged pull request releases itself.
 
-**On this page:** [Set up](#set-up) · [Layout](#layout) · [Checks](#checks) · [Writing tests](#writing-tests) · [Live tests](#live-tests) · [Contracts](#contracts) · [Releases](#releases) · [Media](#media)
+**On this page:** [Set up](#set-up) · [Layout](#layout) · [Checks](#checks) · [Writing tests](#writing-tests) · [Live tests](#live-tests) · [Plugin evals](#plugin-evals) · [Contracts](#contracts) · [Releases](#releases) · [Media](#media)
 
 ## Set up
 
@@ -100,6 +100,32 @@ npm run test:live
 - Each test prints the stage, duration, and status, and writes `measurements.json` in the workspace. The workspace stays, and its path is printed.
 
 A passed live run does not prove that a worker always follows the skills. [Examples](examples/README.md) records the latest published run.
+
+## Plugin evals
+
+`plugin/evals/` holds a small suite for `claude plugin eval`. Each case is a folder with `prompt.md`, `case.yaml`, `scaffold.sh`, and `graders/*.md`. `plugin/evals/lib/workspace.sh` makes the workspace of a case: a ticket, product documentation, a small file-based inventory app, and the Checkmate records that the case needs.
+
+| Case                      | Checks                                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `plan-trigger`            | A request to plan tests for a ticket loads `checkmate:plan`.                                    |
+| `retest-trigger`          | A request to retest a run loads `checkmate:execute` and begins a run with `--retest-of`.        |
+| `status-trigger`          | A question about the state of a plan loads `checkmate:status` and changes no record.            |
+| `plan-vague-terms`        | A vague threshold and a vague scope word each give an open gap in the saved plan.               |
+| `plan-regression-sources` | A regression test checks a rule that the docs state, and no assertion invents a value.          |
+| `execute-missing-tool`    | A test that needs a missing tool is closed, the other tests run, and `run finish` ends the run. |
+
+Run the suite from the repository root:
+
+```sh
+claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read \
+  --runs 3 --model claude-haiku-5-5 --judge-model claude-haiku-5-5 --max-cost-usd 20 --no-publish
+```
+
+- The suite calls a real model. Each case runs 3 times with the plugin and 3 times without it, so one full run is 36 agent sessions and the LLM graders. It costs money on your credential. Set `--max-cost-usd`, and use `--case <glob>` or `--tag trigger` for a smaller run.
+- `--scaffold` runs `scaffold.sh` of each case as you. The scaffold writes only in the temporary workspace of the case.
+- The scaffold finds the plugin CLI through `CLAUDE_PLUGIN_ROOT`, else through its own path in `plugin/evals/`.
+- The results go to `plugin/evals/results/`. Git ignores them.
+- The suite is not part of `phase:verify` or CI. A passed suite does not prove that a worker always follows the skills.
 
 ## Contracts
 

@@ -87,7 +87,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 - **target show.** Prints one `entryPoint` line for each entry point, the `authentication` kind and references, the `startup` owner and commands, the `cleanup` text, the `reset` owner and commands when the profile has a reset, the tools, and one `instance` line for each active instance. With `--instance <instanceId>`, it also prints `entry`, `environment`, and `reference` lines with the values of that instance.
 - **target instance list.** Prints one line for each instance: the instance ID, `active` or `retired`, the environment, and the entry values as `<entryPoint>=<value>`. The entries are separated by `,`. A value that contains a space, `,`, `=`, `"`, or `\` is a JSON string, for example `web="https://shop.example.com/?a=b"`. That JSON string is the only escaping layer: `C:\app "x"` prints as `web="C:\\app \"x\""`. Read it with a JSON parser.
 - **target instance retire.** When started runs use the instance, it prints a `warning` line that names them.
-- **run show.** Line 1 has `acceptance=`. Line 2 is `time`, with the deadline in UTC and the elapsed and remaining seconds of the current attempt. Read [Deadline](runs.md#deadline). After the tests and the findings, a retest prints one `retest` line for each open defect of the earlier run, with the [verdict](runs.md#retest-verdicts). When the result has a decision, the last line is `decision`, the verdict, the actor, the time, and the rationale.
+- **run show.** Line 1 has `acceptance=`, and `cause=` for an interrupted run. A test line has `cause=deadline` when the test was closed with that cause. Line 2 is `time`, with the deadline in UTC and the elapsed and remaining seconds of the current attempt. Read [Deadline](runs.md#deadline). After the tests and the findings, a retest prints one `retest` line for each open defect of the earlier run, with the [verdict](runs.md#retest-verdicts). When the result has a decision, the last line is `decision`, the verdict, the actor, the time, and the rationale.
 
   ```text
   decision	rejected	Dawid	2026-11-14T21:04:53.915Z	I need fullsize screenshots for evidence
@@ -105,7 +105,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
 
 ## Loop states
 
-`checkmate status <planId>` derives the loop state from the records. Checkmate stores no loop state. Line 1 has `state=` and `waitsOn=`, and `run=` names the latest run in begin order. Then come `why` lines, `next` lines, one `started` line for each open run, the open gaps, the pending decisions, the [open defects](runs.md#open-defects) of the ready tests, and the [retest verdicts](runs.md#retest-verdicts) of the latest retest in begin order. A `started` line names the run, the build, and the instance. A matrix of five runs on five instances prints five `started` lines.
+`checkmate status <planId>` derives the loop state from the records. Checkmate stores no loop state. Line 1 has `state=` and `waitsOn=`, and `run=` names the latest run in begin order. Then come `why` lines, `next` lines, one `started` line for each open run, the open gaps, the pending decisions, the [open defects](runs.md#open-defects) of the ready tests, and the [retest verdicts](runs.md#retest-verdicts) of the latest retest in begin order, while one of its defects is open or while it is the latest finished run. A `started` line names the run, the build, and the instance. A matrix of five runs on five instances prints five `started` lines.
 
 ```text
 completed checkout state=needs_revision waitsOn=planner revision=2 approval=pending run=run-1
@@ -195,7 +195,7 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 3. With `--partial wait_for_resolution`, no blocking gap of the plan is open, and no open blocking gap of a run affects a selected test.
 4. Each selected test exists, is ready, uses a capability and allowed operations of the target, has assertions, and has its local prerequisites in the selection.
 5. Each cross-plan dependency has a finished `passed` result for the same build, accepted when required, and no open blocking gap applies to it. A pass on any instance counts, also when a run on another instance failed the test.
-6. A retest selects each ready test with an open defect of the earlier run, and each ready test with `"type": "regression"` in its metadata. The gate refuses a `--tests` selection without them, also with `--partial ready_only`. Without `--tests`, `--partial ready_only` selects them with the other ready tests. A test that is not ready is not required.
+6. A retest selects each ready test with an open defect of the earlier run or of its retest chain, and each ready test with `"type": "regression"` in its metadata. The gate refuses a `--tests` selection without them, also with `--partial ready_only`. Without `--tests`, `--partial ready_only` selects them with the other ready tests. A test that is not ready is not required.
 7. A retest names a finished run of the same plan and target, with another build. The instance can be different. A retest can keep the build only when it runs on another instance and the instance of the earlier run is retired: the refreshed-sandbox case.
 
 `run begin` checks the instance first. It refuses an unknown instance and a retired instance.
@@ -243,7 +243,7 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 **`--claude-arg` can change permissions.** For example, `--permission-mode`, `--settings`, and `--tools` change what the worker can do. The host owns that choice. Checkmate does not check these arguments for permissions, and it does not record them.
 
-**Deadlines.** `--timeout` sets the deadline in seconds, from 1 to 3600. Another value gives `invalid_request`. Setup, plan, and revise use 300 seconds by default. Execute uses the deadline that `run begin` recorded. The execute prompt gives the run deadline in UTC, the elapsed seconds, and the remaining seconds. The launcher stops the worker's process group at the deadline, on SIGINT or SIGTERM, and when the worker output exceeds 4 MiB.
+**Deadlines.** `--timeout` sets the deadline in seconds, from 1 to 3600. Another value gives `invalid_request`. Setup, plan, and revise use 300 seconds by default. Execute uses the seconds that remain of the run deadline, at least 1. The execute prompt gives the run deadline in UTC and the remaining seconds. It has no second deadline. The other prompts give the deadline in UTC and tell the worker to check the time with `date -u`. The launcher stops the worker's process group at the deadline, on SIGINT or SIGTERM, and when the worker output exceeds 4 MiB.
 
 **Lock.** When the parent cannot get the database lock before it starts the worker, `delegate` gives `operational_error` with the reason to run the command again. When it cannot get the lock after the worker, the worker can have written already. Then the reason tells you to read `checkmate status` or `checkmate log` before you run `delegate` again.
 

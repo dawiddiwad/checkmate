@@ -414,24 +414,26 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 		begun.lines[0],
 		/^completed run-1 instance=local tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 deadline=\S+ evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
 	)
-	const interrupt = (reason: string) =>
+	const interrupt = (cause: string) =>
 		cli(workspace, [
 			'run',
 			'finish',
 			'run-1',
 			'--completion',
 			'interrupted',
+			'--cause',
+			cause,
 			'--reason',
-			reason,
+			'The worker stopped.',
 			'--cleanup',
 			'completed',
 			'--cleanup-reason',
 			'Closed.',
 		])
-	const early = interrupt('The deadline is near.')
+	const early = interrupt('deadline')
 	assert.equal(early.lines[0], 'rejected run-1')
 	assert.match(early.lines[1], /^reason: Only 0% of the deadline is used: \d+ of 120 seconds/)
-	const finished = interrupt('The oracle stopped the run.')
+	const finished = interrupt('host_stopped')
 	assert.equal(finished.code, 1)
 	assert.match(finished.lines[0], /^interrupted run-1 coverage=partial sha256=[a-f0-9]{8}$/)
 	for (const format of ['md', 'html', 'json']) {
@@ -620,6 +622,8 @@ test('inbox lists gaps to answer, plans to approve, results to accept, and plan 
 		'run-1',
 		'--completion',
 		'interrupted',
+		'--cause',
+		'host_stopped',
 		'--reason',
 		'The oracle stopped the run.',
 		'--cleanup',

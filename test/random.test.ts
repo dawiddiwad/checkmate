@@ -50,15 +50,13 @@ function record(opened: Store, runId: string, outcome: () => string, completion 
 		})
 		closeTest(opened, actor, { runId, testId: test.id })
 	}
-	const finish = (completion: string, reason?: string) =>
-		finishRun(opened, actor, { runId, completion, reason, cleanup: 'completed', cleanupReason: 'Closed.' })
-	if (completion === 'interrupted') return finish('interrupted', 'The host stopped the session.')
-	try {
-		finish('completed')
-	} catch (error) {
-		assert.match(String(error), /Retest \S+ has no verdict on defect/)
-		finish('interrupted', 'A retest test has no verdict.')
-	}
+	finishRun(opened, actor, {
+		runId,
+		completion,
+		...(completion === 'interrupted' ? { cause: 'host_stopped', reason: 'The host stopped the session.' } : {}),
+		cleanup: 'completed',
+		cleanupReason: 'Closed.',
+	})
 }
 
 function active(opened: Store) {

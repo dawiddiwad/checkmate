@@ -511,9 +511,9 @@ var ke = H((G) => {
   function Re(u) {
     return ce.lastIndex = 0, ce.test(u);
   }
-  var Ee = -(2 ** 31), Ce = 2 ** 31 - 1;
+  var Ce = -(2 ** 31), Ee = 2 ** 31 - 1;
   function Be(u) {
-    return Number.isInteger(u) && u <= Ce && u >= Ee;
+    return Number.isInteger(u) && u <= Ee && u >= Ce;
   }
   function Me(u) {
     return Number.isInteger(u);
@@ -534,7 +534,7 @@ var ke = H((G) => {
 var ns = Ie;
 var ie = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
 var F = { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 };
-var C = Object.prototype.hasOwnProperty;
+var E = Object.prototype.hasOwnProperty;
 var j = pe().default;
 var z = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
 var ve = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
@@ -582,7 +582,7 @@ function Ie(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let g = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "evidenceIds" }, message: "must have required property 'evidenceIds'" };
       e === null ? e = [g] : e.push(g), s++;
     }
-    for (let g in u) if (!C.call(ie.properties, g)) {
+    for (let g in u) if (!E.call(ie.properties, g)) {
       let o = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: g }, message: "must NOT have additional properties" };
       e === null ? e = [o] : e.push(o), s++;
     }
@@ -1362,7 +1362,7 @@ function ze(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
               let a = { instancePath: t + "/tests/" + n, schemaPath: "#/properties/tests/items/required", keyword: "required", params: { missingProperty: "assertions" }, message: "must have required property 'assertions'" };
               e === null ? e = [a] : e.push(a), s++;
             }
-            for (let a in m) if (!C.call(Ye.properties.tests.items.properties, a)) {
+            for (let a in m) if (!E.call(Ye.properties.tests.items.properties, a)) {
               let r = { instancePath: t + "/tests/" + n, schemaPath: "#/properties/tests/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: a }, message: "must NOT have additional properties" };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -2270,7 +2270,7 @@ function Ze(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
               let h = { instancePath: t + "/tests/" + p.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
               e === null ? e = [h] : e.push(h), s++;
             }
-            for (let h in k) if (!C.call(We.properties.tests.additionalProperties.anyOf[0].properties, h)) {
+            for (let h in k) if (!E.call(We.properties.tests.additionalProperties.anyOf[0].properties, h)) {
               let q = { instancePath: t + "/tests/" + p.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: h }, message: "must NOT have additional properties" };
               e === null ? e = [q] : e.push(q), s++;
             }
@@ -3210,7 +3210,7 @@ function W(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
       let g = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "assertions" }, message: "must have required property 'assertions'" };
       e === null ? e = [g] : e.push(g), s++;
     }
-    for (let g in u) if (!C.call(qe.properties, g)) {
+    for (let g in u) if (!E.call(qe.properties, g)) {
       let o = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: g }, message: "must NOT have additional properties" };
       e === null ? e = [o] : e.push(o), s++;
     }
@@ -3646,7 +3646,7 @@ function Ne(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let l = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
       e === null ? e = [l] : e.push(l), s++;
     }
-    for (let l in u) if (!C.call(ae.properties, l)) {
+    for (let l in u) if (!E.call(ae.properties, l)) {
       let d = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
       e === null ? e = [d] : e.push(d), s++;
     }
@@ -4468,7 +4468,7 @@ function Ne(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return Ne.errors = e, s === 0;
 }
 var hs = $e;
-var E = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+var C = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
 function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = u } = {}) {
   let e = null, s = 0;
   if (u && typeof u == "object" && !Array.isArray(u)) {
@@ -4516,7 +4516,7 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "readyForLiveExecution" }, message: "must have required property 'readyForLiveExecution'" };
       e === null ? e = [o] : e.push(o), s++;
     }
-    for (let o in u) if (!C.call(E.properties, o)) {
+    for (let o in u) if (!E.call(C.properties, o)) {
       let y = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
       e === null ? e = [y] : e.push(y), s++;
     }
@@ -4589,7 +4589,7 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
             if (m.kind !== void 0) {
               let a = m.kind;
               if (!(a === "url" || a === "command" || a === "value")) {
-                let r = { instancePath: t + "/entryPoints/" + n + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: E.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let r = { instancePath: t + "/entryPoints/" + n + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [r] : e.push(r), s++;
               }
             }
@@ -4710,7 +4710,7 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
             if (m.kind !== void 0) {
               let a = m.kind;
               if (!(a === "cli" || a === "mcp" || a === "skill")) {
-                let r = { instancePath: t + "/tools/" + n + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: E.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let r = { instancePath: t + "/tools/" + n + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [r] : e.push(r), s++;
               }
             }
@@ -4778,7 +4778,7 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (o.kind !== void 0) {
           let y = o.kind;
           if (!(y === "none" || y === "environment" || y === "browser_session")) {
-            let l = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: E.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+            let l = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [l] : e.push(l), s++;
           }
         }
@@ -4887,7 +4887,7 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (o.owner !== void 0) {
           let y = o.owner;
           if (!(y === "factory" || y === "checkmate")) {
-            let l = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: E.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            let l = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: C.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [l] : e.push(l), s++;
           }
         }
@@ -4982,7 +4982,7 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (o.owner !== void 0) {
           let y = o.owner;
           if (!(y === "factory" || y === "checkmate")) {
-            let l = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: E.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            let l = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: C.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [l] : e.push(l), s++;
           }
         }
@@ -5069,14 +5069,14 @@ function $e(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (o.plan !== void 0) {
           let y = o.plan;
           if (!(y === "required" || y === "none")) {
-            let l = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: E.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
+            let l = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: C.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [l] : e.push(l), s++;
           }
         }
         if (o.result !== void 0) {
           let y = o.result;
           if (!(y === "required" || y === "none")) {
-            let l = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: E.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
+            let l = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: C.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [l] : e.push(l), s++;
           }
         }
@@ -5179,7 +5179,7 @@ function Te(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return Te.errors = e, s === 0;
 }
 var ys = Le;
-var V = { $schema: "http://json-schema.org/draft-07/schema#", $id: "result.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, runId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, plan: { type: "object", properties: { planId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["planId", "revision", "sha256"], additionalProperties: false }, target: { type: "object", properties: { targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, instanceId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, applicationBuild: { type: "string", minLength: 1 }, selectedTestIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, retestOf: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, startedAt: { type: "string", format: "date-time" }, finishedAt: { type: "string", format: "date-time" }, attempts: { type: "integer", minimum: 1 }, completion: { enum: ["completed", "interrupted", "operational_error"] }, completionReason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, tests: { type: "array", items: { type: "object", properties: { testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, outcome: { enum: ["passed", "failed", "inconclusive", "blocked", "not_run", "error"] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, assertions: { type: "array", items: { type: "object", properties: { assertionId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"] }, observed: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true } }, required: ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"], additionalProperties: false }, minItems: 0, uniqueItems: true } }, required: ["testId", "outcome", "reason", "assertions"], additionalProperties: false }, minItems: 1, uniqueItems: true }, findings: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds", "testIds", "assertionIds"], additionalProperties: false }, minItems: 0, uniqueItems: true }, newGaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, evidence: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, assertionId: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, kind: { enum: ["observation", "http_exchange", "screenshot", "trace"] }, name: { type: "string", minLength: 1 }, mediaType: { type: "string", minLength: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" }, size: { type: "integer", minimum: 0 } }, required: ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"], additionalProperties: false }, minItems: 0, uniqueItems: true }, cleanup: { type: "object", properties: { status: { enum: ["completed", "failed", "not_applicable"] }, reason: { type: "string", minLength: 1 } }, required: ["status", "reason"], additionalProperties: false }, coverage: { type: "object", properties: { status: { enum: ["complete", "partial", "not_executed"] }, requirements: { type: "array", items: { type: "object", properties: { requirementId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, status: { enum: ["tested", "deferred", "uncovered"] }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["requirementId", "status", "testIds", "reason"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["status", "requirements"], additionalProperties: false } }, required: ["contractVersion", "runId", "plan", "target", "instanceId", "applicationBuild", "selectedTestIds", "retestOf", "startedAt", "finishedAt", "attempts", "completion", "tests", "findings", "newGaps", "evidence", "cleanup", "coverage"], additionalProperties: false };
+var V = { $schema: "http://json-schema.org/draft-07/schema#", $id: "result.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, runId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, plan: { type: "object", properties: { planId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["planId", "revision", "sha256"], additionalProperties: false }, target: { type: "object", properties: { targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, instanceId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, applicationBuild: { type: "string", minLength: 1 }, selectedTestIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, retestOf: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, startedAt: { type: "string", format: "date-time" }, finishedAt: { type: "string", format: "date-time" }, attempts: { type: "integer", minimum: 1 }, completion: { enum: ["completed", "interrupted", "operational_error"] }, completionCause: { enum: ["deadline", "host_stopped", "tool_unavailable", null] }, completionReason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, tests: { type: "array", items: { type: "object", properties: { testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, outcome: { enum: ["passed", "failed", "inconclusive", "blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, assertions: { type: "array", items: { type: "object", properties: { assertionId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"] }, observed: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true } }, required: ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"], additionalProperties: false }, minItems: 0, uniqueItems: true } }, required: ["testId", "outcome", "reason", "assertions"], additionalProperties: false }, minItems: 1, uniqueItems: true }, findings: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds", "testIds", "assertionIds"], additionalProperties: false }, minItems: 0, uniqueItems: true }, newGaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, evidence: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, assertionId: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, kind: { enum: ["observation", "http_exchange", "screenshot", "trace"] }, name: { type: "string", minLength: 1 }, mediaType: { type: "string", minLength: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" }, size: { type: "integer", minimum: 0 } }, required: ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"], additionalProperties: false }, minItems: 0, uniqueItems: true }, cleanup: { type: "object", properties: { status: { enum: ["completed", "failed", "not_applicable"] }, reason: { type: "string", minLength: 1 } }, required: ["status", "reason"], additionalProperties: false }, coverage: { type: "object", properties: { status: { enum: ["complete", "partial", "not_executed"] }, requirements: { type: "array", items: { type: "object", properties: { requirementId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, status: { enum: ["tested", "deferred", "uncovered"] }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["requirementId", "status", "testIds", "reason"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["status", "requirements"], additionalProperties: false } }, required: ["contractVersion", "runId", "plan", "target", "instanceId", "applicationBuild", "selectedTestIds", "retestOf", "startedAt", "finishedAt", "attempts", "completion", "tests", "findings", "newGaps", "evidence", "cleanup", "coverage"], additionalProperties: false };
 var we = ke().fullFormats["date-time"];
 function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = u } = {}) {
   let e = null, s = 0;
@@ -5256,7 +5256,7 @@ function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
       e === null ? e = [r] : e.push(r), s++;
     }
-    for (let r in u) if (!C.call(V.properties, r)) {
+    for (let r in u) if (!E.call(V.properties, r)) {
       let i = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
       e === null ? e = [i] : e.push(i), s++;
     }
@@ -5528,6 +5528,13 @@ function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         e === null ? e = [i] : e.push(i), s++;
       }
     }
+    if (u.completionCause !== void 0) {
+      let r = u.completionCause;
+      if (!(r === "deadline" || r === "host_stopped" || r === "tool_unavailable" || r === null)) {
+        let i = { instancePath: t + "/completionCause", schemaPath: "#/properties/completionCause/enum", keyword: "enum", params: { allowedValues: V.properties.completionCause.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [i] : e.push(i), s++;
+      }
+    }
     if (u.completionReason !== void 0) {
       let r = u.completionReason, i = s, p = false, k = s;
       if (typeof r == "string") {
@@ -5582,7 +5589,7 @@ function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
               let f = { instancePath: t + "/tests/" + c, schemaPath: "#/properties/tests/items/required", keyword: "required", params: { missingProperty: "assertions" }, message: "must have required property 'assertions'" };
               e === null ? e = [f] : e.push(f), s++;
             }
-            for (let f in P) if (!(f === "testId" || f === "outcome" || f === "reason" || f === "assertions")) {
+            for (let f in P) if (!(f === "testId" || f === "outcome" || f === "cause" || f === "reason" || f === "assertions")) {
               let h = { instancePath: t + "/tests/" + c, schemaPath: "#/properties/tests/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: f }, message: "must NOT have additional properties" };
               e === null ? e = [h] : e.push(h), s++;
             }
@@ -5604,6 +5611,10 @@ function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 let h = { instancePath: t + "/tests/" + c + "/outcome", schemaPath: "#/properties/tests/items/properties/outcome/enum", keyword: "enum", params: { allowedValues: V.properties.tests.items.properties.outcome.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [h] : e.push(h), s++;
               }
+            }
+            if (P.cause !== void 0 && P.cause !== "deadline") {
+              let f = { instancePath: t + "/tests/" + c + "/cause", schemaPath: "#/properties/tests/items/properties/cause/enum", keyword: "enum", params: { allowedValues: V.properties.tests.items.properties.cause.enum }, message: "must be equal to one of the allowed values" };
+              e === null ? e = [f] : e.push(f), s++;
             }
             if (P.reason !== void 0) {
               let f = P.reason, h = s, q = false, b = s;
@@ -5899,7 +5910,7 @@ function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
               let f = { instancePath: t + "/findings/" + c, schemaPath: "#/properties/findings/items/required", keyword: "required", params: { missingProperty: "assertionIds" }, message: "must have required property 'assertionIds'" };
               e === null ? e = [f] : e.push(f), s++;
             }
-            for (let f in P) if (!C.call(V.properties.findings.items.properties, f)) {
+            for (let f in P) if (!E.call(V.properties.findings.items.properties, f)) {
               let h = { instancePath: t + "/findings/" + c, schemaPath: "#/properties/findings/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: f }, message: "must NOT have additional properties" };
               e === null ? e = [h] : e.push(h), s++;
             }
@@ -8192,14 +8203,15 @@ function gate(store, input) {
   const build = requireText(input.build, "application build (--build)");
   const partial = requireChoice(input.partial ?? "wait_for_resolution", partialModes, "partial execution (--partial)");
   const tests = index(plan.tests, "id", "test");
-  const selection = input.tests === void 0 && partial === "ready_only" ? readySelection(store, plan, build) : givenSelection(input.tests, tests, subject);
+  const ready = input.tests === void 0 && partial === "ready_only" || input.retestOf ? readySelection(store, plan, build) : null;
+  const selection = input.tests === void 0 && partial === "ready_only" ? ready : givenSelection(input.tests, tests, subject);
   const selected = selection.tests;
   if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance);
   const earlier = input.retestOf ? retestDefects(store, input.retestOf) : [];
   const reasons2 = [];
   if (!selected.length) reasons2.push(`No test is ready in ${subject}`);
   if (input.retestOf) {
-    for (const [id2, why] of retestSelection(store, plan, build, input.retestOf, earlier))
+    for (const [id2, why] of retestSelection(plan, ready.tests, earlier))
       if (!selected.includes(id2)) reasons2.push(`Retest of ${input.retestOf} must select ${id2}: ${why}`);
   }
   if (!target.profile.readyForLiveExecution)
@@ -8252,13 +8264,12 @@ function gate(store, input) {
     retestDefects: earlier
   };
 }
-function retestSelection(store, plan, build, runId, earlier) {
-  const selectable = readySelection(store, plan, build).tests;
+function retestSelection(plan, selectable, earlier) {
   const required = /* @__PURE__ */ new Map();
   for (const defect of earlier)
     for (const id2 of defect.testIds)
       if (selectable.includes(id2) && !required.has(id2))
-        required.set(id2, `it has open defect ${defect.findingId} of ${runId}`);
+        required.set(id2, `it has open defect ${defect.findingId} of ${defect.runId}`);
   for (const test of plan.tests)
     if (test.metadata?.type === "regression" && selectable.includes(test.id) && !required.has(test.id))
       required.set(test.id, "it is a regression test");
@@ -8367,10 +8378,14 @@ function rejectedRuns(store, planId) {
     "SELECT r.run_id, r.target_id, r.target_revision, s.sha256 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?",
     planId
   );
-  const rejected = rows.filter((row) => {
-    const policy = approvalPolicy(targetRevision(store, row.target_id, row.target_revision).profile).result;
-    return approvalState(store, "result", row.run_id, row.sha256, policy).rejected;
-  });
+  const policies = /* @__PURE__ */ new Map();
+  const policy = (row) => {
+    const key = `${row.target_id}@${row.target_revision}`;
+    if (!policies.has(key))
+      policies.set(key, approvalPolicy(targetRevision(store, row.target_id, row.target_revision).profile).result);
+    return policies.get(key);
+  };
+  const rejected = rows.filter((row) => approvalState(store, "result", row.run_id, row.sha256, policy(row)).rejected);
   return new Set(rejected.map((row) => row.run_id));
 }
 function selectedOutcome(result, testId) {
@@ -8403,7 +8418,11 @@ function openDefects(results, rejected) {
 }
 function retestDefects(store, runId) {
   const { plan_id } = one(store, "SELECT plan_id FROM runs WHERE run_id = ?", runId);
-  return openDefects(finalizedResults(store, plan_id), rejectedRuns(store, plan_id)).filter((defect) => defect.runId === runId).map(({ finding }) => ({ findingId: finding.id, title: finding.title, testIds: finding.testIds }));
+  const results = finalizedResults(store, plan_id);
+  const byRun = new Map(results.map((result) => [result.runId, result]));
+  const chain = [];
+  for (let id2 = runId; id2 && !chain.includes(id2); id2 = byRun.get(id2)?.retestOf ?? null) chain.push(id2);
+  return openDefects(results, rejectedRuns(store, plan_id)).filter((defect) => chain.includes(defect.runId)).map(({ runId: runId2, finding }) => ({ runId: runId2, findingId: finding.id, title: finding.title, testIds: finding.testIds }));
 }
 function dependencyBlock(store, reference, build) {
   const { planId, testId } = testReference(reference);
@@ -8545,7 +8564,8 @@ var completions = ["completed", "interrupted", "operational_error"];
 var cleanupStatuses = ["completed", "failed", "not_applicable"];
 var newBlockerPolicies = ["continue_independent", "return_to_oracle"];
 var stoppedReason = "Run stopped before the test closed. Actions may have occurred.";
-var deadlineClaim = /deadline|time ?out|timed out|out of time|(enough|no|remaining|limited|insufficient) time|time (budget|limit|constraint|ran out|is up|left|remaining)/i;
+var closeCauses = ["deadline"];
+var interruptCauses = ["deadline", "host_stopped", "tool_unavailable"];
 var deadlineShare = 0.9;
 var kindByExtension = {
   ".png": "screenshot",
@@ -8617,8 +8637,7 @@ function runClock(store, row, at = (/* @__PURE__ */ new Date()).toISOString()) {
     remainingSeconds: Math.max(0, row.deadline_seconds - elapsedSeconds)
   };
 }
-function refuseEarlyDeadline(store, row, at, reason) {
-  if (!deadlineClaim.test(reason)) return;
+function refuseEarlyDeadline(store, row, at) {
   const clock2 = runClock(store, row, at);
   const used = clock2.elapsedSeconds / clock2.deadlineSeconds;
   requireCondition(
@@ -8630,7 +8649,12 @@ function currentAttempt(store, runId) {
   return one(store, "SELECT max(attempt) AS attempt FROM run_attempts WHERE run_id = ?", runId).attempt;
 }
 function runOutcomes(store, runId) {
-  const rows = all(store, "SELECT * FROM outcomes WHERE run_id = ? ORDER BY rowid", runId);
+  const rows = all(
+    store,
+    `SELECT o.*, CASE p.command WHEN 'run close' THEN json_extract(p.arguments, '$.cause') END AS cause
+		FROM outcomes o LEFT JOIN operations p ON p.id = o.operation_id WHERE o.run_id = ? ORDER BY o.rowid`,
+    runId
+  );
   return new Map(rows.map((row) => [row.test_id, row]));
 }
 function runAssertions(store, runId) {
@@ -8910,6 +8934,7 @@ function closeTest(store, actor, input) {
     let reason;
     if (input.outcome === void 0) {
       requireCondition(input.reason === void 0, "--reason applies only with --outcome");
+      requireCondition(input.cause === void 0, "--cause applies only with --outcome not_run or blocked");
       requireCondition(!input.evidence?.length, "--evidence applies only with --outcome error");
       const missing = test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`));
       requireCondition(
@@ -8922,7 +8947,11 @@ function closeTest(store, actor, input) {
     } else {
       outcome = requireChoice(input.outcome, closeOutcomes, "outcome (--outcome)");
       reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`);
-      if (outcome !== "error") refuseEarlyDeadline(store, run2.row, at, reason);
+      if (input.cause !== void 0) {
+        requireCondition(outcome !== "error", "--cause applies only with --outcome not_run or blocked");
+        requireChoice(input.cause, closeCauses, "cause (--cause)");
+        refuseEarlyDeadline(store, run2.row, at);
+      }
       requireCondition(
         outcome === "error" || !recorded.length,
         `Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
@@ -9057,7 +9086,15 @@ function finish(store, actor, input) {
     const run2 = startedRun(store, input.runId);
     const completion = requireChoice(input.completion, completions, "completion (--completion)");
     const reason = completion === "interrupted" ? requireText(input.reason, "reason (--reason) for completion interrupted") : optionalText(input.reason, "reason (--reason)");
-    if (reason && completion !== "completed") refuseEarlyDeadline(store, run2.row, at, reason);
+    let cause = null;
+    if (completion === "interrupted") {
+      cause = requireChoice(
+        requireText(input.cause, "cause (--cause) for completion interrupted"),
+        interruptCauses,
+        "cause (--cause)"
+      );
+      if (cause === "deadline") refuseEarlyDeadline(store, run2.row, at);
+    } else requireCondition(input.cause === void 0, "--cause applies only with --completion interrupted");
     const cleanup2 = {
       status: requireChoice(input.cleanup, cleanupStatuses, "cleanup (--cleanup)"),
       reason: requireText(input.cleanupReason, "cleanup reason (--cleanup-reason)")
@@ -9102,21 +9139,19 @@ function finish(store, actor, input) {
       );
       requireCondition(cleanup2.status !== "failed", "Cleanup failed, so the run cannot be completed");
       for (const verdict of retestVerdicts(run2, outcomes))
-        for (const testId of verdict.testIds.filter((id2) => selected.includes(id2))) {
-          const outcome = outcomes.get(testId).outcome;
+        for (const testId of verdict.testIds.filter((id2) => selected.includes(id2)))
           requireCondition(
-            outcome === "passed" || outcome === "failed",
-            `Retest ${input.runId} has no verdict on defect ${verdict.findingId} of ${verdict.runId}: ${testId} is ${outcome}. Retest ${testId} to passed or failed, or finish as interrupted with a reason.`
+            outcomes.get(testId).outcome !== "not_run",
+            `Retest ${input.runId} did not run ${testId} of defect ${verdict.findingId} of ${verdict.runId}. Run ${testId}, or finish as interrupted with a cause and a reason.`
           );
-        }
       for (const test of run2.plan.tests.filter((test2) => selected.includes(test2.id))) {
         const outcome = outcomes.get(test.id).outcome;
         if (outcome !== "not_run" && outcome !== "blocked") continue;
-        const cause = test.dependsOn.some(
+        const cause2 = test.dependsOn.some(
           (id2) => id2.includes(":") ? dependencyBlock(store, id2, run2.row.application_build) !== null : outcomes.get(id2)?.outcome !== "passed"
         ) || newGaps2.some((gap) => gap.severity === "blocking");
         requireCondition(
-          cause,
+          cause2,
           `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a failed prerequisite or a new blocking gap.`
         );
       }
@@ -9130,6 +9165,7 @@ function finish(store, actor, input) {
         testId: test.id,
         outcome: closed.outcome,
         reason: closed.reason,
+        ...closed.cause ? { cause: closed.cause } : {},
         assertions: test.assertions.flatMap((assertion) => {
           const row = results.get(`${test.id}.${assertion.id}`);
           if (!row) return [];
@@ -9159,6 +9195,7 @@ function finish(store, actor, input) {
       finishedAt: at,
       attempts: attempt,
       completion,
+      completionCause: cause,
       completionReason: reason,
       tests,
       findings: findings2,
@@ -9210,7 +9247,7 @@ function retestVerdicts(run2, outcomes) {
   return (run2.request.retestDefects ?? []).map((defect) => {
     const tested = defect.testIds.map((id2) => outcomes.get(id2)?.outcome);
     const verdict = tested.includes("failed") ? "not_fixed" : tested.every((outcome) => outcome === "passed") ? "fixed" : "not_retested";
-    return { runId: run2.request.retestOf, ...defect, verdict };
+    return { ...defect, runId: defect.runId ?? run2.request.retestOf, verdict };
   });
 }
 function outcomeCounts(tests) {
@@ -9543,11 +9580,7 @@ function planStatus(store, planId) {
   const record = planRecord(store, plan);
   const finished = runs.find((run2) => run2.runId === record.results.at(-1)?.runId);
   const latestRun = runs.at(-1) ?? null;
-  const lastRetest = runs.map((run2) => runState(store, run2.runId)).filter((run2) => run2.request.retestOf).at(-1);
-  const retest = lastRetest ? {
-    runId: lastRetest.row.run_id,
-    verdicts: retestVerdicts(lastRetest, runOutcomes(store, lastRetest.row.run_id))
-  } : null;
+  const retest = latestRetest(store, planId, record);
   const { ready, latest, supplied, rejected } = record;
   const defects = record.defects.map(({ runId, finding }) => ({
     runId,
@@ -9756,6 +9789,20 @@ function planStatus(store, planId) {
     retest
   };
 }
+function latestRetest(store, planId, record) {
+  const row = one(
+    store,
+    "SELECT run_id FROM runs WHERE plan_id = ? AND request ->> '$.retestOf' IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+    planId
+  );
+  if (!row) return null;
+  const run2 = runState(store, row.run_id);
+  const verdicts = retestVerdicts(run2, runOutcomes(store, row.run_id));
+  const open = verdicts.some(
+    (item) => record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
+  );
+  return open || record.results.at(-1)?.runId === row.run_id ? { runId: row.run_id, verdicts } : null;
+}
 function rejection(store, kind, subject) {
   const decision = latestApproval(store, kind, subject);
   return `${subject} was rejected by ${decision.actor}: ${decision.rationale}`;
@@ -9891,6 +9938,7 @@ function runDetail(store, runId) {
       title: test.title,
       metadata: test.metadata ?? {},
       outcome: closed?.outcome ?? null,
+      cause: closed?.cause ?? null,
       reason: closed?.reason ?? null,
       evidence: evidence2.filter((item) => item.testId === test.id && item.assertionId === null),
       assertions: test.assertions.map((assertion) => {
@@ -9931,6 +9979,7 @@ function runDetail(store, runId) {
     result: finished ? {
       sha256: finished.sha256,
       completion: finished.result.completion,
+      completionCause: finished.result.completionCause ?? null,
       completionReason: finished.result.completionReason ?? null,
       coverage: finished.result.coverage,
       cleanup: finished.result.cleanup,
@@ -10389,6 +10438,7 @@ function runDocument(report) {
         ["Finished", result.finishedAt],
         ["Attempts", String(result.attempts)],
         ["Retest of", result.retestOf ?? none],
+        ...result.completionCause ? [["Completion cause", result.completionCause]] : [],
         ...result.completionReason ? [["Completion reason", result.completionReason]] : [],
         ["Cleanup", `${result.cleanup.status}: ${result.cleanup.reason}`],
         ["Result digest", sha256]
@@ -10406,7 +10456,7 @@ function runDocument(report) {
         planned.get(test.testId)?.title ?? none,
         test.outcome,
         `${test.assertions.filter((assertion) => assertion.result === "passed").length} of ${test.assertions.length} passed`,
-        test.reason ?? none,
+        test.cause ? `${test.cause}: ${test.reason}` : test.reason ?? none,
         pairs(planned.get(test.testId)?.metadata)
       ])
     },
@@ -13160,7 +13210,7 @@ function profileFacts(profile) {
 		<div>
 			<dt>Startup</dt>
 			<dd>
-				${profile.startup.owner}${profile.startup.command ? html2` · <code>${profile.startup.command.join(" ")}</code>` : ""}
+				${profile.startup.owner}${profile.startup.command ? html2` · <code>${profile.startup.command.join(" && ")}</code>` : ""}
 			</dd>
 		</div>
 		<div>
@@ -13170,7 +13220,7 @@ function profileFacts(profile) {
 		${profile.reset ? html2`<div>
 						<dt>Reset</dt>
 						<dd>
-							${profile.reset.owner}${profile.reset.command ? html2` · <code>${profile.reset.command.join(" ")}</code>` : ""}
+							${profile.reset.owner}${profile.reset.command ? html2` · <code>${profile.reset.command.join(" && ")}</code>` : ""}
 						</dd>
 					</div>` : ""}
 		<div>
@@ -14706,12 +14756,13 @@ var commands = {
   },
   "run close": {
     positionals: ["runId", "testId"],
-    flags: { outcome: closeOutcomes, reason: "value", evidence: "repeat" },
+    flags: { outcome: closeOutcomes, cause: closeCauses, reason: "value", evidence: "repeat" },
     write: true,
     run: (store, args, context) => closeTest(store, context.actor, {
       runId: value(args, "runId"),
       testId: value(args, "testId"),
       outcome: value(args, "outcome"),
+      cause: value(args, "cause"),
       reason: value(args, "reason"),
       evidence: evidence(args, context)
     }),
@@ -14736,12 +14787,19 @@ var commands = {
   },
   "run finish": {
     positionals: ["runId"],
-    flags: { completion: completions, reason: "value", cleanup: cleanupStatuses, "cleanup-reason": "value" },
+    flags: {
+      completion: completions,
+      cause: interruptCauses,
+      reason: "value",
+      cleanup: cleanupStatuses,
+      "cleanup-reason": "value"
+    },
     required: ["completion", "cleanup", "cleanup-reason"],
     write: true,
     run: (store, args, { actor }) => finishRun(store, actor, {
       runId: value(args, "runId"),
       completion: value(args, "completion"),
+      cause: value(args, "cause"),
       reason: value(args, "reason"),
       cleanup: value(args, "cleanup"),
       cleanupReason: value(args, "cleanup-reason")
@@ -14806,6 +14864,7 @@ var commands = {
           build: detail.build,
           instance: detail.instance.instanceId,
           completion: detail.result?.completion,
+          cause: detail.result?.completionCause ?? void 0,
           coverage: detail.result?.coverage.status,
           acceptance: detail.result?.acceptance
         },
@@ -14817,7 +14876,13 @@ var commands = {
             `remaining=${detail.clock.remainingSeconds}s`
           ],
           ...detail.tests.flatMap((test) => [
-            [test.testId, test.outcome ?? "open", test.title, ...test.reason ? [test.reason] : []],
+            [
+              test.testId,
+              test.outcome ?? "open",
+              test.title,
+              ...test.cause ? [`cause=${test.cause}`] : [],
+              ...test.reason ? [test.reason] : []
+            ],
             ...test.assertions.map((assertion) => [
               `${test.testId}.${assertion.assertionId}`,
               assertion.result ?? "unchecked",

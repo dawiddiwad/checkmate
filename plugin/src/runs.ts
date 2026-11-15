@@ -55,7 +55,13 @@ export type RunRequest = {
 	retestDefects?: RetestDefect[]
 }
 export type RunState = { row: RunRow; request: RunRequest; plan: Plan; finished: boolean }
-export type OutcomeRow = { test_id: string; attempt: number; outcome: ResultTest['outcome']; reason: string | null }
+export type OutcomeRow = {
+	test_id: string
+	attempt: number
+	outcome: ResultTest['outcome']
+	reason: string | null
+	cause: string | null
+}
 export type AssertionRow = {
 	test_id: string
 	assertion_id: string
@@ -99,12 +105,14 @@ export type CloseInput = {
 	runId: string
 	testId: string
 	outcome?: string
+	cause?: string
 	reason?: string
 	evidence?: EvidenceInput[]
 }
 export type FinishInput = {
 	runId: string
 	completion: string
+	cause?: string
 	reason?: string
 	cleanup: string
 	cleanupReason: string
@@ -119,8 +127,8 @@ export const completions = ['completed', 'interrupted', 'operational_error'] as 
 export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
 export const newBlockerPolicies = ['continue_independent', 'return_to_oracle'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
-export const deadlineClaim =
-	/deadline|time ?out|timed out|out of time|(enough|no|remaining|limited|insufficient) time|time (budget|limit|constraint|ran out|is up|left|remaining)/i
+export const closeCauses = ['deadline'] as const
+export const interruptCauses = ['deadline', 'host_stopped', 'tool_unavailable'] as const
 export const deadlineShare = 0.9
 const kindByExtension: Record<string, EvidenceRow['kind']> = {
 	'.png': 'screenshot',
@@ -202,8 +210,7 @@ export function runClock(
 	}
 }
 
-function refuseEarlyDeadline(store: Store, row: RunRow, at: string, reason: string) {
-	if (!deadlineClaim.test(reason)) return
+function refuseEarlyDeadline(store: Store, row: RunRow, at: string) {
 	const clock = runClock(store, row, at)
 	const used = clock.elapsedSeconds / clock.deadlineSeconds
 	requireCondition(
@@ -218,7 +225,12 @@ export function currentAttempt(store: Store, runId: string) {
 }
 
 export function runOutcomes(store: Store, runId: string) {
-	const rows = all<OutcomeRow>(store, 'SELECT * FROM outcomes WHERE run_id = ? ORDER BY rowid', runId)
+	const rows = all<OutcomeRow>(
+		store,
+		`SELECT o.*, CASE p.command WHEN 'run close' THEN json_extract(p.arguments, '$.cause') END AS cause
+		FROM outcomes o LEFT JOIN operations p ON p.id = o.operation_id WHERE o.run_id = ? ORDER BY o.rowid`,
+		runId
+	)
 	return new Map(rows.map((row) => [row.test_id, row]))
 }
 
@@ -523,6 +535,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		let reason: string | null
 		if (input.outcome === undefined) {
 			requireCondition(input.reason === undefined, '--reason applies only with --outcome')
+			requireCondition(input.cause === undefined, '--cause applies only with --outcome not_run or blocked')
 			requireCondition(!input.evidence?.length, '--evidence applies only with --outcome error')
 			const missing = test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`))
 			requireCondition(
@@ -538,7 +551,11 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		} else {
 			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
 			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
-			if (outcome !== 'error') refuseEarlyDeadline(store, run.row, at, reason)
+			if (input.cause !== undefined) {
+				requireCondition(outcome !== 'error', '--cause applies only with --outcome not_run or blocked')
+				requireChoice(input.cause, closeCauses, 'cause (--cause)')
+				refuseEarlyDeadline(store, run.row, at)
+			}
 			requireCondition(
 				outcome === 'error' || !recorded.length,
 				`Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
@@ -684,7 +701,15 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			completion === 'interrupted'
 				? requireText(input.reason, 'reason (--reason) for completion interrupted')
 				: optionalText(input.reason, 'reason (--reason)')
-		if (reason && completion !== 'completed') refuseEarlyDeadline(store, run.row, at, reason)
+		let cause: string | null = null
+		if (completion === 'interrupted') {
+			cause = requireChoice(
+				requireText(input.cause, 'cause (--cause) for completion interrupted'),
+				interruptCauses,
+				'cause (--cause)'
+			)
+			if (cause === 'deadline') refuseEarlyDeadline(store, run.row, at)
+		} else requireCondition(input.cause === undefined, '--cause applies only with --completion interrupted')
 		const cleanup = {
 			status: requireChoice(input.cleanup, cleanupStatuses, 'cleanup (--cleanup)'),
 			reason: requireText(input.cleanupReason, 'cleanup reason (--cleanup-reason)'),
@@ -731,13 +756,11 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			)
 			requireCondition(cleanup.status !== 'failed', 'Cleanup failed, so the run cannot be completed')
 			for (const verdict of retestVerdicts(run, outcomes))
-				for (const testId of verdict.testIds.filter((id) => selected.includes(id))) {
-					const outcome = outcomes.get(testId)!.outcome
+				for (const testId of verdict.testIds.filter((id) => selected.includes(id)))
 					requireCondition(
-						outcome === 'passed' || outcome === 'failed',
-						`Retest ${input.runId} has no verdict on defect ${verdict.findingId} of ${verdict.runId}: ${testId} is ${outcome}. Retest ${testId} to passed or failed, or finish as interrupted with a reason.`
+						outcomes.get(testId)!.outcome !== 'not_run',
+						`Retest ${input.runId} did not run ${testId} of defect ${verdict.findingId} of ${verdict.runId}. Run ${testId}, or finish as interrupted with a cause and a reason.`
 					)
-				}
 			for (const test of run.plan.tests.filter((test) => selected.includes(test.id))) {
 				const outcome = outcomes.get(test.id)!.outcome
 				if (outcome !== 'not_run' && outcome !== 'blocked') continue
@@ -762,6 +785,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				testId: test.id,
 				outcome: closed.outcome,
 				reason: closed.reason,
+				...(closed.cause ? { cause: closed.cause as 'deadline' } : {}),
 				assertions: test.assertions.flatMap((assertion) => {
 					const row = results.get(`${test.id}.${assertion.id}`)
 					if (!row) return []
@@ -793,6 +817,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			finishedAt: at,
 			attempts: attempt,
 			completion,
+			completionCause: cause,
 			completionReason: reason,
 			tests,
 			findings,
@@ -851,7 +876,7 @@ export function retestVerdicts(run: RunState, outcomes: Map<string, OutcomeRow>)
 			: tested.every((outcome) => outcome === 'passed')
 				? 'fixed'
 				: 'not_retested'
-		return { runId: run.request.retestOf!, ...defect, verdict }
+		return { ...defect, runId: defect.runId ?? run.request.retestOf!, verdict }
 	})
 }
 

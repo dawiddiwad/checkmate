@@ -278,10 +278,12 @@ export type Result = {
 	finishedAt: string
 	attempts: number
 	completion: 'completed' | 'interrupted' | 'operational_error'
+	completionCause?: 'deadline' | 'host_stopped' | 'tool_unavailable' | null
 	completionReason?: string | null
 	tests: Array<{
 		testId: string
 		outcome: 'passed' | 'failed' | 'inconclusive' | 'blocked' | 'not_run' | 'error'
+		cause?: 'deadline'
 		reason: string | null
 		assertions: Array<{
 			assertionId: string

@@ -91,7 +91,7 @@ checkmate plan open checkout --target shop@1 --objective "Verify checkout totals
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 ```
 
-Give the existing product documentation as sources too, for example `--source docs/checkout.md`. The planner reads the existing rules near the change in it, for example validation limits, permissions, counters, and prices, and plans regression tests for them. It marks each one with `"type": "regression"` in the test metadata. The planner also writes a gap for each vague term of the ticket that changes an expected value, for example a boundary, a rounding rule, or a scope word. It does not choose a value.
+Give the existing product documentation as sources too, for example `--source docs/checkout.md`. The planner reads the existing rules near the change in it, for example validation limits, permissions, counters, and prices, and plans regression tests for them. A regression test checks only a rule that a source states, with the expected values of that source. It marks each one with `"type": "regression"` in the test metadata. The planner also writes a gap for each vague term of the ticket that changes an expected value, for example a boundary, a rounding rule, or a scope word. It does not choose a value.
 
 The oracle approves the revision, and QA runs the ready tests early. Most tests fail, and this is correct: an early run explores the requirements. Each failed assertion gets a defect with evidence. Unclear behavior becomes a new gap of the run.
 
@@ -135,7 +135,7 @@ checkmate run begin run-2 checkout@3 --tests T1,T2,T3,T4 --build "$NEW_SHA" --in
 checkmate delegate execute run-2 --allow Read --allow Bash
 ```
 
-A retest must select each test with an open defect of `run-1` and each regression test. `--partial ready_only` without `--tests` selects them. QA runs the tests of the earlier defects first. `run show run-2` and `status` print a verdict for each earlier defect: `fixed`, `not_fixed`, or `not_retested`. `run finish --completion completed` refuses the retest until each of these tests is `passed` or `failed`.
+A retest must select each test with an open defect of `run-1` and each regression test. `--partial ready_only` without `--tests` selects them. QA runs the tests of the earlier defects first. `run show run-2` and `status` print a verdict for each earlier defect: `fixed`, `not_fixed`, or `not_retested`. `run finish --completion completed` refuses the retest when one of these tests is `not_run`.
 
 A narrow retest, with fewer tests, keeps the requirements of the other tests uncovered. A retest can run on another instance. A retest needs a new build, except on a refreshed sandbox: retire the old instance, add the new one, and retest on the new instance with the same build.
 
@@ -297,7 +297,7 @@ A deadline, a signal, or a crash does not finish a run. The run stays `started`,
 - `checkmate run resume <runId>` lists each test that is not closed, with its assertions that have no result. Then delegate `execute` again.
 - Checkmate does not repeat a test. Each open test shows `Actions may have occurred`, and the oracle decides to continue it or to close it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error`.
-- `checkmate run finish <runId> --completion interrupted --reason <text> ...` ends the run with the results that it has.
+- `checkmate run finish <runId> --completion interrupted --cause host_stopped --reason <text> --cleanup <status> --cleanup-reason <text>` ends the run with the results that it has. It works right after `run resume`.
 
 [Resume](../reference/runs.md#resume) has the rules.
 

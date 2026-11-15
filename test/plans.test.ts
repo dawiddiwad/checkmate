@@ -500,7 +500,7 @@ test('a retest selects each test with an open defect of the earlier run and each
 	const ready = retest({ partial: 'ready_only' })
 	assert.deepEqual(ready.reply.data.tests, ['T1', 'T2'])
 	assert.deepEqual(ready.retestDefects, [
-		{ findingId: 'F1', title: 'Promotion stacks with loyalty', testIds: ['T2'] },
+		{ runId: 'run-1', findingId: 'F1', title: 'Promotion stacks with loyalty', testIds: ['T2'] },
 	])
 	passRun(opened, 'run-2', 'b2', ['T1', 'T2'])
 	assert.deepEqual(retest({ tests: ['T1'] }, 'b3').reply.reasons, [])

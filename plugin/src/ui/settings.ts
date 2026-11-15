@@ -170,7 +170,7 @@ function profileFacts(profile: Profile) {
 		<div>
 			<dt>Startup</dt>
 			<dd>
-				${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' ')}</code>` : ''}
+				${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' && ')}</code>` : ''}
 			</dd>
 		</div>
 		<div>
@@ -182,7 +182,7 @@ function profileFacts(profile: Profile) {
 				? html`<div>
 						<dt>Reset</dt>
 						<dd>
-							${profile.reset.owner}${profile.reset.command ? html` · <code>${profile.reset.command.join(' ')}</code>` : ''}
+							${profile.reset.owner}${profile.reset.command ? html` · <code>${profile.reset.command.join(' && ')}</code>` : ''}
 						</dd>
 					</div>`
 				: ''

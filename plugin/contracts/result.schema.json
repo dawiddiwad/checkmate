@@ -91,6 +91,9 @@
 		"completion": {
 			"enum": ["completed", "interrupted", "operational_error"]
 		},
+		"completionCause": {
+			"enum": ["deadline", "host_stopped", "tool_unavailable", null]
+		},
 		"completionReason": {
 			"anyOf": [
 				{
@@ -113,6 +116,9 @@
 					},
 					"outcome": {
 						"enum": ["passed", "failed", "inconclusive", "blocked", "not_run", "error"]
+					},
+					"cause": {
+						"enum": ["deadline"]
 					},
 					"reason": {
 						"anyOf": [

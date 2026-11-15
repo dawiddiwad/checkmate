@@ -9,7 +9,6 @@ import {
 	beginRun,
 	checkAssertion,
 	closeTest,
-	deadlineClaim,
 	finishRun,
 	recordFinding,
 	recordGap,
@@ -31,6 +30,7 @@ import {
 	defectRun,
 	evidenceFile,
 	failT2,
+	passRun,
 	plan,
 	ready,
 	regressionPlan,
@@ -43,7 +43,7 @@ const finish = (opened: Store, runId = 'run-1', completion = 'completed', cleanu
 	finishRun(opened, actor, {
 		runId,
 		completion,
-		reason: completion === 'interrupted' ? 'The host stopped the session.' : undefined,
+		...(completion === 'interrupted' ? { cause: 'host_stopped', reason: 'The host stopped the session.' } : {}),
 		cleanup,
 		cleanupReason: 'Closed the browser.',
 	})
@@ -350,21 +350,7 @@ test('an interrupted finish records each unclosed selected test as error', (t) =
 	assert.equal(result.cleanup.status, 'failed')
 })
 
-test('a deadline claim is a reason that names the deadline or the lack of time', () => {
-	const rows: Array<[string, boolean]> = [
-		['The deadline is near.', true],
-		['Out of time.', true],
-		['Timed out before T3.', true],
-		['Not enough time to run T4.', true],
-		['Time budget used.', true],
-		['Prerequisite T1 failed.', false],
-		['The one-time login URL expired.', false],
-		['Blocked by G3.', false],
-	]
-	for (const [reason, claim] of rows) assert.equal(deadlineClaim.test(reason), claim, reason)
-})
-
-test('a deadline reason needs 90 percent of the deadline of the current attempt', (t) => {
+test('a deadline cause needs 90 percent of the deadline of the current attempt', (t) => {
 	const start = Date.parse('2026-11-15T10:00:00.000Z')
 	t.mock.timers.enable({ apis: ['Date'], now: start })
 	const opened = store(t)
@@ -380,54 +366,109 @@ test('a deadline reason needs 90 percent of the deadline of the current attempt'
 	})
 	const early =
 		/Only 12% of the deadline is used: 12 of 100 seconds, 88 remain until 2026-11-15T10:01:40.000Z\. Continue the remaining tests\./
+	const interrupt = (extra: { cause?: string; reason?: string }) =>
+		finishRun(opened, actor, {
+			runId: 'run-1',
+			completion: 'interrupted',
+			cleanup: 'completed',
+			cleanupReason: 'Closed.',
+			...extra,
+		})
 	const rows: Array<[string, () => unknown, RegExp]> = [
-		['blocked by time', () => close(opened, 'T2', { outcome: 'blocked', reason: 'Out of time.' }), early],
+		[
+			'blocked by deadline',
+			() => close(opened, 'T2', { outcome: 'blocked', cause: 'deadline', reason: 'Late.' }),
+			early,
+		],
 		[
 			'not_run by deadline',
-			() => close(opened, 'T2', { outcome: 'not_run', reason: 'The deadline is near.' }),
+			() => close(opened, 'T2', { outcome: 'not_run', cause: 'deadline', reason: 'Late.' }),
 			early,
+		],
+		[
+			'error with cause',
+			() => close(opened, 'T2', { outcome: 'error', cause: 'deadline', reason: 'x' }),
+			/--cause applies only with --outcome not_run or blocked/,
+		],
+		[
+			'unknown close cause',
+			() => close(opened, 'T2', { outcome: 'not_run', cause: 'budget', reason: 'x' }),
+			/Invalid cause/,
+		],
+		[
+			'interrupted without cause',
+			() => interrupt({ reason: 'Stopped.' }),
+			/Missing cause \(--cause\) for completion interrupted/,
 		],
 		[
 			'interrupted without reason',
-			() =>
-				finishRun(opened, actor, {
-					runId: 'run-1',
-					completion: 'interrupted',
-					cleanup: 'completed',
-					cleanupReason: 'Closed.',
-				}),
+			() => interrupt({ cause: 'host_stopped' }),
 			/Missing reason \(--reason\) for completion interrupted/,
 		],
+		['interrupted by deadline', () => interrupt({ cause: 'deadline', reason: 'Late.' }), early],
 		[
-			'interrupted near deadline',
+			'cause on completed',
 			() =>
 				finishRun(opened, actor, {
 					runId: 'run-1',
-					completion: 'interrupted',
-					reason: 'Not enough time left.',
+					completion: 'completed',
+					cause: 'deadline',
 					cleanup: 'completed',
-					cleanupReason: 'Closed.',
+					cleanupReason: 'x',
 				}),
-			early,
+			/--cause applies only with --completion interrupted/,
 		],
 	]
 	for (const [name, act, refusal] of rows) assert.throws(act, refusal, name)
+	assert.equal(close(opened, 'T2', { outcome: 'not_run', reason: 'The API request timed out.' }).status, 'completed')
 	t.mock.timers.tick(78_000)
-	assert.equal(close(opened, 'T2', { outcome: 'not_run', reason: 'Out of time.' }).status, 'completed')
-	resumeRun(opened, actor, { runId: 'run-1' })
-	assert.equal(runDetail(opened, 'run-1').clock.remainingSeconds, 100)
-	assert.throws(() => close(opened, 'T1', { outcome: 'not_run', reason: 'Timed out.' }), /Only 0% of the deadline/)
-	t.mock.timers.tick(95_000)
-	const finished = finishRun(opened, actor, {
+	assert.equal(close(opened, 'T1', { outcome: 'not_run', cause: 'deadline', reason: 'Late.' }).status, 'completed')
+	const shown = runDetail(opened, 'run-1').tests.map((test) => [test.testId, test.cause])
+	assert.deepEqual(shown, [
+		['T1', 'deadline'],
+		['T2', null],
+	])
+	assert.equal(interrupt({ cause: 'deadline', reason: 'The deadline is near.' }).status, 'interrupted')
+	const { result } = runResult(opened, 'run-1')!
+	assert.deepEqual([result.completionCause, result.completionReason], ['deadline', 'The deadline is near.'])
+	assert.deepEqual(
+		result.tests.map((test) => test.cause ?? null),
+		['deadline', null, null]
+	)
+})
+
+test('the factory resumes a stalled run and finishes it as interrupted because the host stopped', (t) => {
+	t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-15T10:00:00.000Z') })
+	const opened = started(t)
+	passT1(opened)
+	t.mock.timers.tick(5_000)
+	const resumed = resumeRun(opened, actor, { runId: 'run-1' })
+	assert.deepEqual([resumed.data.attempt, resumed.data.deadline], [2, '2026-11-15T10:10:05.000Z'])
+	assert.equal(runDetail(opened, 'run-1').clock.remainingSeconds, 600)
+	assert.throws(() => interruptedBy(opened, 'deadline'), /Only 0% of the deadline is used/)
+	assert.equal(interruptedBy(opened, 'host_stopped').status, 'interrupted')
+	const { result } = runResult(opened, 'run-1')!
+	assert.deepEqual(
+		result.tests.map((test) => [test.testId, test.outcome]),
+		[
+			['T1', 'passed'],
+			['T2', 'error'],
+			['T3', 'not_run'],
+		]
+	)
+	assert.equal(result.completionCause, 'host_stopped')
+})
+
+function interruptedBy(opened: Store, cause: string) {
+	return finishRun(opened, actor, {
 		runId: 'run-1',
 		completion: 'interrupted',
-		reason: 'The deadline is near.',
+		cause,
+		reason: 'The worker stopped before the run finished.',
 		cleanup: 'completed',
 		cleanupReason: 'Closed.',
 	})
-	assert.equal(finished.status, 'interrupted')
-	assert.equal(runResult(opened, 'run-1')!.result.completionReason, 'The deadline is near.')
-})
+}
 
 test('resume keeps recorded results, lists what is open, and can close stalled tests as error', (t) => {
 	const opened = started(t)
@@ -528,7 +569,7 @@ test('a retest is a new run with a new build of a finished run with the same pla
 	assert.equal(runResult(opened, 'run-1')!.sha256, before)
 })
 
-test('a retest gives a verdict for each earlier defect and completes only with one', (t) => {
+test('a retest gives a verdict for each open defect of its chain and completes only when it ran their tests', (t) => {
 	const opened = store(t)
 	regressionPlan(opened)
 	defectRun(opened, 'run-1', 'b1')
@@ -548,43 +589,50 @@ test('a retest gives a verdict for each earlier defect and completes only with o
 		const status = planStatus(opened, 'checkout')
 		return [status.state, status.waitsOn, status.retest?.runId, status.retest?.verdicts.map((item) => item.verdict)]
 	}
+	const earlier = { runId: 'run-1', findingId: 'F1', title: 'Promotion stacks with loyalty', testIds: ['T2'] }
 	retest('run-2', 'b2', 'run-1')
-	assert.deepEqual(runState(opened, 'run-2').request.retestDefects, [
-		{ findingId: 'F1', title: 'Promotion stacks with loyalty', testIds: ['T2'] },
-	])
-	assert.deepEqual(verdicts('run-2'), ['run-1/F1 not_retested'])
+	assert.deepEqual(runState(opened, 'run-2').request.retestDefects, [earlier])
 	assert.deepEqual(loop(), ['run_in_progress', 'qa', 'run-2', ['not_retested']])
 	passT1(opened, 'run-2')
-	check(opened, 'run-2', 'T2.A1', 'passed')
-	check(opened, 'run-2', 'T2.A2', 'inconclusive')
-	closeTest(opened, actor, { runId: 'run-2', testId: 'T2' })
+	closeTest(opened, actor, { runId: 'run-2', testId: 'T2', outcome: 'not_run', reason: 'Skipped.' })
 	assert.throws(
 		() => finish(opened, 'run-2'),
-		/Retest run-2 has no verdict on defect F1 of run-1: T2 is inconclusive\. Retest T2 to passed or failed, or finish as interrupted with a reason\./
+		/Retest run-2 did not run T2 of defect F1 of run-1\. Run T2, or finish as interrupted with a cause and a reason\./
 	)
 	assert.equal(finish(opened, 'run-2', 'interrupted').status, 'interrupted')
+	assert.deepEqual(verdicts('run-2'), ['run-1/F1 not_retested'])
 	assert.deepEqual(loop(), ['defects_open', 'factory', 'run-2', ['not_retested']])
-	retest('run-3', 'b3', 'run-1')
+	retest('run-3', 'b3', 'run-2')
+	assert.deepEqual(runState(opened, 'run-3').request.retestDefects, [earlier])
 	passT1(opened, 'run-3')
 	check(opened, 'run-3', 'T2.A1', 'passed')
-	failT2(opened, 'run-3')
+	check(opened, 'run-3', 'T2.A2', 'inconclusive')
 	closeTest(opened, actor, { runId: 'run-3', testId: 'T2' })
 	assert.equal(finish(opened, 'run-3').status, 'completed')
-	assert.deepEqual(verdicts('run-3'), ['run-1/F1 not_fixed'])
+	assert.deepEqual(verdicts('run-3'), ['run-1/F1 not_retested'])
+	retest('run-4', 'b4', 'run-3')
+	passT1(opened, 'run-4')
+	check(opened, 'run-4', 'T2.A1', 'passed')
+	failT2(opened, 'run-4')
+	closeTest(opened, actor, { runId: 'run-4', testId: 'T2' })
+	assert.equal(finish(opened, 'run-4').status, 'completed')
+	assert.deepEqual(verdicts('run-4'), ['run-1/F1 not_fixed'])
 	const status = planStatus(opened, 'checkout')
 	assert.deepEqual(
 		status.defects.map((defect) => `${defect.runId}/${defect.findingId}`),
-		['run-3/F1']
+		['run-4/F1']
 	)
-	assert.match(status.next[0], /--retest-of run-3$/)
-	retest('run-4', 'b4', 'run-3')
+	assert.match(status.next[0], /--retest-of run-4$/)
+	retest('run-5', 'b5', 'run-4')
 	for (const testId of ['T1', 'T2']) {
-		for (const assertionId of ['A1', 'A2']) check(opened, 'run-4', `${testId}.${assertionId}`, 'passed')
-		closeTest(opened, actor, { runId: 'run-4', testId })
+		for (const assertionId of ['A1', 'A2']) check(opened, 'run-5', `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, actor, { runId: 'run-5', testId })
 	}
-	assert.equal(finish(opened, 'run-4').status, 'completed')
-	assert.deepEqual(verdicts('run-4'), ['run-3/F1 fixed'])
-	assert.deepEqual(loop(), ['awaits_acceptance', 'oracle', 'run-4', ['fixed']])
+	assert.equal(finish(opened, 'run-5').status, 'completed')
+	assert.deepEqual(verdicts('run-5'), ['run-4/F1 fixed'])
+	assert.deepEqual(loop(), ['awaits_acceptance', 'oracle', 'run-5', ['fixed']])
+	passRun(opened, 'run-6', 'b6', ['T1'])
+	assert.deepEqual(loop(), ['awaits_acceptance', 'oracle', undefined, undefined])
 })
 
 test('findings name recorded assertions, matching requirements, and evidence of those assertions', (t) => {

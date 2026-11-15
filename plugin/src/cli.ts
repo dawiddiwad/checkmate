@@ -36,8 +36,10 @@ import {
 import {
 	assertionResults,
 	cleanupStatuses,
+	closeCauses,
 	closeOutcomes,
 	completions,
+	interruptCauses,
 	newBlockerPolicies,
 	acceptResult,
 	beginRun,
@@ -746,13 +748,14 @@ const commands: Record<string, Command> = {
 	},
 	'run close': {
 		positionals: ['runId', 'testId'],
-		flags: { outcome: closeOutcomes, reason: 'value', evidence: 'repeat' },
+		flags: { outcome: closeOutcomes, cause: closeCauses, reason: 'value', evidence: 'repeat' },
 		write: true,
 		run: (store, args, context) =>
 			closeTest(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				outcome: value(args, 'outcome'),
+				cause: value(args, 'cause'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
 			}),
@@ -778,13 +781,20 @@ const commands: Record<string, Command> = {
 	},
 	'run finish': {
 		positionals: ['runId'],
-		flags: { completion: completions, reason: 'value', cleanup: cleanupStatuses, 'cleanup-reason': 'value' },
+		flags: {
+			completion: completions,
+			cause: interruptCauses,
+			reason: 'value',
+			cleanup: cleanupStatuses,
+			'cleanup-reason': 'value',
+		},
 		required: ['completion', 'cleanup', 'cleanup-reason'],
 		write: true,
 		run: (store, args, { actor }) =>
 			finishRun(store, actor, {
 				runId: value(args, 'runId')!,
 				completion: value(args, 'completion')!,
+				cause: value(args, 'cause'),
 				reason: value(args, 'reason'),
 				cleanup: value(args, 'cleanup')!,
 				cleanupReason: value(args, 'cleanup-reason')!,
@@ -857,6 +867,7 @@ const commands: Record<string, Command> = {
 					build: detail.build,
 					instance: detail.instance.instanceId,
 					completion: detail.result?.completion,
+					cause: detail.result?.completionCause ?? undefined,
 					coverage: detail.result?.coverage.status,
 					acceptance: detail.result?.acceptance,
 				},
@@ -868,7 +879,13 @@ const commands: Record<string, Command> = {
 						`remaining=${detail.clock.remainingSeconds}s`,
 					],
 					...detail.tests.flatMap((test) => [
-						[test.testId, test.outcome ?? 'open', test.title, ...(test.reason ? [test.reason] : [])],
+						[
+							test.testId,
+							test.outcome ?? 'open',
+							test.title,
+							...(test.cause ? [`cause=${test.cause}`] : []),
+							...(test.reason ? [test.reason] : []),
+						],
 						...test.assertions.map((assertion) => [
 							`${test.testId}.${assertion.assertionId}`,
 							assertion.result ?? 'unchecked',

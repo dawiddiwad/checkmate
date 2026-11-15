@@ -16,7 +16,7 @@ A run goes through these commands in order:
 2. `run check <runId> <testId> <assertionId> --result <result>` records one assertion result with its evidence.
 3. `run close <runId> <testId>` closes a test. Checkmate derives the outcome.
 4. `run finding <runId>` and `run gap <runId>` record findings and new gaps from standard input.
-5. `run finish <runId> --completion <completion> [--reason <text>] --cleanup <completed|failed|not_applicable> --cleanup-reason <text>` checks the run and stores the result.
+5. `run finish <runId> --completion <completion> [--cause <cause> --reason <text>] --cleanup <completed|failed|not_applicable> --cleanup-reason <text>` checks the run and stores the result.
 
 A run is `started` until `run finish`. After `run finish`, the run does not change. The flags of `run begin` are in [Commands](commands.md#run-gate-and-policy).
 
@@ -30,9 +30,10 @@ A run has a deadline: `--timeout` of `run begin`, 600 seconds by default. The de
 time	deadline=2026-11-15T10:10:00.000Z	elapsed=63s	remaining=537s
 ```
 
-- `run begin` and `run resume` print `deadline=` in UTC. `delegate execute` puts the deadline, the elapsed seconds, and the remaining seconds in the prompt.
-- `run close --outcome blocked|not_run` and `run finish` with a reason that names the deadline or a lack of time are refused while less than 90% of the deadline is used. The reason of the refusal gives the share, for example `Only 12% of the deadline is used: 12 of 100 seconds, 88 remain until <deadline>. Continue the remaining tests.`
-- A reason that does not name the time is not checked, for example `Prerequisite T1 failed.`
+- `run begin` and `run resume` print `deadline=` in UTC. `delegate execute` puts the deadline and the remaining seconds in the prompt, and stops the worker when they run out.
+- A close or a finish for the deadline names it with `--cause deadline`: `run close --outcome blocked|not_run --cause deadline`, or `run finish --completion interrupted --cause deadline`. Checkmate refuses `--cause deadline` while less than 90% of the deadline is used. The reason of the refusal gives the share, for example `Only 12% of the deadline is used: 12 of 100 seconds, 88 remain until <deadline>. Continue the remaining tests.`
+- Checkmate does not read the `--reason` text. Only `--cause deadline` is checked against the clock.
+- `run show` prints `cause=deadline` on the line of a test that has the cause. The result records it as `cause` of the test. The exports show it with the reason.
 - The clock of a finished run stops at `finishedAt`.
 
 ## Instances and matrix runs
@@ -201,7 +202,7 @@ A started run closes no defect. A rejected run closes no defect and replaces no 
 
 ### Retest verdicts
 
-A retest records the open defects of the earlier run when it begins. `run show` and `status` print one verdict for each of them:
+A retest records the open defects of the earlier run when it begins. When the earlier run is itself a retest, the open defects of its chain stay in the list, so a retest of an interrupted retest keeps them. `run show` and `status` print one verdict for each of them:
 
 ```text
 run-1/F1	retest	fixed	T2	Discount applies twice
@@ -215,7 +216,7 @@ run-1/F3	retest	not_retested	T6	Badge count is stale
 | `not_fixed`    | A test of the defect failed in the retest.             |
 | `not_retested` | Any other case, for example a test is open or blocked. |
 
-`status` prints the verdicts of the latest retest in begin order. Its lines also name the retest: `run-1/F1 retest run-2 fixed <title>`.
+`status` prints the verdicts of the latest retest in begin order, but only while one of its defects is open or while it is the latest finished run. Its lines also name the retest: `run-1/F1 retest run-2 fixed <title>`.
 
 ## Completion and coverage
 
@@ -230,10 +231,18 @@ run-1/F3	retest	not_retested	T6	Badge count is stale
 - every selected test closed, and none closed as `error`,
 - a cleanup status that is not `failed`,
 - a cause for each `blocked` or `not_run` test: a prerequisite that did not pass, a blocked cross-plan dependency, or a new blocking gap,
-- in a retest, a `passed` or `failed` outcome for each selected test of an open defect of the earlier run,
+- in a retest, no `not_run` outcome for a selected test of an open defect of the earlier runs. An `inconclusive` test, or a `blocked` test whose prerequisite failed, gives the verdict `not_retested`,
 - a defect for each failed assertion.
 
-`run finish --completion interrupted` needs `--reason`, for example `The host stopped the session.` The result records it as `completionReason`. `operational_error` can have a reason. A reason that names the deadline follows the [deadline](#deadline) rule.
+`run finish --completion interrupted` needs `--cause` and `--reason`. The cause is one of:
+
+| Cause              | When                                                     |
+| ------------------ | -------------------------------------------------------- |
+| `deadline`         | 90% or more of the [deadline](#deadline) is used.        |
+| `host_stopped`     | The host, the factory, or the oracle stopped the run.    |
+| `tool_unavailable` | A tool that every remaining test needs is not available. |
+
+The result records them as `completionCause` and `completionReason`. `run show` prints `cause=` on line 1, and the exports show both. `--cause` applies only to `interrupted`. `operational_error` can have a `--reason`.
 
 `run finish` closes each open selected test as `error` with the reason `Run stopped before the test closed. Actions may have occurred.` It records each unselected test as `not_run`.
 

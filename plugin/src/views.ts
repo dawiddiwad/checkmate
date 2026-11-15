@@ -340,16 +340,7 @@ export function planStatus(store: Store, planId: string) {
 	const record = planRecord(store, plan)
 	const finished = runs.find((run) => run.runId === record.results.at(-1)?.runId)
 	const latestRun = runs.at(-1) ?? null
-	const lastRetest = runs
-		.map((run) => runState(store, run.runId))
-		.filter((run) => run.request.retestOf)
-		.at(-1)
-	const retest = lastRetest
-		? {
-				runId: lastRetest.row.run_id,
-				verdicts: retestVerdicts(lastRetest, runOutcomes(store, lastRetest.row.run_id)),
-			}
-		: null
+	const retest = latestRetest(store, planId, record)
 	const { ready, latest, supplied, rejected } = record
 	const defects = record.defects.map(({ runId, finding }) => ({
 		runId,
@@ -568,6 +559,21 @@ export function planStatus(store: Store, planId: string) {
 	}
 }
 
+function latestRetest(store: Store, planId: string, record: ReturnType<typeof planRecord>) {
+	const row = one<{ run_id: string }>(
+		store,
+		"SELECT run_id FROM runs WHERE plan_id = ? AND request ->> '$.retestOf' IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+		planId
+	)
+	if (!row) return null
+	const run = runState(store, row.run_id)
+	const verdicts = retestVerdicts(run, runOutcomes(store, row.run_id))
+	const open = verdicts.some((item) =>
+		record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
+	)
+	return open || record.results.at(-1)?.runId === row.run_id ? { runId: row.run_id, verdicts } : null
+}
+
 function rejection(store: Store, kind: 'plan' | 'result', subject: string) {
 	const decision = latestApproval(store, kind, subject)!
 	return `${subject} was rejected by ${decision.actor}: ${decision.rationale}`
@@ -726,6 +732,7 @@ export function runDetail(store: Store, runId: string) {
 				title: test.title,
 				metadata: test.metadata ?? {},
 				outcome: closed?.outcome ?? null,
+				cause: closed?.cause ?? null,
 				reason: closed?.reason ?? null,
 				evidence: evidence.filter((item) => item.testId === test.id && item.assertionId === null),
 				assertions: test.assertions.map((assertion) => {
@@ -767,6 +774,7 @@ export function runDetail(store: Store, runId: string) {
 			? {
 					sha256: finished.sha256,
 					completion: finished.result.completion,
+					completionCause: finished.result.completionCause ?? null,
 					completionReason: finished.result.completionReason ?? null,
 					coverage: finished.result.coverage,
 					cleanup: finished.result.cleanup,

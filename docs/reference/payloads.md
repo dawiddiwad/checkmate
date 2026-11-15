@@ -340,7 +340,7 @@ QA sends new ambiguity to `run gap <runId>`.
 
 A test in a candidate can carry its Xray key the same way: `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`.
 
-The planner marks a regression test with `"metadata": { "type": "regression" }`. A regression test checks that an existing rule near the change still holds, for example a validation limit, a permission, a counter, or an existing price. Each retest runs it again.
+The planner marks a regression test with `"metadata": { "type": "regression" }`. A regression test checks that an existing rule near the change still holds, for example a validation limit, a permission, a counter, or an existing price. The rule and its expected values come from a source: a context source, the product documentation, or the project instructions. Each retest runs it again.
 
 - `metadata` is an object with 0 to 20 keys.
 - A key has 1 to 64 letters, digits, `_`, `.`, or `-`. It starts with a letter.

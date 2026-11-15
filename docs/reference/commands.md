@@ -165,11 +165,52 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 
 - Line 1 is `<status> <subject>` with short `key=value` facts.
 - Each item is one line, ID first, with tab-separated fields.
+- `warning` lines follow. A warning does not stop the command. Read it and change the input when it applies.
 - `reason:` lines follow.
-- `--json` prints `{ "status", "subject", "reasons", ... }`.
+- A `hint:` line follows when Checkmate can tell you what to do next. Read [Refusals](#refusals).
+- `--json` prints `{ "status", "subject", "reasons", ... }`. A refusal adds `refusal` and can add `hint`. A warning is in `warnings`.
 - `export` prints the report. With `--out <path>`, it writes a new file and prints the response. It refuses an existing file.
-- A schema error names the field. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. A value of the wrong type gives `<payload>/<path> must be <type>`. When a field takes more than one type, for example a string or an object, the error names only the type of the value that you sent. When no type agrees, it lists all types, for example `must be string, number, or boolean`. Read [Payloads](payloads.md#schemas).
+- A schema error names the field. A missing field gives `<payload>/<path> needs field "<name>"`. An unknown field gives `<payload>/<path> has unknown field "<name>"`. A wrong value of a fixed list gives `<payload>/<path> must be one of: <values>`. A value of the wrong type gives `<payload>/<path> must be <type>`. When a field takes more than one type, for example a string or an object, the error names only the type of the value that you sent. When no type agrees, it lists all types, for example `must be string, number, or boolean`. Read [Payloads](payloads.md#schemas).
 - An option value that is not in its fixed list or not in its range gives `invalid_request`, for example `log --limit 0`, `log --subject bogus`, or `export run run-1 --format pdf`. The usage line shows a fixed list as `<a|b>`. The command does not start, and the log has no row.
+
+## Refusals
+
+When Checkmate refuses a command, the reply tells you why and how to correct it:
+
+- Line 1 has `refusal=malformed` or `refusal=prohibited`. `--json` gives the same value in `refusal`.
+- The first reason is `Refused: malformed request.` or `Refused: prohibited in the current state.`.
+- The next reason says what is wrong.
+- A `hint:` line, and `hint` in `--json`, tells you what to do. It names the missing field, the correct format, or the next command with the real IDs. Replace each `<placeholder>`.
+
+| Refusal      | Meaning                                                                                                                                         | Do this                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `malformed`  | The command, an option, an argument, or the payload is wrong: an unknown command or option, a missing value, a wrong format, a schema error.    | Correct the command or the payload, as the hint says. Then send it again.      |
+| `prohibited` | The command is well formed, but the record or a rule does not permit it now. For example, the run is not finished, or a defect is not recorded. | Do the step that the hint names first. Then send the command again, unchanged. |
+
+Examples:
+
+```text
+rejected run-1 refusal=prohibited
+reason: Refused: prohibited in the current state.
+reason: Failed assertion T12.A3 needs a defect finding. Record it with run finding.
+hint: Record the defect with checkmate run finding run-1 < finding.json, for example {"id":"F1","type":"defect",...,"assertionIds":["T12.A3"],...}. Then run run finish again.
+```
+
+```text
+rejected checkout refusal=malformed
+reason: Refused: malformed request.
+reason: Ready test T14 needs one or more assertions
+hint: Add an assertion to T14 in the delta: {"tests": {"T14": {"assertions": {"A1": {"check": "<expected result>", "checkKind": "deterministic"}}}}}
+```
+
+```text
+rejected run-b2 refusal=prohibited
+reason: Refused: prohibited in the current state.
+reason: Run run-b1 is not finished. Retest a finished run.
+hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|interrupted|operational_error> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>". Then run this command again. To start a run that is not a retest, leave out --retest-of.
+```
+
+`invalid_request` is always `malformed`. `rejected` is `malformed` or `prohibited`. When the gate refuses `run begin`, the status stays `needs_decision`, and the reply has `refusal=prohibited` and a hint. `run gate` gives the same hint without `refusal`, because it records nothing.
 
 ## Statuses and exit codes
 
@@ -177,8 +218,8 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 | ------------------- | ---------------------------------------------------------------------------------------- | ---- |
 | `completed`         | The command did its work.                                                                | 0    |
 | `needs_decision`    | The oracle must decide or give input. Read the `reason:` lines. A write can be recorded. | 0    |
-| `rejected`          | Checkmate refused the command. Nothing changed. Correct the input and try again.         | 1    |
-| `invalid_request`   | The command name or the options are wrong.                                               | 1    |
+| `rejected`          | Checkmate refused the command. Nothing changed. Read the hint, then try again.           | 1    |
+| `invalid_request`   | The command name or the options are wrong. Read the hint for the usage.                  | 1    |
 | `interrupted`       | A run or a delegated worker stopped at the deadline or on a signal.                      | 1    |
 | `operational_error` | A tool, access, lock, or worker failure stopped the work.                                | 1    |
 

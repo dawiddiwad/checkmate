@@ -1,5 +1,5 @@
 import type { Profile, Reply, Status, Store } from '../../plugin/src/index.ts'
-import { closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
+import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -74,8 +74,8 @@ export function resumeReason(runId: string) {
 	return `Recorded results stay. Run \`checkmate run resume ${runId}\` or \`checkmate run finish ${runId} ...\``
 }
 
-function refuse(message: string): never {
-	throw new Error(message)
+function refuse(message: string, kind: 'malformed' | 'prohibited' = 'prohibited'): never {
+	throw new Refusal(kind, message)
 }
 
 function excerpt(message: unknown) {
@@ -105,7 +105,7 @@ function checkClaudeArgs(claudeArgs: string[]) {
 		const instead = reserved.startsWith('--allowed')
 			? 'Use --allow <rule> for tools.'
 			: `delegate needs its own control of ${reserved}.`
-		refuse(`--claude-arg ${arg} is not permitted. ${instead}`)
+		refuse(`--claude-arg ${arg} is not permitted. ${instead}`, 'malformed')
 	}
 }
 
@@ -423,8 +423,9 @@ export async function delegate(
 	options: DelegateOptions
 ): Promise<DelegateResponse> {
 	workspace = resolve(workspace)
-	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`)
-	if (!options.allowedTools.length) refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`)
+	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`, 'malformed')
+	if (!options.allowedTools.length)
+		refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`, 'malformed')
 	checkClaudeArgs(options.claudeArgs ?? [])
 	const { after, execution } = withStore(workspace, (store) => {
 		checkSubject(store, stage, subject)

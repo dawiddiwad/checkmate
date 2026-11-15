@@ -11,6 +11,7 @@ import type {
 	Response,
 	Result,
 } from './types.ts'
+import type { Reply } from './store.ts'
 import { canonical } from './store.ts'
 import * as validators from './validators.js'
 
@@ -35,8 +36,42 @@ export type PlanDraft = Omit<Plan, 'coverage' | 'tests'> & { tests: Array<Omit<T
 
 const identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/
 
-export function requireCondition(condition: unknown, message: string): asserts condition {
-	if (!condition) throw new Error(message)
+export type RefusalKind = 'malformed' | 'prohibited'
+
+export class Refusal extends Error {
+	kind: RefusalKind
+	hint: string | undefined
+	constructor(kind: RefusalKind, message: string, hint?: string) {
+		super(message)
+		this.kind = kind
+		this.hint = hint
+	}
+}
+
+export const refusalReasons: Record<RefusalKind, string> = {
+	malformed: 'Refused: malformed request.',
+	prohibited: 'Refused: prohibited in the current state.',
+}
+
+export function refused(status: 'invalid_request' | 'rejected', subject: string, error: unknown): Reply {
+	const refusal = status === 'invalid_request' ? 'malformed' : error instanceof Refusal ? error.kind : 'prohibited'
+	const hint = error instanceof Refusal ? error.hint : undefined
+	return {
+		status,
+		subject,
+		reasons: [refusalReasons[refusal], error instanceof Error ? error.message : String(error)],
+		refusal,
+		...(hint ? { hint } : {}),
+		data: {},
+	}
+}
+
+export function requireCondition(condition: unknown, message: string, hint?: string): asserts condition {
+	if (!condition) throw new Refusal('prohibited', message, hint)
+}
+
+export function requireWellFormed(condition: unknown, message: string, hint?: string): asserts condition {
+	if (!condition) throw new Refusal('malformed', message, hint)
 }
 
 export function same(a: unknown, b: unknown) {
@@ -50,7 +85,11 @@ export function validate<K extends keyof Documents>(name: K, value: unknown): Do
 			.filter((error) => error.keyword !== 'propertyNames')
 			.map((error) => schemaError(`${name}${error.instancePath}`, error))
 			.join(', ')
-	requireCondition(check(value), `Invalid ${name}: ${errors()}`)
+	requireWellFormed(
+		check(value),
+		`Invalid ${name}: ${errors()}`,
+		`Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
+	)
 	return value as Documents[K]
 }
 
@@ -85,13 +124,14 @@ function schemaError(path: string, error: SchemaError) {
 	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
 	if (error.keyword === 'additionalProperties')
 		return `${path} has unknown field "${error.params.additionalProperty}"`
+	if (error.keyword === 'required') return `${path} needs field "${error.params.missingProperty}"`
 	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`
 	if (error.propertyName !== undefined) return `${path} field name "${error.propertyName}" ${error.message}`
 	return `${path} ${error.message}`
 }
 
 export function requireIdentifier(value: unknown, name: string): string {
-	requireCondition(
+	requireWellFormed(
 		typeof value === 'string' && identifier.test(value),
 		`Invalid ${name}: ${String(value)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
 	)
@@ -99,12 +139,12 @@ export function requireIdentifier(value: unknown, name: string): string {
 }
 
 export function requireText(value: unknown, name: string): string {
-	requireCondition(typeof value === 'string' && value.trim().length > 0, `Missing ${name}`)
+	requireWellFormed(typeof value === 'string' && value.trim().length > 0, `Missing ${name}`)
 	return value
 }
 
 export function requireChoice<T extends string>(value: unknown, choices: readonly T[], name: string): T {
-	requireCondition(
+	requireWellFormed(
 		choices.includes(value as T),
 		`Invalid ${name}: ${String(value)}. Use one of: ${choices.join(', ')}.`
 	)
@@ -114,7 +154,7 @@ export function requireChoice<T extends string>(value: unknown, choices: readonl
 export function revisionReference(text: string, name: string) {
 	const [id, revision, ...rest] = text.split('@')
 	requireIdentifier(id, name)
-	requireCondition(
+	requireWellFormed(
 		!rest.length && (revision === undefined || /^[1-9][0-9]*$/.test(revision)),
 		`Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`
 	)
@@ -128,7 +168,7 @@ export function testReference(reference: string) {
 
 export function expectDigest(actual: string, expected: string | undefined, subject: string) {
 	if (expected === undefined) return
-	requireCondition(/^[a-f0-9]{8,64}$/.test(expected), `Invalid --expect-sha: ${expected}. Use 8 to 64 hex digits.`)
+	requireWellFormed(/^[a-f0-9]{8,64}$/.test(expected), `Invalid --expect-sha: ${expected}. Use 8 to 64 hex digits.`)
 	requireCondition(
 		actual.startsWith(expected),
 		`${subject} has digest ${actual}, not ${expected}. Read it again before you decide.`
@@ -138,14 +178,14 @@ export function expectDigest(actual: string, expected: string | undefined, subje
 export function index<T, K extends keyof T>(items: T[], key: K, name: string): Map<T[K], T> {
 	const map = new Map<T[K], T>()
 	for (const item of items) {
-		requireCondition(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`)
+		requireWellFormed(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`)
 		map.set(item[key], item)
 	}
 	return map
 }
 
 export function references(ids: string[], map: ReadonlyMap<string, unknown>, name: string) {
-	for (const id of ids) requireCondition(map.has(id), `Unknown ${name}: ${id}`)
+	for (const id of ids) requireWellFormed(map.has(id), `Unknown ${name}: ${id}`)
 }
 
 export function profileCheck(value: unknown): Profile {
@@ -153,7 +193,7 @@ export function profileCheck(value: unknown): Profile {
 	index(profile.tools, 'name', 'tool')
 	index(profile.entryPoints, 'name', 'entry point')
 	for (const tool of profile.tools)
-		requireCondition(
+		requireWellFormed(
 			tool.version === undefined || !/resolve-and-pin|unknown/i.test(tool.version),
 			`Record the actual version of ${tool.name}, or leave version out`
 		)
@@ -226,37 +266,37 @@ export function planCheck(value: unknown): Plan {
 	const localReferences = (ids: string[]) =>
 		ids.filter((id) => {
 			const { planId } = testReference(id)
-			requireCondition(planId !== plan.planId, `Use the local test ID, not ${id}`)
+			requireWellFormed(planId !== plan.planId, `Use the local test ID, not ${id}`)
 			return planId === null
 		})
 	for (const gap of plan.gaps) {
 		references(gap.requirementIds, requirements, `requirement in gap ${gap.id}`)
 		references(localReferences(gap.testIds), tests, `test in gap ${gap.id}`)
-		if (gap.status === 'open') requireCondition(gap.decisionId === null, `Open gap ${gap.id} has a decision`)
+		if (gap.status === 'open') requireWellFormed(gap.decisionId === null, `Open gap ${gap.id} has a decision`)
 		else {
 			const decision = decisions.get(gap.decisionId ?? '')
-			requireCondition(decision?.gapId === gap.id, `Gap ${gap.id} needs a matching decision`)
-			requireCondition(
+			requireWellFormed(decision?.gapId === gap.id, `Gap ${gap.id} needs a matching decision`)
+			requireWellFormed(
 				(decision.kind === 'defer') === (gap.status === 'deferred'),
 				`Gap ${gap.id} status conflicts with decision ${decision.id}`
 			)
 		}
 	}
 	for (const decision of plan.decisions) {
-		requireCondition(
+		requireWellFormed(
 			gaps.get(decision.gapId)?.decisionId === decision.id,
 			`Decision ${decision.id} does not resolve its gap`
 		)
 		if (decision.kind === 'clarify')
-			requireCondition(decision.source, `Clarification ${decision.id} needs a source`)
+			requireWellFormed(decision.source, `Clarification ${decision.id} needs a source`)
 		if (decision.kind === 'accept_assumption')
-			requireCondition(
+			requireWellFormed(
 				plan.assumptions.some((a) => a.decisionId === decision.id && a.text === decision.value),
 				`Accepted assumption ${decision.id} must stay visible`
 			)
 	}
 	for (const assumption of plan.assumptions)
-		requireCondition(
+		requireWellFormed(
 			decisions.get(assumption.decisionId)?.kind === 'accept_assumption',
 			`Assumption ${assumption.decisionId} lacks oracle acceptance`
 		)
@@ -265,27 +305,31 @@ export function planCheck(value: unknown): Plan {
 		references(test.gapIds, gaps, `gap in test ${test.id}`)
 		references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`)
 		index(test.assertions, 'id', `assertion in test ${test.id}`)
-		requireCondition(
+		requireWellFormed(
 			same(
 				test.gapIds,
 				gapsAffecting(plan.gaps, test).map((gap) => gap.id)
 			),
 			`Test ${test.id} gapIds conflict with gap scope`
 		)
-		requireCondition(
+		requireWellFormed(
 			test.readiness === testReadiness(plan.gaps, test),
 			`Test ${test.id} readiness conflicts with gaps`
 		)
 		if (test.readiness === 'ready')
-			requireCondition(test.assertions.length > 0, `Ready test ${test.id} needs one or more assertions`)
+			requireWellFormed(
+				test.assertions.length > 0,
+				`Ready test ${test.id} needs one or more assertions`,
+				`Add an assertion to ${test.id}, for example {"id": "A1", "check": "<expected result>", "checkKind": "deterministic"}. If the expected result is unknown, record an open blocking gap for ${test.id}.`
+			)
 	}
 	for (const requirement of plan.requirements)
-		requireCondition(
+		requireWellFormed(
 			plan.tests.some((test) => test.requirementIds.includes(requirement.id)) ||
 				plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
 			`Requirement ${requirement.id} has no test or gap`
 		)
-	requireCondition(same(plan.coverage, planCoverage(plan)), 'Plan coverage is inconsistent')
+	requireWellFormed(same(plan.coverage, planCoverage(plan)), 'Plan coverage is inconsistent')
 	return plan
 }
 
@@ -314,8 +358,8 @@ export function dependencyCheck(plan: Plan, latest: ReadonlyMap<string, Plan>) {
 	for (const reference of crossReferences) {
 		const { planId, testId } = testReference(reference)
 		const other = plans.get(planId!)
-		requireCondition(other, `Unknown plan in ${reference}: ${planId}`)
-		requireCondition(
+		requireWellFormed(other, `Unknown plan in ${reference}: ${planId}`)
+		requireWellFormed(
 			other.tests.some((test) => test.id === testId),
 			`Unknown test in ${reference}: ${testId} is not in ${planId}@${other.revision}`
 		)
@@ -331,7 +375,7 @@ export function dependencyCheck(plan: Plan, latest: ReadonlyMap<string, Plan>) {
 	const visited = new Set<string>()
 	function visit(node: string) {
 		const start = visiting.indexOf(node)
-		requireCondition(start < 0, `Test dependency cycle: ${[...visiting.slice(start), node].join(' -> ')}`)
+		requireWellFormed(start < 0, `Test dependency cycle: ${[...visiting.slice(start), node].join(' -> ')}`)
 		if (visited.has(node)) return
 		visiting.push(node)
 		for (const next of edges.get(node) ?? []) visit(next)
@@ -339,6 +383,35 @@ export function dependencyCheck(plan: Plan, latest: ReadonlyMap<string, Plan>) {
 		visited.add(node)
 	}
 	for (const node of edges.keys()) visit(node)
+}
+
+export function unusedId(prefix: string, used: string[]) {
+	let number = 1
+	while (used.includes(`${prefix}${number}`)) number++
+	return `${prefix}${number}`
+}
+
+export const dependsOnAdvice =
+	'Use dependsOn only when a test uses data that another test creates. Make the other tests independent.'
+
+export function dependencyWarnings(plan: Pick<Plan, 'tests'>) {
+	const local = new Map(plan.tests.map((test) => [test.id, test.dependsOn.filter((id) => !id.includes(':'))]))
+	const chains = new Map<string, string[]>()
+	const longer = (a: string[], b: string[]) => (b.length > a.length ? b : a)
+	const chain = (id: string): string[] => {
+		if (!chains.has(id)) chains.set(id, [id, ...(local.get(id) ?? []).map(chain).reduce(longer, [])])
+		return chains.get(id)!
+	}
+	const longest = plan.tests.map((test) => chain(test.id)).reduce(longer, [])
+	const dependent = plan.tests.filter((test) => local.get(test.id)!.length).map((test) => test.id)
+	const warnings: string[] = []
+	if (longest.length > 3)
+		warnings.push(
+			`dependsOn chain of ${longest.length} tests: ${longest.join(' -> ')}. Each test depends on the next. One failure blocks every test before it in the chain.`
+		)
+	if (dependent.length * 2 > plan.tests.length)
+		warnings.push(`${dependent.length} of ${plan.tests.length} tests have dependsOn: ${dependent.join(', ')}.`)
+	return warnings.length ? [...warnings, dependsOnAdvice] : []
 }
 
 export function testOutcome(results: AssertionResult[]): 'passed' | 'failed' | 'error' | 'inconclusive' {

@@ -394,7 +394,7 @@ test('target list, show, and instance commands print entry points, authenticatio
 	)
 	assert.match(
 		cli(workspace, ['target', 'instance', 'drop', 'checkout-local']).output,
-		/Unknown command: target instance drop\. Run/
+		/Unknown command: target instance drop\nhint: Use one of: target instance add,/
 	)
 })
 

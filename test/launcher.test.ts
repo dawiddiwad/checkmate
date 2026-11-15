@@ -308,14 +308,17 @@ test('the npm CLI always takes the next token as the --claude-arg value, also on
 	assert.equal(run('--claude-arg', '--json', '--claude-arg', '--help'), 'needs_decision checkout\nreason: Stopped.\n')
 	assert.deepEqual(args().slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
 	assert.match(run('--claude-arg', '--model', '--help'), /^completed delegate\ncheckmate delegate <setup\|plan/)
-	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
+	const malformed = (reason: string) =>
+		`invalid_request delegate refusal=malformed\nreason: Refused: malformed request.\nreason: ${reason}\nhint: Usage: checkmate delegate <setup|plan|revise|execute> `
+	assert(run('--claude-arg').startsWith(malformed('Missing value for --claude-arg')))
 	assert.equal(run('--claude-arg', '--model'), 'needs_decision checkout\nreason: Stopped.\n')
 	assert.deepEqual(args().slice(0, 3), ['-p', '--model', '--plugin-dir'])
 	assert.deepEqual(args().slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
 	for (const timeout of ['0', 'abc', '3601'])
-		assert.equal(
-			run('--timeout', timeout),
-			`invalid_request delegate\nreason: Invalid --timeout: ${timeout}. Use a whole number from 1 to 3600.\n`
+		assert(
+			run('--timeout', timeout).startsWith(
+				malformed(`Invalid --timeout: ${timeout}. Use a whole number from 1 to 3600.`)
+			)
 		)
 })
 

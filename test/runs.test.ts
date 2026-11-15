@@ -117,7 +117,7 @@ test('a check names a selected test, a known assertion, and passed prerequisites
 	const opened = started(t, ['T1', 'T2'])
 	assert.throws(() => check(opened, 'run-1', 'T3.A1', 'passed'), /Test T3 is not selected in run run-1/)
 	assert.throws(() => check(opened, 'run-1', 'T1.A9', 'passed'), /Unknown assertion T1.A9/)
-	assert.throws(() => check(opened, 'run-1', 'T2.A1', 'passed'), /Prerequisite T1 has not passed/)
+	assert.throws(() => check(opened, 'run-1', 'T2.A1', 'passed'), /Prerequisite T1 is not closed/)
 	assert.throws(() => check(opened, 'run-2', 'T1.A1', 'passed'), /Unknown run: run-2|Evidence directory/)
 	const base = { runId: 'run-1', testId: 'T1', assertionId: 'A1' }
 	assert.throws(
@@ -510,7 +510,9 @@ test('run begin runs the gate and refuses an existing run ID', (t) => {
 	ready(opened)
 	const refused = beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@2', tests: ['T2'], build: 'b' })
 	assert.equal(refused.status, 'needs_decision')
-	assert.deepEqual(refused.reasons, ['Missing prerequisite: T1'])
+	assert.deepEqual(refused.reasons, ['Refused: prohibited in the current state.', 'Missing prerequisite: T1'])
+	assert.equal(refused.refusal, 'prohibited')
+	assert.equal(refused.hint, 'Add T1 to --tests.')
 	assert.throws(() => runDetail(opened, 'run-1'), /Unknown run: run-1/)
 	const begun = begin(opened)
 	assert.equal(begun.data.deadlineSeconds, 600)
@@ -660,7 +662,7 @@ test('findings name recorded assertions, matching requirements, and evidence of 
 		})
 	assert.throws(
 		() => finding({ assertionIds: ['T1.A1'], requirementIds: ['R1'] }),
-		/names T1.A1, which is not failed/
+		/names T1.A1, which is passed\. A defect names only failed assertions/
 	)
 	assert.throws(() => finding({ assertionIds: ['T2.A9'] }), /Unknown assertion in finding F1: T2.A9/)
 	assert.throws(() => finding({ assertionIds: ['T3.A1'] }), /Test T3 is not selected/)

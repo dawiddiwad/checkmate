@@ -3,7 +3,12 @@ export type Validator = ((value: unknown) => boolean) & {
 		instancePath: string
 		schemaPath: string
 		keyword: string
-		params: { additionalProperty?: string; allowedValues?: unknown[]; type?: string | string[] }
+		params: {
+			additionalProperty?: string
+			allowedValues?: unknown[]
+			missingProperty?: string
+			type?: string | string[]
+		}
 		propertyName?: string
 		message?: string
 	}> | null

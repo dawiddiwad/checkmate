@@ -196,6 +196,7 @@ Rules:
 - An assertion has an ID that is unique in its test, a `check`, and a `checkKind`: `deterministic` for an exact value, `agent_observation` when the agent interprets the evidence.
 - Do not write an assertion with an unknown expected value. Write an open blocking gap. In the example, T2 is `blocked`.
 - `dependsOn` names local tests or cross-plan tests. The named plan and test exist. Checkmate refuses a dependency cycle across all plans.
+- Use `dependsOn` only when a test uses data that another test creates. One failure blocks each test that depends on it. `plan save`, `plan revise`, `plan edit`, and `plan show` give a warning when a local chain has more than 3 tests, or when more than half of the tests have a local `dependsOn`. The warning names the tests. The command is not refused.
 - Revision 1 has no decisions and no assumptions.
 - A test and a requirement of the candidate can have [`metadata`](#metadata).
 
@@ -383,10 +384,13 @@ The schemas refuse a payload that breaks one of these limits:
 | `result.schema.json`         | each stored result                |
 | `response.schema.json`       | the output of a delegated worker  |
 
-A payload with an unknown field, a missing field, or a wrong type is refused before any rule check. The reason names the field, for example:
+A payload with an unknown field, a missing field, or a wrong type is refused as `malformed` before any rule check. The reason names each field, and the hint names the schema, for example:
 
 ```text
-reason: Invalid finding: finding has unknown field "priority", finding/severity must be one of: low, medium, high, critical
+rejected run-1 refusal=malformed
+reason: Refused: malformed request.
+reason: Invalid finding: finding needs field "title", finding has unknown field "priority", finding/severity must be one of: low, medium, high, critical
+hint: Fix each named field and send the finding again. The schema is contracts/finding.schema.json in the plugin.
 ```
 
 ## Next

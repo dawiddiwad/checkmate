@@ -6,7 +6,14 @@ import { join } from 'node:path'
 
 export type Status =
 	'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected' | 'invalid_request'
-export type Reply = { status: Status; subject: string; reasons: string[]; data: Record<string, unknown> }
+export type Reply = {
+	status: Status
+	subject: string
+	reasons: string[]
+	refusal?: 'malformed' | 'prohibited'
+	hint?: string
+	data: Record<string, unknown>
+}
 export type Change = { reply: Reply; subjects: string[] }
 export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }

@@ -6839,8 +6839,36 @@ function Le(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 
 // plugin/src/contracts.ts
 var identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/;
-function requireCondition(condition, message) {
-  if (!condition) throw new Error(message);
+var Refusal = class extends Error {
+  kind;
+  hint;
+  constructor(kind, message, hint) {
+    super(message);
+    this.kind = kind;
+    this.hint = hint;
+  }
+};
+var refusalReasons = {
+  malformed: "Refused: malformed request.",
+  prohibited: "Refused: prohibited in the current state."
+};
+function refused(status, subject, error) {
+  const refusal = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
+  const hint = error instanceof Refusal ? error.hint : void 0;
+  return {
+    status,
+    subject,
+    reasons: [refusalReasons[refusal], error instanceof Error ? error.message : String(error)],
+    refusal,
+    ...hint ? { hint } : {},
+    data: {}
+  };
+}
+function requireCondition(condition, message, hint) {
+  if (!condition) throw new Refusal("prohibited", message, hint);
+}
+function requireWellFormed(condition, message, hint) {
+  if (!condition) throw new Refusal("malformed", message, hint);
 }
 function same(a, b) {
   return canonical(a) === canonical(b);
@@ -6848,7 +6876,11 @@ function same(a, b) {
 function validate(name, value2) {
   const check = validators_exports[name.replace(/-./g, (match) => match[1].toUpperCase())];
   const errors = () => unionErrors(check.errors ?? []).filter((error) => error.keyword !== "propertyNames").map((error) => schemaError(`${name}${error.instancePath}`, error)).join(", ");
-  requireCondition(check(value2), `Invalid ${name}: ${errors()}`);
+  requireWellFormed(
+    check(value2),
+    `Invalid ${name}: ${errors()}`,
+    `Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
+  );
   return value2;
 }
 function unionErrors(errors) {
@@ -6873,23 +6905,24 @@ function schemaError(path, error) {
   if (error.keyword === "type") return `${path} must be ${typeList([error.params.type ?? []].flat())}`;
   if (error.keyword === "additionalProperties")
     return `${path} has unknown field "${error.params.additionalProperty}"`;
+  if (error.keyword === "required") return `${path} needs field "${error.params.missingProperty}"`;
   if (error.keyword === "enum") return `${path} must be one of: ${error.params.allowedValues?.join(", ")}`;
   if (error.propertyName !== void 0) return `${path} field name "${error.propertyName}" ${error.message}`;
   return `${path} ${error.message}`;
 }
 function requireIdentifier(value2, name) {
-  requireCondition(
+  requireWellFormed(
     typeof value2 === "string" && identifier.test(value2),
     `Invalid ${name}: ${String(value2)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
   );
   return value2;
 }
 function requireText(value2, name) {
-  requireCondition(typeof value2 === "string" && value2.trim().length > 0, `Missing ${name}`);
+  requireWellFormed(typeof value2 === "string" && value2.trim().length > 0, `Missing ${name}`);
   return value2;
 }
 function requireChoice(value2, choices, name) {
-  requireCondition(
+  requireWellFormed(
     choices.includes(value2),
     `Invalid ${name}: ${String(value2)}. Use one of: ${choices.join(", ")}.`
   );
@@ -6898,7 +6931,7 @@ function requireChoice(value2, choices, name) {
 function revisionReference(text, name) {
   const [id2, revision, ...rest] = text.split("@");
   requireIdentifier(id2, name);
-  requireCondition(
+  requireWellFormed(
     !rest.length && (revision === void 0 || /^[1-9][0-9]*$/.test(revision)),
     `Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`
   );
@@ -6910,7 +6943,7 @@ function testReference(reference) {
 }
 function expectDigest(actual, expected, subject) {
   if (expected === void 0) return;
-  requireCondition(/^[a-f0-9]{8,64}$/.test(expected), `Invalid --expect-sha: ${expected}. Use 8 to 64 hex digits.`);
+  requireWellFormed(/^[a-f0-9]{8,64}$/.test(expected), `Invalid --expect-sha: ${expected}. Use 8 to 64 hex digits.`);
   requireCondition(
     actual.startsWith(expected),
     `${subject} has digest ${actual}, not ${expected}. Read it again before you decide.`
@@ -6919,20 +6952,20 @@ function expectDigest(actual, expected, subject) {
 function index(items, key, name) {
   const map = /* @__PURE__ */ new Map();
   for (const item of items) {
-    requireCondition(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`);
+    requireWellFormed(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`);
     map.set(item[key], item);
   }
   return map;
 }
 function references(ids2, map, name) {
-  for (const id2 of ids2) requireCondition(map.has(id2), `Unknown ${name}: ${id2}`);
+  for (const id2 of ids2) requireWellFormed(map.has(id2), `Unknown ${name}: ${id2}`);
 }
 function profileCheck(value2) {
   const profile = validate("profile", value2);
   index(profile.tools, "name", "tool");
   index(profile.entryPoints, "name", "entry point");
   for (const tool of profile.tools)
-    requireCondition(
+    requireWellFormed(
       tool.version === void 0 || !/resolve-and-pin|unknown/i.test(tool.version),
       `Record the actual version of ${tool.name}, or leave version out`
     );
@@ -6986,37 +7019,37 @@ function planCheck(value2) {
   index(plan.assumptions, "decisionId", "assumption decision");
   const localReferences = (ids2) => ids2.filter((id2) => {
     const { planId } = testReference(id2);
-    requireCondition(planId !== plan.planId, `Use the local test ID, not ${id2}`);
+    requireWellFormed(planId !== plan.planId, `Use the local test ID, not ${id2}`);
     return planId === null;
   });
   for (const gap of plan.gaps) {
     references(gap.requirementIds, requirements, `requirement in gap ${gap.id}`);
     references(localReferences(gap.testIds), tests, `test in gap ${gap.id}`);
-    if (gap.status === "open") requireCondition(gap.decisionId === null, `Open gap ${gap.id} has a decision`);
+    if (gap.status === "open") requireWellFormed(gap.decisionId === null, `Open gap ${gap.id} has a decision`);
     else {
       const decision = decisions.get(gap.decisionId ?? "");
-      requireCondition(decision?.gapId === gap.id, `Gap ${gap.id} needs a matching decision`);
-      requireCondition(
+      requireWellFormed(decision?.gapId === gap.id, `Gap ${gap.id} needs a matching decision`);
+      requireWellFormed(
         decision.kind === "defer" === (gap.status === "deferred"),
         `Gap ${gap.id} status conflicts with decision ${decision.id}`
       );
     }
   }
   for (const decision of plan.decisions) {
-    requireCondition(
+    requireWellFormed(
       gaps.get(decision.gapId)?.decisionId === decision.id,
       `Decision ${decision.id} does not resolve its gap`
     );
     if (decision.kind === "clarify")
-      requireCondition(decision.source, `Clarification ${decision.id} needs a source`);
+      requireWellFormed(decision.source, `Clarification ${decision.id} needs a source`);
     if (decision.kind === "accept_assumption")
-      requireCondition(
+      requireWellFormed(
         plan.assumptions.some((a) => a.decisionId === decision.id && a.text === decision.value),
         `Accepted assumption ${decision.id} must stay visible`
       );
   }
   for (const assumption of plan.assumptions)
-    requireCondition(
+    requireWellFormed(
       decisions.get(assumption.decisionId)?.kind === "accept_assumption",
       `Assumption ${assumption.decisionId} lacks oracle acceptance`
     );
@@ -7025,26 +7058,30 @@ function planCheck(value2) {
     references(test.gapIds, gaps, `gap in test ${test.id}`);
     references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`);
     index(test.assertions, "id", `assertion in test ${test.id}`);
-    requireCondition(
+    requireWellFormed(
       same(
         test.gapIds,
         gapsAffecting(plan.gaps, test).map((gap) => gap.id)
       ),
       `Test ${test.id} gapIds conflict with gap scope`
     );
-    requireCondition(
+    requireWellFormed(
       test.readiness === testReadiness(plan.gaps, test),
       `Test ${test.id} readiness conflicts with gaps`
     );
     if (test.readiness === "ready")
-      requireCondition(test.assertions.length > 0, `Ready test ${test.id} needs one or more assertions`);
+      requireWellFormed(
+        test.assertions.length > 0,
+        `Ready test ${test.id} needs one or more assertions`,
+        `Add an assertion to ${test.id}, for example {"id": "A1", "check": "<expected result>", "checkKind": "deterministic"}. If the expected result is unknown, record an open blocking gap for ${test.id}.`
+      );
   }
   for (const requirement of plan.requirements)
-    requireCondition(
+    requireWellFormed(
       plan.tests.some((test) => test.requirementIds.includes(requirement.id)) || plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
       `Requirement ${requirement.id} has no test or gap`
     );
-  requireCondition(same(plan.coverage, planCoverage(plan)), "Plan coverage is inconsistent");
+  requireWellFormed(same(plan.coverage, planCoverage(plan)), "Plan coverage is inconsistent");
   return plan;
 }
 function planTargetCheck(plan, profile) {
@@ -7069,8 +7106,8 @@ function dependencyCheck(plan, latest) {
   for (const reference of crossReferences) {
     const { planId, testId } = testReference(reference);
     const other = plans.get(planId);
-    requireCondition(other, `Unknown plan in ${reference}: ${planId}`);
-    requireCondition(
+    requireWellFormed(other, `Unknown plan in ${reference}: ${planId}`);
+    requireWellFormed(
       other.tests.some((test) => test.id === testId),
       `Unknown test in ${reference}: ${testId} is not in ${planId}@${other.revision}`
     );
@@ -7086,7 +7123,7 @@ function dependencyCheck(plan, latest) {
   const visited = /* @__PURE__ */ new Set();
   function visit(node) {
     const start = visiting.indexOf(node);
-    requireCondition(start < 0, `Test dependency cycle: ${[...visiting.slice(start), node].join(" -> ")}`);
+    requireWellFormed(start < 0, `Test dependency cycle: ${[...visiting.slice(start), node].join(" -> ")}`);
     if (visited.has(node)) return;
     visiting.push(node);
     for (const next of edges.get(node) ?? []) visit(next);
@@ -7094,6 +7131,31 @@ function dependencyCheck(plan, latest) {
     visited.add(node);
   }
   for (const node of edges.keys()) visit(node);
+}
+function unusedId(prefix, used) {
+  let number = 1;
+  while (used.includes(`${prefix}${number}`)) number++;
+  return `${prefix}${number}`;
+}
+var dependsOnAdvice = "Use dependsOn only when a test uses data that another test creates. Make the other tests independent.";
+function dependencyWarnings(plan) {
+  const local = new Map(plan.tests.map((test) => [test.id, test.dependsOn.filter((id2) => !id2.includes(":"))]));
+  const chains = /* @__PURE__ */ new Map();
+  const longer = (a, b) => b.length > a.length ? b : a;
+  const chain = (id2) => {
+    if (!chains.has(id2)) chains.set(id2, [id2, ...(local.get(id2) ?? []).map(chain).reduce(longer, [])]);
+    return chains.get(id2);
+  };
+  const longest = plan.tests.map((test) => chain(test.id)).reduce(longer, []);
+  const dependent = plan.tests.filter((test) => local.get(test.id).length).map((test) => test.id);
+  const warnings = [];
+  if (longest.length > 3)
+    warnings.push(
+      `dependsOn chain of ${longest.length} tests: ${longest.join(" -> ")}. Each test depends on the next. One failure blocks every test before it in the chain.`
+    );
+  if (dependent.length * 2 > plan.tests.length)
+    warnings.push(`${dependent.length} of ${plan.tests.length} tests have dependsOn: ${dependent.join(", ")}.`);
+  return warnings.length ? [...warnings, dependsOnAdvice] : [];
 }
 function testOutcome(results) {
   if (results.includes("failed")) return "failed";
@@ -7526,29 +7588,29 @@ function openPlan(store, actor, input) {
   return write(store, { actor, command: "plan open", subject: input.planId, input }, (operationId) => {
     const planId = requireIdentifier(input.planId, "plan ID");
     const target = revisionReference(requireText(input.target, "target (--target)"), "target reference");
-    requireCondition(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`);
+    requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`);
     const profile = targetRevision(store, target.id, target.revision).profile;
     const request = validate("plan-request", input.request);
-    requireCondition(
+    requireWellFormed(
       request.requirements?.length || request.context?.sources.length,
       "A plan request needs requirements or context sources"
     );
     index(request.requirements ?? [], "id", "requirement");
     for (const tool of request.tools ?? [])
       if (typeof tool === "string")
-        requireCondition(
+        requireWellFormed(
           profile.tools.some((known) => known.name === tool),
           `Unknown tool ${tool}. The target profile has: ${profile.tools.map((known) => known.name).join(", ") || "no tools"}.`
         );
       else {
         toolCheck(tool);
-        requireCondition(
+        requireWellFormed(
           !profile.tools.some((known) => known.name === tool.name),
           `Tool ${tool.name} is in the target profile. Name it as a string.`
         );
       }
     const names = planTools(request, profile).map((tool) => tool.name);
-    requireCondition(new Set(names).size === names.length, "Duplicate tool name in the plan request");
+    requireWellFormed(new Set(names).size === names.length, "Duplicate tool name in the plan request");
     const body = canonical(request);
     const data = { planId, target: `${target.id}@${target.revision}` };
     const existing = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
@@ -7630,12 +7692,13 @@ function checkedRevision(store, draft) {
 }
 function revisionChange(plan, sha256) {
   const blockers = plan.gaps.filter((gap) => gap.status === "open" && gap.severity === "blocking");
+  const warnings = dependencyWarnings(plan);
   return {
     reply: {
       status: blockers.length ? "needs_decision" : "completed",
       subject: `${plan.planId}@${plan.revision}`,
       reasons: blockers.map((gap) => `${gap.id}: ${gap.question}`),
-      data: { planId: plan.planId, revision: plan.revision, sha256 }
+      data: { planId: plan.planId, revision: plan.revision, sha256, ...warnings.length ? { warnings } : {} }
     },
     subjects: [`plan:${plan.planId}`, "inbox"]
   };
@@ -7766,7 +7829,7 @@ function planRunGaps(store, planId) {
 }
 function editableRevision(store, text, expectSha256) {
   const reference = revisionReference(requireText(text, "plan reference"), "plan reference");
-  requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
+  requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
   const base = planRevision(store, reference.id, reference.revision);
   const subject = `${reference.id}@${reference.revision}`;
   const latest = planRevision(store, reference.id).plan.revision;
@@ -7798,7 +7861,7 @@ function storeEdit(store, operationId, base, value2) {
     const before = base.plan.tests.find((item) => item.id === test.id)?.assertions ?? [];
     const used = usedAssertionIds(store, planId, test.id);
     for (const assertion of test.assertions)
-      requireCondition(
+      requireWellFormed(
         before.some((item) => item.id === assertion.id) || !used.includes(assertion.id),
         `Assertion ID ${test.id}.${assertion.id} was used in an earlier revision. Use a new ID.`
       );
@@ -7877,7 +7940,7 @@ function patchList(items, changes, name, apply) {
   for (const [id2, change] of Object.entries(changes ?? {})) {
     const position = result.findIndex((item) => item.id === id2);
     if (change === null) {
-      requireCondition(position >= 0, `Cannot remove unknown ${name} ${id2}`);
+      requireWellFormed(position >= 0, `Cannot remove unknown ${name} ${id2}`);
       result.splice(position, 1);
     } else if (position >= 0) result[position] = apply(result[position], id2, change);
     else result.push(apply(void 0, id2, change));
@@ -7886,7 +7949,7 @@ function patchList(items, changes, name, apply) {
 }
 function newFields(name, change, required, defaults = {}) {
   const missing = required.filter((field2) => !(field2 in change));
-  requireCondition(!missing.length, `New ${name} needs ${missing.join(", ")}`);
+  requireWellFormed(!missing.length, `New ${name} needs ${missing.join(", ")}`);
   return { ...defaults, ...change };
 }
 function savePlan(store, actor, input) {
@@ -7919,17 +7982,20 @@ function savePlan(store, actor, input) {
 }
 function candidateRequirements(request, drafted) {
   if (request.requirements?.length) {
-    requireCondition(!drafted, "The plan request names the requirements. Do not add requirements to the candidate.");
+    requireWellFormed(
+      !drafted,
+      "The plan request names the requirements. Do not add requirements to the candidate."
+    );
     return request.requirements;
   }
   const sources = request.context?.sources ?? [];
-  requireCondition(
+  requireWellFormed(
     drafted?.length,
     `The plan request has no requirements. Draft them from the context sources: ${sources.join(", ")}`
   );
   index(drafted, "id", "requirement");
   for (const requirement of drafted)
-    requireCondition(
+    requireWellFormed(
       sources.some((source) => requirement.source.startsWith(source)),
       `Requirement ${requirement.id} cites ${requirement.source}, which is not a context source. Use one of: ${sources.join(", ")}`
     );
@@ -7949,7 +8015,7 @@ function answerGap(store, actor, input) {
     const rationale = requireText(input.rationale, "rationale (--rationale)");
     const source = input.source ?? null;
     if (source !== null) requireText(source, "source (--source)");
-    requireCondition(kind !== "clarify" || source, "A clarification needs a source (--source)");
+    requireWellFormed(kind !== "clarify" || source, "A clarification needs a source (--source)");
     const answered = planRevision(store, input.planId);
     expectDigest(answered.sha256, input.expectSha256, `${input.planId}@${answered.plan.revision}`);
     const adopted = answered.plan.gaps.some((gap2) => gap2.id === input.gapId) ? null : adoptRunGap(store, operationId, answered, input.gapId);
@@ -8060,13 +8126,21 @@ function revisePlan(store, actor, input) {
     ).map((test) => test.id);
     for (const [testId, change2] of Object.entries(delta.tests)) {
       const test = draft.tests.find((test2) => test2.id === testId);
-      requireCondition(test, `Unknown test in delta: ${testId}`);
+      const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(", ") || "none"}.`;
+      requireWellFormed(test, `Unknown test in delta: ${testId}`, onlyAffected);
       requireCondition(
         affected.includes(testId),
-        `Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`
+        `Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
+        onlyAffected
       );
       applyTestChange(test, change2, usedAssertionIds(store, input.planId, testId));
     }
+    for (const test of draft.tests)
+      requireWellFormed(
+        test.assertions.length > 0 || testReadiness(draft.gaps, test) !== "ready",
+        `Ready test ${test.id} needs one or more assertions`,
+        `Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId("A", usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}`
+      );
     const change = storeRevision(store, draft, operationId);
     for (const decision of decisions)
       execute(store, "UPDATE decisions SET applied_revision = ? WHERE id = ?", draft.revision, decision.id);
@@ -8088,15 +8162,15 @@ function applyTestChange(test, change, used) {
   for (const [id2, assertion] of Object.entries(change.assertions ?? {})) {
     const position = test.assertions.findIndex((existing) => existing.id === id2);
     if (assertion === null) {
-      requireCondition(position >= 0, `Cannot remove unknown assertion ${test.id}.${id2}`);
+      requireWellFormed(position >= 0, `Cannot remove unknown assertion ${test.id}.${id2}`);
       test.assertions.splice(position, 1);
     } else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion };
     else {
-      requireCondition(
+      requireWellFormed(
         !used.includes(id2),
         `Assertion ID ${test.id}.${id2} was used in an earlier revision. Use a new ID.`
       );
-      requireCondition(
+      requireWellFormed(
         assertion.check !== void 0 && assertion.checkKind !== void 0,
         `New assertion ${test.id}.${id2} needs check and checkKind`
       );
@@ -8114,7 +8188,7 @@ function decidePlan(store, actor, input, verdict) {
   const command = verdict === "approved" ? "plan approve" : "plan reject";
   return write(store, { actor, command, subject: input.reference, input }, (operationId, at, actor2) => {
     const reference = revisionReference(requireText(input.reference, "plan reference"), "plan reference");
-    requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
+    requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
     const revision = planRevision(store, reference.id, reference.revision);
     const subject = `${reference.id}@${reference.revision}`;
     latestCheck(store, reference.id, reference.revision);
@@ -8194,7 +8268,7 @@ function planApproval(store, plan, sha256) {
 }
 function gate(store, input) {
   const reference = revisionReference(requireText(input.reference, "plan reference"), "plan reference");
-  requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
+  requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`);
   const revision = planRevision(store, reference.id, reference.revision);
   const { plan } = revision;
   const subject = `${plan.planId}@${plan.revision}`;
@@ -8209,45 +8283,73 @@ function gate(store, input) {
   if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance);
   const earlier = input.retestOf ? retestDefects(store, input.retestOf) : [];
   const reasons2 = [];
-  if (!selected.length) reasons2.push(`No test is ready in ${subject}`);
+  const hints = [];
+  const status = `Run checkmate status ${plan.planId} to see who acts next.`;
+  const partialHint = `To run only the tests that no open blocking gap affects, add --partial ready_only.`;
+  if (!selected.length) {
+    reasons2.push(`No test is ready in ${subject}`);
+    hints.push(status);
+  }
   if (input.retestOf) {
     for (const [id2, why] of retestSelection(plan, ready.tests, earlier))
-      if (!selected.includes(id2)) reasons2.push(`Retest of ${input.retestOf} must select ${id2}: ${why}`);
+      if (!selected.includes(id2)) {
+        reasons2.push(`Retest of ${input.retestOf} must select ${id2}: ${why}`);
+        hints.push(`Add ${id2} to --tests.`);
+      }
   }
-  if (!target.profile.readyForLiveExecution)
+  if (!target.profile.readyForLiveExecution) {
     reasons2.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`);
+    hints.push(`The setup stage must save a ready profile for ${plan.target.targetId}.`);
+  }
   const approval = planApproval(store, plan, revision.sha256);
-  if (approval.policy === "required" && !approval.approved) reasons2.push(`Plan ${subject} is not approved`);
+  if (approval.policy === "required" && !approval.approved) {
+    reasons2.push(`Plan ${subject} is not approved`);
+    hints.push(`The oracle must approve ${subject}. ${status}`);
+  }
   if (partial === "wait_for_resolution") {
     for (const gap of plan.gaps)
-      if (gap.status === "open" && gap.severity === "blocking") reasons2.push(`Open blocking gap: ${gap.id}`);
+      if (gap.status === "open" && gap.severity === "blocking") {
+        reasons2.push(`Open blocking gap: ${gap.id}`);
+        hints.push(partialHint);
+      }
   }
   const runGaps2 = blockingRunGaps(store, plan.planId);
   for (const id2 of selected) {
     const test = tests.get(id2);
-    if (test.readiness !== "ready") reasons2.push(`Test is not ready: ${id2}`);
+    if (test.readiness !== "ready") {
+      reasons2.push(`Test is not ready: ${id2}`);
+      hints.push(`Remove ${id2} from --tests, or leave out --tests and add --partial ready_only.`);
+    }
     const runGap = runGapAffecting(runGaps2, test);
-    if (runGap && partial === "wait_for_resolution")
+    if (runGap && partial === "wait_for_resolution") {
       reasons2.push(`Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${id2}`);
+      hints.push(partialHint);
+    }
     if (!target.profile.capabilities.includes(test.capability))
       reasons2.push(`Missing capability: ${test.capability}`);
     if (!test.operations.every((operation) => target.profile.allowedOperations.includes(operation)))
       reasons2.push(`Operation is not permitted: ${id2}`);
     if (!test.assertions.length) reasons2.push(`Test has no assertions: ${id2}`);
     for (const dependency of test.dependsOn)
-      if (!dependency.includes(":") && !selected.includes(dependency))
+      if (!dependency.includes(":") && !selected.includes(dependency)) {
         reasons2.push(`Missing prerequisite: ${dependency}`);
+        hints.push(`Add ${dependency} to --tests.`);
+      }
   }
   for (const id2 of selected)
     for (const dependency of tests.get(id2).dependsOn.filter((dependency2) => dependency2.includes(":"))) {
       const cause = dependencyBlock(store, dependency, build);
-      if (cause) reasons2.push(`Blocked by ${dependency}: ${cause}`);
+      if (cause) {
+        reasons2.push(`Blocked by ${dependency}: ${cause}`);
+        hints.push(`Run checkmate status ${testReference(dependency).planId} to see who acts next.`);
+      }
     }
   return {
     reply: {
       status: reasons2.length ? "needs_decision" : "completed",
       subject,
       reasons: [...new Set(reasons2)],
+      ...hints.length ? { hint: [...new Set(hints)].join(" ") } : {},
       data: {
         planId: plan.planId,
         revision: plan.revision,
@@ -8276,11 +8378,11 @@ function retestSelection(plan, selectable, earlier) {
   return required;
 }
 function givenSelection(selected, tests, subject) {
-  requireCondition(
+  requireWellFormed(
     Array.isArray(selected) && selected.length > 0,
     "Select one or more tests with --tests, or add --partial ready_only"
   );
-  requireCondition(new Set(selected).size === selected.length, "Duplicate test in --tests");
+  requireWellFormed(new Set(selected).size === selected.length, "Duplicate test in --tests");
   references(selected, tests, `test in ${subject}`);
   return { tests: selected, leftOut: [] };
 }
@@ -8353,8 +8455,16 @@ function retestCheck(store, runId, plan, build, instanceId) {
     "SELECT r.plan_id, r.target_id, r.target_revision, r.instance_id, r.application_build, s.run_id IS NOT NULL AS finished FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.run_id = ?",
     runId
   );
-  requireCondition(previous, `Unknown run to retest: ${runId}`);
-  requireCondition(previous.finished, `Run ${runId} is not finished. Retest a finished run.`);
+  requireCondition(
+    previous,
+    `Unknown run to retest: ${runId}`,
+    `Run checkmate run list --plan ${plan.planId} to see the runs.`
+  );
+  requireCondition(
+    previous.finished,
+    `Run ${runId} is not finished. Retest a finished run.`,
+    `Finish ${runId} first: checkmate run finish ${runId} --completion <completed|interrupted|operational_error> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>". Then run this command again. To start a run that is not a retest, leave out --retest-of.`
+  );
   requireCondition(
     previous.plan_id === plan.planId && previous.target_id === plan.target.targetId && previous.target_revision === plan.target.revision,
     `Retest scope changed: ${runId} ran plan ${previous.plan_id} on ${previous.target_id}@${previous.target_revision}`
@@ -8539,7 +8649,7 @@ function isRecord(value2) {
 }
 function diffPlan(store, input) {
   const revision = (text) => {
-    requireCondition(/^[1-9][0-9]*$/.test(text), `Invalid revision: ${text}. Use a positive integer.`);
+    requireWellFormed(/^[1-9][0-9]*$/.test(text), `Invalid revision: ${text}. Use a positive integer.`);
     return planRevision(store, input.planId, Number(text)).plan;
   };
   const before = revision(input.from);
@@ -8611,13 +8721,18 @@ function runState(store, runId) {
 }
 function startedRun(store, runId) {
   const run2 = runState(store, runId);
-  requireCondition(!run2.finished, `Run ${runId} is finished. A finished run does not change.`);
+  requireCondition(
+    !run2.finished,
+    `Run ${runId} is finished. A finished run does not change.`,
+    `Run checkmate status ${run2.plan.planId} to see the next step.`
+  );
   return run2;
 }
 function selectedTest(run2, testId) {
-  requireCondition(
+  requireWellFormed(
     run2.request.selectedTestIds.includes(testId),
-    `Test ${testId} is not selected in run ${run2.row.run_id}`
+    `Test ${testId} is not selected in run ${run2.row.run_id}`,
+    `Use one of: ${run2.request.selectedTestIds.join(", ")}.`
   );
   return run2.plan.tests.find((test) => test.id === testId);
 }
@@ -8694,14 +8809,19 @@ function beginRun(store, actor, input) {
         "new blocker policy (--on-new-blocker)"
       );
       const timeoutSeconds = input.timeoutSeconds ?? 600;
-      requireCondition(
+      requireWellFormed(
         Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 3600,
         `Invalid timeout: ${timeoutSeconds}. Use 1 to 3600 seconds.`
       );
       const instance = runInstance(store, plannedTarget(store, input.reference), input.instance);
       const checked = gate(store, { ...input, instance: instance.instanceId });
-      if (checked.reply.status !== "completed")
-        return { reply: { ...checked.reply, subject: runId }, subjects: [] };
+      if (checked.reply.status !== "completed") {
+        const reasons2 = [refusalReasons.prohibited, ...checked.reply.reasons];
+        return {
+          reply: { ...checked.reply, subject: runId, reasons: reasons2, refusal: "prohibited" },
+          subjects: []
+        };
+      }
       const { plan, sha256 } = checked.revision;
       const request = {
         selectedTestIds: checked.tests,
@@ -8763,12 +8883,12 @@ function plannedTarget(store, text) {
 }
 var evidenceKinds = ["observation", "http_exchange", "screenshot", "trace"];
 function textEvidence(input, name) {
-  requireCondition(
+  requireWellFormed(
     typeof input.text === "string" && input.text.trim().length > 0,
     "Missing evidence text on standard input"
   );
   const bytes = Buffer.from(input.text, "utf8");
-  requireCondition(bytes.length <= maxEvidenceBytes, "Evidence text exceeds 32 MiB");
+  requireWellFormed(bytes.length <= maxEvidenceBytes, "Evidence text exceeds 32 MiB");
   let json = true;
   try {
     JSON.parse(input.text);
@@ -8786,7 +8906,7 @@ function textEvidence(input, name) {
 function readEvidence(store, runId, spec) {
   const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec);
   const name = match ? match[1] : spec;
-  requireCondition(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
+  requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
   const directory2 = evidenceDirectory(runId);
   let root;
   let real;
@@ -8799,12 +8919,12 @@ function readEvidence(store, runId, spec) {
   try {
     real = realpathSync(path);
   } catch {
-    throw new Error(`Evidence file not found: ${name}`);
+    throw new Refusal("malformed", `Evidence file not found: ${name}`, `Save the file in ${directory2} first.`);
   }
-  requireCondition(real.startsWith(root + sep), `Evidence file must be inside ${directory2}: ${name}`);
+  requireWellFormed(real.startsWith(root + sep), `Evidence file must be inside ${directory2}: ${name}`);
   const stats = statSync(real);
-  requireCondition(stats.isFile(), `Evidence must be a file: ${name}`);
-  requireCondition(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
+  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
+  requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
   const extension = extname(name).toLowerCase();
   return {
     path,
@@ -8846,8 +8966,8 @@ function evidenceFiles(store, runId, name, specs = []) {
     (spec) => typeof spec === "string" ? readEvidence(store, runId, spec) : textEvidence(spec, name)
   );
   const paths = files.flatMap((file) => file.path ?? []);
-  requireCondition(new Set(paths).size === paths.length, "An evidence file is listed twice");
-  requireCondition(files.length - paths.length <= 1, "Give one evidence text on standard input");
+  requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
+  requireWellFormed(files.length - paths.length <= 1, "Give one evidence text on standard input");
   return files;
 }
 function removeFiles(files) {
@@ -8866,34 +8986,42 @@ function checkAssertion(store, actor, input) {
     const run2 = startedRun(store, input.runId);
     const test = selectedTest(run2, input.testId);
     const assertion = test.assertions.find((assertion2) => assertion2.id === input.assertionId);
-    requireCondition(assertion, `Unknown assertion ${test.id}.${input.assertionId}`);
+    requireWellFormed(
+      assertion,
+      `Unknown assertion ${test.id}.${input.assertionId}`,
+      `Use one of: ${test.assertions.map((item) => item.id).join(", ")}.`
+    );
     requireOpen(store, input.runId, test.id);
     requireCondition(
       !runAssertions(store, input.runId).has(`${test.id}.${assertion.id}`),
       `Assertion ${test.id}.${assertion.id} has a result. An assertion result is final.`
     );
     const outcomes = runOutcomes(store, input.runId);
-    for (const dependency of test.dependsOn.filter((id2) => !id2.includes(":")))
+    for (const dependency of test.dependsOn.filter((id2) => !id2.includes(":"))) {
+      const outcome = outcomes.get(dependency)?.outcome;
       requireCondition(
-        outcomes.get(dependency)?.outcome === "passed",
-        `Prerequisite ${dependency} has not passed. Close ${dependency} as passed before you check ${test.id}.`
+        outcome === "passed",
+        outcome ? `Prerequisite ${dependency} is ${outcome}, not passed. Do not check ${test.id}.` : `Prerequisite ${dependency} is not closed. Check and close ${dependency} before you check ${test.id}.`,
+        outcome ? `Close ${test.id} as blocked: checkmate run close ${input.runId} ${test.id} --outcome blocked --reason "Prerequisite ${dependency} is ${outcome}"` : void 0
       );
+    }
     const result = requireChoice(input.result, assertionResults, "result (--result)");
     const observed = optionalText(input.observed, "observation (--observed)");
     const reason = optionalText(input.reason, "reason (--reason)");
     files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
     if (result !== "not_checked")
-      requireCondition(
+      requireWellFormed(
         observed && files.length > 0,
-        `${result === "inconclusive" ? "An" : "A"} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`
+        `${result === "inconclusive" ? "An" : "A"} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+        `Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
       );
     if (result === "inconclusive")
-      requireCondition(
+      requireWellFormed(
         reason,
         "An inconclusive result needs a reason (--reason) that says what the evidence cannot show"
       );
     if (result === "not_checked")
-      requireCondition(reason, "A not_checked result needs a reason (--reason) that says why it was not checked");
+      requireWellFormed(reason, "A not_checked result needs a reason (--reason) that says why it was not checked");
     execute(
       store,
       "INSERT INTO assertion_results (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -8933,13 +9061,14 @@ function closeTest(store, actor, input) {
     let outcome;
     let reason;
     if (input.outcome === void 0) {
-      requireCondition(input.reason === void 0, "--reason applies only with --outcome");
-      requireCondition(input.cause === void 0, "--cause applies only with --outcome not_run or blocked");
-      requireCondition(!input.evidence?.length, "--evidence applies only with --outcome error");
+      requireWellFormed(input.reason === void 0, "--reason applies only with --outcome");
+      requireWellFormed(input.cause === void 0, "--cause applies only with --outcome not_run or blocked");
+      requireWellFormed(!input.evidence?.length, "--evidence applies only with --outcome error");
       const missing = test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`));
       requireCondition(
         !missing.length,
-        `Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(", ")}`
+        `Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(", ")}`,
+        `Record each one with checkmate run check ${input.runId} ${test.id} <assertionId> --result <passed|failed|inconclusive|not_checked>. Or close ${test.id} with --outcome error --reason "<why>".`
       );
       outcome = testOutcome(recorded.map((row) => row.result));
       const unchecked = recorded.filter((row) => row.result === "not_checked");
@@ -8948,7 +9077,7 @@ function closeTest(store, actor, input) {
       outcome = requireChoice(input.outcome, closeOutcomes, "outcome (--outcome)");
       reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`);
       if (input.cause !== void 0) {
-        requireCondition(outcome !== "error", "--cause applies only with --outcome not_run or blocked");
+        requireWellFormed(outcome !== "error", "--cause applies only with --outcome not_run or blocked");
         requireChoice(input.cause, closeCauses, "cause (--cause)");
         refuseEarlyDeadline(store, run2.row, at);
       }
@@ -8956,7 +9085,7 @@ function closeTest(store, actor, input) {
         outcome === "error" || !recorded.length,
         `Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
       );
-      requireCondition(
+      requireWellFormed(
         outcome === "error" || !input.evidence?.length,
         "--evidence applies only with --outcome error"
       );
@@ -8986,37 +9115,40 @@ function recordFinding(store, actor, input) {
   return write(store, { actor, command: "run finding", subject: input.runId, input }, (operationId) => {
     const run2 = startedRun(store, input.runId);
     const finding = validate("finding", input.finding);
+    const findingIds = runFindings(store, input.runId).map((item) => item.id);
     requireCondition(
-      !one(store, "SELECT 1 FROM findings WHERE run_id = ? AND id = ?", input.runId, finding.id),
-      `Finding ${finding.id} exists in run ${input.runId}`
+      !findingIds.includes(finding.id),
+      `Finding ${finding.id} exists in run ${input.runId}`,
+      `Use a new finding ID, for example ${unusedId("F", findingIds)}.`
     );
     const results = runAssertions(store, input.runId);
     const named = finding.assertionIds.map((reference) => {
       const [testId, assertionId] = reference.split(".");
       const test = selectedTest(run2, testId);
-      requireCondition(
+      requireWellFormed(
         test.assertions.some((assertion) => assertion.id === assertionId),
         `Unknown assertion in finding ${finding.id}: ${reference}`
       );
       if (finding.type === "defect")
         requireCondition(
           results.get(reference)?.result === "failed",
-          `Defect ${finding.id} names ${reference}, which is not failed. A defect names only failed assertions.`
+          `Defect ${finding.id} names ${reference}, which is ${results.get(reference)?.result ?? "unchecked"}. A defect names only failed assertions.`,
+          'Remove the assertion from assertionIds, or record the finding with "type": "potential_issue".'
         );
       return { test, assertionId };
     });
     const testIds = run2.plan.tests.filter((test) => named.some((item) => item.test.id === test.id)).map((test) => test.id);
     for (const requirementId of finding.requirementIds)
       for (const { test } of named)
-        requireCondition(
+        requireWellFormed(
           test.requirementIds.includes(requirementId),
           `Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
         );
     const evidence2 = new Map(runEvidence(store, input.runId).map((row) => [row.id, row]));
     for (const id2 of finding.evidenceIds) {
       const row = evidence2.get(id2);
-      requireCondition(row, `Unknown evidence in finding ${finding.id}: ${id2}`);
-      requireCondition(
+      requireWellFormed(row, `Unknown evidence in finding ${finding.id}: ${id2}`);
+      requireWellFormed(
         testIds.includes(row.test_id) && (row.assertion_id === null || finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)),
         `Evidence ${id2} does not belong to the assertions or tests of finding ${finding.id}`
       );
@@ -9039,7 +9171,7 @@ function recordGap(store, actor, input) {
   return write(store, { actor, command: "run gap", subject: input.runId, input }, (operationId) => {
     const run2 = startedRun(store, input.runId);
     const gap = validate("gap", input.gap);
-    requireCondition(
+    requireWellFormed(
       gap.status === "open" && gap.decisionId === null,
       `Runtime gap ${gap.id} must be open and have no decision`
     );
@@ -9049,7 +9181,7 @@ function recordGap(store, actor, input) {
       `Gap ID ${gap.id} is in use. Use a new ID.`
     );
     for (const id2 of gap.requirementIds)
-      requireCondition(
+      requireWellFormed(
         run2.plan.requirements.some((requirement) => requirement.id === id2),
         `Unknown requirement in gap ${gap.id}: ${id2}`
       );
@@ -9057,7 +9189,7 @@ function recordGap(store, actor, input) {
     for (const reference of gap.testIds) {
       const { planId: planId2, testId } = testReference(reference);
       const plan = planId2 === null ? run2.plan : plans.get(planId2);
-      requireCondition(
+      requireWellFormed(
         plan?.tests.some((test) => test.id === testId),
         `Unknown test in gap ${gap.id}: ${reference}`
       );
@@ -9094,7 +9226,7 @@ function finish(store, actor, input) {
         "cause (--cause)"
       );
       if (cause === "deadline") refuseEarlyDeadline(store, run2.row, at);
-    } else requireCondition(input.cause === void 0, "--cause applies only with --completion interrupted");
+    } else requireWellFormed(input.cause === void 0, "--cause applies only with --completion interrupted");
     const cleanup2 = {
       status: requireChoice(input.cleanup, cleanupStatuses, "cleanup (--cleanup)"),
       reason: requireText(input.cleanupReason, "cleanup reason (--cleanup-reason)")
@@ -9105,7 +9237,8 @@ function finish(store, actor, input) {
     if (completion === "completed")
       requireCondition(
         !unclosed.length,
-        `Selected tests are not closed: ${unclosed.join(", ")}. Close them, or finish as interrupted.`
+        `Selected tests are not closed: ${unclosed.join(", ")}. Close them, or finish as interrupted.`,
+        `Close each test with checkmate run close ${input.runId} <testId>. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
       );
     for (const testId of unclosed)
       execute(
@@ -9129,15 +9262,21 @@ function finish(store, actor, input) {
           findings2.some(
             (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)
           ),
-          `Failed assertion ${row.test_id}.${row.assertion_id} needs a defect finding. Record it with run finding.`
+          `Failed assertion ${row.test_id}.${row.assertion_id} needs a defect finding. Record it with run finding.`,
+          defectHint(store, run2, row, findings2)
         );
     if (completion === "completed") {
       const failures = selected.filter((id2) => outcomes.get(id2).outcome === "error");
       requireCondition(
         !failures.length,
-        `Operational failure cannot be completed: ${failures.join(", ")} closed as error`
+        `Operational failure cannot be completed: ${failures.join(", ")} closed as error`,
+        "Finish with --completion operational_error."
       );
-      requireCondition(cleanup2.status !== "failed", "Cleanup failed, so the run cannot be completed");
+      requireCondition(
+        cleanup2.status !== "failed",
+        "Cleanup failed, so the run cannot be completed",
+        "Finish with --completion operational_error."
+      );
       for (const verdict of retestVerdicts(run2, outcomes))
         for (const testId of verdict.testIds.filter((id2) => selected.includes(id2)))
           requireCondition(
@@ -9152,7 +9291,8 @@ function finish(store, actor, input) {
         ) || newGaps2.some((gap) => gap.severity === "blocking");
         requireCondition(
           cause2,
-          `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a failed prerequisite or a new blocking gap.`
+          `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
+          `Record the blocking gap with checkmate run gap ${input.runId} < gap.json. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
         );
       }
     }
@@ -9243,6 +9383,27 @@ function finish(store, actor, input) {
     };
   });
 }
+function defectHint(store, run2, row, findings2) {
+  const reference = `${row.test_id}.${row.assertion_id}`;
+  const test = run2.plan.tests.find((item) => item.id === row.test_id);
+  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row.test_id && item.assertion_id === row.assertion_id).map((item) => item.id);
+  const finding = {
+    id: unusedId(
+      "F",
+      findings2.map((item) => item.id)
+    ),
+    type: "defect",
+    severity: "<low|medium|high|critical>",
+    assertionIds: [reference],
+    requirementIds: test.requirementIds,
+    title: "<short title>",
+    expected: "<expected result>",
+    observed: row.observed ?? "<observed result>",
+    reproduction: ["<step>"],
+    evidenceIds
+  };
+  return `Record the defect with checkmate run finding ${run2.row.run_id} < finding.json, for example ${JSON.stringify(finding)}. Then run run finish again.`;
+}
 function retestVerdicts(run2, outcomes) {
   return (run2.request.retestDefects ?? []).map((defect) => {
     const tested = defect.testIds.map((id2) => outcomes.get(id2)?.outcome);
@@ -9259,7 +9420,7 @@ function resumeRun(store, actor, input) {
   return write(store, { actor, command: "run resume", subject: input.runId, input }, (operationId, at, actor2) => {
     const run2 = startedRun(store, input.runId);
     const stalled = input.error ?? [];
-    requireCondition(stalled.length > 0 || input.reason === void 0, "--reason applies only with --error");
+    requireWellFormed(stalled.length > 0 || input.reason === void 0, "--reason applies only with --error");
     const reason = stalled.length ? requireText(input.reason, "reason (--reason) for --error") : null;
     const attempt = currentAttempt(store, input.runId) + 1;
     execute(
@@ -14177,9 +14338,9 @@ function integer(args, name) {
 }
 function optionValue(token, kind, text) {
   if (Array.isArray(kind))
-    requireCondition(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(", ")}.`);
+    requireWellFormed(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(", ")}.`);
   else if (typeof kind === "object" && "min" in kind)
-    requireCondition(
+    requireWellFormed(
       /^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
       `Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
     );
@@ -14192,12 +14353,12 @@ function evidence(args, context) {
 }
 function toolSpec(spec) {
   const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec);
-  requireCondition(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`);
+  requireWellFormed(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`);
   return { name: match[1], kind: match[2], purpose: match[3] };
 }
 function entryPointSpec(spec) {
   const match = /^([^:]+):([^:]+):(.+)$/.exec(spec);
-  requireCondition(
+  requireWellFormed(
     match && entryPointKinds.includes(match[2]),
     `Invalid --entry-point: ${spec}. Use <name>:<url|command|value>:<purpose>.`
   );
@@ -14208,7 +14369,7 @@ function instanceInput(args, stdin) {
   const environment = value(args, "environment");
   const references2 = list(args, "reference");
   if (entries === void 0) {
-    requireCondition(
+    requireWellFormed(
       environment === void 0 && !references2,
       "Give --entry with --environment and --reference, or send the instance on standard input"
     );
@@ -14217,9 +14378,9 @@ function instanceInput(args, stdin) {
   const values = {};
   for (const entry of entries) {
     const at = entry.indexOf("=");
-    requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`);
+    requireWellFormed(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`);
     const name = entry.slice(0, at);
-    requireCondition(!(name in values), `Entry point ${name} is given twice`);
+    requireWellFormed(!(name in values), `Entry point ${name} is given twice`);
     values[name] = entry.slice(at + 1);
   }
   return {
@@ -14240,7 +14401,7 @@ function planRequestInput(args, stdin) {
   const sources = list(args, "source");
   const instructions = value(args, "instructions");
   if (objective === void 0) {
-    requireCondition(
+    requireWellFormed(
       !sources && instructions === void 0,
       "Give --objective with --source and --instructions, or send the request on standard input"
     );
@@ -14848,9 +15009,10 @@ var commands = {
       const detail = runDetail(store, value(args, "runId"));
       const selected = list(args, "tests");
       for (const id2 of selected ?? [])
-        requireCondition(
+        requireWellFormed(
           detail.tests.some((test) => test.testId === id2),
-          `Test ${id2} is not selected in run ${detail.runId}`
+          `Test ${id2} is not selected in run ${detail.runId}`,
+          `Use one of: ${detail.tests.map((test) => test.testId).join(", ")}.`
         );
       const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId));
       return completed(detail.runId, { ...detail, tests });
@@ -14976,7 +15138,7 @@ var commands = {
     flags: { subject: "value", limit: { min: 1, max: 1e3 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
     check: (args) => {
       const subject = value(args, "subject");
-      requireCondition(
+      requireWellFormed(
         subject === void 0 || subject === "inbox" || /^(target|plan|run):./.test(subject),
         `Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
       );
@@ -15046,9 +15208,9 @@ function readOnly(read) {
   try {
     return read();
   } catch (error) {
-    if (error instanceof Error && "errcode" in error && [8, 23].includes(Number(error.errcode)))
-      throw new Error(readOnlyReason, { cause: error });
-    throw error;
+    if (isBusy(error) || !(error instanceof Error) || !("errcode" in error)) throw error;
+    if ([8, 23].includes(Number(error.errcode))) throw new Refusal("prohibited", readOnlyReason);
+    throw new Refusal("malformed", `SQL error: ${error.message}`, "Send one valid SQLite SELECT statement.");
   }
 }
 function queryStatement(store, sql) {
@@ -15058,7 +15220,7 @@ function queryStatement(store, sql) {
   const statement = readOnly(() => store.db.prepare(sql));
   requireCondition(statement.columns().length > 0, readOnlyReason);
   const rest = sql.slice(statement.sourceSQL.length);
-  requireCondition(
+  requireWellFormed(
     /^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
     "query runs one SQL statement. Send each statement in its own query."
   );
@@ -15097,20 +15259,23 @@ function showPlan(store, args) {
   const tests = list(args, "tests");
   const fields = list(args, "fields");
   const gaps = requireChoice(value(args, "gaps") ?? "all", ["open", "all"], "gaps filter (--gaps)");
+  const warnings = dependencyWarnings(detail.plan);
+  const warned = warnings.length ? { warnings } : {};
   if (!tests && !fields) {
     const plan = {
       ...detail.plan,
       gaps: detail.plan.gaps.filter((gap) => gaps === "all" || gap.status === "open")
     };
-    return completed(subject, { ...detail, plan });
+    return completed(subject, { ...detail, plan, ...warned });
   }
   for (const test of tests ?? [])
-    requireCondition(
+    requireWellFormed(
       detail.plan.tests.some((item) => item.id === test),
-      `Unknown test in ${subject}: ${test}`
+      `Unknown test in ${subject}: ${test}`,
+      `Use one of: ${detail.plan.tests.map((item) => item.id).join(", ")}.`
     );
   for (const field2 of fields ?? [])
-    requireCondition(testFields2.includes(field2), `Unknown field: ${field2}. Use: ${testFields2.join(", ")}`);
+    requireWellFormed(testFields2.includes(field2), `Unknown field: ${field2}. Use: ${testFields2.join(", ")}`);
   const picked = detail.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
     (test) => Object.fromEntries([
       ["id", test.id],
@@ -15125,7 +15290,8 @@ function showPlan(store, args) {
     revision: detail.revision,
     sha256: detail.sha256,
     fields: fields ?? ["readiness", "capability", "title"],
-    tests: picked
+    tests: picked,
+    ...warned
   });
 }
 function decisionLines(decision) {
@@ -15212,15 +15378,25 @@ function cell2(field2) {
 }
 function compact(reply, printed) {
   const facts2 = Object.entries(printed.facts ?? {}).filter(([, field2]) => field2 !== void 0).map(([key, field2]) => `${key}=${cell2(field2)}`);
+  const warnings = reply.data.warnings ?? [];
   return [
-    [reply.status, reply.subject, ...facts2].join(" "),
+    [reply.status, reply.subject, ...reply.refusal ? [`refusal=${reply.refusal}`] : [], ...facts2].join(" "),
     ...(printed.lines ?? []).map((line) => line.map(cell2).join("	")),
-    ...reply.reasons.map((reason) => `reason: ${cell2(reason)}`)
+    ...warnings.map((warning) => `warning	${cell2(warning)}`),
+    ...reply.reasons.map((reason) => `reason: ${cell2(reason)}`),
+    ...reply.hint ? [`hint: ${cell2(reply.hint)}`] : []
   ].join("\n");
 }
 function format(reply, json, print) {
   if (json)
-    return JSON.stringify({ status: reply.status, subject: reply.subject, reasons: reply.reasons, ...reply.data });
+    return JSON.stringify({
+      status: reply.status,
+      subject: reply.subject,
+      reasons: reply.reasons,
+      ...reply.refusal ? { refusal: reply.refusal } : {},
+      ...reply.hint ? { hint: reply.hint } : {},
+      ...reply.data
+    });
   return compact(reply, print ? print(reply) : {});
 }
 var globalFlags = { workspace: "value", json: "switch" };
@@ -15232,7 +15408,21 @@ function commandName(argv) {
   }
   for (let count = words4.length; count > 0; count--)
     if (commands[words4.slice(0, count).join(" ")]) return words4.slice(0, count).join(" ");
-  throw new Error(`Unknown command: ${words4.join(" ") || "(none)"}. Run checkmate --help.`);
+  throw unknownCommand(words4);
+}
+function unknownCommand(words4) {
+  const groups = words4.map((_, i) => {
+    const prefix = words4.slice(0, words4.length - i).join(" ");
+    return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `));
+  });
+  const names = groups.find((group2) => group2.length) ?? [
+    .../* @__PURE__ */ new Set([...Object.keys(commands).map((name) => name.split(" ")[0]), "ui"])
+  ];
+  return new Refusal(
+    "malformed",
+    `Unknown command: ${words4.join(" ") || "(none)"}`,
+    `Use one of: ${names.join(", ")}. Run checkmate --help for the usage of each command.`
+  );
 }
 function parse(name, tokens) {
   const command = commands[name];
@@ -15241,6 +15431,7 @@ function parse(name, tokens) {
     ...command.flags,
     ...command.write ? { actor: "value" } : {}
   };
+  const wrong = (message) => new Refusal("malformed", message, usage(name));
   const args = {};
   const positionals = [];
   for (let i = 0; i < tokens.length; i++) {
@@ -15251,24 +15442,27 @@ function parse(name, tokens) {
     }
     const flag = token.slice(2);
     const kind = flags[flag];
-    if (!kind) throw new Error(`Unknown option ${token} for ${name}. ${usage(name)}`);
+    if (!kind) throw wrong(`Unknown option ${token} for ${name}`);
     if (kind === "switch") {
       args[flag] = true;
       continue;
     }
     const next = tokens[++i];
-    if (next === void 0 || next.startsWith("--")) throw new Error(`Missing value for ${token}`);
+    if (next === void 0 || next.startsWith("--")) throw wrong(`Missing value for ${token}`);
     optionValue(token, kind, next);
     if (kind !== "list" && kind !== "repeat") {
-      if (flag in args) throw new Error(`Option ${token} is given twice`);
+      if (flag in args) throw wrong(`Option ${token} is given twice`);
       args[flag] = next;
     } else if (kind === "list") {
-      if (flag in args) throw new Error(`Option ${token} is given twice`);
+      if (flag in args) throw wrong(`Option ${token} is given twice`);
       args[flag] = next.split(",").map((item) => item.trim()).filter(Boolean);
     } else args[flag] = [...args[flag] ?? [], next];
   }
-  if (positionals.length !== command.positionals.length) throw new Error(usage(name));
-  for (const flag of command.required ?? []) if (!(flag in args)) throw new Error(`Missing --${flag}. ${usage(name)}`);
+  if (positionals.length !== command.positionals.length)
+    throw wrong(
+      `${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(" ") || "none"}`
+    );
+  for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`);
   command.positionals.forEach((positional, i) => args[positional] = positionals[i]);
   command.check?.(args);
   return args;
@@ -15312,18 +15506,25 @@ function commandHelp(argv) {
     const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `));
     if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace("Usage: ", "")) });
   }
-  const reason = `Unknown command: ${words4.join(" ") || "(none)"}. Run checkmate --help.`;
-  return { status: "invalid_request", subject: "checkmate", reasons: [reason], data: { usage: [] } };
+  return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
   return JSON.parse(readFileSync3(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
-  requireCondition(text.trim().length > 0, "Missing JSON payload on standard input");
+  requireWellFormed(
+    text.trim().length > 0,
+    "Missing JSON payload on standard input",
+    "Send the JSON payload on standard input, for example: checkmate <command> <arguments> < payload.json"
+  );
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`Standard input is not valid JSON: ${error.message}`, { cause: error });
+    throw new Refusal(
+      "malformed",
+      `Standard input is not valid JSON: ${error.message}`,
+      "Send one JSON object on standard input. Use double quotes for keys and strings, and no trailing commas."
+    );
   }
 }
 function run(argv, io) {
@@ -15344,8 +15545,7 @@ function run(argv, io) {
     name = commandName(argv);
     args = parse(name, argv.slice(name.split(" ").length));
   } catch (error) {
-    const reply = { status: "invalid_request", subject: name, reasons: [error.message], data: {} };
-    return { code: 1, output: format(reply, json) };
+    return { code: 1, output: format(refused("invalid_request", name, error), json) };
   }
   const command = commands[name];
   const subject = command.positionals.length && name !== "query" ? String(args[command.positionals[0]]) : name;
@@ -15360,7 +15560,7 @@ function run(argv, io) {
       return { code, output: reply.data.content.replace(/\n$/, "") };
     return { code, output: format(reply, json, command.print) };
   } catch (error) {
-    const reply = isBusy(error) ? { status: "operational_error", subject, reasons: [error.message, busyReason], data: {} } : { status: "rejected", subject, reasons: [error.message], data: {} };
+    const reply = isBusy(error) ? { status: "operational_error", subject, reasons: [error.message, busyReason], data: {} } : refused("rejected", subject, error);
     return { code: 1, output: format(reply, json) };
   } finally {
     if (store) closeStore(store);
@@ -15372,14 +15572,16 @@ function uiOptions(tokens, cwd) {
     const token = tokens[i];
     if (token === "--json") continue;
     const flag = token.startsWith("--") ? token.slice(2) : "";
-    if (!["workspace", "port"].includes(flag)) throw new Error(`Unknown argument ${token} for ui. ${uiUsage}`);
+    if (!["workspace", "port"].includes(flag))
+      throw new Refusal("malformed", `Unknown argument ${token} for ui`, uiUsage);
     const next = tokens[++i];
-    if (next === void 0 || next.startsWith("--")) throw new Error(`Missing value for ${token}`);
-    if (flag in values) throw new Error(`Option ${token} is given twice`);
+    if (next === void 0 || next.startsWith("--"))
+      throw new Refusal("malformed", `Missing value for ${token}`, uiUsage);
+    if (flag in values) throw new Refusal("malformed", `Option ${token} is given twice`, uiUsage);
     values[flag] = next;
   }
   const port = values.port === void 0 ? void 0 : Number(values.port);
-  requireCondition(
+  requireWellFormed(
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
@@ -15391,8 +15593,7 @@ async function serveUi(tokens) {
   try {
     options2 = uiOptions(tokens, process.cwd());
   } catch (error) {
-    const reply = { status: "invalid_request", subject: "ui", reasons: [error.message], data: {} };
-    process.stdout.write(format(reply, json) + "\n");
+    process.stdout.write(format(refused("invalid_request", "ui", error), json) + "\n");
     process.exitCode = 1;
     return;
   }

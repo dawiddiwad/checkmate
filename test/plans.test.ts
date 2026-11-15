@@ -456,6 +456,37 @@ test('the gate gives a missing prerequisite of two selected tests once', (t) => 
 	assert.deepEqual(checked.reply.reasons, ['Test is not ready: T2', 'Missing prerequisite: T1'])
 })
 
+test('plan save, plan revise, and plan show warn about long dependsOn chains', (t) => {
+	const opened = store(t)
+	target(opened)
+	const value = candidate()
+	assert.equal(plan(opened, 'short', value).data.warnings, undefined)
+	value.tests = value.tests.map((test, i) => ({ ...test, dependsOn: i ? [`T${i}`] : [] }))
+	value.tests.push({ ...value.tests[0], id: 'T4', requirementIds: ['R1'], dependsOn: ['T3'] })
+	const warnings = [
+		'dependsOn chain of 4 tests: T4 -> T3 -> T2 -> T1. Each test depends on the next. One failure blocks every test before it in the chain.',
+		'3 of 4 tests have dependsOn: T2, T3, T4.',
+		'Use dependsOn only when a test uses data that another test creates. Make the other tests independent.',
+	]
+	const saved = plan(opened, 'chained', value)
+	assert.equal(saved.status, 'needs_decision')
+	assert.deepEqual(saved.data.warnings, warnings)
+	const shown = cli(opened.workspace, ['plan', 'show', 'chained'])
+	assert.deepEqual(
+		shown.lines.filter((line) => line.startsWith('warning\t')),
+		warnings.map((warning) => `warning\t${warning}`)
+	)
+	answerGap(opened, actor, {
+		planId: 'chained',
+		gapId: 'G1',
+		kind: 'clarify',
+		value: '240 PLN.',
+		source: 'd#1',
+		rationale: 'Product.',
+	})
+	assert.deepEqual(revisePlan(opened, actor, { planId: 'chained', delta: promotionDelta }).data.warnings, warnings)
+})
+
 test('the gate collects every reason in order', (t) => {
 	const opened = store(t)
 	target(opened, { readyForLiveExecution: false, approvals: { plan: 'none', result: 'none' } })
@@ -470,6 +501,10 @@ test('the gate collects every reason in order', (t) => {
 		'Test is not ready: T3',
 		'Test has no assertions: T3',
 	])
+	assert.equal(
+		checked.reply.hint,
+		'The setup stage must save a ready profile for checkout-local. To run only the tests that no open blocking gap affects, add --partial ready_only. Remove T2 from --tests, or leave out --tests and add --partial ready_only. Add T1 to --tests. Remove T3 from --tests, or leave out --tests and add --partial ready_only.'
+	)
 	const partial = gate(opened, { reference: 'checkout@1', tests: ['T1'], build: 'b', partial: 'ready_only' })
 	assert.deepEqual(partial.reply.reasons, ['Target prerequisites are not ready: checkout-local@1'])
 	assert.throws(

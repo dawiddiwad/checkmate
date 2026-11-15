@@ -5,6 +5,7 @@ import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
 	dependencyCheck,
+	dependencyWarnings,
 	derivePlan,
 	expectDigest,
 	gapsAffecting,
@@ -16,9 +17,12 @@ import {
 	requireCondition,
 	requireIdentifier,
 	requireText,
+	requireWellFormed,
 	revisionReference,
 	same,
+	testReadiness,
 	testReference,
+	unusedId,
 	validate,
 } from './contracts.ts'
 import { findInstance, targetRevision, toolCheck } from './targets.ts'
@@ -66,29 +70,29 @@ export function openPlan(
 	return write(store, { actor, command: 'plan open', subject: input.planId, input }, (operationId) => {
 		const planId = requireIdentifier(input.planId, 'plan ID')
 		const target = revisionReference(requireText(input.target, 'target (--target)'), 'target reference')
-		requireCondition(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`)
+		requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`)
 		const profile = targetRevision(store, target.id, target.revision).profile
 		const request = validate('plan-request', input.request)
-		requireCondition(
+		requireWellFormed(
 			request.requirements?.length || request.context?.sources.length,
 			'A plan request needs requirements or context sources'
 		)
 		index(request.requirements ?? [], 'id', 'requirement')
 		for (const tool of request.tools ?? [])
 			if (typeof tool === 'string')
-				requireCondition(
+				requireWellFormed(
 					profile.tools.some((known) => known.name === tool),
 					`Unknown tool ${tool}. The target profile has: ${profile.tools.map((known) => known.name).join(', ') || 'no tools'}.`
 				)
 			else {
 				toolCheck(tool)
-				requireCondition(
+				requireWellFormed(
 					!profile.tools.some((known) => known.name === tool.name),
 					`Tool ${tool.name} is in the target profile. Name it as a string.`
 				)
 			}
 		const names = planTools(request, profile).map((tool) => tool.name)
-		requireCondition(new Set(names).size === names.length, 'Duplicate tool name in the plan request')
+		requireWellFormed(new Set(names).size === names.length, 'Duplicate tool name in the plan request')
 		const body = canonical(request)
 		const data = { planId, target: `${target.id}@${target.revision}` }
 		const existing = one<RequestRow>(store, 'SELECT * FROM plan_requests WHERE plan_id = ?', planId)
@@ -183,12 +187,13 @@ function checkedRevision(store: Store, draft: PlanDraft) {
 
 function revisionChange(plan: Plan, sha256: string): Change {
 	const blockers = plan.gaps.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
+	const warnings = dependencyWarnings(plan)
 	return {
 		reply: {
 			status: blockers.length ? 'needs_decision' : 'completed',
 			subject: `${plan.planId}@${plan.revision}`,
 			reasons: blockers.map((gap) => `${gap.id}: ${gap.question}`),
-			data: { planId: plan.planId, revision: plan.revision, sha256 },
+			data: { planId: plan.planId, revision: plan.revision, sha256, ...(warnings.length ? { warnings } : {}) },
 		},
 		subjects: [`plan:${plan.planId}`, 'inbox'],
 	}
@@ -354,7 +359,7 @@ export function planRunGaps(store: Store, planId: string): RunGap[] {
 
 function editableRevision(store: Store, text: string, expectSha256: string | undefined) {
 	const reference = revisionReference(requireText(text, 'plan reference'), 'plan reference')
-	requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
+	requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
 	const base = planRevision(store, reference.id, reference.revision)
 	const subject = `${reference.id}@${reference.revision}`
 	const latest = planRevision(store, reference.id).plan.revision
@@ -387,7 +392,7 @@ function storeEdit(store: Store, operationId: string, base: PlanRevision, value:
 		const before = base.plan.tests.find((item) => item.id === test.id)?.assertions ?? []
 		const used = usedAssertionIds(store, planId, test.id)
 		for (const assertion of test.assertions)
-			requireCondition(
+			requireWellFormed(
 				before.some((item) => item.id === assertion.id) || !used.includes(assertion.id),
 				`Assertion ID ${test.id}.${assertion.id} was used in an earlier revision. Use a new ID.`
 			)
@@ -470,7 +475,7 @@ function patchList<T extends { id: string }, C extends object>(
 	for (const [id, change] of Object.entries(changes ?? {})) {
 		const position = result.findIndex((item) => item.id === id)
 		if (change === null) {
-			requireCondition(position >= 0, `Cannot remove unknown ${name} ${id}`)
+			requireWellFormed(position >= 0, `Cannot remove unknown ${name} ${id}`)
 			result.splice(position, 1)
 		} else if (position >= 0) result[position] = apply(result[position], id, change)
 		else result.push(apply(undefined, id, change))
@@ -480,7 +485,7 @@ function patchList<T extends { id: string }, C extends object>(
 
 function newFields<C extends object>(name: string, change: C, required: string[], defaults: Partial<C> = {}) {
 	const missing = required.filter((field) => !(field in change))
-	requireCondition(!missing.length, `New ${name} needs ${missing.join(', ')}`)
+	requireWellFormed(!missing.length, `New ${name} needs ${missing.join(', ')}`)
 	return { ...defaults, ...change } as Required<C>
 }
 
@@ -515,17 +520,20 @@ export function savePlan(store: Store, actor: string | undefined, input: { planI
 
 function candidateRequirements(request: PlanRequest, drafted: Plan['requirements'] | undefined) {
 	if (request.requirements?.length) {
-		requireCondition(!drafted, 'The plan request names the requirements. Do not add requirements to the candidate.')
+		requireWellFormed(
+			!drafted,
+			'The plan request names the requirements. Do not add requirements to the candidate.'
+		)
 		return request.requirements
 	}
 	const sources = request.context?.sources ?? []
-	requireCondition(
+	requireWellFormed(
 		drafted?.length,
 		`The plan request has no requirements. Draft them from the context sources: ${sources.join(', ')}`
 	)
 	index(drafted, 'id', 'requirement')
 	for (const requirement of drafted)
-		requireCondition(
+		requireWellFormed(
 			sources.some((source) => requirement.source.startsWith(source)),
 			`Requirement ${requirement.id} cites ${requirement.source}, which is not a context source. Use one of: ${sources.join(', ')}`
 		)
@@ -547,7 +555,7 @@ export function answerGap(store: Store, actor: string | undefined, input: GapAns
 		const rationale = requireText(input.rationale, 'rationale (--rationale)')
 		const source = input.source ?? null
 		if (source !== null) requireText(source, 'source (--source)')
-		requireCondition(kind !== 'clarify' || source, 'A clarification needs a source (--source)')
+		requireWellFormed(kind !== 'clarify' || source, 'A clarification needs a source (--source)')
 		const answered = planRevision(store, input.planId)
 		expectDigest(answered.sha256, input.expectSha256, `${input.planId}@${answered.plan.revision}`)
 		const adopted = answered.plan.gaps.some((gap) => gap.id === input.gapId)
@@ -671,13 +679,21 @@ export function revisePlan(
 		).map((test) => test.id)
 		for (const [testId, change] of Object.entries(delta.tests)) {
 			const test = draft.tests.find((test) => test.id === testId)
-			requireCondition(test, `Unknown test in delta: ${testId}`)
+			const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(', ') || 'none'}.`
+			requireWellFormed(test, `Unknown test in delta: ${testId}`, onlyAffected)
 			requireCondition(
 				affected.includes(testId),
-				`Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`
+				`Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
+				onlyAffected
 			)
 			applyTestChange(test, change, usedAssertionIds(store, input.planId, testId))
 		}
+		for (const test of draft.tests)
+			requireWellFormed(
+				test.assertions.length > 0 || testReadiness(draft.gaps, test) !== 'ready',
+				`Ready test ${test.id} needs one or more assertions`,
+				`Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId('A', usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}`
+			)
 		const change = storeRevision(store, draft, operationId)
 		for (const decision of decisions)
 			execute(store, 'UPDATE decisions SET applied_revision = ? WHERE id = ?', draft.revision, decision.id)
@@ -701,15 +717,15 @@ function applyTestChange(test: Test, change: PlanDelta['tests'][string], used: s
 	for (const [id, assertion] of Object.entries(change.assertions ?? {})) {
 		const position = test.assertions.findIndex((existing) => existing.id === id)
 		if (assertion === null) {
-			requireCondition(position >= 0, `Cannot remove unknown assertion ${test.id}.${id}`)
+			requireWellFormed(position >= 0, `Cannot remove unknown assertion ${test.id}.${id}`)
 			test.assertions.splice(position, 1)
 		} else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion }
 		else {
-			requireCondition(
+			requireWellFormed(
 				!used.includes(id),
 				`Assertion ID ${test.id}.${id} was used in an earlier revision. Use a new ID.`
 			)
-			requireCondition(
+			requireWellFormed(
 				assertion.check !== undefined && assertion.checkKind !== undefined,
 				`New assertion ${test.id}.${id} needs check and checkKind`
 			)
@@ -730,7 +746,7 @@ function decidePlan(store: Store, actor: string | undefined, input: Verdict, ver
 	const command = verdict === 'approved' ? 'plan approve' : 'plan reject'
 	return write(store, { actor, command, subject: input.reference, input }, (operationId, at, actor) => {
 		const reference = revisionReference(requireText(input.reference, 'plan reference'), 'plan reference')
-		requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
+		requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
 		const revision = planRevision(store, reference.id, reference.revision)
 		const subject = `${reference.id}@${reference.revision}`
 		latestCheck(store, reference.id, reference.revision)
@@ -845,7 +861,7 @@ export function planApproval(store: Store, plan: Plan, sha256: string) {
 
 export function gate(store: Store, input: GateInput) {
 	const reference = revisionReference(requireText(input.reference, 'plan reference'), 'plan reference')
-	requireCondition(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
+	requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
 	const revision = planRevision(store, reference.id, reference.revision)
 	const { plan } = revision
 	const subject = `${plan.planId}@${plan.revision}`
@@ -864,43 +880,71 @@ export function gate(store: Store, input: GateInput) {
 	if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance)
 	const earlier = input.retestOf ? retestDefects(store, input.retestOf) : []
 	const reasons: string[] = []
-	if (!selected.length) reasons.push(`No test is ready in ${subject}`)
+	const hints: string[] = []
+	const status = `Run checkmate status ${plan.planId} to see who acts next.`
+	const partialHint = `To run only the tests that no open blocking gap affects, add --partial ready_only.`
+	if (!selected.length) {
+		reasons.push(`No test is ready in ${subject}`)
+		hints.push(status)
+	}
 	if (input.retestOf)
 		for (const [id, why] of retestSelection(plan, ready!.tests, earlier))
-			if (!selected.includes(id)) reasons.push(`Retest of ${input.retestOf} must select ${id}: ${why}`)
-	if (!target.profile.readyForLiveExecution)
+			if (!selected.includes(id)) {
+				reasons.push(`Retest of ${input.retestOf} must select ${id}: ${why}`)
+				hints.push(`Add ${id} to --tests.`)
+			}
+	if (!target.profile.readyForLiveExecution) {
 		reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`)
+		hints.push(`The setup stage must save a ready profile for ${plan.target.targetId}.`)
+	}
 	const approval = planApproval(store, plan, revision.sha256)
-	if (approval.policy === 'required' && !approval.approved) reasons.push(`Plan ${subject} is not approved`)
+	if (approval.policy === 'required' && !approval.approved) {
+		reasons.push(`Plan ${subject} is not approved`)
+		hints.push(`The oracle must approve ${subject}. ${status}`)
+	}
 	if (partial === 'wait_for_resolution')
 		for (const gap of plan.gaps)
-			if (gap.status === 'open' && gap.severity === 'blocking') reasons.push(`Open blocking gap: ${gap.id}`)
+			if (gap.status === 'open' && gap.severity === 'blocking') {
+				reasons.push(`Open blocking gap: ${gap.id}`)
+				hints.push(partialHint)
+			}
 	const runGaps = blockingRunGaps(store, plan.planId)
 	for (const id of selected) {
 		const test = tests.get(id)!
-		if (test.readiness !== 'ready') reasons.push(`Test is not ready: ${id}`)
+		if (test.readiness !== 'ready') {
+			reasons.push(`Test is not ready: ${id}`)
+			hints.push(`Remove ${id} from --tests, or leave out --tests and add --partial ready_only.`)
+		}
 		const runGap = runGapAffecting(runGaps, test)
-		if (runGap && partial === 'wait_for_resolution')
+		if (runGap && partial === 'wait_for_resolution') {
 			reasons.push(`Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${id}`)
+			hints.push(partialHint)
+		}
 		if (!target.profile.capabilities.includes(test.capability))
 			reasons.push(`Missing capability: ${test.capability}`)
 		if (!test.operations.every((operation) => target.profile.allowedOperations.includes(operation)))
 			reasons.push(`Operation is not permitted: ${id}`)
 		if (!test.assertions.length) reasons.push(`Test has no assertions: ${id}`)
 		for (const dependency of test.dependsOn)
-			if (!dependency.includes(':') && !selected.includes(dependency))
+			if (!dependency.includes(':') && !selected.includes(dependency)) {
 				reasons.push(`Missing prerequisite: ${dependency}`)
+				hints.push(`Add ${dependency} to --tests.`)
+			}
 	}
 	for (const id of selected)
 		for (const dependency of tests.get(id)!.dependsOn.filter((dependency) => dependency.includes(':'))) {
 			const cause = dependencyBlock(store, dependency, build)
-			if (cause) reasons.push(`Blocked by ${dependency}: ${cause}`)
+			if (cause) {
+				reasons.push(`Blocked by ${dependency}: ${cause}`)
+				hints.push(`Run checkmate status ${testReference(dependency).planId} to see who acts next.`)
+			}
 		}
 	return {
 		reply: {
 			status: reasons.length ? ('needs_decision' as const) : ('completed' as const),
 			subject,
 			reasons: [...new Set(reasons)],
+			...(hints.length ? { hint: [...new Set(hints)].join(' ') } : {}),
 			data: {
 				planId: plan.planId,
 				revision: plan.revision,
@@ -933,11 +977,11 @@ function retestSelection(plan: Plan, selectable: string[], earlier: RetestDefect
 type LeftOut = { testId: string; reason: string }
 
 function givenSelection(selected: string[] | undefined, tests: Map<string, Test>, subject: string) {
-	requireCondition(
+	requireWellFormed(
 		Array.isArray(selected) && selected.length > 0,
 		'Select one or more tests with --tests, or add --partial ready_only'
 	)
-	requireCondition(new Set(selected).size === selected.length, 'Duplicate test in --tests')
+	requireWellFormed(new Set(selected).size === selected.length, 'Duplicate test in --tests')
 	references(selected, tests, `test in ${subject}`)
 	return { tests: selected, leftOut: [] as LeftOut[] }
 }
@@ -1029,8 +1073,16 @@ function retestCheck(store: Store, runId: string, plan: Plan, build: string, ins
 		'SELECT r.plan_id, r.target_id, r.target_revision, r.instance_id, r.application_build, s.run_id IS NOT NULL AS finished FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.run_id = ?',
 		runId
 	)
-	requireCondition(previous, `Unknown run to retest: ${runId}`)
-	requireCondition(previous.finished, `Run ${runId} is not finished. Retest a finished run.`)
+	requireCondition(
+		previous,
+		`Unknown run to retest: ${runId}`,
+		`Run checkmate run list --plan ${plan.planId} to see the runs.`
+	)
+	requireCondition(
+		previous.finished,
+		`Run ${runId} is not finished. Retest a finished run.`,
+		`Finish ${runId} first: checkmate run finish ${runId} --completion <completed|interrupted|operational_error> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>". Then run this command again. To start a run that is not a retest, leave out --retest-of.`
+	)
 	requireCondition(
 		previous.plan_id === plan.planId &&
 			previous.target_id === plan.target.targetId &&
@@ -1262,7 +1314,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function diffPlan(store: Store, input: { planId: string; from: string; to: string }) {
 	const revision = (text: string) => {
-		requireCondition(/^[1-9][0-9]*$/.test(text), `Invalid revision: ${text}. Use a positive integer.`)
+		requireWellFormed(/^[1-9][0-9]*$/.test(text), `Invalid revision: ${text}. Use a positive integer.`)
 		return planRevision(store, input.planId, Number(text)).plan
 	}
 	const before = revision(input.from)

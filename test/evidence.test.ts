@@ -48,7 +48,8 @@ test('evidence is stored once per digest, the file is deleted, and the bytes com
 	assert.deepEqual(readFileSync(join(opened.workspace, 'out/confirmation.png')), bytes)
 	const again = cli(opened.workspace, ['evidence', 'get', screenshot, '--out', 'out/confirmation.png'])
 	assert.deepEqual(again.lines, [
-		'rejected ' + screenshot,
+		'rejected ' + screenshot + ' refusal=prohibited',
+		'reason: Refused: prohibited in the current state.',
 		'reason: Output file exists: out/confirmation.png. Choose a new path.',
 	])
 	assert.equal(runDetail(opened, 'run-1').tests[0].assertions[0].evidence.length, 2)

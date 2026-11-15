@@ -4,7 +4,15 @@ import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from '.
 import type { Approval, PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
 import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
-import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
+import {
+	Refusal,
+	dependencyWarnings,
+	refused,
+	requireChoice,
+	requireCondition,
+	requireWellFormed,
+	revisionReference,
+} from './contracts.ts'
 import {
 	addInstance,
 	entryPointKinds,
@@ -118,9 +126,9 @@ function integer(args: Args, name: string) {
 
 function optionValue(token: string, kind: FlagKind, text: string) {
 	if (Array.isArray(kind))
-		requireCondition(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(', ')}.`)
+		requireWellFormed(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(', ')}.`)
 	else if (typeof kind === 'object' && 'min' in kind)
-		requireCondition(
+		requireWellFormed(
 			/^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
 			`Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
 		)
@@ -135,13 +143,13 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 
 function toolSpec(spec: string): RequestedTool {
 	const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec)
-	requireCondition(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`)
+	requireWellFormed(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`)
 	return { name: match[1], kind: match[2] as RequestedTool['kind'], purpose: match[3] }
 }
 
 function entryPointSpec(spec: string): EntryPoint {
 	const match = /^([^:]+):([^:]+):(.+)$/.exec(spec)
-	requireCondition(
+	requireWellFormed(
 		match && (entryPointKinds as readonly string[]).includes(match[2]),
 		`Invalid --entry-point: ${spec}. Use <name>:<url|command|value>:<purpose>.`
 	)
@@ -153,7 +161,7 @@ function instanceInput(args: Args, stdin: () => unknown) {
 	const environment = value(args, 'environment')
 	const references = list(args, 'reference')
 	if (entries === undefined) {
-		requireCondition(
+		requireWellFormed(
 			environment === undefined && !references,
 			'Give --entry with --environment and --reference, or send the instance on standard input'
 		)
@@ -162,9 +170,9 @@ function instanceInput(args: Args, stdin: () => unknown) {
 	const values: Record<string, string> = {}
 	for (const entry of entries) {
 		const at = entry.indexOf('=')
-		requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
+		requireWellFormed(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
 		const name = entry.slice(0, at)
-		requireCondition(!(name in values), `Entry point ${name} is given twice`)
+		requireWellFormed(!(name in values), `Entry point ${name} is given twice`)
 		values[name] = entry.slice(at + 1)
 	}
 	return {
@@ -187,7 +195,7 @@ function planRequestInput(args: Args, stdin: () => unknown) {
 	const sources = list(args, 'source')
 	const instructions = value(args, 'instructions')
 	if (objective === undefined) {
-		requireCondition(
+		requireWellFormed(
 			!sources && instructions === undefined,
 			'Give --objective with --source and --instructions, or send the request on standard input'
 		)
@@ -851,9 +859,10 @@ const commands: Record<string, Command> = {
 			const detail = runDetail(store, value(args, 'runId')!)
 			const selected = list(args, 'tests')
 			for (const id of selected ?? [])
-				requireCondition(
+				requireWellFormed(
 					detail.tests.some((test) => test.testId === id),
-					`Test ${id} is not selected in run ${detail.runId}`
+					`Test ${id} is not selected in run ${detail.runId}`,
+					`Use one of: ${detail.tests.map((test) => test.testId).join(', ')}.`
 				)
 			const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId))
 			return completed(detail.runId, { ...detail, tests })
@@ -981,7 +990,7 @@ const commands: Record<string, Command> = {
 		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
 		check: (args) => {
 			const subject = value(args, 'subject')
-			requireCondition(
+			requireWellFormed(
 				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
 				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
 			)
@@ -1053,9 +1062,9 @@ function readOnly<T>(read: () => T): T {
 	try {
 		return read()
 	} catch (error) {
-		if (error instanceof Error && 'errcode' in error && [8, 23].includes(Number(error.errcode)))
-			throw new Error(readOnlyReason, { cause: error })
-		throw error
+		if (isBusy(error) || !(error instanceof Error) || !('errcode' in error)) throw error
+		if ([8, 23].includes(Number(error.errcode))) throw new Refusal('prohibited', readOnlyReason)
+		throw new Refusal('malformed', `SQL error: ${error.message}`, 'Send one valid SQLite SELECT statement.')
 	}
 }
 
@@ -1068,7 +1077,7 @@ function queryStatement(store: Store, sql: string) {
 	const statement = readOnly(() => store.db.prepare(sql))
 	requireCondition(statement.columns().length > 0, readOnlyReason)
 	const rest = sql.slice(statement.sourceSQL.length)
-	requireCondition(
+	requireWellFormed(
 		/^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
 		'query runs one SQL statement. Send each statement in its own query.'
 	)
@@ -1124,20 +1133,23 @@ function showPlan(store: Store, args: Args) {
 	const tests = list(args, 'tests')
 	const fields = list(args, 'fields')
 	const gaps = requireChoice(value(args, 'gaps') ?? 'all', ['open', 'all'] as const, 'gaps filter (--gaps)')
+	const warnings = dependencyWarnings(detail.plan)
+	const warned = warnings.length ? { warnings } : {}
 	if (!tests && !fields) {
 		const plan = {
 			...detail.plan,
 			gaps: detail.plan.gaps.filter((gap) => gaps === 'all' || gap.status === 'open'),
 		}
-		return completed(subject, { ...detail, plan })
+		return completed(subject, { ...detail, plan, ...warned })
 	}
 	for (const test of tests ?? [])
-		requireCondition(
+		requireWellFormed(
 			detail.plan.tests.some((item) => item.id === test),
-			`Unknown test in ${subject}: ${test}`
+			`Unknown test in ${subject}: ${test}`,
+			`Use one of: ${detail.plan.tests.map((item) => item.id).join(', ')}.`
 		)
 	for (const field of fields ?? [])
-		requireCondition(testFields.includes(field), `Unknown field: ${field}. Use: ${testFields.join(', ')}`)
+		requireWellFormed(testFields.includes(field), `Unknown field: ${field}. Use: ${testFields.join(', ')}`)
 	const picked = detail.plan.tests
 		.filter((test) => !tests || tests.includes(test.id))
 		.map((test) =>
@@ -1155,6 +1167,7 @@ function showPlan(store: Store, args: Args) {
 		sha256: detail.sha256,
 		fields: fields ?? ['readiness', 'capability', 'title'],
 		tests: picked,
+		...warned,
 	})
 }
 
@@ -1252,16 +1265,26 @@ function compact(reply: Reply, printed: Printed) {
 	const facts = Object.entries(printed.facts ?? {})
 		.filter(([, field]) => field !== undefined)
 		.map(([key, field]) => `${key}=${cell(field)}`)
+	const warnings = (reply.data.warnings ?? []) as string[]
 	return [
-		[reply.status, reply.subject, ...facts].join(' '),
+		[reply.status, reply.subject, ...(reply.refusal ? [`refusal=${reply.refusal}`] : []), ...facts].join(' '),
 		...(printed.lines ?? []).map((line) => line.map(cell).join('\t')),
+		...warnings.map((warning) => `warning\t${cell(warning)}`),
 		...reply.reasons.map((reason) => `reason: ${cell(reason)}`),
+		...(reply.hint ? [`hint: ${cell(reply.hint)}`] : []),
 	].join('\n')
 }
 
 function format(reply: Reply, json: boolean, print?: Command['print']) {
 	if (json)
-		return JSON.stringify({ status: reply.status, subject: reply.subject, reasons: reply.reasons, ...reply.data })
+		return JSON.stringify({
+			status: reply.status,
+			subject: reply.subject,
+			reasons: reply.reasons,
+			...(reply.refusal ? { refusal: reply.refusal } : {}),
+			...(reply.hint ? { hint: reply.hint } : {}),
+			...reply.data,
+		})
 	return compact(reply, print ? print(reply) : {})
 }
 
@@ -1279,7 +1302,22 @@ function commandName(argv: string[]) {
 	}
 	for (let count = words.length; count > 0; count--)
 		if (commands[words.slice(0, count).join(' ')]) return words.slice(0, count).join(' ')
-	throw new Error(`Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`)
+	throw unknownCommand(words)
+}
+
+function unknownCommand(words: string[]) {
+	const groups = words.map((_, i) => {
+		const prefix = words.slice(0, words.length - i).join(' ')
+		return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `))
+	})
+	const names = groups.find((group) => group.length) ?? [
+		...new Set([...Object.keys(commands).map((name) => name.split(' ')[0]), 'ui']),
+	]
+	return new Refusal(
+		'malformed',
+		`Unknown command: ${words.join(' ') || '(none)'}`,
+		`Use one of: ${names.join(', ')}. Run checkmate --help for the usage of each command.`
+	)
 }
 
 function parse(name: string, tokens: string[]) {
@@ -1289,6 +1327,7 @@ function parse(name: string, tokens: string[]) {
 		...command.flags,
 		...(command.write ? { actor: 'value' as const } : {}),
 	}
+	const wrong = (message: string) => new Refusal('malformed', message, usage(name))
 	const args: Args = {}
 	const positionals: string[] = []
 	for (let i = 0; i < tokens.length; i++) {
@@ -1299,27 +1338,30 @@ function parse(name: string, tokens: string[]) {
 		}
 		const flag = token.slice(2)
 		const kind = flags[flag]
-		if (!kind) throw new Error(`Unknown option ${token} for ${name}. ${usage(name)}`)
+		if (!kind) throw wrong(`Unknown option ${token} for ${name}`)
 		if (kind === 'switch') {
 			args[flag] = true
 			continue
 		}
 		const next = tokens[++i]
-		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
+		if (next === undefined || next.startsWith('--')) throw wrong(`Missing value for ${token}`)
 		optionValue(token, kind, next)
 		if (kind !== 'list' && kind !== 'repeat') {
-			if (flag in args) throw new Error(`Option ${token} is given twice`)
+			if (flag in args) throw wrong(`Option ${token} is given twice`)
 			args[flag] = next
 		} else if (kind === 'list') {
-			if (flag in args) throw new Error(`Option ${token} is given twice`)
+			if (flag in args) throw wrong(`Option ${token} is given twice`)
 			args[flag] = next
 				.split(',')
 				.map((item) => item.trim())
 				.filter(Boolean)
 		} else args[flag] = [...((args[flag] as string[] | undefined) ?? []), next]
 	}
-	if (positionals.length !== command.positionals.length) throw new Error(usage(name))
-	for (const flag of command.required ?? []) if (!(flag in args)) throw new Error(`Missing --${flag}. ${usage(name)}`)
+	if (positionals.length !== command.positionals.length)
+		throw wrong(
+			`${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(' ') || 'none'}`
+		)
+	for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`)
 	command.positionals.forEach((positional, i) => (args[positional] = positionals[i]))
 	command.check?.(args)
 	return args
@@ -1368,8 +1410,7 @@ function commandHelp(argv: string[]): Reply {
 		const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `))
 		if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace('Usage: ', '')) })
 	}
-	const reason = `Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`
-	return { status: 'invalid_request', subject: 'checkmate', reasons: [reason], data: { usage: [] } }
+	return { ...refused('invalid_request', 'checkmate', unknownCommand(words)), data: { usage: [] } }
 }
 
 function version() {
@@ -1377,11 +1418,19 @@ function version() {
 }
 
 function readJson(text: string) {
-	requireCondition(text.trim().length > 0, 'Missing JSON payload on standard input')
+	requireWellFormed(
+		text.trim().length > 0,
+		'Missing JSON payload on standard input',
+		'Send the JSON payload on standard input, for example: checkmate <command> <arguments> < payload.json'
+	)
 	try {
 		return JSON.parse(text) as unknown
 	} catch (error) {
-		throw new Error(`Standard input is not valid JSON: ${(error as Error).message}`, { cause: error })
+		throw new Refusal(
+			'malformed',
+			`Standard input is not valid JSON: ${(error as Error).message}`,
+			'Send one JSON object on standard input. Use double quotes for keys and strings, and no trailing commas.'
+		)
 	}
 }
 
@@ -1403,8 +1452,7 @@ export function run(argv: string[], io: Io): Outcome {
 		name = commandName(argv)
 		args = parse(name, argv.slice(name.split(' ').length))
 	} catch (error) {
-		const reply: Reply = { status: 'invalid_request', subject: name, reasons: [(error as Error).message], data: {} }
-		return { code: 1, output: format(reply, json) }
+		return { code: 1, output: format(refused('invalid_request', name, error), json) }
 	}
 	const command = commands[name]
 	const subject = command.positionals.length && name !== 'query' ? String(args[command.positionals[0]]) : name
@@ -1421,7 +1469,7 @@ export function run(argv: string[], io: Io): Outcome {
 	} catch (error) {
 		const reply: Reply = isBusy(error)
 			? { status: 'operational_error', subject, reasons: [(error as Error).message, busyReason], data: {} }
-			: { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }
+			: refused('rejected', subject, error)
 		return { code: 1, output: format(reply, json) }
 	} finally {
 		if (store) closeStore(store)
@@ -1434,14 +1482,16 @@ function uiOptions(tokens: string[], cwd: string) {
 		const token = tokens[i]
 		if (token === '--json') continue
 		const flag = token.startsWith('--') ? token.slice(2) : ''
-		if (!['workspace', 'port'].includes(flag)) throw new Error(`Unknown argument ${token} for ui. ${uiUsage}`)
+		if (!['workspace', 'port'].includes(flag))
+			throw new Refusal('malformed', `Unknown argument ${token} for ui`, uiUsage)
 		const next = tokens[++i]
-		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
-		if (flag in values) throw new Error(`Option ${token} is given twice`)
+		if (next === undefined || next.startsWith('--'))
+			throw new Refusal('malformed', `Missing value for ${token}`, uiUsage)
+		if (flag in values) throw new Refusal('malformed', `Option ${token} is given twice`, uiUsage)
 		values[flag] = next
 	}
 	const port = values.port === undefined ? undefined : Number(values.port)
-	requireCondition(
+	requireWellFormed(
 		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
 		`Invalid --port: ${values.port}. Use 0 to 65535.`
 	)
@@ -1454,8 +1504,7 @@ export async function serveUi(tokens: string[]) {
 	try {
 		options = uiOptions(tokens, process.cwd())
 	} catch (error) {
-		const reply: Reply = { status: 'invalid_request', subject: 'ui', reasons: [(error as Error).message], data: {} }
-		process.stdout.write(format(reply, json) + '\n')
+		process.stdout.write(format(refused('invalid_request', 'ui', error), json) + '\n')
 		process.exitCode = 1
 		return
 	}

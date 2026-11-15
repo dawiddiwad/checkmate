@@ -1,5 +1,6 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
-import { busyReason, formatReply, isBusy, main as core, run as coreRun } from '../../plugin/src/index.ts'
+import type { Reply } from '../../plugin/src/index.ts'
+import { busyReason, formatReply, isBusy, main as core, refused, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
 import { readFileSync } from 'node:fs'
 
@@ -71,7 +72,7 @@ function recorded(response: DelegateResponse, json: boolean) {
 	return [`${first} operation=${operation}`, ...rest].join('\n')
 }
 
-function print(response: DelegateResponse, json: boolean) {
+function print(response: DelegateResponse & Pick<Reply, 'refusal' | 'hint'>, json: boolean) {
 	const output = response.command
 		? recorded(response, json)
 		: json
@@ -80,9 +81,11 @@ function print(response: DelegateResponse, json: boolean) {
 					[
 						response.status,
 						response.subject,
+						...(response.refusal ? [`refusal=${response.refusal}`] : []),
 						...(response.operation ? [`operation=${response.operation}`] : []),
 					].join(' '),
 					...response.reasons.map((reason) => `reason: ${cell(reason)}`),
+					...(response.hint ? [`hint: ${cell(response.hint)}`] : []),
 				].join('\n')
 	process.stdout.write(output + '\n')
 	process.exitCode = response.status === 'completed' || response.status === 'needs_decision' ? 0 : 1
@@ -97,14 +100,17 @@ function printHelp(json: boolean) {
 }
 
 function refuse(status: 'invalid_request' | 'rejected', subject: string, error: unknown, json: boolean) {
-	print({ status, subject, reasons: [(error as Error).message], operation: null }, json)
+	const { data, ...reply } = refused(status, subject, error)
+	const hint = reply.hint ?? (status === 'invalid_request' ? `Usage: ${delegateUsage}` : undefined)
+	print({ ...reply, ...(hint ? { hint } : {}), operation: null }, json)
 }
 
 export function parseDelegate(tokens: string[]) {
 	const parsed = parse(tokens, ['allow', 'claude-arg', 'timeout', 'workspace'])
 	if (parsed.help) return parsed
 	seconds(parsed.values.timeout, 'timeout')
-	if (parsed.positionals.length !== 2) throw new Error(`Usage: ${delegateUsage}`)
+	if (parsed.positionals.length !== 2)
+		throw new Error(`delegate needs 2 argument(s), not ${parsed.positionals.length}: <stage> <subject>`)
 	if (!stages.includes(parsed.positionals[0] as Stage))
 		throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)
 	return parsed

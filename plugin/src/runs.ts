@@ -4,16 +4,20 @@ import { all, canonical, completed, digest, execute, one, removeTemporaryDirecto
 import type { AssertionResult, ResultTest, Test } from './contracts.ts'
 import type { RetestDefect } from './plans.ts'
 import {
+	Refusal,
 	approvalPolicy,
 	expectDigest,
+	refusalReasons,
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
 	requireText,
+	requireWellFormed,
 	resultCoverage,
 	revisionReference,
 	testOutcome,
 	testReference,
+	unusedId,
 	validate,
 	withoutEmptyMetadata,
 } from './contracts.ts'
@@ -177,14 +181,19 @@ export function runState(store: Store, runId: string): RunState {
 
 function startedRun(store: Store, runId: string) {
 	const run = runState(store, runId)
-	requireCondition(!run.finished, `Run ${runId} is finished. A finished run does not change.`)
+	requireCondition(
+		!run.finished,
+		`Run ${runId} is finished. A finished run does not change.`,
+		`Run checkmate status ${run.plan.planId} to see the next step.`
+	)
 	return run
 }
 
 function selectedTest(run: RunState, testId: string): Test {
-	requireCondition(
+	requireWellFormed(
 		run.request.selectedTestIds.includes(testId),
-		`Test ${testId} is not selected in run ${run.row.run_id}`
+		`Test ${testId} is not selected in run ${run.row.run_id}`,
+		`Use one of: ${run.request.selectedTestIds.join(', ')}.`
 	)
 	return run.plan.tests.find((test) => test.id === testId)!
 }
@@ -275,14 +284,19 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				'new blocker policy (--on-new-blocker)'
 			)
 			const timeoutSeconds = input.timeoutSeconds ?? 600
-			requireCondition(
+			requireWellFormed(
 				Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 3600,
 				`Invalid timeout: ${timeoutSeconds}. Use 1 to 3600 seconds.`
 			)
 			const instance = runInstance(store, plannedTarget(store, input.reference), input.instance)
 			const checked = gate(store, { ...input, instance: instance.instanceId })
-			if (checked.reply.status !== 'completed')
-				return { reply: { ...checked.reply, subject: runId }, subjects: [] }
+			if (checked.reply.status !== 'completed') {
+				const reasons = [refusalReasons.prohibited, ...checked.reply.reasons]
+				return {
+					reply: { ...checked.reply, subject: runId, reasons, refusal: 'prohibited' as const },
+					subjects: [],
+				}
+			}
 			const { plan, sha256 } = checked.revision
 			const request: RunRequest = {
 				selectedTestIds: checked.tests,
@@ -349,12 +363,12 @@ type EvidenceFile = { path: string | null; name: string; kind: string; mediaType
 const evidenceKinds = ['observation', 'http_exchange', 'screenshot', 'trace'] as const
 
 function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
-	requireCondition(
+	requireWellFormed(
 		typeof input.text === 'string' && input.text.trim().length > 0,
 		'Missing evidence text on standard input'
 	)
 	const bytes = Buffer.from(input.text, 'utf8')
-	requireCondition(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
+	requireWellFormed(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
 	let json = true
 	try {
 		JSON.parse(input.text)
@@ -373,7 +387,7 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
 	const name = match ? match[1] : spec
-	requireCondition(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
+	requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
 	const directory = evidenceDirectory(runId)
 	let root: string
 	let real: string
@@ -386,12 +400,12 @@ function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	try {
 		real = realpathSync(path)
 	} catch {
-		throw new Error(`Evidence file not found: ${name}`)
+		throw new Refusal('malformed', `Evidence file not found: ${name}`, `Save the file in ${directory} first.`)
 	}
-	requireCondition(real.startsWith(root + sep), `Evidence file must be inside ${directory}: ${name}`)
+	requireWellFormed(real.startsWith(root + sep), `Evidence file must be inside ${directory}: ${name}`)
 	const stats = statSync(real)
-	requireCondition(stats.isFile(), `Evidence must be a file: ${name}`)
-	requireCondition(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`)
+	requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`)
+	requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`)
 	const extension = extname(name).toLowerCase()
 	return {
 		path,
@@ -442,8 +456,8 @@ function evidenceFiles(store: Store, runId: string, name: string, specs: Evidenc
 		typeof spec === 'string' ? readEvidence(store, runId, spec) : textEvidence(spec, name)
 	)
 	const paths = files.flatMap((file) => file.path ?? [])
-	requireCondition(new Set(paths).size === paths.length, 'An evidence file is listed twice')
-	requireCondition(files.length - paths.length <= 1, 'Give one evidence text on standard input')
+	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
+	requireWellFormed(files.length - paths.length <= 1, 'Give one evidence text on standard input')
 	return files
 }
 
@@ -466,34 +480,46 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 		const run = startedRun(store, input.runId)
 		const test = selectedTest(run, input.testId)
 		const assertion = test.assertions.find((assertion) => assertion.id === input.assertionId)
-		requireCondition(assertion, `Unknown assertion ${test.id}.${input.assertionId}`)
+		requireWellFormed(
+			assertion,
+			`Unknown assertion ${test.id}.${input.assertionId}`,
+			`Use one of: ${test.assertions.map((item) => item.id).join(', ')}.`
+		)
 		requireOpen(store, input.runId, test.id)
 		requireCondition(
 			!runAssertions(store, input.runId).has(`${test.id}.${assertion.id}`),
 			`Assertion ${test.id}.${assertion.id} has a result. An assertion result is final.`
 		)
 		const outcomes = runOutcomes(store, input.runId)
-		for (const dependency of test.dependsOn.filter((id) => !id.includes(':')))
+		for (const dependency of test.dependsOn.filter((id) => !id.includes(':'))) {
+			const outcome = outcomes.get(dependency)?.outcome
 			requireCondition(
-				outcomes.get(dependency)?.outcome === 'passed',
-				`Prerequisite ${dependency} has not passed. Close ${dependency} as passed before you check ${test.id}.`
+				outcome === 'passed',
+				outcome
+					? `Prerequisite ${dependency} is ${outcome}, not passed. Do not check ${test.id}.`
+					: `Prerequisite ${dependency} is not closed. Check and close ${dependency} before you check ${test.id}.`,
+				outcome
+					? `Close ${test.id} as blocked: checkmate run close ${input.runId} ${test.id} --outcome blocked --reason "Prerequisite ${dependency} is ${outcome}"`
+					: undefined
 			)
+		}
 		const result = requireChoice(input.result, assertionResults, 'result (--result)')
 		const observed = optionalText(input.observed, 'observation (--observed)')
 		const reason = optionalText(input.reason, 'reason (--reason)')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
 		if (result !== 'not_checked')
-			requireCondition(
+			requireWellFormed(
 				observed && files.length > 0,
-				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`
+				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+				`Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
 			)
 		if (result === 'inconclusive')
-			requireCondition(
+			requireWellFormed(
 				reason,
 				'An inconclusive result needs a reason (--reason) that says what the evidence cannot show'
 			)
 		if (result === 'not_checked')
-			requireCondition(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
+			requireWellFormed(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
 		execute(
 			store,
 			'INSERT INTO assertion_results (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -534,13 +560,14 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		let outcome: ResultTest['outcome']
 		let reason: string | null
 		if (input.outcome === undefined) {
-			requireCondition(input.reason === undefined, '--reason applies only with --outcome')
-			requireCondition(input.cause === undefined, '--cause applies only with --outcome not_run or blocked')
-			requireCondition(!input.evidence?.length, '--evidence applies only with --outcome error')
+			requireWellFormed(input.reason === undefined, '--reason applies only with --outcome')
+			requireWellFormed(input.cause === undefined, '--cause applies only with --outcome not_run or blocked')
+			requireWellFormed(!input.evidence?.length, '--evidence applies only with --outcome error')
 			const missing = test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`))
 			requireCondition(
 				!missing.length,
-				`Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(', ')}`
+				`Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(', ')}`,
+				`Record each one with checkmate run check ${input.runId} ${test.id} <assertionId> --result <passed|failed|inconclusive|not_checked>. Or close ${test.id} with --outcome error --reason "<why>".`
 			)
 			outcome = testOutcome(recorded.map((row) => row.result))
 			const unchecked = recorded.filter((row) => row.result === 'not_checked')
@@ -552,7 +579,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
 			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
 			if (input.cause !== undefined) {
-				requireCondition(outcome !== 'error', '--cause applies only with --outcome not_run or blocked')
+				requireWellFormed(outcome !== 'error', '--cause applies only with --outcome not_run or blocked')
 				requireChoice(input.cause, closeCauses, 'cause (--cause)')
 				refuseEarlyDeadline(store, run.row, at)
 			}
@@ -560,7 +587,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 				outcome === 'error' || !recorded.length,
 				`Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
 			)
-			requireCondition(
+			requireWellFormed(
 				outcome === 'error' || !input.evidence?.length,
 				'--evidence applies only with --outcome error'
 			)
@@ -591,22 +618,25 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 	return write(store, { actor, command: 'run finding', subject: input.runId, input }, (operationId) => {
 		const run = startedRun(store, input.runId)
 		const finding = validate('finding', input.finding)
+		const findingIds = runFindings(store, input.runId).map((item) => item.id)
 		requireCondition(
-			!one(store, 'SELECT 1 FROM findings WHERE run_id = ? AND id = ?', input.runId, finding.id),
-			`Finding ${finding.id} exists in run ${input.runId}`
+			!findingIds.includes(finding.id),
+			`Finding ${finding.id} exists in run ${input.runId}`,
+			`Use a new finding ID, for example ${unusedId('F', findingIds)}.`
 		)
 		const results = runAssertions(store, input.runId)
 		const named = finding.assertionIds.map((reference) => {
 			const [testId, assertionId] = reference.split('.')
 			const test = selectedTest(run, testId)
-			requireCondition(
+			requireWellFormed(
 				test.assertions.some((assertion) => assertion.id === assertionId),
 				`Unknown assertion in finding ${finding.id}: ${reference}`
 			)
 			if (finding.type === 'defect')
 				requireCondition(
 					results.get(reference)?.result === 'failed',
-					`Defect ${finding.id} names ${reference}, which is not failed. A defect names only failed assertions.`
+					`Defect ${finding.id} names ${reference}, which is ${results.get(reference)?.result ?? 'unchecked'}. A defect names only failed assertions.`,
+					'Remove the assertion from assertionIds, or record the finding with "type": "potential_issue".'
 				)
 			return { test, assertionId }
 		})
@@ -615,15 +645,15 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 			.map((test) => test.id)
 		for (const requirementId of finding.requirementIds)
 			for (const { test } of named)
-				requireCondition(
+				requireWellFormed(
 					test.requirementIds.includes(requirementId),
 					`Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
 				)
 		const evidence = new Map(runEvidence(store, input.runId).map((row) => [row.id, row]))
 		for (const id of finding.evidenceIds) {
 			const row = evidence.get(id)
-			requireCondition(row, `Unknown evidence in finding ${finding.id}: ${id}`)
-			requireCondition(
+			requireWellFormed(row, `Unknown evidence in finding ${finding.id}: ${id}`)
+			requireWellFormed(
 				testIds.includes(row.test_id) &&
 					(row.assertion_id === null || finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)),
 				`Evidence ${id} does not belong to the assertions or tests of finding ${finding.id}`
@@ -648,7 +678,7 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 	return write(store, { actor, command: 'run gap', subject: input.runId, input }, (operationId) => {
 		const run = startedRun(store, input.runId)
 		const gap = validate('gap', input.gap)
-		requireCondition(
+		requireWellFormed(
 			gap.status === 'open' && gap.decisionId === null,
 			`Runtime gap ${gap.id} must be open and have no decision`
 		)
@@ -659,7 +689,7 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 			`Gap ID ${gap.id} is in use. Use a new ID.`
 		)
 		for (const id of gap.requirementIds)
-			requireCondition(
+			requireWellFormed(
 				run.plan.requirements.some((requirement) => requirement.id === id),
 				`Unknown requirement in gap ${gap.id}: ${id}`
 			)
@@ -667,7 +697,7 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 		for (const reference of gap.testIds) {
 			const { planId, testId } = testReference(reference)
 			const plan = planId === null ? run.plan : plans.get(planId)
-			requireCondition(
+			requireWellFormed(
 				plan?.tests.some((test) => test.id === testId),
 				`Unknown test in gap ${gap.id}: ${reference}`
 			)
@@ -709,7 +739,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				'cause (--cause)'
 			)
 			if (cause === 'deadline') refuseEarlyDeadline(store, run.row, at)
-		} else requireCondition(input.cause === undefined, '--cause applies only with --completion interrupted')
+		} else requireWellFormed(input.cause === undefined, '--cause applies only with --completion interrupted')
 		const cleanup = {
 			status: requireChoice(input.cleanup, cleanupStatuses, 'cleanup (--cleanup)'),
 			reason: requireText(input.cleanupReason, 'cleanup reason (--cleanup-reason)'),
@@ -720,7 +750,8 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 		if (completion === 'completed')
 			requireCondition(
 				!unclosed.length,
-				`Selected tests are not closed: ${unclosed.join(', ')}. Close them, or finish as interrupted.`
+				`Selected tests are not closed: ${unclosed.join(', ')}. Close them, or finish as interrupted.`,
+				`Close each test with checkmate run close ${input.runId} <testId>. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
 			)
 		for (const testId of unclosed)
 			execute(
@@ -746,15 +777,21 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 							finding.type === 'defect' &&
 							finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)
 					),
-					`Failed assertion ${row.test_id}.${row.assertion_id} needs a defect finding. Record it with run finding.`
+					`Failed assertion ${row.test_id}.${row.assertion_id} needs a defect finding. Record it with run finding.`,
+					defectHint(store, run, row, findings)
 				)
 		if (completion === 'completed') {
 			const failures = selected.filter((id) => outcomes.get(id)!.outcome === 'error')
 			requireCondition(
 				!failures.length,
-				`Operational failure cannot be completed: ${failures.join(', ')} closed as error`
+				`Operational failure cannot be completed: ${failures.join(', ')} closed as error`,
+				'Finish with --completion operational_error.'
 			)
-			requireCondition(cleanup.status !== 'failed', 'Cleanup failed, so the run cannot be completed')
+			requireCondition(
+				cleanup.status !== 'failed',
+				'Cleanup failed, so the run cannot be completed',
+				'Finish with --completion operational_error.'
+			)
 			for (const verdict of retestVerdicts(run, outcomes))
 				for (const testId of verdict.testIds.filter((id) => selected.includes(id)))
 					requireCondition(
@@ -772,7 +809,8 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 					) || newGaps.some((gap) => gap.severity === 'blocking')
 				requireCondition(
 					cause,
-					`Selected test ${test.id} is ${outcome} without a cause. A completed run needs a failed prerequisite or a new blocking gap.`
+					`Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
+					`Record the blocking gap with checkmate run gap ${input.runId} < gap.json. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
 				)
 			}
 		}
@@ -866,6 +904,30 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 	})
 }
 
+function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Result['findings']) {
+	const reference = `${row.test_id}.${row.assertion_id}`
+	const test = run.plan.tests.find((item) => item.id === row.test_id)!
+	const evidenceIds = runEvidence(store, run.row.run_id)
+		.filter((item) => item.test_id === row.test_id && item.assertion_id === row.assertion_id)
+		.map((item) => item.id)
+	const finding = {
+		id: unusedId(
+			'F',
+			findings.map((item) => item.id)
+		),
+		type: 'defect',
+		severity: '<low|medium|high|critical>',
+		assertionIds: [reference],
+		requirementIds: test.requirementIds,
+		title: '<short title>',
+		expected: '<expected result>',
+		observed: row.observed ?? '<observed result>',
+		reproduction: ['<step>'],
+		evidenceIds,
+	}
+	return `Record the defect with checkmate run finding ${run.row.run_id} < finding.json, for example ${JSON.stringify(finding)}. Then run run finish again.`
+}
+
 export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'
 
 export function retestVerdicts(run: RunState, outcomes: Map<string, OutcomeRow>) {
@@ -890,7 +952,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 	return write(store, { actor, command: 'run resume', subject: input.runId, input }, (operationId, at, actor) => {
 		const run = startedRun(store, input.runId)
 		const stalled = input.error ?? []
-		requireCondition(stalled.length > 0 || input.reason === undefined, '--reason applies only with --error')
+		requireWellFormed(stalled.length > 0 || input.reason === undefined, '--reason applies only with --error')
 		const reason = stalled.length ? requireText(input.reason, 'reason (--reason) for --error') : null
 		const attempt = currentAttempt(store, input.runId) + 1
 		execute(

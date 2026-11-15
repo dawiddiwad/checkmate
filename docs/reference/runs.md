@@ -98,7 +98,7 @@ completed run-1 T2.A1=failed
 
 - The run is started, and the test is selected and not closed.
 - The assertion exists and has no result. A result is final.
-- Each local prerequisite in `dependsOn` is closed as `passed`.
+- Each local prerequisite in `dependsOn` is closed as `passed`. Else the reason gives the outcome of the prerequisite, for example `Prerequisite T4 is blocked, not passed.`, and the hint gives the `run close ... --outcome blocked` command for the test.
 - The check text and the check kind come from the plan. QA does not send them.
 - After a failed assertion, QA checks the assertions that it can still check, and records the others as `not_checked`.
 

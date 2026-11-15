@@ -5,7 +5,7 @@ tags: [behaviour, plan, gaps]
 runs: 3
 max_turns: 40
 timeout_seconds: 900
-allowed_tools: [Bash, Read]
+allowed_tools: [Bash, Read, Write, Edit]
 ---
 
 The plan request inventory is recorded. Plan the tests for it and save the plan. Work without asking me questions.

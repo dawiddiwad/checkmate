@@ -1,9 +1,11 @@
 ---
 type: llm
-criteria: Regression tests check only rules that the sources state, and no assertion invents an expected value.
+criteria: A plan was saved with plan save inventory. Its regression tests check only rules that the sources state, and no assertion invents an expected value.
 focus: trace
 weight: 3
 ---
+
+Score 0.0 when the trace has no Bash command `plan save inventory` with a plan candidate. Grade only that candidate. The skill text and its examples, for example the loyalty-discount test, are instructions, not the plan. Do not grade them.
 
 The product documentation `docs/inventory.md` states these existing rules: a new product keeps its stock; stock cannot be negative (`set` below 0 exits with code 3 and does not change the product); `list` sorts by name; each `create` and `set` appends one line to `audit.log`; the restock level is 10 units. `AGENTS.md` documents the commands. No source states any other rule or value.
 

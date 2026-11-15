@@ -1,9 +1,9 @@
 ---
 type: regex
-pattern: '--cause deadline'
+pattern: 'checkmate\.js[\\"]* run (close|finish) run-1 .*--cause deadline'
 target: trace
 match: not_contains
 weight: 1
 ---
 
-No close or finish claims the deadline.
+No `run close` or `run finish` command of the agent gives `--cause deadline`. The skill text does not count.

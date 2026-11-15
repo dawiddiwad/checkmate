@@ -5,6 +5,8 @@ focus: trace
 weight: 3
 ---
 
+Score 0.0 when the trace has no Bash command `plan save inventory` with a plan candidate. Grade only that candidate. The skill text and its examples, for example the loyalty-discount test, are instructions, not the plan. Do not grade them.
+
 The ticket `ticket.md` has two vague terms that change an expected value:
 
 1. "drops to the restock level": does a product with stock equal to the restock level (10) get the badge, a product below it, or both? The boundary is unknown.

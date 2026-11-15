@@ -107,6 +107,7 @@ A passed live run does not prove that a worker always follows the skills. [Examp
 
 | Case                      | Checks                                                                                          |
 | ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `sandbox-probe`           | The shell can write in the workspace and open a SQLite database in WAL mode. Run it first.      |
 | `plan-trigger`            | A request to plan tests for a ticket loads `checkmate:plan`.                                    |
 | `retest-trigger`          | A request to retest a run loads `checkmate:execute` and begins a run with `--retest-of`.        |
 | `status-trigger`          | A question about the state of a plan loads `checkmate:status` and changes no record.            |
@@ -117,11 +118,14 @@ A passed live run does not prove that a worker always follows the skills. [Examp
 Run the suite from the repository root:
 
 ```sh
-claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read \
-  --runs 3 --model claude-haiku-5-5 --judge-model claude-haiku-5-5 --max-cost-usd 20 --no-publish
+claude plugin eval plugin --case sandbox-probe --runs 1 --scaffold --trust-plugin --allow-tools Bash Read Write Edit --no-publish
+claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read Write Edit --keep-temp \
+  --model claude-haiku-5-5 --judge-model claude-haiku-5-5 --max-cost-usd 20 --no-publish
 ```
 
-- The suite calls a real model. Each case runs 3 times with the plugin and 3 times without it, so one full run is 36 agent sessions and the LLM graders. It costs money on your credential. Set `--max-cost-usd`, and use `--case <glob>` or `--tag trigger` for a smaller run.
+- The suite calls a real model. Each case runs 3 times with the plugin and 3 times without it, and `sandbox-probe` once in each arm, so one full run is 38 agent sessions and the LLM graders. It costs money on your credential. Set `--max-cost-usd`, and use `--case <glob>` or `--tag trigger` for a smaller run.
+- Run `sandbox-probe` first. Do not trust the other cases until it passes. With only `Bash Read`, the eval sandbox mounts the workspace read-only, and every Checkmate command fails with `unable to open database file`.
+- `--keep-temp` keeps the workspace of each case, so you can read the trace of a case without an LLM grader.
 - `--scaffold` runs `scaffold.sh` of each case as you. The scaffold writes only in the temporary workspace of the case.
 - The scaffold finds the plugin CLI through `CLAUDE_PLUGIN_ROOT`, else through its own path in `plugin/evals/`.
 - The results go to `plugin/evals/results/`. Git ignores them.

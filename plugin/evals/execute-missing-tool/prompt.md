@@ -5,7 +5,7 @@ tags: [behaviour, execute]
 runs: 3
 max_turns: 60
 timeout_seconds: 900
-allowed_tools: [Bash, Read]
+allowed_tools: [Bash, Read, Write, Edit]
 ---
 
 Execute the Checkmate run run-1 in this workspace. The run is already begun. Work without asking me questions.

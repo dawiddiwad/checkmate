@@ -162,7 +162,7 @@ A candidate has `requirements` only when the request has no requirements:
 			"requirementIds": ["R2"],
 			"capability": "http",
 			"operations": ["create_order"],
-			"dependsOn": ["T1"],
+			"dependsOn": [],
 			"preconditions": ["Cart with one 400 PLN item and 20 PLN loyalty."],
 			"action": "Request GET /quote?promotion=true&loyalty=true and read the total.",
 			"assertions": []
@@ -195,7 +195,7 @@ Rules:
 - A ready test has one or more assertions, a capability of the target, and allowed operations only.
 - An assertion has an ID that is unique in its test, a `check`, and a `checkKind`: `deterministic` for an exact value, `agent_observation` when the agent interprets the evidence.
 - Do not write an assertion with an unknown expected value. Write an open blocking gap. In the example, T2 is `blocked`.
-- `dependsOn` names local tests or cross-plan tests. The named plan and test exist. Checkmate refuses a dependency cycle across all plans.
+- `dependsOn` names local tests or cross-plan tests. The named plan and test exist. Checkmate refuses a dependency cycle across all plans. Tests are independent by default. Name a test in `dependsOn` only when this test uses a record that the other test creates. When it does not pass, this test is blocked.
 - Revision 1 has no decisions and no assumptions.
 - A test and a requirement of the candidate can have [`metadata`](#metadata).
 

@@ -105,15 +105,17 @@ A passed live run does not prove that a worker always follows the skills. [Examp
 
 `plugin/evals/` holds a small suite for `claude plugin eval`. Each case is a folder with `prompt.md`, `case.yaml`, `scaffold.sh`, and `graders/*.md`. `plugin/evals/lib/workspace.sh` makes the workspace of a case: a ticket, product documentation, a small file-based inventory app, and the Checkmate records that the case needs.
 
-| Case                      | Checks                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `sandbox-probe`           | The shell can write in the workspace and open a SQLite database in WAL mode. Run it first.      |
-| `plan-trigger`            | A request to plan tests for a ticket loads `checkmate:plan`.                                    |
-| `retest-trigger`          | A request to retest a run loads `checkmate:execute` and begins a run with `--retest-of`.        |
-| `status-trigger`          | A question about the state of a plan loads `checkmate:status` and changes no record.            |
-| `plan-vague-terms`        | A vague threshold and a vague scope word each give an open gap in the saved plan.               |
-| `plan-regression-sources` | A regression test checks a rule that the docs state, and no assertion invents a value.          |
-| `execute-missing-tool`    | A test that needs a missing tool is closed, the other tests run, and `run finish` ends the run. |
+| Case                      | Checks                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `sandbox-probe`           | The shell can write in the workspace and open a SQLite database in WAL mode. Run it first.             |
+| `plan-trigger`            | A request to plan tests for a ticket loads `checkmate:plan`.                                           |
+| `retest-trigger`          | A request to retest a run loads `checkmate:execute` and begins a run with `--retest-of`.               |
+| `status-trigger`          | A question about the state of a plan loads `checkmate:status` and changes no record.                   |
+| `plan-vague-terms`        | A vague threshold and a vague scope word each give an open gap, and no gap asks what a source answers. |
+| `plan-edge-cases`         | The saved plan has independent tests and edge-case tests at and near the restock level.                |
+| `plan-regression-sources` | A regression test checks a rule that the docs state, and no assertion invents a value.                 |
+| `execute-missing-tool`    | A test that needs a missing tool is closed, the other tests run, and `run finish` ends the run.        |
+| `execute-refusal-retry`   | A refused `run finish` makes QA record the missing defect and finish again.                            |
 
 Run the suite from the repository root:
 
@@ -123,7 +125,7 @@ claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read Writ
   --model claude-haiku-5-5 --judge-model claude-haiku-5-5 --max-cost-usd 20 --no-publish
 ```
 
-- The suite calls a real model. Each case runs 3 times with the plugin and 3 times without it, and `sandbox-probe` once in each arm, so one full run is 38 agent sessions and the LLM graders. It costs money on your credential. Set `--max-cost-usd`, and use `--case <glob>` or `--tag trigger` for a smaller run.
+- The suite calls a real model. Each case runs 3 times with the plugin and 3 times without it, and `sandbox-probe` once in each arm, so one full run is 50 agent sessions and the LLM graders. It costs money on your credential. Set `--max-cost-usd`, and use `--case <glob>` or `--tag trigger` for a smaller run.
 - Run `sandbox-probe` first. Do not trust the other cases until it passes. With only `Bash Read`, the eval sandbox mounts the workspace read-only, and every Checkmate command fails with `unable to open database file`.
 - `--keep-temp` keeps the workspace of each case, so you can read the trace of a case without an LLM grader.
 - `--scaffold` runs `scaffold.sh` of each case as you. The scaffold writes only in the temporary workspace of the case.

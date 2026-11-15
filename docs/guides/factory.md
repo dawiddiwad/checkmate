@@ -82,7 +82,7 @@ A `command` entry runs a program at test time, for example `sf org open --target
 
 ### 2. Iteration 1: plan and run early
 
-The planner writes the tests from the ticket. It reads the running base build to check the preconditions of the tests, and it does not change the state of the application. Each test creates its own data, so it does not depend on seed data. The feature does not exist yet, so the plan has gaps. The response is `needs_decision` with one `reason:` line for each open blocking gap.
+The planner writes the tests from the ticket. It reads the running base build to check the preconditions of the tests, and it does not change the state of the application. Each test creates its own data, so it does not depend on seed data or on another test. The feature does not exist yet, so the plan has gaps. The response is `needs_decision` with one `reason:` line for each open blocking gap.
 
 ```sh
 checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." \
@@ -91,9 +91,9 @@ checkmate plan open checkout --target shop@1 --objective "Verify checkout totals
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 ```
 
-Give the existing product documentation as sources too, for example `--source docs/checkout.md`. The planner reads the existing rules near the change in it, for example validation limits, permissions, counters, and prices, and plans regression tests for them. A regression test checks only a rule that a source states, with the expected values of that source. It marks each one with `"type": "regression"` in the test metadata. The planner also writes a gap for each vague term of the ticket that changes an expected value, for example a boundary, a rounding rule, or a scope word. It does not choose a value.
+Give the existing product documentation as sources too, for example `--source docs/checkout.md`. The planner reads the existing rules near the change in it, for example validation limits, permissions, counters, and prices, and plans regression tests for them. A regression test checks only a rule that a source states, with the expected values of that source. It marks each one with `"type": "regression"` in the test metadata. The planner also plans edge-case tests for each rule: boundaries, case and format, the other entry point, state changes and undo, derived views such as an export or a counter, and paging. It writes a gap for each point that the sources do not settle and that changes an expected value, for example an inclusive threshold, a rounding rule, a stacking rule, or the state after a change. It does not choose a value.
 
-The oracle approves the revision, and QA runs the ready tests early. Most tests fail, and this is correct: an early run explores the requirements. Each failed assertion gets a defect with evidence. Unclear behavior becomes a new gap of the run.
+The oracle approves the revision, and QA runs the ready tests early. Most tests fail, and this is correct: an early run explores the requirements. Each failed assertion gets a defect with evidence. After the planned tests, QA makes up to 10 probes of edge cases near the tested rules. A probe that contradicts a stated value becomes a `potential_issue` finding on the closest test. Unclear behavior becomes a new gap of the run.
 
 ```sh
 checkmate plan approve checkout@1 --rationale "Run the ready tests early."

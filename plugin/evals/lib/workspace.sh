@@ -185,7 +185,7 @@ begun_run() {
 	cm run begin "$1" stock@1 --tests "$2" --build "$3" --instance local --timeout 900 --actor claude:execute > /dev/null
 }
 
-finished_defect_run() {
+closed_defect_run() {
 	begun_run run-1 T1,T2 b1
 	cm run check run-1 T1 A1 --actor claude:execute --result passed --observed '{"name":"qa-run-1-T1","stock":5}' --evidence - > /dev/null <<'EOF'
 {"name":"qa-run-1-T1","stock":5}
@@ -196,12 +196,16 @@ $ node inventory.mjs set qa-run-1-T2 -1
 {"name":"qa-run-1-T2","stock":-1}
 exit 0
 EOF
-	local evidence
-	evidence="$(cm run show run-1 --json | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(d.tests[1].assertions[0].evidence[0].id)')"
 	cm run check run-1 T2 A2 --actor claude:execute --result failed --observed '{"stock":-1}' --evidence - > /dev/null <<'EOF'
 {"name":"qa-run-1-T2","stock":-1}
 EOF
 	cm run close run-1 T2 --actor claude:execute > /dev/null
+}
+
+finished_defect_run() {
+	closed_defect_run
+	local evidence
+	evidence="$(cm run show run-1 --json | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(d.tests[1].assertions[0].evidence[0].id)')"
 	cm run finding run-1 --actor claude:execute > /dev/null <<EOF
 {
 	"id": "F1",

@@ -3,40 +3,45 @@ name: execute
 description: Execute an approved Checkmate plan revision. Record each assertion result with evidence, close each test, record findings and gaps, and finish the run.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to begin a run and how to report.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
-Use the tools of the plan. `checkmate plan request <planId>` lists them. Each tool has a name, a kind (`cli`, `mcp`, or `skill`), and a purpose. The host gives the permission to use a tool. The references `browser.md` and `http.md` are optional recipes for `playwright-cli` and `node`. Read one only when the plan uses that tool.
+Use the tools of the plan. `checkmate plan request <planId>` lists them. The host gives the permission to use a tool. The references `browser.md` and `http.md` are optional recipes for `playwright-cli` and `node`. Read one only when the plan uses that tool.
 
-## Start
+A delegated stage or a sub-agent gets a run that the parent began. The prompt names the run ID, plan revision, instance, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`. When the prompt has the line `The oracle rejected <runId>: <rationale>. Address it.`, address the rationale in the run.
 
-- Delegated stage, or a sub-agent that gets a run ID: the parent has begun the run. The prompt names the run ID, plan revision, instance, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`.
-- Same session, new run:
-  1. Run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
-  2. Use the oracle's run ID. When the oracle gives none, run `checkmate run list` and use the next free `run-<n>`.
-  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build> --instance <instanceId> --actor claude:execute` once. Use the instance that the oracle names. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. A retest must select each ready test with an open defect of the earlier run and each ready regression test. Give `--partial ready_only` without `--tests` to select them. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
+## Steps
 
-  For an early run while gaps are open, or when the oracle asks for the ready tests, give `--partial ready_only` and no `--tests` to `run gate` and `run begin`. Checkmate selects the ready tests. It prints `tests=<selection>` and a `<testId> left_out <reason>` line for each other test.
-
-- Same session, run after a rejected result: run `checkmate status <planId>` first. A `why` line `<runId> was rejected by <actor>: <rationale>` gives the reason of the oracle. `checkmate run show <runId>` prints the same decision on its `decision` line. Do the retest so that it addresses the rationale, for example with the evidence that the oracle asks for. When the rationale needs a plan change, stop and tell the oracle.
-- Delegated stage after a rejected result: the prompt has the line `The oracle rejected <runId>: <rationale>. Address it.` Address the rationale in the run.
-- Same session, stalled run: run `checkmate run resume <runId> --actor claude:execute`. Check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
-
-Then:
-
-1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result. Its `time` line gives the deadline in UTC and the elapsed and remaining seconds. Read [Time](#time).
-2. Run `checkmate plan show <planId@rev> --tests <T1,T2> --fields dependsOn,preconditions,action,assertions`.
-3. Run `checkmate plan request <planId>` for the tools.
-4. Read the instance of the run: `checkmate target show <targetId> --instance <instanceId>`. `run show` prints the instance. The output has one `entry` line for each entry point.
+1. Run `checkmate run show <runId>`. Note the selected tests, the `time` line, and each `retest` line.
+2. Run `checkmate plan show <planId@rev> --tests <selected> --fields dependsOn,preconditions,action,assertions`.
+3. Run `checkmate target show <targetId> --instance <instanceId>` for the entry values and the `reset` line.
+4. For each selected test, in this order: first the tests of the `retest` lines, then the other tests, each one after its `dependsOn` tests:
+   1. Run `checkmate run show <runId> --tests <testId>`. Read `remaining=` on the `time` line. That number is the only measure of time. Do not estimate time from your own work. When 90% or more of the deadline is used, go to [Finish](#finish).
+   2. When a local `dependsOn` test did not pass, close this test as `blocked` with the reason `Prerequisite <id> is <outcome>`. Go to the next test.
+   3. Make the test data. Read [Test data and reset](#test-data-and-reset). When a precondition fails, adapt the data.
+   4. Do the action. Record each assertion with `run check`. Read [Assertion results](#assertion-results).
+   5. Close the test with `checkmate run close <runId> <testId> --actor claude:execute`. Checkmate calculates the outcome.
+   6. When something unknown blocks the test, record a gap, close the test as `blocked`, and go to the next test. When a tool or access fails, close the test as `error`, and go to the next test. Do not stop the run.
+5. Record a defect finding for each failed assertion. Read [Findings and gaps](#findings-and-gaps).
+6. Finish the run. Read [Finish](#finish). Always end with `run finish`, also when no test passed.
 
 ## Time
 
 The run deadline counts from the start of the current attempt. A delegated prompt names it.
 
-- Check the time with `checkmate run show <runId> --tests <testId>`. Read the `time` line: `time deadline=<UTC> elapsed=<n>s remaining=<n>s`. Do not guess the time.
-- Use the time to run every selected test. Do not stop early.
-- Close a test as `blocked` or `not_run` because of the time only when 90% or more of the deadline is used. Else Checkmate refuses the reason. Continue the remaining tests.
+- Read the time on the `time` line of `checkmate run show <runId> --tests <testId>`: `time deadline=<UTC> elapsed=<n>s remaining=<n>s`.
+- Start every selected test while less than 90% of the deadline is used.
+- Give `--cause deadline` only when 90% or more of the deadline is used. Checkmate refuses it before that. Do not close a test or finish the run early for another reason about time, budget, or speed.
+
+## Retest
+
+In a retest, `run show` prints one line for each open defect of the earlier runs: `<runId>/<findingId> retest <verdict> <tests> <title>`.
+
+1. Run these tests first, before every other test.
+2. Run each of them to a `passed` or `failed` outcome. When a precondition fails, adapt the test data. Do not close one as `blocked` or `not_run` for data.
+3. When one fails again, record a new defect finding in this run, with a new ID and the same title. `run finish` refuses a failed assertion without a defect.
+4. Checkmate calculates the verdict: `fixed`, `not_fixed`, or `not_retested`. Do not write it.
 
 ## Instance entries
 
@@ -44,31 +49,27 @@ Use the entry values of the run instance for every action. Do not use another in
 
 - `url`: open or call this URL.
 - `value`: use the value as it is, for example an org alias in `--target-org <alias>`.
-- Run a `command` entry exactly as recorded and alone. Do not edit it, chain it, or pipe it into other commands. Stop and record a `blocked` gap when the command would change state outside `allowedOperations`, when the host refuses the permission, or when the command fails. Do not work around a refusal.
-- `command`: run the command at test time, before the action that needs it. Use its output, for example a one-time login URL. Do not record the output as an entry value. Do not put a login URL, a token, or other secret output in evidence.
+- `command`: run the command at test time, before the action that needs it. Run it exactly as recorded and alone. Do not edit it, chain it, or pipe it into other commands. Do not work around a refusal.
+- Use the output of a command, for example a one-time login URL, only for the action. Do not write a login URL, a token, or other secret output in evidence, in `--observed`, in a finding (`reproduction` too), or in a gap. Write `<login URL from entry web>` in its place.
+- Do not run a command when it would change state outside `allowedOperations`. When you do not run it, the host refuses it, or it fails: record one blocking gap for the tests that need it, close those tests as `blocked`, and continue with the other tests.
 
 `references` name authentication aliases or environment variables. The host resolves them. Do not record their values.
 
 ## Test data and reset
 
-Each test owns its data. Use the data that the test creates, or the free slots and unique values that it names.
+Each test owns its data. Do not change the code, the configuration, or the deployment of the application. There are two exceptions: test data that you make through the `allowedOperations`, and the declared reset.
 
-- `target show` prints a `reset` line when the target has a reset. The reset restores a fresh state, for example the seed data.
-- Before a test that needs a fresh state, get the reset:
-  - Owner `checkmate` with a command: run the command exactly as recorded and alone. The profile authorizes it.
-  - Owner `factory`: do not run a command. In the same session, ask the oracle for the reset. In a delegated stage, do not wait. Adapt the test data, or record a blocking gap that asks for the reset.
-- Run the reset only between tests. A reset removes the data of earlier tests. Do not run it before a test that needs the data of its `dependsOn` tests.
-- When a precondition fails, adapt the test data first. Keep the intent of the test and the check text. For example, use another free slot, create the missing record, or use a new unique value. Write what you changed in `--observed`.
+- Use the data that the test creates, or the free slots and unique values that it names. When a test asks for a unique value, use `qa-<runId>-<testId>`, for example `qa-run-3-T2`. Do not use a seed record unless the test names it.
+- When a precondition fails, adapt the test data first. Keep the intent of the test and the check text. For example, use another free slot, create the missing record, or use a new unique value. Start the `--observed` of each assertion of that test with `Data changed: <what>.`
 - Record a blocking gap only when no change of the data can keep the intent of the test.
+- `target show` prints a `reset` line when the target has a reset. The reset restores a fresh state, for example the seed data.
+  - Owner `checkmate` with a command: the profile authorizes it. Run it exactly as recorded and alone, only between tests, and only before a test whose preconditions say that it needs a fresh state.
+  - Owner `factory`, or no command recorded: do not run a command. Adapt the test data, or record a blocking gap that asks for the reset.
+  - Do not run the reset before a test that uses the data of its `dependsOn` tests. A reset removes the data of earlier tests.
 
-## For each selected test
+## Assertion results
 
-Run prerequisites first. A local `dependsOn` test must pass before the dependent test starts.
-
-In a retest, run the tests of the earlier defects first. `run show` prints one `retest` line for each open defect of the earlier run: `<runId>/<findingId> retest <verdict> <tests> <title>`. Give each of these tests a `passed` or `failed` outcome. The verdict is `fixed` when all its tests pass, `not_fixed` when one fails, and `not_retested` in other cases.
-
-1. Do the action of the test with the target's tools. Do not write maintained automation. Do not change the application.
-2. For each assertion, record the result with text evidence on standard input. Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
+Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
 
 ```sh
 checkmate run check <runId> T1 A1 --actor claude:execute --result passed --observed "<what you saw>" --evidence - <<'EOF'
@@ -76,20 +77,18 @@ checkmate run check <runId> T1 A1 --actor claude:execute --result passed --obser
 EOF
 ```
 
-3. Checkmate stores JSON text as `application/json` and other text as `text/plain`. Add a kind when it is not an observation, for example `--evidence -:http_exchange`.
-4. For binary evidence, for example a screenshot, write one new file in `.checkmate/tmp/<runId>/`. Add `--evidence .checkmate/tmp/<runId>/T1-A1.png`. Checkmate deletes the file after it stores it. You can give one text and one or more files.
-5. When each assertion has a result, run `checkmate run close <runId> <testId> --actor claude:execute`. Checkmate calculates the outcome.
-6. For a test that you did not start, run `checkmate run close <runId> <testId> --actor claude:execute --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure.
-
-## Assertion results
-
 - `passed`: you observed the target, and the observation meets the check. Needs `--observed` and `--evidence`.
 - `failed`: you observed the target, and the observation contradicts the check. Needs `--observed` and `--evidence`. Each failed assertion needs a defect finding.
 - `inconclusive`: you checked the assertion, but the evidence cannot show whether the check is met. Needs `--observed`, `--evidence`, and `--reason` that says what is missing. It is not a defect.
-- `not_checked`: you did not check the assertion, for example because an earlier step failed or a tool failed. Needs `--reason` only. The test outcome becomes `error`.
+- `not_checked`: you did not check the assertion, for example because an earlier step failed or a tool failed. Needs `--reason` only. The test outcome becomes `error`, unless another assertion failed.
 
-After a failed assertion, check the other assertions that you can still check. Record the others as `not_checked`.
-Compare with the exact check text. Do not change the check. Do not call a tool failure a product defect.
+- Record `passed` or `failed` only for an action that you did in this run, on this instance. The evidence is the tool output, copied, not retyped or summarized from memory.
+- After a failed assertion, check the other assertions that you can still check. Record the others as `not_checked`.
+- Compare with the exact check text. Do not change the check. Do not call a tool failure a product defect.
+- Checkmate stores JSON text as `application/json` and other text as `text/plain`. Add a kind when it is not an observation, for example `--evidence -:http_exchange`.
+- For binary evidence, for example a screenshot, write one new file in `.checkmate/tmp/<runId>/`. Add `--evidence .checkmate/tmp/<runId>/T1-A1.png`. Checkmate deletes the file after it stores it. You can give one text and one or more files.
+
+For a test that you did not start, run `checkmate run close <runId> <testId> --actor claude:execute --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure. Add `--cause deadline` only under the [time](#time) rule.
 
 ## Findings and gaps
 
@@ -111,21 +110,40 @@ Send each finding in a heredoc: `checkmate run finding <runId> --actor claude:ex
 ```
 
 - Give every field of the example. `requirementIds` are the requirements of the named tests.
-- You can add `metadata` with team fields, for example `"metadata": { "jiraKey": "SHOP-142", "component": "pricing", "labels": "checkout,regression" }`. Use it for a priority, a component, labels, or a Jira or Xray key that the oracle or the test gives. Do not put team fields in the title. A value is a string, a number, or a boolean.
 - A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
-- For new ambiguity, write a gap with `"status": "open"` and a new ID. Send it in a heredoc: `checkmate run gap <runId> --actor claude:execute <<'EOF'`, the JSON, then `EOF`.
-- After a new blocking gap, apply the new blocker policy of the run. A delegated prompt names it. Else read `request.onNewBlocker` from `checkmate run show <runId> --json`.
-  - `continue_independent` (the default): close the tests that the gap affects as `blocked`. Continue all other tests. One gap does not stop the run.
-  - `return_to_oracle`: stop further actions, and close the remaining tests as `blocked`.
+- Only when the oracle or the test gives team fields, add `metadata`, for example `"metadata": { "jiraKey": "SHOP-142" }`.
+
+For new ambiguity, send a gap in a heredoc: `checkmate run gap <runId> --actor claude:execute <<'EOF'`, the JSON, then `EOF`. Use an ID that the plan does not have, for example `RG1`. Leave `requirementIds` empty to block only the tests in `testIds`:
+
+```json
+{
+	"id": "RG1",
+	"severity": "blocking",
+	"status": "open",
+	"requirementIds": [],
+	"testIds": ["T3"],
+	"question": "Which discount applies to a cart with two promotions?",
+	"consequence": "The expected total of T3 is unknown.",
+	"decisionId": null
+}
+```
+
+After a new blocking gap, apply the new blocker policy of the run. The prompt names it. Else read `request.onNewBlocker` from `checkmate run show <runId> --json`.
+
+- `continue_independent` (the default): close the tests that the gap affects as `blocked`. Continue all other tests. One gap does not stop the run.
+- `return_to_oracle`: close the remaining tests as `blocked`, and finish the run.
 
 ## Finish
 
 1. When the run used a browser, close the browser session: `playwright-cli -s=<browserSession> close`.
-2. Run `checkmate run finish <runId> --actor claude:execute --completion <completion> [--reason "<cause>"] --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
-   - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail. In a retest, each selected test of an earlier defect is `passed` or `failed`.
-   - `operational_error`: a tool, access, or cleanup failure stopped the run.
-   - `interrupted`: 90% or more of the deadline is used, or the host stopped the run. Give `--reason "<cause>"`. Finish before the deadline.
+2. Run `checkmate run finish <runId> --actor claude:execute --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
+   - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail. In a retest, no test of an earlier defect is `not_run`.
+   - `operational_error`: a tool, access, or cleanup failure stopped the run, or no test could run.
+   - `interrupted`: add `--cause <cause> --reason "<text>"`. Use it only in one of these cases:
+     - `--cause deadline`: the `time` line shows 90% or more used.
+     - `--cause host_stopped`: the host or the oracle stopped the run.
+     - `--cause tool_unavailable`: a tool that every remaining test needs is not available.
+   - Do not use `interrupted` for one blocking gap. A blocking gap closes only its tests.
 3. Return the response of `run finish`.
-4. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Outcome, Reason) and the findings. In `Next:`, name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. Name a retest or a gap answer when one is necessary. For a new gap of the run, name `checkmate gap answer <planId> <gapId> ...`. It adopts the gap into the plan and records the answer.
 
-A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage. When a test of an earlier defect cannot get a `passed` or `failed` outcome, finish as `interrupted` with a reason that says why.
+A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage.

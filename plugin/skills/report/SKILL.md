@@ -3,7 +3,7 @@ name: report
 description: Export a Checkmate plan revision or run report as HTML, Markdown, or JSON, or a run as JUnit XML.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules and the report format.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md` for the command rules and `${CLAUDE_PLUGIN_ROOT}/references/session.md` for the report format.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 

@@ -50,6 +50,7 @@ try {
 	const documents = [
 		...Object.keys(stageWrites).map((stage) => [stage, `skills/${stage}/SKILL.md`]),
 		['plan', 'references/workflow.md'],
+		['execute', 'references/session.md'],
 		['execute', 'references/http.md'],
 		['execute', 'references/browser.md'],
 	]

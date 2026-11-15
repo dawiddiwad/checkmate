@@ -3,7 +3,7 @@ name: ui
 description: Start the Checkmate review UI for the workspace in the background and print its URL.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md` for the command rules and `${CLAUDE_PLUGIN_ROOT}/references/session.md` for the report format.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
@@ -16,7 +16,7 @@ checkmate ui
 ```
 
 2. Read the first output line. It is `completed ui url=<url>`.
-3. Run `checkmate inbox`. Report in the format of `workflow.md`: a table of the items that wait for a decision, `Done:` with the URL, and `Next:` with the first decision to make in the UI.
+3. Run `checkmate inbox`. Report in the format of `session.md`: a table of the items that wait for a decision, `Done:` with the URL, and `Next:` with the first decision to make in the UI.
 4. Tell the human to open the URL in a browser on this computer.
 5. Keep the command running. Stop the background command only when the human asks.
 

@@ -15,17 +15,17 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 
 ## Layout
 
-| Path                 | Holds                                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `plugin/`            | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install.     |
-| `plugin/skills/`     | The setup, plan, revise, execute, report, status, and ui skills.                            |
-| `plugin/references/` | `workflow.md` with the shared stage rules, and the tool recipes `browser.md` and `http.md`. |
-| `plugin/contracts/`  | The JSON Schemas. They are the authority.                                                   |
-| `plugin/src/`        | The store, the rules, the commands, the views, the exports, and the review UI.              |
-| `plugin/dist/`       | `checkmate.js`, the bundle of `plugin/bin/checkmate.ts`.                                    |
-| `cli/`               | The npm package `@xoxoai/checkmate`. It adds `delegate`.                                    |
-| `scripts/`           | Generators, build scripts, the release script, and the media scripts.                       |
-| `test/`              | The tests. They are TypeScript and run directly with `node --test`.                         |
+| Path                 | Holds                                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `plugin/`            | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install.                                        |
+| `plugin/skills/`     | The setup, plan, revise, execute, report, status, and ui skills.                                                               |
+| `plugin/references/` | `workflow.md` with the stage rules, `session.md` with the same-session rules, and the tool recipes `browser.md` and `http.md`. |
+| `plugin/contracts/`  | The JSON Schemas. They are the authority.                                                                                      |
+| `plugin/src/`        | The store, the rules, the commands, the views, the exports, and the review UI.                                                 |
+| `plugin/dist/`       | `checkmate.js`, the bundle of `plugin/bin/checkmate.ts`.                                                                       |
+| `cli/`               | The npm package `@xoxoai/checkmate`. It adds `delegate`.                                                                       |
+| `scripts/`           | Generators, build scripts, the release script, and the media scripts.                                                          |
+| `test/`              | The tests. They are TypeScript and run directly with `node --test`.                                                            |
 
 - The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies.
 - The runtime uses erasable TypeScript syntax, so Node.js runs `plugin/bin/checkmate.ts` without a compiler.

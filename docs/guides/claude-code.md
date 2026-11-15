@@ -42,7 +42,7 @@ Give the objective and the requirements, or the sources to read.
 /checkmate:plan checkout for shop@1. Objective: verify checkout totals. Source: docs/checkout.md
 ```
 
-Claude writes revision 1. Each vague term that changes an expected value becomes an open gap, for example `G1: Does the promotion stack with the loyalty discount?` Give the existing product documentation as a source too. Claude plans regression tests for the existing rules near the change and marks them with `"type": "regression"` in the test metadata.
+Claude writes revision 1. Each vague term that changes an expected value becomes an open gap, for example `G1: Does the promotion stack with the loyalty discount?` Give the existing product documentation as a source too. Claude plans regression tests for the existing rules near the change that the documentation states and marks them with `"type": "regression"` in the test metadata.
 
 ### 3. Answer the gaps
 

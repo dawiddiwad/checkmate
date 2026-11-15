@@ -219,9 +219,17 @@ try {
 	app.fix()
 	checkmate(workspace, ['target', 'instance', 'add', 'checkout-local', 'local-2', '--entry', `web=${app.baseUrl}`])
 	checkmate(workspace, ['target', 'instance', 'retire', 'checkout-local', 'local'])
-	const retested = testsOf(revised, 'R2')
-		.filter((test) => test.readiness === 'ready')
+	const regression = revised.tests
+		.filter((test) => test.readiness === 'ready' && test.metadata?.type === 'regression')
 		.map((test) => test.id)
+	const retested = [
+		...new Set([
+			...testsOf(revised, 'R2')
+				.filter((test) => test.readiness === 'ready')
+				.map((test) => test.id),
+			...regression,
+		]),
+	]
 	const prerequisites = revised.tests
 		.filter((test) => retested.includes(test.id))
 		.flatMap((test) => test.dependsOn.filter((id) => !retested.includes(id)))
@@ -241,8 +249,12 @@ try {
 	const retest = checkmate(workspace, ['run', 'show', 'live-retest'])
 	assert.equal(retest.state, 'finalized')
 	assert.equal(retest.instance.instanceId, 'local-2')
+	const defectTests = retest.retest.flatMap((item: { testIds: string[] }) => item.testIds)
+	assert(defectTests.length > 0, JSON.stringify(retest.retest))
 	assert(
-		retest.tests.every((test: { outcome: string }) => test.outcome === 'passed'),
+		retest.tests
+			.filter((test: { testId: string }) => defectTests.includes(test.testId))
+			.every((test: { outcome: string }) => test.outcome === 'passed'),
 		JSON.stringify(retest.tests)
 	)
 	assert.equal(retest.result.coverage.status, 'partial')

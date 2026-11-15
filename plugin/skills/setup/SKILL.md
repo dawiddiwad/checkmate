@@ -3,7 +3,7 @@ name: setup
 description: Set up a Checkmate target profile from a recorded setup request. Check tools and access. Save the profile with target save, and add the first instance.
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the report format.
+Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to record a missing request and how to report.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
@@ -32,15 +32,7 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 ## Steps
 
 1. Run `checkmate target request <targetId>`. It prints the entry points, capabilities, allowed operations, and requested tools.
-   - If it refuses with `Unknown target`, and you are in the same session, record the request from the oracle's message:
-
-     ```sh
-     checkmate target open <targetId> --entry-point "web:url:Storefront." --capabilities browser,http \
-       --operations read_catalog,create_fixture_order --tool "playwright-cli:cli:Drive the browser."
-     ```
-
-   - Give `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. Give `--tool` once for each tool that the oracle names. Ask the oracle for a missing entry point, capability, or operation. Do not invent operations.
-   - In a delegated stage or a sub-agent, do not record a request. Return `needs_decision` with the reason.
+   - If it refuses with `Unknown target`, return `needs_decision` with the reason. In the same session, follow `session.md`.
 2. Run `checkmate target show <targetId>`. If a profile exists, keep its local choices. Save a new revision only for a change.
 3. Run `checkmate target instance list <targetId>`. When an instance is active, use it for the checks below. When no instance is active, find the first instance:
    - Take the entry values from the oracle's message or from the project instructions, for example `AGENTS.md`.
@@ -67,7 +59,7 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 
     Add `--reference <name>` for an authentication alias or an environment variable name. Do not write a credential value.
 
-15. Return the response of `target save`. In the same session, report to the oracle in the format of `workflow.md`: a table of the tools, then `Done:` and `Next:`. The next step is usually a plan: `/checkmate:plan <planId> for <targetId>@<revision>` with the objective and the sources. When `readyForLiveExecution` is `false`, name the missing tool or check instead.
+15. Return the response of `target save`. In the same session, report to the oracle as `session.md` says.
 
 ```json
 {

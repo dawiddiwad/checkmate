@@ -74,11 +74,11 @@ function planned(t: TestContext) {
 	return workspace
 }
 
-function started(t: TestContext) {
+function started(t: TestContext, timeoutSeconds = 600) {
 	const workspace = directory(t)
 	const opened = store(t, workspace)
 	ready(opened)
-	begin(opened, 'run-1', ['T1'], 'build-1')
+	begin(opened, 'run-1', ['T1'], 'build-1', { timeoutSeconds })
 	check(opened, 'run-1', 'T1.A1', 'passed')
 	const session = opened.db.prepare('SELECT browser_session FROM runs').get()!.browser_session as string
 	closeStore(opened)
@@ -204,11 +204,11 @@ reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] }
 	}
 	const plan = await prompt('plan', 'checkout')
 	assert.match(plan, /Do not ask the oracle\. Do not wait for the oracle\./)
-	assert.match(plan, /Write a gap for each vague term that changes an expected value\. Plan regression tests/)
-	assert.match(
-		plan,
-		/read the running application to check the preconditions of the tests\. Do not change its state\./
-	)
+	assert.match(plan, /Write an open blocking gap for each vague term that changes an expected value/)
+	assert.match(plan, /Plan regression tests only for existing rules that the sources state/)
+	assert.match(plan, /Deadline: 300 seconds from now \(\S+Z UTC\)\. Check the time with `date -u`\./)
+	assert.match(plan, /stop and return needs_decision/)
+	assert(plan.includes(`read ${join(pluginRoot, 'skills', 'plan', 'SKILL.md')} and`), plan)
 	assert.doesNotMatch(plan, /person/)
 	assert(
 		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
@@ -427,8 +427,8 @@ reply({ status, subject, reasons })`
 	assert.equal(revised.subject, 'checkout@2')
 })
 
-test('a deadline kills the worker group, keeps the run started, and closes the browser once', async (t) => {
-	const { workspace, session } = started(t)
+test('the run deadline kills the worker group, keeps the run started, and closes the browser once', async (t) => {
+	const { workspace, session } = started(t, 1)
 	const hangs = executable(
 		workspace,
 		'fake-claude',
@@ -440,7 +440,6 @@ setInterval(() => {}, 1000)`
 	const result = await delegate(workspace, 'execute', 'run-1', {
 		allowedTools: rules,
 		pluginRoot,
-		timeoutSeconds: 1,
 		claude: hangs,
 		playwright: playwright(workspace),
 	})
@@ -561,19 +560,18 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 	assert.match(prompt, /Run a command entry at test time\./)
 	assert(
 		prompt.includes(
-			'Reset: `npm run db:reset`. Run it exactly as recorded before a test that needs a fresh state.'
+			'Reset: `npm run db:reset`. The profile authorizes it. Run it exactly as recorded, only between tests,'
 		),
 		prompt
 	)
 	assert.match(prompt, /adapt the test data within the intent of the test before you record a blocking gap/)
-	assert.match(
-		prompt,
-		/Run deadline: \d{4}-\d\d-\d\dT\S+Z \(UTC\)\. \d+ of 600 seconds are used, and \d+ remain\. The `time` line of `checkmate run show run-1`/
-	)
+	assert.match(prompt, /Run deadline: \d{4}-\d\d-\d\dT\S+Z \(UTC\)\. \d+ of 600 seconds remain now\./)
+	assert.match(prompt, /read `remaining=` on its `time` line/)
+	assert.doesNotMatch(prompt, /seconds from now/)
+	assert.match(prompt, /Do not return before `run finish`\./)
+	assert.doesNotMatch(prompt, /stop and return needs_decision/)
 	assert(
-		prompt.includes(
-			'Instance local is retired; its sandbox may be gone. Stop with a blocked gap if it does not respond.'
-		),
+		prompt.includes('Instance local is retired. If its entries do not respond, close each test as error'),
 		prompt
 	)
 })
@@ -600,7 +598,7 @@ reply({ status: 'completed', subject: 'run-3', reasons: [] })`
 		prompt
 	)
 	assert.doesNotMatch(prompt, /run-1|Wrong account/)
-	assert.match(prompt, /Reset: the factory owns it \(no command\)\. Do not run it\./)
+	assert.match(prompt, /Reset: the factory owns it \(no command recorded\)\. Do not run it\./)
 })
 
 test('the execute prompt of a retest names the tests of the earlier open defects first', async (t) => {
@@ -619,7 +617,7 @@ reply({ status: 'completed', subject: 'run-2', reasons: [] })`
 	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
 	assert(
 		prompt.includes(
-			'Retest of run-1. Run the tests of its open defects first: T2 (F1). Give each one a passed or failed outcome.'
+			'Retest of run-1. Run the tests of the open defects first: T2 (run-1/F1). When one fails again, record a new defect finding in this run.'
 		),
 		prompt
 	)

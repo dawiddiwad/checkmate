@@ -22,7 +22,7 @@
 			"minLength": 1
 		},
 		"source": {
-			"description": "Where the rule comes from, for example ticket.md#AC2, docs/cart.md, or a question ID.",
+			"description": "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
 			"type": "string",
 			"minLength": 1
 		},

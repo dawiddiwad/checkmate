@@ -83,6 +83,7 @@ import {
 	exportChange,
 	logEntries,
 	openChange,
+	readEntries,
 	showChange,
 } from './journal.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
@@ -274,10 +275,46 @@ function liteLines(data: LiteState, sources = true) {
 
 type ChangeState = ReturnType<typeof changeState>
 
-function gapLines(gaps: Gap[], build: string) {
+type OpenItems = { build: string; total: number; counts: Record<string, number>; gaps: Gap[] }
+
+function gapLines(gaps: Gap[], build: string, total = gaps.length) {
 	return [
 		...gaps.map((gap) => ['gap', gap.kind, gap.subject, gap.idea]),
-		['count', gaps.length, `ideas for build ${build}. They are suggestions. Nothing depends on them.`],
+		['count', total, `open items on ${build}: things your record does not show yet.`],
+	]
+}
+
+function kindCounts(counts: Record<string, number>) {
+	return Object.entries(counts)
+		.filter(([, count]) => count)
+		.map(([kind, count]) => `${kind} ${count}`)
+		.join(', ')
+}
+
+function notShownLines(changeId: string, open: OpenItems) {
+	const cut = { ...open.counts }
+	for (const gap of open.gaps) cut[gap.kind]--
+	const count = open.total - open.gaps.length
+	if (!count) return []
+	return [
+		[
+			'not_shown',
+			count,
+			kindCounts(cut),
+			`Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`,
+		],
+	]
+}
+
+function openLines(changeId: string, open: OpenItems) {
+	if (!open.total) return [['open_items', `0 on ${open.build}`, 'Your record shows no open item on this build.']]
+	return [
+		...open.gaps.map((gap) => ['open', gap.kind, gap.subject, gap.idea]),
+		[
+			'open_items',
+			`${open.total} on ${open.build}: ${kindCounts(open.counts)}`,
+			`Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`,
+		],
 	]
 }
 
@@ -885,46 +922,52 @@ const commands: Record<string, Command> = {
 		flags: { build: 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
+		run: (store, args, { actor, text }) =>
 			logEntries(store, actor, {
 				changeId: value(args, 'changeId')!,
 				build: value(args, 'build'),
-				entries: stdin(),
+				entries: readEntries(text()),
 			}),
 		print: (reply) => {
-			const saved = reply.data.saved as Array<{
-				id: string
-				kind: string
-				build: string | null
-				compare?: string
+			const saved = reply.data.saved as Array<{ id: string; link?: string; compare?: string }>
+			const refused = reply.data.refused as Array<{
+				field: string
+				reason: string
+				hint?: string
+				fix?: unknown
 			}>
-			const refused = reply.data.refused as Array<{ index: number; reason: string; hint?: string }>
 			return {
 				facts: { saved: saved.length, refused: refused.length },
 				lines: [
-					...saved.map((entry) => [
-						'saved',
-						entry.id,
-						entry.kind,
-						entry.build,
-						...(entry.compare ? [entry.compare] : []),
+					['saved', saved.map((entry) => entry.id).join(',')],
+					...saved.flatMap((entry) => (entry.link ? [['link', entry.id, entry.link]] : [])),
+					...saved.flatMap((entry) => (entry.compare ? [['compare', entry.id, entry.compare]] : [])),
+					...refused.map((entry) => [
+						'refused',
+						entry.field,
+						entry.reason,
+						...(entry.fix ? [`send: ${JSON.stringify(entry.fix)}`] : []),
+						entry.hint,
 					]),
-					...refused.map((entry) => ['refused', `[${entry.index}]`, entry.reason, entry.hint]),
 					...(refused.length
 						? nextLines(['Fix each refused entry. Send only those entries again. The saved entries stay.'])
 						: []),
+					...openLines(reply.subject, reply.data.open as OpenItems),
 				],
 			}
 		},
 	},
 	'journal gaps': {
 		positionals: ['changeId'],
-		flags: { build: 'value' },
-		run: (store, args) => changeGaps(store, value(args, 'changeId')!, value(args, 'build')),
-		print: (reply) => ({
-			facts: { build: reply.data.build },
-			lines: gapLines(reply.data.gaps as Gap[], String(reply.data.build)),
-		}),
+		flags: { build: 'value', all: 'switch' },
+		run: (store, args) => changeGaps(store, value(args, 'changeId')!, value(args, 'build'), args.all === true),
+		print: (reply) => {
+			const open = reply.data as unknown as OpenItems
+			return {
+				facts: { build: open.build },
+				lines: [...gapLines(open.gaps, open.build, open.total), ...notShownLines(reply.subject, open)],
+			}
+		},
 	},
 	'journal guide': {
 		positionals: ['changeId?'],

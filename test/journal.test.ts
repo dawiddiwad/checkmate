@@ -88,11 +88,11 @@ test('a change goes from base over b1 to b2 with answers, verdicts, and a decisi
 		cli(workspace, ['journal', 'guide', 'cart']).lines.includes('open_defect\tD1\tb1\thigh\tNo discount at 5 items')
 	)
 	assert.deepEqual(kinds(gaps(workspace, 'b2')), [
+		'baseline',
+		'retest',
 		'build',
 		'criterion',
 		'answer',
-		'baseline',
-		'retest',
 		'entry_point',
 		'entry_point',
 	])
@@ -157,35 +157,54 @@ test('a batch saves each valid entry and refuses each malformed entry with its i
 	assert.deepEqual(reply.body.refused, [
 		{
 			index: 1,
+			field: '[1].severity',
 			reason: '[1]/severity must be one of: critical, high, medium, low',
 			hint: 'Fix the named fields. Run checkmate journal guide to read the fields of defect.',
+			fix: {
+				kind: 'defect',
+				title: 'Wrong total',
+				expected: '45.00',
+				actual: '50.00',
+				severity: 'critical|high|medium|low',
+			},
 		},
 		{
 			index: 2,
+			field: '[2].evidence',
 			reason: 'Evidence file not found: evidence/missing.png',
 			hint: 'Save the file in the workspace first. Or give the text of what you saw.',
+			fix: { kind: 'observation', saw: 'x', evidence: '<a file in the workspace, or the text that you saw>' },
 		},
 		{
 			index: 3,
+			field: '[3].defect',
 			reason: '[3].defect names no defect: D9.',
 			hint: 'Use the ID of an earlier defect. Run checkmate journal show to read the IDs.',
+			fix: { kind: 'verdict', defect: '<defect ID>', result: 'fixed', saw: 'ok' },
 		},
 		{
 			index: 4,
+			field: '[4].kind',
 			reason: '[4]/kind must be one of: criterion, observation, defect, question, verdict, note',
 			hint: 'Fix the named fields. Run checkmate journal guide to read the fields of guess.',
+			fix: { kind: 'criterion|observation|defect|question|verdict|note' },
 		},
 	])
 	const text = cli(workspace, ['journal', 'log', 'cart'], { kind: 'observation', saw: 'No build.' })
 	assert.equal(text.code, 1)
-	assert(text.lines.includes('reason: [0] needs field "build"'), text.output)
+	assert(
+		text.lines.includes(
+			'reason: [0] needs field "build". Send: {"kind":"observation","saw":"No build.","build":"<build>"}'
+		),
+		text.output
+	)
 	assert(text.lines.includes('hint: Give the build in the entry, or with --build on the call.'), text.output)
 	assert.equal(JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output).entries.length, 1)
 })
 
 test('gaps lists each kind of uncovered work as an idea', (t) => {
 	const workspace = opened(t)
-	assert.deepEqual(kinds(gaps(workspace, 'b1')), ['build', 'criteria', 'entry_point', 'entry_point'])
+	assert.deepEqual(kinds(gaps(workspace, 'b1')), ['baselines', 'build', 'criteria', 'entry_point', 'entry_point'])
 	log(workspace, 'base', [
 		{ kind: 'criterion', id: 'C1', text: 'Five items get 10% off.', source: 'ticket.md#AC1' },
 		{
@@ -200,7 +219,13 @@ test('gaps lists each kind of uncovered work as an idea', (t) => {
 		{ kind: 'question', id: 'Q1', question: 'Does the discount stack?' },
 	])
 	json(workspace, ['journal', 'answer', 'cart', 'Q1', '--answer', 'No.'])
-	assert.deepEqual(kinds(gaps(workspace, 'base')), ['entry_point', 'entry_point'])
+	assert.deepEqual(kinds(gaps(workspace, 'base')), [
+		'baselines',
+		'baseline_area',
+		'baseline_area',
+		'entry_point',
+		'entry_point',
+	])
 	log(workspace, 'b1', [
 		{ kind: 'observation', about: 'C1', saw: '45.00', verdict: 'ok', via: 'api' },
 		{ kind: 'observation', id: 'W1', about: 'C1', saw: 'The badge is missing', verdict: 'wrong', via: 'api' },
@@ -208,43 +233,50 @@ test('gaps lists each kind of uncovered work as an idea', (t) => {
 	])
 	const found = gaps(workspace, 'b1')
 	assert.deepEqual(kinds(found), [
-		'criterion',
-		'answer',
 		'baseline',
-		'evidence',
 		'wrong',
+		'evidence',
+		'criterion',
+		'area',
+		'area',
+		'answer',
 		'entry_point',
-		'area',
-		'area',
+		'entry_point',
 	])
 	assert.deepEqual(
 		found.map((gap) => gap.subject),
 		[
-			'C2 A coupon takes 5.00 off.',
-			'Q1 No.',
 			'B1 on base: 23.00',
-			'D1 Coupon fails',
 			'W1 The badge is missing',
-			'no observation on b1 used the UI',
+			'D1 Coupon fails',
+			'C2 A coupon takes 5.00 off.',
 			'src/coupon.js',
 			'src/tax.js',
+			'Q1 No.',
+			'no observation on b1 used the UI',
+			'C1 was observed only through the API',
 		]
 	)
-	assert.match(found[2].idea, /^Do it again on b1: GET \/api\/tax\?net=100\. Log an observation with "repeats": "B1"/)
+	assert.equal(found[0].idea, 'Do it again on b1: GET /api/tax?net=100. Log the value with "repeats": "B1".')
 	log(workspace, 'b2', [{ kind: 'observation', about: 'C1', saw: '45.00', verdict: 'ok', via: 'ui' }])
-	assert.deepEqual(kinds(gaps(workspace, 'b2')), [
-		'happy_path',
-		'criterion',
-		'answer',
+	const later = gaps(workspace, 'b2')
+	assert.deepEqual(kinds(later), [
 		'baseline',
 		'retest',
+		'happy_path',
+		'criterion',
+		'area',
+		'area',
+		'answer',
 		'entry_point',
-		'area',
-		'area',
 	])
+	assert.equal(
+		later[2].idea,
+		'One observation, only through the UI. Try a boundary value, invalid input, the API, or the state after a change.'
+	)
 	const printed = cli(workspace, ['journal', 'gaps', 'cart'])
 	assert.equal(printed.lines[0], 'completed cart build=b2')
-	assert.equal(printed.lines.at(-1), 'count\t8\tideas for build b2. They are suggestions. Nothing depends on them.')
+	assert.equal(printed.lines.at(-1), 'count\t8\topen items on b2: things your record does not show yet.')
 })
 
 test('a repeated baseline compares normalised values, and a difference needs a note or a defect', (t) => {
@@ -267,7 +299,7 @@ test('a repeated baseline compares normalised values, and a difference needs a n
 			'differs from B3 on base: "1.50", now "2.00". Explain it with a note, or report a defect.',
 		]
 	)
-	assert.deepEqual(gaps(workspace, 'b1').slice(1), [
+	assert.deepEqual(gaps(workspace, 'b1').slice(0, 1), [
 		{
 			kind: 'difference',
 			subject: 'R3 repeats B3: base "1.50", b1 "2.00"',
@@ -279,7 +311,7 @@ test('a repeated baseline compares normalised values, and a difference needs a n
 	log(workspace, 'b2', { kind: 'observation', repeats: 'R3', saw: 'Fee', value: '2.5', via: 'api' })
 	assert.deepEqual(
 		gaps(workspace, 'b2').map((gap) => gap.subject),
-		['no criterion', 'B1 on base:  2  items ', 'B2 on base: 420.0', 'O1 repeats B3: b1 "2.00", b2 "2.5"']
+		['O1 repeats B3: b1 "2.00", b2 "2.5"', 'B1 on base:  2  items ', 'B2 on base: 420.0', 'no criterion']
 	)
 })
 
@@ -326,7 +358,7 @@ test('an entry supersedes an earlier entry of the same kind and keeps its ID', (
 		record.history.map((entry: { title: string }) => entry.title),
 		['Total is wrong', 'No discount at 5 items']
 	)
-	assert.deepEqual(kinds(gaps(workspace, 'b1')), ['build', 'criteria', 'entry_point', 'entry_point'])
+	assert.deepEqual(kinds(gaps(workspace, 'b1')), ['baselines', 'build', 'criteria', 'entry_point', 'entry_point'])
 })
 
 test('a change needs a known target, and a question ID for an answer', (t) => {
@@ -354,10 +386,235 @@ test('the journal guide comes from the entry schemas and stays short', (t) => {
 	}
 	assert(guide.includes(JSON.stringify(schema.example)))
 	assert.doesNotMatch(guide, /checklist/i)
-	assert(guide.length / 4 < 920, `${guide.length / 4} tokens`)
+	assert(guide.length / 4 < 1000, `${guide.length / 4} tokens`)
 	writeFileSync(join(workspace, 'evidence', 'cart-5.png'), 'png')
 	const entries = JSON.parse(guide.split("<<'EOF'\n")[1].split('\nEOF')[0])
 	const reply = log(workspace, 'b1', entries)
 	assert.deepEqual(reply.body.refused, [])
 	assert.equal(reply.body.saved.length, 3)
+})
+
+type Open = {
+	build: string
+	total: number
+	counts: Record<string, number>
+	gaps: Array<{ kind: string; subject: string; idea: string }>
+}
+
+test('each log call ends with the ranked open items, at most 8, and their counts', (t) => {
+	const workspace = opened(t)
+	log(workspace, 'base', [
+		{ kind: 'criterion', id: 'C1', text: 'Five items get 10% off.', source: 'ticket.md#AC1' },
+		{ kind: 'observation', id: 'B1', steps: 'GET /api/fee', saw: 'Fee 1.50', value: '1.50', via: 'api' },
+		{ kind: 'observation', id: 'B2', steps: 'GET /api/tax', saw: 'Tax 23.00', value: '23.00', via: 'api' },
+	])
+	const reply = log(workspace, 'b1', [
+		{ kind: 'observation', id: 'R1', repeats: 'B1', saw: 'Fee 2.00', value: '2.00', via: 'api' },
+		{ kind: 'observation', id: 'W1', about: 'C1', saw: 'No discount', verdict: 'wrong', via: 'api' },
+		{ kind: 'defect', id: 'D1', title: 'Rounding', expected: '1', actual: '2', severity: 'low', suspected: true },
+		{ kind: 'note', id: 'N1', text: 'The coupon page is not tested.' },
+		{ kind: 'criterion', id: 'C2', text: 'A coupon takes 5.00 off.', source: 'ticket.md#AC2' },
+		{ kind: 'criterion', id: 'C3', text: 'A fee is 1.50.', source: 'ticket.md#AC3' },
+	])
+	const open = reply.body.open as Open
+	assert.deepEqual(kinds(open.gaps), [
+		'difference',
+		'baseline',
+		'wrong',
+		'unverified',
+		'open_end',
+		'happy_path',
+		'criterion',
+		'entry_point',
+	])
+	assert.equal(open.total, 9)
+	assert.deepEqual(open.counts, {
+		difference: 1,
+		baseline: 1,
+		wrong: 1,
+		unverified: 1,
+		open_end: 1,
+		happy_path: 1,
+		criterion: 2,
+		entry_point: 1,
+	})
+	const text = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Explored.' })
+	assert.equal(text.lines[1], 'saved\tN2')
+	assert.equal(text.lines.filter((line) => line.startsWith('open\t')).length, 8)
+	assert.equal(
+		text.lines.at(-1),
+		'open_items\t9 on b1: difference 1, baseline 1, wrong 1, unverified 1, open_end 1, happy_path 1, criterion 2, entry_point 1\tRun checkmate journal gaps cart --build b1 --all to see all of them.'
+	)
+	const quiet = opened(t, 'http')
+	const none = cli(
+		quiet,
+		['journal', 'log', 'cart', '--build', 'base'],
+		[
+			{ kind: 'observation', saw: 'Fee', value: '1.50', via: 'api' },
+			{ kind: 'observation', saw: 'Tax', value: '23.00', via: 'api' },
+			{ kind: 'observation', saw: 'Count', value: '3', via: 'api' },
+		]
+	)
+	assert.equal(none.lines.at(-1), 'open_items\t0 on base\tYour record shows no open item on this build.')
+})
+
+test('on the first build, few baselines give one suggestion and each area without a baseline is named', (t) => {
+	const workspace = opened(t, 'http')
+	const first = log(workspace, 'base', [
+		{ kind: 'criterion', text: 'Five items get 10% off.', source: 'ticket.md#AC1', area: 'src/cart.js' },
+		{ kind: 'note', text: 'The diff changes the tax code.', area: 'src/tax.js' },
+		{ kind: 'observation', about: 'src/tax.js', saw: 'Tax 23.00', value: '23.00', via: 'api' },
+	]).body.open as Open
+	assert.deepEqual(
+		first.gaps.slice(0, 2).map((gap) => gap.subject),
+		['1 baseline on base', 'src/cart.js']
+	)
+	assert.match(
+		first.gaps[0].idea,
+		/the same totals and calculations, validation and error messages, lists, exports, and counters/
+	)
+	const more = log(workspace, 'base', [
+		{ kind: 'observation', about: 'src/cart.js', saw: 'Total 50.00', value: '50.00', via: 'api' },
+		{ kind: 'observation', saw: 'Count 3', value: '3', via: 'api' },
+	]).body.open as Open
+	assert.deepEqual(kinds(more.gaps), [])
+	log(workspace, 'b1', { kind: 'observation', saw: 'The cart loads.', via: 'api' })
+	assert(!kinds(gaps(workspace, 'b1')).includes('baselines'))
+})
+
+test('an observation with a value links itself to one earlier baseline, and prints the link and the difference', (t) => {
+	const workspace = opened(t, 'http')
+	log(workspace, 'base', [
+		{ kind: 'observation', id: 'B1', about: 'C1', steps: 'GET /api/cart', saw: '50.00', value: '50.00' },
+		{ kind: 'observation', id: 'fee-base', saw: 'Fee', value: '1.50' },
+		{ kind: 'observation', id: 'X1', about: 'tax', steps: 'GET /api/tax', saw: '23', value: '23' },
+		{ kind: 'observation', id: 'X2', about: 'tax', steps: 'get  /api/tax', saw: '23', value: '23' },
+	])
+	const b1 = log(workspace, 'b1', [
+		{ kind: 'observation', about: 'C1', steps: ' get /API/cart ', saw: '45.00', value: '45.00' },
+		{ kind: 'observation', id: 'fee-b1', saw: 'Fee', value: '1.5' },
+		{ kind: 'observation', about: 'tax', steps: 'GET /api/tax', saw: '23', value: '23' },
+		{ kind: 'observation', about: 'C1', steps: 'GET /api/cart', saw: '45.00', value: '45.00', repeats: 'none' },
+	])
+	assert.deepEqual(
+		b1.body.saved.map((entry: { link?: string; compare?: string }) => [entry.link, entry.compare]),
+		[
+			[
+				'repeats B1 on base (the same about and steps). If this is wrong, log O1 again with "supersedes": "O1" and "repeats": "<ID>" or "none".',
+				'differs from B1 on base: "50.00", now "45.00". Explain it with a note, or report a defect.',
+			],
+			[
+				'repeats fee-base on base (the same ID without the build name). If this is wrong, log fee-b1 again with "supersedes": "fee-b1" and "repeats": "<ID>" or "none".',
+				'same as fee-base on base: 1.5',
+			],
+			['not linked: X1 and X2 match. Give "repeats" to compare.', undefined],
+			[undefined, undefined],
+		]
+	)
+	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output)
+	const entry = (id: string) => record.entries.find((item: { id: string }) => item.id === id)
+	assert.equal(entry('O1').repeats, 'B1')
+	assert.equal(entry('O1').linked, 'the same about and steps')
+	assert.equal(entry('O3').repeats, undefined)
+	const b2 = log(workspace, 'b2', { kind: 'observation', id: 'fee-b2', saw: 'Fee', value: '2.00' })
+	assert.match(b2.body.saved[0].link, /^repeats fee-b1 on b1 /)
+	assert.equal(
+		b2.body.saved[0].compare,
+		'differs from fee-b1 on b1: "1.5", now "2.00". Explain it with a note, or report a defect.'
+	)
+})
+
+test('a PM answer without a decision gives no open item', (t) => {
+	const workspace = opened(t, 'http')
+	log(workspace, 'base', [
+		{ kind: 'question', id: 'Q1', question: 'Does the discount stack?' },
+		{ kind: 'question', id: 'Q2', question: 'Is 5 inclusive?' },
+		{ kind: 'question', id: 'Q3', question: 'Round up?' },
+		{ kind: 'question', id: 'Q4', question: 'Coupon first?' },
+	])
+	json(workspace, ['journal', 'answer', 'cart', 'Q1', '--answer', 'No decision; use the ticket and existing docs.'])
+	json(workspace, ['journal', 'answer', 'cart', 'Q2', '--answer', 'Yes.'])
+	json(workspace, ['journal', 'answer', 'cart', 'Q3', '--answer', 'See the docs.'])
+	json(workspace, ['journal', 'answer', 'cart', 'Q4', '--answer', 'No, see the docs.'])
+	assert.deepEqual(
+		gaps(workspace, 'b1')
+			.filter((gap) => gap.kind === 'answer')
+			.map((gap) => gap.subject),
+		['Q2 Yes.', 'Q4 No, see the docs.']
+	)
+})
+
+test('notes and observations that say something is open are open ends until an entry is about them', (t) => {
+	const workspace = opened(t, 'http')
+	log(workspace, 'b1', [
+		{ kind: 'note', text: 'The export was not tested.' },
+		{ kind: 'note', text: 'Refunds skipped: no time.' },
+		{ kind: 'note', text: 'TODO: try a negative quantity.' },
+		{ kind: 'observation', saw: 'The error is not captured in the log.', via: 'api' },
+		{ kind: 'observation', saw: 'The checkbox is not checked after reload.', via: 'api' },
+		{ kind: 'note', text: 'The cart page works.' },
+	])
+	const ends = () =>
+		gaps(workspace, 'b1')
+			.filter((gap) => gap.kind === 'open_end')
+			.map((gap) => gap.subject)
+	assert.deepEqual(ends(), [
+		'N1 The export was not tested.',
+		'N2 Refunds skipped: no time.',
+		'N3 TODO: try a negative quantity.',
+		'O1 The error is not captured in the log.',
+	])
+	log(workspace, 'b1', { kind: 'observation', about: 'N1', saw: 'The export has 3 rows.', via: 'api' })
+	assert.equal(ends().length, 3)
+})
+
+test('the log input can be one object, an array, a wrapper, JSON lines, a code fence, or have trailing commas', (t) => {
+	const workspace = opened(t, 'http')
+	const ids = (stdin: string) => {
+		const reply = json(workspace, ['journal', 'log', 'cart', '--build', 'b1'], stdin)
+		return [reply.body.saved?.map((entry: { id: string }) => entry.id), reply.body.refused]
+	}
+	assert.deepEqual(ids('{"kind":"note","text":"One."}'), [['N1'], []])
+	assert.deepEqual(ids('```json\n[{"kind":"note","text":"Two.",},]\n```'), [['N2'], []])
+	assert.deepEqual(ids('{"entries":[{"kind":"note","text":"Three, with a comma, }"}]}'), [['N3'], []])
+	assert.deepEqual(ids('{"kind":"note","text":"Four."}\n{"kind":"note","text":"Five."}\n'), [['N4', 'N5'], []])
+	const [saved, refused] = ids(
+		'[{"kind":"note","text":"Six."},\n{"kind":"note","text":"a "quote""},\n{"kind":"note","text":"[Seven]"}]'
+	)
+	assert.deepEqual(saved, ['N6', 'N7'])
+	assert.equal(refused[0].index, 1)
+	assert.equal(refused[0].field, '[1]')
+	assert.match(refused[0].reason, /^\[1\] is not valid JSON \(.+\): \{"kind":"note","text":"a "quote""\}$/)
+	const broken = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], '{"kind": "note", "text": oops}')
+	assert.equal(broken.code, 1)
+	assert.match(broken.output, /reason: Standard input is not valid JSON/)
+	const empty = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], ' ')
+	assert(empty.lines.includes('reason: Missing JSON payload on standard input'), empty.output)
+	assert.deepEqual(ids('{"kind":"observation","saw":"x","evidence":"http://127.0.0.1:4173/api/cart"}'), [['O1'], []])
+})
+
+test('gaps prints at most 8 lines of a kind and about 40 lines, with the count of the rest, and --all prints all', (t) => {
+	const workspace = opened(t, 'http')
+	log(
+		workspace,
+		'base',
+		Array.from({ length: 12 }, (_, i) => ({ kind: 'observation', saw: `Value ${i}`, value: String(i), via: 'api' }))
+	)
+	log(
+		workspace,
+		'b1',
+		Array.from({ length: 40 }, (_, i) => ({ kind: 'criterion', text: `Rule ${i}`, source: 'ticket.md' }))
+	)
+	const short = cli(workspace, ['journal', 'gaps', 'cart', '--build', 'b1'])
+	const lines = short.lines.filter((line) => line.startsWith('gap\t'))
+	assert.equal(lines.length, 18)
+	assert.equal(new Set(lines).size, lines.length)
+	assert.equal(short.lines.at(-2), 'count\t54\topen items on b1: things your record does not show yet.')
+	assert.equal(
+		short.lines.at(-1),
+		'not_shown\t36\tbaseline 4, criterion 32\tRun checkmate journal gaps cart --build b1 --all to see all of them.'
+	)
+	const every = cli(workspace, ['journal', 'gaps', 'cart', '--build', 'b1', '--all'])
+	assert.equal(every.lines.filter((line) => line.startsWith('gap\t')).length, 54)
+	assert.equal(every.lines.at(-1), 'count\t54\topen items on b1: things your record does not show yet.')
 })

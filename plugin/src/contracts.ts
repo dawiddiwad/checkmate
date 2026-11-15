@@ -82,12 +82,28 @@ export function same(a: unknown, b: unknown) {
 	return canonical(a) === canonical(b)
 }
 
-export function schemaErrors(name: string, value: unknown, prefix = name) {
+export type SchemaProblem = { field: string; text: string; unknown: boolean; choices?: string[] }
+
+export function schemaProblems(name: string, value: unknown, prefix = name): SchemaProblem[] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
 	if (check(value)) return []
 	return unionErrors(check.errors ?? [])
 		.filter((error) => error.keyword !== 'propertyNames')
-		.map((error) => schemaError(`${prefix}${error.instancePath}`, error))
+		.map((error) => ({
+			field: String(
+				error.instancePath.split('/')[1] ??
+					error.params.missingProperty ??
+					error.params.additionalProperty ??
+					''
+			),
+			text: schemaError(`${prefix}${error.instancePath}`, error),
+			unknown: error.keyword === 'additionalProperties',
+			...(error.keyword === 'enum' ? { choices: (error.params.allowedValues ?? []).map(String) } : {}),
+		}))
+}
+
+export function schemaErrors(name: string, value: unknown, prefix = name) {
+	return schemaProblems(name, value, prefix).map((problem) => problem.text)
 }
 
 export function validate<K extends keyof Documents>(name: K, value: unknown, hint?: string): Documents[K] {

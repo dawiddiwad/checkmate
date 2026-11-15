@@ -65,7 +65,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 | Journal   | `journal open <changeId> --target <targetId>`           | Opens a change for the journal, with an optional `--instance`.                                                                    |
 |           | `journal guide [<changeId>]`                            | Prints how to log entries, from the entry schemas. With a change, it also prints the PM answers and the open defects.             |
 |           | `journal log <changeId> [--build <build>]`              | Saves each valid entry of standard input, and refuses each invalid entry alone. Read [Journal mode](#journal-mode).               |
-|           | `journal gaps <changeId> [--build <build>]`             | Prints what the journal does not cover yet on a build, as ideas.                                                                  |
+|           | `journal gaps <changeId> [--build <build>] [--all]`     | Prints the open items of a build: things the record does not show yet. `--all` prints all of them.                                |
 |           | `journal show <changeId>`, `journal export <changeId>`  | Prints the record of a change, or exports it as JSON.                                                                             |
 |           | `journal answer <changeId> <questionId> --answer <a>`   | Records a PM answer.                                                                                                              |
 |           | `journal accept\|reject <changeId> --build <build>`     | Records the decision of the oracle on a build, with `--rationale`, and prints the gaps of the build.                              |
@@ -322,26 +322,30 @@ Journal mode is a prototype. The commands have the prefix `journal`, because `lo
 
 1. The opener runs `journal open <changeId> --target <targetId>`. The target must exist. The opener can log criteria with `journal log`.
 2. The agent runs `journal guide <changeId>`. The guide comes from the `description` and `examples` of `plugin/contracts/journal-*.schema.json`.
-3. The agent runs `journal log` at any time, in any order. Standard input is one entry or a JSON array of entries. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, and a hint. A call that saves no entry is refused. A call that saves one or more entries completes, with a `refused` line for each refused entry.
-4. The agent runs `journal gaps` when it thinks that it is done. Each line is an idea. `gaps` always completes, and no command needs it to be empty.
+3. The agent runs `journal log` at any time, in any order. Standard input is one entry, a JSON array of entries, an object with an `entries` array, or one entry on each line. Checkmate removes a Markdown code fence around the JSON and a comma before `}` or `]`. When the array is not valid JSON, Checkmate reads each entry alone. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, a hint, and `fix`: the entry with each bad field corrected or removed. A call that saves no entry is refused. A call that saves one or more entries completes. It prints the saved IDs on one line, a `link` line for each automatic baseline link, a `compare` line for each repeated value, a `refused` line for each refused entry, and then the open items.
+4. The agent runs `journal gaps` at any time. `gaps` always completes, and no command needs it to be empty.
 5. The oracle runs `journal answer`, `journal accept`, and `journal reject`.
 
-The entry kinds are `criterion`, `observation`, `defect`, `question`, `verdict`, and `note`. Checkmate gives an ID with the prefix `C`, `O`, `D`, `Q`, `V`, or `N` when the entry has no `id`. An entry with `supersedes` replaces the earlier entry of the same kind and keeps its ID. Nothing is deleted: `journal export` has each version in `history`. Evidence is a file path in the workspace or a text. Checkmate stores the bytes of each file in `blobs`. A string with a space, or a string that does not look like a path, is text.
+The entry kinds are `criterion`, `observation`, `defect`, `question`, `verdict`, and `note`. Checkmate gives an ID with the prefix `C`, `O`, `D`, `Q`, `V`, or `N` when the entry has no `id`. An entry with `supersedes` replaces the earlier entry of the same kind and keeps its ID. Nothing is deleted: `journal export` has each version in `history`. Evidence is a file path in the workspace or a text. Checkmate stores the bytes of each file in `blobs`. A string with a space or `://`, or a string that does not look like a path, is text.
 
-`journal gaps` lists, for a build:
+An observation with a `value` on an earlier build is a baseline. When an observation with a `value` has no `repeats`, Checkmate links it to one earlier observation with a `value` when exactly one chain of repeats matches: the same `about` and the same `steps`, without letter case and extra spaces, or the same ID without the build name at the end (`total-b1` and `total-base` or `total`). Checkmate saves the rule in `linked`. With two or more matches it links nothing and says so. `"repeats": "none"` stops the link.
 
-- `build`: the build has no observation.
-- `criteria`: the journal has no criterion.
-- `criterion`: a criterion has no observation on the build. `happy_path`: it has one observation, or only `ok` observations.
-- `answer`: a PM answer that no observation on the build is about.
-- `baseline`: an observation with a `value` on an earlier build that no observation on the build repeats. `difference`: a repeat with another value and no note or defect about it. Checkmate compares the values as `lite record` does: it removes spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form.
-- `retest`: a defect of an earlier build with no verdict on the build, unless an earlier verdict is `fixed`.
-- `evidence`: a defect of the build without evidence.
+Open items are things the record does not show yet. Each `journal log` call prints at most 8 of them, and one `open_items` line with the count of each kind. Each kind gets one line first, and the other lines follow the rank. `journal gaps` prints at most 8 lines of each kind and at most 40 lines, then a `count` line and a `not_shown` line with the count of each kind that it does not show. An item shows on one line only. The kinds, in rank order:
+
+- `difference`: a repeat with another value and no note or defect about it. Checkmate compares the values as `lite record` does: it removes spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form.
+- `baseline`: an observation with a `value` on an earlier build that no observation on the build repeats, with its steps.
+- `baselines`: on the first build of the change, fewer than 3 observations have a `value`. The idea lists the existing rules near the change that are worth a baseline. `baseline_area`: on the first build, a changed area with no baseline about it.
 - `wrong`: an observation marked `wrong` with no defect or note about it.
-- `entry_point`: no observation on the build used the UI (capability `browser`) or the API (capability `http`) of the target.
+- `unverified`: a suspected defect that no observation shows on the running app, or a defect that only `via: code` observations show. `evidence`: a defect of the build without evidence.
+- `open_end`: a note or an observation of the build that says that something is not tested, not verified, not captured, not covered, skipped, or `TODO`, with no entry about it.
+- `retest`: a defect of an earlier build with no verdict on the build, unless an earlier verdict is `fixed`.
+- `build`: the build has no observation. `value`: on `base`, an observation without a `value`.
+- `criteria`: the journal has no criterion. `criterion`: a criterion has no observation on the build. `happy_path`: it has one observation, or only `ok` observations.
 - `area`: a changed area (the `area` of a criterion or a note) that no observation on the build is about.
+- `answer`: a PM answer that no observation on the build is about. An answer that only sends the agent to the ticket or the docs, for example "No decision; use the ticket and existing docs.", has no decision and gives no item.
+- `entry_point`: no observation on the build used the UI (capability `browser`) or the API (capability `http`) of the target, or a criterion was observed only through some of them.
 
-On `base`, the lines `criteria`, `criterion`, `happy_path`, `answer`, and `area` do not show, because the change is not built. The output ends with a `count` line. An observation is about an ID when its `about` is the ID or has the ID as a word.
+On `base`, the lines `criteria`, `criterion`, `happy_path`, `answer`, and `area` do not show, because the change is not built. An observation is about an ID when its `about` is the ID or has the ID as a word.
 
 `journal show` prints the criteria, a matrix of the observations for each criterion or `about` on each build, the defects with their verdicts, the questions with their answers, and the decisions. `journal accept` and `journal reject` print the gaps of the build at the time of the decision.
 

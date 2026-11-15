@@ -1557,7 +1557,7 @@ function Fe(a, { instancePath: t = "", parentData: $, parentDataProperty: Z, roo
   return Fe.errors = e, s === 0;
 }
 var Cs = Ke;
-var Ps = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-entry.schema.json", description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.", type: "object", properties: { kind: { description: "The kind.", enum: ["criterion", "observation", "defect", "question", "verdict", "note"] }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" } }, required: ["kind"], examples: [[{ kind: "criterion", id: "C1", text: "5 or more items get 10% off.", source: "ticket.md#AC2" }, { kind: "observation", id: "O1", about: "C1", steps: "Add 5 pens in the cart", saw: "Total 50.00", value: "50.00", verdict: "wrong", via: "ui", evidence: "evidence/cart-5.png" }, { kind: "defect", id: "D1", title: "No discount at 5 items", expected: "45.00 (AC2)", actual: "50.00", severity: "high", links: ["O1"], evidence: "evidence/cart-5.png" }]], definitions: { id: { description: "Your ID, for example D1. When you leave it out, Checkmate gives one.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, build: { description: "The build that you tested, for example base, b1, or b2. Give it here or with --build.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, supersedes: { description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, about: { description: "A criterion ID, a question ID, an area of the diff, or free text.", type: "string", minLength: 1 }, area: { description: "A changed area of the diff, for example src/cart.js.", type: "string", minLength: 1 }, steps: { description: "What you did.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] }, evidence: { description: "A file path in the workspace, or the text that you saw. A string or an array.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] } } };
+var Ps = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-entry.schema.json", description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.", type: "object", properties: { kind: { description: "The kind.", enum: ["criterion", "observation", "defect", "question", "verdict", "note"] }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" } }, required: ["kind"], examples: [[{ kind: "criterion", id: "C1", text: "5 or more items get 10% off.", source: "ticket.md#AC2" }, { kind: "observation", id: "O1", about: "C1", steps: "Add 5 pens in the cart", saw: "Total 50.00", value: "50.00", verdict: "wrong", via: "ui", evidence: "evidence/cart-5.png" }, { kind: "defect", id: "D1", title: "No discount at 5 items", expected: "45.00 (AC2)", actual: "50.00", severity: "high", links: ["O1"], evidence: "evidence/cart-5.png" }]], definitions: { id: { description: "Your ID, for example D1. Without it, Checkmate gives one.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, build: { description: "The build that you tested, for example base or b1. Give it here or with --build.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, supersedes: { description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, about: { description: "A criterion ID, a question ID, a diff area, or free text.", type: "string", minLength: 1 }, area: { description: "A changed area, for example src/cart.js.", type: "string", minLength: 1 }, steps: { description: "What you did.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] }, evidence: { description: "A workspace file or the text that you saw, or an array of them.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] } } };
 function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
@@ -1713,7 +1713,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: Z, roo
   return We.errors = e, s === 0;
 }
 var Rs = Me;
-var ye = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-observation.schema.json", description: "What you did and what you saw. An observation on base with a value is a baseline.", type: "object", properties: { kind: { const: "observation" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { description: "What you saw.", type: "string", minLength: 1 }, value: { description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.", type: "string", minLength: 1 }, repeats: { description: "The ID of an earlier observation that you did again on this build.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, verdict: { description: "ok when the result is correct. wrong when it is not.", enum: ["ok", "wrong"] }, via: { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "saw"], additionalProperties: false };
+var ye = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-observation.schema.json", description: "What you did and what you saw. A value on base makes a baseline. Checkmate compares it on each later build.", type: "object", properties: { kind: { const: "observation" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { description: "What you saw.", type: "string", minLength: 1 }, value: { description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.", type: "string", minLength: 1 }, repeats: { description: "The ID of an earlier observation that you did again. Without it, Checkmate links a value to the one earlier value with the same about and steps, or the same ID without the build name (total-b1, total-base). none: no link.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, verdict: { description: "ok when the result is correct. wrong when it is not.", enum: ["ok", "wrong"] }, via: { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "saw"], additionalProperties: false };
 function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: Z, rootData: _ = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
@@ -9052,10 +9052,20 @@ function requireWellFormed(condition, message, hint) {
 function same(a, b) {
   return canonical(a) === canonical(b);
 }
-function schemaErrors(name, value2, prefix = name) {
+function schemaProblems(name, value2, prefix = name) {
   const check2 = validators_exports[name.replace(/-./g, (match) => match[1].toUpperCase())];
   if (check2(value2)) return [];
-  return unionErrors(check2.errors ?? []).filter((error) => error.keyword !== "propertyNames").map((error) => schemaError(`${prefix}${error.instancePath}`, error));
+  return unionErrors(check2.errors ?? []).filter((error) => error.keyword !== "propertyNames").map((error) => ({
+    field: String(
+      error.instancePath.split("/")[1] ?? error.params.missingProperty ?? error.params.additionalProperty ?? ""
+    ),
+    text: schemaError(`${prefix}${error.instancePath}`, error),
+    unknown: error.keyword === "additionalProperties",
+    ...error.keyword === "enum" ? { choices: (error.params.allowedValues ?? []).map(String) } : {}
+  }));
+}
+function schemaErrors(name, value2, prefix = name) {
+  return schemaProblems(name, value2, prefix).map((problem) => problem.text);
 }
 function validate(name, value2, hint) {
   const errors = schemaErrors(name, value2);
@@ -13852,12 +13862,12 @@ var journal_entry_schema_default = {
   ],
   definitions: {
     id: {
-      description: "Your ID, for example D1. When you leave it out, Checkmate gives one.",
+      description: "Your ID, for example D1. Without it, Checkmate gives one.",
       type: "string",
       pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
     },
     build: {
-      description: "The build that you tested, for example base, b1, or b2. Give it here or with --build.",
+      description: "The build that you tested, for example base or b1. Give it here or with --build.",
       type: "string",
       pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"
     },
@@ -13867,12 +13877,12 @@ var journal_entry_schema_default = {
       pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
     },
     about: {
-      description: "A criterion ID, a question ID, an area of the diff, or free text.",
+      description: "A criterion ID, a question ID, a diff area, or free text.",
       type: "string",
       minLength: 1
     },
     area: {
-      description: "A changed area of the diff, for example src/cart.js.",
+      description: "A changed area, for example src/cart.js.",
       type: "string",
       minLength: 1
     },
@@ -13894,7 +13904,7 @@ var journal_entry_schema_default = {
       ]
     },
     evidence: {
-      description: "A file path in the workspace, or the text that you saw. A string or an array.",
+      description: "A workspace file or the text that you saw, or an array of them.",
       anyOf: [
         {
           type: "string",
@@ -13938,7 +13948,7 @@ var journal_criterion_schema_default = {
       minLength: 1
     },
     source: {
-      description: "Where the rule comes from, for example ticket.md#AC2, docs/cart.md, or a question ID.",
+      description: "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
       type: "string",
       minLength: 1
     },
@@ -13954,7 +13964,7 @@ var journal_criterion_schema_default = {
 var journal_observation_schema_default = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "journal-observation.schema.json",
-  description: "What you did and what you saw. An observation on base with a value is a baseline.",
+  description: "What you did and what you saw. A value on base makes a baseline. Checkmate compares it on each later build.",
   type: "object",
   properties: {
     kind: {
@@ -13986,7 +13996,7 @@ var journal_observation_schema_default = {
       minLength: 1
     },
     repeats: {
-      description: "The ID of an earlier observation that you did again on this build.",
+      description: "The ID of an earlier observation that you did again. Without it, Checkmate links a value to the one earlier value with the same about and steps, or the same ID without the build name (total-b1, total-base). none: no link.",
       type: "string",
       pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
     },
@@ -14199,6 +14209,29 @@ var capabilityEntryPoints = {
   http: { via: "api", idea: "Send the requests of the main flows to the API, also with invalid input." }
 };
 var guideHint = (kind) => `Fix the named fields. Run checkmate journal guide to read the fields of ${kind}.`;
+var jsonHint = "Use double quotes for keys and strings. Put a backslash before each quote inside a string.";
+var openEnd = /\b(not (yet )?(tested|verified|captured|covered|tried|exercised)|untested|unverified|skipped|todo|to-do|tbd|did ?n[o']t (test|try|check|verify))\b/i;
+var sourceWords = new Set(
+  "nodecision not decided yet use follow see refer read check the a an and or to existing current ticket tickets doc docs documentation spec specs specification as written is per of in on answer none unknown n/a na pm only rely says say".split(
+    " "
+  )
+);
+var sourceMarkers = [
+  "nodecision",
+  "decided",
+  "ticket",
+  "tickets",
+  "doc",
+  "docs",
+  "documentation",
+  "spec",
+  "specs",
+  "specification",
+  "unknown",
+  "none"
+];
+var viaNames = { ui: "the UI", api: "the API", code: "the code", other: "other means" };
+var fewBaselines = 3;
 function changeRow(store, changeId) {
   const row = one(
     store,
@@ -14283,60 +14316,213 @@ function evidenceOf(store, spec) {
     );
     return { path: name, sha256, size: file.bytes.length };
   }
-  if (/\s/.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)) return { text: spec };
+  if (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)) return { text: spec };
   throw new Refusal(
     "malformed",
     `Evidence file not found: ${spec}`,
     "Save the file in the workspace first. Or give the text of what you saw."
   );
 }
-function checkedEntry(store, raw, path, build, known) {
-  requireCondition(
-    raw && typeof raw === "object" && !Array.isArray(raw),
-    `${path} is not a JSON object.`,
-    'Send each entry as a JSON object with "kind".'
+var Unreadable = class {
+  reason;
+  text;
+  constructor(reason, text) {
+    this.reason = reason;
+    this.text = text;
+  }
+};
+var EntryRefusal = class extends Refusal {
+  field;
+  fix;
+  constructor(field2, message, hint, fix) {
+    super("malformed", message, hint);
+    this.field = field2;
+    this.fix = fix;
+  }
+};
+function unfenced(text) {
+  const fenced = /^\s*```[\w-]*[ \t]*\n([\s\S]*?)\n\s*```\s*$/.exec(text);
+  return fenced ? fenced[1] : text;
+}
+function withoutTrailingCommas(text) {
+  const closing = /\s*[}\]]/y;
+  let out = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      out += char;
+      if (char === "\\") out += text[++i] ?? "";
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    closing.lastIndex = i + 1;
+    if (char === "," && closing.test(text)) continue;
+    out += char;
+  }
+  return out;
+}
+function topLevelParts(text) {
+  const found = [];
+  let depth = 0;
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === "\\") i++;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+    const closed = depth === 0 && (char === "}" || char === "]");
+    if (closed || depth === 0 && char === ",") {
+      found.push(text.slice(start, closed ? i + 1 : i));
+      start = i + 1;
+    }
+  }
+  found.push(text.slice(start));
+  return found.map((part) => part.trim()).filter(Boolean);
+}
+function readEntries(text) {
+  requireWellFormed(
+    text.trim().length > 0,
+    "Missing JSON payload on standard input",
+    "Send the entries on standard input, in a quoted heredoc: checkmate journal log <changeId> --build <build> <<'EOF', the JSON, then EOF"
   );
-  const draft = { ...raw };
-  if (draft.build === void 0 && build !== void 0) draft.build = build;
-  const errors = schemaErrors("journal-entry", draft, path);
-  const kind = String(draft.kind);
-  if (!errors.length) errors.push(...schemaErrors(`journal-${kind}`, draft, path));
-  if (errors.length)
-    throw new Refusal(
-      "malformed",
-      errors.join(", "),
-      errors.some((error) => error.includes('"build"')) ? "Give the build in the entry, or with --build on the call." : guideHint(kind)
+  const body = withoutTrailingCommas(unfenced(text)).trim();
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    const parts = topLevelParts(body.startsWith("[") && body.endsWith("]") ? body.slice(1, -1) : body);
+    if (parts.length < 2)
+      throw new Refusal("malformed", `Standard input is not valid JSON: ${error.message}`, jsonHint);
+    return parts.flatMap((part) => {
+      try {
+        return [JSON.parse(part)].flat();
+      } catch (error2) {
+        return [new Unreadable(error2.message, part)];
+      }
+    });
+  }
+}
+function entryList(entries) {
+  if (Array.isArray(entries)) return entries;
+  const wrapper = entries;
+  if (wrapper && typeof wrapper === "object" && wrapper.kind === void 0 && Array.isArray(wrapper.entries))
+    return wrapper.entries;
+  return [entries];
+}
+function checkedEntry(store, raw, path, build, known) {
+  if (raw instanceof Unreadable)
+    throw new EntryRefusal(
+      path,
+      `${path} is not valid JSON (${raw.reason}): ${raw.text.slice(0, 80)}`,
+      `${jsonHint} Send this entry again.`
     );
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new EntryRefusal(path, `${path} is not a JSON object.`, 'Send each entry as a JSON object with "kind".', {
+      kind: entryKinds.join("|")
+    });
+  const given = raw;
+  const draft = { ...given };
+  if (draft.build === void 0 && build !== void 0) draft.build = build;
+  const problems = schemaProblems("journal-entry", draft, path);
+  const kind = String(draft.kind);
+  if (!problems.length) problems.push(...schemaProblems(`journal-${kind}`, draft, path));
+  if (problems.length) {
+    const fix = { ...given };
+    for (const problem of problems)
+      if (problem.unknown) delete fix[problem.field];
+      else fix[problem.field] = problem.choices?.join("|") ?? `<${problem.field}>`;
+    throw new EntryRefusal(
+      [...new Set(problems.map((problem) => `${path}.${problem.field}`))].join(", "),
+      problems.map((problem) => problem.text).join(", "),
+      problems.some((problem) => problem.field === "build") ? "Give the build in the entry, or with --build on the call." : guideHint(kind),
+      fix
+    );
+  }
   const entry = draft;
   const used = [...known.keys()];
   if (entry.supersedes !== void 0) {
     const earlier = known.get(entry.supersedes);
-    requireCondition(
-      earlier?.kind === kind && (entry.id === void 0 || entry.id === entry.supersedes),
-      `${path}.supersedes names no earlier ${kind}: ${entry.supersedes}.`,
-      `Use the ID of an earlier ${kind}, and leave out "id". Run checkmate journal show to read the IDs.`
-    );
+    if (earlier?.kind !== kind || entry.id !== void 0 && entry.id !== entry.supersedes) {
+      const { supersedes: _, ...fix } = given;
+      throw new EntryRefusal(
+        `${path}.supersedes`,
+        `${path}.supersedes names no earlier ${kind}: ${entry.supersedes}.`,
+        `Use the ID of an earlier ${kind}, and leave out "id". Run checkmate journal show to read the IDs.`,
+        fix
+      );
+    }
     entry.id = entry.supersedes;
-  } else if (entry.id !== void 0)
-    requireCondition(
-      !known.has(entry.id),
-      `${path}.id ${entry.id} is in use.`,
-      `To replace that entry, give "supersedes": "${entry.id}". Or use a new ID, for example ${unusedId(prefixes[entry.kind], used)}.`
+  } else if (entry.id !== void 0) {
+    if (known.has(entry.id)) {
+      const free = unusedId(prefixes[entry.kind], used);
+      throw new EntryRefusal(
+        `${path}.id`,
+        `${path}.id ${entry.id} is in use.`,
+        `To replace that entry, give "supersedes": "${entry.id}". Or use a new ID, for example ${free}.`,
+        { ...given, id: free }
+      );
+    }
+  } else entry.id = unusedId(prefixes[entry.kind], used);
+  const refer = (id2, kinds2, field2, fix) => {
+    if (id2 === void 0 || kinds2.includes(known.get(id2)?.kind)) return;
+    throw new EntryRefusal(
+      `${path}.${field2}`,
+      `${path}.${field2} names no ${kinds2.join(" or ")}: ${id2}.`,
+      `Use the ID of an earlier ${kinds2.join(" or ")}. Run checkmate journal show to read the IDs.`,
+      { ...given, [field2]: fix }
     );
-  else entry.id = unusedId(prefixes[entry.kind], used);
-  const refer = (id2, kinds2, field2) => requireCondition(
-    id2 === void 0 || kinds2.includes(known.get(id2)?.kind),
-    `${path}.${field2} names no ${kinds2.join(" or ")}: ${id2}.`,
-    `Use the ID of an earlier ${kinds2.join(" or ")}. Run checkmate journal show to read the IDs.`
-  );
-  refer(entry.defect, ["defect"], "defect");
-  refer(entry.repeats, ["observation"], "repeats");
-  for (const link of entry.links ?? []) refer(link, ["observation", "criterion"], "links");
-  const { evidence: evidence2, ...rest } = entry;
-  return {
-    ...rest,
-    ...evidence2 === void 0 ? {} : { evidence: [evidence2].flat().map((spec) => evidenceOf(store, spec)) }
   };
+  const idsOf = (kinds2) => [...known.values()].filter((item) => kinds2.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds2.join(" or ")} ID>`;
+  refer(entry.defect, ["defect"], "defect", idsOf(["defect"]));
+  if (entry.repeats !== "none") refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
+  const links = entry.links ?? [];
+  const linkable = ["observation", "criterion"];
+  for (const link of links)
+    refer(
+      link,
+      linkable,
+      "links",
+      links.filter((item) => linkable.includes(known.get(item)?.kind))
+    );
+  const { evidence: evidence2, ...rest } = entry;
+  if (evidence2 === void 0) return rest;
+  try {
+    return { ...rest, evidence: [evidence2].flat().map((spec) => evidenceOf(store, spec)) };
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    throw new EntryRefusal(`${path}.evidence`, error.message, error.hint ?? "", {
+      ...given,
+      evidence: "<a file in the workspace, or the text that you saw>"
+    });
+  }
+}
+var stepsOf = (entry) => normalised([entry.steps ?? []].flat().join(" ").toLowerCase());
+var aboutOf = (entry) => normalised((entry.about ?? "").toLowerCase());
+var escaped = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var stemOf = (entry) => entry.id.replace(new RegExp(`[-_.]${escaped(entry.build ?? "")}$`, "i"), "");
+function baselineMatch(entry, known, builds) {
+  const position = builds.indexOf(entry.build ?? "");
+  const order = (item) => builds.indexOf(item.build ?? "");
+  const observations = [...known.values()].filter((item) => item.kind === "observation");
+  const byId = new Map(observations.map((item) => [item.id, item]));
+  const earlier = observations.filter(
+    (item) => item.value !== void 0 && order(item) >= 0 && order(item) < position
+  );
+  const stem = stemOf(entry);
+  const rule = (item) => stem !== entry.id && stemOf(item) === stem ? "the same ID without the build name" : stepsOf(entry) && stepsOf(item) === stepsOf(entry) && aboutOf(item) === aboutOf(entry) ? "the same about and steps" : void 0;
+  const matches = earlier.filter(rule);
+  const roots = [...new Set(matches.map((item) => rootOf(item, byId).id))];
+  if (roots.length !== 1) return { ambiguous: roots };
+  const chain = earlier.filter((item) => rootOf(item, byId).id === roots[0]).sort((a, b) => order(a) - order(b));
+  const latest = chain.at(-1);
+  return { to: latest, rule: rule(latest) ?? rule(matches[0]), ambiguous: [] };
 }
 function comparison(entry, known) {
   const earlier = entry.repeats === void 0 ? void 0 : known.get(entry.repeats);
@@ -14356,12 +14542,14 @@ function insert(store, changeId, entry, actor, operationId) {
     operationId
   );
 }
+var fixText = (item) => item.fix ? ` Send: ${JSON.stringify(item.fix)}` : "";
 function logEntries(store, actor, input) {
   return write(store, { actor, command: "journal log", subject: input.changeId, input }, (operationId, _, actor2) => {
     const state = journal(store, input.changeId);
-    const list2 = Array.isArray(input.entries) ? input.entries : [input.entries];
+    const list2 = entryList(input.entries);
     requireCondition(list2.length, "The array has no entry.", "Send one entry, or an array of entries.");
     const known = new Map(state.entries.map((entry) => [entry.id, entry]));
+    const builds = [...state.builds];
     const saved = [];
     const refused2 = [];
     for (const [index2, raw] of list2.entries()) {
@@ -14369,9 +14557,23 @@ function logEntries(store, actor, input) {
       try {
         entry = checkedEntry(store, raw, `[${index2}]`, input.build, known);
       } catch (error) {
-        if (!(error instanceof Refusal)) throw error;
-        refused2.push({ index: index2, reason: error.message, hint: error.hint });
+        if (!(error instanceof EntryRefusal)) throw error;
+        refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
         continue;
+      }
+      if (entry.build !== void 0 && !builds.includes(entry.build))
+        if (entry.build === "base") builds.unshift("base");
+        else builds.push(entry.build);
+      let link;
+      if (entry.repeats === "none") delete entry.repeats;
+      else if (entry.kind === "observation" && entry.value !== void 0 && entry.repeats === void 0) {
+        const match = baselineMatch(entry, known, builds);
+        if (match.to) {
+          entry.repeats = match.to.id;
+          entry.linked = match.rule;
+          link = `repeats ${match.to.id} on ${match.to.build} (${match.rule}). If this is wrong, log ${entry.id} again with "supersedes": "${entry.id}" and "repeats": "<ID>" or "none".`;
+        } else if (match.ambiguous.length)
+          link = `not linked: ${match.ambiguous.join(" and ")} match. Give "repeats" to compare.`;
       }
       insert(store, state.changeId, entry, actor2, operationId);
       const compare = comparison(entry, known);
@@ -14381,17 +14583,21 @@ function logEntries(store, actor, input) {
         id: entry.id,
         kind: entry.kind,
         build: entry.build ?? null,
+        ...link ? { link } : {},
         ...compare ? { compare } : {}
       });
     }
     if (!saved.length)
       throw new Refusal(
         "malformed",
-        refused2.map((item) => item.reason).join(" "),
+        refused2.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
         [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
       );
+    const build = input.build ?? saved.findLast((item) => item.build !== null)?.build ?? void 0;
+    const after = { ...state, entries: [...known.values()], builds };
+    const open = openItems(after, buildOf(after, build), 8);
     return {
-      reply: completed(state.changeId, { saved, refused: refused2 }),
+      reply: completed(state.changeId, { saved, refused: refused2, open }),
       subjects: [`change:${state.changeId}`]
     };
   });
@@ -14405,121 +14611,205 @@ function rootOf(entry, byId) {
   }
   return at;
 }
+var short = (text) => (text ?? "").length > 120 ? `${(text ?? "").slice(0, 117)}...` : text ?? "";
+function decides(answer) {
+  const words5 = answer.toLowerCase().replace(/\bno (decision|answer)\b/g, "nodecision").split(/[^a-z/]+/).filter(Boolean);
+  return !(words5.every((word) => sourceWords.has(word)) && words5.some((word) => sourceMarkers.includes(word)));
+}
 function gapList(state, build) {
   const gaps = [];
-  const add = (kind, subject, idea) => gaps.push({ kind, subject, idea });
+  const keys = /* @__PURE__ */ new Set();
+  const add = (key, kind, subject, idea) => {
+    if (keys.has(key)) return;
+    keys.add(key);
+    gaps.push({ kind, subject, idea });
+  };
   const order = (entry) => state.builds.indexOf(entry.build ?? "");
   const position = state.builds.includes(build) ? state.builds.indexOf(build) : state.builds.length;
   const earlier = (entry) => entry.build !== void 0 && order(entry) >= 0 && order(entry) < position;
+  const first = (state.builds[0] ?? build) === build;
   const observations = ofKind(state, "observation");
   const here = observations.filter((entry) => entry.build === build);
   const defects = ofKind(state, "defect");
   const notes = ofKind(state, "note");
-  const explained = (id2) => defects.some((defect) => defect.links?.includes(id2)) || notes.some((note) => isAbout(note, id2));
   const criteria = ofKind(state, "criterion");
-  if (!here.length) add("build", build, `No observation on ${build} yet. Test it and log what you see.`);
-  if (build !== "base") {
-    if (!criteria.length)
-      add(
-        "criteria",
-        "no criterion",
-        "You can log the rules of the ticket and the docs as criterion entries. Then gaps shows what each rule still needs."
-      );
-    for (const criterion of criteria) {
-      const seen = here.filter((entry) => isAbout(entry, criterion.id));
-      const subject = `${criterion.id} ${criterion.text}`;
-      if (!seen.length)
-        add(
-          "criterion",
-          subject,
-          `No observation on ${build}. Test it and log an observation with "about": "${criterion.id}".`
-        );
-      else if (seen.length === 1 || seen.every((entry) => entry.verdict === "ok"))
-        add(
-          "happy_path",
-          subject,
-          `${seen.length === 1 ? "One observation" : "Only ok observations"}. Try a boundary value, invalid input, the other entry point, or the state after a change.`
-        );
-    }
-    for (const question of ofKind(state, "question")) {
-      const answer = answerOf(state, question.id);
-      if (answer && !here.some((entry) => isAbout(entry, question.id)))
-        add(
-          "answer",
-          `${question.id} ${answer.answer}`,
-          `No observation on ${build} uses this PM answer. Test it and log an observation with "about": "${question.id}".`
-        );
-    }
-  }
+  const areas = [...new Set([...criteria, ...notes].flatMap((entry) => entry.area ?? []))];
+  const aboutArea = (entry, area2) => Boolean(entry.about?.includes(area2)) || criteria.some((criterion) => criterion.area === area2 && isAbout(entry, criterion.id));
+  const explained = (id2) => defects.some((defect) => defect.links?.includes(id2)) || notes.some((note) => isAbout(note, id2));
   const byId = new Map(observations.map((entry) => [entry.id, entry]));
-  for (const baseline of observations.filter(
-    (entry) => entry.value !== void 0 && !entry.repeats && earlier(entry)
-  )) {
-    const chain = observations.filter((entry) => rootOf(entry, byId).id === baseline.id);
-    const now = chain.filter((entry) => entry.build === build);
-    const steps = [baseline.steps ?? baseline.saw].flat().join(" ");
-    if (!now.length) {
-      add(
-        "baseline",
-        `${baseline.id} on ${baseline.build}: ${baseline.value}`,
-        `Do it again on ${build}: ${steps}. Log an observation with "repeats": "${baseline.id}" and "value".`
-      );
-      continue;
-    }
-    const previous = chain.filter((entry) => entry.value !== void 0 && earlier(entry)).sort((a, b) => order(a) - order(b)).at(-1);
-    for (const entry of now.filter((item) => item.value !== void 0))
+  const baselines = observations.filter((entry) => entry.value !== void 0 && !entry.repeats && earlier(entry));
+  const repeatsOf = (baseline) => here.filter((entry) => entry.id !== baseline.id && rootOf(entry, byId).id === baseline.id);
+  const missingVia = (seen) => state.vias.find(({ via }) => !seen.some((entry) => entry.via === via));
+  const usedVias = (seen) => [...new Set(seen.flatMap((entry) => entry.via ? [viaNames[entry.via] ?? entry.via] : []))].join(" and ");
+  for (const baseline of baselines) {
+    const previous = observations.filter((entry) => entry.value !== void 0 && earlier(entry) && rootOf(entry, byId).id === baseline.id).sort((a, b) => order(a) - order(b)).at(-1);
+    for (const entry of repeatsOf(baseline).filter((item) => item.value !== void 0))
       if (!sameValue(entry.value, previous.value) && !explained(entry.id))
         add(
+          entry.id,
           "difference",
           `${entry.id} repeats ${baseline.id}: ${previous.build} "${previous.value}", ${build} "${entry.value}"`,
           `Explain or report: log a note with "about": "${entry.id}", or a defect with "links": ["${entry.id}"].`
         );
   }
+  for (const baseline of baselines.filter((entry) => !repeatsOf(entry).length))
+    add(
+      baseline.id,
+      "baseline",
+      `${baseline.id} on ${baseline.build}: ${baseline.value}`,
+      `Do it again on ${build}: ${short([baseline.steps ?? baseline.saw].flat().join(" "))}. Log the value with "repeats": "${baseline.id}".`
+    );
+  if (first) {
+    const measured = here.filter((entry) => entry.value !== void 0);
+    if (measured.length < fewBaselines)
+      add(
+        "baselines",
+        "baselines",
+        `${measured.length} baseline${measured.length === 1 ? "" : "s"} on ${build}`,
+        "Existing rules near the change can break. Give a value to an observation of each: the same totals and calculations, validation and error messages, lists, exports, and counters that show the changed data, permissions, and the rules in the docs for the same page or endpoint."
+      );
+    for (const area2 of areas.filter((item) => !measured.some((entry) => aboutArea(entry, item))))
+      add(
+        `baseline ${area2}`,
+        "baseline_area",
+        area2,
+        `No baseline is about this area. Measure an existing rule of it on ${build}, and log an observation with "about": "${area2}" and "value".`
+      );
+  }
+  for (const entry of here.filter((item) => item.verdict === "wrong" && !explained(item.id)))
+    add(
+      entry.id,
+      "wrong",
+      `${entry.id} ${short(entry.saw)}`,
+      `Marked wrong without a defect. Log a defect with "links": ["${entry.id}"], or a note with "about": "${entry.id}" that says why not.`
+    );
+  for (const defect of defects.filter((entry) => entry.build === build)) {
+    const seen = observations.filter((entry) => defect.links?.includes(entry.id) || isAbout(entry, defect.id));
+    const subject = `${defect.id} ${defect.title}`;
+    const verify = `Try it on the running app, and log an observation with "about": "${defect.id}".`;
+    if (defect.suspected && !seen.some((entry) => entry.via !== "code"))
+      add(
+        defect.id,
+        "unverified",
+        subject,
+        `Suspected, and no observation shows it on the running app. ${verify}`
+      );
+    else if (seen.length && seen.every((entry) => entry.via === "code"))
+      add(defect.id, "unverified", subject, `Only code observations show it. ${verify}`);
+  }
+  for (const defect of defects.filter((entry) => entry.build === build && !entry.evidence?.length))
+    add(
+      defect.id,
+      "evidence",
+      `${defect.id} ${defect.title}`,
+      `No evidence. Log it again with "supersedes": "${defect.id}" and "evidence".`
+    );
+  for (const entry of state.entries.filter(
+    (item) => (item.kind === "note" || item.kind === "observation") && (item.build === build || item.build === void 0) && openEnd.test(item.text ?? item.saw ?? "") && !state.entries.some((other) => other.id !== item.id && isAbout(other, item.id))
+  ))
+    add(
+      entry.id,
+      "open_end",
+      `${entry.id} ${short(entry.text ?? entry.saw)}`,
+      `Your record says that this is open. Test it, or log a note with "about": "${entry.id}" that says why not.`
+    );
   const verdicts = ofKind(state, "verdict");
   for (const defect of defects.filter(earlier)) {
     const of = verdicts.filter((verdict) => verdict.defect === defect.id);
     if (of.some((verdict) => verdict.build === build)) continue;
     if (of.some((verdict) => verdict.result === "fixed" && earlier(verdict))) continue;
     add(
+      defect.id,
       "retest",
       `${defect.id} ${defect.title}`,
       `Do its steps again on ${build}. Log a verdict with "defect": "${defect.id}", the result, and evidence.`
     );
   }
-  for (const defect of defects.filter((entry) => entry.build === build && !entry.evidence?.length))
-    add(
-      "evidence",
-      `${defect.id} ${defect.title}`,
-      `No evidence. Log it again with "supersedes": "${defect.id}" and "evidence".`
-    );
-  for (const entry of here.filter((item) => item.verdict === "wrong" && !explained(item.id)))
-    add(
-      "wrong",
-      `${entry.id} ${entry.saw}`,
-      `Marked wrong without a defect. Log a defect with "links": ["${entry.id}"], or a note with "about": "${entry.id}" that says why not.`
-    );
-  for (const { via, idea } of state.vias)
-    if (!here.some((entry) => entry.via === via))
-      add("entry_point", `no observation on ${build} used the ${via.toUpperCase()}`, idea);
-  if (build !== "base")
-    for (const area2 of new Set([...criteria, ...notes].flatMap((entry) => entry.area ?? []))) {
-      const ids2 = criteria.filter((entry) => entry.area === area2).map((entry) => entry.id);
-      if (!here.some((entry) => entry.about?.includes(area2) || ids2.some((id2) => isAbout(entry, id2))))
+  if (!here.length) add(build, "build", build, `No observation on ${build} yet. Test it and log what you see.`);
+  if (build === "base")
+    for (const entry of here.filter((item) => item.value === void 0))
+      add(
+        entry.id,
+        "value",
+        `${entry.id} ${short(entry.saw)}`,
+        `Add a value to make this a baseline: log it again with "supersedes": "${entry.id}" and "value".`
+      );
+  if (build !== "base") {
+    if (!criteria.length)
+      add(
+        "criteria",
+        "criteria",
+        "no criterion",
+        "You can log the rules of the ticket and the docs as criterion entries. Then each rule shows its open items."
+      );
+    for (const criterion of criteria) {
+      const seen = here.filter((entry) => isAbout(entry, criterion.id));
+      const subject = `${criterion.id} ${criterion.text}`;
+      const other = missingVia(seen);
+      if (!seen.length)
         add(
-          "area",
-          area2,
-          `No observation on ${build} is about this changed area. Read its diff and test what it changes.`
+          criterion.id,
+          "criterion",
+          subject,
+          `No observation on ${build}. Test it and log an observation with "about": "${criterion.id}".`
+        );
+      else if (seen.length === 1 || seen.every((entry) => entry.verdict === "ok"))
+        add(
+          criterion.id,
+          "happy_path",
+          subject,
+          `${seen.length === 1 ? "One observation" : "Only ok observations"}${other && usedVias(seen) ? `, only through ${usedVias(seen)}` : ""}. Try a boundary value, invalid input, ${other ? viaNames[other.via] : "the other entry point"}, or the state after a change.`
         );
     }
+    for (const area2 of areas.filter((item) => !here.some((entry) => aboutArea(entry, item))))
+      add(
+        area2,
+        "area",
+        area2,
+        `No observation on ${build} is about this changed area. Read its diff and test what it changes.`
+      );
+    for (const question of ofKind(state, "question")) {
+      const answer = answerOf(state, question.id);
+      if (answer && decides(answer.answer) && !here.some((entry) => isAbout(entry, question.id)))
+        add(
+          question.id,
+          "answer",
+          `${question.id} ${short(answer.answer)}`,
+          `No observation on ${build} uses this PM answer. Test it and log an observation with "about": "${question.id}".`
+        );
+    }
+  }
+  for (const { via, idea } of state.vias)
+    if (!here.some((entry) => entry.via === via))
+      add(`via ${via}`, "entry_point", `no observation on ${build} used ${viaNames[via]}`, idea);
+  for (const criterion of criteria) {
+    const seen = here.filter((entry) => isAbout(entry, criterion.id));
+    const other = missingVia(seen);
+    if (seen.length && other && usedVias(seen))
+      add(criterion.id, "entry_point", `${criterion.id} was observed only through ${usedVias(seen)}`, other.idea);
+  }
   return gaps;
+}
+function picked(gaps, limit, perKind) {
+  const chosen = /* @__PURE__ */ new Set();
+  const count = (kind) => [...chosen].filter((gap) => gap.kind === kind).length;
+  for (const gap of gaps) if (chosen.size < limit && !count(gap.kind)) chosen.add(gap);
+  for (const gap of gaps) if (chosen.size < limit && count(gap.kind) < perKind) chosen.add(gap);
+  return gaps.filter((gap) => chosen.has(gap));
+}
+function openItems(state, build, limit, perKind = limit) {
+  const gaps = gapList(state, build);
+  const counts2 = {};
+  for (const gap of gaps) counts2[gap.kind] = (counts2[gap.kind] ?? 0) + 1;
+  return { build, total: gaps.length, counts: counts2, gaps: picked(gaps, limit, perKind) };
 }
 function buildOf(state, build) {
   return build ?? state.builds.at(-1) ?? "base";
 }
-function changeGaps(store, changeId, build) {
+function changeGaps(store, changeId, build, every = false) {
   const state = journal(store, changeId);
-  const tested = buildOf(state, build);
-  return completed(state.changeId, { build: tested, gaps: gapList(state, tested) });
+  const open = openItems(state, buildOf(state, build), every ? Infinity : 40, every ? Infinity : 8);
+  return completed(state.changeId, open);
 }
 function answerQuestion(store, actor, input) {
   return write(
@@ -14795,10 +15085,12 @@ function journalSchema() {
 }
 function journalSteps(changeId) {
   return [
-    "Test the way you would test without this tool. Checkmate does not limit what you test, or how.",
-    `Log what you see as you go, and at the latest before your turn ends: checkmate journal log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+    "Test as you would without this tool. Checkmate does not limit what you test, or how.",
+    `Log what you see: checkmate journal log ${changeId} --build <build>, with an entry or a JSON array of entries in a quoted heredoc.`,
+    "Log after each area that you test. Each log call shows the open items.",
+    "Before the change is built, a baseline is useful for each existing rule near the change: the same totals and calculations, validation and error messages, lists, exports, and counters that show the changed data, permissions, and the rules in the docs for the same page or endpoint. A baseline is an observation with a value.",
     'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
-    `When you think that you are done, run checkmate journal gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate journal show ${changeId} prints the record.`
+    `Open items are things your record does not show yet: checkmate journal gaps ${changeId} --build <build>. checkmate journal show ${changeId} prints the record.`
   ];
 }
 function guideJournal(store, changeId) {
@@ -15530,7 +15822,7 @@ function icon(status) {
 		>${symbol}</span
 	>`;
 }
-function short(sha256) {
+function short2(sha256) {
   return `${sha256.slice(0, 4)}\u2026${sha256.slice(-4)}`;
 }
 function age(iso, now = Date.now()) {
@@ -15821,7 +16113,7 @@ function verdictPanel(context, verdict, state) {
 		<h2 class="lab" id="decide-title">Decision</h2>
 		<p class="subj">${verdict.question}</p>
 		<p class="help">
-			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short(verdict.sha256)}</code>. Your decision
+			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short2(verdict.sha256)}</code>. Your decision
 			is recorded in the log.
 		</p>
 		<div data-stale-slot>${messages(state)}</div>
@@ -16681,7 +16973,7 @@ function planHistoryList(store, detail, all2) {
 							<summary class="record-h">
 								<span class="mono rev">${detail.planId}@${item.revision}</span>
 								<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-								<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+								<code class="muted small" title="${item.sha256}">${short2(item.sha256)}</code>
 								<span class="muted small"
 									>${item.changes.length ? plural(item.changes.length, "change") : "first revision"}</span
 								>
@@ -16718,7 +17010,7 @@ function approvalPanel(store, context, detail, state) {
       "Approval",
       html2`<p class="subj">${pill(latest.verdict)} ${subject}</p>
 				<p class="help">
-					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
 				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`,
@@ -16780,7 +17072,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   const meta = html2`<div class="meta">
 		${loopState(planStatus(store, planId))} ${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
-		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
+		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short2(detail.sha256)}</span></span>
 		<span class="head-actions">
 			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
 			${downloads("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
@@ -17178,7 +17470,7 @@ function editPage(store, context, planId, revision, state = null) {
     html2`<div class="meta">
 				<a class="pill" href="/plans/${subject}">${subject}</a>
 				<span class="pill" title="${detail.sha256}"
-					>sha256 <span class="mono">${short(detail.sha256)}</span></span
+					>sha256 <span class="mono">${short2(detail.sha256)}</span></span
 				>
 			</div>`
   )}
@@ -17557,7 +17849,7 @@ function decisionPanel(store, context, detail, state) {
 					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail.runId}
 				</p>
 				<p class="help">
-					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>`,
       `${detail.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
@@ -17825,7 +18117,7 @@ function historyList(store, targetId, shown) {
 							>${targetId}@${item.revision}</a
 						>
 						<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-						<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+						<code class="muted small" title="${item.sha256}">${short2(item.sha256)}</code>
 						<span class="muted small"
 							>${item.changed.length ? html2`changed ${item.changed.join(", ")}` : "first revision"}</span
 						>
@@ -17834,7 +18126,7 @@ function historyList(store, targetId, shown) {
   )}
 	</ol>`;
 }
-function entryList(instance) {
+function entryList2(instance) {
   return html2`<dl class="entries">
 		${Object.entries(instance.entries).map(
     ([name, value2]) => html2`<div>
@@ -17896,7 +18188,7 @@ function instancesTable(context, targetId, instances, retire) {
 				${instances.map(
     (instance) => html2`<tr id="instance-${instance.instanceId}" data-key="instance:${instance.instanceId}">
 							<td class="mono">${instance.instanceId}</td>
-							<td>${entryList(instance)}</td>
+							<td>${entryList2(instance)}</td>
 							<td>${instance.environment ?? none2()}</td>
 							<td>${words4(instance.references)}</td>
 							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
@@ -17987,7 +18279,7 @@ function targetPage(store, context, targetId, revision, form = null, retire = nu
     targetId,
     sub,
     html2`<div class="meta">
-				${shown ? html2`<span class="pill" title="${shown.sha256}">sha256 <span class="mono">${short(shown.sha256)}</span></span>` : ""}
+				${shown ? html2`<span class="pill" title="${shown.sha256}">sha256 <span class="mono">${short2(shown.sha256)}</span></span>` : ""}
 			</div>`
   )}
 		<div class="split">
@@ -18837,7 +19129,7 @@ function leftOutLines(reply) {
   const leftOut = reply.data.leftOut ?? [];
   return leftOut.map((item) => [item.testId, "left_out", item.reason]);
 }
-function short2(sha256) {
+function short3(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
 function liteLines(data, sources = true) {
@@ -18873,10 +19165,38 @@ function liteLines(data, sources = true) {
     ])
   ];
 }
-function gapLines(gaps, build) {
+function gapLines(gaps, build, total = gaps.length) {
   return [
     ...gaps.map((gap) => ["gap", gap.kind, gap.subject, gap.idea]),
-    ["count", gaps.length, `ideas for build ${build}. They are suggestions. Nothing depends on them.`]
+    ["count", total, `open items on ${build}: things your record does not show yet.`]
+  ];
+}
+function kindCounts(counts2) {
+  return Object.entries(counts2).filter(([, count]) => count).map(([kind, count]) => `${kind} ${count}`).join(", ");
+}
+function notShownLines(changeId, open) {
+  const cut = { ...open.counts };
+  for (const gap of open.gaps) cut[gap.kind]--;
+  const count = open.total - open.gaps.length;
+  if (!count) return [];
+  return [
+    [
+      "not_shown",
+      count,
+      kindCounts(cut),
+      `Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`
+    ]
+  ];
+}
+function openLines(changeId, open) {
+  if (!open.total) return [["open_items", `0 on ${open.build}`, "Your record shows no open item on this build."]];
+  return [
+    ...open.gaps.map((gap) => ["open", gap.kind, gap.subject, gap.idea]),
+    [
+      "open_items",
+      `${open.total} on ${open.build}: ${kindCounts(open.counts)}`,
+      `Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`
+    ]
   ];
 }
 function fieldText(fields) {
@@ -18921,7 +19241,7 @@ var commands = {
           ...waiting.plans.map((plan) => [
             `${plan.planId}@${plan.revision}`,
             "plan",
-            short2(plan.sha256),
+            short3(plan.sha256),
             plan.summary
           ]),
           ...waiting.results.map((result) => [
@@ -19029,7 +19349,7 @@ var commands = {
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => saveTarget(store, actor, { targetId: value(args, "targetId"), profile: stdin() }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), recorded: reply.data.recorded } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256), recorded: reply.data.recorded } })
   },
   "target list": {
     positionals: [],
@@ -19053,7 +19373,7 @@ var commands = {
       const instance = reply.data.instance;
       return {
         facts: {
-          sha256: short2(reply.data.sha256),
+          sha256: short3(reply.data.sha256),
           ready: profile.readyForLiveExecution,
           instance: instance?.instanceId,
           retired: instance ? Boolean(instance.retired) : void 0
@@ -19175,7 +19495,7 @@ var commands = {
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => savePlan(store, actor, { planId: value(args, "planId"), candidate: stdin() }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256) } })
   },
   "plan show": {
     positionals: ["reference"],
@@ -19256,7 +19576,7 @@ var commands = {
     print: (reply) => {
       const data = reply.data;
       return {
-        facts: { sha256: short2(data.sha256), decisions: data.decisions.length },
+        facts: { sha256: short3(data.sha256), decisions: data.decisions.length },
         lines: [
           ...data.decisions.map((decision) => [
             decision.id,
@@ -19281,7 +19601,7 @@ var commands = {
       delta: stdin(),
       expectSha256: value(args, "expect-sha")
     }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256) } })
   },
   "plan edit": {
     positionals: ["reference"],
@@ -19293,7 +19613,7 @@ var commands = {
       const expectSha256 = value(args, "expect-sha");
       return args.patch ? patchPlan(store, actor, { reference: reference2, patch: stdin(), expectSha256 }) : editPlan(store, actor, { reference: reference2, candidate: stdin(), expectSha256 });
     },
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), edit: reply.data.edit } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256), edit: reply.data.edit } })
   },
   "plan adopt-gaps": {
     positionals: ["reference"],
@@ -19307,7 +19627,7 @@ var commands = {
       expectSha256: value(args, "expect-sha")
     }),
     print: (reply) => ({
-      facts: { sha256: short2(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted }
+      facts: { sha256: short3(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted }
     })
   },
   "plan approve": verdictCommand(
@@ -19329,7 +19649,7 @@ var commands = {
       target: value(args, "target"),
       checklist: stdin()
     }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), questions: reply.data.questions } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256), questions: reply.data.questions } })
   },
   "lite guide": {
     positionals: ["planId?"],
@@ -19337,7 +19657,7 @@ var commands = {
     print: (reply) => {
       const data = reply.data;
       return {
-        facts: { step: data.step, ...data.sha256 ? { sha256: short2(data.sha256) } : {} },
+        facts: { step: data.step, ...data.sha256 ? { sha256: short3(data.sha256) } : {} },
         lines: [
           ...(data.steps ?? []).map((step) => ["step", step]),
           ["about", data.about],
@@ -19365,7 +19685,7 @@ EOF` }
     run: (store, args) => showLite(store, value(args, "planId")),
     print: (reply) => {
       const data = reply.data;
-      return { facts: { sha256: short2(data.sha256) }, lines: [...liteLines(data), ...nextLines(data.next)] };
+      return { facts: { sha256: short3(data.sha256) }, lines: [...liteLines(data), ...nextLines(data.next)] };
     }
   },
   "lite record": {
@@ -19392,7 +19712,7 @@ EOF` }
       facts: {
         plan: reply.data.plan,
         coverage: reply.data.coverage,
-        sha256: short2(reply.data.sha256)
+        sha256: short3(reply.data.sha256)
       },
       lines: [
         ...Object.entries(reply.data.counts),
@@ -19424,10 +19744,10 @@ EOF` }
     flags: { build: "value" },
     write: true,
     stdin: true,
-    run: (store, args, { actor, stdin }) => logEntries(store, actor, {
+    run: (store, args, { actor, text }) => logEntries(store, actor, {
       changeId: value(args, "changeId"),
       build: value(args, "build"),
-      entries: stdin()
+      entries: readEntries(text())
     }),
     print: (reply) => {
       const saved = reply.data.saved;
@@ -19435,27 +19755,33 @@ EOF` }
       return {
         facts: { saved: saved.length, refused: refused2.length },
         lines: [
-          ...saved.map((entry) => [
-            "saved",
-            entry.id,
-            entry.kind,
-            entry.build,
-            ...entry.compare ? [entry.compare] : []
+          ["saved", saved.map((entry) => entry.id).join(",")],
+          ...saved.flatMap((entry) => entry.link ? [["link", entry.id, entry.link]] : []),
+          ...saved.flatMap((entry) => entry.compare ? [["compare", entry.id, entry.compare]] : []),
+          ...refused2.map((entry) => [
+            "refused",
+            entry.field,
+            entry.reason,
+            ...entry.fix ? [`send: ${JSON.stringify(entry.fix)}`] : [],
+            entry.hint
           ]),
-          ...refused2.map((entry) => ["refused", `[${entry.index}]`, entry.reason, entry.hint]),
-          ...refused2.length ? nextLines(["Fix each refused entry. Send only those entries again. The saved entries stay."]) : []
+          ...refused2.length ? nextLines(["Fix each refused entry. Send only those entries again. The saved entries stay."]) : [],
+          ...openLines(reply.subject, reply.data.open)
         ]
       };
     }
   },
   "journal gaps": {
     positionals: ["changeId"],
-    flags: { build: "value" },
-    run: (store, args) => changeGaps(store, value(args, "changeId"), value(args, "build")),
-    print: (reply) => ({
-      facts: { build: reply.data.build },
-      lines: gapLines(reply.data.gaps, String(reply.data.build))
-    })
+    flags: { build: "value", all: "switch" },
+    run: (store, args) => changeGaps(store, value(args, "changeId"), value(args, "build"), args.all === true),
+    print: (reply) => {
+      const open = reply.data;
+      return {
+        facts: { build: open.build },
+        lines: [...gapLines(open.gaps, open.build, open.total), ...notShownLines(reply.subject, open)]
+      };
+    }
   },
   "journal guide": {
     positionals: ["changeId?"],
@@ -19561,7 +19887,7 @@ EOF` }],
       retestOf: value(args, "retest-of") ?? null
     }).reply,
     print: (reply) => ({
-      facts: { sha256: short2(reply.data.sha256), tests: reply.data.tests },
+      facts: { sha256: short3(reply.data.sha256), tests: reply.data.tests },
       lines: leftOutLines(reply)
     })
   },
@@ -19672,7 +19998,7 @@ EOF` }],
       cleanupReason: value(args, "cleanup-reason")
     }),
     print: (reply) => ({
-      facts: { coverage: reply.data.coverage, sha256: short2(reply.data.sha256) },
+      facts: { coverage: reply.data.coverage, sha256: short3(reply.data.sha256) },
       lines: Object.entries(reply.data.counts)
     })
   },
@@ -19973,7 +20299,7 @@ function verdictCommand(positional, decide) {
     required: ["rationale"],
     write: true,
     run: (store, args, { actor }) => decide(store, actor, value(args, positional), value(args, "rationale"), value(args, "expect-sha")),
-    print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short3(reply.data.sha256) } })
   };
 }
 function showPlan(store, args) {
@@ -20000,7 +20326,7 @@ function showPlan(store, args) {
     );
   for (const field2 of fields ?? [])
     requireWellFormed(testFields2.includes(field2), `Unknown field: ${field2}. Use: ${testFields2.join(", ")}`);
-  const picked = detail.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
+  const picked2 = detail.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
     (test) => Object.fromEntries([
       ["id", test.id],
       ...(fields ?? ["readiness", "capability", "title"]).map((field2) => [
@@ -20014,7 +20340,7 @@ function showPlan(store, args) {
     revision: detail.revision,
     sha256: detail.sha256,
     fields: fields ?? ["readiness", "capability", "title"],
-    tests: picked,
+    tests: picked2,
     ...warned
   });
 }
@@ -20034,7 +20360,7 @@ function testLines(test) {
   ];
 }
 function printPlan(reply) {
-  const facts2 = { sha256: short2(reply.data.sha256) };
+  const facts2 = { sha256: short3(reply.data.sha256) };
   if (reply.data.fields) {
     const fields = reply.data.fields;
     const tests = reply.data.tests;

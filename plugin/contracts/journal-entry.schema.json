@@ -52,12 +52,12 @@
 	],
 	"definitions": {
 		"id": {
-			"description": "Your ID, for example D1. When you leave it out, Checkmate gives one.",
+			"description": "Your ID, for example D1. Without it, Checkmate gives one.",
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 		},
 		"build": {
-			"description": "The build that you tested, for example base, b1, or b2. Give it here or with --build.",
+			"description": "The build that you tested, for example base or b1. Give it here or with --build.",
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"
 		},
@@ -67,12 +67,12 @@
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 		},
 		"about": {
-			"description": "A criterion ID, a question ID, an area of the diff, or free text.",
+			"description": "A criterion ID, a question ID, a diff area, or free text.",
 			"type": "string",
 			"minLength": 1
 		},
 		"area": {
-			"description": "A changed area of the diff, for example src/cart.js.",
+			"description": "A changed area, for example src/cart.js.",
 			"type": "string",
 			"minLength": 1
 		},
@@ -94,7 +94,7 @@
 			]
 		},
 		"evidence": {
-			"description": "A file path in the workspace, or the text that you saw. A string or an array.",
+			"description": "A workspace file or the text that you saw, or an array of them.",
 			"anyOf": [
 				{
 					"type": "string",

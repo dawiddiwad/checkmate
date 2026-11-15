@@ -1,7 +1,7 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "journal-observation.schema.json",
-	"description": "What you did and what you saw. An observation on base with a value is a baseline.",
+	"description": "What you did and what you saw. A value on base makes a baseline. Checkmate compares it on each later build.",
 	"type": "object",
 	"properties": {
 		"kind": {
@@ -33,7 +33,7 @@
 			"minLength": 1
 		},
 		"repeats": {
-			"description": "The ID of an earlier observation that you did again on this build.",
+			"description": "The ID of an earlier observation that you did again. Without it, Checkmate links a value to the one earlier value with the same about and steps, or the same ID without the build name (total-b1, total-base). none: no link.",
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 		},

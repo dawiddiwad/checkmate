@@ -34,6 +34,6 @@
 			"$ref": "journal-entry.schema.json#/definitions/evidence"
 		}
 	},
-	"required": ["kind", "build", "defect", "result", "saw"],
+	"required": ["kind", "build", "defect", "result"],
 	"additionalProperties": false
 }

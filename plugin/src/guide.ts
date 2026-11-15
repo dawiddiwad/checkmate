@@ -234,15 +234,17 @@ function roleSteps(changeId: string, role: 'merger' | 'verifier') {
 			'Do not test. Merge what the testers found.',
 			`Run checkmate journal merge ${changeId} --build <build> to read the defects of all testers.`,
 			'Find the defects that two or more reports describe. The suggest lines are ideas, not rules.',
+			'Check each defect that only one tester reported against the larger issues before you leave it alone.',
+			'Do not combine two defects that have different expected results or different triggers.',
 			`Log one issue for each of them: checkmate journal log ${changeId} --build <build>, with the JSON on standard input in a quoted heredoc.`,
 			'A defect that is in no issue is its own issue. To change an issue, log it again with "supersedes".',
-			`Run checkmate journal issues ${changeId} to read the result.`,
+			`Run checkmate journal merge ${changeId} --build <build> again to read the suggestions that remain.`,
 		]
 	return [
-		`Run checkmate journal verify ${changeId} --build <build> to read the issues that only one tester reported.`,
-		'Do the steps of each item on the running app.',
-		'Log an observation with "confirms" when you see the defect. Log an observation with "refutes" when you do not see it.',
-		`Run checkmate journal issues ${changeId} to read the result.`,
+		`Run checkmate journal verify ${changeId} --build <build> to read the items to verify.`,
+		'Reproduce each item on the running application.',
+		'Log one observation for each item, with "confirms" or "refutes" and "saw": what you saw.',
+		'Do not explore beyond the list.',
 	]
 }
 

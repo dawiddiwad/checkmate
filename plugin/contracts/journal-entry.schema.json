@@ -31,21 +31,23 @@
 				"kind": "observation",
 				"id": "O1",
 				"about": "C1",
-				"steps": "Add 5 pens in the cart",
-				"saw": "Total 50.00",
-				"value": "50.00",
-				"verdict": "wrong",
-				"via": "ui",
-				"evidence": "evidence/cart-5.png"
+				"steps": "Add 4 pens in the cart",
+				"saw": "Total 40.00",
+				"value": "40.00",
+				"verdict": "ok",
+				"via": "ui"
 			},
 			{
 				"kind": "defect",
 				"id": "D1",
 				"title": "No discount at 5 items",
 				"expected": "45.00 (AC2)",
-				"actual": "50.00",
+				"actual": "Total 50.00",
 				"severity": "high",
-				"links": ["O1"],
+				"links": ["C1"],
+				"steps": "Add 5 pens in the cart",
+				"value": "50.00",
+				"via": "ui",
 				"evidence": "evidence/cart-5.png"
 			}
 		]
@@ -92,6 +94,20 @@
 					"minItems": 1
 				}
 			]
+		},
+		"saw": {
+			"description": "What you saw.",
+			"type": "string",
+			"minLength": 1
+		},
+		"value": {
+			"description": "The exact value to compare on a later build, for example 45.00 or HTTP 409.",
+			"type": "string",
+			"minLength": 1
+		},
+		"via": {
+			"description": "The entry point that you used.",
+			"enum": ["ui", "api", "code", "other"]
 		},
 		"evidence": {
 			"description": "A workspace file or the text that you saw, or an array of them.",

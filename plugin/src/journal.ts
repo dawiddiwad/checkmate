@@ -75,7 +75,7 @@ const capabilityEntryPoints: Record<string, { via: string; idea: string }> = {
 	browser: { via: 'ui', idea: 'Use the main flows in the browser, as a user does.' },
 	http: { via: 'api', idea: 'Send the requests of the main flows to the API, also with invalid input.' },
 }
-const guideHint = (kind: string) => `Fix the named fields. Run checkmate journal guide to read the fields of ${kind}.`
+const fieldsHint = 'Fix the named fields.'
 const jsonHint = 'Use double quotes for keys and strings. Put a backslash before each quote inside a string.'
 const openEnd =
 	/\b(not (yet )?(tested|verified|captured|covered|tried|exercised)|untested|unverified|skipped|todo|to-do|tbd|did ?n[o']t (test|try|check|verify))\b/i
@@ -193,6 +193,17 @@ const ofKind = (state: Journal, kind: Kind) => state.entries.filter((entry) => e
 const words = (about: string | undefined) => (about ?? '').split(/[\s,;]+/).filter(Boolean)
 const isAbout = (entry: Entry, id: string) => entry.about === id || words(entry.about).includes(id)
 const sameValue = (a: string, b: string) => normalised(a) === normalised(b)
+const observed = (entry: Entry) => entry.saw !== undefined || entry.value !== undefined || entry.via !== undefined
+
+function observationsOf(state: Journal) {
+	const criteria = new Set(ofKind(state, 'criterion').map((entry) => entry.id))
+	return state.entries.flatMap((entry): Entry[] => {
+		if (entry.kind === 'observation') return [entry]
+		if (entry.kind !== 'defect' || !observed(entry)) return []
+		const about = [...words(entry.about), ...(entry.links ?? []).filter((id) => criteria.has(id))].join(' ')
+		return [{ ...entry, saw: entry.saw ?? entry.actual, verdict: 'wrong', ...(about && { about }) }]
+	})
+}
 
 function answerOf(state: Journal, questionId: string) {
 	return ofKind(state, 'answer')
@@ -399,7 +410,7 @@ function checkedEntry(
 			problems.map((problem) => problem.text).join(', '),
 			problems.some((problem) => problem.field === 'build')
 				? 'Give the build in the entry, or with --build on the call.'
-				: guideHint(kind),
+				: fieldsHint,
 			fix
 		)
 	}
@@ -562,7 +573,11 @@ export function logEntries(
 				if (entry.build === 'base') builds.unshift('base')
 				else builds.push(entry.build)
 			if (entry.repeats === 'none') delete entry.repeats
-			else if (entry.kind === 'observation' && entry.value !== undefined && entry.repeats === undefined) {
+			else if (
+				['observation', 'defect'].includes(entry.kind) &&
+				entry.value !== undefined &&
+				entry.repeats === undefined
+			) {
 				const match = baselineMatch(entry, state.entries, builds)
 				if (match.to) {
 					entry.repeats = storedRef(lookup(state, actor).get(match.to.id)!, actor)
@@ -620,7 +635,7 @@ function gapList(state: Journal, build: string): Gap[] {
 	const earlier = (entry: Entry) => entry.build !== undefined && order(entry) >= 0 && order(entry) < position
 	const first = (state.builds[0] ?? build) === build
 	const observations = ofKind(state, 'observation')
-	const here = observations.filter((entry) => entry.build === build)
+	const here = observationsOf(state).filter((entry) => entry.build === build)
 	const defects = ofKind(state, 'defect')
 	const notes = ofKind(state, 'note')
 	const criteria = ofKind(state, 'criterion')
@@ -629,7 +644,8 @@ function gapList(state: Journal, build: string): Gap[] {
 		Boolean(entry.about?.includes(area)) ||
 		criteria.some((criterion) => criterion.area === area && isAbout(entry, criterion.id))
 	const explained = (id: string) =>
-		defects.some((defect) => defect.links?.includes(id)) || notes.some((note) => isAbout(note, id))
+		defects.some((defect) => defect.id === id || defect.links?.includes(id)) ||
+		notes.some((note) => isAbout(note, id))
 	const byId = new Map<string, Entry>(observations.map((entry) => [entry.id, entry]))
 	const baselines = observations.filter((entry) => entry.value !== undefined && !entry.repeats && earlier(entry))
 	const repeatsOf = (baseline: Entry) =>
@@ -660,7 +676,7 @@ function gapList(state: Journal, build: string): Gap[] {
 			`Do it again on ${build}: ${short([baseline.steps ?? baseline.saw].flat().join(' '))}. Log the value with "repeats": "${baseline.id}".`
 		)
 	if (first) {
-		const measured = here.filter((entry) => entry.value !== undefined)
+		const measured = here.filter((entry) => entry.kind === 'observation' && entry.value !== undefined)
 		if (measured.length < fewBaselines)
 			add(
 				'baselines',
@@ -676,7 +692,9 @@ function gapList(state: Journal, build: string): Gap[] {
 				`No baseline is about this area. Measure an existing rule of it on ${build}, and log an observation with "about": "${area}" and "value".`
 			)
 	}
-	for (const entry of here.filter((item) => item.verdict === 'wrong' && !explained(item.id)))
+	for (const entry of here.filter(
+		(item) => item.kind === 'observation' && item.verdict === 'wrong' && !explained(item.id)
+	))
 		add(
 			entry.id,
 			'wrong',
@@ -684,7 +702,10 @@ function gapList(state: Journal, build: string): Gap[] {
 			`Marked wrong without a defect. Log a defect with "links": ["${entry.id}"], or a note with "about": "${entry.id}" that says why not.`
 		)
 	for (const defect of defects.filter((entry) => entry.build === build)) {
-		const seen = observations.filter((entry) => defect.links?.includes(entry.id) || isAbout(entry, defect.id))
+		const seen = [
+			...(observed(defect) ? [defect] : []),
+			...observations.filter((entry) => defect.links?.includes(entry.id) || isAbout(entry, defect.id)),
+		]
 		const subject = `${defect.id} ${defect.title}`
 		const verify = `Try it on the running app, and log an observation with "about": "${defect.id}".`
 		if (defect.suspected && !seen.some((entry) => entry.via !== 'code'))
@@ -731,7 +752,7 @@ function gapList(state: Journal, build: string): Gap[] {
 	}
 	if (!here.length) add(build, 'build', build, `No observation on ${build} yet. Test it and log what you see.`)
 	if (build === 'base')
-		for (const entry of here.filter((item) => item.value === undefined))
+		for (const entry of here.filter((item) => item.kind === 'observation' && item.value === undefined))
 			add(
 				entry.id,
 				'value',
@@ -803,8 +824,8 @@ function gapList(state: Journal, build: string): Gap[] {
 				`One tester reported it, and no other actor confirmed it. Run checkmate journal verify ${state.changeId} --build ${issue.build}.`
 			)
 		const statuses = Object.entries(issue.statuses)
-		const fixedBefore = statuses.some(([at, status]) => status === 'fixed' && state.builds.indexOf(at) < position)
-		if (issue.statuses[build] === 'no verdict' && !fixedBefore)
+		const fixedBefore = statuses.some(([at, on]) => on.status === 'fixed' && state.builds.indexOf(at) < position)
+		if (issue.statuses[build]?.status === 'no verdict' && !fixedBefore)
 			add(
 				`no_verdict ${issue.id}`,
 				'no_verdict',
@@ -816,6 +837,12 @@ function gapList(state: Journal, build: string): Gap[] {
 }
 
 export type Issue = ReturnType<typeof issueList>[number]
+type Verified = 'confirmed' | 'refuted' | 'none'
+export type BuildStatus = {
+	status: 'fixed' | 'not_fixed' | 'no verdict'
+	votes: { fixed: number; not_fixed: number }
+	basis: 'majority' | 'disputed' | 'single' | 'verified' | 'none'
+}
 
 const evidenceScore = (entry: Entry) => (entry.evidence?.length ?? 0) * 2 + (entry.steps ? 1 : 0)
 
@@ -835,29 +862,39 @@ function issueList(state: Journal) {
 		const found = reports.map((id) => defects.get(id)!)
 		const actors = [...new Set(found.map((defect) => defect.actor))]
 		const names = [issue.id, ...reports]
-		const checked = (field: 'confirms' | 'refutes') =>
-			team.some(
+		const checks = team
+			.filter(
 				(entry) =>
-					entry.kind === 'observation' && names.includes(entry[field] ?? '') && !actors.includes(entry.actor)
+					entry.kind === 'observation' &&
+					!actors.includes(entry.actor) &&
+					names.some((name) => entry.confirms === name || entry.refutes === name)
 			)
-		const confirmed = actors.length > 1 || checked('confirms')
+			.sort((a, b) => a.seq - b.seq)
+		const checkOn = (build: string) => checks.filter((entry) => entry.build === build).at(-1)
+		const confirms = (check: Entry) => names.includes(check.confirms ?? '')
 		const best = found.reduce((top, defect) => (evidenceScore(defect) > evidenceScore(top) ? defect : top))
 		const first = Math.min(...found.map((defect) => order(defect.build)))
-		const verdicts = team.filter((entry) => entry.kind === 'verdict' && names.includes(entry.defect ?? ''))
+		const firstCheck = checkOn(state.builds[first])
+		const verified: Verified = !firstCheck ? 'none' : confirms(firstCheck) ? 'confirmed' : 'refuted'
+		const confirmed = actors.length > 1 || verified === 'confirmed'
+		const verdicts = team
+			.filter((entry) => entry.kind === 'verdict' && names.includes(entry.defect ?? ''))
+			.sort((a, b) => a.seq - b.seq)
+		const statusOn = (build: string): BuildStatus => {
+			const results = new Map<string, string>()
+			for (const verdict of verdicts.filter((entry) => entry.build === build))
+				results.set(verdict.actor, verdict.result!)
+			const count = (result: string) => [...results.values()].filter((item) => item === result).length
+			const votes = { fixed: count('fixed'), not_fixed: count('not_fixed') }
+			const check = checkOn(build)
+			if (check) return { status: confirms(check) ? 'not_fixed' : 'fixed', votes, basis: 'verified' }
+			if (!results.size) return { status: 'no verdict', votes, basis: 'none' }
+			if (votes.fixed === votes.not_fixed) return { status: 'fixed', votes, basis: 'disputed' }
+			const status = votes.fixed > votes.not_fixed ? 'fixed' : 'not_fixed'
+			return { status, votes, basis: results.size === 1 ? 'single' : 'majority' }
+		}
 		const statuses = Object.fromEntries(
-			state.builds
-				.filter((_, index) => index > first)
-				.map((build) => {
-					const results = verdicts
-						.filter((verdict) => verdict.build === build)
-						.map((verdict) => verdict.result)
-					const status = results.includes('not_fixed')
-						? 'not_fixed'
-						: results.includes('fixed')
-							? 'fixed'
-							: 'no verdict'
-					return [build, status]
-				})
+			state.builds.filter((_, index) => index > first).map((build) => [build, statusOn(build)])
 		)
 		return {
 			id: issue.id,
@@ -872,7 +909,8 @@ function issueList(state: Journal) {
 			reporters: actors.length,
 			actors: actors.map(shortName),
 			confirmed,
-			refuted: !confirmed && checked('refutes'),
+			refuted: !confirmed && verified === 'refuted',
+			verified,
 			statuses,
 			note: issue.note ?? null,
 		}
@@ -894,17 +932,42 @@ function issueBuilds(state: Journal, issue: Issue) {
 const stopWords = new Set(
 	'the and for with not but was are from that this when has have its into than then there should instead'.split(' ')
 )
-const wordsOf = (entry: Entry) =>
+const wordsIn = (text: string) =>
 	new Set(
-		`${entry.title} ${entry.actual}`
+		text
 			.toLowerCase()
 			.split(/[^a-z0-9]+/)
 			.filter((word) => word.length > 2 && !stopWords.has(word))
 	)
+const wordsOf = (entry: Entry) => wordsIn(`${entry.title} ${entry.actual}`)
+const stepText = (entry: Entry) => [entry.steps ?? []].flat().join(' ')
 const overlap = (a: Set<string>, b: Set<string>) =>
 	[...a].filter((word) => b.has(word)).length / (new Set([...a, ...b]).size || 1)
 const similarWords = 0.5
+const someWords = 0.25
 const mergeLimit = 60
+
+function pathsOf(entry: Entry) {
+	const tokens = stepText(entry)
+		.toLowerCase()
+		.split(/[\s"'()]+/)
+		.map((token) =>
+			token
+				.replace(/^[a-z]+:\/\/[^/]+/, '')
+				.split('?')[0]
+				.replace(/[.,;:]+$/, '')
+		)
+	return new Set(tokens.filter((token) => /^\/[a-z]/.test(token)))
+}
+
+function likeness(a: Entry, b: Entry) {
+	if (overlap(wordsOf(a), wordsOf(b)) < someWords) return undefined
+	if (!a.steps || !b.steps) return 'some of the same words in title and actual'
+	const path = [...pathsOf(a)].find((item) => pathsOf(b).has(item))
+	if (path) return `some of the same words, and the same path ${path}`
+	if (overlap(wordsIn(stepText(a)), wordsIn(stepText(b))) >= someWords) return 'some of the same words and steps'
+	return undefined
+}
 
 function criteriaOf(defect: Entry, team: Map<string, Row>) {
 	const linked = (defect.links ?? []).flatMap((id) => {
@@ -927,7 +990,8 @@ export function mergeBuild(store: Store, changeId: string, build: string) {
 		actual: short(defect.actual),
 		criteria: criteriaOf(defect, team),
 	}))
-	const issues = issueList(state).filter((issue) => issue.reports.length > 1 || issue.id !== issue.reports[0])
+	const onBuild = issueList(state).filter((issue) => issueBuilds(state, issue).includes(build))
+	const issues = onBuild.filter((issue) => issue.reports.length > 1 || issue.id !== issue.reports[0])
 	const together = (ids: string[]) => issues.some((issue) => ids.every((id) => issue.reports.includes(id)))
 	const groups: Array<{ reports: string[]; reason: string }> = []
 	const suggest = (reports: string[], reason: string) => {
@@ -952,6 +1016,21 @@ export function mergeBuild(store: Store, changeId: string, build: string) {
 			clusters.splice(0, clusters.length, ...clusters.filter((item) => !joined.includes(item)), cluster)
 		}
 	for (const cluster of clusters) suggest(cluster, 'many of the same words in title and actual')
+	const suggested = new Set(groups.flatMap((group) => group.reports))
+	const singles = onBuild.filter((issue) => issue.reporters === 1 && !issue.reports.some((id) => suggested.has(id)))
+	const larger = [
+		...issues.filter((issue) => issue.reporters > 1).map((issue) => ({ into: issue.id, reports: issue.reports })),
+		...groups.map((group) => ({ into: group.reports.join(','), reports: group.reports })),
+	]
+	const candidates = singles.flatMap((single) =>
+		larger.flatMap(({ into, reports }) => {
+			const reason = single.reports
+				.flatMap((id) => reports.map((other) => likeness(team.get(id)!, team.get(other)!)))
+				.find(Boolean)
+			return reason ? [{ report: single.id, into, reason }] : []
+		})
+	)
+	const grouped = new Set(issues.flatMap((issue) => issue.reports))
 	const reports = groups[0]?.reports ?? defects.slice(0, 2).map((defect) => defect.id)
 	const example = { ...(issueSchema.examples[0] as Fix), ...(reports.length ? { reports } : {}) }
 	return completed(state.changeId, {
@@ -959,20 +1038,28 @@ export function mergeBuild(store: Store, changeId: string, build: string) {
 		total: listed.length,
 		defects: listed.slice(0, mergeLimit),
 		groups: groups.slice(0, mergeLimit),
-		issues: issues
-			.filter((issue) => issueBuilds(state, issue).includes(build))
-			.map(({ id, title, reports }) => ({ id, title: short(title), reports })),
+		candidates: candidates.slice(0, mergeLimit),
+		issues: issues.map(({ id, title, reports }) => ({ id, title: short(title), reports })),
+		ungrouped: defects.filter((defect) => !grouped.has(defect.id)).map((defect) => defect.id),
 		command: `checkmate journal log ${state.changeId} --build ${build}`,
 		example,
 	})
 }
 
+function verifyReason(state: Journal, issue: Issue, build: string) {
+	if (issue.reporters === 1 && issue.verified === 'none' && issueBuilds(state, issue).includes(build))
+		return 'one reporter'
+	const basis = issue.statuses[build]?.basis
+	if (basis === 'disputed' || basis === 'single') return `${basis} verdict`
+	return undefined
+}
+
 export function verifyBuild(store: Store, changeId: string, build: string) {
 	const state = journal(store, changeId)
-	const items = issueList(state).filter(
-		(issue) =>
-			issue.reporters === 1 && !issue.confirmed && !issue.refuted && issueBuilds(state, issue).includes(build)
-	)
+	const items = issueList(state).flatMap((issue) => {
+		const reason = verifyReason(state, issue, build)
+		return reason ? [{ ...issue, reason }] : []
+	})
 	return completed(state.changeId, {
 		build,
 		items,
@@ -1074,7 +1161,7 @@ export function decideBuild(
 }
 
 function matrix(state: Journal) {
-	const observations = ofKind(state, 'observation')
+	const observations = observationsOf(state)
 	const criteria = ofKind(state, 'criterion')
 	const free = observations.filter((entry) => !criteria.some((criterion) => isAbout(entry, criterion.id)))
 	const rows = [
@@ -1132,7 +1219,11 @@ export function changeState(store: Store, changeId: string, viewer?: string) {
 		targetId: state.targetId,
 		instanceId: state.instanceId,
 		builds: state.builds,
-		criteria: ofKind(state, 'criterion').map(({ id, text, source }) => ({ id, text: text!, source: source! })),
+		criteria: ofKind(state, 'criterion').map(({ id, text, source }) => ({
+			id,
+			text: text!,
+			source: source ?? null,
+		})),
 		matrix: matrix(state),
 		defects: defectList(state),
 		openDefects: openDefects(state).map((defect) => defect.id),

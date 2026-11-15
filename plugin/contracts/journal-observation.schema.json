@@ -23,14 +23,10 @@
 			"$ref": "journal-entry.schema.json#/definitions/steps"
 		},
 		"saw": {
-			"description": "What you saw.",
-			"type": "string",
-			"minLength": 1
+			"$ref": "journal-entry.schema.json#/definitions/saw"
 		},
 		"value": {
-			"description": "The exact value to compare on a later build, for example 45.00 or HTTP 409.",
-			"type": "string",
-			"minLength": 1
+			"$ref": "journal-entry.schema.json#/definitions/value"
 		},
 		"repeats": {
 			"description": "The ID of an earlier observation that you did again. Without it, Checkmate links a value to the one earlier value with the same about and steps, or the same ID without the build name (total-b1, total-base). none: no link.",
@@ -42,19 +38,18 @@
 			"enum": ["ok", "wrong"]
 		},
 		"via": {
-			"description": "The entry point that you used.",
-			"enum": ["ui", "api", "code", "other"]
+			"$ref": "journal-entry.schema.json#/definitions/via"
 		},
 		"evidence": {
 			"$ref": "journal-entry.schema.json#/definitions/evidence"
 		},
 		"confirms": {
-			"description": "The ID of an issue or a defect that you did again and saw, for example a1/D3.",
+			"description": "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.",
 			"type": "string",
 			"minLength": 1
 		},
 		"refutes": {
-			"description": "The ID of an issue or a defect that you did again and did not see.",
+			"description": "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.",
 			"type": "string",
 			"minLength": 1
 		}

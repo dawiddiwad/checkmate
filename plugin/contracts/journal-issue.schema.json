@@ -1,7 +1,7 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "journal-issue.schema.json",
-	"description": "One defect that one or more defect entries report. A defect that is in no issue is its own issue.",
+	"description": "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.",
 	"type": "object",
 	"properties": {
 		"kind": {

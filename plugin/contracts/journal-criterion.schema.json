@@ -30,6 +30,6 @@
 			"$ref": "journal-entry.schema.json#/definitions/area"
 		}
 	},
-	"required": ["kind", "text", "source"],
+	"required": ["kind", "text"],
 	"additionalProperties": false
 }

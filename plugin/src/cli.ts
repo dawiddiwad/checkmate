@@ -75,7 +75,7 @@ import { recordBuild, recordChecklist, showLite } from './lite.ts'
 import type { Field } from './guide.ts'
 import type { GuideRole } from './guide.ts'
 import { guideJournal, guideLite, guideRoles } from './guide.ts'
-import type { Gap, Issue } from './journal.ts'
+import type { BuildStatus, Gap, Issue } from './journal.ts'
 import {
 	answerQuestion,
 	changeGaps,
@@ -301,7 +301,9 @@ type MergeData = {
 		criteria: string[]
 	}>
 	groups: Array<{ reports: string[]; reason: string }>
+	candidates: Array<{ report: string; into: string; reason: string }>
 	issues: Array<{ id: string; title: string; reports: string[] }>
+	ungrouped: string[]
 }
 
 function gapLines(gaps: Gap[], build: string, total = gaps.length) {
@@ -335,18 +337,28 @@ function notShownLines(changeId: string, open: OpenItems) {
 	]
 }
 
-function fieldText(fields: Field[]) {
+function fieldText(fields: Field[], described: Set<string>) {
 	return fields
-		.map(
-			(field) =>
-				`${field.path}${field.type.includes('|') ? ` (${field.type})` : ''}${field.required ? ' (required)' : ''}: ${field.description}`
-		)
+		.map((field) => {
+			const name = `${field.path}${field.type.includes('|') ? ` (${field.type})` : ''}${field.required ? ' (required)' : ''}`
+			if (described.has(field.description)) return `${name}.`
+			described.add(field.description)
+			return `${name}: ${field.description}`
+		})
 		.join(' ')
 }
 
 function cellText(cell: { ok: number; wrong: number; seen: number }) {
 	const parts = Object.entries(cell).filter(([, count]) => count)
 	return parts.length ? parts.map(([name, count]) => `${name}${count}`).join(',') : '-'
+}
+
+function statusText(on: BuildStatus) {
+	if (on.basis === 'none') return on.status
+	if (on.basis === 'verified') return `${on.status} (verified)`
+	const votes = on.status === 'fixed' ? on.votes.fixed : on.votes.not_fixed
+	const mark = on.basis === 'majority' ? '' : `, ${on.basis}`
+	return `${on.status} (${votes} of ${on.votes.fixed + on.votes.not_fixed}${mark})`
 }
 
 function nextLines(next: string[]) {
@@ -954,10 +966,11 @@ const commands: Record<string, Command> = {
 				hint?: string
 				fix?: unknown
 			}>
+			const ids = saved.map((entry) => entry.id)
+			if (!refused.length) return { facts: { saved: ids } }
 			return {
-				facts: { saved: saved.length, refused: refused.length },
+				facts: { saved: ids, refused: refused.length },
 				lines: [
-					['saved', saved.map((entry) => entry.id).join(',')],
 					...refused.map((entry) => [
 						'refused',
 						entry.field,
@@ -965,9 +978,7 @@ const commands: Record<string, Command> = {
 						...(entry.fix ? [`send: ${JSON.stringify(entry.fix)}`] : []),
 						entry.hint,
 					]),
-					...(refused.length
-						? nextLines(['Fix each refused entry. Send only those entries again. The saved entries stay.'])
-						: []),
+					...nextLines(['Fix each refused entry. Send only those entries again. The saved entries stay.']),
 				],
 			}
 		},
@@ -1000,11 +1011,16 @@ const commands: Record<string, Command> = {
 				answers: Array<{ id: string; question: string; answer: string }>
 				openDefects: Array<{ id: string; build: string; severity: string; title: string }>
 			}
+			const described = new Set<string>()
 			return {
 				lines: [
 					...data.steps.map((step) => ['step', step]),
-					['entries', `${data.about} Every entry has: ${fieldText(data.common)}`],
-					...data.kinds.map((kind) => ['kind', kind.kind, `${kind.about} ${fieldText(kind.fields)}`]),
+					['entries', `${data.about} Every entry has: ${fieldText(data.common, described)}`],
+					...data.kinds.map((kind) => [
+						'kind',
+						kind.kind,
+						`${kind.about} ${fieldText(kind.fields, described)}`,
+					]),
 					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
 					...data.answers.map((answer) => ['answer', answer.id, answer.question, answer.answer]),
 					...data.openDefects.map((defect) => [
@@ -1027,7 +1043,12 @@ const commands: Record<string, Command> = {
 			return {
 				facts: { target: data.targetId, instance: data.instanceId, builds: data.builds },
 				lines: [
-					...data.criteria.map((criterion) => ['criterion', criterion.id, criterion.text, criterion.source]),
+					...data.criteria.map((criterion) => [
+						'criterion',
+						criterion.id,
+						criterion.text,
+						criterion.source ?? '-',
+					]),
 					...data.matrix.map((row) => [
 						'matrix',
 						row.about,
@@ -1083,6 +1104,22 @@ const commands: Record<string, Command> = {
 		print: (reply) => {
 			const data = reply.data as unknown as MergeData
 			const hidden = data.total - data.defects.length
+			const again = data.issues.length > 0
+			const suggestions = [
+				...data.groups.map((group) => ['suggest', group.reports.join(','), group.reason]),
+				...(data.candidates.length ? [['singles that may belong to a larger issue']] : []),
+				...data.candidates.map((item) => ['may_belong', item.report, item.into, item.reason]),
+			]
+			const checks = [
+				['check', `${data.ungrouped.length} defects are in no issue: ${data.ungrouped.join(',') || '-'}`],
+				['check', `${data.groups.length} suggest lines are not logged as issues`],
+				['check', `${data.candidates.length} singles may belong to a larger issue`],
+			]
+			if (again)
+				return {
+					facts: { build: data.build, defects: data.total, issues: data.issues.length },
+					lines: [...suggestions, ...checks],
+				}
 			return {
 				facts: { build: data.build, defects: data.total },
 				lines: [
@@ -1104,14 +1141,14 @@ const commands: Record<string, Command> = {
 								],
 							]
 						: []),
-					...data.issues.map((issue) => ['issue', issue.id, issue.reports.join(','), issue.title]),
-					...data.groups.map((group) => ['suggest', group.reports.join(','), group.reason]),
+					...suggestions,
 					...nextLines([
-						'The suggest lines are ideas from the same criterion or from the same words. Read the defects and decide.',
+						'The suggest and may_belong lines are ideas from the same criterion, words, steps, or path. Read the defects and decide.',
 						'Log one issue for each defect that two or more reports describe. A defect that is in no issue is its own issue.',
 						'To change an issue, log it again with "supersedes".',
 					]),
 					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
+					...checks,
 				],
 			}
 		},
@@ -1131,7 +1168,7 @@ const commands: Record<string, Command> = {
 					issue.title,
 					`reporters=${issue.reporters}`,
 					issue.actors.join(','),
-					...Object.entries(issue.statuses).map(([build, status]) => `${build}=${status}`),
+					...Object.entries(issue.statuses).map(([build, status]) => `${build}=${statusText(status)}`),
 					issueStatus(issue),
 				]),
 			}
@@ -1143,20 +1180,21 @@ const commands: Record<string, Command> = {
 		required: ['build'],
 		run: (store, args) => verifyBuild(store, value(args, 'changeId')!, value(args, 'build')!),
 		print: (reply) => {
-			const items = reply.data.items as Issue[]
+			const items = reply.data.items as Array<Issue & { reason: string }>
 			return {
 				facts: { build: reply.data.build, items: items.length },
 				lines: [
 					...items.flatMap((issue) => [
-						['verify', issue.id, issue.severity, issue.title],
+						['verify', issue.id, issue.severity, issue.title, issue.reason],
 						['steps', [issue.steps ?? '-'].flat().join(' ')],
 						['expected', issue.expected],
 						['actual', issue.actual],
 						...issue.evidence.map((item) => ['evidence', 'path' in item ? item.path : item.text]),
 					]),
 					...nextLines([
-						'Do the steps of each item on the running app.',
-						'Log an observation with "confirms" when you see the defect, or with "refutes" when you do not.',
+						'Reproduce each item on the running application.',
+						'Log one observation for each item: "confirms" when you see the defect, "refutes" when you do not, and "saw" with what you saw.',
+						'Do not explore beyond the list.',
 					]),
 					[
 						'example',

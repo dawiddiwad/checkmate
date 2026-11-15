@@ -35,7 +35,7 @@ export type JournalCriterion = {
 	build?: string
 	supersedes?: string
 	text: string
-	source: string
+	source?: string
 	area?: string
 }
 
@@ -48,7 +48,11 @@ export type JournalDefect = {
 	expected: string
 	actual: string
 	severity: 'critical' | 'high' | 'medium' | 'low'
+	about?: string
 	steps?: string | Array<string>
+	saw?: string
+	value?: string
+	via?: 'ui' | 'api' | 'code' | 'other'
 	evidence?: string | Array<string>
 	links?: Array<string>
 	suspected?: boolean
@@ -116,7 +120,7 @@ export type JournalVerdict = {
 	supersedes?: string
 	defect: string
 	result: 'fixed' | 'not_fixed'
-	saw: string
+	saw?: string
 	evidence?: string | Array<string>
 }
 

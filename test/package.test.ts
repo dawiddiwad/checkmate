@@ -33,6 +33,8 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 	const version = json(join(root, 'cli/package.json')).version
 	assert.equal(json(join(installed, 'package.json')).version, version)
 	assert.equal(json(join(installed, 'plugin/.claude-plugin/plugin.json')).version, version)
+	assert(existsSync(join(root, 'plugin/evals')))
+	assert.equal(existsSync(join(installed, 'plugin/evals')), false, 'The npm package ships plugin/evals')
 	assert.equal(readFileSync(join(installed, 'LICENSE'), 'utf8'), readFileSync(join(root, 'LICENSE'), 'utf8'))
 	const metadata = json(join(installed, 'package.json'))
 	assert.equal(metadata.description, 'The QA system of record for an agent software factory')

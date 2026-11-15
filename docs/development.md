@@ -31,7 +31,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 - The runtime uses erasable TypeScript syntax, so Node.js runs `plugin/bin/checkmate.ts` without a compiler.
 - Node.js does not strip types in `node_modules`, so the npm package runs the JavaScript bundle.
 - The root package is private. It holds the development dependencies and commands.
-- `cli/` runs `scripts/build-cli.ts` before it packs. The script bundles `cli/src/main.ts` and copies `plugin/`, `README.md`, and `LICENSE` into the package. In the package README, relative links and images point to the release tag on GitHub.
+- `cli/` runs `scripts/build-cli.ts` before it packs. The script bundles `cli/src/main.ts` and copies `plugin/` without `plugin/evals/`, `README.md`, and `LICENSE` into the package. In the package README, relative links and images point to the release tag on GitHub.
 - The plugin uses the installed Claude Code CLI. Do not add a model loop or an Agent SDK runner. Keep model selection, authentication, and permissions with the host.
 
 ## Checks
@@ -126,6 +126,7 @@ claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read \
 - The scaffold finds the plugin CLI through `CLAUDE_PLUGIN_ROOT`, else through its own path in `plugin/evals/`.
 - The results go to `plugin/evals/results/`. Git ignores them.
 - The suite is not part of `phase:verify` or CI. A passed suite does not prove that a worker always follows the skills.
+- The marketplace plugin contains `plugin/evals/`. The npm package does not: `scripts/build-cli.ts` leaves it out of the plugin copy.
 
 ## Contracts
 

@@ -35,11 +35,15 @@ async function buildCli() {
 		banner: { js: '#!/usr/bin/env node' },
 	})
 	await rm(`${root}cli/plugin`, { recursive: true, force: true })
-	await cp(`${root}plugin`, `${root}cli/plugin`, { recursive: true })
+	const evals = resolve(`${root}plugin/evals`)
+	await cp(`${root}plugin`, `${root}cli/plugin`, {
+		recursive: true,
+		filter: (source) => resolve(source) !== evals,
+	})
 	const version = JSON.parse(await readFile(`${root}cli/package.json`, 'utf8')).version
 	await writeFile(`${root}cli/README.md`, packageReadme(await readFile(`${root}README.md`, 'utf8'), version))
 	await cp(`${root}LICENSE`, `${root}cli/LICENSE`)
-	console.log('Built cli/dist/checkmate.js and copied plugin/, README.md, and LICENSE to cli/.')
+	console.log('Built cli/dist/checkmate.js and copied plugin/ without evals/, README.md, and LICENSE to cli/.')
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await buildCli()

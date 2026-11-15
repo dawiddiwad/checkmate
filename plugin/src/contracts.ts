@@ -82,16 +82,19 @@ export function same(a: unknown, b: unknown) {
 	return canonical(a) === canonical(b)
 }
 
-export function validate<K extends keyof Documents>(name: K, value: unknown, hint?: string): Documents[K] {
+export function schemaErrors(name: string, value: unknown, prefix = name) {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
-	const errors = () =>
-		unionErrors(check.errors ?? [])
-			.filter((error) => error.keyword !== 'propertyNames')
-			.map((error) => schemaError(`${name}${error.instancePath}`, error))
-			.join(', ')
+	if (check(value)) return []
+	return unionErrors(check.errors ?? [])
+		.filter((error) => error.keyword !== 'propertyNames')
+		.map((error) => schemaError(`${prefix}${error.instancePath}`, error))
+}
+
+export function validate<K extends keyof Documents>(name: K, value: unknown, hint?: string): Documents[K] {
+	const errors = schemaErrors(name, value)
 	requireWellFormed(
-		check(value),
-		`Invalid ${name}: ${errors()}`,
+		!errors.length,
+		`Invalid ${name}: ${errors.join(', ')}`,
 		hint ??
 			`Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
 	)

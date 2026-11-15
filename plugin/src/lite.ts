@@ -235,7 +235,7 @@ export function recordChecklist(
 	})
 }
 
-const normalised = (text: string) =>
+export const normalised = (text: string) =>
 	text
 		.trim()
 		.replace(/\s+/g, ' ')

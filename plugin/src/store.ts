@@ -19,7 +19,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '3'
+const schemaVersion = '4'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -186,6 +186,22 @@ CREATE TABLE results (
 	finished_at TEXT NOT NULL,
 	sha256 TEXT NOT NULL,
 	body TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+CREATE TABLE changes (
+	change_id TEXT PRIMARY KEY,
+	target_id TEXT NOT NULL REFERENCES target_requests(target_id),
+	instance_id TEXT,
+	operation_id TEXT NOT NULL ${operationReference},
+	FOREIGN KEY (target_id, instance_id) REFERENCES instances(target_id, instance_id)
+) STRICT;
+CREATE TABLE journal_entries (
+	change_id TEXT NOT NULL REFERENCES changes(change_id),
+	entry_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	build TEXT,
+	body TEXT NOT NULL,
+	actor TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
 CREATE VIEW latest_plans AS

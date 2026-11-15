@@ -243,7 +243,7 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 		[
 			['deploy'],
 			'Unknown command: deploy',
-			/^Use one of: init, inbox, status, target, plan, gap, lite, run, finding, result,/,
+			/^Use one of: init, inbox, status, target, plan, gap, lite, journal, run, finding, result,/,
 		],
 		[
 			['target', 'instance', 'drop', 'x', 'y'],
@@ -392,7 +392,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.deepEqual(cli(workspace, ['log', '--subject', 'checkout-local']).lines, [
 		'invalid_request log refusal=malformed',
 		'reason: Refused: malformed request.',
-		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.',
+		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, change:<changeId>, or inbox.',
 	])
 	for (const [flag, text, reason] of [
 		['--after', 'x', 'Invalid --after: x. Use a whole number from 0'],

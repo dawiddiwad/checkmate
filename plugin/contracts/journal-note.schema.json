@@ -1,0 +1,33 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-note.schema.json",
+	"description": "Anything else, for example where you explored.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "note"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"text": {
+			"description": "The note.",
+			"type": "string",
+			"minLength": 1
+		},
+		"about": {
+			"$ref": "journal-entry.schema.json#/definitions/about"
+		},
+		"area": {
+			"$ref": "journal-entry.schema.json#/definitions/area"
+		}
+	},
+	"required": ["kind", "text"],
+	"additionalProperties": false
+}

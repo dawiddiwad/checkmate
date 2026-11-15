@@ -4,6 +4,14 @@ import { targetList } from './targets.ts'
 import { checklistNext, showLite } from './lite.ts'
 import checklistSchema from '../contracts/lite-checklist.schema.json' with { type: 'json' }
 import recordSchema from '../contracts/lite-record.schema.json' with { type: 'json' }
+import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
+import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
+import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
+import defectSchema from '../contracts/journal-defect.schema.json' with { type: 'json' }
+import questionSchema from '../contracts/journal-question.schema.json' with { type: 'json' }
+import verdictSchema from '../contracts/journal-verdict.schema.json' with { type: 'json' }
+import noteSchema from '../contracts/journal-note.schema.json' with { type: 'json' }
+import { changeState, entryKinds } from './journal.ts'
 
 type Schema = {
 	$ref?: string
@@ -20,6 +28,13 @@ export type Field = { path: string; type: string; required: boolean; description
 const files: Record<string, Schema> = {
 	'lite-checklist.schema.json': checklistSchema as Schema,
 	'lite-record.schema.json': recordSchema as Schema,
+	'journal-entry.schema.json': entrySchema as Schema,
+	'journal-criterion.schema.json': criterionSchema as Schema,
+	'journal-observation.schema.json': observationSchema as Schema,
+	'journal-defect.schema.json': defectSchema as Schema,
+	'journal-question.schema.json': questionSchema as Schema,
+	'journal-verdict.schema.json': verdictSchema as Schema,
+	'journal-note.schema.json': noteSchema as Schema,
 }
 
 export const liteSteps = [
@@ -156,5 +171,46 @@ export function guideLite(store: Store, planId: string | undefined) {
 		...(later ? {} : { example: record.example }),
 		need,
 		next: [],
+	})
+}
+
+const commonFields = ['kind', 'id', 'build', 'supersedes']
+
+export function journalSchema() {
+	const file = 'journal-entry.schema.json'
+	const entry = files[file]
+	return {
+		about: entry.description!,
+		common: fieldsOf(entry, file, ''),
+		kinds: entryKinds.map((kind) => {
+			const own = `journal-${kind}.schema.json`
+			return {
+				kind,
+				about: files[own].description!,
+				fields: fieldsOf(files[own], own, '').filter((field) => !commonFields.includes(field.path)),
+			}
+		}),
+		example: entry.examples![0],
+	}
+}
+
+export function journalSteps(changeId: string) {
+	return [
+		'Test the way you would test without this tool. Checkmate does not limit what you test, or how.',
+		`Log what you see as you go, and at the latest before your turn ends: checkmate journal log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+		'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
+		`When you think that you are done, run checkmate journal gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate journal show ${changeId} prints the record.`,
+	]
+}
+
+export function guideJournal(store: Store, changeId: string | undefined) {
+	const change = changeId ?? '<changeId>'
+	const state = changeId === undefined ? undefined : changeState(store, changeId)
+	return completed(changeId ?? 'journal guide', {
+		steps: journalSteps(change),
+		...journalSchema(),
+		command: `checkmate journal log ${change} --build b1`,
+		answers: (state?.questions ?? []).filter((question) => question.answer !== null),
+		openDefects: (state?.defects ?? []).filter((defect) => state!.openDefects.includes(defect.id)),
 	})
 }

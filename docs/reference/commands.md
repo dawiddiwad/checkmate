@@ -4,7 +4,7 @@
 
 Checkmate has one command set with two command lines. Small values go in flags, structured payloads go in JSON on standard input, and line 1 of every response is the status.
 
-**On this page:** [Two command lines](#two-command-lines) · [Command list](#command-list) · [Read the state](#read-the-state) · [Loop states](#loop-states) · [Input](#input) · [Output](#output) · [Statuses and exit codes](#statuses-and-exit-codes) · [Run gate and policy](#run-gate-and-policy) · [Lite mode](#lite-mode) · [delegate](#delegate) · [ui](#ui) · [Environment variables](#environment-variables)
+**On this page:** [Two command lines](#two-command-lines) · [Command list](#command-list) · [Read the state](#read-the-state) · [Loop states](#loop-states) · [Input](#input) · [Output](#output) · [Statuses and exit codes](#statuses-and-exit-codes) · [Run gate and policy](#run-gate-and-policy) · [Lite mode](#lite-mode) · [Journal mode](#journal-mode) · [delegate](#delegate) · [ui](#ui) · [Environment variables](#environment-variables)
 
 ## Two command lines
 
@@ -62,6 +62,13 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `lite checklist <planId> --target <targetId@rev>`       | Records a checklist and questions as revision 1 of a lite plan.                                                                   |
 |           | `lite show <planId>`                                    | Prints the items, the repeat lines, the questions with their answers, the runs, the open defects, and the next steps.             |
 |           | `lite record <planId> --build <build> [--draft]`        | Records one tested build as a new revision and a finished run, or saves a part with `--draft`. Read [Lite mode](#lite-mode).      |
+| Journal   | `journal open <changeId> --target <targetId>`           | Opens a change for the journal, with an optional `--instance`.                                                                    |
+|           | `journal guide [<changeId>]`                            | Prints how to log entries, from the entry schemas. With a change, it also prints the PM answers and the open defects.             |
+|           | `journal log <changeId> [--build <build>]`              | Saves each valid entry of standard input, and refuses each invalid entry alone. Read [Journal mode](#journal-mode).               |
+|           | `journal gaps <changeId> [--build <build>]`             | Prints what the journal does not cover yet on a build, as ideas.                                                                  |
+|           | `journal show <changeId>`, `journal export <changeId>`  | Prints the record of a change, or exports it as JSON.                                                                             |
+|           | `journal answer <changeId> <questionId> --answer <a>`   | Records a PM answer.                                                                                                              |
+|           | `journal accept\|reject <changeId> --build <build>`     | Records the decision of the oracle on a build, with `--rationale`, and prints the gaps of the build.                              |
 | Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
 |           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                                                                                          |
 |           | `ui`                                                    | Starts the review UI.                                                                                                             |
@@ -308,6 +315,35 @@ The optional field `changes` of the checklist and of the record lists the areas 
 For a check with `value` on an item with a reference value, Checkmate sets the result. It removes the spaces at the two ends of each value, changes each sequence of spaces to one space, and writes each number in one form: it removes the zeros before the integer part and after the decimal part, so `1.50` is `1.5` and `007` is `7`. All other text, letter case, and units must be the same. It does no other matching. Equal values give `passed`. Different values give `failed` with the `defect` of the check, or `passed` with the `intended` change. When the difference is not in the rule, for example a generated ID or data that the tests changed, the check gives its own `result` (`passed`, `blocked`, or `not_run`) and a `reason`. Only an `intended` change or the first passed value sets a new reference value. A check of an item with a reference value can leave out `check`: Checkmate uses the steps of the repeat line. It adds the value, the reference value, the intended change, and the reason to the `observed` text of the check. The refusal has a `reason` and a `hint`. When the record breaks more than one rule, the reason and the hint list each rule with a number, for example `(1)` and `(2)`. The hint gives the JSON fragment to add when it can. The reason or the hint names the payload field, for example `checks[1].defect` or `retests[].evidence`. Nothing is recorded. When the plan has no checklist, `lite show` and `lite record` refuse with a hint to run `lite checklist`. Evidence is a file path in the workspace, a short text, or `{"text": "<what you saw>"}`. A string with a space that names no file is text. One file can be the evidence of several checks. Checkmate does not delete the file.
 
 `status`, `run show`, `finding list`, `export`, the review UI, and `result accept` read lite records as they read other records. The `next` lines of `status` name the commands of the full loop.
+
+## Journal mode
+
+Journal mode is a prototype. The commands have the prefix `journal`, because `log` and `export` are names of other commands. The agent tests freely and writes down what it sees. The journal has no checklist step, no finish step, no completeness refusal, and no `blocked` or `not_run` state.
+
+1. The opener runs `journal open <changeId> --target <targetId>`. The target must exist. The opener can log criteria with `journal log`.
+2. The agent runs `journal guide <changeId>`. The guide comes from the `description` and `examples` of `plugin/contracts/journal-*.schema.json`.
+3. The agent runs `journal log` at any time, in any order. Standard input is one entry or a JSON array of entries. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, and a hint. A call that saves no entry is refused. A call that saves one or more entries completes, with a `refused` line for each refused entry.
+4. The agent runs `journal gaps` when it thinks that it is done. Each line is an idea. `gaps` always completes, and no command needs it to be empty.
+5. The oracle runs `journal answer`, `journal accept`, and `journal reject`.
+
+The entry kinds are `criterion`, `observation`, `defect`, `question`, `verdict`, and `note`. Checkmate gives an ID with the prefix `C`, `O`, `D`, `Q`, `V`, or `N` when the entry has no `id`. An entry with `supersedes` replaces the earlier entry of the same kind and keeps its ID. Nothing is deleted: `journal export` has each version in `history`. Evidence is a file path in the workspace or a text. Checkmate stores the bytes of each file in `blobs`. A string with a space, or a string that does not look like a path, is text.
+
+`journal gaps` lists, for a build:
+
+- `build`: the build has no observation.
+- `criteria`: the journal has no criterion.
+- `criterion`: a criterion has no observation on the build. `happy_path`: it has one observation, or only `ok` observations.
+- `answer`: a PM answer that no observation on the build is about.
+- `baseline`: an observation with a `value` on an earlier build that no observation on the build repeats. `difference`: a repeat with another value and no note or defect about it. Checkmate compares the values as `lite record` does: it removes spaces at the two ends, changes each sequence of spaces to one space, and writes each number in one form.
+- `retest`: a defect of an earlier build with no verdict on the build, unless an earlier verdict is `fixed`.
+- `evidence`: a defect of the build without evidence.
+- `wrong`: an observation marked `wrong` with no defect or note about it.
+- `entry_point`: no observation on the build used the UI (capability `browser`) or the API (capability `http`) of the target.
+- `area`: a changed area (the `area` of a criterion or a note) that no observation on the build is about.
+
+On `base`, the lines `criteria`, `criterion`, `happy_path`, `answer`, and `area` do not show, because the change is not built. The output ends with a `count` line. An observation is about an ID when its `about` is the ID or has the ID as a word.
+
+`journal show` prints the criteria, a matrix of the observations for each criterion or `about` on each build, the defects with their verdicts, the questions with their answers, and the decisions. `journal accept` and `journal reject` print the gaps of the build at the time of the decision.
 
 ## delegate
 

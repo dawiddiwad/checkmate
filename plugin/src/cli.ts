@@ -73,7 +73,18 @@ import {
 } from './views.ts'
 import { recordBuild, recordChecklist, showLite } from './lite.ts'
 import type { Field } from './guide.ts'
-import { guideLite } from './guide.ts'
+import { guideJournal, guideLite } from './guide.ts'
+import type { Gap } from './journal.ts'
+import {
+	answerQuestion,
+	changeGaps,
+	changeState,
+	decideBuild,
+	exportChange,
+	logEntries,
+	openChange,
+	showChange,
+} from './journal.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
@@ -259,6 +270,29 @@ function liteLines(data: LiteState, sources = true) {
 			defect.title,
 		]),
 	]
+}
+
+type ChangeState = ReturnType<typeof changeState>
+
+function gapLines(gaps: Gap[], build: string) {
+	return [
+		...gaps.map((gap) => ['gap', gap.kind, gap.subject, gap.idea]),
+		['count', gaps.length, `ideas for build ${build}. They are suggestions. Nothing depends on them.`],
+	]
+}
+
+function fieldText(fields: Field[]) {
+	return fields
+		.map(
+			(field) =>
+				`${field.path}${field.type.includes('|') ? ` (${field.type})` : ''}${field.required ? ' (required)' : ''}: ${field.description}`
+		)
+		.join(' ')
+}
+
+function cellText(cell: { ok: number; wrong: number; seen: number }) {
+	const parts = Object.entries(cell).filter(([, count]) => count)
+	return parts.length ? parts.map(([name, count]) => `${name}${count}`).join(',') : '-'
 }
 
 function nextLines(next: string[]) {
@@ -830,6 +864,168 @@ const commands: Record<string, Command> = {
 						],
 					},
 	},
+	'journal open': {
+		positionals: ['changeId'],
+		flags: { target: 'value', instance: 'value' },
+		required: ['target'],
+		write: true,
+		run: (store, args, { actor }) =>
+			openChange(store, actor, {
+				changeId: value(args, 'changeId')!,
+				target: value(args, 'target')!,
+				instance: value(args, 'instance'),
+			}),
+		print: (reply) => ({
+			facts: { target: reply.data.targetId, instance: reply.data.instanceId },
+			lines: nextLines(reply.data.next as string[]),
+		}),
+	},
+	'journal log': {
+		positionals: ['changeId'],
+		flags: { build: 'value' },
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) =>
+			logEntries(store, actor, {
+				changeId: value(args, 'changeId')!,
+				build: value(args, 'build'),
+				entries: stdin(),
+			}),
+		print: (reply) => {
+			const saved = reply.data.saved as Array<{
+				id: string
+				kind: string
+				build: string | null
+				compare?: string
+			}>
+			const refused = reply.data.refused as Array<{ index: number; reason: string; hint?: string }>
+			return {
+				facts: { saved: saved.length, refused: refused.length },
+				lines: [
+					...saved.map((entry) => [
+						'saved',
+						entry.id,
+						entry.kind,
+						entry.build,
+						...(entry.compare ? [entry.compare] : []),
+					]),
+					...refused.map((entry) => ['refused', `[${entry.index}]`, entry.reason, entry.hint]),
+					...(refused.length
+						? nextLines(['Fix each refused entry. Send only those entries again. The saved entries stay.'])
+						: []),
+				],
+			}
+		},
+	},
+	'journal gaps': {
+		positionals: ['changeId'],
+		flags: { build: 'value' },
+		run: (store, args) => changeGaps(store, value(args, 'changeId')!, value(args, 'build')),
+		print: (reply) => ({
+			facts: { build: reply.data.build },
+			lines: gapLines(reply.data.gaps as Gap[], String(reply.data.build)),
+		}),
+	},
+	'journal guide': {
+		positionals: ['changeId?'],
+		run: (store, args) => guideJournal(store, value(args, 'changeId')),
+		print: (reply) => {
+			const data = reply.data as {
+				steps: string[]
+				about: string
+				common: Field[]
+				kinds: Array<{ kind: string; about: string; fields: Field[] }>
+				command: string
+				example: unknown
+				answers: Array<{ id: string; question: string; answer: string }>
+				openDefects: Array<{ id: string; build: string; severity: string; title: string }>
+			}
+			return {
+				lines: [
+					...data.steps.map((step) => ['step', step]),
+					['entries', `${data.about} Every entry has: ${fieldText(data.common)}`],
+					...data.kinds.map((kind) => ['kind', kind.kind, `${kind.about} ${fieldText(kind.fields)}`]),
+					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
+					...data.answers.map((answer) => ['answer', answer.id, answer.question, answer.answer]),
+					...data.openDefects.map((defect) => [
+						'open_defect',
+						defect.id,
+						defect.build,
+						defect.severity,
+						defect.title,
+					]),
+				],
+			}
+		},
+	},
+	'journal show': {
+		positionals: ['changeId'],
+		run: (store, args) => showChange(store, value(args, 'changeId')!),
+		print: (reply) => {
+			const data = reply.data as ChangeState
+			return {
+				facts: { target: data.targetId, instance: data.instanceId, builds: data.builds },
+				lines: [
+					...data.criteria.map((criterion) => ['criterion', criterion.id, criterion.text, criterion.source]),
+					...data.matrix.map((row) => [
+						'matrix',
+						row.about,
+						...data.builds.map((build) => `${build}=${cellText(row.cells[build])}`),
+					]),
+					...data.defects.map((defect) => [
+						defect.suspected ? 'suspected_defect' : 'defect',
+						defect.id,
+						defect.build,
+						defect.severity,
+						defect.title,
+						defect.verdicts.map((verdict) => `${verdict.build}=${verdict.result}`),
+					]),
+					...data.questions.map((question) => [
+						'question',
+						question.id,
+						question.status,
+						question.question,
+						...(question.answer ? [question.answer] : []),
+					]),
+					...data.decisions.map((decision) => [
+						'decision',
+						decision.id,
+						decision.build,
+						decision.decision,
+						decision.rationale,
+						`gaps=${decision.gaps}`,
+					]),
+				],
+			}
+		},
+	},
+	'journal answer': {
+		positionals: ['changeId', 'questionId'],
+		flags: { answer: 'value' },
+		required: ['answer'],
+		write: true,
+		run: (store, args, { actor }) =>
+			answerQuestion(store, actor, {
+				changeId: value(args, 'changeId')!,
+				questionId: value(args, 'questionId')!,
+				answer: value(args, 'answer')!,
+			}),
+		print: (reply) => ({ facts: { id: reply.data.id, question: reply.data.question } }),
+	},
+	'journal accept': decisionCommand('accepted'),
+	'journal reject': decisionCommand('rejected'),
+	'journal export': {
+		positionals: ['changeId'],
+		flags: { out: 'value' },
+		run: (store, args) => {
+			const changeId = value(args, 'changeId')!
+			const content = exportChange(store, changeId)
+			const out = value(args, 'out')
+			if (out === undefined) return completed(changeId, { format: 'json', content })
+			return completed(changeId, { format: 'json', out: writeOutput(store, out, content) })
+		},
+		print: (reply) => ({ facts: { out: reply.data.out } }),
+	},
 	'run gate': {
 		positionals: ['reference'],
 		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },
@@ -1142,8 +1338,8 @@ const commands: Record<string, Command> = {
 		check: (args) => {
 			const subject = value(args, 'subject')
 			requireWellFormed(
-				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
-				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
+				subject === undefined || subject === 'inbox' || /^(target|plan|run|change):./.test(subject),
+				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, change:<changeId>, or inbox.`
 			)
 		},
 		run: (store, args) => {
@@ -1253,6 +1449,26 @@ function exportCommand(
 			return completed(subject, { format, out: writeOutput(store, out, content) })
 		},
 		print: (reply) => ({ facts: { out: reply.data.out } }),
+	}
+}
+
+function decisionCommand(decision: 'accepted' | 'rejected'): Command {
+	return {
+		positionals: ['changeId'],
+		flags: { build: 'value', rationale: 'value' },
+		required: ['build', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			decideBuild(store, actor, {
+				changeId: value(args, 'changeId')!,
+				build: value(args, 'build')!,
+				decision,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({
+			facts: { decision: reply.data.decision, build: reply.data.build },
+			lines: gapLines(reply.data.gaps as Gap[], String(reply.data.build)),
+		}),
 	}
 }
 

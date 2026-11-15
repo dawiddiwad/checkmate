@@ -7,7 +7,7 @@ import { cli, directory, json, profile } from './support.ts'
 
 const approvals = { plan: 'none' as const, result: 'required' as const }
 
-function setup(t: TestContext) {
+function targetOnly(t: TestContext) {
 	const workspace = directory(t)
 	const value = profile({ approvals })
 	const steps: Array<[string[], unknown?]> = [
@@ -26,7 +26,6 @@ function setup(t: TestContext) {
 		],
 		[['target', 'save', 'checkout-local'], value],
 		[['target', 'instance', 'add', 'checkout-local', 'local', '--entry', 'web=http://127.0.0.1:4173']],
-		[['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], checklist()],
 	]
 	for (const [args, stdin] of steps) assert.equal(cli(workspace, args, stdin).code, 0, args.join(' '))
 	mkdirSync(join(workspace, 'evidence'))
@@ -34,12 +33,30 @@ function setup(t: TestContext) {
 	return workspace
 }
 
+function setup(t: TestContext) {
+	const workspace = targetOnly(t)
+	const outcome = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], checklist())
+	assert.equal(outcome.code, 0, JSON.stringify(outcome.body))
+	return workspace
+}
+
 function checklist() {
 	return {
 		objective: 'Verify the checkout change.',
+		criteria: 1,
 		items: [
-			{ id: 'R1', text: 'A 400 PLN order has a total of 400 PLN.', source: 'ticket.md#total' },
-			{ id: 'R2', text: 'The cart keeps its items after a reload.', source: 'docs/cart.md#reload' },
+			{
+				id: 'R1',
+				text: 'A 400 PLN order has a total of 400 PLN.',
+				source: 'ticket.md#Acceptance criteria',
+				criterion: 1,
+			},
+			{
+				id: 'R2',
+				text: 'The cart keeps its items after a reload.',
+				source: 'docs/cart.md#reload',
+				baseline: { steps: 'GET /cart after a reload', value: '2 items', documented: '2 items' },
+			},
 		],
 		questions: [{ id: 'Q1', question: 'Does the promotion stack with loyalty?', items: ['R1'] }],
 	}
@@ -57,7 +74,13 @@ function b1Record() {
 				evidence: ['evidence/total.txt'],
 				defect: 'D1',
 			},
-			{ item: 'R2', check: 'The cart keeps items after reload.', result: 'passed', observed: 'Two items stay.' },
+			{
+				item: 'R2',
+				check: 'The cart keeps items after reload.',
+				result: 'passed',
+				observed: 'Two items stay.',
+				value: '2 items',
+			},
 			{
 				item: 'R3',
 				check: 'Checkout of an empty cart.',
@@ -83,7 +106,13 @@ function b1Record() {
 function b2Record() {
 	const checks: Array<Record<string, string>> = [
 		{ item: 'R1', check: 'The total of a 400 PLN order is 400 PLN.', result: 'passed', observed: '400 PLN.' },
-		{ item: 'R2', check: 'The cart keeps items after reload.', result: 'passed', observed: 'Two items stay.' },
+		{
+			item: 'R2',
+			check: 'The cart keeps items after reload.',
+			result: 'passed',
+			observed: 'Two items stay.',
+			value: '2  items',
+		},
 		{ item: 'R3', check: 'Checkout of an empty cart.', result: 'passed', observed: 'Checkout is refused.' },
 	]
 	return {
@@ -215,4 +244,106 @@ test('lite record refuses an incomplete build record', (t) => {
 	const outcome = json(workspace, ['lite', 'record', 'checkout', '--build', 'b2'], record)
 	assert.match(outcome.body.reasons[1], /Earlier defects without a retest verdict: D1/)
 	assert.equal(json(workspace, ['run', 'list', '--plan', 'checkout']).body.runs.length, 1)
+})
+
+test('lite checklist needs one item for each acceptance criterion and stores its number in the source', (t) => {
+	const workspace = targetOnly(t)
+	const value = { ...checklist(), criteria: 3 }
+	const refused = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], value)
+	assert.equal(refused.code, 1)
+	assert.match(refused.body.reasons[1], /Acceptance criteria without an item: 2, 3/)
+	assert.match(refused.body.hint, /"criterion"/)
+	value.criteria = 0
+	const above = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], value)
+	assert.match(above.body.reasons[1], /Criterion numbers above the "criteria" count 0: 1/)
+	assert.equal(cli(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], checklist()).code, 0)
+	const shown = json(workspace, ['lite', 'show', 'checkout']).body
+	assert.deepEqual(
+		shown.items.map((item: { source: string }) => item.source),
+		['ticket.md#ac-1', 'docs/cart.md#reload']
+	)
+	assert.ok(
+		cli(workspace, ['lite', 'show', 'checkout']).lines.includes(
+			'baseline\tR2\tsteps=GET /cart after a reload\tvalue=2 items\tdocumented=2 items'
+		)
+	)
+})
+
+test('lite commands lead a lost agent back to lite checklist', (t) => {
+	const workspace = targetOnly(t)
+	for (const args of [
+		['lite', 'show', 'checkout'],
+		['lite', 'record', 'checkout', '--build', 'b1'],
+	]) {
+		const outcome = json(workspace, args, b1Record())
+		assert.match(outcome.body.reasons[1], /Plan checkout has no checklist/, args.join(' '))
+		assert.match(outcome.body.hint, /^Run lite checklist checkout --target/, args.join(' '))
+	}
+	const open = [
+		'plan',
+		'open',
+		'checkout',
+		'--target',
+		'checkout-local@1',
+		'--objective',
+		'Checkout',
+		'--source',
+		'ticket.md',
+	]
+	assert.equal(cli(workspace, open).code, 0)
+	assert.match(json(workspace, ['lite', 'show', 'checkout']).body.hint, /^Run lite checklist checkout/)
+	const target = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local'], checklist())
+	assert.match(target.body.hint, /lite checklist checkout --target checkout-local@<revision>/)
+	const saved = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], checklist())
+	assert.equal(saved.code, 0, JSON.stringify(saved.body))
+	const again = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], checklist())
+	assert.match(again.body.hint, /lite show checkout/)
+	assert.equal(cli(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], b1Record()).code, 0)
+	const twice = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], b1Record())
+	assert.match(twice.body.reasons[1], /Build b1 has a record: checkout-run-1/)
+	assert.match(twice.body.hint, /lite record checkout --build <build>/)
+})
+
+test('lite record compares each regression item with its baseline', (t) => {
+	const workspace = setup(t)
+	const send = (record: ReturnType<typeof b1Record>) =>
+		json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record)
+	const regression = (record: ReturnType<typeof b1Record>) => record.checks[1] as Record<string, string | undefined>
+	const cases: Array<[string, (record: ReturnType<typeof b1Record>) => void, RegExp]> = [
+		['no value', (record) => delete regression(record).value, /Regression items without a value: R2/],
+		[
+			'a blocked check',
+			(record) =>
+				Object.assign(regression(record), { result: 'blocked', reason: 'No cart.', observed: undefined }),
+			/Regression items without a value: R2/,
+		],
+		[
+			'a passed check with another value',
+			(record) => (regression(record).value = '1 item'),
+			/R2 is passed, but the value "1 item" is not the baseline "2 items"/,
+		],
+		[
+			'a criterion with only not_run checks',
+			(record) => Object.assign(record.checks[0], { result: 'not_run', reason: 'No time.', defect: undefined }),
+			/Acceptance criteria items with only not_run checks: R1/,
+		],
+	]
+	for (const [name, change, reason] of cases) {
+		const record = b1Record()
+		change(record)
+		const outcome = send(JSON.parse(JSON.stringify(record)))
+		assert.equal(outcome.code, 1, name)
+		assert.match(outcome.body.reasons[1], reason, name)
+		assert.ok(outcome.body.hint, name)
+	}
+	const record = b1Record()
+	Object.assign(regression(record), { value: '1 item', reason: 'The ticket keeps one item after a reload.' })
+	const b1 = send(record)
+	assert.equal(b1.code, 0, JSON.stringify(b1.body))
+	const run = json(workspace, ['run', 'show', 'checkout-run-1']).body
+	const test = run.tests.find((item: { testId: string }) => item.testId === 'R2-1')
+	assert.equal(
+		test.assertions[0].observed,
+		'Two items stay. Value: 1 item. Baseline: 2 items. Reason: The ticket keeps one item after a reload.'
+	)
 })

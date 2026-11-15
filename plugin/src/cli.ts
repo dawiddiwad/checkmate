@@ -714,6 +714,15 @@ const commands: Record<string, Command> = {
 				facts: { sha256: short(data.sha256) },
 				lines: [
 					...data.items.map((item) => ['item', item.id, item.text, item.source]),
+					...data.items
+						.filter((item) => item.metadata?.baselineValue !== undefined)
+						.map((item) => [
+							'baseline',
+							item.id,
+							`steps=${item.metadata!.baselineSteps}`,
+							`value=${item.metadata!.baselineValue}`,
+							`documented=${item.metadata!.documented}`,
+						]),
 					...data.questions.map((question) => [
 						'question',
 						question.id,

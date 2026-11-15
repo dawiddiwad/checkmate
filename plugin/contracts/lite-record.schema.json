@@ -86,6 +86,9 @@
 				"observed": {
 					"$ref": "#/definitions/text"
 				},
+				"value": {
+					"$ref": "lite-checklist.schema.json#/definitions/value"
+				},
 				"reason": {
 					"$ref": "#/definitions/text"
 				},

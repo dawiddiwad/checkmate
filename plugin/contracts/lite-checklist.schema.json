@@ -7,10 +7,14 @@
 			"type": "string",
 			"minLength": 1
 		},
+		"criteria": {
+			"type": "integer",
+			"minimum": 0
+		},
 		"items": {
 			"type": "array",
 			"items": {
-				"$ref": "plan.schema.json#/properties/requirements/items"
+				"$ref": "#/definitions/item"
 			},
 			"minItems": 1
 		},
@@ -21,6 +25,49 @@
 			}
 		}
 	},
-	"required": ["objective", "items"],
-	"additionalProperties": false
+	"required": ["objective", "criteria", "items"],
+	"additionalProperties": false,
+	"definitions": {
+		"value": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 500
+		},
+		"item": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"$ref": "lite-record.schema.json#/definitions/identifier"
+				},
+				"text": {
+					"$ref": "lite-record.schema.json#/definitions/text"
+				},
+				"source": {
+					"$ref": "lite-record.schema.json#/definitions/text"
+				},
+				"criterion": {
+					"type": "integer",
+					"minimum": 1
+				},
+				"baseline": {
+					"type": "object",
+					"properties": {
+						"steps": {
+							"$ref": "#/definitions/value"
+						},
+						"value": {
+							"$ref": "#/definitions/value"
+						},
+						"documented": {
+							"$ref": "#/definitions/value"
+						}
+					},
+					"required": ["steps", "value", "documented"],
+					"additionalProperties": false
+				}
+			},
+			"required": ["id", "text", "source"],
+			"additionalProperties": false
+		}
+	}
 }

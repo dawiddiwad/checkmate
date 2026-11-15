@@ -1,9 +1,11 @@
 ---
 name: lite
-description: Test a change freely and record the result in Checkmate in a few batch calls. Use when the prompt tells you to record with the Checkmate lite skill. Before the build, record a checklist and questions. After each build, read the answers, test, and record the full build in one call.
+description: Test a change freely and record the result in Checkmate in a few batch calls. Use when the prompt tells you to record with the Checkmate lite skill. Before the build, record a checklist, baselines, and questions. After each build, read the answers, test, and record the full build in one call.
 ---
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. When `checkmate` is on PATH, you can use it directly. Add `--actor claude:lite` to each write.
+
+Lite mode uses only `lite checklist`, `lite show`, and `lite record`. Do not use other Checkmate commands.
 
 Send each JSON payload on standard input in a quoted heredoc. Do not write payload files:
 
@@ -17,14 +19,28 @@ Checkmate is the record, not the test method. Test freely with the app, the API,
 
 ## Before the build
 
-1. Study the ticket, the docs, and the running app.
-2. Write the checklist: the rules and acceptance criteria to check. Give each item an ID (`R1`, `R2`, ...), the rule text, and the source (file and section). Add the existing rules that the change can break. These are the regression items.
-3. Write one question for each unclear point. Give each question an ID (`Q1`, `Q2`, ...) and the items that it affects.
-4. Record the checklist and the questions in one call:
+The base app is running. It does not have the change.
+
+1. Study the ticket and the docs.
+2. Write one item for each numbered acceptance criterion of the ticket. Give it `"criterion": <number>` and the ticket file as `source`. Do not merge two criteria in one item. Set `"criteria"` to the count of numbered criteria (0 when the ticket has none).
+3. Add the existing rules that the change can break. These are the regression items. Look for rules near the change:
+   - the same totals or calculations,
+   - the same validation and error messages,
+   - lists, exports, and counters that show the changed data,
+   - permissions,
+   - the rules in the docs for the same page or endpoint.
+4. Give each regression item a baseline from the base app: the exact request or UI steps, the value that you saw, and the value that the docs state. Use a short exact value, for example `409 "Room is taken"` or `total 43.20`. Keep this step short: one request or a few steps for each item, not a test run. When the base value and the docs differ, add a question.
+5. Write one question for each unclear point, with the items that it affects.
+6. Record all of it in one call:
 
 ```bash
 checkmate lite checklist <planId> --target <targetId@revision> --actor claude:lite <<'EOF'
-{"objective": "<what to verify>", "items": [{"id": "R1", "text": "<rule>", "source": "ticket.md#<section>"}], "questions": [{"id": "Q1", "question": "<question>", "items": ["R1"]}]}
+{"objective": "<what to verify>", "criteria": 2, "items": [
+ {"id": "R1", "text": "<criterion 1>", "source": "ticket.md", "criterion": 1},
+ {"id": "R2", "text": "<criterion 2>", "source": "ticket.md", "criterion": 2},
+ {"id": "R3", "text": "<existing rule>", "source": "docs/<file>#<section>",
+  "baseline": {"steps": "<exact request or steps>", "value": "<value on base>", "documented": "<value in the docs>"}}],
+ "questions": [{"id": "Q1", "question": "<question>", "items": ["R1"]}]}
 EOF
 ```
 
@@ -32,11 +48,12 @@ Do not test the change before the build.
 
 ## Each build
 
-1. Run `checkmate lite show <planId>`. It shows the items, each question with its answer, the runs, and the open defects (`open_defect` lines).
-2. Test the build freely. Check each item. Look for edge cases outside the checklist. Check the items of each open defect again.
-3. Keep evidence. Save screenshots and logs as files in the workspace, or keep short text.
-4. Record the full build in one call: `checkmate lite record <planId> --build <build> --actor claude:lite` with the JSON below.
-5. When Checkmate refuses, read `reason:` and `hint:`. Correct the JSON. Send the full call again. Checkmate records nothing until the call completes.
+1. Run `checkmate lite show <planId>`. It shows the items, the baselines (`baseline` lines), each question with its answer, the runs, and the open defects (`open_defect` lines).
+2. Test the build freely. Check each criterion item. Look for edge cases outside the checklist. Check the items of each open defect again.
+3. For each regression item, do the baseline steps again exactly. Put the value that you see in `"value"`, in the form of the baseline. When it is not the baseline, the check fails, unless the ticket or an answer changes the rule. Then give the cause in `"reason"`.
+4. Keep evidence. Save screenshots and logs as files in the workspace, or keep short text.
+5. Record the full build in one call: `checkmate lite record <planId> --build <build> --actor claude:lite` with the JSON below.
+6. When Checkmate refuses, read `reason:` and `hint:`. Correct the JSON. Send the full call again. Checkmate records nothing until the call completes.
 
 ```json
 {
@@ -57,7 +74,8 @@ Do not test the change before the build.
 			"evidence": [{ "text": "<response body>" }],
 			"defect": "D1"
 		},
-		{ "item": "R3", "check": "<what you checked>", "result": "blocked", "reason": "<why the check did not run>" }
+		{ "item": "R3", "check": "<baseline steps>", "result": "passed", "observed": "<what you saw>", "value": "<value>" },
+		{ "item": "R9", "check": "<what you checked>", "result": "blocked", "reason": "<why the check did not run>" }
 	],
 	"defects": [
 		{
@@ -77,7 +95,7 @@ Do not test the change before the build.
 
 ## Rules
 
-- Give each item one or more checks.
+- Give each item one or more checks on each build. A criterion item needs a check that is passed, failed, or blocked. A regression item needs a passed or failed check with `value`.
 - The result is `passed`, `failed`, `blocked`, or `not_run`. A passed or failed check needs `observed`. A blocked or not_run check needs a `reason`.
 - A failed check names its defect in `defect`. Each defect needs one or more failed checks and one or more evidence items.
 - When no item covers a defect, add an item in `items` and a failed check for it.

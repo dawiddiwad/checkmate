@@ -268,7 +268,13 @@ Lite mode keeps Checkmate as the record and the gate, but not as the test method
 
 1. Before the build, `lite checklist` records the checklist items (the requirements) and the questions (non-blocking gaps). The target profile must have `"approvals": {"plan": "none", ...}`. Lite mode has no setup, plan approval, or revise stage.
 2. The oracle answers each question with `gap answer`.
-3. After each build, `lite show` prints the answers and the open defects. Then `lite record` records the full build.
+3. After each build, `lite show` prints the answers, the baselines, and the open defects. Then `lite record` records the full build.
+
+The checklist states `criteria`, the count of numbered acceptance criteria in the ticket. An item with `"criterion": <n>` is the item of criterion `n`. Checkmate stores its source as `<ticket file>#ac-<n>` and the number in the metadata `criterion`. `lite checklist` refuses the checklist when a number from 1 to `criteria` has no item.
+
+An item with a `baseline` is a regression item. The baseline has the exact request or steps, the value on the base app, and the value that the docs state. Checkmate stores them in the metadata `baselineSteps`, `baselineValue`, and `documented`.
+
+`lite checklist` also accepts a plan that `plan open` opened and that has no revision. It keeps the open request and the target of that request.
 
 `lite record` stores one transaction:
 
@@ -276,7 +282,16 @@ Lite mode keeps Checkmate as the record and the gate, but not as the test method
 - A finished run `<planId>-run-<n>` that selects each test of the revision. A later run is a retest of the run before it.
 - For each retest verdict, the earlier tests of the defect again, with the result `passed` (fixed) or `failed` (not fixed). The new run records a not-fixed defect again with the same ID.
 
-`lite record` refuses a record when an item has no check, a failed check has no defect, a defect has no failed check or no evidence, or an open earlier defect has no retest verdict with evidence. The refusal has a `reason` and a `hint`. Nothing is recorded. Evidence is a file path in the workspace or inline text. Checkmate does not delete the file.
+`lite record` refuses a record when:
+
+- an item has no check, or a criterion item has only `not_run` checks,
+- a regression item has no passed or failed check with a `value`,
+- a passed check of a regression item has a `value` that is not the baseline and has no `reason`,
+- a failed check has no defect, or a defect has no failed check or no evidence,
+- an open earlier defect has no retest verdict with evidence,
+- the build already has a record.
+
+Checkmate compares the values after it removes the extra spaces. It adds the value, the baseline, and the reason to the `observed` text of the check. The refusal has a `reason` and a `hint`. Nothing is recorded. When the plan has no checklist, `lite show` and `lite record` refuse with a hint to run `lite checklist`. Evidence is a file path in the workspace or inline text. Checkmate does not delete the file.
 
 `status`, `run show`, `finding list`, `export`, the review UI, and `result accept` read lite records as they read other records. The `next` lines of `status` name the commands of the full loop.
 

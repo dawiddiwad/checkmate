@@ -31,11 +31,17 @@ export type Instance = {
 
 export type LiteChecklist = {
 	objective: string
+	criteria: number
 	items: Array<{
 		id: string
 		text: string
 		source: string
-		metadata?: Record<string, string | number | boolean>
+		criterion?: number
+		baseline?: {
+			steps: string
+			value: string
+			documented: string
+		}
 	}>
 	questions?: Array<{
 		id: string
@@ -56,6 +62,7 @@ export type LiteRecord = {
 		check: string
 		result: 'passed' | 'failed' | 'blocked' | 'not_run'
 		observed?: string
+		value?: string
 		reason?: string
 		evidence?: Array<
 			| string

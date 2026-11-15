@@ -125,7 +125,7 @@ try {
 	checkmate(workspace, ['plan', 'open', 'checkout', '--target', `checkout-local@${target.revision}`], request)
 	expectStatus('checkout', 'needs_plan', 'planner')
 	await stage('plan', 'plan', 'checkout')
-	assert.equal(app.actions(), 0, 'Planning executed a fixture action')
+	assert.equal(app.writes(), 0, 'Planning changed the fixture state')
 	const first = latestPlan('checkout')
 	expectStatus('checkout', 'needs_answers', 'oracle')
 	for (const requirement of ['R2', 'R3'])

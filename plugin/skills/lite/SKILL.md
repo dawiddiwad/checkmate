@@ -48,9 +48,9 @@ Do not test the change before the build.
 
 ## Each build
 
-1. Run `checkmate lite show <planId>`. It shows the items, the baselines (`baseline` lines), each question with its answer, the runs, and the open defects (`open_defect` lines).
+1. Run `checkmate lite show <planId>`. It shows the items, the reference values (`repeat` lines), each question with its answer, the runs, and the open defects (`open_defect` lines).
 2. Test the build freely. Check each criterion item. Look for edge cases outside the checklist. Check the items of each open defect again.
-3. For each regression item, do the baseline steps again exactly. Put the value that you see in `"value"`, in the form of the baseline. When it is not the baseline, the check fails, unless the ticket or an answer changes the rule. Then give the cause in `"reason"`.
+3. For each `repeat` line, do its steps again exactly. Put the value that you see in `"value"` and leave out `"result"`: Checkmate compares the value with the reference value and sets the result. When the values are different, add `"defect"` when the new value is wrong, or `"intended": {"note": "<why>", "source": "<ticket line or answer>"}` when the ticket or an answer changes the rule.
 4. Keep evidence. Save screenshots and logs as files in the workspace, or keep short text.
 5. Record the full build in one call: `checkmate lite record <planId> --build <build> --actor claude:lite` with the JSON below.
 6. When Checkmate refuses, read `reason:` and `hint:`. Correct the JSON. Send the full call again. Checkmate records nothing until the call completes.
@@ -74,7 +74,7 @@ Do not test the change before the build.
 			"evidence": [{ "text": "<response body>" }],
 			"defect": "D1"
 		},
-		{ "item": "R3", "check": "<baseline steps>", "result": "passed", "observed": "<what you saw>", "value": "<value>" },
+		{ "item": "R3", "check": "<steps of the repeat line>", "value": "<value>" },
 		{ "item": "R9", "check": "<what you checked>", "result": "blocked", "reason": "<why the check did not run>" }
 	],
 	"defects": [
@@ -95,7 +95,7 @@ Do not test the change before the build.
 
 ## Rules
 
-- Give each item one or more checks on each build. A criterion item needs a check that is passed, failed, or blocked. A regression item needs a passed or failed check with `value`.
+- Give each item one or more checks on each build. A criterion item needs a check that is passed, failed, or blocked. An item with a `repeat` line needs a check with `value`.
 - The result is `passed`, `failed`, `blocked`, or `not_run`. A passed or failed check needs `observed`. A blocked or not_run check needs a `reason`.
 - A failed check names its defect in `defect`. Each defect needs one or more failed checks and one or more evidence items.
 - When no item covers a defect, add an item in `items` and a failed check for it.

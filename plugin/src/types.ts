@@ -43,6 +43,11 @@ export type LiteChecklist = {
 			documented: string
 		}
 	}>
+	changes?: Array<{
+		area: string
+		source: string
+		items?: Array<string>
+	}>
 	questions?: Array<{
 		id: string
 		question: string
@@ -59,10 +64,14 @@ export type LiteRecord = {
 	checks: Array<{
 		item: string
 		check: string
-		result: 'passed' | 'failed' | 'blocked' | 'not_run'
+		result?: 'passed' | 'failed' | 'blocked' | 'not_run'
 		observed?: string
 		value?: string
 		reason?: string
+		intended?: {
+			note: string
+			source: string
+		}
 		evidence?: Array<
 			| string
 			| {
@@ -79,7 +88,7 @@ export type LiteRecord = {
 		steps: Array<string>
 		expected: string
 		actual: string
-		evidence?: Array<
+		evidence: Array<
 			| string
 			| {
 					text: string
@@ -91,7 +100,7 @@ export type LiteRecord = {
 		defect: string
 		verdict: 'fixed' | 'not_fixed'
 		observed: string
-		evidence?: Array<
+		evidence: Array<
 			| string
 			| {
 					text: string
@@ -102,6 +111,11 @@ export type LiteRecord = {
 	questions?: Array<{
 		id: string
 		question: string
+		items?: Array<string>
+	}>
+	changes?: Array<{
+		area: string
+		source: string
 		items?: Array<string>
 	}>
 }
@@ -273,6 +287,11 @@ export type Plan = {
 	assumptions: Array<{
 		decisionId: string
 		text: string
+	}>
+	changes?: Array<{
+		area: string
+		source: string
+		items?: Array<string>
 	}>
 	decisions: Array<{
 		id: string

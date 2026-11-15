@@ -111,6 +111,9 @@
 			"minItems": 0,
 			"uniqueItems": true
 		},
+		"changes": {
+			"$ref": "lite-checklist.schema.json#/properties/changes"
+		},
 		"decisions": {
 			"type": "array",
 			"items": {

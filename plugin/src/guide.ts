@@ -1,7 +1,7 @@
 import type { Store } from './store.ts'
 import { completed, one } from './store.ts'
 import { targetList } from './targets.ts'
-import { checklistNext, recordNext, showLite } from './lite.ts'
+import { checklistNext, showLite } from './lite.ts'
 import checklistSchema from '../contracts/lite-checklist.schema.json' with { type: 'json' }
 import recordSchema from '../contracts/lite-record.schema.json' with { type: 'json' }
 
@@ -65,6 +65,33 @@ function fieldsOf(node: Schema, file: string, prefix: string): Field[] {
 	})
 }
 
+function brief(fields: Field[], names: string[]) {
+	const parent = (field: Field) =>
+		names.find((name) => field.path.startsWith(`${name}[].`) || field.path.startsWith(`${name}.`))
+	const list = (name: string, required: boolean) =>
+		fields
+			.filter((field) => parent(field) === name && field.required === required)
+			.map((field) => {
+				const own = field.path.slice(field.path.indexOf('.', name.length) + 1)
+				return field.type.includes('|') ? `${own} (${field.type})` : own
+			})
+			.join(', ')
+	const summary = (name: string) =>
+		[
+			list(name, true) && `Required fields: ${list(name, true)}.`,
+			list(name, false) && `Optional fields: ${list(name, false)}.`,
+		]
+			.filter(Boolean)
+			.join(' ')
+	return fields
+		.filter((field) => !parent(field))
+		.map((field) =>
+			names.includes(field.path)
+				? { ...field, description: `${field.description} ${summary(field.path)}` }
+				: field
+		)
+}
+
 export function liteSchema(name: 'lite-checklist' | 'lite-record') {
 	const file = `${name}.schema.json`
 	const schema = files[file]
@@ -101,25 +128,23 @@ export function guideLite(store: Store, planId: string | undefined) {
 	const record = liteSchema('lite-record')
 	const items = state.items as Array<{ id: string; metadata?: Record<string, unknown> }>
 	const open = (state.defects as Array<{ id: string }>).map((defect) => defect.id)
-	const ids = (keep: (item: (typeof items)[number]) => boolean) => items.filter(keep).map((item) => item.id)
 	const need = [
-		['checks[].item', ids(() => true), 'one or more checks for each item'],
-		['checks[].result', ids((item) => item.metadata?.criterion !== undefined), 'passed, failed, or blocked'],
 		[
-			'checks[].value',
-			ids((item) => item.metadata?.baselineValue !== undefined),
-			'the value after the baseline steps',
+			'checks[].result',
+			items.filter((item) => item.metadata?.criterion !== undefined).map((item) => item.id),
+			'passed, failed, or blocked',
 		],
 		['retests[].defect', open, 'a verdict with evidence'],
 	].filter(([, list]) => list.length)
+	const fields = open.length ? record.fields : record.fields.filter((field) => !field.path.startsWith('retests'))
 	return completed(planId, {
 		...state,
 		step: 'record',
-		steps: liteSteps,
 		command: `checkmate lite record ${planId} --build <build>`,
-		...record,
-		fields: open.length ? record.fields : record.fields.filter((field) => !field.path.startsWith('retests')),
+		about: record.about,
+		fields: brief(fields, ['items', 'defects', 'retests', 'questions', 'changes']),
+		...((state.runs as unknown[]).length ? {} : { example: record.example }),
 		need,
-		next: recordNext(planId, open),
+		next: [],
 	})
 }

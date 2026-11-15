@@ -219,24 +219,29 @@ function short(sha256: unknown) {
 type LiteState = {
 	sha256?: string
 	items: Plan['requirements']
+	repeat: Array<{ item: string; steps: string; value: string; from: string }>
+	uncovered: Array<{ area: string; source: string }>
 	questions: Array<{ id: string; status: string; question: string; kind: string | null; answer: string | null }>
 	runs: Array<{ runId: string; build: string; coverage: string | null; acceptance: string | null }>
 	defects: Array<{ runId: string; id: string; severity: string; title: string; items: string[] }>
 	next: string[]
 }
 
-function liteLines(data: LiteState) {
+function liteLines(data: LiteState, sources = true) {
 	return [
-		...data.items.map((item) => ['item', item.id, item.text, item.source]),
-		...data.items
-			.filter((item) => item.metadata?.baselineValue !== undefined)
-			.map((item) => [
-				'baseline',
-				item.id,
-				`steps=${item.metadata!.baselineSteps}`,
-				`value=${item.metadata!.baselineValue}`,
-				`documented=${item.metadata!.documented}`,
-			]),
+		...data.items.map((item) => ['item', item.id, item.text, ...(sources ? [item.source] : [])]),
+		...data.repeat.map((line) => [
+			'repeat',
+			line.item,
+			`steps=${line.steps}`,
+			`reference=${line.value} (${line.from})`,
+		]),
+		...data.uncovered.map((change) => [
+			'suggest',
+			change.area,
+			change.source,
+			'No item covers this changed area. You can add an item or a baseline.',
+		]),
 		...data.questions.map((question) => [
 			'question',
 			question.id,
@@ -746,27 +751,31 @@ const commands: Record<string, Command> = {
 		print: (reply) => {
 			const data = reply.data as LiteState & {
 				step: string
-				steps: string[]
+				steps?: string[]
 				command: string
 				about: string
 				fields: Field[]
-				example: unknown
+				example?: unknown
 				need?: Array<[string, string[], string]>
 			}
 			return {
 				facts: { step: data.step, ...(data.sha256 ? { sha256: short(data.sha256) } : {}) },
 				lines: [
-					...data.steps.map((step) => ['step', step]),
+					...(data.steps ?? []).map((step) => ['step', step]),
 					['about', data.about],
 					...data.fields.map((field) => [
 						'field',
 						field.path,
-						field.type,
-						field.required ? 'required' : 'optional',
+						...(field.required ? ['required'] : []),
 						field.description,
 					]),
-					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
-					...(data.items ? liteLines(data) : []),
+					data.example === undefined
+						? ['command', `${data.command} <<'EOF'`, 'the JSON payload, then EOF']
+						: [
+								'example',
+								{ preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` },
+							],
+					...(data.items ? liteLines(data, false) : []),
 					...(data.need ?? []).map((need) => ['need', ...need]),
 					...nextLines(data.next),
 				],

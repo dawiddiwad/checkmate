@@ -22,6 +22,13 @@
 			},
 			"minItems": 1
 		},
+		"changes": {
+			"description": "The parts of the product that the change touches. When you have the repository or the merge request, read the diff first. Write one entry for each changed area. An area without an item is a prompt to add an item or a baseline. This field is never necessary, and no rule of Checkmate needs it.",
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/change"
+			}
+		},
 		"questions": {
 			"description": "One question for each point that the ticket and the docs do not settle: a threshold and whether it is inclusive, rounding, how two rules combine, the order of operations, and the result after a state change. Also ask when the base value and the documented value differ. The PM answers before the build. Leave out this field when you have no question.",
 			"type": "array",
@@ -54,7 +61,25 @@
 					}
 				}
 			],
-			"questions": [{ "id": "Q1", "question": "Is a sixth loan refused, or put on a waiting list?", "items": ["R1"] }]
+			"changes": [
+				{
+					"area": "Loan limit check",
+					"source": "src/loans.ts @@ -40,7 +40,9 @@",
+					"items": ["R1"]
+				},
+				{
+					"area": "Late fee calculation",
+					"source": "src/fees.ts @@ -12,4 +12,6 @@",
+					"items": ["R2"]
+				}
+			],
+			"questions": [
+				{
+					"id": "Q1",
+					"question": "Is a sixth loan refused, or put on a waiting list?",
+					"items": ["R1"]
+				}
+			]
 		}
 	],
 	"definitions": {
@@ -84,11 +109,11 @@
 					"minimum": 1
 				},
 				"baseline": {
-					"description": "Give a baseline to each existing rule that the change can break. Measure it on the base app with one request or a few steps, not a full test. An item with a baseline is a regression item. Each build must measure it again.",
+					"description": "Give a baseline to each existing rule that the change can break. Measure it on the base app with one request or a few steps, not a full test. The baseline value is the reference value. Each build does the steps again and gives the value that it sees.",
 					"type": "object",
 					"properties": {
 						"steps": {
-							"description": "The exact request or UI steps. Each build does these steps again.",
+							"description": "The exact request or UI steps. Each build does the same steps again.",
 							"$ref": "#/definitions/value"
 						},
 						"value": {
@@ -105,6 +130,29 @@
 				}
 			},
 			"required": ["id", "text", "source"],
+			"additionalProperties": false
+		},
+		"change": {
+			"type": "object",
+			"properties": {
+				"area": {
+					"description": "The part of the product that the diff or the ticket changes, in a few words, for example the loan limit check.",
+					"$ref": "lite-record.schema.json#/definitions/text"
+				},
+				"source": {
+					"description": "Where you saw the change: a file path, a diff hunk reference, or a ticket line.",
+					"$ref": "lite-record.schema.json#/definitions/text"
+				},
+				"items": {
+					"description": "The IDs of the items that cover this area. Leave out this field when no item covers it.",
+					"type": "array",
+					"items": {
+						"$ref": "lite-record.schema.json#/definitions/identifier"
+					},
+					"uniqueItems": true
+				}
+			},
+			"required": ["area", "source"],
 			"additionalProperties": false
 		}
 	}

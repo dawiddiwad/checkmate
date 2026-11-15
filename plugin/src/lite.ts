@@ -42,6 +42,8 @@ type Question = NonNullable<LiteChecklist['questions']>[number]
 type ChecklistItem = LiteChecklist['items'][number]
 type Item = Plan['requirements'][number]
 type Check = LiteRecord['checks'][number]
+type Settled = Check & { result: NonNullable<Check['result']> }
+type Change = NonNullable<LiteChecklist['changes']>[number]
 type Evidence = NonNullable<Check['evidence']>
 
 const recordedBy = 'lite'
@@ -125,6 +127,16 @@ function criteriaCheck(checklist: LiteChecklist) {
 	)
 }
 
+function changeCheck(changes: Change[], ids: string[]) {
+	const unknown = [...new Set(changes.flatMap((change) => change.items ?? []))].filter((id) => !ids.includes(id))
+	requireWellFormed(
+		!unknown.length,
+		`changes[].items names unknown items: ${unknown.join(', ')}`,
+		`Use the item IDs: ${ids.join(', ')}. Or leave out items in that entry of changes[].`
+	)
+	return changes
+}
+
 function checklistItem({ criterion, baseline, ...item }: ChecklistItem): Item {
 	const metadata = {
 		...(criterion === undefined ? {} : { criterion }),
@@ -179,6 +191,10 @@ export function recordChecklist(
 		index(checklist.items, 'id', 'checklist item', 'Give each entry of items[] its own "id".')
 		criteriaCheck(checklist)
 		const items = checklist.items.map(checklistItem)
+		const changes = changeCheck(
+			checklist.changes ?? [],
+			items.map((item) => item.id)
+		)
 		const request = validate('plan-request', { objective: checklist.objective, requirements: items })
 		if (!opened)
 			execute(
@@ -203,6 +219,7 @@ export function recordChecklist(
 				requirements: items,
 				tests: items.map((item) => liteTest(item.id, item.id, item.text, target.profile)),
 				gaps,
+				...(changes.length ? { changes } : {}),
 				assumptions: [],
 				decisions: [],
 			},
@@ -213,25 +230,71 @@ export function recordChecklist(
 	})
 }
 
-const plain = (text: string) => text.trim().replace(/\s+/g, ' ')
+const normalised = (text: string) =>
+	text
+		.trim()
+		.replace(/\s+/g, ' ')
+		.replace(/\d+(\.\d+)?/g, (number) =>
+			number
+				.replace(/^0+(?=\d)/, '')
+				.replace(/(\.\d*?)0+$/, '$1')
+				.replace(/\.$/, '')
+		)
+
+export function reference(item: Item) {
+	const metadata = item.metadata ?? {}
+	if (metadata.baselineValue === undefined) return undefined
+	return {
+		steps: String(metadata.baselineSteps),
+		value: String(metadata.baselineValue),
+		from: metadata.baselineBuild === undefined ? 'checklist' : `build ${metadata.baselineBuild}`,
+	}
+}
 
 function observedText(item: Item, check: Check) {
-	const baseline = item.metadata?.baselineValue
+	const known = reference(item)
 	return [
 		check.observed,
 		check.value && `Value: ${check.value}.`,
-		check.value && baseline !== undefined && `Baseline: ${baseline}.`,
+		check.value && known && `Reference value: ${known.value} (${known.from}).`,
+		check.intended && `Intended change: ${check.intended.note} (source: ${check.intended.source}).`,
 		check.reason && `Reason: ${check.reason}`,
 	]
 		.filter(Boolean)
 		.join(' ')
 }
 
+function settledResult(item: Item, check: Check, name: string, path: string) {
+	const known = reference(item)
+	if (!known || check.value === undefined) {
+		requireWellFormed(
+			check.result,
+			`${name} has no result`,
+			`Add "result": "passed", "failed", "blocked", or "not_run" to ${path}. Only a check with value on an item with a reference value can leave it out.`
+		)
+		return check.result
+	}
+	const values = `the value "${check.value}" and the reference value "${known.value}" (${known.from})`
+	const same = normalised(check.value) === normalised(known.value)
+	requireCondition(
+		same || check.defect || check.intended,
+		`${name}: ${values} are different`,
+		`When the new value is wrong, add "defect": "<defect ID>" to ${path} and the defect to defects[]. When the new value is correct, add "intended": {"note": "<why>", "source": "<the ticket line or PM answer that changes the rule>"} to ${path}. Checkmate then sets the result.`
+	)
+	const result = same || !check.defect ? 'passed' : 'failed'
+	requireCondition(
+		check.result === undefined || check.result === result,
+		`${name} is ${check.result}, but ${values} are ${same ? 'equal' : 'different'}`,
+		`Leave out "result" in ${path}. Checkmate sets it from value. To record another result, add a second check without value.`
+	)
+	return result
+}
+
 function completeness(store: Store, planId: string, items: Item[], record: LiteRecord, earlier: RetestDefect[]) {
 	const defects = record.defects ?? []
 	const retests = record.retests ?? []
 	const ids = items.map((item) => item.id)
-	for (const [i, check] of record.checks.entries()) {
+	const checks: Settled[] = record.checks.map((check, i) => {
 		const path = `checks[${i}]`
 		const name = `Check "${check.check}" of ${check.item} (${path})`
 		const item = items.find((known) => known.id === check.item)
@@ -240,46 +303,41 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 			`${name} names an unknown item`,
 			`Set ${path}.item to one of: ${ids.join(', ')}. Or add the item to items[].`
 		)
-		if (check.result === 'passed' || check.result === 'failed')
+		const result = settledResult(item, check, name, path)
+		if (result === 'passed' || result === 'failed')
 			requireWellFormed(
-				check.observed,
-				`${name} is ${check.result} without observed`,
+				check.observed || check.value,
+				`${name} is ${result} without observed`,
 				`Add "observed": "<what you saw>" to ${path}.`
 			)
 		else
 			requireWellFormed(
 				check.reason,
-				`${name} is ${check.result} without a reason`,
+				`${name} is ${result} without a reason`,
 				`Add "reason": "<why the check did not run>" to ${path}.`
 			)
 		requireWellFormed(
-			check.result === 'failed' || check.defect === undefined,
-			`${name} is ${check.result}. Only a failed check names a defect.`,
+			result === 'failed' || check.defect === undefined,
+			`${name} is ${result}. Only a failed check names a defect.`,
 			`Remove "defect" from ${path}. Or set "result": "failed" when the check found the defect.`
 		)
-		const baseline = item.metadata?.baselineValue
-		if (baseline !== undefined && check.result === 'passed' && check.value !== undefined)
-			requireCondition(
-				plain(check.value) === plain(String(baseline)) || check.reason,
-				`${name} is passed, but the value "${check.value}" is not the baseline "${baseline}"`,
-				`Record ${path} as failed with a defect. Or add "reason": "<why the new value is correct, for example the ticket changes this rule>".`
-			)
-	}
-	const unchecked = ids.filter((id) => !record.checks.some((check) => check.item === id))
+		return { ...check, result }
+	})
+	const unchecked = ids.filter((id) => !checks.some((check) => check.item === id))
 	requireCondition(
 		!unchecked.length,
 		`Checklist items without a check: ${unchecked.join(', ')}`,
 		'Add to checks[] one or more checks for each item with the result passed, failed, blocked, or not_run. Give a reason for blocked and not_run.'
 	)
-	const checksOf = (item: Item) => record.checks.filter((check) => check.item === item.id)
+	const checksOf = (item: Item) => checks.filter((check) => check.item === item.id)
 	const unmeasured = items
-		.filter((item) => item.metadata?.baselineValue !== undefined)
-		.filter((item) => !checksOf(item).some((check) => check.value && ['passed', 'failed'].includes(check.result)))
+		.filter((item) => reference(item))
+		.filter((item) => !checksOf(item).some((check) => check.value !== undefined))
 		.map((item) => item.id)
 	requireCondition(
 		!unmeasured.length,
-		`Regression items without a value: ${unmeasured.join(', ')}`,
-		`Do the baseline steps of each regression item again on this build. Add to checks[] a passed or failed check with "observed" and "value": "<what you saw, in the form of the baseline>". Run lite show ${planId} to read the baselines.`
+		`Items with a reference value and no check with value: ${unmeasured.join(', ')}`,
+		`For each repeat line of lite guide ${planId}, do the steps again on this build. Add to checks[] a check with "value": "<what you saw>". Checkmate sets the result.`
 	)
 	const unresolved = items
 		.filter((item) => item.metadata?.criterion !== undefined)
@@ -292,7 +350,7 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 	)
 	const defectIds = [...index(defects, 'id', 'defect', 'Give each entry of defects[] its own "id".').keys()]
 	const notFixed = retests.filter((retest) => retest.verdict === 'not_fixed').map((retest) => retest.defect)
-	const orphans = record.checks.filter(
+	const orphans = checks.filter(
 		(check) => check.result === 'failed' && ![...defectIds, ...notFixed].includes(check.defect ?? '')
 	)
 	requireCondition(
@@ -300,7 +358,7 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 		`Failed checks without a defect: ${orphans.map((check) => `${check.item} "${check.check}"`).join(', ')}`,
 		'Add each defect to defects[]. Write its ID in checks[].defect of each failed check. A check can also name an earlier defect with the verdict not_fixed.'
 	)
-	const unlinked = defectIds.filter((id) => !record.checks.some((check) => check.defect === id))
+	const unlinked = defectIds.filter((id) => !checks.some((check) => check.defect === id))
 	requireCondition(
 		!unlinked.length,
 		`Defects without a failed check: ${unlinked.join(', ')}`,
@@ -341,6 +399,27 @@ function completeness(store: Store, planId: string, items: Item[], record: LiteR
 		`Retest verdicts without evidence: ${unproven.join(', ')}`,
 		evidenceHint('retests[].evidence')
 	)
+	return checks
+}
+
+function newReferences(items: Item[], checks: Settled[], build: string) {
+	for (const item of items) {
+		const known = reference(item)
+		const adopted = checks.find(
+			(check) =>
+				check.item === item.id &&
+				check.value !== undefined &&
+				check.result === 'passed' &&
+				(!known || normalised(check.value) !== normalised(known.value))
+		)
+		if (adopted)
+			item.metadata = {
+				...item.metadata,
+				baselineSteps: known?.steps ?? adopted.check.slice(0, 500),
+				baselineValue: adopted.value!,
+				baselineBuild: build,
+			}
+	}
 }
 
 function stored(
@@ -458,7 +537,17 @@ export function recordBuild(
 		)
 		const questions = questionGaps(store, planId, record.questions)
 		draft.gaps.push(...questions)
-		completeness(store, planId, draft.requirements, record, earlier)
+		if (record.changes)
+			draft.changes = [
+				...(draft.changes ?? []),
+				...changeCheck(
+					record.changes,
+					draft.requirements.map((item) => item.id)
+				),
+			]
+		const settled = completeness(store, planId, draft.requirements, record, earlier)
+		const requirements = structuredClone(draft.requirements)
+		newReferences(draft.requirements, settled, build)
 		const usedTests = all<{ test_id: string }>(
 			store,
 			'SELECT DISTINCT test_id FROM plan_tests WHERE plan_id = ?',
@@ -480,12 +569,12 @@ export function recordBuild(
 				}),
 			}
 		})
-		const checks = record.checks.map((item) => {
+		const checks = settled.map((item) => {
 			const id = unusedId(`${item.item}-`, usedTests)
 			usedTests.push(id)
-			const requirement = draft.requirements.find((known) => known.id === item.item)!
+			const requirement = requirements.find((known) => known.id === item.item)!
 			return {
-				check: { ...item, observed: item.observed && observedText(requirement, item) },
+				check: { ...item, observed: (item.observed || item.value) && observedText(requirement, item) },
 				test: liteTest(id, item.item, item.check, profile),
 			}
 		})
@@ -625,11 +714,15 @@ export function checklistNext(planId: string, target: string) {
 
 export function recordNext(planId: string, open: string[]) {
 	return [
-		'On each new build: read the answers and the baselines, test the build freely, and keep evidence in files.',
+		'On each new build: read the answers, test the build freely, do the steps of each repeat line again, and keep evidence in files.',
 		`Record the full build in one call: checkmate lite record ${planId} --build <build>, with the JSON payload on standard input.`,
 		...(open.length ? [`Give a verdict in retests for each open defect: ${open.join(', ')}.`] : []),
-		`Run checkmate lite guide ${planId} to read each payload field and an example.`,
 	]
+}
+
+function uncovered(changes: Change[]) {
+	const covered = new Set(changes.filter((change) => change.items?.length).map((change) => change.area))
+	return changes.filter((change) => !covered.has(change.area))
 }
 
 export function showLite(store: Store, planId: string) {
@@ -666,12 +759,21 @@ export function showLite(store: Store, planId: string) {
 		revision: plan.revision,
 		sha256,
 		items: plan.requirements,
+		repeat: plan.requirements.flatMap((item) => {
+			const known = reference(item)
+			return known ? [{ item: item.id, ...known }] : []
+		}),
+		changes: plan.changes ?? [],
+		uncovered: uncovered(plan.changes ?? []),
 		questions,
 		runs,
 		defects,
-		next: recordNext(
-			planId,
-			defects.map((defect) => defect.id)
-		),
+		next: [
+			...recordNext(
+				planId,
+				defects.map((defect) => defect.id)
+			),
+			`Run checkmate lite guide ${planId} to read each payload field and an example.`,
+		],
 	})
 }

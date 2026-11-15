@@ -266,7 +266,7 @@ test('lite checklist needs one item for each acceptance criterion and stores its
 	)
 	assert.ok(
 		cli(workspace, ['lite', 'show', 'checkout']).lines.includes(
-			'baseline\tR2\tsteps=GET /cart after a reload\tvalue=2 items\tdocumented=2 items'
+			'repeat\tR2\tsteps=GET /cart after a reload\treference=2 items (checklist)'
 		)
 	)
 })
@@ -306,23 +306,47 @@ test('lite commands lead a lost agent back to lite checklist', (t) => {
 	assert.match(twice.body.hint, /lite record checkout --build <build>/)
 })
 
-test('lite record compares each regression item with its baseline', (t) => {
+test('lite record compares each value with the reference value and sets the result', (t) => {
 	const workspace = setup(t)
 	const send = (record: ReturnType<typeof b1Record>) =>
 		json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record)
-	const regression = (record: ReturnType<typeof b1Record>) => record.checks[1] as Record<string, string | undefined>
+	const regression = (record: ReturnType<typeof b1Record>) => record.checks[1] as Record<string, unknown>
+	const values = (value: string) => `the value "${value}" and the reference value "2 items" \\(checklist\\)`
 	const cases: Array<[string, (record: ReturnType<typeof b1Record>) => void, RegExp]> = [
-		['no value', (record) => delete regression(record).value, /Regression items without a value: R2/],
 		[
-			'a blocked check',
-			(record) =>
-				Object.assign(regression(record), { result: 'blocked', reason: 'No cart.', observed: undefined }),
-			/Regression items without a value: R2/,
+			'no value',
+			(record) => delete regression(record).value,
+			/Items with a reference value and no check with value: R2/,
 		],
 		[
-			'a passed check with another value',
-			(record) => (regression(record).value = '1 item'),
-			/R2 \(checks\[1\]\) is passed, but the value "1 item" is not the baseline "2 items"/,
+			'a different value without a defect or an intended note',
+			(record) => Object.assign(regression(record), { value: '1 item', result: undefined }),
+			new RegExp(`R2 \\(checks\\[1\\]\\): ${values('1 item')} are different`),
+		],
+		[
+			'a passed result for a different value',
+			(record) => Object.assign(regression(record), { value: '1 item' }),
+			new RegExp(`${values('1 item')} are different`),
+		],
+		[
+			'a failed result for an equal value',
+			(record) => Object.assign(regression(record), { result: 'failed' }),
+			new RegExp(`is failed, but ${values('2 items')} are equal`),
+		],
+		[
+			'a passed result for a different value with a defect',
+			(record) => Object.assign(regression(record), { value: '1 item', defect: 'D1' }),
+			new RegExp(`is passed, but ${values('1 item')} are different`),
+		],
+		[
+			'a blocked result with a value',
+			(record) => Object.assign(regression(record), { result: 'blocked', reason: 'No cart.' }),
+			new RegExp(`is blocked, but ${values('2 items')} are equal`),
+		],
+		[
+			'a check without a result and without a reference value',
+			(record) => delete (record.checks[0] as { result?: string }).result,
+			/R1 \(checks\[0\]\) has no result/,
 		],
 		[
 			'a criterion with only not_run checks',
@@ -338,16 +362,98 @@ test('lite record compares each regression item with its baseline', (t) => {
 		assert.match(outcome.body.reasons[1], reason, name)
 		assert.ok(outcome.body.hint, name)
 	}
+	const different = b1Record()
+	Object.assign(regression(different), { value: '1 item', result: undefined })
+	const hint = send(different).body.hint
+	assert.match(hint, /"defect": "<defect ID>"/)
+	assert.match(hint, /"intended": \{"note"/)
+
 	const record = b1Record()
-	Object.assign(regression(record), { value: '1 item', reason: 'The ticket keeps one item after a reload.' })
+	const intended = { note: 'The ticket keeps one item after a reload.', source: 'ticket.md criterion 2' }
+	record.checks[1] = { item: 'R2', check: 'GET /cart after a reload', value: ' 1 item', intended } as never
+	record.checks[2] = {
+		item: 'R3',
+		check: 'POST /checkout with an empty cart.',
+		result: 'passed',
+		observed: '409.',
+		value: '409  "Cart is empty"',
+	} as never
 	const b1 = send(record)
 	assert.equal(b1.code, 0, JSON.stringify(b1.body))
+	assert.deepEqual(b1.body.counts, { failed: 1, passed: 2 })
 	const run = json(workspace, ['run', 'show', 'checkout-run-1']).body
 	const test = run.tests.find((item: { testId: string }) => item.testId === 'R2-1')
 	assert.equal(
 		test.assertions[0].observed,
-		'Two items stay. Value: 1 item. Baseline: 2 items. Reason: The ticket keeps one item after a reload.'
+		'Value:  1 item. Reference value: 2 items (checklist). Intended change: The ticket keeps one item after a reload. (source: ticket.md criterion 2).'
 	)
+	const guide = cli(workspace, ['lite', 'guide', 'checkout']).lines
+	assert.ok(guide.includes('repeat\tR2\tsteps=GET /cart after a reload\treference= 1 item (build b1)'))
+	assert.ok(
+		guide.includes(
+			'repeat\tR3\tsteps=POST /checkout with an empty cart.\treference=409  "Cart is empty" (build b1)'
+		)
+	)
+
+	const later = b2Record()
+	later.checks[1] = { item: 'R2', check: 'GET /cart after a reload', value: '1   item' }
+	later.checks[2] = { item: 'R3', check: 'POST /checkout with an empty cart.', value: '409 "Cart is empty"' }
+	const b2 = json(workspace, ['lite', 'record', 'checkout', '--build', 'b2'], later)
+	assert.equal(b2.code, 0, JSON.stringify(b2.body))
+	assert.deepEqual(b2.body.counts, { passed: 4 })
+})
+
+test('lite record compares the numbers in a value by their numeric value', (t) => {
+	const workspace = targetOnly(t)
+	const value = checklist()
+	value.items[1].baseline!.value = 'fee 1.50 PLN, 007 days'
+	assert.equal(cli(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], value).code, 0)
+	const record = (seen: string) => ({
+		checks: [
+			{ item: 'R1', check: 'Total of a 400 PLN order.', result: 'passed', observed: '400 PLN.' },
+			{ item: 'R2', check: 'GET /cart after a reload', value: seen },
+		],
+	})
+	const refused = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record('Fee 1.5 PLN, 7 days'))
+	assert.match(refused.body.reasons[1], /are different/)
+	const b1 = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record(' fee 1.5 PLN,  7 days '))
+	assert.equal(b1.code, 0, JSON.stringify(b1.body))
+})
+
+test('lite changes list the changed areas and suggest an item for an area that no item covers', (t) => {
+	const workspace = targetOnly(t)
+	const value = {
+		...checklist(),
+		changes: [
+			{ area: 'Order total', source: 'src/total.ts @@ -10,6 +10,8 @@', items: ['R1'] },
+			{ area: 'Cart export', source: 'src/export.ts' } as { area: string; source: string; items?: string[] },
+		],
+	}
+	const unknown = structuredClone(value)
+	unknown.changes[1].items = ['R9']
+	const refused = json(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], unknown)
+	assert.match(refused.body.reasons[1], /changes\[\]\.items names unknown items: R9/)
+	assert.equal(cli(workspace, ['lite', 'checklist', 'checkout', '--target', 'checkout-local@1'], value).code, 0)
+	const suggestion =
+		'suggest\tCart export\tsrc/export.ts\tNo item covers this changed area. You can add an item or a baseline.'
+	assert.ok(cli(workspace, ['lite', 'show', 'checkout']).lines.includes(suggestion))
+	const guide = cli(workspace, ['lite', 'guide', 'checkout']).lines
+	assert.ok(guide.includes(suggestion))
+	assert.ok(!guide.some((line) => line.startsWith('need\tchanges')))
+	const record = {
+		...b1Record(),
+		items: [...b1Record().items, { id: 'R4', text: 'The export has the cart total.', source: 'exploration' }],
+		checks: [
+			...b1Record().checks,
+			{ item: 'R4', check: 'Export the cart.', result: 'passed', observed: 'The total is in the export.' },
+		],
+		changes: [{ area: 'Cart export', source: 'src/export.ts', items: ['R4'] }],
+	}
+	const b1 = json(workspace, ['lite', 'record', 'checkout', '--build', 'b1'], record)
+	assert.equal(b1.code, 0, JSON.stringify(b1.body))
+	const shown = json(workspace, ['lite', 'show', 'checkout']).body
+	assert.equal(shown.changes.length, 3)
+	assert.deepEqual(shown.uncovered, [])
 })
 
 test('every lite payload field has a description and each schema example is valid', () => {
@@ -378,10 +484,14 @@ test('lite guide prints the next step, its fields, an example, the state, and th
 	assert.equal(recorded.code, 0, JSON.stringify(recorded.body))
 	const guide = json(workspace, ['lite', 'guide', 'checkout']).body
 	assert.equal(guide.step, 'record')
-	assert.deepEqual(guide.need, [
-		['checks[].item', ['R1', 'R2'], 'one or more checks for each item'],
-		['checks[].result', ['R1'], 'passed, failed, or blocked'],
-		['checks[].value', ['R2'], 'the value after the baseline steps'],
+	assert.deepEqual(guide.need, [['checks[].result', ['R1'], 'passed, failed, or blocked']])
+	assert.deepEqual(guide.repeat, [
+		{
+			item: 'R2',
+			steps: 'Return loan L1 3 days late. Then GET /api/loans/L1.',
+			value: 'fee 1.50',
+			from: 'checklist',
+		},
 	])
 	assert.ok(!guide.fields.some((field: { path: string }) => field.path.startsWith('retests')))
 	writeFileSync(join(workspace, 'evidence', 'd1.png'), 'shot')
@@ -389,13 +499,23 @@ test('lite guide prints the next step, its fields, an example, the state, and th
 	assert.equal(b1.code, 0, JSON.stringify(b1.body))
 
 	const printed = cli(workspace, ['lite', 'guide', 'checkout'])
-	assert.ok(printed.output.length < 7000, `${printed.output.length} characters`)
+	assert.ok(printed.output.length < 4000, `${printed.output.length} characters`)
 	assert.ok(printed.lines.includes('open_defect\tD1\tcheckout-run-1\thigh\tR1\tA sixth loan is accepted'))
 	assert.ok(printed.lines.includes('need\tretests[].defect\tD1\ta verdict with evidence'))
-	assert.ok(printed.lines.some((line) => line.startsWith('field\tretests[].verdict\t')))
-	const next = printed.lines.filter((line) => line.startsWith('next: '))
-	assert.ok(next.includes('next: Give a verdict in retests for each open defect: D1.'))
-	assert.deepEqual(cli(workspace, ['lite', 'show', 'checkout']).lines.slice(-next.length), next)
+	assert.ok(
+		printed.lines.some((line) => line.startsWith('field\tretests\t') && line.includes('verdict (fixed|not_fixed)'))
+	)
+	assert.ok(!printed.lines.some((line) => line.startsWith('example')))
+	assert.ok(
+		printed.lines.includes(
+			"command\tcheckmate lite record checkout --build <build> <<'EOF'\tthe JSON payload, then EOF"
+		)
+	)
+	assert.ok(
+		cli(workspace, ['lite', 'show', 'checkout']).lines.includes(
+			'next: Give a verdict in retests for each open defect: D1.'
+		)
+	)
 })
 
 test('lite refusals name the field and give a hint', (t) => {

@@ -17,6 +17,7 @@ The oracle answers gaps, approves plans, and accepts results. In the same sessio
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read the status on line 1, not only the exit code. Read each `reason:` line.
 - `operational_error` with the reason `Another command holds the database lock` means that nothing changed. Run the same command again.
+- When a command is `rejected` or fails for another reason, do not run it again unchanged. Report its `reason:` line. Then correct the input, continue with the next step, or stop as the stage rules say.
 - Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
 
 ```sh

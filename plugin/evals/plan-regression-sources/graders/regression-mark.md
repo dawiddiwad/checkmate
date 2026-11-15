@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: 'plan save inventory.*type[\\"]*\s*:\s*[\\"]*regression'
+pattern: 'checkmate\.js[\\"]* plan save inventory.*type[\\"]*\s*:\s*[\\"]*regression'
 target: trace
 weight: 1
 ---

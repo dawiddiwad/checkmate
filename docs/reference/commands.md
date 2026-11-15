@@ -207,12 +207,12 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 | `--build`          | The application build identity.             | Required.                                     |
 | `--instance`       | An active instance of the target.           | The only active instance of the target.       |
 | `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution`                         |
-| `--on-new-blocker` | `return_to_oracle`, `continue_independent`  | `return_to_oracle`                            |
+| `--on-new-blocker` | `continue_independent`, `return_to_oracle`  | `continue_independent`                        |
 | `--timeout`        | 1 to 3600 seconds.                          | 600                                           |
 | `--retest-of`      | A finished run of the same plan and target. | None.                                         |
 
 - `ready_only` permits a selection of ready tests. Without `--tests`, Checkmate selects the ready tests and prints `<testId> left_out <reason>` for each other test. It leaves out a test that an open blocking gap of a run affects. When no test is ready, the gate refuses the run.
-- `--on-new-blocker` tells QA what to do after it records a new blocking gap. `return_to_oracle` stops and closes the remaining tests as `blocked`. `continue_independent` continues the tests that the gap does not affect. Checkmate records the policy. The agent applies it.
+- `--on-new-blocker` tells QA what to do after it records a new blocking gap. `continue_independent` is the default. QA closes the tests that the gap affects as `blocked` and continues the other tests. `return_to_oracle` stops all further actions and closes the remaining tests as `blocked`. Use it when one gap can make all other results wrong, for example a wrong build. Checkmate records the policy. The agent applies it.
 - A retest needs a new run ID and a new build.
 - Give `--instance` when the target has two or more active instances. `run begin` refuses the run without it. `run gate` does not take `--instance`.
 - For a matrix, begin one run of the same plan revision for each instance, for example `run-uat` with `--instance uat` and `run-staging` with `--instance staging`.

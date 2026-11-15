@@ -15,6 +15,7 @@ import {
 	rejectResult,
 	resumeRun,
 	runResult,
+	runState,
 	stoppedReason,
 } from '../plugin/src/runs.ts'
 import { adoptGaps, answerGap, patchPlan, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
@@ -384,6 +385,7 @@ test('run begin runs the gate and refuses an existing run ID', (t) => {
 	assert.throws(() => runDetail(opened, 'run-1'), /Unknown run: run-1/)
 	const begun = begin(opened)
 	assert.equal(begun.data.deadlineSeconds, 600)
+	assert.equal(runState(opened, 'run-1').request.onNewBlocker, 'continue_independent')
 	assert.match(String(begun.data.browserSession), /^cm-/)
 	assert.equal(begun.data.evidenceDirectory, '.checkmate/tmp/run-1/')
 	assert.throws(() => begin(opened), /Run run-1 exists/)
@@ -402,6 +404,8 @@ test('run begin runs the gate and refuses an existing run ID', (t) => {
 		() => beginRun(opened, actor, { runId: 'run 2', reference: 'checkout@2', tests: ['T1'], build: 'b' }),
 		/Invalid run ID/
 	)
+	begin(opened, 'run-3', ['T1'], 'b', { onNewBlocker: 'return_to_oracle' })
+	assert.equal(runState(opened, 'run-3').request.onNewBlocker, 'return_to_oracle')
 })
 
 test('a retest is a new run with a new build of a finished run with the same plan and target', (t) => {

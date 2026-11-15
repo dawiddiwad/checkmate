@@ -8364,7 +8364,7 @@ var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
 var closeOutcomes = ["blocked", "not_run", "error"];
 var completions = ["completed", "interrupted", "operational_error"];
 var cleanupStatuses = ["completed", "failed", "not_applicable"];
-var newBlockerPolicies = ["return_to_oracle", "continue_independent"];
+var newBlockerPolicies = ["continue_independent", "return_to_oracle"];
 var stoppedReason = "Run stopped before the test closed. Actions may have occurred.";
 var kindByExtension = {
   ".png": "screenshot",
@@ -8459,8 +8459,8 @@ function beginRun(store, actor, input) {
         `Run ${runId} exists. Use a new run ID.`
       );
       const onNewBlocker = requireChoice(
-        input.onNewBlocker ?? "return_to_oracle",
-        ["return_to_oracle", "continue_independent"],
+        input.onNewBlocker ?? "continue_independent",
+        newBlockerPolicies,
         "new blocker policy (--on-new-blocker)"
       );
       const timeoutSeconds = input.timeoutSeconds ?? 600;

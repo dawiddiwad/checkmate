@@ -109,7 +109,7 @@ export const assertionResults = ['passed', 'failed', 'inconclusive', 'not_checke
 export const closeOutcomes = ['blocked', 'not_run', 'error'] as const
 export const completions = ['completed', 'interrupted', 'operational_error'] as const
 export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
-export const newBlockerPolicies = ['return_to_oracle', 'continue_independent'] as const
+export const newBlockerPolicies = ['continue_independent', 'return_to_oracle'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
 const kindByExtension: Record<string, EvidenceRow['kind']> = {
 	'.png': 'screenshot',
@@ -216,8 +216,8 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				`Run ${runId} exists. Use a new run ID.`
 			)
 			const onNewBlocker = requireChoice(
-				input.onNewBlocker ?? 'return_to_oracle',
-				['return_to_oracle', 'continue_independent'],
+				input.onNewBlocker ?? 'continue_independent',
+				newBlockerPolicies,
 				'new blocker policy (--on-new-blocker)'
 			)
 			const timeoutSeconds = input.timeoutSeconds ?? 600

@@ -22,11 +22,13 @@ import {
 	begin,
 	candidate,
 	check,
+	defectRun,
 	directory,
 	passRun,
 	plan,
 	planRequest,
 	ready,
+	regressionPlan,
 	root,
 	store,
 	target,
@@ -203,7 +205,10 @@ reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] }
 	const plan = await prompt('plan', 'checkout')
 	assert.match(plan, /Do not ask the oracle\. Do not wait for the oracle\./)
 	assert.match(plan, /Write a gap for each vague term that changes an expected value\. Plan regression tests/)
-	assert.match(plan, /read the running application to check the preconditions of the tests\. Do not change its state\./)
+	assert.match(
+		plan,
+		/read the running application to check the preconditions of the tests\. Do not change its state\./
+	)
 	assert.doesNotMatch(plan, /person/)
 	assert(
 		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
@@ -596,4 +601,26 @@ reply({ status: 'completed', subject: 'run-3', reasons: [] })`
 	)
 	assert.doesNotMatch(prompt, /run-1|Wrong account/)
 	assert.match(prompt, /Reset: the factory owns it \(no command\)\. Do not run it\./)
+})
+
+test('the execute prompt of a retest names the tests of the earlier open defects first', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	regressionPlan(opened)
+	defectRun(opened, 'run-1', 'b1')
+	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-2', reasons: [] })`
+	)
+	await delegate(workspace, 'execute', 'run-2', { allowedTools: rules, pluginRoot, claude: quits })
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(
+		prompt.includes(
+			'Retest of run-1. Run the tests of its open defects first: T2 (F1). Give each one a passed or failed outcome.'
+		),
+		prompt
+	)
 })

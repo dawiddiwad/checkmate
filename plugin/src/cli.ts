@@ -300,6 +300,13 @@ const commands: Record<string, Command> = {
 						defect.assertionIds,
 						defect.title,
 					]),
+					...(status.retest?.verdicts ?? []).map((item) => [
+						`${item.runId}/${item.findingId}`,
+						'retest',
+						status.retest!.runId,
+						item.verdict,
+						item.title,
+					]),
 				],
 			}
 		},
@@ -875,6 +882,13 @@ const commands: Record<string, Command> = {
 						finding.severity,
 						finding.assertionIds,
 						finding.title,
+					]),
+					...detail.retest.map((item) => [
+						`${item.runId}/${item.findingId}`,
+						'retest',
+						item.verdict,
+						item.testIds,
+						item.title,
 					]),
 					...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 					...decisionLines(detail.result?.latestDecision),

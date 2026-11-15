@@ -12,7 +12,12 @@ import {
 	planRevision,
 	planRunGaps,
 	deferredPrerequisites,
+	finalizedResults,
+	openDefects,
 	readySelection,
+	rejectedRuns,
+	selectedOutcome,
+	supersedes,
 } from './plans.ts'
 import {
 	outcomeCounts,
@@ -23,6 +28,7 @@ import {
 	runFindings,
 	runGaps,
 	runOutcomes,
+	retestVerdicts,
 	runResult,
 	runState,
 } from './runs.ts'
@@ -128,7 +134,7 @@ export function inbox(store: Store) {
 		.sort(bySince)
 	const results = revisions.flatMap((row) => {
 		const runs = runList(store, { planId: row.plan_id })
-		const record = planRecord(store, row.plan, runs)
+		const record = planRecord(store, row.plan)
 		const waited = new Set([...record.supplied, ...record.defects.map((item) => item.runId)])
 		return runs
 			.filter((run) => waited.has(run.runId) && run.acceptance === 'pending')
@@ -298,6 +304,7 @@ export function planStatus(store: Store, planId: string) {
 			latestRun: null,
 			openRuns: [],
 			defects: [],
+			retest: null,
 		}
 	}
 	const { plan, sha256 } = planRevision(store, planId)
@@ -330,9 +337,19 @@ export function planStatus(store: Store, planId: string) {
 	const openRuns = runs
 		.filter((run) => run.state === 'started')
 		.map((run) => ({ runId: run.runId, build: run.build, instanceId: run.instanceId }))
-	const record = planRecord(store, plan, runs)
+	const record = planRecord(store, plan)
 	const finished = runs.find((run) => run.runId === record.results.at(-1)?.runId)
 	const latestRun = runs.at(-1) ?? null
+	const lastRetest = runs
+		.map((run) => runState(store, run.runId))
+		.filter((run) => run.request.retestOf)
+		.at(-1)
+	const retest = lastRetest
+		? {
+				runId: lastRetest.row.run_id,
+				verdicts: retestVerdicts(lastRetest, runOutcomes(store, lastRetest.row.run_id)),
+			}
+		: null
 	const { ready, latest, supplied, rejected } = record
 	const defects = record.defects.map(({ runId, finding }) => ({
 		runId,
@@ -547,6 +564,7 @@ export function planStatus(store: Store, planId: string) {
 		latestRun,
 		openRuns,
 		defects,
+		retest,
 	}
 }
 
@@ -558,7 +576,7 @@ function rejection(store: Store, kind: 'plan' | 'result', subject: string) {
 export function openRejections(store: Store, planId: string) {
 	const { plan } = planRevision(store, planId)
 	const runs = runList(store, { planId })
-	const { ready, latest, rejected } = planRecord(store, plan, runs)
+	const { ready, latest, rejected } = planRecord(store, plan)
 	return runs
 		.filter((run) => rejected.has(run.runId))
 		.map((run) => ({
@@ -578,21 +596,9 @@ function loopOf(store: Store, planId: string) {
 	return { state, waitsOn }
 }
 
-function finalizedResults(store: Store, planId: string) {
-	return all<{ body: string }>(
-		store,
-		'SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid',
-		planId
-	).map((row) => JSON.parse(row.body) as Result)
-}
-
-function rejectedRuns(store: Store, planId: string, runs = runList(store, { planId })) {
-	return new Set(runs.filter((run) => run.acceptance === 'rejected').map((run) => run.runId))
-}
-
-function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) {
+function planRecord(store: Store, plan: Plan) {
 	const results = finalizedResults(store, plan.planId)
-	const rejected = rejectedRuns(store, plan.planId, runs)
+	const rejected = rejectedRuns(store, plan.planId)
 	const derived = deferredPrerequisites(plan)
 	const ready = plan.tests
 		.filter((test) => test.readiness === 'ready' && !derived.has(test.id))
@@ -605,11 +611,6 @@ function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) 
 		finding.testIds.some((testId) => ready.includes(testId))
 	)
 	return { results, rejected, ready, derived, latest, supplied, defects }
-}
-
-function selectedOutcome(result: Result, testId: string) {
-	if (!result.selectedTestIds.includes(testId)) return null
-	return result.tests.find((test) => test.testId === testId)?.outcome ?? null
 }
 
 function testDefinition(plan: Plan, test: Plan['tests'][number]) {
@@ -626,20 +627,6 @@ function testDefinition(plan: Plan, test: Plan['tests'][number]) {
 			requirementIds,
 			requirements,
 		})
-	)
-}
-
-function retests(later: Result, earlier: Result, byRun: Map<string, Result>) {
-	for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
-		if (runId === earlier.runId) return true
-	return false
-}
-
-function supersedes(later: Result, earlier: Result, byRun: Map<string, Result>) {
-	return (
-		later.instanceId === earlier.instanceId ||
-		later.applicationBuild !== earlier.applicationBuild ||
-		retests(later, earlier, byRun)
 	)
 }
 
@@ -662,31 +649,6 @@ function latestOutcomes(store: Store, plan: Plan, results: Result[]) {
 		}
 	}
 	return latest
-}
-
-export function openDefects(results: Result[], rejected: Set<string>) {
-	const byRun = new Map(results.map((result) => [result.runId, result]))
-	const counted = results.filter((result) => !rejected.has(result.runId))
-	return counted.flatMap((result, i) => {
-		const later = counted.slice(i + 1).filter((run) => supersedes(run, result, byRun))
-		const fixed = (testIds: string[]) =>
-			later.some((run) => testIds.every((testId) => selectedOutcome(run, testId) === 'passed'))
-		const found = (testIds: string[]) =>
-			later.some(
-				(run) =>
-					retests(run, result, byRun) &&
-					run.findings.some(
-						(other) =>
-							other.type === 'defect' &&
-							other.testIds.some(
-								(testId) => testIds.includes(testId) && selectedOutcome(run, testId) === 'failed'
-							)
-					)
-			)
-		return result.findings
-			.filter((finding) => finding.type === 'defect' && !fixed(finding.testIds) && !found(finding.testIds))
-			.map((finding) => ({ runId: result.runId, finding }))
-	})
 }
 
 function amount(count: number, noun: string) {
@@ -799,6 +761,7 @@ export function runDetail(store: Store, runId: string) {
 		attempts,
 		tests,
 		findings: runFindings(store, runId),
+		retest: retestVerdicts(run, outcomes),
 		newGaps: runGaps(store, runId),
 		result: finished
 			? {

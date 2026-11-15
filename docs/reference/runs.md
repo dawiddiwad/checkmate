@@ -199,6 +199,24 @@ A started run closes no defect. A rejected run closes no defect and replaces no 
 
 `checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. A test whose local prerequisite is deferred also counts as deferred. The defect is still real, so `finding list --open` still lists it.
 
+### Retest verdicts
+
+A retest records the open defects of the earlier run when it begins. `run show` and `status` print one verdict for each of them:
+
+```text
+run-1/F1	retest	fixed	T2	Discount applies twice
+run-1/F2	retest	not_fixed	T4	Total ignores the fee
+run-1/F3	retest	not_retested	T6	Badge count is stale
+```
+
+| Verdict        | When                                                   |
+| -------------- | ------------------------------------------------------ |
+| `fixed`        | Each test of the defect passed in the retest.          |
+| `not_fixed`    | A test of the defect failed in the retest.             |
+| `not_retested` | Any other case, for example a test is open or blocked. |
+
+`status` prints the verdicts of the latest retest in begin order. Its lines also name the retest: `run-1/F1 retest run-2 fixed <title>`.
+
 ## Completion and coverage
 
 | Field        | Values                                                            | Describes                                   |
@@ -212,6 +230,7 @@ A started run closes no defect. A rejected run closes no defect and replaces no 
 - every selected test closed, and none closed as `error`,
 - a cleanup status that is not `failed`,
 - a cause for each `blocked` or `not_run` test: a prerequisite that did not pass, a blocked cross-plan dependency, or a new blocking gap,
+- in a retest, a `passed` or `failed` outcome for each selected test of an open defect of the earlier run,
 - a defect for each failed assertion.
 
 `run finish --completion interrupted` needs `--reason`, for example `The host stopped the session.` The result records it as `completionReason`. `operational_error` can have a reason. A reason that names the deadline follows the [deadline](#deadline) rule.

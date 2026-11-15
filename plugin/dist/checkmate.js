@@ -8195,8 +8195,13 @@ function gate(store, input) {
   const selection = input.tests === void 0 && partial === "ready_only" ? readySelection(store, plan, build) : givenSelection(input.tests, tests, subject);
   const selected = selection.tests;
   if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance);
+  const earlier = input.retestOf ? retestDefects(store, input.retestOf) : [];
   const reasons2 = [];
   if (!selected.length) reasons2.push(`No test is ready in ${subject}`);
+  if (input.retestOf) {
+    for (const [id2, why] of retestSelection(store, plan, build, input.retestOf, earlier))
+      if (!selected.includes(id2)) reasons2.push(`Retest of ${input.retestOf} must select ${id2}: ${why}`);
+  }
   if (!target.profile.readyForLiveExecution)
     reasons2.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`);
   const approval = planApproval(store, plan, revision.sha256);
@@ -8243,8 +8248,21 @@ function gate(store, input) {
     revision,
     target,
     build,
-    partial
+    partial,
+    retestDefects: earlier
   };
+}
+function retestSelection(store, plan, build, runId, earlier) {
+  const selectable = readySelection(store, plan, build).tests;
+  const required = /* @__PURE__ */ new Map();
+  for (const defect of earlier)
+    for (const id2 of defect.testIds)
+      if (selectable.includes(id2) && !required.has(id2))
+        required.set(id2, `it has open defect ${defect.findingId} of ${runId}`);
+  for (const test of plan.tests)
+    if (test.metadata?.type === "regression" && selectable.includes(test.id) && !required.has(test.id))
+      required.set(test.id, "it is a regression test");
+  return required;
 }
 function givenSelection(selected, tests, subject) {
   requireCondition(
@@ -8335,6 +8353,57 @@ function retestCheck(store, runId, plan, build, instanceId) {
     previous.application_build !== build || refreshed,
     `Retest needs a new build. Run ${runId} used build ${build}. Keep the build only on a new instance after ${previous.instance_id} is retired.`
   );
+}
+function finalizedResults(store, planId) {
+  return all(
+    store,
+    "SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid",
+    planId
+  ).map((row) => JSON.parse(row.body));
+}
+function rejectedRuns(store, planId) {
+  const rows = all(
+    store,
+    "SELECT r.run_id, r.target_id, r.target_revision, s.sha256 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?",
+    planId
+  );
+  const rejected = rows.filter((row) => {
+    const policy = approvalPolicy(targetRevision(store, row.target_id, row.target_revision).profile).result;
+    return approvalState(store, "result", row.run_id, row.sha256, policy).rejected;
+  });
+  return new Set(rejected.map((row) => row.run_id));
+}
+function selectedOutcome(result, testId) {
+  if (!result.selectedTestIds.includes(testId)) return null;
+  return result.tests.find((test) => test.testId === testId)?.outcome ?? null;
+}
+function retests(later, earlier, byRun) {
+  for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
+    if (runId === earlier.runId) return true;
+  return false;
+}
+function supersedes(later, earlier, byRun) {
+  return later.instanceId === earlier.instanceId || later.applicationBuild !== earlier.applicationBuild || retests(later, earlier, byRun);
+}
+function openDefects(results, rejected) {
+  const byRun = new Map(results.map((result) => [result.runId, result]));
+  const counted = results.filter((result) => !rejected.has(result.runId));
+  return counted.flatMap((result, i) => {
+    const later = counted.slice(i + 1).filter((run2) => supersedes(run2, result, byRun));
+    const fixed = (testIds) => later.some((run2) => testIds.every((testId) => selectedOutcome(run2, testId) === "passed"));
+    const found = (testIds) => later.some(
+      (run2) => retests(run2, result, byRun) && run2.findings.some(
+        (other) => other.type === "defect" && other.testIds.some(
+          (testId) => testIds.includes(testId) && selectedOutcome(run2, testId) === "failed"
+        )
+      )
+    );
+    return result.findings.filter((finding) => finding.type === "defect" && !fixed(finding.testIds) && !found(finding.testIds)).map((finding) => ({ runId: result.runId, finding }));
+  });
+}
+function retestDefects(store, runId) {
+  const { plan_id } = one(store, "SELECT plan_id FROM runs WHERE run_id = ?", runId);
+  return openDefects(finalizedResults(store, plan_id), rejectedRuns(store, plan_id)).filter((defect) => defect.runId === runId).map(({ finding }) => ({ findingId: finding.id, title: finding.title, testIds: finding.testIds }));
 }
 function dependencyBlock(store, reference, build) {
   const { planId, testId } = testReference(reference);
@@ -8615,7 +8684,8 @@ function beginRun(store, actor, input) {
         partialExecution: checked.partial,
         onNewBlocker,
         timeoutSeconds,
-        retestOf: input.retestOf ?? null
+        retestOf: input.retestOf ?? null,
+        ...input.retestOf ? { retestDefects: checked.retestDefects } : {}
       };
       const browserSession = `cm-${randomUUID()}`;
       execute(
@@ -9031,6 +9101,14 @@ function finish(store, actor, input) {
         `Operational failure cannot be completed: ${failures.join(", ")} closed as error`
       );
       requireCondition(cleanup2.status !== "failed", "Cleanup failed, so the run cannot be completed");
+      for (const verdict of retestVerdicts(run2, outcomes))
+        for (const testId of verdict.testIds.filter((id2) => selected.includes(id2))) {
+          const outcome = outcomes.get(testId).outcome;
+          requireCondition(
+            outcome === "passed" || outcome === "failed",
+            `Retest ${input.runId} has no verdict on defect ${verdict.findingId} of ${verdict.runId}: ${testId} is ${outcome}. Retest ${testId} to passed or failed, or finish as interrupted with a reason.`
+          );
+        }
       for (const test of run2.plan.tests.filter((test2) => selected.includes(test2.id))) {
         const outcome = outcomes.get(test.id).outcome;
         if (outcome !== "not_run" && outcome !== "blocked") continue;
@@ -9126,6 +9204,13 @@ function finish(store, actor, input) {
       },
       subjects: [`run:${input.runId}`, `plan:${run2.plan.planId}`, "inbox"]
     };
+  });
+}
+function retestVerdicts(run2, outcomes) {
+  return (run2.request.retestDefects ?? []).map((defect) => {
+    const tested = defect.testIds.map((id2) => outcomes.get(id2)?.outcome);
+    const verdict = tested.includes("failed") ? "not_fixed" : tested.every((outcome) => outcome === "passed") ? "fixed" : "not_retested";
+    return { runId: run2.request.retestOf, ...defect, verdict };
   });
 }
 function outcomeCounts(tests) {
@@ -9290,7 +9375,7 @@ function inbox(store) {
   })).sort(bySince);
   const results = revisions.flatMap((row) => {
     const runs = runList(store, { planId: row.plan_id });
-    const record = planRecord(store, row.plan, runs);
+    const record = planRecord(store, row.plan);
     const waited = /* @__PURE__ */ new Set([...record.supplied, ...record.defects.map((item) => item.runId)]);
     return runs.filter((run2) => waited.has(run2.runId) && run2.acceptance === "pending").map((run2) => {
       const result = record.results.find((item) => item.runId === run2.runId);
@@ -9427,7 +9512,8 @@ function planStatus(store, planId) {
       pendingDecisions: [],
       latestRun: null,
       openRuns: [],
-      defects: []
+      defects: [],
+      retest: null
     };
   }
   const { plan, sha256 } = planRevision(store, planId);
@@ -9454,9 +9540,14 @@ function planStatus(store, planId) {
   const approval = approvalLabel(planApproval(store, plan, sha256));
   const runs = runList(store, { planId });
   const openRuns = runs.filter((run2) => run2.state === "started").map((run2) => ({ runId: run2.runId, build: run2.build, instanceId: run2.instanceId }));
-  const record = planRecord(store, plan, runs);
+  const record = planRecord(store, plan);
   const finished = runs.find((run2) => run2.runId === record.results.at(-1)?.runId);
   const latestRun = runs.at(-1) ?? null;
+  const lastRetest = runs.map((run2) => runState(store, run2.runId)).filter((run2) => run2.request.retestOf).at(-1);
+  const retest = lastRetest ? {
+    runId: lastRetest.row.run_id,
+    verdicts: retestVerdicts(lastRetest, runOutcomes(store, lastRetest.row.run_id))
+  } : null;
   const { ready, latest, supplied, rejected } = record;
   const defects = record.defects.map(({ runId, finding }) => ({
     runId,
@@ -9661,7 +9752,8 @@ function planStatus(store, planId) {
     pendingDecisions: pendingDecisions2,
     latestRun,
     openRuns,
-    defects
+    defects,
+    retest
   };
 }
 function rejection(store, kind, subject) {
@@ -9671,7 +9763,7 @@ function rejection(store, kind, subject) {
 function openRejections(store, planId) {
   const { plan } = planRevision(store, planId);
   const runs = runList(store, { planId });
-  const { ready, latest, rejected } = planRecord(store, plan, runs);
+  const { ready, latest, rejected } = planRecord(store, plan);
   return runs.filter((run2) => rejected.has(run2.runId)).map((run2) => ({
     runId: run2.runId,
     testIds: ready.filter((testId) => latest.get(testId)?.some((result) => result.runId === run2.runId)),
@@ -9685,19 +9777,9 @@ function loopOf(store, planId) {
   const { state, waitsOn } = planStatus(store, planId);
   return { state, waitsOn };
 }
-function finalizedResults(store, planId) {
-  return all(
-    store,
-    "SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid",
-    planId
-  ).map((row) => JSON.parse(row.body));
-}
-function rejectedRuns(store, planId, runs = runList(store, { planId })) {
-  return new Set(runs.filter((run2) => run2.acceptance === "rejected").map((run2) => run2.runId));
-}
-function planRecord(store, plan, runs) {
+function planRecord(store, plan) {
   const results = finalizedResults(store, plan.planId);
-  const rejected = rejectedRuns(store, plan.planId, runs);
+  const rejected = rejectedRuns(store, plan.planId);
   const derived = deferredPrerequisites(plan);
   const ready = plan.tests.filter((test) => test.readiness === "ready" && !derived.has(test.id)).map((test) => test.id);
   const latest = latestOutcomes(store, plan, results);
@@ -9706,10 +9788,6 @@ function planRecord(store, plan, runs) {
     ({ finding }) => finding.testIds.some((testId) => ready.includes(testId))
   );
   return { results, rejected, ready, derived, latest, supplied, defects };
-}
-function selectedOutcome(result, testId) {
-  if (!result.selectedTestIds.includes(testId)) return null;
-  return result.tests.find((test) => test.testId === testId)?.outcome ?? null;
 }
 function testDefinition(plan, test) {
   const { action, preconditions, assertions, dependsOn, capability, operations, requirementIds } = test;
@@ -9727,14 +9805,6 @@ function testDefinition(plan, test) {
     })
   );
 }
-function retests(later, earlier, byRun) {
-  for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
-    if (runId === earlier.runId) return true;
-  return false;
-}
-function supersedes(later, earlier, byRun) {
-  return later.instanceId === earlier.instanceId || later.applicationBuild !== earlier.applicationBuild || retests(later, earlier, byRun);
-}
 function latestOutcomes(store, plan, results) {
   const byRun = new Map(results.map((result) => [result.runId, result]));
   const current = new Map(plan.tests.map((test) => [test.id, testDefinition(plan, test)]));
@@ -9751,22 +9821,6 @@ function latestOutcomes(store, plan, results) {
     }
   }
   return latest;
-}
-function openDefects(results, rejected) {
-  const byRun = new Map(results.map((result) => [result.runId, result]));
-  const counted = results.filter((result) => !rejected.has(result.runId));
-  return counted.flatMap((result, i) => {
-    const later = counted.slice(i + 1).filter((run2) => supersedes(run2, result, byRun));
-    const fixed = (testIds) => later.some((run2) => testIds.every((testId) => selectedOutcome(run2, testId) === "passed"));
-    const found = (testIds) => later.some(
-      (run2) => retests(run2, result, byRun) && run2.findings.some(
-        (other) => other.type === "defect" && other.testIds.some(
-          (testId) => testIds.includes(testId) && selectedOutcome(run2, testId) === "failed"
-        )
-      )
-    );
-    return result.findings.filter((finding) => finding.type === "defect" && !fixed(finding.testIds) && !found(finding.testIds)).map((finding) => ({ runId: result.runId, finding }));
-  });
 }
 function amount(count, noun) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -9872,6 +9926,7 @@ function runDetail(store, runId) {
     attempts,
     tests,
     findings: runFindings(store, runId),
+    retest: retestVerdicts(run2, outcomes),
     newGaps: runGaps(store, runId),
     result: finished ? {
       sha256: finished.sha256,
@@ -14242,6 +14297,13 @@ var commands = {
             defect.severity,
             defect.assertionIds,
             defect.title
+          ]),
+          ...(status.retest?.verdicts ?? []).map((item) => [
+            `${item.runId}/${item.findingId}`,
+            "retest",
+            status.retest.runId,
+            item.verdict,
+            item.title
           ])
         ]
       };
@@ -14769,6 +14831,13 @@ var commands = {
             finding.severity,
             finding.assertionIds,
             finding.title
+          ]),
+          ...detail.retest.map((item) => [
+            `${item.runId}/${item.findingId}`,
+            "retest",
+            item.verdict,
+            item.testIds,
+            item.title
           ]),
           ...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
           ...decisionLines(detail.result?.latestDecision)

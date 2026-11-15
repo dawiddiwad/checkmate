@@ -135,6 +135,8 @@ checkmate run begin run-2 checkout@3 --tests T1,T2,T3,T4 --build "$NEW_SHA" --in
 checkmate delegate execute run-2 --allow Read --allow Bash
 ```
 
+A retest must select each test with an open defect of `run-1` and each regression test. `--partial ready_only` without `--tests` selects them. QA runs the tests of the earlier defects first. `run show run-2` and `status` print a verdict for each earlier defect: `fixed`, `not_fixed`, or `not_retested`. `run finish --completion completed` refuses the retest until each of these tests is `passed` or `failed`.
+
 A narrow retest, with fewer tests, keeps the requirements of the other tests uncovered. A retest can run on another instance. A retest needs a new build, except on a refreshed sandbox: retire the old instance, add the new one, and retest on the new instance with the same build.
 
 ### Run a matrix

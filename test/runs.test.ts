@@ -20,7 +20,7 @@ import {
 	stoppedReason,
 } from '../plugin/src/runs.ts'
 import { adoptGaps, answerGap, patchPlan, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
-import { inbox, runDetail } from '../plugin/src/views.ts'
+import { inbox, planStatus, runDetail } from '../plugin/src/views.ts'
 import { addInstance, retireInstance } from '../plugin/src/targets.ts'
 import {
 	accept,
@@ -28,10 +28,12 @@ import {
 	approved,
 	begin,
 	check,
+	defectRun,
 	evidenceFile,
 	failT2,
 	plan,
 	ready,
+	regressionPlan,
 	revised,
 	store,
 	target,
@@ -524,6 +526,65 @@ test('a retest is a new run with a new build of a finished run with the same pla
 	finish(opened, 'run-4')
 	assert.equal(runResult(opened, 'run-4')!.result.retestOf, 'run-1')
 	assert.equal(runResult(opened, 'run-1')!.sha256, before)
+})
+
+test('a retest gives a verdict for each earlier defect and completes only with one', (t) => {
+	const opened = store(t)
+	regressionPlan(opened)
+	defectRun(opened, 'run-1', 'b1')
+	const retest = (runId: string, build: string, retestOf: string) => {
+		const reply = beginRun(opened, actor, {
+			runId,
+			reference: 'checkout@2',
+			build,
+			partial: 'ready_only',
+			retestOf,
+		})
+		assert.equal(reply.status, 'completed', reply.reasons.join('; '))
+	}
+	const verdicts = (runId: string) =>
+		runDetail(opened, runId).retest.map((item) => `${item.runId}/${item.findingId} ${item.verdict}`)
+	const loop = () => {
+		const status = planStatus(opened, 'checkout')
+		return [status.state, status.waitsOn, status.retest?.runId, status.retest?.verdicts.map((item) => item.verdict)]
+	}
+	retest('run-2', 'b2', 'run-1')
+	assert.deepEqual(runState(opened, 'run-2').request.retestDefects, [
+		{ findingId: 'F1', title: 'Promotion stacks with loyalty', testIds: ['T2'] },
+	])
+	assert.deepEqual(verdicts('run-2'), ['run-1/F1 not_retested'])
+	assert.deepEqual(loop(), ['run_in_progress', 'qa', 'run-2', ['not_retested']])
+	passT1(opened, 'run-2')
+	check(opened, 'run-2', 'T2.A1', 'passed')
+	check(opened, 'run-2', 'T2.A2', 'inconclusive')
+	closeTest(opened, actor, { runId: 'run-2', testId: 'T2' })
+	assert.throws(
+		() => finish(opened, 'run-2'),
+		/Retest run-2 has no verdict on defect F1 of run-1: T2 is inconclusive\. Retest T2 to passed or failed, or finish as interrupted with a reason\./
+	)
+	assert.equal(finish(opened, 'run-2', 'interrupted').status, 'interrupted')
+	assert.deepEqual(loop(), ['defects_open', 'factory', 'run-2', ['not_retested']])
+	retest('run-3', 'b3', 'run-1')
+	passT1(opened, 'run-3')
+	check(opened, 'run-3', 'T2.A1', 'passed')
+	failT2(opened, 'run-3')
+	closeTest(opened, actor, { runId: 'run-3', testId: 'T2' })
+	assert.equal(finish(opened, 'run-3').status, 'completed')
+	assert.deepEqual(verdicts('run-3'), ['run-1/F1 not_fixed'])
+	const status = planStatus(opened, 'checkout')
+	assert.deepEqual(
+		status.defects.map((defect) => `${defect.runId}/${defect.findingId}`),
+		['run-3/F1']
+	)
+	assert.match(status.next[0], /--retest-of run-3$/)
+	retest('run-4', 'b4', 'run-3')
+	for (const testId of ['T1', 'T2']) {
+		for (const assertionId of ['A1', 'A2']) check(opened, 'run-4', `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, actor, { runId: 'run-4', testId })
+	}
+	assert.equal(finish(opened, 'run-4').status, 'completed')
+	assert.deepEqual(verdicts('run-4'), ['run-3/F1 fixed'])
+	assert.deepEqual(loop(), ['awaits_acceptance', 'oracle', 'run-4', ['fixed']])
 })
 
 test('findings name recorded assertions, matching requirements, and evidence of those assertions', (t) => {

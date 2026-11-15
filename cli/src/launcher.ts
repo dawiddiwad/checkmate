@@ -312,7 +312,13 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 			`Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`,
 		]
 	const { run, profile, clock, rejected } = execution!
-	const request = JSON.parse(run.request) as { selectedTestIds: string[]; onNewBlocker: string }
+	const request = JSON.parse(run.request) as {
+		selectedTestIds: string[]
+		onNewBlocker: string
+		retestOf: string | null
+		retestDefects?: Array<{ findingId: string; testIds: string[] }>
+	}
+	const earlier = (request.retestDefects ?? []).map((defect) => `${defect.testIds.join(',')} (${defect.findingId})`)
 	return [
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run.plan_id}@${run.plan_revision}. Target: ${run.target_id}@${run.target_revision}. Build: ${run.application_build}.`,
@@ -323,6 +329,11 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 				]
 			: []),
 		`Selected tests: ${request.selectedTestIds.join(',')}. New blocker policy: ${request.onNewBlocker}.`,
+		...(earlier.length
+			? [
+					`Retest of ${request.retestOf}. Run the tests of its open defects first: ${earlier.join('; ')}. Give each one a passed or failed outcome.`,
+				]
+			: []),
 		...resetLines(profile),
 		'Each test owns its data. When a precondition fails, adapt the test data within the intent of the test before you record a blocking gap. Record what you changed in the observation.',
 		...rejected.map(

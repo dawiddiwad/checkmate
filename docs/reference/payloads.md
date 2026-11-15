@@ -340,12 +340,12 @@ QA sends new ambiguity to `run gap <runId>`.
 
 A test in a candidate can carry its Xray key the same way: `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`.
 
-The planner marks a regression test with `"metadata": { "type": "regression" }`. A regression test checks that an existing rule near the change still holds, for example a validation limit, a permission, a counter, or an existing price.
+The planner marks a regression test with `"metadata": { "type": "regression" }`. A regression test checks that an existing rule near the change still holds, for example a validation limit, a permission, a counter, or an existing price. Each retest runs it again.
 
 - `metadata` is an object with 0 to 20 keys.
 - A key has 1 to 64 letters, digits, `_`, `.`, or `-`. It starts with a letter.
 - A value is a string of 0 to 500 characters, a number, or a boolean. A list or an object is refused. Give a list as one string, for example `"checkout,regression"`.
-- Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
+- Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. Only one rule reads `metadata`: a retest must select each ready test with `"type": "regression"`. Read [Run gate and policy](commands.md#run-gate-and-policy). `metadata` does not change readiness, outcomes, or coverage.
 - The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as `metadata.<key>` properties.
 
 ## Limits

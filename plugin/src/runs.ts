@@ -2,6 +2,7 @@ import type { Gap, Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, ulid, write } from './store.ts'
 import type { AssertionResult, ResultTest, Test } from './contracts.ts'
+import type { RetestDefect } from './plans.ts'
 import {
 	approvalPolicy,
 	expectDigest,
@@ -51,6 +52,7 @@ export type RunRequest = {
 	onNewBlocker: string
 	timeoutSeconds: number
 	retestOf: string | null
+	retestDefects?: RetestDefect[]
 }
 export type RunState = { row: RunRow; request: RunRequest; plan: Plan; finished: boolean }
 export type OutcomeRow = { test_id: string; attempt: number; outcome: ResultTest['outcome']; reason: string | null }
@@ -276,6 +278,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				onNewBlocker,
 				timeoutSeconds,
 				retestOf: input.retestOf ?? null,
+				...(input.retestOf ? { retestDefects: checked.retestDefects } : {}),
 			}
 			const browserSession = `cm-${randomUUID()}`
 			execute(
@@ -727,6 +730,14 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				`Operational failure cannot be completed: ${failures.join(', ')} closed as error`
 			)
 			requireCondition(cleanup.status !== 'failed', 'Cleanup failed, so the run cannot be completed')
+			for (const verdict of retestVerdicts(run, outcomes))
+				for (const testId of verdict.testIds.filter((id) => selected.includes(id))) {
+					const outcome = outcomes.get(testId)!.outcome
+					requireCondition(
+						outcome === 'passed' || outcome === 'failed',
+						`Retest ${input.runId} has no verdict on defect ${verdict.findingId} of ${verdict.runId}: ${testId} is ${outcome}. Retest ${testId} to passed or failed, or finish as interrupted with a reason.`
+					)
+				}
 			for (const test of run.plan.tests.filter((test) => selected.includes(test.id))) {
 				const outcome = outcomes.get(test.id)!.outcome
 				if (outcome !== 'not_run' && outcome !== 'blocked') continue
@@ -827,6 +838,20 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			},
 			subjects: [`run:${input.runId}`, `plan:${run.plan.planId}`, 'inbox'],
 		}
+	})
+}
+
+export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'
+
+export function retestVerdicts(run: RunState, outcomes: Map<string, OutcomeRow>) {
+	return (run.request.retestDefects ?? []).map((defect) => {
+		const tested = defect.testIds.map((id) => outcomes.get(id)?.outcome)
+		const verdict: RetestVerdict = tested.includes('failed')
+			? 'not_fixed'
+			: tested.every((outcome) => outcome === 'passed')
+				? 'fixed'
+				: 'not_retested'
+		return { runId: run.request.retestOf!, ...defect, verdict }
 	})
 }
 

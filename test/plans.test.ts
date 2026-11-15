@@ -28,9 +28,12 @@ import {
 	approved,
 	candidate,
 	cli,
+	defectRun,
+	passRun,
 	plan,
 	planRequest,
 	promotionDelta,
+	regressionPlan,
 	revised,
 	store,
 	target,
@@ -478,6 +481,29 @@ test('the gate collects every reason in order', (t) => {
 		() => gate(opened, { reference: 'checkout@1', tests: ['T1'], build: 'b', partial: 'run_ready' }),
 		/Invalid partial execution/
 	)
+})
+
+test('a retest selects each test with an open defect of the earlier run and each regression test', (t) => {
+	const opened = store(t)
+	regressionPlan(opened)
+	defectRun(opened, 'run-1', 'b1')
+	const retest = (input: { tests?: string[]; partial?: string }, build = 'b2') =>
+		gate(opened, { reference: 'checkout@2', build, retestOf: 'run-1', ...input })
+	const rows: Array<[{ tests?: string[]; partial?: string }, string[]]> = [
+		[{ tests: ['T1'] }, ['Retest of run-1 must select T2: it has open defect F1 of run-1']],
+		[{ tests: ['T2'] }, ['Retest of run-1 must select T1: it is a regression test']],
+		[{ tests: ['T2'], partial: 'ready_only' }, ['Retest of run-1 must select T1: it is a regression test']],
+		[{ tests: ['T1', 'T2'] }, []],
+		[{ partial: 'ready_only' }, []],
+	]
+	for (const [input, reasons] of rows) assert.deepEqual(retest(input).reply.reasons, reasons, JSON.stringify(input))
+	const ready = retest({ partial: 'ready_only' })
+	assert.deepEqual(ready.reply.data.tests, ['T1', 'T2'])
+	assert.deepEqual(ready.retestDefects, [
+		{ findingId: 'F1', title: 'Promotion stacks with loyalty', testIds: ['T2'] },
+	])
+	passRun(opened, 'run-2', 'b2', ['T1', 'T2'])
+	assert.deepEqual(retest({ tests: ['T1'] }, 'b3').reply.reasons, [])
 })
 
 test('ready_only without tests selects the ready tests and lists the tests it leaves out', (t) => {

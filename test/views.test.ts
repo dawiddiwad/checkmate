@@ -447,16 +447,16 @@ test('a started retest does not close a defect', (t) => {
 	)
 })
 
-test('a narrow retest closes a defect only when it passes every test of the defect', (t) => {
+test('a narrow run closes a defect only when it passes every test of the defect', (t) => {
 	const opened = store(t)
 	ready(opened)
 	failedRun(opened, 'run-1', 'b1')
-	begin(opened, 'run-2', ['T1'], 'b2', { retestOf: 'run-1' })
+	begin(opened, 'run-2', ['T1'], 'b2')
 	for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `T1.${assertionId}`, 'passed')
 	closeTest(opened, actor, { runId: 'run-2', testId: 'T1' })
 	finishRun(opened, actor, { runId: 'run-2', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
 	assert.deepEqual(openDefects(opened), ['defects_open', ['run-1/F1']])
-	begin(opened, 'run-3', ['T1', 'T2'], 'b3', { retestOf: 'run-2' })
+	begin(opened, 'run-3', ['T1', 'T2'], 'b3', { retestOf: 'run-1' })
 	for (const testId of ['T1', 'T2']) {
 		for (const assertionId of ['A1', 'A2']) check(opened, 'run-3', `${testId}.${assertionId}`, 'passed')
 		closeTest(opened, actor, { runId: 'run-3', testId })

@@ -1,4 +1,4 @@
-import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile } from './types.ts'
+import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -860,8 +860,12 @@ export function gate(store: Store, input: GateInput) {
 			: givenSelection(input.tests, tests, subject)
 	const selected = selection.tests
 	if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance)
+	const earlier = input.retestOf ? retestDefects(store, input.retestOf) : []
 	const reasons: string[] = []
 	if (!selected.length) reasons.push(`No test is ready in ${subject}`)
+	if (input.retestOf)
+		for (const [id, why] of retestSelection(store, plan, build, input.retestOf, earlier))
+			if (!selected.includes(id)) reasons.push(`Retest of ${input.retestOf} must select ${id}: ${why}`)
 	if (!target.profile.readyForLiveExecution)
 		reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`)
 	const approval = planApproval(store, plan, revision.sha256)
@@ -908,7 +912,21 @@ export function gate(store: Store, input: GateInput) {
 		target,
 		build,
 		partial,
+		retestDefects: earlier,
 	}
+}
+
+function retestSelection(store: Store, plan: Plan, build: string, runId: string, earlier: RetestDefect[]) {
+	const selectable = readySelection(store, plan, build).tests
+	const required = new Map<string, string>()
+	for (const defect of earlier)
+		for (const id of defect.testIds)
+			if (selectable.includes(id) && !required.has(id))
+				required.set(id, `it has open defect ${defect.findingId} of ${runId}`)
+	for (const test of plan.tests)
+		if (test.metadata?.type === 'regression' && selectable.includes(test.id) && !required.has(test.id))
+			required.set(test.id, 'it is a regression test')
+	return required
 }
 
 type LeftOut = { testId: string; reason: string }
@@ -1026,6 +1044,80 @@ function retestCheck(store: Store, runId: string, plan: Plan, build: string, ins
 		previous.application_build !== build || refreshed,
 		`Retest needs a new build. Run ${runId} used build ${build}. Keep the build only on a new instance after ${previous.instance_id} is retired.`
 	)
+}
+
+export function finalizedResults(store: Store, planId: string) {
+	return all<{ body: string }>(
+		store,
+		'SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid',
+		planId
+	).map((row) => JSON.parse(row.body) as Result)
+}
+
+export function rejectedRuns(store: Store, planId: string) {
+	const rows = all<{ run_id: string; target_id: string; target_revision: number; sha256: string }>(
+		store,
+		'SELECT r.run_id, r.target_id, r.target_revision, s.sha256 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?',
+		planId
+	)
+	const rejected = rows.filter((row) => {
+		const policy = approvalPolicy(targetRevision(store, row.target_id, row.target_revision).profile).result
+		return approvalState(store, 'result', row.run_id, row.sha256, policy).rejected
+	})
+	return new Set(rejected.map((row) => row.run_id))
+}
+
+export function selectedOutcome(result: Result, testId: string) {
+	if (!result.selectedTestIds.includes(testId)) return null
+	return result.tests.find((test) => test.testId === testId)?.outcome ?? null
+}
+
+export function retests(later: Result, earlier: Result, byRun: Map<string, Result>) {
+	for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
+		if (runId === earlier.runId) return true
+	return false
+}
+
+export function supersedes(later: Result, earlier: Result, byRun: Map<string, Result>) {
+	return (
+		later.instanceId === earlier.instanceId ||
+		later.applicationBuild !== earlier.applicationBuild ||
+		retests(later, earlier, byRun)
+	)
+}
+
+export function openDefects(results: Result[], rejected: Set<string>) {
+	const byRun = new Map(results.map((result) => [result.runId, result]))
+	const counted = results.filter((result) => !rejected.has(result.runId))
+	return counted.flatMap((result, i) => {
+		const later = counted.slice(i + 1).filter((run) => supersedes(run, result, byRun))
+		const fixed = (testIds: string[]) =>
+			later.some((run) => testIds.every((testId) => selectedOutcome(run, testId) === 'passed'))
+		const found = (testIds: string[]) =>
+			later.some(
+				(run) =>
+					retests(run, result, byRun) &&
+					run.findings.some(
+						(other) =>
+							other.type === 'defect' &&
+							other.testIds.some(
+								(testId) => testIds.includes(testId) && selectedOutcome(run, testId) === 'failed'
+							)
+					)
+			)
+		return result.findings
+			.filter((finding) => finding.type === 'defect' && !fixed(finding.testIds) && !found(finding.testIds))
+			.map((finding) => ({ runId: result.runId, finding }))
+	})
+}
+
+export type RetestDefect = { findingId: string; title: string; testIds: string[] }
+
+export function retestDefects(store: Store, runId: string): RetestDefect[] {
+	const { plan_id } = one<{ plan_id: string }>(store, 'SELECT plan_id FROM runs WHERE run_id = ?', runId)!
+	return openDefects(finalizedResults(store, plan_id), rejectedRuns(store, plan_id))
+		.filter((defect) => defect.runId === runId)
+		.map(({ finding }) => ({ findingId: finding.id, title: finding.title, testIds: finding.testIds }))
 }
 
 export function dependencyBlock(store: Store, reference: string, build: string | null): string | null {

@@ -6,11 +6,13 @@ import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { closeStore } from '../plugin/src/store.ts'
 import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
-import { rejectResult } from '../plugin/src/runs.ts'
+import { beginRun, closeTest, finishRun, rejectResult } from '../plugin/src/runs.ts'
 import {
 	begin,
 	candidate,
+	check,
 	cli,
+	defectRun,
 	directory,
 	json,
 	passRun,
@@ -19,6 +21,7 @@ import {
 	profile,
 	promotionDelta,
 	ready,
+	regressionPlan,
 	root,
 	store,
 	target,
@@ -767,4 +770,31 @@ test('plan edit reads the edited content on standard input and prints the edit k
 	const patched = cli(workspace, ['plan', 'edit', 'checkout@1', '--patch'], { tests: { T1: { title: 'Patched' } } })
 	assert.match(patched.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
 	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Patched')
+})
+
+test('run show and status print one retest line for each earlier defect', (t) => {
+	const opened = store(t)
+	regressionPlan(opened)
+	defectRun(opened, 'run-1', 'b1')
+	beginRun(opened, 'tester', {
+		runId: 'run-2',
+		reference: 'checkout@2',
+		build: 'b2',
+		partial: 'ready_only',
+		retestOf: 'run-1',
+	})
+	for (const testId of ['T1', 'T2']) {
+		for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, 'tester', { runId: 'run-2', testId })
+	}
+	finishRun(opened, 'tester', {
+		runId: 'run-2',
+		completion: 'completed',
+		cleanup: 'completed',
+		cleanupReason: 'Closed.',
+	})
+	const shown = cli(opened.workspace, ['run', 'show', 'run-2']).lines
+	assert(shown.includes('run-1/F1\tretest\tfixed\tT2\tPromotion stacks with loyalty'), shown.join('\n'))
+	const status = cli(opened.workspace, ['status', 'checkout']).lines
+	assert(status.includes('run-1/F1\tretest\trun-2\tfixed\tPromotion stacks with loyalty'), status.join('\n'))
 })

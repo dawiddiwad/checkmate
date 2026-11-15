@@ -298,6 +298,25 @@ export function failT2(store: Store, runId: string) {
 	return reply
 }
 
+export function regressionPlan(store: Store) {
+	target(store)
+	const value = candidate()
+	value.tests[0].metadata = { type: 'regression' }
+	value.tests[1].dependsOn = []
+	plan(store, 'checkout', value)
+	revised(store)
+	approved(store)
+}
+
+export function defectRun(store: Store, runId: string, build: string, extra = {}) {
+	begin(store, runId, ['T1', 'T2'], build, extra)
+	for (const reference of ['T1.A1', 'T1.A2', 'T2.A1']) check(store, runId, reference, 'passed')
+	closeTest(store, actor, { runId, testId: 'T1' })
+	failT2(store, runId)
+	closeTest(store, actor, { runId, testId: 'T2' })
+	return finishRun(store, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
+}
+
 export function accept(store: Store, runId: string) {
 	return acceptResult(store, actor, { runId, rationale: 'Looks right.' })
 }

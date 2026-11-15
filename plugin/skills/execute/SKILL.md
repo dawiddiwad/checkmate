@@ -15,7 +15,7 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. Each to
 - Same session, new run:
   1. Run `checkmate run gate <planId@rev> --tests <T1,T2> --build <build>`. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
   2. Use the oracle's run ID. When the oracle gives none, run `checkmate run list` and use the next free `run-<n>`.
-  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build> --instance <instanceId> --actor claude:execute` once. Use the instance that the oracle names. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
+  3. Run `checkmate run begin <runId> <planId@rev> --tests <T1,T2> --build <build> --instance <instanceId> --actor claude:execute` once. Use the instance that the oracle names. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. A retest must select each ready test with an open defect of the earlier run and each ready regression test. Give `--partial ready_only` without `--tests` to select them. It prints the browser session and the evidence directory. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
 
   For an early run while gaps are open, or when the oracle asks for the ready tests, give `--partial ready_only` and no `--tests` to `run gate` and `run begin`. Checkmate selects the ready tests. It prints `tests=<selection>` and a `<testId> left_out <reason>` line for each other test.
 
@@ -64,6 +64,8 @@ Each test owns its data. Use the data that the test creates, or the free slots a
 ## For each selected test
 
 Run prerequisites first. A local `dependsOn` test must pass before the dependent test starts.
+
+In a retest, run the tests of the earlier defects first. `run show` prints one `retest` line for each open defect of the earlier run: `<runId>/<findingId> retest <verdict> <tests> <title>`. Give each of these tests a `passed` or `failed` outcome. The verdict is `fixed` when all its tests pass, `not_fixed` when one fails, and `not_retested` in other cases.
 
 1. Do the action of the test with the target's tools. Do not write maintained automation. Do not change the application.
 2. For each assertion, record the result with text evidence on standard input. Give the test ID and the assertion ID as two words: for `T1.A1`, write `T1 A1`. The output prints the evidence ID.
@@ -120,10 +122,10 @@ Send each finding in a heredoc: `checkmate run finding <runId> --actor claude:ex
 
 1. When the run used a browser, close the browser session: `playwright-cli -s=<browserSession> close`.
 2. Run `checkmate run finish <runId> --actor claude:execute --completion <completion> [--reason "<cause>"] --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
-   - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail.
+   - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail. In a retest, each selected test of an earlier defect is `passed` or `failed`.
    - `operational_error`: a tool, access, or cleanup failure stopped the run.
    - `interrupted`: 90% or more of the deadline is used, or the host stopped the run. Give `--reason "<cause>"`. Finish before the deadline.
 3. Return the response of `run finish`.
 4. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Outcome, Reason) and the findings. In `Next:`, name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. Name a retest or a gap answer when one is necessary. For a new gap of the run, name `checkmate gap answer <planId> <gapId> ...`. It adopts the gap into the plan and records the answer.
 
-A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage.
+A retest is a new run with a new build. Do not change the prior run. A narrow retest does not give full coverage. When a test of an earlier defect cannot get a `passed` or `failed` outcome, finish as `interrupted` with a reason that says why.

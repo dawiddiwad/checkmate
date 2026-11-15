@@ -810,7 +810,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				requireCondition(
 					cause,
 					`Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
-					`Record the blocking gap with checkmate run gap ${input.runId} < gap.json. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
+					`Record the blocking gap with checkmate run gap ${input.runId}. Send the gap JSON on standard input in a quoted heredoc. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
 				)
 			}
 		}
@@ -925,7 +925,7 @@ function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Re
 		reproduction: ['<step>'],
 		evidenceIds,
 	}
-	return `Record the defect with checkmate run finding ${run.row.run_id} < finding.json, for example ${JSON.stringify(finding)}. Then run run finish again.`
+	return `Record the defect with checkmate run finding ${run.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again.`
 }
 
 export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'

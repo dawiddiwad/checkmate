@@ -523,7 +523,7 @@ test('--version and --help need no workspace', () => {
 	assert(group.lines.includes('checkmate plan diff <planId> <from> <to>'), group.output)
 	assert.deepEqual(cli('/nonexistent', ['plan', 'open', '--help']).lines, [
 		'completed plan open',
-		'checkmate plan open <planId> --target <value> [--objective <value>] [--source <value>] [--instructions <value>] [--actor <name>] < payload.json',
+		"checkmate plan open <planId> --target <value> [--objective <value>] [--source <value>] [--instructions <value>] [--actor <name>] <<'EOF' <json> EOF",
 	])
 	assert.deepEqual(json('/nonexistent', ['target', 'instance', 'retire', '--help']).body.usage, [
 		'checkmate target instance retire <targetId> <instanceId> [--actor <name>]',
@@ -940,9 +940,9 @@ test('a refusal says if the request is malformed or prohibited, and its hint giv
 	const refused = json(workspace, finish)
 	assert.equal(refused.body.refusal, 'prohibited')
 	assert.equal(refused.body.reasons[1], 'Failed assertion T1.A2 needs a defect finding. Record it with run finding.')
-	const example = /for example (\{.*\})\. Then run run finish again\.$/.exec(refused.body.hint)
+	const example = /with your values: (\{.*\})\. Then run run finish again\.$/.exec(refused.body.hint)
 	assert(example, refused.body.hint)
-	assert(refused.body.hint.startsWith('Record the defect with checkmate run finding run-1 < finding.json'))
+	assert(refused.body.hint.startsWith('Record the defect with checkmate run finding run-1. Send this JSON'))
 	const finding = JSON.parse(example[1])
 	assert.deepEqual(
 		[

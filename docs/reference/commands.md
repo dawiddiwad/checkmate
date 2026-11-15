@@ -193,7 +193,7 @@ Examples:
 rejected run-1 refusal=prohibited
 reason: Refused: prohibited in the current state.
 reason: Failed assertion T12.A3 needs a defect finding. Record it with run finding.
-hint: Record the defect with checkmate run finding run-1 < finding.json, for example {"id":"F1","type":"defect",...,"assertionIds":["T12.A3"],...}. Then run run finish again.
+hint: Record the defect with checkmate run finding run-1. Send this JSON on standard input in a quoted heredoc, with your values: {"id":"F1","type":"defect",...,"assertionIds":["T12.A3"],...}. Then run run finish again.
 ```
 
 ```text

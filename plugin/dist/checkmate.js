@@ -9292,7 +9292,7 @@ function finish(store, actor, input) {
         requireCondition(
           cause2,
           `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
-          `Record the blocking gap with checkmate run gap ${input.runId} < gap.json. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
+          `Record the blocking gap with checkmate run gap ${input.runId}. Send the gap JSON on standard input in a quoted heredoc. Or finish with --completion interrupted --cause <deadline|host_stopped|tool_unavailable> --reason "<why>".`
         );
       }
     }
@@ -9402,7 +9402,7 @@ function defectHint(store, run2, row, findings2) {
     reproduction: ["<step>"],
     evidenceIds
   };
-  return `Record the defect with checkmate run finding ${run2.row.run_id} < finding.json, for example ${JSON.stringify(finding)}. Then run run finish again.`;
+  return `Record the defect with checkmate run finding ${run2.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again.`;
 }
 function retestVerdicts(run2, outcomes) {
   return (run2.request.retestDefects ?? []).map((defect) => {
@@ -15484,7 +15484,7 @@ function usage(name) {
     ...command.positionals.map((positional) => `<${positional}>`),
     ...flags,
     ...command.write ? ["[--actor <name>]"] : [],
-    ...command.stdin ? ["< payload.json"] : []
+    ...command.stdin ? ["<<'EOF' <json> EOF"] : []
   ].join(" ");
 }
 var uiUsage = "Usage: checkmate ui [--port <value>]";
@@ -15515,7 +15515,7 @@ function readJson(text) {
   requireWellFormed(
     text.trim().length > 0,
     "Missing JSON payload on standard input",
-    "Send the JSON payload on standard input, for example: checkmate <command> <arguments> < payload.json"
+    "Send the JSON payload on standard input, in a quoted heredoc: checkmate <command> <arguments> <<'EOF', the JSON, then EOF"
   );
   try {
     return JSON.parse(text);

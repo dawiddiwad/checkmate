@@ -1385,7 +1385,7 @@ function usage(name: string) {
 		...command.positionals.map((positional) => `<${positional}>`),
 		...flags,
 		...(command.write ? ['[--actor <name>]'] : []),
-		...(command.stdin ? ['< payload.json'] : []),
+		...(command.stdin ? ["<<'EOF' <json> EOF"] : []),
 	].join(' ')
 }
 
@@ -1421,7 +1421,7 @@ function readJson(text: string) {
 	requireWellFormed(
 		text.trim().length > 0,
 		'Missing JSON payload on standard input',
-		'Send the JSON payload on standard input, for example: checkmate <command> <arguments> < payload.json'
+		"Send the JSON payload on standard input, in a quoted heredoc: checkmate <command> <arguments> <<'EOF', the JSON, then EOF"
 	)
 	try {
 		return JSON.parse(text) as unknown

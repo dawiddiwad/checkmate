@@ -17,7 +17,9 @@ The oracle answers gaps, approves plans, and accepts results. In the same sessio
 - Add `--json` only when you need a field that the compact output does not show.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read the status on line 1, not only the exit code. Read each `reason:` line.
 - `operational_error` with the reason `Another command holds the database lock` means that nothing changed. Run the same command again.
-- When a command is `rejected` or fails for another reason, do not run it again unchanged. Report its `reason:` line. Then correct the input, continue with the next step, or stop as the stage rules say.
+- When a command is `rejected`, do not run it again unchanged. Read each `reason:` line and the `hint`. Correct the command or the payload, and run it again. Make up to 3 corrections. A refused write changes nothing.
+- `refusal: prohibited` means that the stage cannot do that action. Do not work around it. Follow the `hint`.
+- Stop only when the correction needs a decision that you cannot make, for example a value that no source gives. Then return `needs_decision` with the reasons. In execute, close the affected tests and continue.
 - Send JSON payloads on standard input with a quoted heredoc. Do not write payload files:
 
 ```sh
@@ -30,7 +32,6 @@ EOF
 - Put browser output in `.checkmate/tmp/` too. `browser.md` shows how. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
 - Do not write other files. The database is the only record. The one exception is an export that the oracle asks for: `checkmate export plan|run <subject> --format <format> --out <path>`.
 - Use the commands to read and write. Do not open `.checkmate/checkmate.db` directly.
-- A refused write changes nothing. Correct the payload and send it again.
 - The contracts are in `<plugin root>/contracts/`. Read a schema only when a command refuses a payload.
 
 ## Actor

@@ -162,7 +162,7 @@ A candidate has `requirements` only when the request has no requirements:
 			"requirementIds": ["R2"],
 			"capability": "http",
 			"operations": ["create_order"],
-			"dependsOn": ["T1"],
+			"dependsOn": [],
 			"preconditions": ["Cart with one 400 PLN item and 20 PLN loyalty."],
 			"action": "Request GET /quote?promotion=true&loyalty=true and read the total.",
 			"assertions": []
@@ -196,7 +196,7 @@ Rules:
 - An assertion has an ID that is unique in its test, a `check`, and a `checkKind`: `deterministic` for an exact value, `agent_observation` when the agent interprets the evidence.
 - Do not write an assertion with an unknown expected value. Write an open blocking gap. In the example, T2 is `blocked`.
 - `dependsOn` names local tests or cross-plan tests. The named plan and test exist. Checkmate refuses a dependency cycle across all plans.
-- Use `dependsOn` only when a test uses data that another test creates. One failure blocks each test that depends on it. `plan save`, `plan revise`, `plan edit`, and `plan show` give a warning when a local chain has more than 3 tests, or when more than half of the tests have a local `dependsOn`. The warning names the tests. The command is not refused.
+- Tests are independent by default. Use `dependsOn` only when a test uses a record that another test creates. One failure blocks each test that depends on it. `plan save`, `plan revise`, `plan edit`, and `plan show` give a warning when a local chain has more than 3 tests, or when more than half of the tests have a local `dependsOn`. The warning names the tests. The command is not refused.
 - Revision 1 has no decisions and no assumptions.
 - A test and a requirement of the candidate can have [`metadata`](#metadata).
 

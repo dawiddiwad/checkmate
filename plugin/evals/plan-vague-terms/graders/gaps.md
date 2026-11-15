@@ -20,5 +20,6 @@ Score 1.0 when all of these are true:
 - The plan has an open gap whose question is about the restock boundary: equal to, below, or at or below 10.
 - The plan has a separate open gap whose question is about the scope of "all products in the selected warehouse".
 - No assertion of the plan uses a boundary or a scope value that the planner chose without a gap.
+- No gap asks what a source answers, for example the restock level of 10 units, the sort order of `list`, or the exit code of a negative `set`.
 
-Score 0.5 when the plan is saved and has exactly one of the two gaps. Score 0.0 when no plan is saved, the plan has neither gap, or an assertion silently picks a value for one of the terms.
+Score 0.5 when the plan is saved and has exactly one of the two gaps, or has both and one more gap that a source answers. Score 0.0 when no plan is saved, the plan has neither gap, or an assertion silently picks a value for one of the terms.

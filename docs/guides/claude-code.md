@@ -42,7 +42,7 @@ Give the objective and the requirements, or the sources to read.
 /checkmate:plan checkout for shop@1. Objective: verify checkout totals. Source: docs/checkout.md
 ```
 
-Claude writes revision 1. Each vague term that changes an expected value becomes an open gap, for example `G1: Does the promotion stack with the loyalty discount?` Give the existing product documentation as a source too. Claude plans regression tests for the existing rules near the change that the documentation states and marks them with `"type": "regression"` in the test metadata.
+Claude writes revision 1. Claude adds edge-case tests for each rule, for example a value exactly at a threshold. Each point that the sources do not settle and that changes an expected value becomes an open gap, for example `G1: Does the promotion stack with the loyalty discount?` Give the existing product documentation as a source too. Claude plans regression tests for the existing rules near the change that the documentation states and marks them with `"type": "regression"` in the test metadata.
 
 ### 3. Answer the gaps
 
@@ -68,7 +68,7 @@ Claude writes revision 2 from your answers. Read it in the UI. To change it, cli
 /checkmate:execute checkout@2, tests T1,T2,T3, build b1, run ID run-1
 ```
 
-Claude checks the gate, records each assertion with evidence, closes each test, records the findings, and finishes the run.
+Claude checks the gate, records each assertion with evidence, and closes each test. Then it makes up to 10 probes of edge cases near the tested rules, records the findings, and finishes the run.
 
 When the target has two or more active instances, name the instance, for example `/checkmate:execute checkout@2, tests T1,T2, build b1, instance staging`. QA reads the entry values of that instance.
 

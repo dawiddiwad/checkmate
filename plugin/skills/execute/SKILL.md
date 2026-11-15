@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Execute an approved Checkmate plan revision, or retest an earlier run on a new build after a fix. Use for a request to run, re-run, or retest the tests of a plan or a run ID such as run-1. Record each assertion result with evidence, close each test, record findings and gaps, and finish the run.
+description: Execute an approved Checkmate plan revision, or retest an earlier run on a new build after a fix. Use for a request to run, re-run, or retest the tests of a plan or a run ID such as run-1. Record each assertion result with evidence, close each test, probe edge cases, record findings and gaps, and finish the run.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to begin a run and how to report.
@@ -18,13 +18,14 @@ A delegated stage or a sub-agent gets a run that the parent began. The prompt na
 3. Run `checkmate target show <targetId> --instance <instanceId>` for the entry values and the `reset` line.
 4. For each selected test, in this order: first the tests of the `retest` lines, then the other tests, each one after its `dependsOn` tests:
    1. Run `checkmate run show <runId> --tests <testId>`. Read `remaining=` on the `time` line. That number is the only measure of time. Do not estimate time from your own work. When 90% or more of the deadline is used, go to [Finish](#finish).
-   2. When a local `dependsOn` test did not pass, close this test as `blocked` with the reason `Prerequisite <id> is <outcome>`. Go to the next test.
+   2. When a local `dependsOn` test did not pass, close this test as `blocked` with the reason `Prerequisite <id> is <outcome>`. Write the outcome of `<id>` as it is, for example `Prerequisite T2 is blocked`. Go to the next test.
    3. Make the test data. Read [Test data and reset](#test-data-and-reset). When a precondition fails, adapt the data.
    4. Do the action. Record each assertion with `run check`. Read [Assertion results](#assertion-results).
    5. Close the test with `checkmate run close <runId> <testId> --actor claude:execute`. Checkmate calculates the outcome.
    6. When something unknown blocks the test, record a gap, close the test as `blocked`, and go to the next test. When a tool or access fails, close the test as `error`, and go to the next test. Do not stop the run.
-5. Record a defect finding for each failed assertion. Read [Findings and gaps](#findings-and-gaps).
-6. Finish the run. Read [Finish](#finish). Always end with `run finish`, also when no test passed.
+5. Probe the edge cases. Read [Exploration](#exploration).
+6. Record a defect finding for each failed assertion. Read [Findings and gaps](#findings-and-gaps).
+7. Finish the run. Read [Finish](#finish). Always end with `run finish`, also when no test passed.
 
 ## Time
 
@@ -89,6 +90,16 @@ EOF
 - For binary evidence, for example a screenshot, write one new file in `.checkmate/tmp/<runId>/`. Add `--evidence .checkmate/tmp/<runId>/T1-A1.png`. Checkmate deletes the file after it stores it. You can give one text and one or more files.
 
 For a test that you did not start, run `checkmate run close <runId> <testId> --actor claude:execute --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure. Add `--cause deadline` only under the [time](#time) rule.
+
+## Exploration
+
+After the planned tests, probe the rules of the selected tests for defects that the plan does not check. For example: a value exactly at a threshold, upper case or extra whitespace, the other entry point (API or UI), the state after a removal or an undo, or a total or count in a second view.
+
+- Make up to 10 probe actions. Stop when 75% of the deadline is used.
+- Use only the `allowedOperations` and new data, for example `qa-<runId>-X1`.
+- When a probe contradicts a value that a source or a check of the plan states, record a `potential_issue` finding. Name an assertion of the closest selected test and an evidence ID of that assertion. Put the probe output in `observed` and the probe steps in `reproduction`.
+- When no source gives the expected behavior, record a `non_blocking` gap with the closest test in `testIds`.
+- Record nothing for a probe that shows correct behavior.
 
 ## Findings and gaps
 

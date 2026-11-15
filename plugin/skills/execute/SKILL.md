@@ -103,6 +103,8 @@ After the planned tests, probe the rules of the selected tests for defects that 
 
 ## Findings and gaps
 
+A recorded result is final. When you think that a failed result is wrong, still record its defect and say why in `observed`. The oracle can reject it.
+
 Send each finding in a heredoc: `checkmate run finding <runId> --actor claude:execute <<'EOF'`, the JSON, then `EOF`. Use this shape:
 
 ```json

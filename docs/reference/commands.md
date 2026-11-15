@@ -193,14 +193,14 @@ Examples:
 rejected run-1 refusal=prohibited
 reason: Refused: prohibited in the current state.
 reason: Failed assertion T12.A3 needs a defect finding. Record it with run finding.
-hint: Record the defect with checkmate run finding run-1. Send this JSON on standard input in a quoted heredoc, with your values: {"id":"F1","type":"defect",...,"assertionIds":["T12.A3"],...}. Then run run finish again.
+hint: Record the defect with checkmate run finding run-1. Send this JSON on standard input in a quoted heredoc, with your values: {"id":"F1","type":"defect",...,"assertionIds":["T12.A3"],...}. Then run run finish again. A recorded result is final: when you think it is wrong, still record the defect and say why in observed. The oracle can reject it.
 ```
 
 ```text
 rejected checkout refusal=malformed
 reason: Refused: malformed request.
 reason: Ready test T14 needs one or more assertions
-hint: Add an assertion to T14 in the delta: {"tests": {"T14": {"assertions": {"A1": {"check": "<expected result>", "checkKind": "deterministic"}}}}}
+hint: Add an assertion to T14 in the delta: {"tests": {"T14": {"assertions": {"A1": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.
 ```
 
 ```text

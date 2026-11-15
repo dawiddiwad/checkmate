@@ -692,7 +692,7 @@ export function revisePlan(
 			requireWellFormed(
 				test.assertions.length > 0 || testReadiness(draft.gaps, test) !== 'ready',
 				`Ready test ${test.id} needs one or more assertions`,
-				`Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId('A', usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}`
+				`Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId('A', usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.`
 			)
 		const change = storeRevision(store, draft, operationId)
 		for (const decision of decisions)

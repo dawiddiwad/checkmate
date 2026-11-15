@@ -8139,7 +8139,7 @@ function revisePlan(store, actor, input) {
       requireWellFormed(
         test.assertions.length > 0 || testReadiness(draft.gaps, test) !== "ready",
         `Ready test ${test.id} needs one or more assertions`,
-        `Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId("A", usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}`
+        `Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId("A", usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.`
       );
     const change = storeRevision(store, draft, operationId);
     for (const decision of decisions)
@@ -9402,7 +9402,7 @@ function defectHint(store, run2, row, findings2) {
     reproduction: ["<step>"],
     evidenceIds
   };
-  return `Record the defect with checkmate run finding ${run2.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again.`;
+  return `Record the defect with checkmate run finding ${run2.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again. A recorded result is final: when you think it is wrong, still record the defect and say why in observed. The oracle can reject it.`;
 }
 function retestVerdicts(run2, outcomes) {
   return (run2.request.retestDefects ?? []).map((defect) => {

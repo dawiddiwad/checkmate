@@ -855,7 +855,7 @@ test('a refusal says if the request is malformed or prohibited, and its hint giv
 		'rejected checkout refusal=malformed',
 		'reason: Refused: malformed request.',
 		'reason: Ready test T3 needs one or more assertions',
-		'hint: Add an assertion to T3 in the delta: {"tests": {"T3": {"assertions": {"A1": {"check": "<expected result>", "checkKind": "deterministic"}}}}}',
+		'hint: Add an assertion to T3 in the delta: {"tests": {"T3": {"assertions": {"A1": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.',
 	])
 	const refund = { A1: { check: 'A paid order shows a refund button.', checkKind: 'agent_observation' } }
 	const delta = { tests: { ...promotionDelta.tests, T3: { assertions: refund } } }
@@ -940,7 +940,7 @@ test('a refusal says if the request is malformed or prohibited, and its hint giv
 	const refused = json(workspace, finish)
 	assert.equal(refused.body.refusal, 'prohibited')
 	assert.equal(refused.body.reasons[1], 'Failed assertion T1.A2 needs a defect finding. Record it with run finding.')
-	const example = /with your values: (\{.*\})\. Then run run finish again\.$/.exec(refused.body.hint)
+	const example = /with your values: (\{.*\})\. Then run run finish again\./.exec(refused.body.hint)
 	assert(example, refused.body.hint)
 	assert(refused.body.hint.startsWith('Record the defect with checkmate run finding run-1. Send this JSON'))
 	const finding = JSON.parse(example[1])

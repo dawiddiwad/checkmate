@@ -39,7 +39,7 @@ Rules:
 - In `assertions`, a known ID changes that assertion. A new ID adds an assertion. `null` removes an assertion. Do not reuse a removed ID.
 - A new assertion needs both `check` and `checkKind`. A change can give only the changed field.
 - `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision.
-- `accept_assumption`: write the assertions that the assumption makes known.
+- `accept_assumption`: write the assertions that the assumption makes known. When the decision and the sources give no expected value, do not invent one and do not stop. Write one `agent_observation` assertion that records the behavior and checks only what the sources state, for example: "Record whether the code is applied or refused. The cart total stays consistent and no error shows."
 - `defer`: change no assertion for that gap. A deferred blocking gap defers its tests. A deferred non-blocking gap only closes, and its tests stay ready. Send `{ "tests": {} }` when every decision is `defer`.
 - Do not write gap status, decisions, or assumptions. Checkmate applies them from the pending decisions.
 - Do not invent a decision. Do not answer a gap. Only the oracle records a decision, with `checkmate gap answer` or in the review UI.

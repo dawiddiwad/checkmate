@@ -925,7 +925,7 @@ function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Re
 		reproduction: ['<step>'],
 		evidenceIds,
 	}
-	return `Record the defect with checkmate run finding ${run.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again.`
+	return `Record the defect with checkmate run finding ${run.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again. A recorded result is final: when you think it is wrong, still record the defect and say why in observed. The oracle can reject it.`
 }
 
 export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'

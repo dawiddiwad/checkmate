@@ -2,6 +2,8 @@ import type {
 	Finding,
 	Gap,
 	Instance,
+	LiteChecklist,
+	LiteRecord,
 	Plan,
 	PlanCandidate,
 	PlanDelta,
@@ -28,6 +30,8 @@ export type Documents = {
 	plan: Plan
 	gap: Gap
 	instance: Instance
+	'lite-checklist': LiteChecklist
+	'lite-record': LiteRecord
 	finding: Finding
 	result: Result
 	response: Response

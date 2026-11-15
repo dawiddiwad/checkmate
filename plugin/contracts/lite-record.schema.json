@@ -1,0 +1,174 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "lite-record.schema.json",
+	"type": "object",
+	"properties": {
+		"items": {
+			"type": "array",
+			"items": {
+				"$ref": "plan.schema.json#/properties/requirements/items"
+			}
+		},
+		"checks": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/check"
+			},
+			"minItems": 1
+		},
+		"defects": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/defect"
+			}
+		},
+		"retests": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/retest"
+			}
+		},
+		"questions": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/question"
+			}
+		}
+	},
+	"required": ["checks"],
+	"additionalProperties": false,
+	"definitions": {
+		"identifier": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"text": {
+			"type": "string",
+			"minLength": 1
+		},
+		"evidence": {
+			"type": "array",
+			"items": {
+				"anyOf": [
+					{
+						"type": "string",
+						"minLength": 1
+					},
+					{
+						"type": "object",
+						"properties": {
+							"text": {
+								"type": "string",
+								"minLength": 1
+							},
+							"kind": {
+								"enum": ["observation", "http_exchange"]
+							}
+						},
+						"required": ["text"],
+						"additionalProperties": false
+					}
+				]
+			}
+		},
+		"check": {
+			"type": "object",
+			"properties": {
+				"item": {
+					"$ref": "#/definitions/identifier"
+				},
+				"check": {
+					"$ref": "#/definitions/text"
+				},
+				"result": {
+					"enum": ["passed", "failed", "blocked", "not_run"]
+				},
+				"observed": {
+					"$ref": "#/definitions/text"
+				},
+				"reason": {
+					"$ref": "#/definitions/text"
+				},
+				"evidence": {
+					"$ref": "#/definitions/evidence"
+				},
+				"defect": {
+					"$ref": "#/definitions/identifier"
+				}
+			},
+			"required": ["item", "check", "result"],
+			"additionalProperties": false
+		},
+		"defect": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"$ref": "#/definitions/identifier"
+				},
+				"title": {
+					"$ref": "#/definitions/text"
+				},
+				"severity": {
+					"enum": ["low", "medium", "high", "critical"]
+				},
+				"steps": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/text"
+					},
+					"minItems": 1
+				},
+				"expected": {
+					"$ref": "#/definitions/text"
+				},
+				"actual": {
+					"$ref": "#/definitions/text"
+				},
+				"evidence": {
+					"$ref": "#/definitions/evidence"
+				}
+			},
+			"required": ["id", "title", "severity", "steps", "expected", "actual"],
+			"additionalProperties": false
+		},
+		"retest": {
+			"type": "object",
+			"properties": {
+				"defect": {
+					"$ref": "#/definitions/identifier"
+				},
+				"verdict": {
+					"enum": ["fixed", "not_fixed"]
+				},
+				"observed": {
+					"$ref": "#/definitions/text"
+				},
+				"evidence": {
+					"$ref": "#/definitions/evidence"
+				}
+			},
+			"required": ["defect", "verdict", "observed"],
+			"additionalProperties": false
+		},
+		"question": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"$ref": "#/definitions/identifier"
+				},
+				"question": {
+					"$ref": "#/definitions/text"
+				},
+				"items": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/identifier"
+					},
+					"uniqueItems": true
+				}
+			},
+			"required": ["id", "question"],
+			"additionalProperties": false
+		}
+	}
+}

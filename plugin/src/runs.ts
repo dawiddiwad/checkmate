@@ -358,11 +358,11 @@ function plannedTarget(store: Store, text: string) {
 	return planRevision(store, reference.id, reference.revision).plan.target.targetId
 }
 
-type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
+export type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
 
 const evidenceKinds = ['observation', 'http_exchange', 'screenshot', 'trace'] as const
 
-function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
+export function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
 	requireWellFormed(
 		typeof input.text === 'string' && input.text.trim().length > 0,
 		'Missing evidence text on standard input'
@@ -384,11 +384,10 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 	}
 }
 
-function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
+export function readEvidence(store: Store, directory: string, spec: string): EvidenceFile {
 	const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
 	const name = match ? match[1] : spec
 	requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
-	const directory = evidenceDirectory(runId)
 	let root: string
 	let real: string
 	try {
@@ -416,7 +415,7 @@ function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	}
 }
 
-function storeEvidence(
+export function storeEvidence(
 	store: Store,
 	runId: string,
 	testId: string,
@@ -453,7 +452,7 @@ function storeEvidence(
 
 function evidenceFiles(store: Store, runId: string, name: string, specs: EvidenceInput[] = []) {
 	const files = specs.map((spec) =>
-		typeof spec === 'string' ? readEvidence(store, runId, spec) : textEvidence(spec, name)
+		typeof spec === 'string' ? readEvidence(store, evidenceDirectory(runId), spec) : textEvidence(spec, name)
 	)
 	const paths = files.flatMap((file) => file.path ?? [])
 	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
@@ -814,94 +813,108 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				)
 			}
 		}
-		const evidence = runEvidence(store, input.runId)
-		const tests: ResultTest[] = run.plan.tests.map((test) => {
-			const closed = outcomes.get(test.id)
-			if (!closed)
-				return { testId: test.id, outcome: 'not_run', reason: 'Test was not selected.', assertions: [] }
-			return {
-				testId: test.id,
-				outcome: closed.outcome,
-				reason: closed.reason,
-				...(closed.cause ? { cause: closed.cause as 'deadline' } : {}),
-				assertions: test.assertions.flatMap((assertion) => {
-					const row = results.get(`${test.id}.${assertion.id}`)
-					if (!row) return []
-					return {
-						assertionId: assertion.id,
-						check: assertion.check,
-						checkKind: assertion.checkKind,
-						result: row.result,
-						observed: row.observed,
-						reason: row.reason,
-						evidenceIds: evidence
-							.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id)
-							.map((item) => item.id),
-					}
-				}),
-			}
-		})
-		const coverage = resultCoverage(run.plan, tests, newGaps)
-		const result: Result = validate('result', {
-			contractVersion: 'toolkit-2',
-			runId: input.runId,
-			plan: { planId: run.plan.planId, revision: run.plan.revision, sha256: run.row.plan_sha256 },
-			target: run.plan.target,
-			instanceId: run.row.instance_id,
-			applicationBuild: run.row.application_build,
-			selectedTestIds: selected,
-			retestOf: run.request.retestOf,
-			startedAt: run.row.started_at,
-			finishedAt: at,
-			attempts: attempt,
-			completion,
-			completionCause: cause,
-			completionReason: reason,
-			tests,
-			findings,
-			newGaps,
-			evidence: evidence.map((row) => ({
-				id: row.id,
-				testId: row.test_id,
-				assertionId: row.assertion_id,
-				kind: row.kind,
-				name: row.name,
-				mediaType: row.media_type,
-				sha256: row.sha256,
-				size: row.size,
-			})),
-			cleanup,
-			coverage,
-		})
-		const body = canonical(result)
-		const sha256 = digest(body)
-		execute(
-			store,
-			'INSERT INTO results (run_id, completion, coverage, finished_at, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-			input.runId,
-			completion,
-			coverage.status,
-			at,
-			sha256,
-			body,
-			operationId
-		)
+		const stored = storeResult(store, run, operationId, at, { completion, cause, reason, cleanup })
 		return {
 			reply: {
 				status: completion,
 				subject: input.runId,
 				reasons: [],
-				data: {
-					runId: input.runId,
-					completion,
-					coverage: coverage.status,
-					sha256,
-					counts: outcomeCounts(tests.filter((test) => selected.includes(test.testId))),
-				},
+				data: { runId: input.runId, completion, ...stored },
 			},
 			subjects: [`run:${input.runId}`, `plan:${run.plan.planId}`, 'inbox'],
 		}
 	})
+}
+
+export type Ending = {
+	completion: Result['completion']
+	cause: string | null
+	reason: string | null
+	cleanup: Result['cleanup']
+}
+
+export function storeResult(store: Store, run: RunState, operationId: string, at: string, ending: Ending) {
+	const runId = run.row.run_id
+	const selected = run.request.selectedTestIds
+	const outcomes = runOutcomes(store, runId)
+	const results = runAssertions(store, runId)
+	const newGaps = runGaps(store, runId)
+	const evidence = runEvidence(store, runId)
+	const tests: ResultTest[] = run.plan.tests.map((test) => {
+		const closed = outcomes.get(test.id)
+		if (!closed) return { testId: test.id, outcome: 'not_run', reason: 'Test was not selected.', assertions: [] }
+		return {
+			testId: test.id,
+			outcome: closed.outcome,
+			reason: closed.reason,
+			...(closed.cause ? { cause: closed.cause as 'deadline' } : {}),
+			assertions: test.assertions.flatMap((assertion) => {
+				const row = results.get(`${test.id}.${assertion.id}`)
+				if (!row) return []
+				return {
+					assertionId: assertion.id,
+					check: assertion.check,
+					checkKind: assertion.checkKind,
+					result: row.result,
+					observed: row.observed,
+					reason: row.reason,
+					evidenceIds: evidence
+						.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id)
+						.map((item) => item.id),
+				}
+			}),
+		}
+	})
+	const coverage = resultCoverage(run.plan, tests, newGaps)
+	const result: Result = validate('result', {
+		contractVersion: 'toolkit-2',
+		runId,
+		plan: { planId: run.plan.planId, revision: run.plan.revision, sha256: run.row.plan_sha256 },
+		target: run.plan.target,
+		instanceId: run.row.instance_id,
+		applicationBuild: run.row.application_build,
+		selectedTestIds: selected,
+		retestOf: run.request.retestOf,
+		startedAt: run.row.started_at,
+		finishedAt: at,
+		attempts: currentAttempt(store, runId),
+		completion: ending.completion,
+		completionCause: ending.cause,
+		completionReason: ending.reason,
+		tests,
+		findings: runFindings(store, runId),
+		newGaps,
+		evidence: evidence.map((row) => ({
+			id: row.id,
+			testId: row.test_id,
+			assertionId: row.assertion_id,
+			kind: row.kind,
+			name: row.name,
+			mediaType: row.media_type,
+			sha256: row.sha256,
+			size: row.size,
+		})),
+		cleanup: ending.cleanup,
+		coverage,
+	})
+	const body = canonical(result)
+	const sha256 = digest(body)
+	execute(
+		store,
+		'INSERT INTO results (run_id, completion, coverage, finished_at, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+		runId,
+		ending.completion,
+		coverage.status,
+		at,
+		sha256,
+		body,
+		operationId
+	)
+	return {
+		coverage: coverage.status,
+		sha256,
+		counts: outcomeCounts(tests.filter((test) => selected.includes(test.testId))),
+	}
 }
 
 function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Result['findings']) {

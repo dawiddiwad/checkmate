@@ -243,7 +243,7 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 		[
 			['deploy'],
 			'Unknown command: deploy',
-			/^Use one of: init, inbox, status, target, plan, gap, run, finding, result,/,
+			/^Use one of: init, inbox, status, target, plan, gap, lite, run, finding, result,/,
 		],
 		[
 			['target', 'instance', 'drop', 'x', 'y'],

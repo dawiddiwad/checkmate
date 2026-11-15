@@ -199,7 +199,7 @@ function revisionChange(plan: Plan, sha256: string): Change {
 	}
 }
 
-function storeRevision(store: Store, draft: PlanDraft, operationId: string): Change {
+export function storeRevision(store: Store, draft: PlanDraft, operationId: string): Change {
 	const { plan, body, sha256 } = checkedRevision(store, draft)
 	execute(
 		store,
@@ -540,7 +540,7 @@ function candidateRequirements(request: PlanRequest, drafted: Plan['requirements
 	return drafted
 }
 
-function pendingDecisions(store: Store, planId: string) {
+export function pendingDecisions(store: Store, planId: string) {
 	return all<DecisionRow>(
 		store,
 		'SELECT * FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
@@ -665,14 +665,7 @@ export function revisePlan(
 		const { coverage, ...draft } = structuredClone(base.plan)
 		draft.revision = base.plan.revision + 1
 		draft.previousRevision = base.plan.revision
-		for (const decision of decisions) {
-			const gap = draft.gaps.find((gap) => gap.id === decision.gap_id)!
-			gap.status = decision.kind === 'defer' ? 'deferred' : 'resolved'
-			gap.decisionId = decision.id
-			draft.decisions.push(decisionSnapshot(decision))
-			if (decision.kind === 'accept_assumption')
-				draft.assumptions.push({ decisionId: decision.id, text: decision.value })
-		}
+		applyDecisions(draft, decisions)
 		const affected = affectedTests(
 			base.plan,
 			decisions.map((decision) => decision.gap_id)
@@ -700,6 +693,17 @@ export function revisePlan(
 		change.reply.data.applied = decisions.map((decision) => decision.id)
 		return change
 	})
+}
+
+export function applyDecisions(draft: Pick<Plan, 'gaps' | 'decisions' | 'assumptions'>, decisions: DecisionRow[]) {
+	for (const decision of decisions) {
+		const gap = draft.gaps.find((gap) => gap.id === decision.gap_id)!
+		gap.status = decision.kind === 'defer' ? 'deferred' : 'resolved'
+		gap.decisionId = decision.id
+		draft.decisions.push(decisionSnapshot(decision))
+		if (decision.kind === 'accept_assumption')
+			draft.assumptions.push({ decisionId: decision.id, text: decision.value })
+	}
 }
 
 function usedAssertionIds(store: Store, planId: string, testId: string) {
@@ -1060,7 +1064,7 @@ function notReadyReason(store: Store, plan: Plan, test: Test, build: string | nu
 	return null
 }
 
-function retestCheck(store: Store, runId: string, plan: Plan, build: string, instanceId: string | undefined) {
+export function retestCheck(store: Store, runId: string, plan: Plan, build: string, instanceId: string | undefined) {
 	const previous = one<{
 		plan_id: string
 		target_id: string

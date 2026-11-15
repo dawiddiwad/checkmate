@@ -18,7 +18,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 | Path                 | Holds                                                                                                                          |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `plugin/`            | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install.                                        |
-| `plugin/skills/`     | The setup, plan, revise, execute, report, status, and ui skills.                                                               |
+| `plugin/skills/`     | The setup, plan, revise, execute, report, status, ui, and lite skills.                                                         |
 | `plugin/references/` | `workflow.md` with the stage rules, `session.md` with the same-session rules, and the tool recipes `browser.md` and `http.md`. |
 | `plugin/contracts/`  | The JSON Schemas. They are the authority.                                                                                      |
 | `plugin/src/`        | The store, the rules, the commands, the views, the exports, and the review UI.                                                 |

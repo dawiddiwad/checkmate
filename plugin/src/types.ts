@@ -29,6 +29,77 @@ export type Instance = {
 	references?: Array<string>
 }
 
+export type LiteChecklist = {
+	objective: string
+	items: Array<{
+		id: string
+		text: string
+		source: string
+		metadata?: Record<string, string | number | boolean>
+	}>
+	questions?: Array<{
+		id: string
+		question: string
+		items?: Array<string>
+	}>
+}
+
+export type LiteRecord = {
+	items?: Array<{
+		id: string
+		text: string
+		source: string
+		metadata?: Record<string, string | number | boolean>
+	}>
+	checks: Array<{
+		item: string
+		check: string
+		result: 'passed' | 'failed' | 'blocked' | 'not_run'
+		observed?: string
+		reason?: string
+		evidence?: Array<
+			| string
+			| {
+					text: string
+					kind?: 'observation' | 'http_exchange'
+			  }
+		>
+		defect?: string
+	}>
+	defects?: Array<{
+		id: string
+		title: string
+		severity: 'low' | 'medium' | 'high' | 'critical'
+		steps: Array<string>
+		expected: string
+		actual: string
+		evidence?: Array<
+			| string
+			| {
+					text: string
+					kind?: 'observation' | 'http_exchange'
+			  }
+		>
+	}>
+	retests?: Array<{
+		defect: string
+		verdict: 'fixed' | 'not_fixed'
+		observed: string
+		evidence?: Array<
+			| string
+			| {
+					text: string
+					kind?: 'observation' | 'http_exchange'
+			  }
+		>
+	}>
+	questions?: Array<{
+		id: string
+		question: string
+		items?: Array<string>
+	}>
+}
+
 export type PlanCandidate = {
 	requirements?: Array<{
 		id: string

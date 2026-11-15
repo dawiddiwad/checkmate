@@ -71,6 +71,7 @@ import {
 	runDetail,
 	runList,
 } from './views.ts'
+import { recordBuild, recordChecklist, showLite } from './lite.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
@@ -679,6 +680,87 @@ const commands: Record<string, Command> = {
 	'plan reject': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>
 		rejectPlan(store, actor, { reference, rationale, expectSha256 })
 	),
+	'lite checklist': {
+		positionals: ['planId'],
+		flags: { target: 'value' },
+		required: ['target'],
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) =>
+			recordChecklist(store, actor, {
+				planId: value(args, 'planId')!,
+				target: value(args, 'target')!,
+				checklist: stdin(),
+			}),
+		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), questions: reply.data.questions } }),
+	},
+	'lite show': {
+		positionals: ['planId'],
+		run: (store, args) => showLite(store, value(args, 'planId')!),
+		print: (reply) => {
+			const data = reply.data as ReturnType<typeof showLite>['data'] & {
+				items: Plan['requirements']
+				questions: Array<{
+					id: string
+					status: string
+					question: string
+					kind: string | null
+					answer: string | null
+				}>
+				runs: Array<{ runId: string; build: string; coverage: string | null; acceptance: string | null }>
+				defects: Array<{ runId: string; id: string; severity: string; title: string; items: string[] }>
+			}
+			return {
+				facts: { sha256: short(data.sha256) },
+				lines: [
+					...data.items.map((item) => ['item', item.id, item.text, item.source]),
+					...data.questions.map((question) => [
+						'question',
+						question.id,
+						question.status,
+						question.question,
+						...(question.answer ? [question.kind, question.answer] : []),
+					]),
+					...data.runs.map((run) => ['run', run.runId, run.build, run.coverage, run.acceptance]),
+					...data.defects.map((defect) => [
+						'open_defect',
+						defect.id,
+						defect.runId,
+						defect.severity,
+						defect.items,
+						defect.title,
+					]),
+				],
+			}
+		},
+	},
+	'lite record': {
+		positionals: ['planId'],
+		flags: { build: 'value', instance: 'value' },
+		required: ['build'],
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) =>
+			recordBuild(store, actor, {
+				planId: value(args, 'planId')!,
+				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
+				record: stdin(),
+			}),
+		print: (reply) => ({
+			facts: { plan: reply.data.plan, coverage: reply.data.coverage, sha256: short(reply.data.sha256) },
+			lines: [
+				...Object.entries(reply.data.counts as Record<string, number>),
+				...(reply.data.defects as string[]).map((id) => ['defect', id]),
+				...(reply.data.retest as Array<{ runId: string; findingId: string; verdict: string }>).map((item) => [
+					'retest',
+					`${item.runId}/${item.findingId}`,
+					item.verdict,
+				]),
+				...(reply.data.questions as string[]).map((id) => ['question', id]),
+			],
+		}),
+	},
 	'run gate': {
 		positionals: ['reference'],
 		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },

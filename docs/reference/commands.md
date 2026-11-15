@@ -4,7 +4,7 @@
 
 Checkmate has one command set with two command lines. Small values go in flags, structured payloads go in JSON on standard input, and line 1 of every response is the status.
 
-**On this page:** [Two command lines](#two-command-lines) · [Command list](#command-list) · [Read the state](#read-the-state) · [Loop states](#loop-states) · [Input](#input) · [Output](#output) · [Statuses and exit codes](#statuses-and-exit-codes) · [Run gate and policy](#run-gate-and-policy) · [delegate](#delegate) · [ui](#ui) · [Environment variables](#environment-variables)
+**On this page:** [Two command lines](#two-command-lines) · [Command list](#command-list) · [Read the state](#read-the-state) · [Loop states](#loop-states) · [Input](#input) · [Output](#output) · [Statuses and exit codes](#statuses-and-exit-codes) · [Run gate and policy](#run-gate-and-policy) · [Lite mode](#lite-mode) · [delegate](#delegate) · [ui](#ui) · [Environment variables](#environment-variables)
 
 ## Two command lines
 
@@ -58,6 +58,9 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `run resume <runId>`                                    | Records a new attempt for a stalled run.                                                                                          |
 |           | `run show <runId>`, `run list`                          | Prints a run, or lists runs.                                                                                                      |
 |           | `finding list [--plan <planId>] [--open]`               | Lists the findings of all runs, one line for each finding.                                                                        |
+| Lite      | `lite checklist <planId> --target <targetId@rev>`       | Records a checklist and questions as revision 1 of a lite plan.                                                                   |
+|           | `lite show <planId>`                                    | Prints the items, the questions with their answers, the runs, and the open defects.                                               |
+|           | `lite record <planId> --build <build>`                  | Records one tested build as a new revision and a finished run. Read [Lite mode](#lite-mode).                                      |
 | Output    | `export plan <ref>`, `export run <runId>`               | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
 |           | `evidence get <evidenceId> --out <file>`                | Writes the evidence bytes to a new file.                                                                                          |
 |           | `ui`                                                    | Starts the review UI.                                                                                                             |
@@ -258,6 +261,24 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 - A retest needs a new run ID and a new build. `run begin` records the open defects of the earlier run in the request as `retestDefects`.
 - Give `--instance` when the target has two or more active instances. `run begin` refuses the run without it. `run gate` does not take `--instance`.
 - For a matrix, begin one run of the same plan revision for each instance, for example `run-uat` with `--instance uat` and `run-staging` with `--instance staging`.
+
+## Lite mode
+
+Lite mode keeps Checkmate as the record and the gate, but not as the test method. The agent tests freely and records each build in one call. One agent session does all of the steps, with the `lite` skill:
+
+1. Before the build, `lite checklist` records the checklist items (the requirements) and the questions (non-blocking gaps). The target profile must have `"approvals": {"plan": "none", ...}`. Lite mode has no setup, plan approval, or revise stage.
+2. The oracle answers each question with `gap answer`.
+3. After each build, `lite show` prints the answers and the open defects. Then `lite record` records the full build.
+
+`lite record` stores one transaction:
+
+- A new plan revision. It applies the pending decisions and adds the new items and questions. It has one test for each check. A check test has the ID `<item>-<n>`, one assertion `A1`, and the metadata `recordedBy: lite`.
+- A finished run `<planId>-run-<n>` that selects each test of the revision. A later run is a retest of the run before it.
+- For each retest verdict, the earlier tests of the defect again, with the result `passed` (fixed) or `failed` (not fixed). The new run records a not-fixed defect again with the same ID.
+
+`lite record` refuses a record when an item has no check, a failed check has no defect, a defect has no failed check or no evidence, or an open earlier defect has no retest verdict with evidence. The refusal has a `reason` and a `hint`. Nothing is recorded. Evidence is a file path in the workspace or inline text. Checkmate does not delete the file.
+
+`status`, `run show`, `finding list`, `export`, the review UI, and `result accept` read lite records as they read other records. The `next` lines of `status` name the commands of the full loop.
 
 ## delegate
 

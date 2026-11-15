@@ -380,6 +380,8 @@ The schemas refuse a payload that breaks one of these limits:
 | `plan-patch.schema.json`     | `plan edit --patch`               |
 | `plan.schema.json`           | each stored plan revision         |
 | `finding.schema.json`        | `run finding`                     |
+| `lite-checklist.schema.json` | `lite checklist`                  |
+| `lite-record.schema.json`    | `lite record`                     |
 | `gap.schema.json`            | `run gap`, and each gap in a plan |
 | `result.schema.json`         | each stored result                |
 | `response.schema.json`       | the output of a delegated worker  |

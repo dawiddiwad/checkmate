@@ -4,12 +4,13 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
 
 `plugin/` is the installed plugin. It has no npm dependencies.
 
-- `plugin/skills/` contains the setup, plan, revise, execute, report, status, and ui workflows.
+- `plugin/skills/` contains the setup, plan, revise, execute, report, status, ui, and lite workflows.
 - `plugin/references/workflow.md` has the stage rules that every stage reads: commands, actor, return, and safety. `session.md` has the same-session rules: read state first, modes, recording a request, beginning a run, and the report format. `browser.md` and `http.md` are optional tool recipes.
 - `plugin/contracts/` contains authoritative JSON Schemas.
 - `plugin/src/contracts.ts` checks document shape and plan relationships.
 - `plugin/src/store.ts` owns the SQLite database, transactions, and the operation log.
 - `plugin/src/targets.ts`, `plans.ts`, and `runs.ts` own the commands for targets and their instances, plans, and runs.
+- `plugin/src/lite.ts` owns the lite commands. It stores a checklist and each tested build as plan revisions and finished runs, with the same tables.
 - `plugin/src/views.ts` has the read models for the inbox, the lists, the detail pages, and the loop status of a plan. `plugin/src/actor.ts` finds the default actor.
 - `plugin/src/cli.ts` parses arguments and prints compact or JSON output. `plugin/dist/checkmate.js` is its bundle.
 - `plugin/src/render.ts` generates the Markdown, HTML, and JSON exports.

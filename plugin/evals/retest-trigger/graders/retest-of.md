@@ -2,7 +2,6 @@
 type: regex
 pattern: 'run begin \S+ stock@1 .*--retest-of run-1'
 target: trace
-match: true
 weight: 1
 ---
 

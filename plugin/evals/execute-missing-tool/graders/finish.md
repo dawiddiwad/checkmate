@@ -2,7 +2,6 @@
 type: regex
 pattern: 'run finish run-1'
 target: trace
-match: true
 weight: 2
 ---
 

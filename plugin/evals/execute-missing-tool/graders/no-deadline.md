@@ -2,7 +2,7 @@
 type: regex
 pattern: '--cause deadline'
 target: trace
-match: false
+match: not_contains
 weight: 1
 ---
 

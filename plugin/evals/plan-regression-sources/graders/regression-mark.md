@@ -2,7 +2,6 @@
 type: regex
 pattern: 'type[\\"]*\s*:\s*[\\"]*regression'
 target: trace
-match: true
 weight: 1
 ---
 

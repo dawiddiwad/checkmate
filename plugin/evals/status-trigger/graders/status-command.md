@@ -2,7 +2,6 @@
 type: regex
 pattern: 'checkmate\.js[\\"]* status stock'
 target: trace
-match: true
 weight: 1
 ---
 

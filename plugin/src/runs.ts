@@ -100,7 +100,13 @@ export type CloseInput = {
 	reason?: string
 	evidence?: EvidenceInput[]
 }
-export type FinishInput = { runId: string; completion: string; cleanup: string; cleanupReason: string }
+export type FinishInput = {
+	runId: string
+	completion: string
+	reason?: string
+	cleanup: string
+	cleanupReason: string
+}
 export type ResumeInput = { runId: string; error?: string[]; reason?: string }
 export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string; expectDecision?: string }
 
@@ -111,6 +117,9 @@ export const completions = ['completed', 'interrupted', 'operational_error'] as 
 export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
 export const newBlockerPolicies = ['continue_independent', 'return_to_oracle'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
+export const deadlineClaim =
+	/deadline|time ?out|timed out|out of time|(enough|no|remaining|limited|insufficient) time|time (budget|limit|constraint|ran out|is up|left|remaining)/i
+export const deadlineShare = 0.9
 const kindByExtension: Record<string, EvidenceRow['kind']> = {
 	'.png': 'screenshot',
 	'.jpg': 'screenshot',
@@ -168,6 +177,37 @@ function selectedTest(run: RunState, testId: string): Test {
 		`Test ${testId} is not selected in run ${run.row.run_id}`
 	)
 	return run.plan.tests.find((test) => test.id === testId)!
+}
+
+export function runClock(
+	store: Store,
+	row: Pick<RunRow, 'run_id' | 'deadline_seconds'>,
+	at = new Date().toISOString()
+) {
+	const attempt = one<{ started_at: string }>(
+		store,
+		'SELECT started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1',
+		row.run_id
+	)!
+	const start = Date.parse(attempt.started_at)
+	const elapsedSeconds = Math.max(0, Math.floor((Date.parse(at) - start) / 1000))
+	return {
+		attemptStartedAt: attempt.started_at,
+		deadline: new Date(start + row.deadline_seconds * 1000).toISOString(),
+		deadlineSeconds: row.deadline_seconds,
+		elapsedSeconds,
+		remainingSeconds: Math.max(0, row.deadline_seconds - elapsedSeconds),
+	}
+}
+
+function refuseEarlyDeadline(store: Store, row: RunRow, at: string, reason: string) {
+	if (!deadlineClaim.test(reason)) return
+	const clock = runClock(store, row, at)
+	const used = clock.elapsedSeconds / clock.deadlineSeconds
+	requireCondition(
+		used >= deadlineShare,
+		`Only ${Math.floor(used * 100)}% of the deadline is used: ${clock.elapsedSeconds} of ${clock.deadlineSeconds} seconds, ${clock.remainingSeconds} remain until ${clock.deadline}. Continue the remaining tests.`
+	)
 }
 
 export function currentAttempt(store: Store, runId: string) {
@@ -272,6 +312,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 					startedAt: at,
 					browserSession,
 					deadlineSeconds: timeoutSeconds,
+					deadline: new Date(Date.parse(at) + timeoutSeconds * 1000).toISOString(),
 					evidenceDirectory: evidenceDirectory(runId),
 				}),
 				subjects: [`run:${runId}`, `plan:${plan.planId}`],
@@ -494,6 +535,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		} else {
 			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
 			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
+			if (outcome !== 'error') refuseEarlyDeadline(store, run.row, at, reason)
 			requireCondition(
 				outcome === 'error' || !recorded.length,
 				`Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
@@ -635,6 +677,11 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 	return write(store, { actor, command: 'run finish', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
 		const completion = requireChoice(input.completion, completions, 'completion (--completion)')
+		const reason =
+			completion === 'interrupted'
+				? requireText(input.reason, 'reason (--reason) for completion interrupted')
+				: optionalText(input.reason, 'reason (--reason)')
+		if (reason && completion !== 'completed') refuseEarlyDeadline(store, run.row, at, reason)
 		const cleanup = {
 			status: requireChoice(input.cleanup, cleanupStatuses, 'cleanup (--cleanup)'),
 			reason: requireText(input.cleanupReason, 'cleanup reason (--cleanup-reason)'),
@@ -735,6 +782,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			finishedAt: at,
 			attempts: attempt,
 			completion,
+			completionReason: reason,
 			tests,
 			findings,
 			newGaps,
@@ -834,6 +882,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 				attempt,
 				browserSession: run.row.browser_session,
 				deadlineSeconds: run.row.deadline_seconds,
+				deadline: new Date(Date.parse(at) + run.row.deadline_seconds * 1000).toISOString(),
 				evidenceDirectory: evidenceDirectory(input.runId),
 				closed: stalled,
 				tests,

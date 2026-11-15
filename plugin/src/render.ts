@@ -276,6 +276,7 @@ function runDocument(report: RunReport): Report {
 				['Finished', result.finishedAt],
 				['Attempts', String(result.attempts)],
 				['Retest of', result.retestOf ?? none],
+				...(result.completionReason ? [['Completion reason', result.completionReason]] : []),
 				['Cleanup', `${result.cleanup.status}: ${result.cleanup.reason}`],
 				['Result digest', sha256],
 			],

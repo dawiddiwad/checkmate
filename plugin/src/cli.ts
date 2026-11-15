@@ -711,6 +711,7 @@ const commands: Record<string, Command> = {
 				startedAt: reply.data.startedAt,
 				browserSession: reply.data.browserSession,
 				deadlineSeconds: reply.data.deadlineSeconds,
+				deadline: reply.data.deadline,
 				evidenceDirectory: reply.data.evidenceDirectory,
 			},
 			lines: leftOutLines(reply),
@@ -770,13 +771,14 @@ const commands: Record<string, Command> = {
 	},
 	'run finish': {
 		positionals: ['runId'],
-		flags: { completion: completions, cleanup: cleanupStatuses, 'cleanup-reason': 'value' },
+		flags: { completion: completions, reason: 'value', cleanup: cleanupStatuses, 'cleanup-reason': 'value' },
 		required: ['completion', 'cleanup', 'cleanup-reason'],
 		write: true,
 		run: (store, args, { actor }) =>
 			finishRun(store, actor, {
 				runId: value(args, 'runId')!,
 				completion: value(args, 'completion')!,
+				reason: value(args, 'reason'),
 				cleanup: value(args, 'cleanup')!,
 				cleanupReason: value(args, 'cleanup-reason')!,
 			}),
@@ -799,6 +801,7 @@ const commands: Record<string, Command> = {
 			const data = reply.data as {
 				attempt: number
 				browserSession: string
+				deadline: string
 				evidenceDirectory: string
 				closed: string[]
 				tests: Array<{ testId: string; warning: string; assertions: Plan['tests'][number]['assertions'] }>
@@ -807,6 +810,7 @@ const commands: Record<string, Command> = {
 				facts: {
 					attempt: data.attempt,
 					browserSession: data.browserSession,
+					deadline: data.deadline,
 					evidenceDirectory: data.evidenceDirectory,
 				},
 				lines: [
@@ -850,6 +854,12 @@ const commands: Record<string, Command> = {
 					acceptance: detail.result?.acceptance,
 				},
 				lines: [
+					[
+						'time',
+						`deadline=${detail.clock.deadline}`,
+						`elapsed=${detail.clock.elapsedSeconds}s`,
+						`remaining=${detail.clock.remainingSeconds}s`,
+					],
 					...detail.tests.flatMap((test) => [
 						[test.testId, test.outcome ?? 'open', test.title, ...(test.reason ? [test.reason] : [])],
 						...test.assertions.map((assertion) => [

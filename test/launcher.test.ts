@@ -559,6 +559,10 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 		prompt
 	)
 	assert.match(prompt, /adapt the test data within the intent of the test before you record a blocking gap/)
+	assert.match(
+		prompt,
+		/Run deadline: \d{4}-\d\d-\d\dT\S+Z \(UTC\)\. \d+ of 600 seconds are used, and \d+ remain\. The `time` line of `checkmate run show run-1`/
+	)
 	assert(
 		prompt.includes(
 			'Instance local is retired; its sandbox may be gone. Stop with a blocked gap if it does not respond.'

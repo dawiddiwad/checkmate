@@ -409,19 +409,26 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	])
 	assert.match(
 		begun.lines[0],
-		/^completed run-1 instance=local tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
+		/^completed run-1 instance=local tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 deadline=\S+ evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
 	)
-	const finished = cli(workspace, [
-		'run',
-		'finish',
-		'run-1',
-		'--completion',
-		'interrupted',
-		'--cleanup',
-		'completed',
-		'--cleanup-reason',
-		'Closed.',
-	])
+	const interrupt = (reason: string) =>
+		cli(workspace, [
+			'run',
+			'finish',
+			'run-1',
+			'--completion',
+			'interrupted',
+			'--reason',
+			reason,
+			'--cleanup',
+			'completed',
+			'--cleanup-reason',
+			'Closed.',
+		])
+	const early = interrupt('The deadline is near.')
+	assert.equal(early.lines[0], 'rejected run-1')
+	assert.match(early.lines[1], /^reason: Only 0% of the deadline is used: \d+ of 120 seconds/)
+	const finished = interrupt('The oracle stopped the run.')
 	assert.equal(finished.code, 1)
 	assert.match(finished.lines[0], /^interrupted run-1 coverage=partial sha256=[a-f0-9]{8}$/)
 	for (const format of ['md', 'html', 'json']) {
@@ -458,8 +465,9 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 		shown.lines[0],
 		/^completed run-1 state=finalized plan=checkout@2 build=b1 instance=local completion=interrupted/
 	)
+	assert.match(shown.lines[1], /^time\tdeadline=\S+Z\telapsed=\d+s\tremaining=\d+s$/)
 	assert.equal(
-		shown.lines[1],
+		shown.lines[2],
 		'T1\terror\tStandard order total\tRun stopped before the test closed. Actions may have occurred.'
 	)
 	assert.equal(
@@ -609,6 +617,8 @@ test('inbox lists gaps to answer, plans to approve, results to accept, and plan 
 		'run-1',
 		'--completion',
 		'interrupted',
+		'--reason',
+		'The oracle stopped the run.',
 		'--cleanup',
 		'completed',
 		'--cleanup-reason',

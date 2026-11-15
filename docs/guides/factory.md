@@ -101,7 +101,7 @@ checkmate delegate execute run-1 --allow Read --allow Bash
 Without `--tests`, `--partial ready_only` selects the ready tests. It prints one line for each test that it leaves out:
 
 ```text
-completed run-1 instance=local tests=T1 startedAt=... browserSession=... deadlineSeconds=600 evidenceDirectory=.checkmate/tmp/run-1/
+completed run-1 instance=local tests=T1 startedAt=... browserSession=... deadlineSeconds=600 deadline=... evidenceDirectory=.checkmate/tmp/run-1/
 T2	left_out	blocked by G1
 ```
 
@@ -292,7 +292,7 @@ A deadline, a signal, or a crash does not finish a run. The run stays `started`,
 - `checkmate run resume <runId>` lists each test that is not closed, with its assertions that have no result. Then delegate `execute` again.
 - Checkmate does not repeat a test. Each open test shows `Actions may have occurred`, and the oracle decides to continue it or to close it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error`.
-- `checkmate run finish <runId> ...` ends the run with the results that it has.
+- `checkmate run finish <runId> --completion interrupted --reason <text> ...` ends the run with the results that it has.
 
 [Resume](../reference/runs.md#resume) has the rules.
 

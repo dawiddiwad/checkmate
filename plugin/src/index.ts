@@ -41,6 +41,7 @@ export {
 	acceptResult,
 	rejectResult,
 	runResult,
+	runClock,
 } from './runs.ts'
 export {
 	inbox,

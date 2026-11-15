@@ -91,6 +91,17 @@
 		"completion": {
 			"enum": ["completed", "interrupted", "operational_error"]
 		},
+		"completionReason": {
+			"anyOf": [
+				{
+					"type": "string",
+					"minLength": 1
+				},
+				{
+					"type": "null"
+				}
+			]
+		},
 		"tests": {
 			"type": "array",
 			"items": {

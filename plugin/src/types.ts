@@ -278,6 +278,7 @@ export type Result = {
 	finishedAt: string
 	attempts: number
 	completion: 'completed' | 'interrupted' | 'operational_error'
+	completionReason?: string | null
 	tests: Array<{
 		testId: string
 		outcome: 'passed' | 'failed' | 'inconclusive' | 'blocked' | 'not_run' | 'error'

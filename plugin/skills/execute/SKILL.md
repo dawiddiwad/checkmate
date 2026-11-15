@@ -25,10 +25,18 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. Each to
 
 Then:
 
-1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result.
+1. Run `checkmate run show <runId>`. It lists the selected tests and the assertions without a result. Its `time` line gives the deadline in UTC and the elapsed and remaining seconds. Read [Time](#time).
 2. Run `checkmate plan show <planId@rev> --tests <T1,T2> --fields dependsOn,preconditions,action,assertions`.
 3. Run `checkmate plan request <planId>` for the tools.
 4. Read the instance of the run: `checkmate target show <targetId> --instance <instanceId>`. `run show` prints the instance. The output has one `entry` line for each entry point.
+
+## Time
+
+The run deadline counts from the start of the current attempt. A delegated prompt names it.
+
+- Check the time with `checkmate run show <runId> --tests <testId>`. Read the `time` line: `time deadline=<UTC> elapsed=<n>s remaining=<n>s`. Do not guess the time.
+- Use the time to run every selected test. Do not stop early.
+- Close a test as `blocked` or `not_run` because of the time only when 90% or more of the deadline is used. Else Checkmate refuses the reason. Continue the remaining tests.
 
 ## Instance entries
 
@@ -111,10 +119,10 @@ Send each finding in a heredoc: `checkmate run finding <runId> --actor claude:ex
 ## Finish
 
 1. When the run used a browser, close the browser session: `playwright-cli -s=<browserSession> close`.
-2. Run `checkmate run finish <runId> --actor claude:execute --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
+2. Run `checkmate run finish <runId> --actor claude:execute --completion <completion> [--reason "<cause>"] --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`. Use `not_applicable` when the run needs no cleanup.
    - `completed`: every selected test is closed, no test is `error`, and cleanup did not fail.
    - `operational_error`: a tool, access, or cleanup failure stopped the run.
-   - `interrupted`: the deadline is near. Finish before the deadline.
+   - `interrupted`: 90% or more of the deadline is used, or the host stopped the run. Give `--reason "<cause>"`. Finish before the deadline.
 3. Return the response of `run finish`.
 4. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Outcome, Reason) and the findings. In `Next:`, name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. Name a retest or a gap answer when one is necessary. For a new gap of the run, name `checkmate gap answer <planId> <gapId> ...`. It adopts the gap into the plan and records the answer.
 

@@ -9,6 +9,7 @@ import {
 	beginRun,
 	checkAssertion,
 	closeTest,
+	deadlineClaim,
 	finishRun,
 	recordFinding,
 	recordGap,
@@ -37,7 +38,13 @@ import {
 } from './support.ts'
 
 const finish = (opened: Store, runId = 'run-1', completion = 'completed', cleanup = 'completed') =>
-	finishRun(opened, actor, { runId, completion, cleanup, cleanupReason: 'Closed the browser.' })
+	finishRun(opened, actor, {
+		runId,
+		completion,
+		reason: completion === 'interrupted' ? 'The host stopped the session.' : undefined,
+		cleanup,
+		cleanupReason: 'Closed the browser.',
+	})
 const close = (opened: Store, testId: string, extra = {}) =>
 	closeTest(opened, actor, { runId: 'run-1', testId, ...extra })
 
@@ -255,7 +262,7 @@ test('finish refuses a completed run that is not complete', (t) => {
 test('finish needs a cause for a selected test that did not run', (t) => {
 	const opened = started(t)
 	passT1(opened)
-	close(opened, 'T2', { outcome: 'not_run', reason: 'Ran out of time.' })
+	close(opened, 'T2', { outcome: 'not_run', reason: 'Skipped by the oracle.' })
 	assert.throws(() => finish(opened), /Selected test T2 is not_run without a cause/)
 	recordGap(opened, actor, {
 		runId: 'run-1',
@@ -339,6 +346,85 @@ test('an interrupted finish records each unclosed selected test as error', (t) =
 	assert.equal(result.tests[1].assertions.length, 1)
 	assert.equal(result.completion, 'interrupted')
 	assert.equal(result.cleanup.status, 'failed')
+})
+
+test('a deadline claim is a reason that names the deadline or the lack of time', () => {
+	const rows: Array<[string, boolean]> = [
+		['The deadline is near.', true],
+		['Out of time.', true],
+		['Timed out before T3.', true],
+		['Not enough time to run T4.', true],
+		['Time budget used.', true],
+		['Prerequisite T1 failed.', false],
+		['The one-time login URL expired.', false],
+		['Blocked by G3.', false],
+	]
+	for (const [reason, claim] of rows) assert.equal(deadlineClaim.test(reason), claim, reason)
+})
+
+test('a deadline reason needs 90 percent of the deadline of the current attempt', (t) => {
+	const start = Date.parse('2026-11-15T10:00:00.000Z')
+	t.mock.timers.enable({ apis: ['Date'], now: start })
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1', 'T2'], 'build-1', { timeoutSeconds: 100 })
+	t.mock.timers.tick(12_000)
+	assert.deepEqual(runDetail(opened, 'run-1').clock, {
+		attemptStartedAt: '2026-11-15T10:00:00.000Z',
+		deadline: '2026-11-15T10:01:40.000Z',
+		deadlineSeconds: 100,
+		elapsedSeconds: 12,
+		remainingSeconds: 88,
+	})
+	const early =
+		/Only 12% of the deadline is used: 12 of 100 seconds, 88 remain until 2026-11-15T10:01:40.000Z\. Continue the remaining tests\./
+	const rows: Array<[string, () => unknown, RegExp]> = [
+		['blocked by time', () => close(opened, 'T2', { outcome: 'blocked', reason: 'Out of time.' }), early],
+		[
+			'not_run by deadline',
+			() => close(opened, 'T2', { outcome: 'not_run', reason: 'The deadline is near.' }),
+			early,
+		],
+		[
+			'interrupted without reason',
+			() =>
+				finishRun(opened, actor, {
+					runId: 'run-1',
+					completion: 'interrupted',
+					cleanup: 'completed',
+					cleanupReason: 'Closed.',
+				}),
+			/Missing reason \(--reason\) for completion interrupted/,
+		],
+		[
+			'interrupted near deadline',
+			() =>
+				finishRun(opened, actor, {
+					runId: 'run-1',
+					completion: 'interrupted',
+					reason: 'Not enough time left.',
+					cleanup: 'completed',
+					cleanupReason: 'Closed.',
+				}),
+			early,
+		],
+	]
+	for (const [name, act, refusal] of rows) assert.throws(act, refusal, name)
+	t.mock.timers.tick(78_000)
+	assert.equal(close(opened, 'T2', { outcome: 'not_run', reason: 'Out of time.' }).status, 'completed')
+	resumeRun(opened, actor, { runId: 'run-1' })
+	assert.equal(runDetail(opened, 'run-1').clock.remainingSeconds, 100)
+	assert.throws(() => close(opened, 'T1', { outcome: 'not_run', reason: 'Timed out.' }), /Only 0% of the deadline/)
+	t.mock.timers.tick(95_000)
+	const finished = finishRun(opened, actor, {
+		runId: 'run-1',
+		completion: 'interrupted',
+		reason: 'The deadline is near.',
+		cleanup: 'completed',
+		cleanupReason: 'Closed.',
+	})
+	assert.equal(finished.status, 'interrupted')
+	assert.equal(runResult(opened, 'run-1')!.result.completionReason, 'The deadline is near.')
 })
 
 test('resume keeps recorded results, lists what is open, and can close stalled tests as error', (t) => {

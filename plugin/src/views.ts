@@ -18,6 +18,7 @@ import {
 	outcomeCounts,
 	resultAcceptance,
 	runAssertions,
+	runClock,
 	runEvidence,
 	runFindings,
 	runGaps,
@@ -792,6 +793,7 @@ export function runDetail(store: Store, runId: string) {
 		startedAt: run.row.started_at,
 		browserSession: run.row.browser_session,
 		deadlineSeconds: run.row.deadline_seconds,
+		clock: runClock(store, run.row, finished?.result.finishedAt),
 		request: run.request,
 		state: finished ? ('finalized' as const) : ('started' as const),
 		attempts,
@@ -802,6 +804,7 @@ export function runDetail(store: Store, runId: string) {
 			? {
 					sha256: finished.sha256,
 					completion: finished.result.completion,
+					completionReason: finished.result.completionReason ?? null,
 					coverage: finished.result.coverage,
 					cleanup: finished.result.cleanup,
 					finishedAt: finished.result.finishedAt,

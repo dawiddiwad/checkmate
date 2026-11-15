@@ -6,19 +6,34 @@ QA records one result for each assertion, and Checkmate derives each test outcom
 
 <img src="../img/run.png" alt="Diagram: the record of run-1 on plan checkout@2, build b1, with tests T1 and T2. T1, Standard total, passed: its assertion T1.A1, Total is 400 PLN, passed with evidence T1-A1.json and its sha256. T2, Promotion, failed: its assertion T2.A1, totalPLN equals 240, failed with the observation totalPLN 220 and evidence T2-A1.json. Defect F1 names T2.A1 and its evidence. The run can also record new gaps for the oracle. On the right, four separate answers: completion is completed, outcome is passed 1 and failed 1, coverage is complete, and the oracle's acceptance is accepted. Each assertion result is final, and Checkmate derives the test outcome from the assertion results." width="100%"/>
 
-**On this page:** [Run commands](#run-commands) · [Instances and matrix runs](#instances-and-matrix-runs) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
+**On this page:** [Run commands](#run-commands) · [Deadline](#deadline) · [Instances and matrix runs](#instances-and-matrix-runs) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
 
 ## Run commands
 
 A run goes through these commands in order:
 
-1. `run begin <runId> <planId@rev> --build <build> --instance <instanceId>` checks the gate and starts the run on one instance. It prints the instance, the browser session, and the evidence directory `.checkmate/tmp/<runId>/`. You can leave out `--instance` only when the target has one active instance.
+1. `run begin <runId> <planId@rev> --build <build> --instance <instanceId>` checks the gate and starts the run on one instance. It prints the instance, the browser session, the deadline in UTC, and the evidence directory `.checkmate/tmp/<runId>/`. You can leave out `--instance` only when the target has one active instance.
 2. `run check <runId> <testId> <assertionId> --result <result>` records one assertion result with its evidence.
 3. `run close <runId> <testId>` closes a test. Checkmate derives the outcome.
 4. `run finding <runId>` and `run gap <runId>` record findings and new gaps from standard input.
-5. `run finish <runId> --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason <text>` checks the run and stores the result.
+5. `run finish <runId> --completion <completion> [--reason <text>] --cleanup <completed|failed|not_applicable> --cleanup-reason <text>` checks the run and stores the result.
 
 A run is `started` until `run finish`. After `run finish`, the run does not change. The flags of `run begin` are in [Commands](commands.md#run-gate-and-policy).
+
+## Deadline
+
+A run has a deadline: `--timeout` of `run begin`, 600 seconds by default. The deadline counts from the start of the current attempt. `run resume` starts a new attempt, so the clock starts again.
+
+`run show <runId>` prints the clock on a `time` line. Use `run show <runId> --tests <testId>` for a short output.
+
+```text
+time	deadline=2026-11-15T10:10:00.000Z	elapsed=63s	remaining=537s
+```
+
+- `run begin` and `run resume` print `deadline=` in UTC. `delegate execute` puts the deadline, the elapsed seconds, and the remaining seconds in the prompt.
+- `run close --outcome blocked|not_run` and `run finish` with a reason that names the deadline or a lack of time are refused while less than 90% of the deadline is used. The reason of the refusal gives the share, for example `Only 12% of the deadline is used: 12 of 100 seconds, 88 remain until <deadline>. Continue the remaining tests.`
+- A reason that does not name the time is not checked, for example `Prerequisite T1 failed.`
+- The clock of a finished run stops at `finishedAt`.
 
 ## Instances and matrix runs
 
@@ -198,6 +213,8 @@ A started run closes no defect. A rejected run closes no defect and replaces no 
 - a cleanup status that is not `failed`,
 - a cause for each `blocked` or `not_run` test: a prerequisite that did not pass, a blocked cross-plan dependency, or a new blocking gap,
 - a defect for each failed assertion.
+
+`run finish --completion interrupted` needs `--reason`, for example `The host stopped the session.` The result records it as `completionReason`. `operational_error` can have a reason. A reason that names the deadline follows the [deadline](#deadline) rule.
 
 `run finish` closes each open selected test as `error` with the reason `Run stopped before the test closed. Actions may have occurred.` It records each unselected test as `not_run`.
 

@@ -53,6 +53,7 @@ function record(opened: Store, runId: string, outcome: () => string, completion 
 	finishRun(opened, actor, {
 		runId,
 		completion: completion as 'completed' | 'interrupted',
+		reason: completion === 'interrupted' ? 'The host stopped the session.' : undefined,
 		cleanup: 'completed',
 		cleanupReason: 'Closed.',
 	})

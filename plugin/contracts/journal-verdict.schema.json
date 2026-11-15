@@ -17,7 +17,7 @@
 			"$ref": "journal-entry.schema.json#/definitions/supersedes"
 		},
 		"defect": {
-			"description": "The ID of the earlier defect.",
+			"description": "The ID of the earlier defect or issue.",
 			"type": "string",
 			"minLength": 1
 		},

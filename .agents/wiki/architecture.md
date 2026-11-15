@@ -11,7 +11,7 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
 - `plugin/src/store.ts` owns the SQLite database, transactions, and the operation log.
 - `plugin/src/targets.ts`, `plans.ts`, and `runs.ts` own the commands for targets and their instances, plans, and runs.
 - `plugin/src/lite.ts` owns the lite commands. It stores a checklist and each tested build as plan revisions and finished runs, with the same tables.
-- `plugin/src/journal.ts` owns the journal prototype: `journal open`, `log`, `gaps`, `show`, `answer`, `accept`, `reject`, and `export`. It stores a change in `changes` and each entry in `journal_entries`, and derives the gaps and the views in code.
+- `plugin/src/journal.ts` owns the journal prototype: `journal open`, `log`, `gaps`, `show`, `answer`, `accept`, `reject`, `export`, `merge`, `issues`, and `verify`. It stores a change in `changes` and each entry in `journal_entries`, with its actor. It derives the gaps, the views of each actor, and the merged issues in code.
 - `plugin/src/guide.ts` prints `lite guide` from the `description` and `examples` of the two lite schemas, and `journal guide` from the journal entry schemas. `scripts/generate-docs.ts` writes the lite part of `docs/reference/payloads.md` from the same schemas.
 - `plugin/src/views.ts` has the read models for the inbox, the lists, the detail pages, and the loop status of a plan. `plugin/src/actor.ts` finds the default actor.
 - `plugin/src/cli.ts` parses arguments and prints compact or JSON output. `plugin/dist/checkmate.js` is its bundle.

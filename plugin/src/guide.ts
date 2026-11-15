@@ -11,6 +11,7 @@ import defectSchema from '../contracts/journal-defect.schema.json' with { type: 
 import questionSchema from '../contracts/journal-question.schema.json' with { type: 'json' }
 import verdictSchema from '../contracts/journal-verdict.schema.json' with { type: 'json' }
 import noteSchema from '../contracts/journal-note.schema.json' with { type: 'json' }
+import issueSchema from '../contracts/journal-issue.schema.json' with { type: 'json' }
 import { changeState, entryKinds } from './journal.ts'
 
 type Schema = {
@@ -35,6 +36,7 @@ const files: Record<string, Schema> = {
 	'journal-question.schema.json': questionSchema as Schema,
 	'journal-verdict.schema.json': verdictSchema as Schema,
 	'journal-note.schema.json': noteSchema as Schema,
+	'journal-issue.schema.json': issueSchema as Schema,
 }
 
 export const liteSteps = [
@@ -175,23 +177,73 @@ export function guideLite(store: Store, planId: string | undefined) {
 }
 
 const commonFields = ['kind', 'id', 'build', 'supersedes']
+const teamKinds = ['issue']
+const teamFields = ['confirms', 'refutes']
+export const guideRoles = ['tester', 'merger', 'verifier'] as const
+export type GuideRole = (typeof guideRoles)[number]
+
+function kindSchema(kind: string, keep: (field: Field) => boolean) {
+	const own = `journal-${kind}.schema.json`
+	return {
+		kind,
+		about: files[own].description!,
+		fields: fieldsOf(files[own], own, '').filter((field) => !commonFields.includes(field.path) && keep(field)),
+	}
+}
+
+function commonSchema(kinds: string[]) {
+	const file = 'journal-entry.schema.json'
+	return fieldsOf(files[file], file, '').map((field) =>
+		field.path === 'kind' ? { ...field, type: kinds.join('|') } : field
+	)
+}
 
 export function journalSchema() {
-	const file = 'journal-entry.schema.json'
-	const entry = files[file]
+	const entry = files['journal-entry.schema.json']
+	const kinds = entryKinds.filter((kind) => !teamKinds.includes(kind))
 	return {
 		about: entry.description!,
-		common: fieldsOf(entry, file, ''),
-		kinds: entryKinds.map((kind) => {
-			const own = `journal-${kind}.schema.json`
-			return {
-				kind,
-				about: files[own].description!,
-				fields: fieldsOf(files[own], own, '').filter((field) => !commonFields.includes(field.path)),
-			}
-		}),
+		common: commonSchema(kinds),
+		kinds: kinds.map((kind) => kindSchema(kind, (field) => !teamFields.includes(field.path))),
 		example: entry.examples![0],
 	}
+}
+
+export function mergerSchema() {
+	return {
+		about: files['journal-entry.schema.json'].description!,
+		common: commonSchema(['issue']),
+		kinds: [kindSchema('issue', () => true)],
+		example: issueSchema.examples[0],
+	}
+}
+
+export function verifierSchema() {
+	const kept = ['about', 'steps', 'saw', 'via', 'evidence', ...teamFields]
+	return {
+		about: files['journal-entry.schema.json'].description!,
+		common: commonSchema(['observation']),
+		kinds: [kindSchema('observation', (field) => kept.includes(field.path))],
+		example: observationSchema.examples[0],
+	}
+}
+
+function roleSteps(changeId: string, role: 'merger' | 'verifier') {
+	if (role === 'merger')
+		return [
+			'Do not test. Merge what the testers found.',
+			`Run checkmate journal merge ${changeId} --build <build> to read the defects of all testers.`,
+			'Find the defects that two or more reports describe. The suggest lines are ideas, not rules.',
+			`Log one issue for each of them: checkmate journal log ${changeId} --build <build>, with the JSON on standard input in a quoted heredoc.`,
+			'A defect that is in no issue is its own issue. To change an issue, log it again with "supersedes".',
+			`Run checkmate journal issues ${changeId} to read the result.`,
+		]
+	return [
+		`Run checkmate journal verify ${changeId} --build <build> to read the issues that only one tester reported.`,
+		'Do the steps of each item on the running app.',
+		'Log an observation with "confirms" when you see the defect. Log an observation with "refutes" when you do not see it.',
+		`Run checkmate journal issues ${changeId} to read the result.`,
+	]
 }
 
 export function journalSteps(changeId: string) {
@@ -203,9 +255,19 @@ export function journalSteps(changeId: string) {
 	]
 }
 
-export function guideJournal(store: Store, changeId: string | undefined) {
+export function guideJournal(store: Store, changeId: string | undefined, role: GuideRole = 'tester', viewer?: string) {
 	const change = changeId ?? '<changeId>'
-	const state = changeId === undefined ? undefined : changeState(store, changeId)
+	if (role !== 'tester') {
+		if (changeId !== undefined) changeState(store, changeId)
+		return completed(changeId ?? 'journal guide', {
+			steps: roleSteps(change, role),
+			...(role === 'merger' ? mergerSchema() : verifierSchema()),
+			command: `checkmate journal log ${change} --build b1`,
+			answers: [],
+			openDefects: [],
+		})
+	}
+	const state = changeId === undefined ? undefined : changeState(store, changeId, viewer)
 	return completed(changeId ?? 'journal guide', {
 		steps: journalSteps(change),
 		...journalSchema(),

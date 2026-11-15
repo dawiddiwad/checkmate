@@ -56,10 +56,21 @@ export type JournalDefect = {
 }
 
 export type JournalEntry = {
-	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note'
+	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note' | 'issue'
 	id?: string
 	build?: string
 	supersedes?: string
+}
+
+export type JournalIssue = {
+	kind: 'issue'
+	id?: string
+	build?: string
+	supersedes?: string
+	title: string
+	severity: 'critical' | 'high' | 'medium' | 'low'
+	reports: Array<string>
+	note?: string
 }
 
 export type JournalNote = {
@@ -85,6 +96,8 @@ export type JournalObservation = {
 	verdict?: 'ok' | 'wrong'
 	via?: 'ui' | 'api' | 'code' | 'other'
 	evidence?: string | Array<string>
+	confirms?: string
+	refutes?: string
 }
 
 export type JournalQuestion = {

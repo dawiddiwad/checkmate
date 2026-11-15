@@ -1,9 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawn } from 'node:child_process'
 import type { TestContext } from 'node:test'
-import { cli, directory, json } from './support.ts'
+import { cli, directory, json, root } from './support.ts'
 import { journalSchema } from '../plugin/src/guide.ts'
 
 function opened(t: TestContext, capabilities = 'browser,http') {
@@ -177,16 +178,16 @@ test('a batch saves each valid entry and refuses each malformed entry with its i
 		{
 			index: 3,
 			field: '[3].defect',
-			reason: '[3].defect names no defect: D9.',
-			hint: 'Use the ID of an earlier defect. Run checkmate journal show to read the IDs.',
+			reason: '[3].defect names no defect or issue: D9.',
+			hint: 'Use the ID of an earlier defect or issue. Run checkmate journal show to read the IDs.',
 			fix: { kind: 'verdict', defect: '<defect ID>', result: 'fixed', saw: 'ok' },
 		},
 		{
 			index: 4,
 			field: '[4].kind',
-			reason: '[4]/kind must be one of: criterion, observation, defect, question, verdict, note',
+			reason: '[4]/kind must be one of: criterion, observation, defect, question, verdict, note, issue',
 			hint: 'Fix the named fields. Run checkmate journal guide to read the fields of guess.',
-			fix: { kind: 'criterion|observation|defect|question|verdict|note' },
+			fix: { kind: 'criterion|observation|defect|question|verdict|note|issue' },
 		},
 	])
 	const text = cli(workspace, ['journal', 'log', 'cart'], { kind: 'observation', saw: 'No build.' })
@@ -556,4 +557,280 @@ test('gaps prints at most 8 lines of a kind and about 40 lines, with the count o
 	const every = cli(workspace, ['journal', 'gaps', 'cart', '--build', 'b1', '--all'])
 	assert.equal(every.lines.filter((line) => line.startsWith('gap\t')).length, 54)
 	assert.equal(every.lines.at(-1), 'count\t54\topen items on b1: things your record does not show yet.')
+})
+
+function as(actor: string, workspace: string, args: string[], stdin?: unknown) {
+	const outcome = cli(workspace, [...args, '--json'], stdin, { CHECKMATE_ACTOR: actor })
+	return { code: outcome.code, body: JSON.parse(outcome.output) }
+}
+
+function defect(title: string, actual: string, extra: Record<string, unknown> = {}) {
+	return { kind: 'defect', title, expected: '45.00 (ticket.md#AC1)', actual, severity: 'high', ...extra }
+}
+
+function team(t: TestContext) {
+	const workspace = opened(t, 'http')
+	log(workspace, 'b1', { kind: 'criterion', text: 'Five items get 10% off.', source: 'ticket.md#AC1' })
+	as(
+		'qa:a1',
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
+		[
+			{ kind: 'observation', about: 'C1', saw: 'Total 50.00 for 5 pens', verdict: 'wrong', via: 'api' },
+			defect('No discount at 5 items', 'Total is 50.00', {
+				links: ['O1'],
+				steps: 'Add 5 pens',
+				evidence: 'Total 50.00',
+			}),
+			defect('Coupon field accepts letters', 'The coupon ABC is saved'),
+		]
+	)
+	as(
+		'qa:a2',
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
+		[
+			{ kind: 'observation', about: 'C1', saw: 'No discount', verdict: 'wrong', via: 'api' },
+			defect('Five items get no discount', 'Cart total is 50.00', { links: ['O1'] }),
+		]
+	)
+	as(
+		'qa:a3',
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
+		[defect('Tax rounds down', 'Tax on 10.05 is 2.31', { steps: 'GET /api/tax?net=10.05' })]
+	)
+	return workspace
+}
+
+const ids = (reply: { body: { saved: Array<{ id: string }> } }) => reply.body.saved.map((entry) => entry.id)
+
+test('each actor has its own IDs, and a tester sees only its own entries and the shared ones', (t) => {
+	const workspace = team(t)
+	const a2 = (args: string[], stdin?: unknown) => as('qa:a2', workspace, args, stdin)
+	assert.deepEqual(
+		ids(a2(['journal', 'log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Explored the cart.' })),
+		['N1']
+	)
+	const show = cli(workspace, ['journal', 'show', 'cart'], undefined, { CHECKMATE_ACTOR: 'qa:a2' })
+	assert(show.lines.includes('criterion\tC1\tFive items get 10% off.\tticket.md#AC1'), show.output)
+	assert(show.lines.includes('defect\tD1\tb1\thigh\tFive items get no discount\t-'), show.output)
+	assert(!show.output.includes('No discount at 5 items'), show.output)
+	assert(show.lines.includes('matrix\tC1\tb1=wrong1'), show.output)
+	const guide = cli(workspace, ['journal', 'guide', 'cart'], undefined, { CHECKMATE_ACTOR: 'qa:a2' }).output
+	assert(!guide.includes('Coupon field accepts letters'))
+	assert(guide.includes('open_defect\tD1\tb1\thigh\tFive items get no discount'))
+	const own = a2(['journal', 'gaps', 'cart', '--build', 'b1']).body.gaps as Array<{ subject: string }>
+	assert(!own.some((gap) => gap.subject.includes('Coupon')), JSON.stringify(own))
+	const every = cli(workspace, ['journal', 'show', 'cart', '--all'], undefined, { CHECKMATE_ACTOR: 'qa:a2' })
+	assert(every.lines.includes('defect\ta1/D1\tb1\thigh\tNo discount at 5 items\t-'), every.output)
+	assert(every.lines.includes('defect\ta2/D1\tb1\thigh\tFive items get no discount\t-'), every.output)
+	assert(every.lines.includes('defect\tD2\tb1\thigh\tCoupon field accepts letters\t-'), every.output)
+	assert(every.lines.includes('matrix\tC1\tb1=wrong2'), every.output)
+	const replaced = a2(
+		['journal', 'log', 'cart', '--build', 'b1'],
+		defect('No 10% off at 5 items', 'Total 50.00', { supersedes: 'D1', links: ['O1'] })
+	)
+	assert.deepEqual(ids(replaced), ['D1'])
+	const other = a2(['journal', 'log', 'cart', '--build', 'b1'], defect('x', 'y', { supersedes: 'a1/D1' }))
+	assert.equal(other.code, 1)
+	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart', '--all']).output)
+	const entry = (ref: string) => record.entries.find((item: { ref: string }) => item.ref === ref)
+	assert.equal(entry('a1/D1').title, 'No discount at 5 items')
+	assert.equal(entry('a2/D1').title, 'No 10% off at 5 items')
+	assert.deepEqual(entry('a2/D1').links, ['a2/O1'])
+	assert.equal(entry('a1/O1').about, 'C1')
+	assert.equal(entry('a1/O1').actor, 'qa:a1')
+})
+
+test('testers in subfolders find the store in a parent folder, and parallel writers all commit', async (t) => {
+	const workspace = team(t)
+	const writes = ['a1', 'a2', 'a3'].flatMap((name) => {
+		mkdirSync(join(workspace, name, 'evidence'), { recursive: true })
+		writeFileSync(join(workspace, name, 'evidence', 'total.txt'), `${name} total`)
+		return [1, 2, 3, 4].map((index) =>
+			writer(join(workspace, name), `qa:${name}`, ['journal', 'log', 'cart', '--build', 'b2'], {
+				kind: 'observation',
+				id: `P${index}`,
+				saw: `Call ${index}`,
+				evidence: 'evidence/total.txt',
+			})
+		)
+	})
+	const replies = await Promise.all(writes)
+	for (const reply of replies) assert.equal(reply.status, 'completed', JSON.stringify(reply))
+	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart', '--all']).output)
+	const parallel = record.entries.filter((entry: { id: string }) => entry.id.includes('P'))
+	assert.equal(parallel.length, 12)
+	const a3 = parallel.find((entry: { ref: string }) => entry.ref === 'a3/P1')
+	assert.equal(a3.evidence[0].path, join('a3', 'evidence', 'total.txt'))
+	assert.equal(existsSync(join(workspace, 'a1', '.checkmate')), false)
+})
+
+function writer(cwd: string, actor: string, args: string[], input: unknown) {
+	return new Promise<{ status: string }>((done, failed) => {
+		const child = spawn(process.execPath, [join(root, 'plugin/bin/checkmate.ts'), ...args, '--json'], {
+			cwd,
+			env: { ...process.env, CHECKMATE_ACTOR: actor },
+		})
+		let output = ''
+		child.stdout.on('data', (bytes: Buffer) => (output += bytes))
+		child.on('error', failed)
+		child.on('close', () => done(JSON.parse(output)))
+		child.stdin.end(JSON.stringify(input))
+	})
+}
+
+test('merge prints all defects of a build and suggests groups from the same criterion or the same words', (t) => {
+	const workspace = team(t)
+	as(
+		'qa:a3',
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
+		defect('The coupon field accepts letters', 'Coupon ABC is saved')
+	)
+	const merge = cli(workspace, ['journal', 'merge', 'cart', '--build', 'b1'], undefined, {
+		CHECKMATE_ACTOR: 'qa:merge',
+	})
+	assert.equal(merge.code, 0, merge.output)
+	assert.equal(merge.lines[0], 'completed cart build=b1 defects=5')
+	assert(
+		merge.lines.includes(
+			'defect\ta1/D1\thigh\tNo discount at 5 items\texpected: 45.00 (ticket.md#AC1)\tactual: Total is 50.00\tcriteria: tester/C1'
+		),
+		merge.output
+	)
+	assert.deepEqual(
+		merge.lines.filter((line) => line.startsWith('suggest')),
+		[
+			'suggest\ta1/D1,a2/D1\tthe same criterion tester/C1',
+			'suggest\ta1/D2,a3/D2\tmany of the same words in title and actual',
+		]
+	)
+	assert(merge.output.includes(`<<'EOF'\n{"kind":"issue"`), merge.output)
+	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'merger']).output
+	assert(guide.includes('checkmate journal merge cart --build <build>'))
+	assert(
+		guide.includes(
+			JSON.parse(readFileSync(join(root, 'plugin/contracts/journal-issue.schema.json'), 'utf8')).properties
+				.reports.description
+		)
+	)
+	assert(!cli(workspace, ['journal', 'guide', 'cart']).output.includes('issue\t'))
+})
+
+test('issues merge reports, can be superseded, and are confirmed by two testers or by a confirming observation', (t) => {
+	const workspace = team(t)
+	const merger = (stdin: unknown) => as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], stdin)
+	assert.deepEqual(ids(merger({ kind: 'issue', title: 'No discount', severity: 'high', reports: ['a1/D1'] })), ['I1'])
+	const wrong = merger({ kind: 'issue', title: 'x', severity: 'low', reports: ['a1/D9'] })
+	assert.equal(wrong.code, 1)
+	assert.deepEqual(
+		ids(
+			merger({
+				kind: 'issue',
+				supersedes: 'I1',
+				title: 'No discount at 5 items',
+				severity: 'high',
+				reports: ['a1/D1', 'a2/D1'],
+			})
+		),
+		['I1']
+	)
+	const issues = () => as('qa:merge', workspace, ['journal', 'issues', 'cart']).body.issues
+	const byId = (id: string) => issues().find((issue: { id: string }) => issue.id === id)
+	assert.deepEqual(
+		issues().map((issue: { id: string; reporters: number; confirmed: boolean }) => [
+			issue.id,
+			issue.reporters,
+			issue.confirmed,
+		]),
+		[
+			['merge/I1', 2, true],
+			['a1/D2', 1, false],
+			['a3/D1', 1, false],
+		]
+	)
+	assert.equal(byId('merge/I1').steps, 'Add 5 pens')
+	assert.deepEqual(byId('merge/I1').evidence, [{ text: 'Total 50.00' }])
+	assert.deepEqual(byId('merge/I1').reports, ['a1/D1', 'a2/D1'])
+	const verify = cli(workspace, ['journal', 'verify', 'cart', '--build', 'b1'])
+	assert.deepEqual(
+		verify.lines.filter((line) => line.startsWith('verify')),
+		['verify\ta1/D2\thigh\tCoupon field accepts letters', 'verify\ta3/D1\thigh\tTax rounds down']
+	)
+	assert(verify.lines.includes('steps\tGET /api/tax?net=10.05'), verify.output)
+	const verifier = (stdin: unknown) => as('qa:verify', workspace, ['journal', 'log', 'cart', '--build', 'b1'], stdin)
+	verifier([
+		{ kind: 'observation', confirms: 'a1/D2', saw: 'The coupon ABC is saved', via: 'api' },
+		{ kind: 'observation', refutes: 'a3/D1', saw: 'Tax on 10.05 is 2.32', via: 'api' },
+	])
+	as('qa:a3', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+		kind: 'observation',
+		confirms: 'D1',
+		saw: 'Again 2.31',
+	})
+	assert.equal(byId('a1/D2').confirmed, true)
+	assert.equal(byId('a3/D1').confirmed, false)
+	assert.equal(byId('a3/D1').refuted, true)
+	const printed = cli(workspace, ['journal', 'issues', 'cart'])
+	assert(printed.lines.includes('issue\ta3/D1\thigh\tTax rounds down\treporters=1\ta3\trefuted'), printed.output)
+	assert.equal(
+		cli(workspace, ['journal', 'verify', 'cart', '--build', 'b1']).lines.filter((line) => line.startsWith('verify'))
+			.length,
+		0
+	)
+	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'verifier']).output
+	assert(guide.includes('checkmate journal verify cart --build <build>'))
+	assert(guide.includes('confirms'))
+})
+
+test('the status of an issue on a later build comes from the verdicts on its reports or on the issue', (t) => {
+	const workspace = team(t)
+	as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+		kind: 'issue',
+		title: 'No discount at 5 items',
+		severity: 'high',
+		reports: ['a1/D1', 'a2/D1'],
+	})
+	const verdict = (actor: string, defect: string, result: string) =>
+		as(actor, workspace, ['journal', 'log', 'cart', '--build', 'b2'], { kind: 'verdict', defect, result, saw: 'x' })
+	assert.equal(verdict('qa:a1', 'D1', 'fixed').code, 0)
+	assert.equal(verdict('qa:a3', 'D1', 'fixed').code, 0)
+	as('qa:a1', workspace, ['journal', 'log', 'cart', '--build', 'b3'], { kind: 'note', text: 'Explored.' })
+	assert.equal(verdict('qa:a2', 'merge/I1', 'not_fixed').code, 0)
+	const issues = as('qa:merge', workspace, ['journal', 'issues', 'cart']).body.issues
+	const statuses = Object.fromEntries(
+		issues.map((issue: { id: string; statuses: unknown }) => [issue.id, issue.statuses])
+	)
+	assert.deepEqual(statuses['merge/I1'], { b2: 'not_fixed', b3: 'no verdict' })
+	assert.deepEqual(statuses['a3/D1'], { b2: 'fixed', b3: 'no verdict' })
+	assert.deepEqual(statuses['a1/D2'], { b2: 'no verdict', b3: 'no verdict' })
+	const b2 = as('qa:merge', workspace, ['journal', 'issues', 'cart', '--build', 'b1']).body.issues
+	assert.equal(b2.length, 3)
+	const gaps = as('qa:merge', workspace, ['journal', 'gaps', 'cart', '--build', 'b3', '--all']).body.gaps as Array<{
+		kind: string
+		subject: string
+	}>
+	assert.deepEqual(
+		gaps
+			.filter((gap) => ['unconfirmed', 'no_verdict'].includes(gap.kind))
+			.map((gap) => `${gap.kind} ${gap.subject}`),
+		[
+			'no_verdict merge/I1 No discount at 5 items',
+			'unconfirmed a1/D2 Coupon field accepts letters',
+			'no_verdict a1/D2 Coupon field accepts letters',
+			'unconfirmed a3/D1 Tax rounds down',
+		]
+	)
+	const tester = as('qa:a1', workspace, ['journal', 'gaps', 'cart', '--build', 'b3']).body.gaps as Array<{
+		kind: string
+	}>
+	assert(!tester.some((gap) => ['unconfirmed', 'no_verdict'].includes(gap.kind)))
+	const accept = as('lead', workspace, ['journal', 'accept', 'cart', '--build', 'b3', '--rationale', 'Done.'])
+	assert(accept.body.gaps.some((gap: { kind: string }) => gap.kind === 'unconfirmed'))
+	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart', '--all']).output)
+	assert.deepEqual(record.issues[0].reports, ['a1/D1', 'a2/D1'])
+	assert.deepEqual(record.issues[0].statuses, { b2: 'not_fixed', b3: 'no verdict' })
+	assert.equal(record.issues.length, 3)
 })

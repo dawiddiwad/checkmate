@@ -73,18 +73,23 @@ import {
 } from './views.ts'
 import { recordBuild, recordChecklist, showLite } from './lite.ts'
 import type { Field } from './guide.ts'
-import { guideJournal, guideLite } from './guide.ts'
-import type { Gap } from './journal.ts'
+import type { GuideRole } from './guide.ts'
+import { guideJournal, guideLite, guideRoles } from './guide.ts'
+import type { Gap, Issue } from './journal.ts'
 import {
 	answerQuestion,
 	changeGaps,
+	changeIssues,
 	changeState,
 	decideBuild,
 	exportChange,
+	issueStatus,
 	logEntries,
+	mergeBuild,
 	openChange,
 	readEntries,
 	showChange,
+	verifyBuild,
 } from './journal.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
@@ -95,7 +100,13 @@ import { constants } from 'node:sqlite'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
-type Context = { actor: string | undefined; stdin: () => unknown; text: () => string }
+type Context = {
+	actor: string | undefined
+	stdin: () => unknown
+	text: () => string
+	cwd: string
+	viewer: () => string | undefined
+}
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
 	positionals: string[]
@@ -275,7 +286,23 @@ function liteLines(data: LiteState, sources = true) {
 
 type ChangeState = ReturnType<typeof changeState>
 
-type OpenItems = { build: string; total: number; counts: Record<string, number>; gaps: Gap[] }
+type OpenItems = { build: string; total: number; counts: Record<string, number>; gaps: Gap[]; tester: boolean }
+type MergeData = {
+	build: string
+	total: number
+	command: string
+	example: unknown
+	defects: Array<{
+		id: string
+		severity: string
+		title: string
+		expected: string
+		actual: string
+		criteria: string[]
+	}>
+	groups: Array<{ reports: string[]; reason: string }>
+	issues: Array<{ id: string; title: string; reports: string[] }>
+}
 
 function gapLines(gaps: Gap[], build: string, total = gaps.length) {
 	return [
@@ -301,7 +328,9 @@ function notShownLines(changeId: string, open: OpenItems) {
 			'not_shown',
 			count,
 			kindCounts(cut),
-			`Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`,
+			open.tester
+				? 'Run checkmate journal gaps again after you log entries.'
+				: `Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`,
 		],
 	]
 }
@@ -910,11 +939,12 @@ const commands: Record<string, Command> = {
 		flags: { build: 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, text }) =>
+		run: (store, args, { actor, text, cwd }) =>
 			logEntries(store, actor, {
 				changeId: value(args, 'changeId')!,
 				build: value(args, 'build'),
 				entries: readEntries(text()),
+				cwd,
 			}),
 		print: (reply) => {
 			const saved = reply.data.saved as Array<{ id: string }>
@@ -945,7 +975,7 @@ const commands: Record<string, Command> = {
 	'journal gaps': {
 		positionals: ['changeId'],
 		flags: { build: 'value', all: 'switch' },
-		run: (store, args) => changeGaps(store, value(args, 'changeId')!, value(args, 'build'), args.all === true),
+		run: (store, args, { viewer }) => changeGaps(store, value(args, 'changeId')!, value(args, 'build'), viewer()),
 		print: (reply) => {
 			const open = reply.data as unknown as OpenItems
 			return {
@@ -956,7 +986,9 @@ const commands: Record<string, Command> = {
 	},
 	'journal guide': {
 		positionals: ['changeId?'],
-		run: (store, args) => guideJournal(store, value(args, 'changeId')),
+		flags: { role: guideRoles },
+		run: (store, args, { viewer }) =>
+			guideJournal(store, value(args, 'changeId'), value(args, 'role') as GuideRole | undefined, viewer()),
 		print: (reply) => {
 			const data = reply.data as {
 				steps: string[]
@@ -988,7 +1020,8 @@ const commands: Record<string, Command> = {
 	},
 	'journal show': {
 		positionals: ['changeId'],
-		run: (store, args) => showChange(store, value(args, 'changeId')!),
+		flags: { all: 'switch' },
+		run: (store, args, { viewer }) => showChange(store, value(args, 'changeId')!, viewer()),
 		print: (reply) => {
 			const data = reply.data as ChangeState
 			return {
@@ -1042,12 +1075,105 @@ const commands: Record<string, Command> = {
 	},
 	'journal accept': decisionCommand('accepted'),
 	'journal reject': decisionCommand('rejected'),
+	'journal merge': {
+		positionals: ['changeId'],
+		flags: { build: 'value' },
+		required: ['build'],
+		run: (store, args) => mergeBuild(store, value(args, 'changeId')!, value(args, 'build')!),
+		print: (reply) => {
+			const data = reply.data as unknown as MergeData
+			const hidden = data.total - data.defects.length
+			return {
+				facts: { build: data.build, defects: data.total },
+				lines: [
+					...data.defects.map((defect) => [
+						'defect',
+						defect.id,
+						defect.severity,
+						defect.title,
+						`expected: ${defect.expected}`,
+						`actual: ${defect.actual}`,
+						`criteria: ${defect.criteria.join(',') || '-'}`,
+					]),
+					...(hidden > 0
+						? [
+								[
+									'not_shown',
+									hidden,
+									`Run checkmate journal export ${reply.subject} --all to read all defects.`,
+								],
+							]
+						: []),
+					...data.issues.map((issue) => ['issue', issue.id, issue.reports.join(','), issue.title]),
+					...data.groups.map((group) => ['suggest', group.reports.join(','), group.reason]),
+					...nextLines([
+						'The suggest lines are ideas from the same criterion or from the same words. Read the defects and decide.',
+						'Log one issue for each defect that two or more reports describe. A defect that is in no issue is its own issue.',
+						'To change an issue, log it again with "supersedes".',
+					]),
+					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
+				],
+			}
+		},
+	},
+	'journal issues': {
+		positionals: ['changeId'],
+		flags: { build: 'value' },
+		run: (store, args) => changeIssues(store, value(args, 'changeId')!, value(args, 'build')),
+		print: (reply) => {
+			const issues = reply.data.issues as Issue[]
+			return {
+				facts: { issues: issues.length, confirmed: issues.filter((issue) => issue.confirmed).length },
+				lines: issues.map((issue) => [
+					'issue',
+					issue.id,
+					issue.severity,
+					issue.title,
+					`reporters=${issue.reporters}`,
+					issue.actors.join(','),
+					...Object.entries(issue.statuses).map(([build, status]) => `${build}=${status}`),
+					issueStatus(issue),
+				]),
+			}
+		},
+	},
+	'journal verify': {
+		positionals: ['changeId'],
+		flags: { build: 'value' },
+		required: ['build'],
+		run: (store, args) => verifyBuild(store, value(args, 'changeId')!, value(args, 'build')!),
+		print: (reply) => {
+			const items = reply.data.items as Issue[]
+			return {
+				facts: { build: reply.data.build, items: items.length },
+				lines: [
+					...items.flatMap((issue) => [
+						['verify', issue.id, issue.severity, issue.title],
+						['steps', [issue.steps ?? '-'].flat().join(' ')],
+						['expected', issue.expected],
+						['actual', issue.actual],
+						...issue.evidence.map((item) => ['evidence', 'path' in item ? item.path : item.text]),
+					]),
+					...nextLines([
+						'Do the steps of each item on the running app.',
+						'Log an observation with "confirms" when you see the defect, or with "refutes" when you do not.',
+					]),
+					[
+						'example',
+						{
+							preformatted: `${reply.data.command} <<'EOF'\n${JSON.stringify(reply.data.example)}\nEOF`,
+						},
+					],
+				],
+			}
+		},
+	},
 	'journal export': {
 		positionals: ['changeId'],
-		flags: { out: 'value' },
-		run: (store, args) => {
+		flags: { out: 'value', all: 'switch' },
+		run: (store, args, { viewer }) => {
 			const changeId = value(args, 'changeId')!
-			const content = exportChange(store, changeId)
+			const content = exportChange(store, changeId, viewer())
 			const out = value(args, 'out')
 			if (out === undefined) return completed(changeId, { format: 'json', content })
 			return completed(changeId, { format: 'json', out: writeOutput(store, out, content) })
@@ -1862,7 +1988,13 @@ export function run(argv: string[], io: Io): Outcome {
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
-		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin })
+		const reply = command.run(store, args, {
+			actor,
+			stdin: () => readJson(io.stdin()),
+			text: io.stdin,
+			cwd: resolve(io.cwd),
+			viewer: () => (args.all === true ? undefined : defaultActor(workspace, io.env)),
+		})
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }

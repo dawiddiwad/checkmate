@@ -35,7 +35,7 @@
 		"repeats": {
 			"description": "The ID of an earlier observation that you did again. Without it, Checkmate links a value to the one earlier value with the same about and steps, or the same ID without the build name (total-b1, total-base). none: no link.",
 			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$"
 		},
 		"verdict": {
 			"description": "ok when the result is correct. wrong when it is not.",
@@ -47,8 +47,28 @@
 		},
 		"evidence": {
 			"$ref": "journal-entry.schema.json#/definitions/evidence"
+		},
+		"confirms": {
+			"description": "The ID of an issue or a defect that you did again and saw, for example a1/D3.",
+			"type": "string",
+			"minLength": 1
+		},
+		"refutes": {
+			"description": "The ID of an issue or a defect that you did again and did not see.",
+			"type": "string",
+			"minLength": 1
 		}
 	},
 	"required": ["kind", "build", "saw"],
-	"additionalProperties": false
+	"additionalProperties": false,
+	"examples": [
+		{
+			"kind": "observation",
+			"confirms": "a1/D3",
+			"steps": "Add 5 pens in the cart",
+			"saw": "Total 50.00, no discount",
+			"via": "ui",
+			"evidence": "evidence/cart-5.png"
+		}
+	]
 }

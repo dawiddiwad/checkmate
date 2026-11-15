@@ -13,7 +13,7 @@ export async function fixture() {
 			actions++
 			const promotion = url.searchParams.get('promotion') === 'true'
 			const loyalty = url.searchParams.get('loyalty') === 'true'
-			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : 400
+			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : loyalty ? 380 : 400
 			return response.end(JSON.stringify({ totalPLN }))
 		}
 		if (url.pathname === '/order' && request.method === 'POST') {

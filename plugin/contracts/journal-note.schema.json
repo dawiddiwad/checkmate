@@ -26,8 +26,29 @@
 		},
 		"area": {
 			"$ref": "journal-entry.schema.json#/definitions/area"
+		},
+		"to": {
+			"description": "The short name of the actor that must read the note, for example a2. team: all testers.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+		},
+		"assign": {
+			"description": "The short name of the tester that must cover the area, for example a1. Give it with area. The text tells the tester what to cover.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
 		}
 	},
 	"required": ["kind", "text"],
-	"additionalProperties": false
+	"dependencies": {
+		"assign": ["area"]
+	},
+	"additionalProperties": false,
+	"examples": [
+		{
+			"kind": "note",
+			"assign": "a1",
+			"area": "src/cart.js",
+			"text": "Test the discount rules, and the totals, lists, and exports that show the cart."
+		}
+	]
 }

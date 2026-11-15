@@ -18,7 +18,9 @@ import { existsSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 
 export const entryKinds = ['criterion', 'observation', 'defect', 'question', 'verdict', 'note', 'issue'] as const
-type Kind = (typeof entryKinds)[number] | 'answer' | 'decision'
+type Kind = (typeof entryKinds)[number] | 'answer' | 'decision' | 'team' | 'seen'
+export const teamModes = ['independent', 'open'] as const
+export type TeamMode = (typeof teamModes)[number]
 type Evidence = { text: string } | { path: string; sha256: string; size: number }
 export type Entry = {
 	kind: Kind
@@ -54,6 +56,10 @@ export type Entry = {
 	note?: string
 	confirms?: string
 	refutes?: string
+	to?: string
+	assign?: string
+	mode?: TeamMode
+	position?: number
 }
 type Row = Entry & { seq: number; actor: string; at: string; ref: string }
 type Journal = ReturnType<typeof journal>
@@ -70,6 +76,8 @@ const prefixes: Record<Kind, string> = {
 	issue: 'I',
 	answer: 'A',
 	decision: 'R',
+	team: 'T',
+	seen: 'S',
 }
 const capabilityEntryPoints: Record<string, { via: string; idea: string }> = {
 	browser: { via: 'ui', idea: 'Use the main flows in the browser, as a user does.' },
@@ -100,7 +108,7 @@ const sourceMarkers = [
 ]
 const viaNames: Record<string, string> = { ui: 'the UI', api: 'the API', code: 'the code', other: 'other means' }
 const fewBaselines = 3
-const nonTesters = ['merge', 'verify']
+const nonTesters = ['merge', 'verify', 'lead']
 const sharedKinds: Kind[] = ['answer', 'decision']
 
 const shortName = (actor: string) => actor.slice(actor.lastIndexOf(':') + 1)
@@ -144,7 +152,7 @@ function withRefs<T extends Entry>(entry: T, name: (word: string) => string): T 
 
 function journal(store: Store, changeId: string, viewer?: string) {
 	const opened = changeRow(store, changeId)
-	const rows = all<{ seq: number; body: string; actor: string; at: string }>(
+	const parsed = all<{ seq: number; body: string; actor: string; at: string }>(
 		store,
 		`SELECT e.rowid AS seq, e.body, e.actor, o.at FROM journal_entries e LEFT JOIN operations o ON o.id = e.operation_id
 		WHERE e.change_id = ? ORDER BY e.rowid`,
@@ -153,19 +161,24 @@ function journal(store: Store, changeId: string, viewer?: string) {
 		const body = JSON.parse(row.body) as Entry
 		return { ...body, seq: row.seq, actor: row.actor, at: row.at, ref: refOf(row.actor, body.id) }
 	})
+	const settings = parsed.filter((row) => row.kind === 'team' || row.kind === 'seen')
+	const rows = parsed.filter((row) => !settings.includes(row))
+	const mode = settings.filter((row) => row.kind === 'team').at(-1)?.mode ?? 'independent'
+	const open = mode === 'open'
 	const latest = new Map<string, Row>()
 	for (const row of rows) latest.set(row.ref, row)
 	const seen = (row: Row) =>
-		!isTester(viewer) || row.actor === viewer || !isTester(row.actor) || sharedKinds.includes(row.kind)
+		!isTester(viewer) || open || row.actor === viewer || !isTester(row.actor) || sharedKinds.includes(row.kind)
+	const teammate = (row: Row) => open && isTester(viewer) && isTester(row.actor) && row.actor !== viewer
 	const shown = [...latest.values()].filter(seen)
 	const full = (row: Row, word: string) =>
 		latest.has(word) ? word : latest.has(refOf(row.actor, word)) ? refOf(row.actor, word) : word
 	const team = shown.map((row) => ({ ...withRefs(row, (word) => full(row, word)), id: row.ref }))
 	const uses = new Map<string, number>()
-	for (const row of shown) uses.set(row.id, (uses.get(row.id) ?? 0) + 1)
+	for (const row of shown.filter((item) => !teammate(item))) uses.set(row.id, (uses.get(row.id) ?? 0) + 1)
 	const idOf = (ref: string) => {
 		const target = latest.get(ref)
-		return target && seen(target) && uses.get(target.id) === 1 ? target.id : ref
+		return target && seen(target) && !teammate(target) && uses.get(target.id) === 1 ? target.id : ref
 	}
 	const entries = team.map((entry) => ({
 		...withRefs(entry, (word) => (latest.has(word) ? idOf(word) : word)),
@@ -176,7 +189,21 @@ function journal(store: Store, changeId: string, viewer?: string) {
 	const builds = named.includes('base') ? ['base', ...named.filter((build) => build !== 'base')] : named
 	const vias = targetRequest(store, opened.targetId).capabilities.flatMap((name) => capabilityEntryPoints[name] ?? [])
 	const testers = new Set(shown.filter((row) => isTester(row.actor)).map((row) => row.actor))
-	return { ...opened, viewer, rows: visible, entries, team, builds, vias, testers: testers.size }
+	const marks = settings.filter((row) => row.kind === 'seen')
+	const everyone = [...latest.values()]
+	return {
+		...opened,
+		viewer,
+		mode,
+		rows: visible,
+		entries,
+		team,
+		everyone,
+		marks,
+		builds,
+		vias,
+		testers: testers.size,
+	}
 }
 
 function lookup(state: Journal, actor: string) {
@@ -221,9 +248,9 @@ function openDefects(state: Journal) {
 export function openChange(
 	store: Store,
 	actor: string | undefined,
-	input: { changeId: string; target: string; instance?: string }
+	input: { changeId: string; target: string; instance?: string; team?: TeamMode }
 ) {
-	return write(store, { actor, command: 'journal open', subject: input.changeId, input }, (operationId) => {
+	return write(store, { actor, command: 'journal open', subject: input.changeId, input }, (operationId, _, actor) => {
 		const changeId = requireIdentifier(input.changeId, 'change ID')
 		targetRequest(store, input.target)
 		if (input.instance !== undefined) findInstance(store, input.target, input.instance)
@@ -240,6 +267,8 @@ export function openChange(
 			input.instance ?? null,
 			operationId
 		)
+		if (input.team !== undefined)
+			insert(store, changeId, { kind: 'team', id: 'team', mode: input.team }, actor, operationId)
 		return {
 			reply: completed(changeId, {
 				changeId,
@@ -593,11 +622,65 @@ export function logEntries(
 				refused.map((item) => `${item.reason}.${fixText(item)}`).join(' '),
 				[...new Set(refused.flatMap((item) => item.hint ?? []))].join(' ')
 			)
+		const after = journal(store, changeId)
+		const inbox = after.mode === 'open' ? { inbox: newNotes(after, actor).length } : {}
 		return {
-			reply: completed(changeId, { saved, refused }),
+			reply: completed(changeId, { saved, refused, ...inbox }),
 			subjects: [`change:${changeId}`],
 		}
 	})
+}
+
+export function setTeam(store: Store, actor: string | undefined, input: { changeId: string; mode: TeamMode }) {
+	return write(store, { actor, command: 'journal team', subject: input.changeId, input }, (operationId, _, actor) => {
+		const { changeId } = changeRow(store, input.changeId)
+		insert(store, changeId, { kind: 'team', id: 'team', mode: input.mode }, actor, operationId)
+		return { reply: completed(changeId, { mode: input.mode }), subjects: [`change:${changeId}`] }
+	})
+}
+
+function newNotes(state: Journal, actor: string) {
+	const upTo = state.marks.filter((row) => row.actor === actor).at(-1)?.position ?? 0
+	return state.everyone
+		.filter(
+			(row) =>
+				row.kind === 'note' &&
+				row.actor !== actor &&
+				row.seq > upTo &&
+				(row.to === 'team' || (row.to !== undefined && row.to === shortName(actor)))
+		)
+		.sort((a, b) => a.seq - b.seq)
+}
+
+export function readInbox(store: Store, actor: string | undefined, input: { changeId: string }) {
+	return write(
+		store,
+		{ actor, command: 'journal inbox', subject: input.changeId, input },
+		(operationId, _, actor) => {
+			const state = journal(store, input.changeId)
+			const notes = newNotes(state, actor)
+			if (notes.length)
+				insert(
+					store,
+					state.changeId,
+					{ kind: 'seen', id: 'inbox', position: notes.at(-1)!.seq },
+					actor,
+					operationId
+				)
+			return {
+				reply: completed(state.changeId, {
+					notes: notes.map((note) => ({
+						id: note.ref,
+						from: shortName(note.actor),
+						to: note.to!,
+						area: note.area ?? null,
+						text: note.text!,
+					})),
+				}),
+				subjects: [`change:${state.changeId}`],
+			}
+		}
+	)
 }
 
 function rootOf(entry: Entry, byId: Map<string, Entry>) {
@@ -622,6 +705,16 @@ function decides(answer: string) {
 	return !(words.every((word) => sourceWords.has(word)) && words.some((word) => sourceMarkers.includes(word)))
 }
 
+const areasOf = (state: Journal, notes: Entry[]) => [
+	...new Set([...ofKind(state, 'criterion'), ...notes].flatMap((entry) => entry.area ?? [])),
+]
+const isAboutArea = (entry: Entry, area: string, criteria: Entry[]) =>
+	Boolean(entry.about?.includes(area)) ||
+	criteria.some((criterion) => criterion.area === area && isAbout(entry, criterion.id))
+const openNote = (state: Journal, note: Entry) =>
+	openEnd.test(note.text ?? note.saw ?? '') &&
+	!state.entries.some((other) => other.id !== note.id && isAbout(other, note.id))
+
 function gapList(state: Journal, build: string): Gap[] {
 	const gaps: Gap[] = []
 	const keys = new Set<string>()
@@ -639,10 +732,10 @@ function gapList(state: Journal, build: string): Gap[] {
 	const defects = ofKind(state, 'defect')
 	const notes = ofKind(state, 'note')
 	const criteria = ofKind(state, 'criterion')
-	const areas = [...new Set([...criteria, ...notes].flatMap((entry) => entry.area ?? []))]
-	const aboutArea = (entry: Entry, area: string) =>
-		Boolean(entry.about?.includes(area)) ||
-		criteria.some((criterion) => criterion.area === area && isAbout(entry, criterion.id))
+	const forViewer = (note: Entry) =>
+		note.assign === undefined || !isTester(state.viewer) || note.assign === shortName(state.viewer!)
+	const areas = areasOf(state, notes.filter(forViewer))
+	const aboutArea = (entry: Entry, area: string) => isAboutArea(entry, area, criteria)
 	const explained = (id: string) =>
 		defects.some((defect) => defect.id === id || defect.links?.includes(id)) ||
 		notes.some((note) => isAbout(note, id))
@@ -729,8 +822,7 @@ function gapList(state: Journal, build: string): Gap[] {
 		(item) =>
 			(item.kind === 'note' || item.kind === 'observation') &&
 			(item.build === build || item.build === undefined) &&
-			openEnd.test(item.text ?? item.saw ?? '') &&
-			!state.entries.some((other) => other.id !== item.id && isAbout(other, item.id))
+			openNote(state, item)
 	))
 		add(
 			entry.id,
@@ -1216,6 +1308,11 @@ export function changeState(store: Store, changeId: string, viewer?: string) {
 	const state = journal(store, changeId, viewer)
 	return {
 		changeId: state.changeId,
+		team: state.mode,
+		assignments: assignmentsOf(state)
+			.filter((note) => viewer !== undefined && note.assign === shortName(viewer))
+			.map((note) => ({ area: note.area!, text: note.text! })),
+		coverage: viewer === undefined ? coverageOf(state) : [],
 		targetId: state.targetId,
 		instanceId: state.instanceId,
 		builds: state.builds,
@@ -1236,6 +1333,58 @@ export function changeState(store: Store, changeId: string, viewer?: string) {
 			gaps: gaps!,
 		})),
 	}
+}
+
+const assignmentsOf = (state: Journal) => state.everyone.filter((row) => row.kind === 'note' && row.assign)
+const namesArea = (entry: Entry, area: string) => entry.area === area || Boolean(entry.about?.includes(area))
+
+function coverageOf(state: Journal) {
+	return assignmentsOf(state).map((note) => {
+		const after = state.team.filter(
+			(entry) => entry.seq > note.seq && (shortName(entry.actor) === note.assign || namesArea(entry, note.area!))
+		)
+		const count = (kind: Kind) => after.filter((entry) => entry.kind === kind).length
+		return { area: note.area!, tester: note.assign!, observations: count('observation'), defects: count('defect') }
+	})
+}
+
+const debriefLimit = 10
+
+export function debriefBuild(store: Store, changeId: string, build: string) {
+	const state = journal(store, changeId)
+	const issues = issueList(state).filter((issue) => issueBuilds(state, issue).includes(build))
+	const here = observationsOf(state).filter((entry) => entry.build === build)
+	const criteria = ofKind(state, 'criterion')
+	const notes = ofKind(state, 'note')
+	const uncovered = [
+		...criteria
+			.filter((criterion) => !here.some((entry) => isAbout(entry, criterion.id)))
+			.map((criterion) => ({ kind: 'criterion', subject: `${criterion.id} ${short(criterion.text)}` })),
+		...areasOf(state, notes)
+			.filter((area) => !here.some((entry) => isAboutArea(entry, area, criteria)))
+			.map((area) => ({ kind: 'area', subject: area })),
+	]
+	const notTested = notes
+		.filter((note) => (note.build === build || note.build === undefined) && openNote(state, note))
+		.map((note) => ({ id: note.id, text: short(note.text) }))
+	const line = (issue: Issue) => ({
+		id: issue.id,
+		severity: issue.severity,
+		title: short(issue.title),
+		actors: issue.actors,
+		status: issueStatus(issue),
+	})
+	const lists = {
+		merged: issues.filter((issue) => issue.reporters > 1).map(line),
+		uncovered,
+		notTested,
+		singles: issues.filter((issue) => issue.reporters === 1).map(line),
+	}
+	return completed(state.changeId, {
+		build,
+		total: Object.fromEntries(Object.entries(lists).map(([name, list]) => [name, list.length])),
+		...Object.fromEntries(Object.entries(lists).map(([name, list]) => [name, list.slice(0, debriefLimit)])),
+	})
 }
 
 export function showChange(store: Store, changeId: string, viewer?: string) {

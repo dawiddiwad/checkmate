@@ -75,12 +75,13 @@ import { recordBuild, recordChecklist, showLite } from './lite.ts'
 import type { Field } from './guide.ts'
 import type { GuideRole } from './guide.ts'
 import { guideJournal, guideLite, guideRoles } from './guide.ts'
-import type { BuildStatus, Gap, Issue } from './journal.ts'
+import type { BuildStatus, Gap, Issue, TeamMode } from './journal.ts'
 import {
 	answerQuestion,
 	changeGaps,
 	changeIssues,
 	changeState,
+	debriefBuild,
 	decideBuild,
 	exportChange,
 	issueStatus,
@@ -88,7 +89,10 @@ import {
 	mergeBuild,
 	openChange,
 	readEntries,
+	readInbox,
+	setTeam,
 	showChange,
+	teamModes,
 	verifyBuild,
 } from './journal.ts'
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
@@ -287,6 +291,16 @@ function liteLines(data: LiteState, sources = true) {
 type ChangeState = ReturnType<typeof changeState>
 
 type OpenItems = { build: string; total: number; counts: Record<string, number>; gaps: Gap[]; tester: boolean }
+type DebriefIssue = { id: string; severity: string; title: string; actors: string[]; status: string }
+type DebriefData = {
+	build: string
+	total: Record<string, number>
+	merged: DebriefIssue[]
+	uncovered: Array<{ kind: string; subject: string }>
+	notTested: Array<{ id: string; text: string }>
+	singles: DebriefIssue[]
+}
+
 type MergeData = {
 	build: string
 	total: number
@@ -304,6 +318,10 @@ type MergeData = {
 	candidates: Array<{ report: string; into: string; reason: string }>
 	issues: Array<{ id: string; title: string; reports: string[] }>
 	ungrouped: string[]
+}
+
+function assignmentLines(assignments: Array<{ area: string; text: string }>) {
+	return assignments.map((item) => ['assignment', `Your lead asked you to cover: ${item.area}`, item.text])
 }
 
 function gapLines(gaps: Gap[], build: string, total = gaps.length) {
@@ -932,7 +950,7 @@ const commands: Record<string, Command> = {
 	},
 	'journal open': {
 		positionals: ['changeId'],
-		flags: { target: 'value', instance: 'value' },
+		flags: { target: 'value', instance: 'value', team: teamModes },
 		required: ['target'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -940,11 +958,85 @@ const commands: Record<string, Command> = {
 				changeId: value(args, 'changeId')!,
 				target: value(args, 'target')!,
 				instance: value(args, 'instance'),
+				team: value(args, 'team') as TeamMode | undefined,
 			}),
 		print: (reply) => ({
 			facts: { target: reply.data.targetId, instance: reply.data.instanceId },
 			lines: nextLines(reply.data.next as string[]),
 		}),
+	},
+	'journal team': {
+		positionals: ['changeId'],
+		flags: { mode: teamModes },
+		required: ['mode'],
+		write: true,
+		run: (store, args, { actor }) =>
+			setTeam(store, actor, { changeId: value(args, 'changeId')!, mode: value(args, 'mode') as TeamMode }),
+		print: (reply) => ({ facts: { team: reply.data.mode } }),
+	},
+	'journal inbox': {
+		positionals: ['changeId'],
+		write: true,
+		run: (store, args, { actor }) => readInbox(store, actor, { changeId: value(args, 'changeId')! }),
+		print: (reply) => {
+			const notes = reply.data.notes as Array<{
+				id: string
+				from: string
+				to: string
+				area: string | null
+				text: string
+			}>
+			return {
+				facts: { new: notes.length },
+				lines: notes.map((note) => [
+					'note',
+					note.id,
+					`from ${note.from}`,
+					`to ${note.to}`,
+					note.area ?? '-',
+					note.text,
+				]),
+			}
+		},
+	},
+	'journal debrief': {
+		positionals: ['changeId'],
+		flags: { build: 'value' },
+		required: ['build'],
+		run: (store, args) => debriefBuild(store, value(args, 'changeId')!, value(args, 'build')!),
+		print: (reply) => {
+			const data = reply.data as unknown as DebriefData
+			const issueLine = (name: string, issue: DebriefData['merged'][number]) => [
+				name,
+				issue.id,
+				issue.severity,
+				issue.title,
+				issue.actors.join(','),
+				issue.status,
+			]
+			const lines = [
+				...data.merged.map((issue) => issueLine('issue', issue)),
+				...data.uncovered.map((item) => ['uncovered', item.kind, item.subject]),
+				...data.notTested.map((note) => ['not_tested', note.id, note.text]),
+				...data.singles.map((issue) => issueLine('single', issue)),
+			]
+			const hidden = Object.values(data.total).reduce((sum, count) => sum + count, 0) - lines.length
+			return {
+				facts: { build: data.build, ...data.total },
+				lines: [
+					...lines,
+					...(hidden > 0
+						? [
+								[
+									'not_shown',
+									hidden,
+									`Run checkmate journal export ${reply.subject} --all to read all of them.`,
+								],
+							]
+						: []),
+				],
+			}
+		},
 	},
 	'journal log': {
 		positionals: ['changeId'],
@@ -967,10 +1059,13 @@ const commands: Record<string, Command> = {
 				fix?: unknown
 			}>
 			const ids = saved.map((entry) => entry.id)
-			if (!refused.length) return { facts: { saved: ids } }
+			const inbox = Number(reply.data.inbox ?? 0)
+			const counter = inbox ? [[`inbox: ${inbox} new notes, run checkmate journal inbox ${reply.subject}`]] : []
+			if (!refused.length) return { facts: { saved: ids }, lines: counter }
 			return {
 				facts: { saved: ids, refused: refused.length },
 				lines: [
+					...counter,
 					...refused.map((entry) => [
 						'refused',
 						entry.field,
@@ -1010,11 +1105,15 @@ const commands: Record<string, Command> = {
 				example: unknown
 				answers: Array<{ id: string; question: string; answer: string }>
 				openDefects: Array<{ id: string; build: string; severity: string; title: string }>
+				assignments: Array<{ area: string; text: string }>
+				team: string[]
 			}
 			const described = new Set<string>()
 			return {
 				lines: [
+					...assignmentLines(data.assignments),
 					...data.steps.map((step) => ['step', step]),
+					...data.team.map((line) => ['team', line]),
 					['entries', `${data.about} Every entry has: ${fieldText(data.common, described)}`],
 					...data.kinds.map((kind) => [
 						'kind',
@@ -1043,6 +1142,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: { target: data.targetId, instance: data.instanceId, builds: data.builds },
 				lines: [
+					...assignmentLines(data.assignments),
 					...data.criteria.map((criterion) => [
 						'criterion',
 						criterion.id,
@@ -1076,6 +1176,13 @@ const commands: Record<string, Command> = {
 						decision.decision,
 						decision.rationale,
 						`gaps=${decision.gaps}`,
+					]),
+					...data.coverage.map((row) => [
+						'coverage',
+						row.area,
+						row.tester,
+						`observations=${row.observations}`,
+						`defects=${row.defects}`,
 					]),
 				],
 			}

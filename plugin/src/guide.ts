@@ -179,7 +179,7 @@ export function guideLite(store: Store, planId: string | undefined) {
 const commonFields = ['kind', 'id', 'build', 'supersedes']
 const teamKinds = ['issue']
 const teamFields = ['confirms', 'refutes']
-export const guideRoles = ['tester', 'merger', 'verifier'] as const
+export const guideRoles = ['tester', 'merger', 'verifier', 'lead', 'debrief'] as const
 export type GuideRole = (typeof guideRoles)[number]
 
 function kindSchema(kind: string, keep: (field: Field) => boolean) {
@@ -198,13 +198,14 @@ function commonSchema(kinds: string[]) {
 	)
 }
 
-export function journalSchema() {
+export function journalSchema(open = false) {
 	const entry = files['journal-entry.schema.json']
 	const kinds = entryKinds.filter((kind) => !teamKinds.includes(kind))
+	const hidden = open ? ['refutes', 'assign'] : [...teamFields, 'to', 'assign']
 	return {
 		about: entry.description!,
 		common: commonSchema(kinds),
-		kinds: kinds.map((kind) => kindSchema(kind, (field) => !teamFields.includes(field.path))),
+		kinds: kinds.map((kind) => kindSchema(kind, (field) => !hidden.includes(field.path))),
 		example: entry.examples![0],
 	}
 }
@@ -228,7 +229,25 @@ export function verifierSchema() {
 	}
 }
 
-function roleSteps(changeId: string, role: 'merger' | 'verifier') {
+export function leadSchema() {
+	return {
+		about: files['journal-entry.schema.json'].description!,
+		common: commonSchema(['note']),
+		kinds: [kindSchema('note', (field) => ['text', 'area', 'assign'].includes(field.path))],
+		example: noteSchema.examples[0],
+	}
+}
+
+const roleSchemas = { merger: mergerSchema, verifier: verifierSchema, lead: leadSchema }
+
+function roleSteps(changeId: string, role: keyof typeof roleSchemas) {
+	if (role === 'lead')
+		return [
+			'Read the ticket, the docs, and the diff.',
+			'Split the work into one part for each tester. Together, the parts must cover the change and what the change can break.',
+			`Log one note with "assign", "area", and "text" for each part: checkmate journal log ${changeId}, with the JSON on standard input in a quoted heredoc.`,
+			'Do not test.',
+		]
 	if (role === 'merger')
 		return [
 			'Do not test. Merge what the testers found.',
@@ -257,22 +276,45 @@ export function journalSteps(changeId: string) {
 	]
 }
 
+export function teamSteps(changeId: string) {
+	return [
+		'Your teammates log in the same record.',
+		`Run checkmate journal show ${changeId} to see what they found and where they are.`,
+		'Log a note that says where you go next, so that you do not test the same thing as a teammate.',
+		'When a teammate found a defect, do not log it again. You can log an observation with "confirms" and the ID of the defect.',
+	]
+}
+
+export function debriefSteps(changeId: string) {
+	return [
+		`Run checkmate journal debrief ${changeId} --build <build> to read what the team found and what it did not cover.`,
+		'Test what the team as a whole did not cover, and anything else that you find.',
+		`Log what you see: checkmate journal log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+		'Do not test or log again what the team already confirmed.',
+	]
+}
+
 export function guideJournal(store: Store, changeId: string | undefined, role: GuideRole = 'tester', viewer?: string) {
 	const change = changeId ?? '<changeId>'
-	if (role !== 'tester') {
+	if (role !== 'tester' && role !== 'debrief') {
 		if (changeId !== undefined) changeState(store, changeId)
 		return completed(changeId ?? 'journal guide', {
+			assignments: [],
 			steps: roleSteps(change, role),
-			...(role === 'merger' ? mergerSchema() : verifierSchema()),
-			command: `checkmate journal log ${change} --build b1`,
+			team: [],
+			...roleSchemas[role](),
+			command: role === 'lead' ? `checkmate journal log ${change}` : `checkmate journal log ${change} --build b1`,
 			answers: [],
 			openDefects: [],
 		})
 	}
 	const state = changeId === undefined ? undefined : changeState(store, changeId, viewer)
+	const open = state?.team === 'open'
 	return completed(changeId ?? 'journal guide', {
-		steps: journalSteps(change),
-		...journalSchema(),
+		assignments: state?.assignments ?? [],
+		steps: role === 'debrief' ? debriefSteps(change) : journalSteps(change),
+		team: open && role === 'tester' ? teamSteps(change) : [],
+		...journalSchema(open),
 		command: `checkmate journal log ${change} --build b1`,
 		answers: (state?.questions ?? []).filter((question) => question.answer !== null),
 		openDefects: (state?.defects ?? []).filter((defect) => state!.openDefects.includes(defect.id)),

@@ -85,6 +85,8 @@ export type JournalNote = {
 	text: string
 	about?: string
 	area?: string
+	to?: string
+	assign?: string
 }
 
 export type JournalObservation = {

@@ -1028,3 +1028,189 @@ test('a defect with saw, value, or via is also an observation for coverage and g
 	})
 	assert(!kinds(gaps(workspace, 'b3')).includes('build'))
 })
+
+test('in open mode a tester sees the entries of all testers with their actor, and a teammate can confirm', (t) => {
+	const workspace = team(t)
+	const a2 = (args: string[], stdin?: unknown) => as('qa:a2', workspace, args, stdin)
+	const view = (args: string[]) => cli(workspace, args, undefined, { CHECKMATE_ACTOR: 'qa:a2' })
+	const confirm = { kind: 'observation', confirms: 'a3/D1', saw: 'Tax on 10.05 is 2.31', via: 'api' }
+	assert.equal(a2(['journal', 'log', 'cart', '--build', 'b1'], confirm).code, 1)
+	assert.equal(json(workspace, ['journal', 'team', 'cart', '--mode', 'open']).code, 0)
+	const show = view(['journal', 'show', 'cart'])
+	assert(show.lines.includes('defect\ta1/D1\tb1\thigh\tNo discount at 5 items\t-'), show.output)
+	assert(show.lines.includes('defect\tD1\tb1\thigh\tFive items get no discount\t-'), show.output)
+	assert(show.lines.includes('defect\ta3/D1\tb1\thigh\tTax rounds down\t-'), show.output)
+	const guide = view(['journal', 'guide', 'cart'])
+	assert(guide.lines.includes('open_defect\ta1/D2\tb1\thigh\tCoupon field accepts letters'), guide.output)
+	assert.equal(guide.lines.filter((line) => line.startsWith('team\t')).length, 4)
+	assert(guide.lines.includes('team\tRun checkmate journal show cart to see what they found and where they are.'))
+	assert(guide.output.includes('confirms'))
+	const own = a2(['journal', 'gaps', 'cart', '--build', 'b1']).body.gaps as Array<{ subject: string }>
+	assert(
+		own.some((gap) => gap.subject === 'a1/D2 Coupon field accepts letters'),
+		JSON.stringify(own)
+	)
+	const record = JSON.parse(view(['journal', 'export', 'cart']).output)
+	assert(
+		record.entries.some((entry: { id: string; actor: string }) => entry.id === 'a1/D1' && entry.actor === 'qa:a1')
+	)
+	assert.equal(a2(['journal', 'log', 'cart', '--build', 'b1'], confirm).code, 0)
+	const issue = as('qa:merge', workspace, ['journal', 'issues', 'cart']).body.issues.find(
+		(item: { id: string }) => item.id === 'a3/D1'
+	)
+	assert.equal(issue.confirmed, true)
+	assert.equal(issue.verified, 'confirmed')
+	const operations = json(workspace, ['log', '--subject', 'change:cart']).body.operations
+	assert(operations.some((operation: { command: string }) => operation.command === 'journal team'))
+	assert.equal(json(workspace, ['journal', 'team', 'cart', '--mode', 'independent']).code, 0)
+	assert(!view(['journal', 'show', 'cart']).output.includes('a1/D1'))
+	assert.equal(view(['journal', 'guide', 'cart']).lines.filter((line) => line.startsWith('team\t')).length, 0)
+})
+
+test('the inbox prints the new notes to an actor or to the team, and an open-mode log counts them', (t) => {
+	const workspace = opened(t, 'http')
+	assert.equal(cli(workspace, ['journal', 'open', 'tax', '--target', 'shop', '--team', 'open']).code, 0)
+	const run = (actor: string, args: string[], stdin?: unknown) =>
+		cli(workspace, args, stdin, { CHECKMATE_ACTOR: actor })
+	const note = (actor: string, entry: Record<string, unknown>) =>
+		run(actor, ['journal', 'log', 'tax', '--build', 'b1'], { kind: 'note', ...entry })
+	note('qa:a1', { to: 'a2', text: 'Please test the rounding.' })
+	note('qa:a1', { to: 'team', text: 'I test the tax page now.' })
+	note('qa:a3', { to: 'a1', text: 'I saw a 500 on refunds.' })
+	assert.deepEqual(note('qa:a2', { text: 'Explored.' }).lines, [
+		'completed tax saved=N1',
+		'inbox: 2 new notes, run checkmate journal inbox tax',
+	])
+	assert.deepEqual(run('qa:a2', ['journal', 'inbox', 'tax']).lines, [
+		'completed tax new=2',
+		'note\ta1/N1\tfrom a1\tto a2\t-\tPlease test the rounding.',
+		'note\ta1/N2\tfrom a1\tto team\t-\tI test the tax page now.',
+	])
+	assert.deepEqual(run('qa:a2', ['journal', 'inbox', 'tax']).lines, ['completed tax new=0'])
+	assert.deepEqual(note('qa:a2', { text: 'Again.' }).lines, ['completed tax saved=N2'])
+	assert.equal(note('qa:a1', { text: 'Done.' }).lines[1], 'inbox: 1 new notes, run checkmate journal inbox tax')
+	note('qa:a3', { to: 'team', text: 'I go to the export.' })
+	assert.equal(note('qa:a2', { text: 'Later.' }).lines[1], 'inbox: 1 new notes, run checkmate journal inbox tax')
+	assert.equal(
+		run('qa:a1', ['journal', 'inbox', 'tax'], undefined).lines.filter((line) => line.startsWith('note')).length,
+		2
+	)
+	run('lead', ['journal', 'team', 'tax', '--mode', 'independent'])
+	note('qa:a3', { to: 'a1', text: 'One more.' })
+	assert.deepEqual(note('qa:a1', { text: 'Quiet.' }).lines, ['completed tax saved=N4'])
+	assert.equal(run('qa:a1', ['journal', 'inbox', 'tax']).lines[0], 'completed tax new=1')
+})
+
+test('a lead assigns areas, each tester sees its own assignments, and show --all prints the coverage', (t) => {
+	const workspace = opened(t, 'http')
+	const run = (actor: string, args: string[], stdin?: unknown) =>
+		cli(workspace, args, stdin, { CHECKMATE_ACTOR: actor })
+	const lead = run(
+		'qa:lead',
+		['journal', 'log', 'cart'],
+		[
+			{ kind: 'note', assign: 'a1', area: 'src/cart.js', text: 'Test the discount rules.' },
+			{ kind: 'note', assign: 'a2', area: 'src/tax.js', text: 'Test the tax rounding.' },
+			{ kind: 'note', assign: 'a3', text: 'No area.' },
+		]
+	)
+	assert.equal(lead.lines[0], 'completed cart saved=N1,N2 refused=1')
+	assert(lead.output.includes('must have property area when property assign is present'), lead.output)
+	const cart = 'assignment\tYour lead asked you to cover: src/cart.js\tTest the discount rules.'
+	assert.equal(run('qa:a1', ['journal', 'show', 'cart']).lines[1], cart)
+	assert.equal(run('qa:a1', ['journal', 'guide', 'cart']).lines[1], cart)
+	const other = run('qa:a2', ['journal', 'show', 'cart'])
+	assert.equal(other.lines[1], 'assignment\tYour lead asked you to cover: src/tax.js\tTest the tax rounding.')
+	assert(!other.output.includes('src/cart.js'), other.output)
+	const areas = (actor: string) =>
+		(
+			as(actor, workspace, ['journal', 'gaps', 'cart', '--build', 'b1']).body.gaps as Array<{
+				kind: string
+				subject: string
+			}>
+		)
+			.filter((gap) => gap.kind === 'area')
+			.map((gap) => gap.subject)
+	assert.deepEqual(areas('qa:a1'), ['src/cart.js'])
+	run(
+		'qa:a1',
+		['journal', 'log', 'cart', '--build', 'b1'],
+		[
+			{ kind: 'observation', about: 'src/cart.js', saw: 'Total 45.00', via: 'api' },
+			defect('No discount for 6 items', 'Total 60.00'),
+		]
+	)
+	run('qa:a3', ['journal', 'log', 'cart', '--build', 'b1'], {
+		kind: 'observation',
+		about: 'src/tax.js',
+		saw: 'Tax 2.31',
+		via: 'api',
+	})
+	const every = cli(workspace, ['journal', 'show', 'cart', '--all'])
+	assert.deepEqual(
+		every.lines.filter((line) => line.startsWith('coverage')),
+		['coverage\tsrc/cart.js\ta1\tobservations=1\tdefects=1', 'coverage\tsrc/tax.js\ta2\tobservations=1\tdefects=0']
+	)
+	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'lead'])
+	assert.deepEqual(
+		guide.lines.filter((line) => line.startsWith('step')),
+		[
+			'step\tRead the ticket, the docs, and the diff.',
+			'step\tSplit the work into one part for each tester. Together, the parts must cover the change and what the change can break.',
+			'step\tLog one note with "assign", "area", and "text" for each part: checkmate journal log cart, with the JSON on standard input in a quoted heredoc.',
+			'step\tDo not test.',
+		]
+	)
+	assert(guide.output.includes('"assign":"a1"'), guide.output)
+	assert(!cli(workspace, ['journal', 'guide', 'cart']).output.includes('assign'))
+})
+
+test('debrief lists the merged issues, the uncovered areas and criteria, the open notes, and the single reports', (t) => {
+	const workspace = team(t)
+	log(workspace, 'b1', { kind: 'criterion', text: 'A coupon takes 5.00 off.', area: 'src/coupon.js' })
+	as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+		kind: 'issue',
+		title: 'No discount at 5 items',
+		severity: 'high',
+		reports: ['a1/D1', 'a2/D1'],
+	})
+	as(
+		'qa:a3',
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
+		[
+			{ kind: 'note', text: 'The export was not tested.' },
+			{ kind: 'note', text: 'The cart page works.' },
+		]
+	)
+	const debrief = cli(workspace, ['journal', 'debrief', 'cart', '--build', 'b1'])
+	assert.deepEqual(debrief.lines, [
+		'completed cart build=b1 merged=1 uncovered=2 notTested=1 singles=2',
+		'issue\tmerge/I1\thigh\tNo discount at 5 items\ta1,a2\tconfirmed',
+		'uncovered\tcriterion\tC2 A coupon takes 5.00 off.',
+		'uncovered\tarea\tsrc/coupon.js',
+		'not_tested\tN1\tThe export was not tested.',
+		'single\ta1/D2\thigh\tCoupon field accepts letters\ta1\tunconfirmed',
+		'single\ta3/D1\thigh\tTax rounds down\ta3\tunconfirmed',
+	])
+	as(
+		'qa:a3',
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
+		Array.from({ length: 14 }, (_, i) => ({ kind: 'note', text: `Page ${i} was not tested.` }))
+	)
+	const long = cli(workspace, ['journal', 'debrief', 'cart', '--build', 'b1'])
+	assert.equal(long.lines.filter((line) => line.startsWith('not_tested')).length, 10)
+	assert(long.lines.length <= 42, long.output)
+	assert.equal(long.lines.at(-1), 'not_shown\t5\tRun checkmate journal export cart --all to read all of them.')
+	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'debrief'])
+	assert.deepEqual(
+		guide.lines.filter((line) => line.startsWith('step')),
+		[
+			'step\tRun checkmate journal debrief cart --build <build> to read what the team found and what it did not cover.',
+			'step\tTest what the team as a whole did not cover, and anything else that you find.',
+			'step\tLog what you see: checkmate journal log cart --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.',
+			'step\tDo not test or log again what the team already confirmed.',
+		]
+	)
+})

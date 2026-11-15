@@ -202,6 +202,8 @@ reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] }
 	}
 	const plan = await prompt('plan', 'checkout')
 	assert.match(plan, /Do not ask the oracle\. Do not wait for the oracle\./)
+	assert.match(plan, /Write a gap for each vague term that changes an expected value\. Plan regression tests/)
+	assert.match(plan, /read the running application to check the preconditions of the tests\. Do not change its state\./)
 	assert.doesNotMatch(plan, /person/)
 	assert(
 		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)

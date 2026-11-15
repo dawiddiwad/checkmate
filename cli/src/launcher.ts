@@ -302,6 +302,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 		return [
 			`Plan: ${subject}. Read the request with \`checkmate plan request ${subject}\`.`,
 			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
+			'Write a gap for each vague term that changes an expected value. Plan regression tests for the existing rules near the change.',
 			'You can read the running application to check the preconditions of the tests. Do not change its state.',
 			`Save revision 1 with \`checkmate plan save ${subject}\`. Do not run test actions.`,
 		]

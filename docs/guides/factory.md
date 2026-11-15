@@ -86,9 +86,12 @@ The planner writes the tests from the ticket. It reads the running base build to
 
 ```sh
 checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." \
-  --source jira:SHOP-12 --instructions "Use the acceptance criteria only."
+  --source jira:SHOP-12 --source docs/checkout.md \
+  --instructions "The ticket gives the change. docs/checkout.md gives the existing rules."
 checkmate delegate plan checkout --allow Read --allow Bash --allow mcp__jira
 ```
+
+Give the existing product documentation as sources too, for example `--source docs/checkout.md`. The planner reads the existing rules near the change in it, for example validation limits, permissions, counters, and prices, and plans regression tests for them. It marks each one with `"type": "regression"` in the test metadata. The planner also writes a gap for each vague term of the ticket that changes an expected value, for example a boundary, a rounding rule, or a scope word. It does not choose a value.
 
 The oracle approves the revision, and QA runs the ready tests early. Most tests fail, and this is correct: an early run explores the requirements. Each failed assertion gets a defect with evidence. Unclear behavior becomes a new gap of the run.
 

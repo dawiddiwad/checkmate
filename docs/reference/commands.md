@@ -158,7 +158,7 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 - `target open` takes `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. It needs one or more. The name uses letters, digits, `_`, and `-`. The purpose can contain `:`.
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool. The name uses letters, digits, `_`, and `-`, as an entry point name does, with an optional `<plugin>:` prefix, for example `checkmate:ui`. A tool object in a plan request has the same rule.
 - `target instance add` takes `--entry <entryPoint>=<value>` once for each entry point, `--environment <text>`, and `--reference <text>` (repeatable). Without `--entry`, it reads the instance JSON on standard input. Read [Payloads](payloads.md#instance).
-- `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of JSON.
+- `plan open` takes `--objective`, `--source` (repeatable), and `--instructions` in place of JSON. Give the ticket and the existing product documentation as sources, for example `--source jira:SHOP-12 --source docs/checkout.md`. The planner plans regression tests from the existing rules in the documentation.
 - A decision command takes `--expect-sha <digest>`. It stops when the snapshot has another digest.
 
 ## Output

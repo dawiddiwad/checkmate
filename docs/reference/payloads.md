@@ -126,6 +126,7 @@ For requirements or plan tools, send JSON on standard input:
 A requirement can have [`metadata`](#metadata).
 
 - A request needs `requirements` or one or more `context.sources`.
+- Give the existing product documentation as a source too, for example `docs/checkout.md`. The planner plans [regression tests](#metadata) from the existing rules in it.
 - Without requirements, the plan stage writes them. The `source` of each starts with a context source, for example `jira:SHOP-12#ac-2`.
 - When `tools` names profile tools, the plan keeps only those. Without names, the plan keeps all profile tools. An object must not use the name of a profile tool.
 - `plan request <planId>` prints the request with the resolved tools.
@@ -338,6 +339,8 @@ QA sends new ambiguity to `run gap <runId>`.
 ```
 
 A test in a candidate can carry its Xray key the same way: `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`.
+
+The planner marks a regression test with `"metadata": { "type": "regression" }`. A regression test checks that an existing rule near the change still holds, for example a validation limit, a permission, a counter, or an existing price.
 
 - `metadata` is an object with 0 to 20 keys.
 - A key has 1 to 64 letters, digits, `_`, `.`, or `-`. It starts with a letter.

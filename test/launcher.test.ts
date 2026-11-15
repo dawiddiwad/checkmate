@@ -522,6 +522,7 @@ test('the execute prompt names the instance; the browser closes only for a targe
 	const opened = store(t, workspace)
 	ready(opened, {
 		tools: [{ name: 'node', kind: 'cli', purpose: 'Send HTTP requests.', version: '24.12.0', reachable: true }],
+		reset: { owner: 'checkmate', command: ['npm run db:reset'] },
 	})
 	begin(opened, 'run-1', ['T1'], 'build-1')
 	const retired = retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
@@ -553,6 +554,13 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 	assert.match(prompt, /Run a command entry at test time\./)
 	assert(
 		prompt.includes(
+			'Reset: `npm run db:reset`. Run it exactly as recorded before a test that needs a fresh state.'
+		),
+		prompt
+	)
+	assert.match(prompt, /adapt the test data within the intent of the test before you record a blocking gap/)
+	assert(
+		prompt.includes(
 			'Instance local is retired; its sandbox may be gone. Stop with a blocked gap if it does not respond.'
 		),
 		prompt
@@ -562,7 +570,7 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 test('the execute prompt gives the rationale of a rejected run that the run tests again', async (t) => {
 	const workspace = directory(t)
 	const opened = store(t, workspace)
-	ready(opened)
+	ready(opened, { reset: { owner: 'factory', command: null } })
 	passRun(opened, 'run-1', 'b1', ['T1'])
 	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'Wrong account.' })
 	passRun(opened, 'run-2', 'b2', ['T1'])
@@ -581,4 +589,5 @@ reply({ status: 'completed', subject: 'run-3', reasons: [] })`
 		prompt
 	)
 	assert.doesNotMatch(prompt, /run-1|Wrong account/)
+	assert.match(prompt, /Reset: the factory owns it \(no command\)\. Do not run it\./)
 })

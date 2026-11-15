@@ -177,6 +177,16 @@ function profileFacts(profile: Profile) {
 			<dt>Cleanup</dt>
 			<dd>${profile.cleanup}</dd>
 		</div>
+		${
+			profile.reset
+				? html`<div>
+						<dt>Reset</dt>
+						<dd>
+							${profile.reset.owner}${profile.reset.command ? html` · <code>${profile.reset.command.join(' ')}</code>` : ''}
+						</dd>
+					</div>`
+				: ''
+		}
 		<div>
 			<dt>Ready</dt>
 			<dd>${profile.readyForLiveExecution ? pill('ready') : pill('blocked', 'not ready')}</dd>

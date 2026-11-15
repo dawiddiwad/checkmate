@@ -76,11 +76,13 @@ checkmate target instance list shop
 
 The examples below use the active instances `local` and `staging`.
 
+Tell the setup stage how to restore a fresh state of the application, for example a seed script. It records the command as `reset` in the profile, with the owner: `checkmate` when QA can run it, `factory` when only the factory can. QA runs or asks for the reset before a test that needs a fresh state. Checkmate does not run it. Read [Payloads](../reference/payloads.md#target-profile).
+
 A `command` entry runs a program at test time, for example `sf org open --target-org <alias> --url-only --json`. The `--allow` rules of `delegate execute` must cover the programs that the command entries use, for example `--allow "Bash(sf *)"`.
 
 ### 2. Iteration 1: plan and run early
 
-The planner writes the tests from the ticket. The feature does not exist yet, so the plan has gaps. The response is `needs_decision` with one `reason:` line for each open blocking gap.
+The planner writes the tests from the ticket. It reads the running base build to check the preconditions of the tests, and it does not change the state of the application. Each test creates its own data, so it does not depend on seed data. The feature does not exist yet, so the plan has gaps. The response is `needs_decision` with one `reason:` line for each open blocking gap.
 
 ```sh
 checkmate plan open checkout --target shop@1 --objective "Verify checkout totals." \

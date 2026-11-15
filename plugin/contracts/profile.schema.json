@@ -134,6 +134,32 @@
 			"type": "string",
 			"minLength": 1
 		},
+		"reset": {
+			"type": "object",
+			"properties": {
+				"owner": {
+					"enum": ["factory", "checkmate"]
+				},
+				"command": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"minItems": 1,
+							"uniqueItems": true
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"required": ["owner", "command"],
+			"additionalProperties": false
+		},
 		"readyForLiveExecution": {
 			"type": "boolean"
 		},

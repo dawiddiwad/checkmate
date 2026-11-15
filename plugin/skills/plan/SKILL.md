@@ -44,12 +44,13 @@ A request needs `requirements` or `context.sources`. When it has only sources, y
 
 2. If the request has context sources, read each source with the listed tools. Follow the instructions. Do not use other sources. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.
 3. Read the project instructions, for example `AGENTS.md`, `CLAUDE.md`, and `README.md`. Find how to drive the application: through the UI, through an API, or both. Use this to choose the capability of each test. These files are not requirement sources. Source code is optional.
-4. If the request has no requirements, write them from the sources. Give each requirement an `id`, a `text`, and a `source` that starts with the context source, for example `jira:SHOP-12#ac-1`. Add `requirements` to the candidate.
-5. Write a candidate with `tests` and `gaps`, and with `requirements` only from step 4. Use the shape below. Give each test a capability of the target that matches how the project instructions drive the application.
-6. Send the candidate in a heredoc: `checkmate plan save <planId> --actor claude:plan <<'EOF'`, the JSON, then `EOF`.
-7. If the command refuses the candidate, correct it and do step 6 again.
-8. Return the response of `plan save`. A `needs_decision` status with gap questions is a correct result.
-9. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Readiness, Title) and the open gaps (Gap, Severity, Tests, Question). In `Next:`, name the gaps that the oracle must answer, or the plan approval.
+4. Run `checkmate target show <targetId>` and `checkmate target instance list <targetId>`. Read the `reset` line and the entry values of an active instance. In step 6, use them to check the preconditions of each test against the running base build. Follow the rules in [Test data](#test-data).
+5. If the request has no requirements, write them from the sources. Give each requirement an `id`, a `text`, and a `source` that starts with the context source, for example `jira:SHOP-12#ac-1`. Add `requirements` to the candidate.
+6. Write a candidate with `tests` and `gaps`, and with `requirements` only from step 5. Use the shape below. Give each test a capability of the target that matches how the project instructions drive the application.
+7. Send the candidate in a heredoc: `checkmate plan save <planId> --actor claude:plan <<'EOF'`, the JSON, then `EOF`.
+8. If the command refuses the candidate, correct it and do step 7 again.
+9. Return the response of `plan save`. A `needs_decision` status with gap questions is a correct result.
+10. In the same session, report to the oracle in the format of `workflow.md`. Show the tests (Test, Readiness, Title) and the open gaps (Gap, Severity, Tests, Question). In `Next:`, name the gaps that the oracle must answer, or the plan approval.
 
 ```json
 {
@@ -91,5 +92,15 @@ Rules:
 - A gap applies to the tests in `testIds` and to every test of the requirements in `requirementIds`. To block one test, name the test and leave `requirementIds` empty.
 - Do not write `readiness`, `gapIds`, `coverage`, decisions, or assumptions. Checkmate calculates them.
 - Put team fields in `metadata`, for example `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`. Use it for a priority, a component, labels, or a Jira or Xray key from the sources. Do not put team fields in a title, an action, or a check. A value is a string, a number, or a boolean. Give labels as one string, for example `"checkout,regression"`. Keep the `metadata` of a requirement in the request unchanged.
-- Do not run test actions during planning. Do not open the application.
+- Do not run test actions during planning. Do not change the state of the application.
 - Do not answer a gap. The oracle decides with `checkmate gap answer` or in the review UI.
+
+## Test data
+
+Each test owns its data. A test that uses shared data can fail because of another test or an earlier run, not because of a defect.
+
+- Make each test create the records that it needs, in its `preconditions` or at the start of its `action`. Or make it use a free slot or a unique value, for example a new name with a unique suffix, or a date that no record uses.
+- Do not assume that seed data is unused or unchanged. Another test, an earlier run, or a person can change it.
+- Check each precondition against the running base build. Use only read-only access: open a page that lists the records, or send a `GET` request. Do not submit a form. Do not create, change, or delete data.
+- When a precondition does not agree with the base build, change the test data so that the test keeps its intent. Do not write a test that cannot start.
+- When a test needs a fresh state that the test cannot make, write it in `preconditions`, for example `Fresh state: run the target reset first.` `target show` prints the `reset` line of the target.

@@ -35,7 +35,7 @@ The plugin has two more skills. `/checkmate:status` tells where a plan is in the
 
 ## The records
 
-**Target.** The shape of the application under test. A target profile has entry points, capabilities, allowed operations, tools, authentication, startup, cleanup, and approvals. Its reference is `<targetId>@<revision>`, for example `shop@1`. A plan is approved against one revision.
+**Target.** The shape of the application under test. A target profile has entry points, capabilities, allowed operations, tools, authentication, startup, cleanup, an optional reset, and approvals. Its reference is `<targetId>@<revision>`, for example `shop@1`. A plan is approved against one revision.
 
 **Entry point.** A named way into the target, for example `web` or `org`. Its kind is `url`, `command`, or `value`. The target names its entry points. An instance gives their values.
 

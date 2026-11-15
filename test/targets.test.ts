@@ -1,3 +1,4 @@
+import type { Profile } from '../plugin/src/types.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
@@ -75,6 +76,8 @@ test('target save checks the profile against the setup request and the revision 
 	assert.throws(() => save({ allowedOperations: ['read_catalog'] }), /allowedOperations differ/)
 	assert.throws(() => save({ revision: 2 }), /Profile revision must be 1, not 2/)
 	assert.throws(() => save({ contractVersion: 'toolkit-1' as 'toolkit-2' }), /Invalid profile/)
+	for (const reset of [{ owner: 'qa', command: null }, { owner: 'factory' }, { owner: 'factory', command: [] }])
+		assert.throws(() => save({ reset: reset as Profile['reset'] }), /Invalid profile.*reset/, JSON.stringify(reset))
 	assert.throws(
 		() =>
 			save({
@@ -285,7 +288,10 @@ test('instances are added and retired without a new revision; retired IDs are no
 
 test('target list, show, and instance commands print entry points, authentication, and instance values', (t) => {
 	const opened = store(t)
-	target(opened, { authentication: { kind: 'environment', references: ['SHOP_TOKEN'] } })
+	target(opened, {
+		authentication: { kind: 'environment', references: ['SHOP_TOKEN'] },
+		reset: { owner: 'checkmate', command: ['npm run db:reset'] },
+	})
 	const workspace = opened.workspace
 	const add = cli(workspace, [
 		'target',
@@ -327,6 +333,9 @@ test('target list, show, and instance commands print entry points, authenticatio
 	for (const line of [
 		'entryPoint\tweb\turl\tCheckout web application and HTTP API.',
 		'authentication\tenvironment\tSHOP_TOKEN',
+		'startup\tfactory\t-',
+		'cleanup\tClose the run browser session. The fixture stores no records.',
+		'reset\tcheckmate\tnpm run db:reset',
 		'instance\tlocal\tlocal fixture',
 		'entry\tweb\thttps://staging.example.com/?a=b',
 		'environment\tStaging',

@@ -375,6 +375,9 @@ const commands: Record<string, Command> = {
 					['capabilities', profile.capabilities],
 					['operations', profile.allowedOperations],
 					['approvals', `plan=${approvals.plan}`, `result=${approvals.result}`],
+					['startup', profile.startup.owner, ...(profile.startup.command ?? [null])],
+					['cleanup', profile.cleanup],
+					...(profile.reset ? [['reset', profile.reset.owner, ...(profile.reset.command ?? [null])]] : []),
 					...profile.tools.map((tool) => [
 						'tool',
 						tool.name,

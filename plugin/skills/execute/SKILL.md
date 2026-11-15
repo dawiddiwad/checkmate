@@ -41,6 +41,18 @@ Use the entry values of the run instance for every action. Do not use another in
 
 `references` name authentication aliases or environment variables. The host resolves them. Do not record their values.
 
+## Test data and reset
+
+Each test owns its data. Use the data that the test creates, or the free slots and unique values that it names.
+
+- `target show` prints a `reset` line when the target has a reset. The reset restores a fresh state, for example the seed data.
+- Before a test that needs a fresh state, get the reset:
+  - Owner `checkmate` with a command: run the command exactly as recorded and alone. The profile authorizes it.
+  - Owner `factory`: do not run a command. In the same session, ask the oracle for the reset. In a delegated stage, do not wait. Adapt the test data, or record a blocking gap that asks for the reset.
+- Run the reset only between tests. A reset removes the data of earlier tests. Do not run it before a test that needs the data of its `dependsOn` tests.
+- When a precondition fails, adapt the test data first. Keep the intent of the test and the check text. For example, use another free slot, create the missing record, or use a new unique value. Write what you changed in `--observed`.
+- Record a blocking gap only when no change of the data can keep the intent of the test.
+
 ## For each selected test
 
 Run prerequisites first. A local `dependsOn` test must pass before the dependent test starts.

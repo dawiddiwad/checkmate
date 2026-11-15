@@ -240,6 +240,10 @@ export type Profile = {
 		command: Array<string> | null
 	}
 	cleanup: string
+	reset?: {
+		owner: 'factory' | 'checkmate'
+		command: Array<string> | null
+	}
 	readyForLiveExecution: boolean
 	approvals?: {
 		plan: 'required' | 'none'

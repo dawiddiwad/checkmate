@@ -51,6 +51,7 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 - `reachable` is the result of the setup check. `readyForLiveExecution` cannot be `true` when a requested tool is not reachable. When it is `false`, `target save` gives `needs_decision`, and the gate refuses every run.
 - `authentication.references` holds environment variable names or browser-state references, never credential values. The host resolves them.
 - `startup.command` is guidance for an authorized host. Checkmate does not start the application.
+- `reset` is optional. It tells QA how to restore a fresh state of the application, for example the seed data: `"reset": { "owner": "checkmate", "command": ["npm run db:reset"] }`. `owner` is `checkmate` when QA can run the command, or `factory` when only the factory can reset. `command` is a list of command lines, or `null`. It is guidance. Checkmate does not run it. `target show` prints it on a `reset` line, and `delegate execute` names it in the prompt.
 - `revision` is the latest revision plus 1. A save of the same revision with the same content changes nothing.
 
 ### Approvals policy
@@ -361,7 +362,7 @@ The schemas refuse a payload that breaks one of these limits:
 | Test `requirementIds` and `operations`                                      | 1 or more items                                                       |
 | Request `requirements`, when present                                        | 1 or more items                                                       |
 | Profile `entryPoints`, `capabilities`, and `allowedOperations`              | 1 or more items                                                       |
-| Profile `startup.command`, when not `null`                                  | 1 or more items                                                       |
+| Profile `startup.command` and `reset.command`, when not `null`              | 1 or more items                                                       |
 
 ## Schemas
 

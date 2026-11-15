@@ -82,7 +82,6 @@ test('a change goes from base over b1 to b2 with answers, verdicts, and a decisi
 		},
 	])
 	assert.equal(b1.code, 0)
-	assert.match(b1.body.saved[0].compare, /^same as O1 on base: 50.00$/)
 	assert.deepEqual(gaps(workspace, 'b1'), [])
 	assert(
 		cli(workspace, ['journal', 'guide', 'cart']).lines.includes('open_defect\tD1\tb1\thigh\tNo discount at 5 items')
@@ -286,19 +285,11 @@ test('a repeated baseline compares normalised values, and a difference needs a n
 		{ kind: 'observation', id: 'B2', saw: 'Total', value: '420.0', via: 'api' },
 		{ kind: 'observation', id: 'B3', saw: 'Fee', value: '1.50', via: 'api' },
 	])
-	const b1 = log(workspace, 'b1', [
+	log(workspace, 'b1', [
 		{ kind: 'observation', id: 'R1', repeats: 'B1', saw: 'Two items', value: '2 items', via: 'api' },
 		{ kind: 'observation', id: 'R2', repeats: 'B2', saw: 'Total', value: '0420', via: 'api' },
 		{ kind: 'observation', id: 'R3', repeats: 'B3', saw: 'Fee', value: '2.00', via: 'api' },
 	])
-	assert.deepEqual(
-		b1.body.saved.map((entry: { compare: string }) => entry.compare),
-		[
-			'same as B1 on base: 2 items',
-			'same as B2 on base: 0420',
-			'differs from B3 on base: "1.50", now "2.00". Explain it with a note, or report a defect.',
-		]
-	)
 	assert.deepEqual(gaps(workspace, 'b1').slice(0, 1), [
 		{
 			kind: 'difference',
@@ -394,95 +385,53 @@ test('the journal guide comes from the entry schemas and stays short', (t) => {
 	assert.equal(reply.body.saved.length, 3)
 })
 
-type Open = {
-	build: string
-	total: number
-	counts: Record<string, number>
-	gaps: Array<{ kind: string; subject: string; idea: string }>
-}
-
-test('each log call ends with the ranked open items, at most 8, and their counts', (t) => {
+test('a log call prints only the saved IDs and the refused entries', (t) => {
 	const workspace = opened(t)
-	log(workspace, 'base', [
-		{ kind: 'criterion', id: 'C1', text: 'Five items get 10% off.', source: 'ticket.md#AC1' },
-		{ kind: 'observation', id: 'B1', steps: 'GET /api/fee', saw: 'Fee 1.50', value: '1.50', via: 'api' },
-		{ kind: 'observation', id: 'B2', steps: 'GET /api/tax', saw: 'Tax 23.00', value: '23.00', via: 'api' },
-	])
-	const reply = log(workspace, 'b1', [
-		{ kind: 'observation', id: 'R1', repeats: 'B1', saw: 'Fee 2.00', value: '2.00', via: 'api' },
-		{ kind: 'observation', id: 'W1', about: 'C1', saw: 'No discount', verdict: 'wrong', via: 'api' },
-		{ kind: 'defect', id: 'D1', title: 'Rounding', expected: '1', actual: '2', severity: 'low', suspected: true },
-		{ kind: 'note', id: 'N1', text: 'The coupon page is not tested.' },
-		{ kind: 'criterion', id: 'C2', text: 'A coupon takes 5.00 off.', source: 'ticket.md#AC2' },
-		{ kind: 'criterion', id: 'C3', text: 'A fee is 1.50.', source: 'ticket.md#AC3' },
-	])
-	const open = reply.body.open as Open
-	assert.deepEqual(kinds(open.gaps), [
-		'difference',
-		'baseline',
-		'wrong',
-		'unverified',
-		'open_end',
-		'happy_path',
-		'criterion',
-		'entry_point',
-	])
-	assert.equal(open.total, 9)
-	assert.deepEqual(open.counts, {
-		difference: 1,
-		baseline: 1,
-		wrong: 1,
-		unverified: 1,
-		open_end: 1,
-		happy_path: 1,
-		criterion: 2,
-		entry_point: 1,
-	})
-	const text = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Explored.' })
-	assert.equal(text.lines[1], 'saved\tN2')
-	assert.equal(text.lines.filter((line) => line.startsWith('open\t')).length, 8)
-	assert.equal(
-		text.lines.at(-1),
-		'open_items\t9 on b1: difference 1, baseline 1, wrong 1, unverified 1, open_end 1, happy_path 1, criterion 2, entry_point 1\tRun checkmate journal gaps cart --build b1 --all to see all of them.'
-	)
-	const quiet = opened(t, 'http')
-	const none = cli(
-		quiet,
-		['journal', 'log', 'cart', '--build', 'base'],
+	const text = cli(
+		workspace,
+		['journal', 'log', 'cart', '--build', 'b1'],
 		[
-			{ kind: 'observation', saw: 'Fee', value: '1.50', via: 'api' },
-			{ kind: 'observation', saw: 'Tax', value: '23.00', via: 'api' },
-			{ kind: 'observation', saw: 'Count', value: '3', via: 'api' },
+			{ kind: 'note', text: 'The coupon page is not tested.' },
+			{ kind: 'observation', saw: 'Fee 2.00', value: '2.00', repeats: 'nothing' },
+			{ kind: 'criterion', text: 'A fee is 1.50.', source: 'ticket.md#AC3' },
 		]
 	)
-	assert.equal(none.lines.at(-1), 'open_items\t0 on base\tYour record shows no open item on this build.')
+	assert.equal(text.lines[1], 'saved\tN1,C1')
+	assert.deepEqual(
+		text.lines.filter((line) => /^(open|link|compare)/.test(line)),
+		[]
+	)
+	assert.equal(text.lines.filter((line) => line.startsWith('refused\t')).length, 1)
+	const reply = log(workspace, 'b1', { kind: 'note', text: 'Explored.' })
+	assert.equal('open' in reply.body, false)
 })
 
 test('on the first build, few baselines give one suggestion and each area without a baseline is named', (t) => {
 	const workspace = opened(t, 'http')
-	const first = log(workspace, 'base', [
+	log(workspace, 'base', [
 		{ kind: 'criterion', text: 'Five items get 10% off.', source: 'ticket.md#AC1', area: 'src/cart.js' },
 		{ kind: 'note', text: 'The diff changes the tax code.', area: 'src/tax.js' },
 		{ kind: 'observation', about: 'src/tax.js', saw: 'Tax 23.00', value: '23.00', via: 'api' },
-	]).body.open as Open
+	])
+	const first = gaps(workspace, 'base')
 	assert.deepEqual(
-		first.gaps.slice(0, 2).map((gap) => gap.subject),
+		first.slice(0, 2).map((gap) => gap.subject),
 		['1 baseline on base', 'src/cart.js']
 	)
 	assert.match(
-		first.gaps[0].idea,
+		first[0].idea,
 		/the same totals and calculations, validation and error messages, lists, exports, and counters/
 	)
-	const more = log(workspace, 'base', [
+	log(workspace, 'base', [
 		{ kind: 'observation', about: 'src/cart.js', saw: 'Total 50.00', value: '50.00', via: 'api' },
 		{ kind: 'observation', saw: 'Count 3', value: '3', via: 'api' },
-	]).body.open as Open
-	assert.deepEqual(kinds(more.gaps), [])
+	])
+	assert.deepEqual(kinds(gaps(workspace, 'base')), [])
 	log(workspace, 'b1', { kind: 'observation', saw: 'The cart loads.', via: 'api' })
 	assert(!kinds(gaps(workspace, 'b1')).includes('baselines'))
 })
 
-test('an observation with a value links itself to one earlier baseline, and prints the link and the difference', (t) => {
+test('an observation with a value links itself to one earlier baseline, and gaps shows the difference', (t) => {
 	const workspace = opened(t, 'http')
 	log(workspace, 'base', [
 		{ kind: 'observation', id: 'B1', about: 'C1', steps: 'GET /api/cart', saw: '50.00', value: '50.00' },
@@ -490,38 +439,28 @@ test('an observation with a value links itself to one earlier baseline, and prin
 		{ kind: 'observation', id: 'X1', about: 'tax', steps: 'GET /api/tax', saw: '23', value: '23' },
 		{ kind: 'observation', id: 'X2', about: 'tax', steps: 'get  /api/tax', saw: '23', value: '23' },
 	])
-	const b1 = log(workspace, 'b1', [
+	log(workspace, 'b1', [
 		{ kind: 'observation', about: 'C1', steps: ' get /API/cart ', saw: '45.00', value: '45.00' },
 		{ kind: 'observation', id: 'fee-b1', saw: 'Fee', value: '1.5' },
 		{ kind: 'observation', about: 'tax', steps: 'GET /api/tax', saw: '23', value: '23' },
 		{ kind: 'observation', about: 'C1', steps: 'GET /api/cart', saw: '45.00', value: '45.00', repeats: 'none' },
 	])
-	assert.deepEqual(
-		b1.body.saved.map((entry: { link?: string; compare?: string }) => [entry.link, entry.compare]),
-		[
-			[
-				'repeats B1 on base (the same about and steps). If this is wrong, log O1 again with "supersedes": "O1" and "repeats": "<ID>" or "none".',
-				'differs from B1 on base: "50.00", now "45.00". Explain it with a note, or report a defect.',
-			],
-			[
-				'repeats fee-base on base (the same ID without the build name). If this is wrong, log fee-b1 again with "supersedes": "fee-b1" and "repeats": "<ID>" or "none".',
-				'same as fee-base on base: 1.5',
-			],
-			['not linked: X1 and X2 match. Give "repeats" to compare.', undefined],
-			[undefined, undefined],
-		]
-	)
 	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output)
 	const entry = (id: string) => record.entries.find((item: { id: string }) => item.id === id)
 	assert.equal(entry('O1').repeats, 'B1')
 	assert.equal(entry('O1').linked, 'the same about and steps')
+	assert.equal(entry('fee-b1').repeats, 'fee-base')
+	assert.equal(entry('fee-b1').linked, 'the same ID without the build name')
 	assert.equal(entry('O3').repeats, undefined)
-	const b2 = log(workspace, 'b2', { kind: 'observation', id: 'fee-b2', saw: 'Fee', value: '2.00' })
-	assert.match(b2.body.saved[0].link, /^repeats fee-b1 on b1 /)
-	assert.equal(
-		b2.body.saved[0].compare,
-		'differs from fee-b1 on b1: "1.5", now "2.00". Explain it with a note, or report a defect.'
+	assert.equal(entry('O2').repeats, undefined)
+	assert.deepEqual(
+		gaps(workspace, 'b1')
+			.filter((gap) => gap.kind === 'difference')
+			.map((gap) => gap.subject),
+		['O1 repeats B1: base "50.00", b1 "45.00"']
 	)
+	log(workspace, 'b2', { kind: 'observation', id: 'fee-b2', saw: 'Fee', value: '2.00' })
+	assert.equal(JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output).entries.at(-1).repeats, 'fee-b1')
 })
 
 test('a PM answer without a decision gives no open item', (t) => {

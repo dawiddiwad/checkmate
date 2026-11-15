@@ -427,14 +427,6 @@ function baselineMatch(entry: Entry, known: Map<string, Entry>, builds: string[]
 	return { to: latest, rule: rule(latest) ?? rule(matches[0])!, ambiguous: [] }
 }
 
-function comparison(entry: Entry, known: Map<string, Entry>) {
-	const earlier = entry.repeats === undefined ? undefined : known.get(entry.repeats)
-	if (!earlier || earlier.value === undefined || entry.value === undefined) return undefined
-	return sameValue(earlier.value, entry.value)
-		? `same as ${earlier.id} on ${earlier.build}: ${entry.value}`
-		: `differs from ${earlier.id} on ${earlier.build}: "${earlier.value}", now "${entry.value}". Explain it with a note, or report a defect.`
-}
-
 function insert(store: Store, changeId: string, entry: Entry, actor: string, operationId: string) {
 	execute(
 		store,
@@ -449,7 +441,7 @@ function insert(store: Store, changeId: string, entry: Entry, actor: string, ope
 	)
 }
 
-type Saved = { index: number; id: string; kind: string; build: string | null; link?: string; compare?: string }
+type Saved = { index: number; id: string; kind: string; build: string | null }
 type Refused = { index: number; field: string; reason: string; hint?: string; fix?: Fix }
 
 const fixText = (item: Refused) => (item.fix ? ` Send: ${JSON.stringify(item.fix)}` : '')
@@ -479,28 +471,17 @@ export function logEntries(
 			if (entry.build !== undefined && !builds.includes(entry.build))
 				if (entry.build === 'base') builds.unshift('base')
 				else builds.push(entry.build)
-			let link: string | undefined
 			if (entry.repeats === 'none') delete entry.repeats
 			else if (entry.kind === 'observation' && entry.value !== undefined && entry.repeats === undefined) {
 				const match = baselineMatch(entry, known, builds)
 				if (match.to) {
 					entry.repeats = match.to.id
 					entry.linked = match.rule
-					link = `repeats ${match.to.id} on ${match.to.build} (${match.rule}). If this is wrong, log ${entry.id} again with "supersedes": "${entry.id}" and "repeats": "<ID>" or "none".`
-				} else if (match.ambiguous.length)
-					link = `not linked: ${match.ambiguous.join(' and ')} match. Give "repeats" to compare.`
+				}
 			}
 			insert(store, state.changeId, entry, actor, operationId)
-			const compare = comparison(entry, known)
 			known.set(entry.id, entry)
-			saved.push({
-				index,
-				id: entry.id,
-				kind: entry.kind,
-				build: entry.build ?? null,
-				...(link ? { link } : {}),
-				...(compare ? { compare } : {}),
-			})
+			saved.push({ index, id: entry.id, kind: entry.kind, build: entry.build ?? null })
 		}
 		if (!saved.length)
 			throw new Refusal(
@@ -508,11 +489,8 @@ export function logEntries(
 				refused.map((item) => `${item.reason}.${fixText(item)}`).join(' '),
 				[...new Set(refused.flatMap((item) => item.hint ?? []))].join(' ')
 			)
-		const build = input.build ?? saved.findLast((item) => item.build !== null)?.build ?? undefined
-		const after = { ...state, entries: [...known.values()], builds }
-		const open = openItems(after, buildOf(after, build), 8)
 		return {
-			reply: completed(state.changeId, { saved, refused, open }),
+			reply: completed(state.changeId, { saved, refused }),
 			subjects: [`change:${state.changeId}`],
 		}
 	})

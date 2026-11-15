@@ -14524,11 +14524,6 @@ function baselineMatch(entry, known, builds) {
   const latest = chain.at(-1);
   return { to: latest, rule: rule(latest) ?? rule(matches[0]), ambiguous: [] };
 }
-function comparison(entry, known) {
-  const earlier = entry.repeats === void 0 ? void 0 : known.get(entry.repeats);
-  if (!earlier || earlier.value === void 0 || entry.value === void 0) return void 0;
-  return sameValue(earlier.value, entry.value) ? `same as ${earlier.id} on ${earlier.build}: ${entry.value}` : `differs from ${earlier.id} on ${earlier.build}: "${earlier.value}", now "${entry.value}". Explain it with a note, or report a defect.`;
-}
 function insert(store, changeId, entry, actor, operationId) {
   execute(
     store,
@@ -14564,28 +14559,17 @@ function logEntries(store, actor, input) {
       if (entry.build !== void 0 && !builds.includes(entry.build))
         if (entry.build === "base") builds.unshift("base");
         else builds.push(entry.build);
-      let link;
       if (entry.repeats === "none") delete entry.repeats;
       else if (entry.kind === "observation" && entry.value !== void 0 && entry.repeats === void 0) {
         const match = baselineMatch(entry, known, builds);
         if (match.to) {
           entry.repeats = match.to.id;
           entry.linked = match.rule;
-          link = `repeats ${match.to.id} on ${match.to.build} (${match.rule}). If this is wrong, log ${entry.id} again with "supersedes": "${entry.id}" and "repeats": "<ID>" or "none".`;
-        } else if (match.ambiguous.length)
-          link = `not linked: ${match.ambiguous.join(" and ")} match. Give "repeats" to compare.`;
+        }
       }
       insert(store, state.changeId, entry, actor2, operationId);
-      const compare = comparison(entry, known);
       known.set(entry.id, entry);
-      saved.push({
-        index: index2,
-        id: entry.id,
-        kind: entry.kind,
-        build: entry.build ?? null,
-        ...link ? { link } : {},
-        ...compare ? { compare } : {}
-      });
+      saved.push({ index: index2, id: entry.id, kind: entry.kind, build: entry.build ?? null });
     }
     if (!saved.length)
       throw new Refusal(
@@ -14593,11 +14577,8 @@ function logEntries(store, actor, input) {
         refused2.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
         [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
       );
-    const build = input.build ?? saved.findLast((item) => item.build !== null)?.build ?? void 0;
-    const after = { ...state, entries: [...known.values()], builds };
-    const open = openItems(after, buildOf(after, build), 8);
     return {
-      reply: completed(state.changeId, { saved, refused: refused2, open }),
+      reply: completed(state.changeId, { saved, refused: refused2 }),
       subjects: [`change:${state.changeId}`]
     };
   });
@@ -15085,12 +15066,10 @@ function journalSchema() {
 }
 function journalSteps(changeId) {
   return [
-    "Test as you would without this tool. Checkmate does not limit what you test, or how.",
-    `Log what you see: checkmate journal log ${changeId} --build <build>, with an entry or a JSON array of entries in a quoted heredoc.`,
-    "Log after each area that you test. Each log call shows the open items.",
-    "Before the change is built, a baseline is useful for each existing rule near the change: the same totals and calculations, validation and error messages, lists, exports, and counters that show the changed data, permissions, and the rules in the docs for the same page or endpoint. A baseline is an observation with a value.",
+    "Test the way you would test without this tool. Checkmate does not limit what you test, or how.",
+    `Log what you see as you go, and at the latest before your turn ends: checkmate journal log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
     'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
-    `Open items are things your record does not show yet: checkmate journal gaps ${changeId} --build <build>. checkmate journal show ${changeId} prints the record.`
+    `When you think that you are done, run checkmate journal gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate journal show ${changeId} prints the record.`
   ];
 }
 function guideJournal(store, changeId) {
@@ -19188,17 +19167,6 @@ function notShownLines(changeId, open) {
     ]
   ];
 }
-function openLines(changeId, open) {
-  if (!open.total) return [["open_items", `0 on ${open.build}`, "Your record shows no open item on this build."]];
-  return [
-    ...open.gaps.map((gap) => ["open", gap.kind, gap.subject, gap.idea]),
-    [
-      "open_items",
-      `${open.total} on ${open.build}: ${kindCounts(open.counts)}`,
-      `Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`
-    ]
-  ];
-}
 function fieldText(fields) {
   return fields.map(
     (field2) => `${field2.path}${field2.type.includes("|") ? ` (${field2.type})` : ""}${field2.required ? " (required)" : ""}: ${field2.description}`
@@ -19756,8 +19724,6 @@ EOF` }
         facts: { saved: saved.length, refused: refused2.length },
         lines: [
           ["saved", saved.map((entry) => entry.id).join(",")],
-          ...saved.flatMap((entry) => entry.link ? [["link", entry.id, entry.link]] : []),
-          ...saved.flatMap((entry) => entry.compare ? [["compare", entry.id, entry.compare]] : []),
           ...refused2.map((entry) => [
             "refused",
             entry.field,
@@ -19765,8 +19731,7 @@ EOF` }
             ...entry.fix ? [`send: ${JSON.stringify(entry.fix)}`] : [],
             entry.hint
           ]),
-          ...refused2.length ? nextLines(["Fix each refused entry. Send only those entries again. The saved entries stay."]) : [],
-          ...openLines(reply.subject, reply.data.open)
+          ...refused2.length ? nextLines(["Fix each refused entry. Send only those entries again. The saved entries stay."]) : []
         ]
       };
     }

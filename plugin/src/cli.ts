@@ -306,18 +306,6 @@ function notShownLines(changeId: string, open: OpenItems) {
 	]
 }
 
-function openLines(changeId: string, open: OpenItems) {
-	if (!open.total) return [['open_items', `0 on ${open.build}`, 'Your record shows no open item on this build.']]
-	return [
-		...open.gaps.map((gap) => ['open', gap.kind, gap.subject, gap.idea]),
-		[
-			'open_items',
-			`${open.total} on ${open.build}: ${kindCounts(open.counts)}`,
-			`Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`,
-		],
-	]
-}
-
 function fieldText(fields: Field[]) {
 	return fields
 		.map(
@@ -929,7 +917,7 @@ const commands: Record<string, Command> = {
 				entries: readEntries(text()),
 			}),
 		print: (reply) => {
-			const saved = reply.data.saved as Array<{ id: string; link?: string; compare?: string }>
+			const saved = reply.data.saved as Array<{ id: string }>
 			const refused = reply.data.refused as Array<{
 				field: string
 				reason: string
@@ -940,8 +928,6 @@ const commands: Record<string, Command> = {
 				facts: { saved: saved.length, refused: refused.length },
 				lines: [
 					['saved', saved.map((entry) => entry.id).join(',')],
-					...saved.flatMap((entry) => (entry.link ? [['link', entry.id, entry.link]] : [])),
-					...saved.flatMap((entry) => (entry.compare ? [['compare', entry.id, entry.compare]] : [])),
 					...refused.map((entry) => [
 						'refused',
 						entry.field,
@@ -952,7 +938,6 @@ const commands: Record<string, Command> = {
 					...(refused.length
 						? nextLines(['Fix each refused entry. Send only those entries again. The saved entries stay.'])
 						: []),
-					...openLines(reply.subject, reply.data.open as OpenItems),
 				],
 			}
 		},

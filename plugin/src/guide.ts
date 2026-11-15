@@ -196,12 +196,10 @@ export function journalSchema() {
 
 export function journalSteps(changeId: string) {
 	return [
-		'Test as you would without this tool. Checkmate does not limit what you test, or how.',
-		`Log what you see: checkmate journal log ${changeId} --build <build>, with an entry or a JSON array of entries in a quoted heredoc.`,
-		'Log after each area that you test. Each log call shows the open items.',
-		'Before the change is built, a baseline is useful for each existing rule near the change: the same totals and calculations, validation and error messages, lists, exports, and counters that show the changed data, permissions, and the rules in the docs for the same page or endpoint. A baseline is an observation with a value.',
+		'Test the way you would test without this tool. Checkmate does not limit what you test, or how.',
+		`Log what you see as you go, and at the latest before your turn ends: checkmate journal log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
 		'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
-		`Open items are things your record does not show yet: checkmate journal gaps ${changeId} --build <build>. checkmate journal show ${changeId} prints the record.`,
+		`When you think that you are done, run checkmate journal gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate journal show ${changeId} prints the record.`,
 	]
 }
 

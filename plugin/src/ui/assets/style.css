@@ -1054,6 +1054,13 @@ summary.asr-row:focus-visible {
 .ev-name {
 	overflow-wrap: anywhere;
 }
+pre.report {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.55;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
 .chip {
 	display: inline-block;
 	font-family: var(--font-mono);

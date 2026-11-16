@@ -188,19 +188,19 @@ export function recordText(store: Store, changeId: string, viewer?: string) {
 export function recorderPrompt(
 	changeId: string,
 	build: string | undefined,
-	files = '<files>',
 	record = '<the criteria, defects with verdicts, and questions with answers of this change>'
 ) {
 	return [
 		`Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ''}).`,
-		'Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds. To name an entry of the record, use its ID.',
-		`Write all new entries as one JSON array to ${files}/entries.json with the Write tool. That is your only task. Do not run commands. When you end, Checkmate logs the file${build ? ` with build ${build}` : ''}.`,
+		'Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.',
+		`Reply with only one JSON array of the new entries, and nothing else. Use no tool. Checkmate logs your reply${build ? ` with build ${build}` : ''}.`,
+		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
 		'Evidence is the path of a file that already exists in the workspace, or the text that you saw.',
 		'',
 		'The entries:',
 		entryText(),
 		'',
-		`Example of ${files}/entries.json:`,
+		'Example of a reply:',
 		JSON.stringify(journalSchema().example),
 		'',
 		'The record already holds:',
@@ -208,11 +208,11 @@ export function recorderPrompt(
 	].join('\n')
 }
 
-export function repairPrompt(files: string, refusals: string[]) {
+export function repairPrompt(refusals: string[]) {
 	return [
-		`Checkmate refused these entries of ${files}/entries.json:`,
+		'Checkmate refused these entries of your reply:',
 		...refusals.map((refusal) => `- ${refusal}`),
-		`Write only the corrected entries, as one JSON array, to ${files}/fix.json with the Write tool. Do not write the saved entries again. Do not run commands.`,
+		'Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool.',
 	].join('\n')
 }
 

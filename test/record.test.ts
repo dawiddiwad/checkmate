@@ -29,29 +29,36 @@ const args = process.argv.slice(2)
 const prompt = readFileSync(0, 'utf8')
 const repair = !args.includes('--fork-session')
 const recorder = repair ? args[args.indexOf('--resume') + 1] : args[args.indexOf('--session-id') + 1]
-const files = /to (\\S+)\\/(?:entries|fix)\\.json with the Write tool/.exec(prompt)[1]
 const folder = join(process.env.CLAUDE_CONFIG_DIR, 'projects', process.cwd().replace(/[^a-zA-Z0-9]/g, '-'))
 mkdirSync(folder, { recursive: true })
 writeFileSync(join(folder, recorder + '.jsonl'), '{}\\n')
 const nested = spawnSync(process.execPath, [process.env.FAKE_CHECKMATE, 'record', 'cart'], { encoding: 'utf8' }).stdout
 const env = ['CHECKMATE_WORKSPACE', 'CHECKMATE_ACTOR', 'CHECKMATE_RECORDER'].map((name) => process.env[name])
-appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ args, prompt, cwd: process.cwd(), env, nested, files }) + '\\n')
+appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ args, prompt, cwd: process.cwd(), env, nested }) + '\\n')
 const observation = { kind: 'observation', about: 'coupon', saw: 'The total is 450.00.' }
 const defect = { kind: 'defect', title: 'Coupon stacks', severity: 'high', expected: '450.00', actual: '400.00', evidence: ['evidence/total.txt'] }
+const json = (entries) => JSON.stringify(entries)
+const replies = {
+	reply: json([observation, defect]),
+	fenced: 'Here are the entries:\\n\\u0060\\u0060\\u0060json\\n' + json([observation, defect]) + '\\n\\u0060\\u0060\\u0060\\nI used [no tool].',
+	nothing: 'I have nothing to add [yet].',
+	fix: repair ? json([defect]) : json([observation, { ...defect, severity: undefined }]),
+	collide: json([
+		{ kind: 'note', id: 'N1', text: 'Explored the coupon form.' },
+		{ kind: 'observation', id: 'O1', about: 'N1 and C1', saw: 'The total is 450.00.' },
+		{ ...defect, id: 'D1', links: ['O1', 'C1'] },
+	]),
+	missing: json([{ ...defect, evidence: ['evidence/gone.png', 'evidence/total.txt'] }]),
+}
 const mode = process.env.FAKE_CLAUDE
 if (mode === 'fail') {
 	process.stderr.write('API error: overloaded\\n')
 	process.exit(2)
 }
-if (mode === 'write') writeFileSync(join(files, 'entries.json'), JSON.stringify([observation, defect]))
-if (mode === 'fix' && !repair) writeFileSync(join(files, 'entries.json'), JSON.stringify([observation, { ...defect, severity: undefined }]))
-if (mode === 'fix' && repair) writeFileSync(join(files, 'fix.json'), JSON.stringify([defect]))
-if (mode === 'sleep') {
-	writeFileSync(join(files, 'entries.json'), JSON.stringify([observation]))
-	setTimeout(() => {}, 60000)
-} else
+if (mode === 'sleep') setTimeout(() => {}, 60000)
+else
 	process.stdout.write(
-		JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: recorder, total_cost_usd: 0.25, duration_ms: 1000 })
+		JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: replies[mode], session_id: recorder, total_cost_usd: 0.25, duration_ms: 1000 })
 	)
 `
 
@@ -95,7 +102,7 @@ function setup(t: TestContext) {
 		CHECKMATE_WORKSPACE: undefined,
 		FAKE_CLAUDE_CALL: call,
 		FAKE_CHECKMATE: script,
-		FAKE_CLAUDE: 'write',
+		FAKE_CLAUDE: 'reply',
 	}
 	const sessions = (directory: string) => {
 		const folder = join(config, 'projects', realpathSync(directory).replace(/[^a-zA-Z0-9]/g, '-'))
@@ -125,19 +132,9 @@ function setup(t: TestContext) {
 	return { workspace, record, recordFrom, sessions, called }
 }
 
-const allowed = (files: string) => [
-	'--output-format',
-	'json',
-	'--permission-prompts',
-	'none',
-	'--add-dir',
-	files,
-	'--allowedTools',
-	'Read',
-	`Edit(/${files}/**)`,
-]
+const noTools = ['--output-format', 'json', '--permission-prompts', 'none', '--tools', '', '--strict-mcp-config']
 
-test('record forks the latest test session, and Checkmate logs the file of the recorder as the actor of the caller', (t) => {
+test('record forks the latest test session, and Checkmate logs the reply of the recorder as the actor of the caller', (t) => {
 	const { workspace, record, called } = setup(t)
 	const reply = record(['--build', 'b1'])
 	assert.equal(reply.code, 0, reply.output)
@@ -154,25 +151,17 @@ test('record forks the latest test session, and Checkmate logs the file of the r
 		saved: 2,
 		refused: 0,
 		added: { observation: 1, defect: 1 },
+		evidenceMissing: 0,
 		costUsd: 0.25,
 		durationMs: 1000,
 	})
 	const [call] = called()
-	assert.equal(call.files, join(workspace, '.checkmate', 'tmp', `record-${recorder}`))
-	assert.deepEqual(call.args, [
-		'-p',
-		'--resume',
-		tester,
-		'--fork-session',
-		'--session-id',
-		recorder,
-		...allowed(call.files),
-	])
-	assert(!call.args.some((arg: string) => arg.startsWith('Bash')), 'no Bash rule')
-	assert.equal(call.prompt, recorderPrompt('cart', 'b1', call.files, 'No criterion, defect, or question yet.'))
-	assert.match(call.prompt, /Do not run commands\./)
-	assert.doesNotMatch(call.prompt, /checkmate (log|guide|show)|<<'EOF'/)
-	assert.equal(existsSync(call.files), false)
+	assert.deepEqual(call.args, ['-p', '--resume', tester, '--fork-session', '--session-id', recorder, ...noTools])
+	assert(!call.args.some((arg: string) => /allowedTools|Bash|Edit|Write|add-dir/.test(arg)), 'no tool grant')
+	assert.equal(call.prompt, recorderPrompt('cart', 'b1', 'No criterion, defect, or question yet.'))
+	assert.match(call.prompt, /Reply with only one JSON array of the new entries, and nothing else\. Use no tool\./)
+	assert.doesNotMatch(call.prompt, /checkmate (log|guide|show)|<<'EOF'|Write tool/)
+	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp')), false)
 	assert.equal(call.cwd, workspace)
 	assert.deepEqual(call.env, [workspace, 'qa:a1', '1'])
 	assert.match(call.nested, /^rejected cart refusal=prohibited\n.*\nreason: A recorder cannot start another recorder/)
@@ -194,19 +183,63 @@ test('record forks the latest test session, and Checkmate logs the file of the r
 		]
 	)
 
-	const again = record(['--build', 'b2'], { FAKE_CLAUDE: 'nothing' }, false)
-	assert.equal(again.code, 1)
+	const fenced = record(['--build', 'b2'], { FAKE_CLAUDE: 'fenced' })
+	assert.equal(fenced.code, 0, fenced.output)
+	assert.equal(fenced.body.saved, 2)
 	const [next] = called()
 	assert.equal(next.args[2], tester)
 	assert.match(next.prompt, /defect D1 \(b1, high\): Coupon stacks/)
+
+	const again = record(['--build', 'b2'], { FAKE_CLAUDE: 'nothing' }, false)
+	assert.equal(again.code, 1)
 	assert.match(
 		again.output,
 		new RegExp(`^operational_error cart session=${tester} recorder=\\S+ saved=0 refused=0 costUsd=0.25`)
 	)
 	assert.match(
 		again.output,
-		/\nreason: The recorder wrote no file \S+\/entries\.json\.\nhint: The entries that Checkmate logged stay/
+		/\nreason: The reply of the recorder has no JSON array of entries\.\nhint: The entries that Checkmate logged stay/
 	)
+})
+
+test('record gives new IDs to reply entries whose IDs the record has, and keeps the references inside the reply', (t) => {
+	const { workspace, record } = setup(t)
+	const seeded = [
+		{ kind: 'criterion', id: 'C1', text: 'A coupon does not stack.' },
+		{ kind: 'note', id: 'N1', text: 'Read the ticket.' },
+		{ kind: 'observation', id: 'O1', about: 'C1', saw: 'The form opens.' },
+	]
+	assert.equal(cli(workspace, ['log', 'cart', '--build', 'b1', '--actor', 'qa:a1'], seeded).code, 0)
+	const reply = record(['--build', 'b1'], { FAKE_CLAUDE: 'collide' })
+	assert.equal(reply.code, 0, reply.output)
+	assert.deepEqual([reply.body.saved, reply.body.refused, reply.body.calls], [3, 0, 1])
+	const entries = JSON.parse(cli(workspace, ['export', 'cart']).output).entries
+	const byId = (id: string) => entries.find((entry: { id: string }) => entry.id === id)
+	assert.equal(byId('N2').text, 'Explored the coupon form.')
+	assert.equal(byId('O2').about, 'N2 and C1')
+	assert.deepEqual(byId('D1').links, ['O2', 'C1'])
+	assert.equal(byId('N1').text, 'Read the ticket.')
+})
+
+test('record keeps a missing evidence path as text and counts it, and log stays strict', (t) => {
+	const { workspace, record } = setup(t)
+	const reply = record(['--build', 'b1'], { FAKE_CLAUDE: 'missing' })
+	assert.equal(reply.code, 0, reply.output)
+	assert.deepEqual(
+		[reply.body.saved, reply.body.evidenceMissing, reply.body.missingEvidence],
+		[1, 1, ['evidence/gone.png']]
+	)
+	const defect = JSON.parse(cli(workspace, ['export', 'cart']).output).entries.find(
+		(entry: { kind: string }) => entry.kind === 'defect'
+	)
+	assert.deepEqual(defect.evidence[0], { text: 'evidence/gone.png' })
+	assert.equal(defect.evidence[1].path, 'evidence/total.txt')
+	const strict = cli(
+		workspace,
+		['log', 'cart', '--build', 'b1', '--json'],
+		[{ kind: 'observation', saw: 'x', evidence: 'evidence/gone.png' }]
+	)
+	assert.match(JSON.parse(strict.output).reasons[1], /Evidence file not found: evidence\/gone\.png/)
 })
 
 test('record resumes the recorder once to fix the refused entries', (t) => {
@@ -215,10 +248,10 @@ test('record resumes the recorder once to fix the refused entries', (t) => {
 	assert.equal(reply.code, 0, reply.output)
 	assert.deepEqual([reply.body.calls, reply.body.saved, reply.body.refused], [2, 2, 0])
 	assert.deepEqual([reply.body.costUsd, reply.body.durationMs], [0.5, 2000])
-	const [first, repair] = called()
-	assert.deepEqual(repair.args, ['-p', '--resume', reply.body.recorder, ...allowed(first.files)])
-	assert.match(repair.prompt, /^Checkmate refused these entries of \S+\/entries\.json:\n- \[1\] .*severity/)
-	assert.match(repair.prompt, /to \S+\/fix\.json with the Write tool/)
+	const [, repair] = called()
+	assert.deepEqual(repair.args, ['-p', '--resume', reply.body.recorder, ...noTools])
+	assert.match(repair.prompt, /^Checkmate refused these entries of your reply:\n- \[1\] .*severity/)
+	assert.match(repair.prompt, /Reply with only one JSON array of the corrected entries/)
 })
 
 test('record reports a recorder that exits with an error or does not end in time', (t) => {
@@ -226,16 +259,12 @@ test('record reports a recorder that exits with an error or does not end in time
 	const failed = record([], { FAKE_CLAUDE: 'fail' })
 	assert.equal(failed.code, 1)
 	assert.equal(failed.body.status, 'operational_error')
-	assert.equal(failed.body.reasons[0], 'The recorder exited with code 2: API error: overloaded')
-	assert.match(failed.body.reasons[1], /^The recorder wrote no file /)
+	assert.deepEqual(failed.body.reasons, ['The recorder exited with code 2: API error: overloaded'])
 	const slow = record(['--timeout', '1', '--build', 'b1'], { FAKE_CLAUDE: 'sleep' })
 	assert.equal(slow.code, 1)
 	assert.equal(slow.body.status, 'interrupted')
-	assert.deepEqual(slow.body.reasons, [
-		'The recorder did not end in 1 seconds. Checkmate stopped it.',
-		'Checkmate logged the entries of the file that the recorder wrote before it stopped.',
-	])
-	assert.deepEqual(slow.body.added, { observation: 1 })
+	assert.deepEqual(slow.body.reasons, ['The recorder did not end in 1 seconds. Checkmate stopped it.'])
+	assert.deepEqual(slow.body.added, {})
 })
 
 test('record refuses without a change, claude, a session, or inside a recorder', (t) => {
@@ -260,12 +289,16 @@ test('record refuses without a change, claude, a session, or inside a recorder',
 	assert.match(record([], { CLAUDE_CONFIG_DIR: empty }).body.hint, /--session <sessionId>/)
 })
 
-test('guide --role recorder prints the recorder prompt with placeholders', (t) => {
+test('guide --role recorder prints the recorder prompt with a placeholder for the record', (t) => {
 	const { workspace } = setup(t)
 	const prompt = cli(workspace, ['guide', 'cart', '--role', 'recorder', '--build', 'b2']).output
 	assert.equal(prompt, recorderPrompt('cart', 'b2'))
 	assert.match(prompt, /^Now record this session in Checkmate.*\(change cart, build b2\)\./)
-	assert.match(prompt, /Write all new entries as one JSON array to <files>\/entries\.json with the Write tool\./)
+	assert.match(
+		prompt,
+		/Reply with only one JSON array of the new entries, and nothing else\. Use no tool\. Checkmate logs your reply with build b2\./
+	)
+	assert.match(prompt, /Number the new entries freely/)
 	assert.match(prompt, /\nKind defect: /)
 	assert.match(
 		prompt,
@@ -322,7 +355,6 @@ test('record runs in the directory of the caller, and finds its session and its 
 	assert.equal(reply.body.session, tester)
 	const [call] = called()
 	assert.equal(call.cwd, realpathSync(subdirectory))
-	assert.equal(call.files, join(workspace, '.checkmate', 'tmp', `record-${reply.body.recorder}`))
 	assert.deepEqual(call.args.slice(0, 6), [
 		'-p',
 		'--resume',
@@ -331,7 +363,7 @@ test('record runs in the directory of the caller, and finds its session and its 
 		'--session-id',
 		reply.body.recorder,
 	])
-	assert.deepEqual(call.args.slice(-allowed(call.files).length), allowed(call.files))
+	assert.deepEqual(call.args.slice(6), noTools)
 	assert.equal(call.env[0], workspace)
 	const defect = JSON.parse(cli(workspace, ['export', 'cart']).output).entries.find(
 		(entry: { kind: string }) => entry.kind === 'defect'

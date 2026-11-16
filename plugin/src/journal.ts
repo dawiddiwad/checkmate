@@ -296,9 +296,13 @@ export function entriesFile(store: Store, name: string, cwd: string) {
 	return readFileSync(path, 'utf8')
 }
 
-function evidenceOf(store: Store, spec: string, cwd: string): Evidence {
+function insideWorkspace(store: Store, path: string) {
+	return realpathSync(path).startsWith(realpathSync(store.workspace) + sep)
+}
+
+function evidenceOf(store: Store, spec: string, cwd: string, missing?: string[]): Evidence {
 	const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path))
-	if (found) {
+	if (found && (!missing || insideWorkspace(store, found))) {
 		const name = relative(store.workspace, found)
 		const bytes = evidenceFile(store, name)
 		const sha256 = digest(bytes)
@@ -311,7 +315,12 @@ function evidenceOf(store: Store, spec: string, cwd: string): Evidence {
 		)
 		return { path: name, sha256, size: bytes.length }
 	}
-	if (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)) return { text: spec }
+	if (!found && (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)))
+		return { text: spec }
+	if (missing) {
+		missing.push(spec)
+		return { text: spec }
+	}
 	throw new Refusal(
 		'malformed',
 		`Evidence file not found: ${spec}`,
@@ -426,7 +435,8 @@ function checkedEntry(
 	build: string | undefined,
 	state: Journal,
 	actor: string,
-	cwd: string
+	cwd: string,
+	missing?: string[]
 ): Entry {
 	if (raw instanceof Unreadable)
 		throw new EntryRefusal(
@@ -532,7 +542,7 @@ function checkedEntry(
 	const { evidence, ...rest } = entry
 	if (evidence === undefined) return rest
 	try {
-		return { ...rest, evidence: [evidence].flat().map((spec) => evidenceOf(store, spec, cwd)) }
+		return { ...rest, evidence: [evidence].flat().map((spec) => evidenceOf(store, spec, cwd, missing)) }
 	} catch (error) {
 		if (!(error instanceof Refusal)) throw error
 		throw new EntryRefusal(`${path}.evidence`, error.message, error.hint ?? '', {
@@ -592,9 +602,9 @@ const fixText = (item: Refused) => (item.fix ? ` Send: ${JSON.stringify(item.fix
 export function logEntries(
 	store: Store,
 	actor: string | undefined,
-	input: { changeId: string; build?: string; entries: unknown; cwd?: string }
+	input: { changeId: string; build?: string; entries: unknown; cwd?: string; missingEvidence?: string[] }
 ) {
-	const { cwd, ...logged } = input
+	const { cwd, missingEvidence, ...logged } = input
 	const operation = { actor, command: 'log', subject: input.changeId, input: logged }
 	return write(store, operation, (operationId, _, actor) => {
 		const { changeId } = changeRow(store, input.changeId)
@@ -607,7 +617,16 @@ export function logEntries(
 			const builds = [...state.builds]
 			let entry: Entry
 			try {
-				entry = checkedEntry(store, raw, `[${index}]`, input.build, state, actor, cwd ?? store.workspace)
+				entry = checkedEntry(
+					store,
+					raw,
+					`[${index}]`,
+					input.build,
+					state,
+					actor,
+					cwd ?? store.workspace,
+					missingEvidence
+				)
 			} catch (error) {
 				if (!(error instanceof EntryRefusal)) throw error
 				refused.push({ index, field: error.field, reason: error.message, hint: error.hint, fix: error.fix })
@@ -640,6 +659,36 @@ export function logEntries(
 		return {
 			reply: completed(changeId, { saved, refused }),
 			subjects: [`change:${changeId}`],
+		}
+	})
+}
+
+export function freshIds(store: Store, changeId: string, actor: string, entries: unknown[]) {
+	const used = new Set(lookup(journal(store, changeId, actor), actor).keys())
+	const given = entries.flatMap((raw) => (typeof (raw as Entry | null)?.id === 'string' ? [(raw as Entry).id] : []))
+	const taken = [...used, ...given]
+	const renamed = new Map<string, string>()
+	for (const raw of entries) {
+		const entry = raw as Partial<Entry> | null
+		if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || entry.supersedes !== undefined)
+			continue
+		const prefix = prefixes[entry.kind as Kind]
+		if (!used.has(entry.id) || !prefix || renamed.has(entry.id)) continue
+		const fresh = unusedId(prefix, taken)
+		renamed.set(entry.id, fresh)
+		taken.push(fresh)
+	}
+	const name = (word: string) => renamed.get(word) ?? word
+	const seen = new Set<string>()
+	return entries.map((raw) => {
+		const entry = raw as Entry | null
+		if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return raw
+		const first = typeof entry.id === 'string' && entry.supersedes === undefined && !seen.has(entry.id)
+		if (first) seen.add(entry.id)
+		return {
+			...withRefs(entry, name),
+			...(entry.supersedes !== undefined && { supersedes: name(entry.supersedes) }),
+			...(first && { id: name(entry.id) }),
 		}
 	})
 }

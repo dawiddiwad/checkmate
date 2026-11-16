@@ -2,10 +2,10 @@ import type { Reply, Status, Store } from './store.ts'
 import { all, one, write } from './store.ts'
 import { Refusal } from './contracts.ts'
 import { recorderPrompt, recordText, repairPrompt } from './guide.ts'
-import { changeState, entriesFile, logEntries, readEntries } from './journal.ts'
+import { changeState, freshIds, logEntries } from './journal.ts'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { accessSync, constants, existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { accessSync, constants, readdirSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
@@ -131,7 +131,7 @@ function prepare(store: Store, actor: string | undefined, input: RecordInput, en
 	return { claude, session, recorder: randomUUID(), actor: writer }
 }
 
-function recorderArgs(files: string, resume: string[]) {
+function recorderArgs(resume: string[]) {
 	return [
 		'-p',
 		'--resume',
@@ -140,15 +140,19 @@ function recorderArgs(files: string, resume: string[]) {
 		'json',
 		'--permission-prompts',
 		'none',
-		'--add-dir',
-		files,
-		'--allowedTools',
-		'Read',
-		`Edit(/${files}/**)`,
+		'--tools',
+		'',
+		'--strict-mcp-config',
 	]
 }
 
-type Call = { failure?: [Status, string]; costUsd?: number; durationMs?: number; sessionId?: string }
+type Call = {
+	failure?: [Status, string]
+	reply?: unknown[]
+	costUsd?: number
+	durationMs?: number
+	sessionId?: string
+}
 
 function callRecorder(claude: string, args: string[], prompt: string, cwd: string, env: Env, seconds: number): Call {
 	const child = spawnSync(claude, args, {
@@ -177,6 +181,7 @@ function callRecorder(claude: string, args: string[], prompt: string, cwd: strin
 						: undefined
 	return {
 		failure,
+		reply: replyArray(result.result),
 		...(typeof result.total_cost_usd === 'number' ? { costUsd: result.total_cost_usd } : {}),
 		...(typeof result.duration_ms === 'number' ? { durationMs: result.duration_ms } : {}),
 		...(typeof result.session_id === 'string' ? { sessionId: result.session_id } : {}),
@@ -187,20 +192,48 @@ function refusalText(item: { index: number; reason: string; hint?: string; fix?:
 	return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ''}${item.fix ? ` Send: ${JSON.stringify(item.fix)}` : ''}`
 }
 
-function logFile(store: Store, actor: string, input: RecordInput, path: string, cwd: string) {
-	if (!existsSync(path)) return undefined
+function closingBracket(text: string, start: number) {
+	let depth = 0
+	let quoted = false
+	for (let i = start; i < text.length; i++) {
+		const char = text[i]
+		if (quoted) {
+			if (char === '\\') i++
+			else if (char === '"') quoted = false
+		} else if (char === '"') quoted = true
+		else if (char === '[') depth++
+		else if (char === ']' && --depth === 0) return i
+	}
+	return -1
+}
+
+export function replyArray(text: unknown): unknown[] | undefined {
+	if (typeof text !== 'string') return undefined
+	for (let start = text.indexOf('['); start !== -1; start = text.indexOf('[', start + 1)) {
+		const end = closingBracket(text, start)
+		if (end === -1) continue
+		try {
+			const parsed = JSON.parse(text.slice(start, end + 1)) as unknown
+			if (Array.isArray(parsed)) return parsed
+		} catch {}
+	}
+	return undefined
+}
+
+function logReply(store: Store, actor: string, input: RecordInput, entries: unknown[], missing: string[], cwd: string) {
 	try {
 		const reply = logEntries(store, actor, {
 			changeId: input.changeId,
 			build: input.build,
-			entries: readEntries(entriesFile(store, path, cwd)),
+			entries: freshIds(store, input.changeId, actor, entries),
 			cwd,
+			missingEvidence: missing,
 		})
 		const refused = reply.data.refused as Array<{ index: number; reason: string; hint?: string; fix?: unknown }>
-		return { refusals: refused.map(refusalText) }
+		return refused.map(refusalText)
 	} catch (error) {
 		if (!(error instanceof Refusal)) throw error
-		return { refusals: [`${error.message}${error.hint ? ` ${error.hint}` : ''}`] }
+		return [`${error.message}${error.hint ? ` ${error.hint}` : ''}`]
 	}
 }
 
@@ -225,8 +258,6 @@ export function recordSession(
 			throw error
 		})
 	}
-	const files = join(realpathSync(store.workspace), '.checkmate', 'tmp', `record-${plan.recorder}`)
-	mkdirSync(files, { recursive: true })
 	const childEnv = {
 		...env,
 		CHECKMATE_WORKSPACE: store.workspace,
@@ -236,44 +267,34 @@ export function recordSession(
 	const started = Date.now()
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
-	const prompt = recorderPrompt(input.changeId, input.build, files, recordText(store, input.changeId, plan.actor))
+	const prompt = recorderPrompt(input.changeId, input.build, recordText(store, input.changeId, plan.actor))
 	const calls = [
 		callRecorder(
 			plan.claude,
-			recorderArgs(files, [plan.session, '--fork-session', '--session-id', plan.recorder]),
+			recorderArgs([plan.session, '--fork-session', '--session-id', plan.recorder]),
 			prompt,
 			cwd,
 			childEnv,
 			input.timeoutSeconds
 		),
 	]
-	const first = logFile(store, plan.actor, input, join(files, 'entries.json'), cwd)
-	let refusals = first?.refusals ?? []
+	const missing: string[] = []
+	const first = calls[0].reply
+	let refusals = first ? logReply(store, plan.actor, input, first, missing, cwd) : []
 	if (!calls[0].failure && refusals.length && left() > 0) {
 		calls.push(
-			callRecorder(
-				plan.claude,
-				recorderArgs(files, [plan.recorder]),
-				repairPrompt(files, refusals),
-				cwd,
-				childEnv,
-				left()
-			)
+			callRecorder(plan.claude, recorderArgs([plan.recorder]), repairPrompt(refusals), cwd, childEnv, left())
 		)
-		const fixed = logFile(store, plan.actor, input, join(files, 'fix.json'), cwd)
-		if (fixed) refusals = fixed.refusals
+		const fix = calls[1].reply
+		if (fix) refusals = logReply(store, plan.actor, input, fix, missing, cwd)
 	}
-	rmSync(files, { recursive: true, force: true })
 	const added = addedEntries(store, input.changeId, plan.actor, after)
 	const saved = Object.values(added).reduce((total, count) => total + count, 0)
 	const timedOut = calls.find((call) => call.failure?.[0] === 'interrupted')
 	const status: Status = timedOut ? 'interrupted' : calls[0].failure || !saved ? 'operational_error' : 'completed'
 	const reasons = [
 		...calls.flatMap((call) => (call.failure ? [call.failure[1]] : [])),
-		...(timedOut && first
-			? ['Checkmate logged the entries of the file that the recorder wrote before it stopped.']
-			: []),
-		...(first ? [] : [`The recorder wrote no file ${files}/entries.json.`]),
+		...(first || calls[0].failure ? [] : ['The reply of the recorder has no JSON array of entries.']),
 		...(first && !saved ? [`The recorder added no entry to ${input.changeId}.`] : []),
 		...refusals.map((refusal) => `Refused: ${refusal}`),
 	]
@@ -295,6 +316,8 @@ export function recordSession(
 			saved,
 			refused: refusals.length,
 			added,
+			evidenceMissing: missing.length,
+			...(missing.length ? { missingEvidence: missing } : {}),
 			...sum(calls, 'costUsd'),
 			...sum(calls, 'durationMs'),
 		},

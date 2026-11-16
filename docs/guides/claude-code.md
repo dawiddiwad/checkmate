@@ -43,7 +43,7 @@ After the test session, or after a turn of it, run this command in a terminal in
 checkmate record shop-12 --build b1
 ```
 
-`record` copies the latest Claude Code session of the project with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. Its prompt holds the entry kinds and what the record already holds. It writes what the tester did and found, the questions for the PM, and the answers to one JSON file, and Checkmate logs that file. It runs no command and does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
+`record` copies the latest Claude Code session of the project with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. Its prompt holds the entry kinds and what the record already holds. It replies with what the tester did and found, the questions for the PM, and the answers, as one JSON array, and Checkmate logs that reply. It has no tool and does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
 
 ### 4. Read the record
 

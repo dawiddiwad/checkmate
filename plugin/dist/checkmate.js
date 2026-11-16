@@ -3389,9 +3389,12 @@ function entriesFile(store, name, cwd) {
   );
   return readFileSync(path, "utf8");
 }
-function evidenceOf(store, spec, cwd) {
+function insideWorkspace(store, path) {
+  return realpathSync(path).startsWith(realpathSync(store.workspace) + sep);
+}
+function evidenceOf(store, spec, cwd, missing) {
   const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync2(path));
-  if (found) {
+  if (found && (!missing || insideWorkspace(store, found))) {
     const name = relative(store.workspace, found);
     const bytes = evidenceFile(store, name);
     const sha256 = digest(bytes);
@@ -3404,7 +3407,12 @@ function evidenceOf(store, spec, cwd) {
     );
     return { path: name, sha256, size: bytes.length };
   }
-  if (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)) return { text: spec };
+  if (!found && (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)))
+    return { text: spec };
+  if (missing) {
+    missing.push(spec);
+    return { text: spec };
+  }
   throw new Refusal(
     "malformed",
     `Evidence file not found: ${spec}`,
@@ -3504,7 +3512,7 @@ function entryList(entries) {
     return wrapper.entries;
   return [entries];
 }
-function checkedEntry(store, raw, path, build, state, actor, cwd) {
+function checkedEntry(store, raw, path, build, state, actor, cwd, missing) {
   if (raw instanceof Unreadable)
     throw new EntryRefusal(
       path,
@@ -3595,7 +3603,7 @@ function checkedEntry(store, raw, path, build, state, actor, cwd) {
   const { evidence, ...rest } = entry;
   if (evidence === void 0) return rest;
   try {
-    return { ...rest, evidence: [evidence].flat().map((spec) => evidenceOf(store, spec, cwd)) };
+    return { ...rest, evidence: [evidence].flat().map((spec) => evidenceOf(store, spec, cwd, missing)) };
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
     throw new EntryRefusal(`${path}.evidence`, error.message, error.hint ?? "", {
@@ -3640,7 +3648,7 @@ function insert(store, changeId, entry, actor, operationId) {
 }
 var fixText = (item) => item.fix ? ` Send: ${JSON.stringify(item.fix)}` : "";
 function logEntries(store, actor, input) {
-  const { cwd, ...logged } = input;
+  const { cwd, missingEvidence, ...logged } = input;
   const operation = { actor, command: "log", subject: input.changeId, input: logged };
   return write(store, operation, (operationId, _, actor2) => {
     const { changeId } = changeRow(store, input.changeId);
@@ -3653,7 +3661,16 @@ function logEntries(store, actor, input) {
       const builds = [...state.builds];
       let entry;
       try {
-        entry = checkedEntry(store, raw, `[${index2}]`, input.build, state, actor2, cwd ?? store.workspace);
+        entry = checkedEntry(
+          store,
+          raw,
+          `[${index2}]`,
+          input.build,
+          state,
+          actor2,
+          cwd ?? store.workspace,
+          missingEvidence
+        );
       } catch (error) {
         if (!(error instanceof EntryRefusal)) throw error;
         refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
@@ -3682,6 +3699,35 @@ function logEntries(store, actor, input) {
     return {
       reply: completed(changeId, { saved, refused: refused2 }),
       subjects: [`change:${changeId}`]
+    };
+  });
+}
+function freshIds(store, changeId, actor, entries) {
+  const used = new Set(lookup(journal(store, changeId, actor), actor).keys());
+  const given = entries.flatMap((raw) => typeof raw?.id === "string" ? [raw.id] : []);
+  const taken = [...used, ...given];
+  const renamed = /* @__PURE__ */ new Map();
+  for (const raw of entries) {
+    const entry = raw;
+    if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || entry.supersedes !== void 0)
+      continue;
+    const prefix = prefixes[entry.kind];
+    if (!used.has(entry.id) || !prefix || renamed.has(entry.id)) continue;
+    const fresh = unusedId(prefix, taken);
+    renamed.set(entry.id, fresh);
+    taken.push(fresh);
+  }
+  const name = (word) => renamed.get(word) ?? word;
+  const seen = /* @__PURE__ */ new Set();
+  return entries.map((raw) => {
+    const entry = raw;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return raw;
+    const first = typeof entry.id === "string" && entry.supersedes === void 0 && !seen.has(entry.id);
+    if (first) seen.add(entry.id);
+    return {
+      ...withRefs(entry, name),
+      ...entry.supersedes !== void 0 && { supersedes: name(entry.supersedes) },
+      ...first && { id: name(entry.id) }
     };
   });
 }
@@ -4384,28 +4430,29 @@ function recordText(store, changeId, viewer) {
   ];
   return lines.length ? lines.join("\n") : "No criterion, defect, or question yet.";
 }
-function recorderPrompt(changeId, build, files2 = "<files>", record = "<the criteria, defects with verdicts, and questions with answers of this change>") {
+function recorderPrompt(changeId, build, record = "<the criteria, defects with verdicts, and questions with answers of this change>") {
   return [
     `Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ""}).`,
-    "Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds. To name an entry of the record, use its ID.",
-    `Write all new entries as one JSON array to ${files2}/entries.json with the Write tool. That is your only task. Do not run commands. When you end, Checkmate logs the file${build ? ` with build ${build}` : ""}.`,
+    "Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
+    `Reply with only one JSON array of the new entries, and nothing else. Use no tool. Checkmate logs your reply${build ? ` with build ${build}` : ""}.`,
+    "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
     "Evidence is the path of a file that already exists in the workspace, or the text that you saw.",
     "",
     "The entries:",
     entryText(),
     "",
-    `Example of ${files2}/entries.json:`,
+    "Example of a reply:",
     JSON.stringify(journalSchema().example),
     "",
     "The record already holds:",
     record
   ].join("\n");
 }
-function repairPrompt(files2, refusals) {
+function repairPrompt(refusals) {
   return [
-    `Checkmate refused these entries of ${files2}/entries.json:`,
+    "Checkmate refused these entries of your reply:",
     ...refusals.map((refusal) => `- ${refusal}`),
-    `Write only the corrected entries, as one JSON array, to ${files2}/fix.json with the Write tool. Do not write the saved entries again. Do not run commands.`
+    "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
 }
 function guideJournal(store, changeId, role = "tester", viewer, build) {
@@ -4531,7 +4578,7 @@ function pagedOperations(store, query = {}) {
 // plugin/src/recorder.ts
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync2, rmSync, statSync as statSync2 } from "node:fs";
+import { accessSync, constants, readdirSync, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join as join2 } from "node:path";
 var defaultRecorderTimeout = 600;
@@ -4629,7 +4676,7 @@ function prepare(store, actor, input, env, cwd) {
     );
   return { claude, session, recorder: randomUUID(), actor: writer };
 }
-function recorderArgs(files2, resume) {
+function recorderArgs(resume) {
   return [
     "-p",
     "--resume",
@@ -4638,11 +4685,9 @@ function recorderArgs(files2, resume) {
     "json",
     "--permission-prompts",
     "none",
-    "--add-dir",
-    files2,
-    "--allowedTools",
-    "Read",
-    `Edit(/${files2}/**)`
+    "--tools",
+    "",
+    "--strict-mcp-config"
   ];
 }
 function callRecorder(claude, args, prompt, cwd, env, seconds) {
@@ -4663,6 +4708,7 @@ function callRecorder(claude, args, prompt, cwd, env, seconds) {
   ] : result.is_error === true ? ["operational_error", `The recorder ended with an error${excerpt(result.result)}`] : void 0;
   return {
     failure,
+    reply: replyArray(result.result),
     ...typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {},
     ...typeof result.duration_ms === "number" ? { durationMs: result.duration_ms } : {},
     ...typeof result.session_id === "string" ? { sessionId: result.session_id } : {}
@@ -4671,20 +4717,47 @@ function callRecorder(claude, args, prompt, cwd, env, seconds) {
 function refusalText(item) {
   return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ""}${item.fix ? ` Send: ${JSON.stringify(item.fix)}` : ""}`;
 }
-function logFile(store, actor, input, path, cwd) {
-  if (!existsSync3(path)) return void 0;
+function closingBracket(text, start) {
+  let depth = 0;
+  let quoted = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === "\\") i++;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "[") depth++;
+    else if (char === "]" && --depth === 0) return i;
+  }
+  return -1;
+}
+function replyArray(text) {
+  if (typeof text !== "string") return void 0;
+  for (let start = text.indexOf("["); start !== -1; start = text.indexOf("[", start + 1)) {
+    const end = closingBracket(text, start);
+    if (end === -1) continue;
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1));
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function logReply(store, actor, input, entries, missing, cwd) {
   try {
     const reply = logEntries(store, actor, {
       changeId: input.changeId,
       build: input.build,
-      entries: readEntries(entriesFile(store, path, cwd)),
-      cwd
+      entries: freshIds(store, input.changeId, actor, entries),
+      cwd,
+      missingEvidence: missing
     });
     const refused2 = reply.data.refused;
-    return { refusals: refused2.map(refusalText) };
+    return refused2.map(refusalText);
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
-    return { refusals: [`${error.message}${error.hint ? ` ${error.hint}` : ""}`] };
+    return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
   }
 }
 function sum(calls, key) {
@@ -4701,8 +4774,6 @@ function recordSession(store, actor, input, env, cwd) {
       throw error;
     });
   }
-  const files2 = join2(realpathSync2(store.workspace), ".checkmate", "tmp", `record-${plan.recorder}`);
-  mkdirSync2(files2, { recursive: true });
   const childEnv = {
     ...env,
     CHECKMATE_WORKSPACE: store.workspace,
@@ -4712,42 +4783,34 @@ function recordSession(store, actor, input, env, cwd) {
   const started = Date.now();
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
-  const prompt = recorderPrompt(input.changeId, input.build, files2, recordText(store, input.changeId, plan.actor));
+  const prompt = recorderPrompt(input.changeId, input.build, recordText(store, input.changeId, plan.actor));
   const calls = [
     callRecorder(
       plan.claude,
-      recorderArgs(files2, [plan.session, "--fork-session", "--session-id", plan.recorder]),
+      recorderArgs([plan.session, "--fork-session", "--session-id", plan.recorder]),
       prompt,
       cwd,
       childEnv,
       input.timeoutSeconds
     )
   ];
-  const first = logFile(store, plan.actor, input, join2(files2, "entries.json"), cwd);
-  let refusals = first?.refusals ?? [];
+  const missing = [];
+  const first = calls[0].reply;
+  let refusals = first ? logReply(store, plan.actor, input, first, missing, cwd) : [];
   if (!calls[0].failure && refusals.length && left() > 0) {
     calls.push(
-      callRecorder(
-        plan.claude,
-        recorderArgs(files2, [plan.recorder]),
-        repairPrompt(files2, refusals),
-        cwd,
-        childEnv,
-        left()
-      )
+      callRecorder(plan.claude, recorderArgs([plan.recorder]), repairPrompt(refusals), cwd, childEnv, left())
     );
-    const fixed = logFile(store, plan.actor, input, join2(files2, "fix.json"), cwd);
-    if (fixed) refusals = fixed.refusals;
+    const fix = calls[1].reply;
+    if (fix) refusals = logReply(store, plan.actor, input, fix, missing, cwd);
   }
-  rmSync(files2, { recursive: true, force: true });
   const added = addedEntries(store, input.changeId, plan.actor, after);
   const saved = Object.values(added).reduce((total, count) => total + count, 0);
   const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
   const status = timedOut ? "interrupted" : calls[0].failure || !saved ? "operational_error" : "completed";
   const reasons2 = [
     ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
-    ...timedOut && first ? ["Checkmate logged the entries of the file that the recorder wrote before it stopped."] : [],
-    ...first ? [] : [`The recorder wrote no file ${files2}/entries.json.`],
+    ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
     ...first && !saved ? [`The recorder added no entry to ${input.changeId}.`] : [],
     ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
@@ -4767,6 +4830,8 @@ function recordSession(store, actor, input, env, cwd) {
       saved,
       refused: refusals.length,
       added,
+      evidenceMissing: missing.length,
+      ...missing.length ? { missingEvidence: missing } : {},
       ...sum(calls, "costUsd"),
       ...sum(calls, "durationMs")
     }
@@ -4780,7 +4845,7 @@ function recordSession(store, actor, input, env, cwd) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // plugin/src/actor.ts
@@ -5637,7 +5702,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath(new URL(candidate, import.meta.url));
-    if (existsSync4(path + file)) return path;
+    if (existsSync3(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -6000,7 +6065,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/cli.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve2 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 function value(args, name) {
@@ -6376,6 +6441,7 @@ EOF` }],
         recorder: reply.data.recorder,
         saved: reply.data.saved,
         refused: reply.data.refused,
+        evidenceMissing: reply.data.evidenceMissing || void 0,
         costUsd: reply.data.costUsd,
         durationMs: reply.data.durationMs
       },
@@ -6682,7 +6748,7 @@ function rationaleOf(input) {
 }
 function writeOutput(store, out, content) {
   const path = resolve2(store.workspace, out);
-  mkdirSync3(dirname(path), { recursive: true });
+  mkdirSync2(dirname(path), { recursive: true });
   try {
     writeFileSync(path, content, { flag: "wx" });
   } catch (error) {
@@ -6879,7 +6945,7 @@ function run(argv, io) {
   const { workspace } = found;
   let store;
   try {
-    if (!command.creates && !existsSync5(databasePath(workspace))) throw missingStore(found);
+    if (!command.creates && !existsSync4(databasePath(workspace))) throw missingStore(found);
     store = command.readOnly ? openReadOnlyStore(workspace) : command.creates ? createStore(workspace) : openStore(workspace);
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, {
@@ -6906,7 +6972,7 @@ function workspaceOf(cwd, given, env) {
   const named = env.CHECKMATE_WORKSPACE;
   if (named) return { workspace: resolve2(cwd, named), from: "CHECKMATE_WORKSPACE" };
   for (let directory2 = resolve2(cwd); ; directory2 = dirname(directory2)) {
-    if (existsSync5(databasePath(directory2))) return { workspace: directory2, from: "search" };
+    if (existsSync4(databasePath(directory2))) return { workspace: directory2, from: "search" };
     if (dirname(directory2) === directory2) return { workspace: resolve2(cwd), from: "search" };
   }
 }
@@ -6950,7 +7016,7 @@ async function serveUi(tokens) {
     return;
   }
   const { workspace } = options2.found;
-  if (!existsSync5(databasePath(workspace))) {
+  if (!existsSync4(databasePath(workspace))) {
     process.stdout.write(format(refused("rejected", "ui", missingStore(options2.found)), json) + "\n");
     process.exitCode = 1;
     return;

@@ -452,3 +452,49 @@ test('the queue keeps drafts, moves at once, has one Tab stop, and checks an emp
 	const box = await page.locator('[data-queue-link][aria-current="true"]').boundingBox()
 	assert(box && box.y >= 0 && box.y + box.height <= 900, JSON.stringify(box))
 })
+
+test('x and shift x select several items, and one confirm records them all', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const items = needsYou(store).items
+	await fits(page, url(`/?pick=${encodeURIComponent(items[0].key)}&pick=${encodeURIComponent(items[6].key)}`))
+	await fits(page, url(`/claims?pick=${encodeURIComponent(items[6].key)}`))
+	let loads = 0
+	page.on('load', () => loads++)
+	await page.goto(url('/'))
+	await page.locator('[data-queue-link][aria-current="true"]').focus()
+	await page.keyboard.press('x')
+	await page.locator('.q-detail', { hasText: '1 item selected' }).waitFor()
+	await page.keyboard.press('j')
+	await page.keyboard.press('j')
+	await page.keyboard.press('Shift+X')
+	await page.locator('.q-detail', { hasText: '3 items selected' }).waitFor()
+	await page.getByRole('button', { name: 'Review 3 answers' }).click()
+	await page.locator('.q-detail', { hasText: 'This records Defer for 3 questions' }).waitFor()
+	await page.keyboard.press('Control+Enter')
+	await page.getByRole('status').filter({ hasText: 'Deferred 3 questions' }).waitFor()
+	for (const item of items.slice(0, 3))
+		assert.equal(
+			needsYou(store).items.some((entry) => entry.key === item.key),
+			false,
+			item.key
+		)
+
+	assert.equal(loads, 1)
+	await page.getByRole('link', { name: 'Claims', exact: true }).click()
+	await page.getByLabel('State').selectOption('suspected')
+	const boxes = page.locator('[data-pick]')
+	await boxes.nth(0).click()
+	await page.locator('.q-detail', { hasText: '1 item selected' }).waitFor()
+	await boxes.nth(2).click({ modifiers: ['Shift'] })
+	await page.locator('.q-detail', { hasText: '3 items selected' }).waitFor()
+	await page.getByRole('button', { name: 'Reject 3 claims' }).click()
+	await page.getByRole('alert').filter({ hasText: 'Write a short reason for the reject.' }).waitFor()
+	await page.getByLabel(/^Reason for 3 claims/).fill('Known and intended.')
+	await page.getByRole('button', { name: 'Reject 3 claims' }).click()
+	await page.locator('.q-detail', { hasText: 'This records Reject for 3 claims' }).waitFor()
+	await page.getByRole('button', { name: 'Reject 3 claims' }).click()
+	await page.getByRole('status').filter({ hasText: 'Rejected 3 claims' }).waitFor()
+	assert.equal(loads, 2)
+})

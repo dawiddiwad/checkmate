@@ -9,9 +9,11 @@ import { actorField, emptyState, hidden, keptText, messages, returnFields, sourc
 import { counts } from './lists.ts'
 import { approvalPanel } from './plan.ts'
 import { listAndItem } from './layout.ts'
+import type { BulkState, Picked } from './bulk.ts'
+import { bulkBar, bulkPanel, pickBox } from './bulk.ts'
 import { decisionPanel } from './run.ts'
 
-export type QueueFilters = { plan: string; q: string }
+export type QueueFilters = { plan: string; q: string; picks: string[] }
 export type QueueRefusal = { key: string; state: FormState }
 
 type Waiting = ReturnType<typeof needsYou>
@@ -24,13 +26,14 @@ const groups: Array<{ group: QueueGroup; title: string; help: string }> = [
 ]
 
 export function queueFilters(params: URLSearchParams): QueueFilters {
-	return { plan: params.get('plan')?.trim() ?? '', q: params.get('q')?.trim() ?? '' }
+	return { plan: params.get('plan')?.trim() ?? '', q: params.get('q')?.trim() ?? '', picks: params.getAll('pick') }
 }
 
 export function queueHref(filters: QueueFilters, key: string | null = null, list = false) {
 	const params = new URLSearchParams()
 	if (filters.plan) params.set('plan', filters.plan)
 	if (filters.q) params.set('q', filters.q)
+	for (const pick of filters.picks) params.append('pick', pick)
 	if (key) params.set('item', key)
 	if (key && list) params.set('view', 'list')
 	const query = params.toString()
@@ -58,9 +61,12 @@ function badge(item: QueueItem) {
 	return ''
 }
 
+const pickable = (item: QueueItem) => item.kind === 'question' || item.kind === 'gap' || item.kind === 'claim'
+
 function row(item: QueueItem, filters: QueueFilters, selected: string | null) {
 	const current = item.key === selected ? html` aria-current="true"` : ''
-	return html`<li>
+	return html`<li class="q-li">
+		${pickable(item) ? pickBox(item.key, `${item.planId} ${item.id}`, filters.picks.includes(item.key)) : html`<span></span>`}
 		<a
 			class="q-row"
 			href="${queueHref(filters, item.key)}"
@@ -378,11 +384,22 @@ export function queuePage(
 	store: Store,
 	context: Context,
 	params: URLSearchParams,
-	refusal: QueueRefusal | null = null
+	refusal: QueueRefusal | null = null,
+	bulk: BulkState | null = null
 ): Page {
 	const waiting = needsYou(store)
 	const filters = queueFilters(params)
 	const shown = waiting.items.filter((item) => matches(item, filters))
+	const picked: Picked[] = shown
+		.filter((entry) => pickable(entry) && filters.picks.includes(entry.key))
+		.map((entry) => ({
+			key: entry.key,
+			kind: entry.kind as Picked['kind'],
+			planId: entry.planId,
+			id: entry.id,
+			title: entry.title,
+			explorationId: entry.explorationId,
+		}))
 	const asked = refusal?.key ?? params.get('item')
 	const item = asked ? (shown.find((entry) => entry.key === asked) ?? null) : (shown[0] ?? null)
 	const index = item ? shown.indexOf(item) : -1
@@ -398,7 +415,18 @@ export function queuePage(
 			<h1 id="queue-title">Needs you</h1>
 			${sub ? html`<p class="sub">${sub}</p>` : ''}
 		</div>
-		${filterForm(waiting, filters)} ${exploring(waiting, filters)}
+		${filterForm(waiting, filters)}
+		${bulkBar(
+			'/',
+			[
+				...(filters.plan ? [['plan', filters.plan] as [string, string]] : []),
+				...(filters.q ? [['q', filters.q] as [string, string]] : []),
+				...(item ? [['item', item.key] as [string, string]] : []),
+			],
+			picked.length,
+			queueHref({ ...filters, picks: [] }, item?.key ?? null)
+		)}
+		${exploring(waiting, filters)}
 		${groups.map((group) =>
 			groupList(
 				group,
@@ -409,9 +437,11 @@ export function queuePage(
 		)}
 		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>`
 	const pane =
-		asked && !item
-			? gone(filters, refusal?.state)
-			: detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState())
+		picked.length || bulk
+			? bulkPanel(context, picked, queueHref({ ...filters, picks: [] }, item?.key ?? null), bulk)
+			: asked && !item
+				? gone(filters, refusal?.state)
+				: detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState())
 	return {
 		title: item ? `${item.planId} · ${item.id} · Needs you` : 'Needs you',
 		section: 'inbox',

@@ -20,7 +20,7 @@ async function start(t: TestContext) {
 	const workspace = copied(t, template)
 	const ui = await startUi({ workspace, defaultActor: 'qa-lead' })
 	t.after(() => ui.close())
-	const call = (path: string, form?: Record<string, string>) =>
+	const call = (path: string, form?: Record<string, string> | URLSearchParams) =>
 		new Promise<Reply>((resolve, reject) => {
 			const body = form ? new URLSearchParams(form).toString() : undefined
 			const req = request(
@@ -231,6 +231,68 @@ test('an empty workspace says once that nothing waits and how to start', async (
 	assert.doesNotMatch(body, /0 explorations/)
 	assert.doesNotMatch(body, /id="queue-plan"/)
 	assert.match(body, /<code>\/checkmate:test<\/code>/)
+})
+
+test('several questions take one answer and several claims one decision after a confirm step', async (t) => {
+	const { call, read } = await start(t)
+	const items = read(needsYou).items
+	const questions = items.filter((item) => item.kind === 'question').slice(0, 2)
+	const claims = items.filter((item) => item.kind === 'claim').slice(0, 3)
+	const picked = await call(
+		`/?${[...questions, ...claims].map((item) => `pick=${encodeURIComponent(item.key)}`).join('&')}`
+	)
+	assert.match(picked.body, /5 items selected/)
+	assert.match(
+		picked.body,
+		/<input\s+class="pick"\s+type="checkbox"\s+name="pick"\s+value="question:[^"]+"[^>]*checked/
+	)
+	const csrf = field(picked.body, 'csrf')
+	const ask = (form: Record<string, string>, keys: string[]) => {
+		const body = new URLSearchParams({ csrf, return: '/', ...form })
+		for (const key of keys) body.append('pick', key)
+		return call('/bulk', body)
+	}
+	const review = await ask(
+		{ what: 'questions', kind: 'defer' },
+		questions.map((item) => item.key)
+	)
+	assert.equal(review.status, 200)
+	assert.match(review.body, /This records <strong>Defer<\/strong> for 2 questions,\s+as\s+qa-lead\./)
+	assert.match(review.body, /<dd>Deferred in the review UI\.<\/dd>/)
+	assert.match(review.body, /<dd>qa-lead, in the review UI<\/dd>/)
+	const sent = await ask(
+		{ what: 'questions', kind: 'defer', confirmed: '1' },
+		questions.map((item) => item.key)
+	)
+	assert.equal(sent.status, 303)
+	assert.equal(sent.location, '/')
+	for (const question of questions)
+		assert.equal(
+			read((store) => mergedQuestions(store, question.planId).find((item) => item.id === question.id)!.answer),
+			'Deferred in the review UI.'
+		)
+	const again = await ask(
+		{ what: 'questions', kind: 'defer', confirmed: '1' },
+		questions.map((item) => item.key)
+	)
+	assert.equal(again.status, 422)
+	assert.match(again.body, /do not wait for a decision now\. Nothing is recorded\./)
+	const keys = claims.map((item) => item.key)
+	const bare = await ask({ what: 'claims', verdict: 'rejected', confirmed: '1' }, keys)
+	assert.equal(bare.status, 422)
+	assert.match(bare.body, /Write a short reason for the reject\./)
+	const rejected = await ask(
+		{ what: 'claims', verdict: 'rejected', rationale: 'Known and intended.', confirmed: '1' },
+		keys
+	)
+	assert.equal(rejected.status, 303)
+	for (const claim of claims)
+		assert.equal(
+			read((store) => mergedClaims(store, claim.planId).find((item) => item.id === claim.id)!.state),
+			'rejected'
+		)
+	const list = await call(`/claims?pick=${encodeURIComponent(keys[0])}`)
+	assert.doesNotMatch(list.body, /1 item selected/)
 })
 
 test('a plan is approved inside the queue with its confirm step', async (t) => {

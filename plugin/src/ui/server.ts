@@ -27,6 +27,8 @@ import { addInstance, retireInstance, targetRequest } from '../targets.ts'
 import {
 	changesAfter,
 	claimEvidence,
+	claimsAcross,
+	needsYou,
 	mergedClaims,
 	mergedQuestions,
 	entryEvidence,
@@ -37,7 +39,9 @@ import {
 	runDetail,
 } from '../views.ts'
 import { defaultActor } from '../actor.ts'
-import { html } from './html.ts'
+import { html, plural } from './html.ts'
+import type { BulkState } from './bulk.ts'
+import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { inboxPage, logPage, plansPage, runsPage } from './lists.ts'
@@ -642,6 +646,82 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		redirect(request.res, next.location, next.cookies)
 	}
 
+	function bulkPage(request: Request, back: string, picks: string[], state: BulkState) {
+		const url = new URL(back, request.url)
+		for (const pick of picks) url.searchParams.append('pick', pick)
+		const shown = context(request, url.pathname + url.search)
+		if (url.pathname === '/claims') return () => claimsPage(store, shown, url.searchParams, null, state)
+		return () => queuePage(store, shown, url.searchParams, null, state)
+	}
+
+	function bulk(request: Request, form: URLSearchParams) {
+		const what = form.get('what') === 'claims' ? 'claims' : 'questions'
+		const picks = form.getAll('pick')
+		const back = safeBack(form.get('return'))
+		const { actor, cookies } = actorFrom(request, form)
+		const state: BulkState = {
+			what,
+			values: values(
+				form,
+				what === 'claims'
+					? ['verdict', 'rationale', 'actor']
+					: ['kind', 'value', 'source', 'rationale', 'actor']
+			),
+			error: null,
+			confirm: false,
+		}
+		const page = bulkPage(request, back, picks, state)
+		const waiting =
+			what === 'claims'
+				? claimsAcross(store)
+						.filter((claim) => !claim.decision)
+						.map((claim) => ({
+							key: `claim:${claim.planId}:${claim.id}`,
+							planId: claim.planId,
+							id: claim.id,
+							explorationId: claim.explorationId,
+						}))
+				: needsYou(store).items.filter((item) => item.kind === 'question' || item.kind === 'gap')
+		const found = picks.map((key) => waiting.find((item) => item.key === key))
+		const gone = picks.filter((_, index) => !found[index])
+		if (!picks.length) state.error = 'Select at least one item.'
+		else if (gone.length)
+			state.error = `${gone.map((key) => key.split(':').slice(1).join(' · ')).join(', ')} do not wait for a decision now. Nothing is recorded. Clear the selection and select again.`
+		else if (form.get('back')) return refuse(request, () => ({ ...page(), status: 200 }), cookies)
+		else state.error = bulkProblem(what, state.values, actor)
+		if (state.error) return refuse(request, page, cookies)
+		if (form.get('confirmed') !== '1') {
+			state.confirm = true
+			return refuse(request, () => ({ ...page(), status: 200 }), cookies)
+		}
+		const items = found.map((item) => item!)
+		if (what === 'claims') {
+			const decision = claimDefaults(state.values)
+			for (const item of items)
+				decideClaim(store, actor, {
+					planId: item.planId,
+					claimId: item.id,
+					verdict: decision.verdict,
+					rationale: decision.rationale,
+				})
+			const flash = `${decision.verdict === 'approved' ? 'Accepted' : 'Rejected'} ${plural(items.length, 'claim')}`
+			return redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
+		}
+		const answer = answerDefaults(state.values, actor)
+		for (const item of items)
+			answerGap(store, actor, {
+				planId: item.planId,
+				gapId: item.id,
+				kind: answer.kind as 'clarify' | 'accept_assumption' | 'defer',
+				value: answer.value,
+				source: answer.source,
+				rationale: answer.rationale,
+				...(item.explorationId ? {} : { expectSha256: planDetail(store, item.planId).sha256 }),
+			})
+		const flash = `${answer.kind === 'defer' ? 'Deferred' : 'Answered'} ${plural(items.length, 'question')}`
+		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
+	}
+
 	function planOfExploration(explorationId: string) {
 		return explorationRow(store, explorationId).plan_id
 	}
@@ -927,6 +1007,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				return errorPage(request, 422, 'Your name', 'Enter a name. Checkmate records it with each decision.')
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
+		if (pathname === '/bulk') return bulk(request, form)
 		const edit = routes.edit.exec(pathname)
 		if (edit) return saveEdit(request, form, edit[1], Number(edit[2]))
 		const question = routes.question.exec(pathname)

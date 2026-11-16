@@ -6,6 +6,8 @@ import type { Claim } from '../journal.ts'
 import { claimsAcross } from '../views.ts'
 import { html, pill, plural, time } from './html.ts'
 import { banner, listAndItem } from './layout.ts'
+import type { BulkState, Picked } from './bulk.ts'
+import { bulkBar, bulkPanel, pickBox } from './bulk.ts'
 import { actorField, emptyState, hidden, keptText, messages, recordPanel, returnFields } from './forms.ts'
 import { claimEvidenceList } from './exploration.ts'
 
@@ -17,6 +19,7 @@ export type ClaimFilters = {
 	build: string
 	since: string
 	limit: string
+	picks: string[]
 }
 export type ClaimRefusal = { key: string; state: FormState }
 type Row = ReturnType<typeof claimsAcross>[number]
@@ -49,6 +52,7 @@ export function claimFilters(params: URLSearchParams): ClaimFilters {
 		build: value('build'),
 		since: periods.some(([days]) => days === value('since')) ? value('since') : '',
 		limit: /^[1-9][0-9]{0,5}$/.test(value('limit')) ? value('limit') : '',
+		picks: params.getAll('pick'),
 	}
 }
 
@@ -57,6 +61,7 @@ export function claimsHref(filters: Partial<ClaimFilters>, key: string | null = 
 	for (const name of names) if (filters[name]) params.set(name, filters[name])
 	if (key) params.set('item', key)
 	if (filters.limit) params.set('limit', filters.limit)
+	for (const pick of filters.picks ?? []) params.append('pick', pick)
 	if (key && list) params.set('view', 'list')
 	const query = params.toString()
 	return query ? `/claims?${query}` : '/claims'
@@ -193,7 +198,8 @@ function filterForm(rows: Row[], filters: ClaimFilters) {
 
 function row(item: Row, filters: ClaimFilters, selected: string | null) {
 	const key = claimKey(item.planId, item.id)
-	return html`<li>
+	return html`<li class="q-li">
+		${item.decision ? html`<span></span>` : pickBox(key, `${item.planId} ${item.id}`, filters.picks.includes(key))}
 		<a
 			class="q-row"
 			href="${claimsHref(filters, key)}"
@@ -242,11 +248,22 @@ export function claimsPage(
 	context: Context,
 	params: URLSearchParams,
 	refusal: ClaimRefusal | null = null,
+	bulk: BulkState | null = null,
 	now = Date.now()
 ): Page {
 	const rows = claimsAcross(store)
 	const filters = claimFilters(params)
 	const shown = rows.filter((item) => matches(item, filters, now))
+	const picked: Picked[] = shown
+		.filter((entry) => !entry.decision && filters.picks.includes(claimKey(entry.planId, entry.id)))
+		.map((entry) => ({
+			key: claimKey(entry.planId, entry.id),
+			kind: 'claim',
+			planId: entry.planId,
+			id: entry.id,
+			title: entry.title,
+			explorationId: entry.explorationId,
+		}))
 	const asked = refusal?.key ?? params.get('item')
 	const item = asked
 		? (shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null)
@@ -261,6 +278,16 @@ export function claimsPage(
 			</p>
 		</div>
 		${filterForm(rows, filters)}
+		${bulkBar(
+			'/claims',
+			[
+				...names.filter((name) => filters[name]).map((name) => [name, filters[name]] as [string, string]),
+				...(filters.limit ? [['limit', filters.limit] as [string, string]] : []),
+				...(key ? [['item', key] as [string, string]] : []),
+			],
+			picked.length,
+			claimsHref({ ...filters, picks: [] }, key)
+		)}
 		${
 			shown.length
 				? html`<ul class="q-items">
@@ -284,16 +311,21 @@ export function claimsPage(
 					</p>`
 				: ''
 		}`
-	const pane = item
-		? claimPane(store, context, item.planId, item, crumbs(item, filters), {
-				key: key!,
-				back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
-				state: refusal?.state ?? emptyState(),
-			})
-		: html`<div class="empty">
-				<p class="empty-title">${asked ? 'This claim does not match the filters.' : 'No claim to show.'}</p>
-				<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
-			</div>`
+	const pane =
+		picked.length || bulk
+			? bulkPanel(context, picked, claimsHref({ ...filters, picks: [] }, key), bulk)
+			: item
+				? claimPane(store, context, item.planId, item, crumbs(item, filters), {
+						key: key!,
+						back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
+						state: refusal?.state ?? emptyState(),
+					})
+				: html`<div class="empty">
+						<p class="empty-title">
+							${asked ? 'This claim does not match the filters.' : 'No claim to show.'}
+						</p>
+						<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
+					</div>`
 	return {
 		title: item ? `${item.planId} · ${item.id} · Claims` : 'Claims',
 		section: 'claims',

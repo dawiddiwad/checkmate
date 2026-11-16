@@ -46,6 +46,19 @@ The UI keeps the text that you type for each item until you close the browser ta
 
 After you record an answer or a decision, the list selects the next item. The page does not load again. The address of the page keeps the selected item and the filters, for example `/?plan=checkout&q=coupon&item=...`. Thus Back in the browser and a copied link show the same list and item. The breadcrumb above the item goes back to the list. `Open full page` opens the claim, question, or gap page.
 
+#### Decide several items at once
+
+Each question, gap, and claim without a decision has a box at the left of its row. Click the box, or press `x` on the row, to select it. Press `Shift` `x`, or `Shift` and click a box, to select all rows from the last selected row to this row. The selected items are in the address, for example `/?pick=...&pick=...`.
+
+When you select an item, the right side shows the selected items:
+
+- For the questions: choose `Defer`, `Clarify`, or `Accept assumption`, and write one answer for all. `Defer` needs no answer. Click `Review`.
+- For the claims: write one reason, then click `Accept` or `Reject`. A reject needs a reason.
+
+The confirm step says exactly what the UI will record: the kind of answer or the decision, the answer, the source, the reason, your name, and each item. Click the confirm button or press `Ctrl` `Enter`. The UI records one decision for each item, as separate entries in the log. When an item does not wait for a decision any more, the UI records nothing and tells you which item. `Clear the selection` goes back to the list.
+
+`/claims` has the same boxes for the claims that have no decision.
+
 On a window narrower than 760 pixels, the list and the item take turns. Select an item to show it. Click `Needs you` in the breadcrumb to show the list again, with the same item selected.
 
 The list is one stop for the `Tab` key. Use `j` and `k` or the arrow keys to move in it. The first `Tab` stop of the list is `Skip to the selected item`.
@@ -182,6 +195,8 @@ Each page updates when another process writes to the record, for example a deleg
 | `r`             | On a claim, a plan, or a result: reject. Write the reason, then press `Ctrl` `Enter`.                          |
 | `c` `s`         | On a question: choose Clarify or Accept assumption, then write the answer.                                     |
 | `d`             | On a question: defer it at once.                                                                               |
+| `x`             | Select the row, or clear it, to decide several items at once.                                                  |
+| `Shift` `x`     | Select all rows from the last selected row to this row.                                                        |
 | `Ctrl` `Enter`  | Send the form of the item.                                                                                     |
 | `g` `i`         | Go to `Needs you`.                                                                                             |
 | `Esc`           | Close the evidence viewer or menu.                                                                             |

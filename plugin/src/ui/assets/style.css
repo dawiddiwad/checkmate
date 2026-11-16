@@ -2549,3 +2549,39 @@ body:has(.queue) .foot {
 	overflow-wrap: anywhere;
 	min-width: 12ch;
 }
+.q-li {
+	display: grid;
+	grid-template-columns: 22px minmax(0, 1fr);
+	align-items: start;
+}
+.pick {
+	margin: 12px 0 0 2px;
+	width: 15px;
+	height: 15px;
+	accent-color: var(--accent);
+	opacity: 0.55;
+	cursor: pointer;
+}
+.pick:checked,
+.pick:hover,
+.q-li:hover .pick {
+	opacity: 1;
+}
+.bulk-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px 10px;
+	font-size: 13px;
+	color: var(--muted);
+	padding-left: 10px;
+	min-height: 30px;
+}
+.bulk-bar:not([data-empty]) {
+	color: var(--ink);
+	font-weight: 600;
+}
+.bulk-items {
+	max-height: 260px;
+	overflow-y: auto;
+}

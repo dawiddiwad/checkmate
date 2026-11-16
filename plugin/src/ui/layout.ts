@@ -139,6 +139,8 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 		<dd>Accept or reject the selected claim</dd>
 		<dt><kbd>c</kbd> <kbd>s</kbd> <kbd>d</kbd></dt>
 		<dd>Clarify, accept an assumption, or defer the selected question</dd>
+		<dt><kbd>x</kbd> <kbd>Shift</kbd> <kbd>x</kbd></dt>
+		<dd>Select the row, or a range of rows, to decide several at once</dd>
 		<dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt>
 		<dd>Send the form</dd>
 		<dt><kbd>g</kbd> <kbd>i</kbd></dt>

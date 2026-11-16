@@ -14,9 +14,9 @@ function syncRationale(root = document) {
 }
 
 function syncSource(root = document) {
-	for (const form of root.querySelectorAll('[data-quick-form]')) {
+	for (const form of root.querySelectorAll('[data-quick-form], [data-bulk-questions]')) {
 		const kind = form.querySelector('input[name="kind"]:checked')
-		const value = form.querySelector('#value')
+		const value = form.querySelector('#value, #bulk-value')
 		if (value) value.required = kind?.value !== 'defer'
 	}
 	for (const form of root.querySelectorAll('[data-gap-form]')) {
@@ -700,7 +700,7 @@ function swapQueue(fresh, keepDetail = false, live = false, detailOnly = false) 
 	document.title = fresh.title
 	const count = fresh.querySelector('[data-region="nav-count"]')
 	if (count) document.querySelector('[data-region="nav-count"]').textContent = count.textContent
-	for (const button of queue.querySelectorAll('[data-queue-submit]')) button.hidden = true
+	for (const button of queue.querySelectorAll('[data-queue-submit], [data-bulk-submit]')) button.hidden = true
 	if (search) {
 		const field = queue.querySelector('[data-search]')
 		field.value = search.value
@@ -865,7 +865,51 @@ function queueVerdict(event, accept) {
 	return true
 }
 
+let pickAnchor = null
+
+function pickUrl() {
+	const form = document.querySelector('[data-bulk-form]')
+	const params = new URLSearchParams()
+	for (const field of form.querySelectorAll('input[type="hidden"]'))
+		if (field.name !== 'item' && field.value) params.set(field.name, field.value)
+	for (const box of document.querySelectorAll('[data-pick]:checked')) params.append('pick', box.value)
+	const current = currentRow()?.dataset.key
+	if (current) params.set('item', current)
+	const query = params.toString()
+	return form.getAttribute('action') + (query ? `?${query}` : '')
+}
+
+function pickBoxOf(row) {
+	return row?.closest('li')?.querySelector('[data-pick]') ?? null
+}
+
+function pickRange(row) {
+	const rows = queueRows()
+	const from = rows.findIndex((each) => each.dataset.key === pickAnchor)
+	const to = rows.indexOf(row)
+	if (from < 0 || to < 0) return false
+	for (const each of rows.slice(Math.min(from, to), Math.max(from, to) + 1)) {
+		const box = pickBoxOf(each)
+		if (box) box.checked = true
+	}
+	return true
+}
+
+function pickRow(row, range) {
+	const box = pickBoxOf(row)
+	if (!box) return false
+	if (!range || !pickRange(row)) box.checked = !box.checked
+	pickAnchor = row.dataset.key
+	queueGo(pickUrl(), 'replace', 'row')
+	return true
+}
+
 function queueKey(event) {
+	if (event.key === 'x' || event.key === 'X') {
+		event.preventDefault()
+		pickRow(event.target.closest?.('[data-queue-link]') ?? currentRow(), event.key === 'X')
+		return true
+	}
 	if (queueSending && 'adrcs'.includes(event.key)) {
 		event.preventDefault()
 		return true
@@ -906,6 +950,7 @@ function keepMore() {
 }
 
 function sendChoice(form) {
+	if (form.matches('[data-bulk-confirm]')) return form.querySelector('[data-bulk-send]')
 	if (form.dataset.confirming) return form.querySelector('[data-confirm-submit]')
 	if (form.dataset.choice) return form.querySelector(`button[name="verdict"][value="${form.dataset.choice}"]`)
 	if (form.matches('[data-quick-claim]')) return form.querySelector('button[value="approved"]')
@@ -913,8 +958,8 @@ function sendChoice(form) {
 }
 
 function rejectWithoutReason(form, submitter) {
-	if (!form.matches('[data-quick-claim]') || submitter?.value !== 'rejected') return false
-	const reason = form.querySelector('#rationale')
+	if (!form.matches('[data-quick-claim], [data-bulk-claims]') || submitter?.value !== 'rejected') return false
+	const reason = form.querySelector('#rationale, #bulk-reason')
 	if (reason.value.trim()) return false
 	let message = form.querySelector('[data-reason-error]')
 	if (!message) {
@@ -980,7 +1025,9 @@ async function queueSend(form, submitter) {
 		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
 		window.dispatchEvent(new window.Event('queue-moved'))
 		window.scrollTo(0, 0)
-		queueFocus(response.ok ? 'row' : 'form')
+		const confirm = queueDetail().querySelector('[data-bulk-send]')
+		if (confirm) confirm.focus()
+		else queueFocus(response.ok ? 'row' : 'form')
 	} catch {
 		sendFailed(form, button)
 	} finally {
@@ -991,7 +1038,14 @@ async function queueSend(form, submitter) {
 
 if (queue) {
 	for (const button of queue.querySelectorAll('[data-queue-submit]')) button.hidden = true
+	for (const button of queue.querySelectorAll('[data-bulk-submit]')) button.hidden = true
 	document.addEventListener('click', (event) => {
+		if (event.target.matches?.('[data-pick]')) {
+			const row = event.target.closest('li').querySelector('[data-queue-link]')
+			if (event.shiftKey && pickRange(row)) event.target.checked = true
+			pickAnchor = row.dataset.key
+			return void queueGo(pickUrl(), 'replace', null)
+		}
 		if (!plainClick(event)) return
 		const row = event.target.closest('[data-queue-link]')
 		if (row) {
@@ -1014,6 +1068,10 @@ if (queue) {
 	document.addEventListener('submit', (event) => {
 		const form = event.target
 		if (event.defaultPrevented) return
+		if (form.matches('[data-bulk-form]')) {
+			event.preventDefault()
+			return void queueGo(pickUrl(), 'push', 'detail')
+		}
 		if (form.matches('[data-queue-filter]')) {
 			event.preventDefault()
 			return void queueGo(queueFilterUrl(form), 'push', null)

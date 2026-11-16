@@ -13404,16 +13404,16 @@ function recordAnswer(store, input) {
   const exploration2 = explorationRow(store, input.explorationId);
   const actor = explorerActor(input.explorer);
   const earlier = savedEntries(store, exploration2.plan_id, exploration2.exploration_id, actor);
-  const carried = input.carried ?? { given: false, repeated: 0, refusals: [], missing: [], dropped: [] };
-  const missing = [...carried.missing];
-  const dropped = [...carried.dropped];
+  const carried2 = input.carried ?? { given: false, repeated: 0, refusals: [], missing: [], dropped: [] };
+  const missing = [...carried2.missing];
+  const dropped = [...carried2.dropped];
   const work = join6(store.workspace, workFolder(exploration2.exploration_id, input.explorer));
   const given = input.failed ? void 0 : replyArray(readText(join6(store.workspace, input.answer)));
   const fresh = given && newEntries(given, earlier);
-  const repeated = input.round > 1 ? carried.repeated : given && fresh ? given.length - fresh.length : 0;
+  const repeated = input.round > 1 ? carried2.repeated : given && fresh ? given.length - fresh.length : 0;
   const logged = fresh?.length ? logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, fresh, missing, dropped, work) : [];
-  const refusals = input.round > 1 && !given ? carried.refusals : logged;
-  const first = input.round > 1 ? carried.given : Boolean(given);
+  const refusals = input.round > 1 && !given ? carried2.refusals : logged;
+  const first = input.round > 1 ? carried2.given : Boolean(given);
   if (input.round === 1 && refusals.length)
     return { repair: true, carried: { given: first, repeated, refusals, missing, dropped } };
   const added = addedEntries(store, exploration2.exploration_id, actor, input.after);
@@ -16841,6 +16841,8 @@ var shortcuts = html2`<aside class="shortcuts" data-shortcuts hidden aria-labell
 		<dd>Accept or reject the selected claim</dd>
 		<dt><kbd>c</kbd> <kbd>s</kbd> <kbd>d</kbd></dt>
 		<dd>Clarify, accept an assumption, or defer the selected question</dd>
+		<dt><kbd>x</kbd> <kbd>Shift</kbd> <kbd>x</kbd></dt>
+		<dd>Select the row, or a range of rows, to decide several at once</dd>
 		<dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt>
 		<dd>Send the form</dd>
 		<dt><kbd>g</kbd> <kbd>i</kbd></dt>
@@ -17755,6 +17757,222 @@ function defaultActor(workspace, env) {
   }
 }
 
+// plugin/src/ui/bulk.ts
+var kindLabels = {
+  defer: "Defer",
+  clarify: "Clarify",
+  accept_assumption: "Accept assumption"
+};
+function answerDefaults(values, actor) {
+  const kind = values.kind || "defer";
+  return {
+    kind,
+    value: values.value?.trim() || (kind === "defer" ? "Deferred in the review UI." : ""),
+    source: values.source?.trim() || `${actor}, in the review UI`,
+    rationale: values.rationale?.trim() || "Answered in the review UI. No reason was given."
+  };
+}
+function claimDefaults(values) {
+  const verdict = values.verdict === "rejected" ? "rejected" : "approved";
+  return {
+    verdict,
+    rationale: values.rationale?.trim() || (verdict === "approved" ? "Accepted in the review UI. No reason was given." : "")
+  };
+}
+function bulkProblem(what, values, actor) {
+  if (!actor) return "Enter your name. Checkmate records it with each decision.";
+  if (what === "questions") {
+    const answer = answerDefaults(values, actor);
+    if (!kindLabels[answer.kind]) return "Choose Defer, Clarify, or Accept assumption.";
+    if (!answer.value) return "Write the answer. Only Defer needs no answer.";
+    return null;
+  }
+  if (values.verdict !== "approved" && values.verdict !== "rejected") return "Choose Accept or Reject.";
+  if (!claimDefaults(values).rationale) return "Write a short reason for the reject.";
+  return null;
+}
+function pickBox(key, label, checked) {
+  return html2`<input
+		class="pick"
+		type="checkbox"
+		name="pick"
+		value="${key}"
+		form="bulk"
+		tabindex="-1"
+		aria-label="Select ${label}"
+		data-pick
+		${checked ? html2`checked` : ""}
+	/>`;
+}
+function bulkBar(action, fields, count, clear) {
+  return html2`<form
+		id="bulk"
+		class="bulk-bar"
+		method="get"
+		action="${action}"
+		data-bulk-form
+		${count ? "" : html2`data-empty`}
+	>
+		${fields.map(([name, value2]) => html2`<input type="hidden" name="${name}" value="${value2}" />`)}
+		<span class="bulk-count" data-bulk-count
+			>${count ? `${count} selected` : "Select rows with x or the boxes."}</span
+		>
+		<button class="btn small" data-bulk-submit>Act on selected</button>
+		${count ? html2`<a class="btn small ghost" href="${clear}" data-queue-go>Clear</a>` : ""}
+	</form>`;
+}
+function pickedList(picked) {
+  return html2`<ul class="plist bulk-items">
+		${picked.map((item) => html2`<li><span class="mono">${item.planId} · ${item.id}</span> ${item.title}</li>`)}
+	</ul>`;
+}
+function carried(picked, what, back) {
+  return html2`${picked.map((item) => html2`<input type="hidden" name="pick" value="${item.key}" />`)}
+		<input type="hidden" name="what" value="${what}" />
+		<input type="hidden" name="return" value="${back}" />`;
+}
+function questionForm(context, picked, back, state) {
+  const values = state?.what === "questions" ? state.values : {};
+  const kind = values.kind || "defer";
+  if (state?.what === "questions" && state.confirm) {
+    const answer = answerDefaults(values, context.actor ?? values.actor ?? "");
+    return html2`<form method="post" action="/bulk" class="decision-form" data-bulk-confirm>
+			${hidden(context, "")} ${carried(picked, "questions", back)}
+			${Object.entries(values).map(([name, value2]) => html2`<input type="hidden" name="${name}" value="${value2}" />`)}
+			<div class="confirm-box">
+				<p class="lab">Confirm</p>
+				<p>
+					This records <strong>${kindLabels[answer.kind]}</strong> for ${plural(picked.length, "question")},
+					as ${context.actor ?? values.actor}. Each answer is one entry in the log.
+				</p>
+				<dl class="facts">
+					<div>
+						<dt>Answer</dt>
+						<dd>${answer.value}</dd>
+					</div>
+					<div>
+						<dt>Source</dt>
+						<dd>${answer.source}</dd>
+					</div>
+					<div>
+						<dt>Reason</dt>
+						<dd>${answer.rationale}</dd>
+					</div>
+				</dl>
+				${pickedList(picked)}
+			</div>
+			<div class="btns">
+				<button class="btn primary" name="confirmed" value="1" data-bulk-send>
+					Confirm ${plural(picked.length, "answer")}
+				</button>
+				<button class="btn" name="back" value="1">Back</button>
+			</div>
+		</form>`;
+  }
+  return html2`<form method="post" action="/bulk" class="decision-form" data-bulk-questions>
+		${hidden(context, "")} ${carried(picked, "questions", back)}
+		<fieldset class="seg-field">
+			<legend class="lab">One answer for ${plural(picked.length, "question")}</legend>
+			<div class="seg">
+				${["defer", "clarify", "accept_assumption"].map(
+    (value2) => html2`<input
+								type="radio"
+								id="bulk-kind-${value2}"
+								name="kind"
+								value="${value2}"
+								${kind === value2 ? html2`checked` : ""}
+							/><label for="bulk-kind-${value2}">${kindLabels[value2]}</label>`
+  )}
+			</div>
+		</fieldset>
+		<label class="lab" for="bulk-value">Answer <span class="req">not needed to defer</span></label>
+		<textarea id="bulk-value" name="value" rows="2">${values.value ?? ""}</textarea>
+		<details class="more" ${values.source || values.rationale ? html2`open` : ""}>
+			<summary>Add source and reason</summary>
+			<label class="lab" for="bulk-source">Source</label>
+			<input id="bulk-source" name="source" value="${values.source ?? ""}" />
+			<label class="lab" for="bulk-rationale">Reason</label>
+			<textarea id="bulk-rationale" name="rationale" rows="2">${values.rationale ?? ""}</textarea>
+		</details>
+		${actorField(context, { values, error: null, stale: null, confirm: false })}
+		<div class="btns">
+			<button class="btn primary" data-bulk-review>Review ${plural(picked.length, "answer")}</button>
+		</div>
+	</form>`;
+}
+function claimForm(context, picked, back, state) {
+  const values = state?.what === "claims" ? state.values : {};
+  if (state?.what === "claims" && state.confirm) {
+    const decision = claimDefaults(values);
+    const verb = decision.verdict === "approved" ? "Accept" : "Reject";
+    return html2`<form method="post" action="/bulk" class="decision-form" data-bulk-confirm>
+			${hidden(context, "")} ${carried(picked, "claims", back)}
+			${Object.entries(values).map(([name, value2]) => html2`<input type="hidden" name="${name}" value="${value2}" />`)}
+			<div class="confirm-box">
+				<p class="lab">Confirm</p>
+				<p>
+					This records <strong>${verb === "Accept" ? "Accept as a defect" : "Reject"}</strong> for
+					${plural(picked.length, "claim")}, as ${context.actor ?? values.actor}. Each decision is one entry
+					in the log.
+				</p>
+				<dl class="facts">
+					<div>
+						<dt>Reason</dt>
+						<dd>${decision.rationale}</dd>
+					</div>
+				</dl>
+				${pickedList(picked)}
+			</div>
+			<div class="btns">
+				<button class="btn primary" name="confirmed" value="1" data-bulk-send>
+					${verb} ${plural(picked.length, "claim")}
+				</button>
+				<button class="btn" name="back" value="1">Back</button>
+			</div>
+		</form>`;
+  }
+  return html2`<form method="post" action="/bulk" class="decision-form" data-bulk-claims>
+		${hidden(context, "")} ${carried(picked, "claims", back)}
+		<label class="lab" for="bulk-reason"
+			>Reason for ${plural(picked.length, "claim")} <span class="req">needed to reject</span></label
+		>
+		<textarea id="bulk-reason" name="rationale" rows="2" placeholder="Optional to accept">
+${values.rationale ?? ""}</textarea>
+		${actorField(context, { values, error: null, stale: null, confirm: false })}
+		<div class="btns">
+			<button class="btn primary" name="verdict" value="approved">
+				Accept ${plural(picked.length, "claim")}
+			</button>
+			<button class="btn" name="verdict" value="rejected">Reject ${plural(picked.length, "claim")}</button>
+		</div>
+	</form>`;
+}
+function bulkPanel(context, picked, back, state) {
+  const questions = picked.filter((item) => item.kind !== "claim");
+  const claims = picked.filter((item) => item.kind === "claim");
+  return html2`<div class="q-crumbs">
+			<nav aria-label="Breadcrumb">
+				<ol>
+					<li><a href="${back}" data-queue-go>Clear the selection</a></li>
+				</ol>
+			</nav>
+		</div>
+		<h2 class="q-h">
+			${picked.length ? `${plural(picked.length, "item")} selected` : "No selected item waits now"}
+		</h2>
+		${state?.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}
+		${questions.length ? html2`<section class="panel decision" aria-labelledby="bulk-questions" data-region="decision">
+						<h3 class="lab" id="bulk-questions">${plural(questions.length, "question")}</h3>
+						${state?.confirm && state.what === "questions" ? "" : pickedList(questions)}
+						${questionForm(context, questions, back, state)}
+					</section>` : ""}
+		${claims.length ? html2`<section class="panel decision" aria-labelledby="bulk-claims" data-region="decision">
+						<h3 class="lab" id="bulk-claims">${plural(claims.length, "claim")}</h3>
+						${state?.confirm && state.what === "claims" ? "" : pickedList(claims)}
+						${claimForm(context, claims, back, state)}
+					</section>` : ""}`;
+}
+
 // plugin/src/ui/lists.ts
 function gapLink(gap) {
   return gap.explorationId ? `/explorations/${gap.explorationId}/questions/${gap.gapId}#answer` : `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`;
@@ -18333,7 +18551,8 @@ function claimFilters(params) {
     plan: value2("plan"),
     build: value2("build"),
     since: periods.some(([days]) => days === value2("since")) ? value2("since") : "",
-    limit: /^[1-9][0-9]{0,5}$/.test(value2("limit")) ? value2("limit") : ""
+    limit: /^[1-9][0-9]{0,5}$/.test(value2("limit")) ? value2("limit") : "",
+    picks: params.getAll("pick")
   };
 }
 function claimsHref(filters, key = null, list2 = false) {
@@ -18341,6 +18560,7 @@ function claimsHref(filters, key = null, list2 = false) {
   for (const name of names) if (filters[name]) params.set(name, filters[name]);
   if (key) params.set("item", key);
   if (filters.limit) params.set("limit", filters.limit);
+  for (const pick of filters.picks ?? []) params.append("pick", pick);
   if (key && list2) params.set("view", "list");
   const query = params.toString();
   return query ? `/claims?${query}` : "/claims";
@@ -18453,7 +18673,8 @@ function filterForm(rows, filters) {
 }
 function row(item, filters, selected) {
   const key = claimKey(item.planId, item.id);
-  return html2`<li>
+  return html2`<li class="q-li">
+		${item.decision ? html2`<span></span>` : pickBox(key, `${item.planId} ${item.id}`, filters.picks.includes(key))}
 		<a
 			class="q-row"
 			href="${claimsHref(filters, key)}"
@@ -18493,10 +18714,18 @@ function nextKey(shown, item) {
   const next = shown[index2 + 1] ?? shown[index2 - 1];
   return next ? claimKey(next.planId, next.id) : null;
 }
-function claimsPage(store, context, params, refusal = null, now = Date.now()) {
+function claimsPage(store, context, params, refusal = null, bulk = null, now = Date.now()) {
   const rows = claimsAcross(store);
   const filters = claimFilters(params);
   const shown = rows.filter((item2) => matches(item2, filters, now));
+  const picked = shown.filter((entry) => !entry.decision && filters.picks.includes(claimKey(entry.planId, entry.id))).map((entry) => ({
+    key: claimKey(entry.planId, entry.id),
+    kind: "claim",
+    planId: entry.planId,
+    id: entry.id,
+    title: entry.title,
+    explorationId: entry.explorationId
+  }));
   const asked = refusal?.key ?? params.get("item");
   const item = asked ? shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null : shown[0] ?? null;
   const key = item ? claimKey(item.planId, item.id) : null;
@@ -18509,6 +18738,16 @@ function claimsPage(store, context, params, refusal = null, now = Date.now()) {
 			</p>
 		</div>
 		${filterForm(rows, filters)}
+		${bulkBar(
+    "/claims",
+    [
+      ...names.filter((name) => filters[name]).map((name) => [name, filters[name]]),
+      ...filters.limit ? [["limit", filters.limit]] : [],
+      ...key ? [["item", key]] : []
+    ],
+    picked.length,
+    claimsHref({ ...filters, picks: [] }, key)
+  )}
 		${shown.length ? html2`<ul class="q-items">
 						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
 					</ul>` : html2`<p class="none">
@@ -18524,14 +18763,16 @@ function claimsPage(store, context, params, refusal = null, now = Date.now()) {
 						>
 						<span class="muted">${limit} of ${shown.length} shown</span>
 					</p>` : ""}`;
-  const pane = item ? claimPane(store, context, item.planId, item, crumbs(item, filters), {
+  const pane = picked.length || bulk ? bulkPanel(context, picked, claimsHref({ ...filters, picks: [] }, key), bulk) : item ? claimPane(store, context, item.planId, item, crumbs(item, filters), {
     key,
     back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
     state: refusal?.state ?? emptyState()
   }) : html2`<div class="empty">
-				<p class="empty-title">${asked ? "This claim does not match the filters." : "No claim to show."}</p>
-				<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
-			</div>`;
+						<p class="empty-title">
+							${asked ? "This claim does not match the filters." : "No claim to show."}
+						</p>
+						<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
+					</div>`;
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Claims` : "Claims",
     section: "claims",
@@ -19740,12 +19981,13 @@ var groups = [
   { group: "questions", title: "Questions that do not block", help: "Answer them when you have time." }
 ];
 function queueFilters(params) {
-  return { plan: params.get("plan")?.trim() ?? "", q: params.get("q")?.trim() ?? "" };
+  return { plan: params.get("plan")?.trim() ?? "", q: params.get("q")?.trim() ?? "", picks: params.getAll("pick") };
 }
 function queueHref(filters, key = null, list2 = false) {
   const params = new URLSearchParams();
   if (filters.plan) params.set("plan", filters.plan);
   if (filters.q) params.set("q", filters.q);
+  for (const pick of filters.picks) params.append("pick", pick);
   if (key) params.set("item", key);
   if (key && list2) params.set("view", "list");
   const query = params.toString();
@@ -19766,9 +20008,11 @@ function badge(item) {
   if (item.kind === "result") return pill("pending", "result");
   return "";
 }
+var pickable = (item) => item.kind === "question" || item.kind === "gap" || item.kind === "claim";
 function row2(item, filters, selected) {
   const current = item.key === selected ? html2` aria-current="true"` : "";
-  return html2`<li>
+  return html2`<li class="q-li">
+		${pickable(item) ? pickBox(item.key, `${item.planId} ${item.id}`, filters.picks.includes(item.key)) : html2`<span></span>`}
 		<a
 			class="q-row"
 			href="${queueHref(filters, item.key)}"
@@ -20010,10 +20254,18 @@ function detail(store, context, waiting, item, filters, back, state) {
     state.values.verdict || state.error || state.stale ? state : null
   );
 }
-function queuePage(store, context, params, refusal = null) {
+function queuePage(store, context, params, refusal = null, bulk = null) {
   const waiting = needsYou(store);
   const filters = queueFilters(params);
   const shown = waiting.items.filter((item2) => matches2(item2, filters));
+  const picked = shown.filter((entry) => pickable(entry) && filters.picks.includes(entry.key)).map((entry) => ({
+    key: entry.key,
+    kind: entry.kind,
+    planId: entry.planId,
+    id: entry.id,
+    title: entry.title,
+    explorationId: entry.explorationId
+  }));
   const asked = refusal?.key ?? params.get("item");
   const item = asked ? shown.find((entry) => entry.key === asked) ?? null : shown[0] ?? null;
   const index2 = item ? shown.indexOf(item) : -1;
@@ -20025,7 +20277,18 @@ function queuePage(store, context, params, refusal = null) {
 			<h1 id="queue-title">Needs you</h1>
 			${sub ? html2`<p class="sub">${sub}</p>` : ""}
 		</div>
-		${filterForm2(waiting, filters)} ${exploring(waiting, filters)}
+		${filterForm2(waiting, filters)}
+		${bulkBar(
+    "/",
+    [
+      ...filters.plan ? [["plan", filters.plan]] : [],
+      ...filters.q ? [["q", filters.q]] : [],
+      ...item ? [["item", item.key]] : []
+    ],
+    picked.length,
+    queueHref({ ...filters, picks: [] }, item?.key ?? null)
+  )}
+		${exploring(waiting, filters)}
 		${groups.map(
     (group2) => groupList(
       group2,
@@ -20035,7 +20298,7 @@ function queuePage(store, context, params, refusal = null) {
     )
   )}
 		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>`;
-  const pane = asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
+  const pane = picked.length || bulk ? bulkPanel(context, picked, queueHref({ ...filters, picks: [] }, item?.key ?? null), bulk) : asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
     section: "inbox",
@@ -21265,6 +21528,73 @@ data: ${matched.join(",") || "*"}
     );
     redirect(request.res, next.location, next.cookies);
   }
+  function bulkPage(request, back, picks, state) {
+    const url = new URL(back, request.url);
+    for (const pick of picks) url.searchParams.append("pick", pick);
+    const shown = context(request, url.pathname + url.search);
+    if (url.pathname === "/claims") return () => claimsPage(store, shown, url.searchParams, null, state);
+    return () => queuePage(store, shown, url.searchParams, null, state);
+  }
+  function bulk(request, form) {
+    const what = form.get("what") === "claims" ? "claims" : "questions";
+    const picks = form.getAll("pick");
+    const back = safeBack(form.get("return"));
+    const { actor, cookies } = actorFrom(request, form);
+    const state = {
+      what,
+      values: values(
+        form,
+        what === "claims" ? ["verdict", "rationale", "actor"] : ["kind", "value", "source", "rationale", "actor"]
+      ),
+      error: null,
+      confirm: false
+    };
+    const page = bulkPage(request, back, picks, state);
+    const waiting = what === "claims" ? claimsAcross(store).filter((claim) => !claim.decision).map((claim) => ({
+      key: `claim:${claim.planId}:${claim.id}`,
+      planId: claim.planId,
+      id: claim.id,
+      explorationId: claim.explorationId
+    })) : needsYou(store).items.filter((item) => item.kind === "question" || item.kind === "gap");
+    const found = picks.map((key) => waiting.find((item) => item.key === key));
+    const gone2 = picks.filter((_, index2) => !found[index2]);
+    if (!picks.length) state.error = "Select at least one item.";
+    else if (gone2.length)
+      state.error = `${gone2.map((key) => key.split(":").slice(1).join(" \xB7 ")).join(", ")} do not wait for a decision now. Nothing is recorded. Clear the selection and select again.`;
+    else if (form.get("back")) return refuse(request, () => ({ ...page(), status: 200 }), cookies);
+    else state.error = bulkProblem(what, state.values, actor);
+    if (state.error) return refuse(request, page, cookies);
+    if (form.get("confirmed") !== "1") {
+      state.confirm = true;
+      return refuse(request, () => ({ ...page(), status: 200 }), cookies);
+    }
+    const items = found.map((item) => item);
+    if (what === "claims") {
+      const decision = claimDefaults(state.values);
+      for (const item of items)
+        decideClaim(store, actor, {
+          planId: item.planId,
+          claimId: item.id,
+          verdict: decision.verdict,
+          rationale: decision.rationale
+        });
+      const flash2 = `${decision.verdict === "approved" ? "Accepted" : "Rejected"} ${plural(items.length, "claim")}`;
+      return redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash2, 60)]);
+    }
+    const answer2 = answerDefaults(state.values, actor);
+    for (const item of items)
+      answerGap(store, actor, {
+        planId: item.planId,
+        gapId: item.id,
+        kind: answer2.kind,
+        value: answer2.value,
+        source: answer2.source,
+        rationale: answer2.rationale,
+        ...item.explorationId ? {} : { expectSha256: planDetail(store, item.planId).sha256 }
+      });
+    const flash = `${answer2.kind === "defer" ? "Deferred" : "Answered"} ${plural(items.length, "question")}`;
+    redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+  }
   function planOfExploration(explorationId) {
     return explorationRow(store, explorationId).plan_id;
   }
@@ -21522,6 +21852,7 @@ data: ${matched.join(",") || "*"}
         return errorPage(request, 422, "Your name", "Enter a name. Checkmate records it with each decision.");
       return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name)]);
     }
+    if (pathname === "/bulk") return bulk(request, form);
     const edit = routes.edit.exec(pathname);
     if (edit) return saveEdit(request, form, edit[1], Number(edit[2]));
     const question = routes.question.exec(pathname);
@@ -22023,11 +22354,11 @@ function mergeDone(store, actor, explorationId, own, base, failed, after) {
   const unplaced = failed || round === "again" ? [] : unplacedReports(store, explorationId, after);
   if (unplaced.length)
     return outcome("merge-round", "started", { round: "again", unplaced, refused: refusals.length });
-  const carried = round === "again" ? own.findLast((item) => item.step === "merge-round").detail.refused : 0;
+  const carried2 = round === "again" ? own.findLast((item) => item.step === "merge-round").detail.refused : 0;
   const first = own.find((item) => item.step === "action");
   return outcome("merge", failed ? "operational_error" : "completed", {
     reports: first.detail.reports,
-    refused: carried + refusals.length
+    refused: carried2 + refusals.length
   });
 }
 function verifyDone(store, actor, explorationId, own, base, failed) {

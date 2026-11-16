@@ -150,10 +150,12 @@ export function explorerBrief(
 	charter: Charter,
 	entries: EntryPointValue[],
 	dataPrefix: string,
-	evidenceFolder: string
+	evidenceFolder: string,
+	minutes: number
 ) {
 	return [
 		'Test this change of the application and find its defects.',
+		`You have about ${minutes} minutes. Write your report before the time ends.`,
 		'',
 		`Goal: ${charter.goal}`,
 		...(charter.requirements.length
@@ -174,8 +176,14 @@ export function explorerBrief(
 		'',
 		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		...(charter.tools.length
-			? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join('; ')}`]
+			? [
+					`Tools you can use: ${charter.tools
+						.map((tool) => tool.name)
+						.sort()
+						.join(', ')}.`,
+				]
 			: []),
+		'Use the fastest check that proves the behaviour: a direct HTTP call where it proves the point, the browser where the page itself is what you test.',
 		'Folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
 		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
 		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
@@ -189,7 +197,8 @@ export function mergerPrompt(
 	build: string,
 	reports: MergeReport[],
 	groups: string[][],
-	questions: Array<{ id: string; question: string }> = []
+	questions: Array<{ id: string; question: string }> = [],
+	earlier: Array<{ id: string; title: string; expected: string; actual: string }> = []
 ) {
 	return [
 		`Merge the reports of independent testers of build ${build}. Do not test.`,
@@ -221,6 +230,28 @@ export function mergerPrompt(
 		...(questions.length
 			? ['', 'The questions:', ...questions.map((question) => `${question.id}: ${question.question}`)]
 			: []),
+		...(earlier.length
+			? [
+					'',
+					'The issues of earlier builds. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
+					...earlier.map(
+						(item) => `${item.id}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
+					),
+				]
+			: []),
+	].join('\n')
+}
+
+type Unplaced = { report: string; title: string; like: Array<{ id: string; title: string; reason: string }> }
+
+export function mergeAgainPrompt(unplaced: Unplaced[]) {
+	return [
+		'These reports are in no issue, but they look like other reports or issues:',
+		...unplaced.map(
+			(item) =>
+				`- ${item.report}: ${item.title} Looks like: ${item.like.map((like) => `${like.id} (${like.title}; ${like.reason})`).join(', ')}`
+		),
+		'For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. Reply with only one JSON array of entries, and nothing else. Use no tool. Reply [] when none is the same.',
 	].join('\n')
 }
 

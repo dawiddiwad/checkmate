@@ -210,7 +210,7 @@ An exploration is free testing of one build of a plan. The plan needs a request.
 ### explore start
 
 ```sh
-checkmate explore start <planId> --build <build> --allow <rule> [--allow <rule>] [--level smoke|standard|deep] [--explorers <n>] [--instance <id>] [--mode exploratory|regression] [--claude-arg <arg>] [--timeout <seconds>]
+checkmate explore start <planId> --build <build> --allow <rule> [--allow <rule>] [--level smoke|standard|deep] [--explorers <n>] [--minutes <n>] [--instance <id>] [--mode exploratory|regression] [--claude-arg <arg>] [--timeout <seconds>]
 ```
 
 `explore start` records the exploration and starts a supervisor in the background. It returns at once with the exploration ID. Then run `explore wait <explorationId>`.
@@ -225,16 +225,17 @@ The supervisor does these steps:
 
    When the plan has an earlier exploration, Checkmate writes `qa-evidence/<explorationId>/known-state.md` before the explorers start, and the brief tells them to read it and retest each open problem. The file does not name Checkmate. It asks for a retest of every listed defect, open and fixed, and for one line for each defect in the report: still present, fixed, or not retested with the reason. It has, in this order: the open defects of earlier builds with the build where they were last seen, the steps, and the expected and actual results; the answers of the product owner and the rejected claims; the defects reported as fixed, newest fix first, each with the build of the fix, the steps, and the expected and actual results; the areas tested before; and the criteria with no observation. It has at most 150 lines. When it is longer, Checkmate shortens the oldest fixed defects to a title line first, and says how many it shortened. The recorder gets the open defects of earlier builds of all explorers, and logs a `verdict` for each one that the session retested.
 
-   The explorer gets a short brief: the goal, the requirements, the sources, the entry values of the instance, the allowed operations, the tools, a data prefix `qa-<explorationId>-<explorer>-`, and the folder `qa-evidence/<explorationId>/<explorer>/` for its evidence files. The brief says that the folders in the workspace whose names start with a dot belong to tools, not to the product under test. The brief does not name Checkmate. The explorer does not run a Checkmate command.
+   The explorer gets a short brief: the goal, the requirements, the sources, the entry values of the instance, the allowed operations, the tools, a data prefix `qa-<explorationId>-<explorer>-`, and the folder `qa-evidence/<explorationId>/<explorer>/` for its evidence files. The brief gives a time budget: `You have about <n> minutes. Write your report before the time ends.` It names the tools without an order, and asks for the fastest check that proves the behaviour: a direct HTTP call where it proves the point, the browser where the page itself is what is tested. It says that the folders in the workspace whose names start with a dot belong to tools, not to the product under test. The `--settings` argument of each explorer and of the verifier also denies the reading of `.checkmate/` with permission rules: `Read` and `Edit` of `./.checkmate/**`, and `ls`, `cat`, and `sqlite3` on `.checkmate`. A recorder does not get these rules. The brief does not name Checkmate. The explorer does not run a Checkmate command.
 
 2. When all explorers end, it records each explorer that completed, one after the other, as `record` does. The recorder gets the same `--model` and `--settings` as its explorer, and no `--allowedTools`.
 
 **Clean context.** Checkmate reads the ID of its own plugin from `plugins/installed_plugins.json` in the Claude Code configuration directory (`CLAUDE_CONFIG_DIR`, else `~/.claude`). The `--settings` argument turns that plugin off for the session. So the skills of Checkmate are not in the context of the explorer, but the other skills of the host are. When Checkmate finds no install record, for example when the operator loads the plugin with `--plugin-dir`, it starts the session without `--settings`. This is normal: a session that does not load the plugin has nothing to turn off. The JSON of `explore status` has `pluginHidden: false`. Checkmate removes each `CHECKMATE_*` environment variable from the environment of an explorer.
 
-**Levels.** A test level sets the number of explorers, the model alias, and whether a verifier runs. `checkmate explore levels` prints the levels. The order of choice is:
+**Levels.** A test level sets the number of explorers, the model alias, whether a verifier runs, and the time budget in minutes. `checkmate explore levels` prints the levels. The order of choice is:
 
 - Level: `--level`, else `explore.level` of the target profile, else `standard`.
 - Number of explorers: `--explorers`, else `explore.explorers` of the profile, else the number of the level.
+- Time budget: `--minutes <n>`, else the minutes of the level. Without `--timeout`, the deadline of each explorer is three times the budget, and at least 1800 seconds.
 - Model: `--claude-arg --model --claude-arg <model>`, else the alias of the level. Checkmate gives the alias as `--model <alias>`. The host resolves it.
 
 **Host authentication.** When the output of an explorer, a recorder, the merger, or the verifier contains `authentication`, in any letter case, Checkmate stores a hint and does not try again. A Claude Code session does not pass its login token to the commands that it runs. Log in on the machine so that Claude Code stores the login, or run `checkmate test` from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an `apiKeyHelper` in the host settings. When no session could log in, the exploration fails with the reason `Host authentication: no session could log in.` Checkmate does not read or copy a credential.
@@ -243,7 +244,7 @@ When the host refuses the model, the launch of that explorer fails. `explore wai
 
 **Permissions.** Give the tool rules of the explorers with `--allow`, one for each rule. Checkmate passes each one as `--allowedTools`. An explorer cannot answer a permission prompt. `--claude-arg` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--plugin-dir`, `--settings`, `--resume`, `--fork-session`, `--session-id`, `--permission-prompts`, and the tool list arguments.
 
-`--timeout` is the deadline of each explorer in seconds. The default is 1800. The supervisor writes its output to `.checkmate/tmp/explore-<explorationId>.log`.
+`--timeout` is the deadline of each explorer in seconds, a safety limit above the time budget. The supervisor writes its output to `.checkmate/tmp/explore-<explorationId>.log`.
 
 ### explore status and explore wait
 
@@ -274,6 +275,7 @@ An operator agent runs `explore wait` as a background command. A factory runs it
 After the records, the supervisor does two more steps:
 
 1. **Merge.** When two or more explorers reported defects on the build, a merger gets the defect reports and a list of reports with many of the same words. The merger is a new Claude Code session with the model of the level and no tool rules. It replies with `issue` entries: one for each defect that two or more reports describe. Checkmate logs them as `qa:merge`, and repairs refused entries once.
+   Then each defect of the build that is in no issue, and that has some of the same words or steps as another report or an issue, goes to one more short round of the merger. When the build has earlier claims, the merger gets them too. A report of a later build that describes an earlier claim joins that claim as a new report. The status of the claim on that build is `not_fixed`, with the basis `reported`.
 2. **Verify.** When the level has a verifier, a verifier gets each claim of the build with one reporter and no verification. It is a new Claude Code session in a clean context, with the tool rules of the explorers. Its brief has the steps, the expected result, and the reported result of each claim, and does not name Checkmate. It replies with one result for each claim: seen or not seen, and what it saw. Checkmate logs an observation as `qa:verify` that confirms or refutes the claim.
 
 A claim is an issue of the merger, or a defect that is in no issue. Its ID is `<explorer>/<entryId>`, for example `a1/D1`, or `merge/I1`. A claim has one state:

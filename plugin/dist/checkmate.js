@@ -8238,6 +8238,13 @@ import { accessSync, constants, readFileSync, realpathSync, statSync } from "nod
 import { homedir } from "node:os";
 import { delimiter, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
+var storeDenyRules = [
+  "Read(./.checkmate/**)",
+  "Edit(./.checkmate/**)",
+  "Bash(ls .checkmate:*)",
+  "Bash(cat .checkmate:*)",
+  "Bash(sqlite3 .checkmate:*)"
+];
 var pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 var maxOutputBytes = 4 * 1024 * 1024;
 var reservedClaudeArgs = [
@@ -8298,10 +8305,14 @@ function checkClaudeArgs(claudeArgs) {
   return claudeArgs;
 }
 function childArgs(context, own) {
+  const settings = {
+    ...context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {},
+    ...context.denyStore ? { permissions: { deny: storeDenyRules } } : {}
+  };
   return [
     "-p",
     ...context.claudeArgs,
-    ...context.hiddenPlugin ? ["--settings", JSON.stringify({ enabledPlugins: { [context.hiddenPlugin]: false } })] : [],
+    ...Object.keys(settings).length ? ["--settings", JSON.stringify(settings)] : [],
     ...own,
     "--output-format",
     "json",
@@ -9632,6 +9643,8 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, missing, recor
     });
   const given = raw;
   const draft = { ...given, build };
+  if (typeof draft.supersedes === "string" && draft.supersedes.startsWith(`${shortName(actor)}/`))
+    draft.supersedes = bareOf(draft.supersedes);
   const problems = schemaProblems("journal-entry", draft, path);
   const kind = String(draft.kind);
   if (!problems.length) problems.push(...schemaProblems(`journal-${kind}`, draft, path));
@@ -9889,6 +9902,7 @@ function claimList(state, decided = /* @__PURE__ */ new Map()) {
       const count = (result) => [...results.values()].filter((item) => item === result).length;
       const check = checkOn(build);
       if (check) return { status: confirms(check) ? "not_fixed" : "fixed", basis: "verified" };
+      if (found.some((defect) => defect.build === build)) return { status: "not_fixed", basis: "reported" };
       if (!results.size) return { status: "no verdict", basis: "none" };
       if (count("fixed") === count("not_fixed")) return { status: "fixed", basis: "disputed" };
       return {
@@ -9966,7 +9980,38 @@ var wordsIn = (text) => new Set(
 var wordsOf = (entry) => wordsIn(`${entry.title} ${entry.actual}`);
 var overlap = (a, b) => [...a].filter((word) => b.has(word)).length / ((/* @__PURE__ */ new Set([...a, ...b])).size || 1);
 var similarWords = 0.5;
-function mergeItems(state, build) {
+var stepText = (entry) => [entry.steps ?? []].flat().join(" ");
+var someWords = 0.25;
+function pathsOf(entry) {
+  const tokens = stepText(entry).toLowerCase().split(/[\s"'()]+/).map(
+    (token) => token.replace(/^[a-z]+:\/\/[^/]+/, "").split("?")[0].replace(/[.,;:]+$/, "")
+  );
+  return new Set(tokens.filter((token) => /^\/[a-z]/.test(token)));
+}
+function likeness(a, b) {
+  if (overlap(wordsOf(a), wordsOf(b)) < someWords) return void 0;
+  if (!a.steps || !b.steps) return "some of the same words in title and actual";
+  const path = [...pathsOf(a)].find((item) => pathsOf(b).has(item));
+  if (path) return `some of the same words, and the same path ${path}`;
+  if (overlap(wordsIn(stepText(a)), wordsIn(stepText(b))) >= someWords) return "some of the same words and steps";
+  return void 0;
+}
+function unplacedMatches(state, claims, build) {
+  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
+  const single = claims.filter(
+    (claim) => claim.build === build && claim.reports.length === 1 && claim.id === claim.reports[0]
+  );
+  return single.flatMap((own) => {
+    const report = byId.get(own.id);
+    const like = claims.flatMap((other) => {
+      if (other.id === own.id || other.state === "rejected") return [];
+      const reason = other.reports.map((id2) => byId.get(id2)).filter((entry) => entry && entry.actor !== report.actor).map((entry) => likeness(report, entry)).find(Boolean);
+      return reason ? [{ id: other.id, title: other.title, reason }] : [];
+    });
+    return like.length ? [{ report: own.id, title: own.title, like }] : [];
+  });
+}
+function mergeItems(state, build, claims = []) {
   const defects = state.team.filter((entry) => entry.kind === "defect" && entry.build === build);
   const testers = new Set(defects.map((defect) => defect.actor));
   const groups = [];
@@ -9978,7 +10023,14 @@ function mergeItems(state, build) {
       groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group2);
     }
   const questions = state.team.filter((entry) => entry.kind === "question" && entry.build === build);
+  const earlier = claims.filter((claim) => claim.build !== build && claim.state !== "rejected").map((claim) => ({
+    id: claim.id,
+    title: short(claim.title),
+    expected: short(claim.expected),
+    actual: short(claim.actual)
+  }));
   return {
+    earlier,
     testers: testers.size,
     questionTesters: new Set(questions.map((entry) => entry.actor)).size,
     questions: questions.map((entry) => ({ id: entry.id, question: short(entry.question) })),
@@ -12184,9 +12236,9 @@ function exploration(store, explorationId) {
 
 // plugin/src/levels.ts
 var testLevels = {
-  smoke: { explorers: 1, model: "haiku", verifier: false },
-  standard: { explorers: 3, model: "haiku", verifier: true },
-  deep: { explorers: 2, model: "sonnet", verifier: true }
+  smoke: { explorers: 1, model: "haiku", verifier: false, minutes: 5 },
+  standard: { explorers: 3, model: "haiku", verifier: true, minutes: 10 },
+  deep: { explorers: 2, model: "sonnet", verifier: true, minutes: 20 }
 };
 var levelNames = Object.keys(testLevels);
 var defaultLevel = "standard";
@@ -12823,9 +12875,10 @@ function entryPointLine(entry) {
     return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
   return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
 }
-function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
+function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, minutes) {
   return [
     "Test this change of the application and find its defects.",
+    `You have about ${minutes} minutes. Write your report before the time ends.`,
     "",
     `Goal: ${charter.goal}`,
     ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
@@ -12841,14 +12894,17 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
     ...entries.map(entryPointLine),
     "",
     `${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
-    ...charter.tools.length ? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join("; ")}`] : [],
+    ...charter.tools.length ? [
+      `Tools you can use: ${charter.tools.map((tool) => tool.name).sort().join(", ")}.`
+    ] : [],
+    "Use the fastest check that proves the behaviour: a direct HTTP call where it proves the point, the browser where the page itself is what you test.",
     "Folders in the workspace whose names start with a dot belong to tools, not to the product under test.",
     `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
     `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
     "At the end, list what you tested and each problem that you found, with its steps."
   ].join("\n");
 }
-function mergerPrompt(build, reports, groups, questions = []) {
+function mergerPrompt(build, reports, groups, questions = [], earlier = []) {
   return [
     `Merge the reports of independent testers of build ${build}. Do not test.`,
     "Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.",
@@ -12871,7 +12927,23 @@ function mergerPrompt(build, reports, groups, questions = []) {
       "Reports with many of the same words. These are ideas, not rules:",
       ...groups.map((group2) => `- ${group2.join(", ")}`)
     ] : [],
-    ...questions.length ? ["", "The questions:", ...questions.map((question) => `${question.id}: ${question.question}`)] : []
+    ...questions.length ? ["", "The questions:", ...questions.map((question) => `${question.id}: ${question.question}`)] : [],
+    ...earlier.length ? [
+      "",
+      'The issues of earlier builds. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
+      ...earlier.map(
+        (item) => `${item.id}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
+      )
+    ] : []
+  ].join("\n");
+}
+function mergeAgainPrompt(unplaced) {
+  return [
+    "These reports are in no issue, but they look like other reports or issues:",
+    ...unplaced.map(
+      (item) => `- ${item.report}: ${item.title} Looks like: ${item.like.map((like) => `${like.id} (${like.title}; ${like.reason})`).join(", ")}`
+    ),
+    'For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. Reply with only one JSON array of entries, and nothing else. Use no tool. Reply [] when none is the same.'
   ].join("\n");
 }
 function verifierBrief(items, entries, operations, dataPrefix) {
@@ -13138,6 +13210,7 @@ function launchPlan(profile, input, env) {
   const host = hostModel(claudeArgs);
   const hiddenPlugin = installedPluginId(env);
   const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers;
+  const minutes = input.minutes ?? row.minutes;
   requireWellFormed(
     input.allow.length || explorers === 0 && !row.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
@@ -13151,7 +13224,8 @@ function launchPlan(profile, input, env) {
     verifier: row.verifier,
     context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row.model] },
     allow: input.allow,
-    timeoutSeconds: input.timeoutSeconds ?? defaultExplorerTimeout,
+    minutes,
+    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, minutes * 60 * 3),
     pluginHidden: hiddenPlugin !== null
   };
 }
@@ -13194,6 +13268,7 @@ function startExploration(store, actor, input, env) {
         explorers: launch.explorers,
         model: launch.model,
         verifier: launch.verifier,
+        minutes: launch.minutes,
         pluginHidden: launch.pluginHidden,
         next: [`checkmate explore wait ${opened.explorationId}`]
       }),
@@ -13241,14 +13316,14 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
     const session = randomUUID3();
     const folder = evidenceFolder(explorationId, explorer);
     mkdirSync5(join7(store.workspace, folder), { recursive: true });
-    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder);
+    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, launch.minutes);
     event(store, actor, explorationId, {
       step: "launch",
       explorer,
       status: "started",
       detail: { session, context: launch.context, brief }
     });
-    const args = childArgs(launch.context, ["--session-id", session, ...allowed]);
+    const args = childArgs({ ...launch.context, denyStore: true }, ["--session-id", session, ...allowed]);
     return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
       (call) => ({ explorer, session, call })
     );
@@ -13289,8 +13364,9 @@ function costOf(calls) {
 }
 function mergeReports(store, actor, explorationId, launch, env) {
   const opened = explorationRow(store, explorationId);
-  const items = mergeItems(journal(store, opened.plan_id), opened.build);
-  const defects = items.testers > 1 && items.defects.length > 1;
+  const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id));
+  const later = items.earlier.length > 0 && items.defects.length > 0;
+  const defects = later || items.testers > 1 && items.defects.length > 1;
   const questions = items.questionTesters > 1 && items.questions.length > 1;
   if (!defects && !questions) return;
   const session = randomUUID3();
@@ -13321,14 +13397,20 @@ function mergeReports(store, actor, explorationId, launch, env) {
         opened.build,
         defects ? items.defects : [],
         defects ? items.groups : [],
-        questions ? items.questions : []
+        questions ? items.questions : [],
+        later ? items.earlier : []
       )
     )
   ];
   let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result));
   if (refusals.length) {
     calls.push(call(["--resume", session], repairPrompt(refusals)));
-    refusals = log(replyArray(calls[1].result));
+    refusals = log(replyArray(calls.at(-1).result));
+  }
+  const unplaced = calls.some((item) => item.failure) ? [] : unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build);
+  if (unplaced.length) {
+    calls.push(call(["--resume", session], mergeAgainPrompt(unplaced)));
+    refusals = [...refusals, ...log(replyArray(calls.at(-1).result))];
   }
   const failure = calls.find((item) => item.failure)?.failure;
   event(store, actor, explorationId, {
@@ -13366,7 +13448,7 @@ async function verifyClaims(store, actor, explorationId, launch, env) {
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const call = await launchClaude(
     requireClaude(env),
-    childArgs(launch.context, ["--session-id", session, ...allowed]),
+    childArgs({ ...launch.context, denyStore: true }, ["--session-id", session, ...allowed]),
     brief,
     store.workspace,
     childEnv(env),
@@ -13500,6 +13582,7 @@ function explorationStatus(store, explorationId) {
     model: launch?.model ?? null,
     modelFrom: launch?.modelFrom ?? null,
     verifier: launch?.verifier ?? null,
+    minutes: launch?.minutes ?? null,
     pluginHidden: launch?.pluginHidden ?? null,
     explorers,
     phases: events.filter((item) => item.step === "merge" || item.step === "verify").map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
@@ -19142,7 +19225,8 @@ function explorationLines(reply) {
       explorers: status.explorerCount ?? void 0,
       model: status.model ?? void 0,
       modelFrom: status.modelFrom ?? void 0,
-      verifier: status.verifier ?? void 0
+      verifier: status.verifier ?? void 0,
+      minutes: status.minutes ?? void 0
     },
     lines: [
       ...status.explorers.map((item) => [
@@ -19980,6 +20064,7 @@ var commands = {
       mode: testModes,
       level: levelNames,
       explorers: { min: 1, max: 10 },
+      minutes: { min: 1, max: 240 },
       instance: "value",
       allow: "repeat",
       "claude-arg": "repeat",
@@ -20002,6 +20087,7 @@ var commands = {
         mode: value(args, "mode"),
         level: value(args, "level"),
         explorers: integer(args, "explorers"),
+        minutes: integer(args, "minutes"),
         instance: value(args, "instance"),
         allow: list(args, "allow") ?? [],
         claudeArgs: list(args, "claude-arg") ?? [],
@@ -20059,6 +20145,7 @@ var commands = {
       build: "value",
       level: levelNames,
       explorers: { min: 1, max: 10 },
+      minutes: { min: 1, max: 240 },
       instance: "value",
       mode: explorationModes,
       allow: "repeat",
@@ -20077,6 +20164,7 @@ var commands = {
         mode: value(args, "mode"),
         level: value(args, "level"),
         explorers: integer(args, "explorers"),
+        minutes: integer(args, "minutes"),
         allow: list(args, "allow") ?? [],
         claudeArgs: list(args, "claude-arg") ?? [],
         timeoutSeconds: integer(args, "timeout")
@@ -20180,7 +20268,8 @@ var commands = {
         name,
         `explorers=${level.explorers}`,
         `model=${level.model}`,
-        `verifier=${level.verifier}`
+        `verifier=${level.verifier}`,
+        `minutes=${level.minutes}`
       ])
     })
   },

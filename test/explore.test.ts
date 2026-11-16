@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore } from '../plugin/src/store.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
-import { authenticationHint } from '../plugin/src/sessions.ts'
+import { authenticationHint, storeDenyRules } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import type { FakeReplies } from './claude.ts'
@@ -48,6 +48,10 @@ function setup(
 
 const after = (args: string[], flag: string) => args[args.indexOf(flag) + 1]
 const hidden = JSON.stringify({ enabledPlugins: { 'checkmate@checkmate': false } })
+const explorerSettings = JSON.stringify({
+	enabledPlugins: { 'checkmate@checkmate': false },
+	permissions: { deny: storeDenyRules },
+})
 
 test('explore start launches the explorers of the level in a clean context, then records each session', (t) => {
 	const { start, wait, called, workspace } = setup(t)
@@ -84,7 +88,12 @@ test('explore start launches the explorers of the level in a clean context, then
 	assert.equal(explorers.length, 3)
 	for (const call of explorers) {
 		assert.equal(after(call.args, '--model'), testLevels.standard.model)
-		assert.equal(after(call.args, '--settings'), hidden)
+		assert.equal(after(call.args, '--settings'), explorerSettings)
+		assert.match(call.prompt, /\nYou have about 10 minutes\. Write your report before the time ends\.\n/)
+		assert.match(
+			call.prompt,
+			/\nTools you can use: node, playwright-cli\.\nUse the fastest check that proves the behaviour: a direct HTTP call where it proves the point, the browser where the page itself is what you test\.\n/
+		)
 		assert.deepEqual(call.args.filter((arg: string) => arg === '--allowedTools').length, 2)
 		assert.deepEqual(call.env, [])
 		assert.equal(call.cwd, workspace)
@@ -154,7 +163,13 @@ test('without an install record the explorers start without the override, and st
 	const { start, wait, called, workspace } = setup(t, { installed: false })
 	assert.equal(start(['--level', 'smoke']).body.pluginHidden, false)
 	wait()
-	assert(!called().some((call) => call.args.includes('--settings')))
+	const calls = called()
+	assert.deepEqual(
+		calls
+			.filter((call) => call.args.includes('--settings'))
+			.map((call) => [call.role, JSON.parse(after(call.args, '--settings'))]),
+		[['explorer', { permissions: { deny: storeDenyRules } }]]
+	)
 	const status = run(['explore', 'status', 'x-1', '--workspace', workspace], {
 		cwd: workspace,
 		env: {},
@@ -223,4 +238,21 @@ test('a host authentication failure fails the exploration with the plain hint, a
 	assert.equal(recorded.body.status, 'operational_error')
 	assert.equal(recorded.body.hint, authenticationHint)
 	assert.equal(called().length, 1)
+})
+
+test('--minutes sets the time budget of the brief, and the safety timeout stays well above it', (t) => {
+	const { start, wait, called, command } = setup(t)
+	const started = start(['--level', 'smoke', '--minutes', '25'])
+	assert.equal(started.body.minutes, 25)
+	wait()
+	const [explorer] = called().filter((call) => call.role === 'explorer')
+	assert.match(explorer.prompt, /\nYou have about 25 minutes\. Write your report before the time ends\.\n/)
+	const status = command(['explore', 'status', 'x-1']).body
+	assert.equal(status.minutes, 25)
+	const events = command(['query', "SELECT detail FROM exploration_events WHERE step = 'start'"]).body.rows
+	assert.equal(JSON.parse(events[0].detail).timeoutSeconds, 25 * 60 * 3)
+	assert.deepEqual(
+		levelNames.map((name) => testLevels[name].minutes),
+		[5, 10, 20]
+	)
 })

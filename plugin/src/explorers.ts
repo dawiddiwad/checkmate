@@ -15,11 +15,12 @@ import {
 	planClaims,
 	planQuestions,
 	refusalText,
+	unplacedMatches,
 	verifyItems,
 } from './journal.ts'
 import { defaultLevel, levelNames, testLevels } from './levels.ts'
 import { explorerActor, recordSession, defaultRecorderTimeout } from './recorder.ts'
-import { explorerBrief, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
+import { explorerBrief, mergeAgainPrompt, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
 import { findInstance, targetRevision } from './targets.ts'
 import {
 	checkClaudeArgs,
@@ -42,11 +43,13 @@ import { join } from 'node:path'
 export type StartInput = OpenInput & {
 	level?: string
 	explorers?: number
+	minutes?: number
 	allow: string[]
 	claudeArgs: string[]
 	timeoutSeconds?: number
 }
 export type Launch = {
+	minutes: number
 	level: TestLevel
 	explorers: number
 	model: string
@@ -82,6 +85,7 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	const host = hostModel(claudeArgs)
 	const hiddenPlugin = installedPluginId(env)
 	const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers
+	const minutes = input.minutes ?? row.minutes
 	requireWellFormed(
 		input.allow.length || (explorers === 0 && !row.verifier),
 		'Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash',
@@ -95,7 +99,8 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 		verifier: row.verifier,
 		context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model] },
 		allow: input.allow,
-		timeoutSeconds: input.timeoutSeconds ?? defaultExplorerTimeout,
+		minutes,
+		timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, minutes * 60 * 3),
 		pluginHidden: hiddenPlugin !== null,
 	}
 }
@@ -143,6 +148,7 @@ export function startExploration(store: Store, actor: string | undefined, input:
 				explorers: launch.explorers,
 				model: launch.model,
 				verifier: launch.verifier,
+				minutes: launch.minutes,
 				pluginHidden: launch.pluginHidden,
 				next: [`checkmate explore wait ${opened.explorationId}`],
 			}),
@@ -203,14 +209,14 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 		const session = randomUUID()
 		const folder = evidenceFolder(explorationId, explorer)
 		mkdirSync(join(store.workspace, folder), { recursive: true })
-		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder)
+		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, launch.minutes)
 		event(store, actor, explorationId, {
 			step: 'launch',
 			explorer,
 			status: 'started',
 			detail: { session, context: launch.context, brief },
 		})
-		const args = childArgs(launch.context, ['--session-id', session, ...allowed])
+		const args = childArgs({ ...launch.context, denyStore: true }, ['--session-id', session, ...allowed])
 		return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
 			(call) => ({ explorer, session, call })
 		)
@@ -261,8 +267,9 @@ function costOf(calls: ClaudeCall[]) {
 
 function mergeReports(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
 	const opened = explorationRow(store, explorationId)
-	const items = mergeItems(journal(store, opened.plan_id), opened.build)
-	const defects = items.testers > 1 && items.defects.length > 1
+	const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id))
+	const later = items.earlier.length > 0 && items.defects.length > 0
+	const defects = later || (items.testers > 1 && items.defects.length > 1)
 	const questions = items.questionTesters > 1 && items.questions.length > 1
 	if (!defects && !questions) return
 	const session = randomUUID()
@@ -294,14 +301,22 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 				opened.build,
 				defects ? items.defects : [],
 				defects ? items.groups : [],
-				questions ? items.questions : []
+				questions ? items.questions : [],
+				later ? items.earlier : []
 			)
 		),
 	]
 	let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result))
 	if (refusals.length) {
 		calls.push(call(['--resume', session], repairPrompt(refusals)))
-		refusals = log(replyArray(calls[1].result))
+		refusals = log(replyArray(calls.at(-1)!.result))
+	}
+	const unplaced = calls.some((item) => item.failure)
+		? []
+		: unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build)
+	if (unplaced.length) {
+		calls.push(call(['--resume', session], mergeAgainPrompt(unplaced)))
+		refusals = [...refusals, ...log(replyArray(calls.at(-1)!.result))]
 	}
 	const failure = calls.find((item) => item.failure)?.failure
 	event(store, actor, explorationId, {
@@ -341,7 +356,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
 	const call = await launchClaude(
 		requireClaude(env),
-		childArgs(launch.context, ['--session-id', session, ...allowed]),
+		childArgs({ ...launch.context, denyStore: true }, ['--session-id', session, ...allowed]),
 		brief,
 		store.workspace,
 		childEnv(env),
@@ -490,6 +505,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 		model: launch?.model ?? null,
 		modelFrom: launch?.modelFrom ?? null,
 		verifier: launch?.verifier ?? null,
+		minutes: launch?.minutes ?? null,
 		pluginHidden: launch?.pluginHidden ?? null,
 		explorers,
 		phases: events

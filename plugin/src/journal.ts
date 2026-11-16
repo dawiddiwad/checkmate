@@ -380,6 +380,8 @@ function checkedEntry(
 		})
 	const given = raw as Fix
 	const draft: Fix = { ...given, build }
+	if (typeof draft.supersedes === 'string' && draft.supersedes.startsWith(`${shortName(actor)}/`))
+		draft.supersedes = bareOf(draft.supersedes)
 	const problems = schemaProblems('journal-entry', draft, path)
 	const kind = String(draft.kind)
 	if (!problems.length) problems.push(...schemaProblems(`journal-${kind}`, draft, path))
@@ -626,7 +628,7 @@ export function recordText(store: Store, planId: string, viewer: string, build?:
 export type ClaimState = 'observed' | 'suspected' | 'confirmed' | 'unresolved' | 'accepted' | 'rejected'
 export type BuildStatus = {
 	status: 'fixed' | 'not_fixed' | 'no verdict'
-	basis: 'majority' | 'disputed' | 'single' | 'verified' | 'none'
+	basis: 'majority' | 'disputed' | 'single' | 'verified' | 'reported' | 'none'
 }
 export type ClaimDecision = { verdict: 'approved' | 'rejected'; actor: string; rationale: string }
 export type Claim = ReturnType<typeof claimList>[number]
@@ -694,6 +696,7 @@ export function claimList(state: Journal, decided: Map<string, ClaimDecision> = 
 			const count = (result: string) => [...results.values()].filter((item) => item === result).length
 			const check = checkOn(build)
 			if (check) return { status: confirms(check) ? 'not_fixed' : 'fixed', basis: 'verified' }
+			if (found.some((defect) => defect.build === build)) return { status: 'not_fixed', basis: 'reported' }
 			if (!results.size) return { status: 'no verdict', basis: 'none' }
 			if (count('fixed') === count('not_fixed')) return { status: 'fixed', basis: 'disputed' }
 			return {
@@ -806,7 +809,52 @@ const overlap = (a: Set<string>, b: Set<string>) =>
 	[...a].filter((word) => b.has(word)).length / (new Set([...a, ...b]).size || 1)
 const similarWords = 0.5
 
-export function mergeItems(state: Journal, build: string) {
+const stepText = (entry: Entry) => [entry.steps ?? []].flat().join(' ')
+const someWords = 0.25
+
+function pathsOf(entry: Entry) {
+	const tokens = stepText(entry)
+		.toLowerCase()
+		.split(/[\s"'()]+/)
+		.map((token) =>
+			token
+				.replace(/^[a-z]+:\/\/[^/]+/, '')
+				.split('?')[0]
+				.replace(/[.,;:]+$/, '')
+		)
+	return new Set(tokens.filter((token) => /^\/[a-z]/.test(token)))
+}
+
+function likeness(a: Entry, b: Entry) {
+	if (overlap(wordsOf(a), wordsOf(b)) < someWords) return undefined
+	if (!a.steps || !b.steps) return 'some of the same words in title and actual'
+	const path = [...pathsOf(a)].find((item) => pathsOf(b).has(item))
+	if (path) return `some of the same words, and the same path ${path}`
+	if (overlap(wordsIn(stepText(a)), wordsIn(stepText(b))) >= someWords) return 'some of the same words and steps'
+	return undefined
+}
+
+export function unplacedMatches(state: Journal, claims: Claim[], build: string) {
+	const byId = new Map(state.team.map((entry) => [entry.id, entry]))
+	const single = claims.filter(
+		(claim) => claim.build === build && claim.reports.length === 1 && claim.id === claim.reports[0]
+	)
+	return single.flatMap((own) => {
+		const report = byId.get(own.id)!
+		const like = claims.flatMap((other) => {
+			if (other.id === own.id || other.state === 'rejected') return []
+			const reason = other.reports
+				.map((id) => byId.get(id))
+				.filter((entry) => entry && entry.actor !== report.actor)
+				.map((entry) => likeness(report, entry!))
+				.find(Boolean)
+			return reason ? [{ id: other.id, title: other.title, reason }] : []
+		})
+		return like.length ? [{ report: own.id, title: own.title, like }] : []
+	})
+}
+
+export function mergeItems(state: Journal, build: string, claims: Claim[] = []) {
 	const defects = state.team.filter((entry) => entry.kind === 'defect' && entry.build === build)
 	const testers = new Set(defects.map((defect) => defect.actor))
 	const groups: string[][] = []
@@ -818,7 +866,16 @@ export function mergeItems(state: Journal, build: string) {
 			groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group)
 		}
 	const questions = state.team.filter((entry) => entry.kind === 'question' && entry.build === build)
+	const earlier = claims
+		.filter((claim) => claim.build !== build && claim.state !== 'rejected')
+		.map((claim) => ({
+			id: claim.id,
+			title: short(claim.title),
+			expected: short(claim.expected),
+			actual: short(claim.actual),
+		}))
 	return {
+		earlier,
 		testers: testers.size,
 		questionTesters: new Set(questions.map((entry) => entry.actor)).size,
 		questions: questions.map((entry) => ({ id: entry.id, question: short(entry.question) })),

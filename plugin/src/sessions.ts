@@ -6,7 +6,15 @@ import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type Env = Record<string, string | undefined>
-export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[] }
+export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[]; denyStore?: boolean }
+
+export const storeDenyRules = [
+	'Read(./.checkmate/**)',
+	'Edit(./.checkmate/**)',
+	'Bash(ls .checkmate:*)',
+	'Bash(cat .checkmate:*)',
+	'Bash(sqlite3 .checkmate:*)',
+]
 export type ClaudeCall = {
 	failure?: ['interrupted' | 'operational_error', string]
 	result?: unknown
@@ -83,12 +91,14 @@ export function checkClaudeArgs(claudeArgs: string[]) {
 }
 
 export function childArgs(context: ChildContext, own: string[]) {
+	const settings = {
+		...(context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {}),
+		...(context.denyStore ? { permissions: { deny: storeDenyRules } } : {}),
+	}
 	return [
 		'-p',
 		...context.claudeArgs,
-		...(context.hiddenPlugin
-			? ['--settings', JSON.stringify({ enabledPlugins: { [context.hiddenPlugin]: false } })]
-			: []),
+		...(Object.keys(settings).length ? ['--settings', JSON.stringify(settings)] : []),
 		...own,
 		'--output-format',
 		'json',

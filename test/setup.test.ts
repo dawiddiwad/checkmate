@@ -142,7 +142,8 @@ test('the plan and the gate accept any operation of the default, and the brief s
 		},
 		[],
 		'qa-',
-		'qa-evidence'
+		'qa-evidence',
+		10
 	)
 	assert.match(brief, new RegExp(`\\n${anyTestOperationText} Do not change the code`))
 	assert.doesNotMatch(brief, /any_test_operation/)

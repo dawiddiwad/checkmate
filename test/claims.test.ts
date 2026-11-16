@@ -307,3 +307,57 @@ test('a blocking question makes the plan wait on the oracle', (t) => {
 	)
 	assert.equal(command(['inbox']).body.gaps[0].severity, 'blocking')
 })
+
+test('a report left out of the merge goes to one more round, and a defect of a later build joins its claim', (t) => {
+	const context = setup(t)
+	const third = '33333333-3333-4333-8333-333333333333'
+	context.reply({
+		recorder: {
+			[first]: [stacks],
+			[second]: [{ ...stacks, title: 'Coupon stacks again', steps: 'Apply two coupons together.' }],
+			[third]: [{ ...stacks, title: 'Two coupons still stack', steps: 'Apply two coupons.' }],
+		},
+		merger: [],
+		repair: [{ kind: 'issue', title: 'Coupons stack', severity: 'high', reports: ['a1/D1', 'a2/D1'] }],
+	})
+	const { command, called } = context
+	command(['explore', 'open', 'checkout', '--build', 'b1'])
+	command(['record', 'x-1', '--explorer', 'a1', '--session', first])
+	command(['record', 'x-1', '--explorer', 'a2', '--session', second])
+	command(['explore', 'finish', 'x-1', '--level', 'smoke'])
+	assert.equal(command(['explore', 'wait', 'x-1', '--timeout', '60']).code, 0)
+	const again = called().find((call) => call.role === 'repair')
+	assert.match(
+		again.prompt,
+		/^These reports are in no issue, but they look like other reports or issues:\n- a1\/D1: Coupon stacks Looks like: a2\/D1 \(Coupon stacks again; some of the same words and steps\)/
+	)
+	assert.deepEqual(
+		command(['claim', 'list', 'checkout']).body.claims.map((claim: { id: string }) => claim.id),
+		['merge/I1']
+	)
+	context.reply({
+		recorder: { [third]: [{ ...stacks, title: 'Two coupons still stack', steps: 'Apply two coupons.' }] },
+		merger: [
+			{
+				kind: 'issue',
+				supersedes: 'merge/I1',
+				title: 'Coupons stack',
+				severity: 'high',
+				reports: ['a1/D1', 'a2/D1', 'a1/D2'],
+			},
+		],
+	})
+	command(['explore', 'open', 'checkout', '--build', 'b2'])
+	command(['record', 'x-2', '--explorer', 'a1', '--session', third])
+	command(['explore', 'finish', 'x-2', '--level', 'smoke'])
+	assert.equal(command(['explore', 'wait', 'x-2', '--timeout', '60']).code, 0)
+	const merger = called().find((call) => call.role === 'merger')
+	assert.match(merger.prompt, /\nThe issues of earlier builds\. When a report of this build describes one of them/)
+	assert.match(merger.prompt, /\nmerge\/I1: Coupons stack Expected: 450 Actual: 400/)
+	const claims = command(['claim', 'list', 'checkout']).body.claims
+	assert.deepEqual(
+		claims.map((claim: { id: string; build: string; reports: string[] }) => [claim.id, claim.build, claim.reports]),
+		[['merge/I1', 'b1', ['a1/D1', 'a2/D1', 'a1/D2']]]
+	)
+	assert.deepEqual(claims[0].statuses.b2, { status: 'not_fixed', basis: 'reported' })
+})

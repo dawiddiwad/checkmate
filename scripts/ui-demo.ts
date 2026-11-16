@@ -43,8 +43,17 @@ class DemoDate extends RealDate {
 	}
 }
 
-function minutesAgo(minutes: number) {
+export function minutesAgo(minutes: number) {
 	offsetMinutes = minutes
+}
+
+export function withDemoClock(run: () => void) {
+	globalThis.Date = DemoDate as DateConstructor
+	try {
+		run()
+	} finally {
+		globalThis.Date = RealDate
+	}
 }
 
 export function profile(): Profile {
@@ -609,47 +618,49 @@ function seedStartedRun(store: Store) {
 
 export function seedDemo(workspace: string) {
 	const store = openStore(workspace)
-	globalThis.Date = DemoDate as DateConstructor
 	try {
-		minutesAgo(5000)
-		const value = profile()
-		openTarget(store, agent, {
-			targetId: value.targetId,
-			entryPoints: value.entryPoints,
-			capabilities: value.capabilities,
-			allowedOperations: value.allowedOperations,
-		})
-		saveTarget(store, agent, { targetId: value.targetId, profile: value })
-		addInstance(store, agent, {
-			targetId: value.targetId,
-			instanceId: 'preview',
-			instance: { entries: { web: 'http://127.0.0.1:4100' }, environment: 'Old preview build' },
-		})
-		addInstance(store, agent, {
-			targetId: value.targetId,
-			instanceId: 'local',
-			instance: { entries: { web: 'http://127.0.0.1:4173' }, environment: 'Local fixture' },
-		})
-		addInstance(store, agent, {
-			targetId: value.targetId,
-			instanceId: 'staging',
-			instance: {
-				entries: { web: 'https://staging.shop.example' },
-				environment: 'Shared staging',
-				references: ['STAGING_LOGIN'],
-			},
-		})
-		retireInstance(store, agent, { targetId: value.targetId, instanceId: 'preview' })
-		seedLogin(store)
-		seedAccount(store)
-		seedCheckout(store)
-		seedLoginRun(store)
-		seedRevision(store)
-		seedSearch(store)
-		seedCheckoutRun(store)
-		seedStartedRun(store)
+		withDemoClock(() => seedAll(store))
 	} finally {
-		globalThis.Date = RealDate
 		closeStore(store)
 	}
+}
+
+function seedAll(store: Store) {
+	minutesAgo(5000)
+	const value = profile()
+	openTarget(store, agent, {
+		targetId: value.targetId,
+		entryPoints: value.entryPoints,
+		capabilities: value.capabilities,
+		allowedOperations: value.allowedOperations,
+	})
+	saveTarget(store, agent, { targetId: value.targetId, profile: value })
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'preview',
+		instance: { entries: { web: 'http://127.0.0.1:4100' }, environment: 'Old preview build' },
+	})
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'local',
+		instance: { entries: { web: 'http://127.0.0.1:4173' }, environment: 'Local fixture' },
+	})
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'staging',
+		instance: {
+			entries: { web: 'https://staging.shop.example' },
+			environment: 'Shared staging',
+			references: ['STAGING_LOGIN'],
+		},
+	})
+	retireInstance(store, agent, { targetId: value.targetId, instanceId: 'preview' })
+	seedLogin(store)
+	seedAccount(store)
+	seedCheckout(store)
+	seedLoginRun(store)
+	seedRevision(store)
+	seedSearch(store)
+	seedCheckoutRun(store)
+	seedStartedRun(store)
 }

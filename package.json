@@ -16,7 +16,8 @@
 		"format:fix": "prettier . --write",
 		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.ts",
 		"generate": "node scripts/generate-types.ts && node scripts/generate-validators.ts",
-		"build": "npm run generate && node scripts/build-plugin.ts"
+		"build": "npm run generate && node scripts/build-plugin.ts",
+		"ui:volume": "node scripts/ui-volume.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",

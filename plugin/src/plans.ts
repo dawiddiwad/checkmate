@@ -201,7 +201,7 @@ function revisionChange(plan: Plan, sha256: string): Change {
 	}
 }
 
-function storeRevision(store: Store, draft: PlanDraft, operationId: string): Change {
+export function storeRevision(store: Store, draft: PlanDraft, operationId: string): Change {
 	const { plan, body, sha256 } = checkedRevision(store, draft)
 	execute(
 		store,
@@ -373,7 +373,7 @@ function editableRevision(store: Store, text: string, expectSha256: string | und
 	return base
 }
 
-function storeEdit(store: Store, operationId: string, base: PlanRevision, value: unknown): Change {
+export function storeEdit(store: Store, operationId: string, base: PlanRevision, value: unknown): Change {
 	const candidate = validate('plan-candidate', value)
 	const planId = base.plan.planId
 	const frozen = frozenRevision(store, planId, base.plan.revision)

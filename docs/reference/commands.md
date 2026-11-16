@@ -69,6 +69,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `explore show <explorationId>`                               | Prints the exploration with its claims, questions, and criteria.                                                                  |
 |           | `claim accept\|reject <planId> <claimId> --rationale <text>` | Records the decision of the oracle on a claim.                                                                                    |
 |           | `export exploration <explorationId> --format md\|json`       | Prints the report of an exploration.                                                                                              |
+|           | `harvest <explorationId> [--observations]`                   | Stores the kept claims of an exploration as tests of its plan. Read [harvest](#harvest).                                          |
 |           | `record <explorationId> --explorer <name> --session <id>`    | Starts a recorder: a copy of a test session that writes the record of that session.                                               |
 |           | `explore log <explorationId>`                                | Saves each valid entry from standard input for the actor, and refuses each invalid entry alone.                                   |
 | Output    | `export plan <ref>`, `export run <runId>`                    | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
@@ -290,6 +291,17 @@ A claim needs no planned assertion. The factory works on the open claims that ar
 ### explore finish
 
 `checkmate explore finish <explorationId> [--level <level>] [--allow <rule>] [--claude-arg <arg>]` is for an exploration without explorers, after `record` of each session. It starts the supervisor for the merge and the verify steps. It needs `--allow` when the level has a verifier.
+
+### harvest
+
+`checkmate harvest <explorationId> [--observations]` makes stored test definitions from what the explorers did. The check path then runs them again on each later build.
+
+- Each claim of the exploration that is `observed`, `confirmed`, or `accepted` gives one test. Its action is the steps of the best report. Its assertion is the `expected` of the claim, as an `agent_observation`. A `suspected`, `unresolved`, or `rejected` claim gives no test.
+- With `--observations`, each observation with `verdict: ok` and steps gives one test too. With a `value`, the check is `The result is <value>.` and `deterministic`. The expected value of such a test comes from the running application, not from a source. Its metadata has `"basis": "observed"`, so that the oracle can review it.
+- A test gets the requirement of the criterion that its report links to, with the source of the criterion. Else it gets a new requirement from the expected result, with the source `exploration:<explorationId>/<claimId>`. New requirement IDs are `HR1`, `HR2`, and so on. Test IDs are `H1`, `H2`, and so on.
+- Each test has `"type": "regression"`, `"origin": "harvest"`, `"harvestedFrom": "<explorationId>/<id>"`, and the build in its metadata. The capability is `browser` for a report `via: ui`, `http` for `via: api`, else the first capability of the target. The operations are the allowed operations of the target.
+- When the plan has no revision, `harvest` saves revision 1 with only the harvested requirements and tests. Else it edits the latest revision as `plan edit` does: in place, or a new revision when the latest revision is approved or used by a run.
+- An item that the plan has already is not harvested again. When no item is new, `harvest` refuses.
 
 ### record
 

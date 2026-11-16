@@ -89,6 +89,7 @@ import {
 } from './explorers.ts'
 import { levelNames, testLevels } from './levels.ts'
 import { runTest, testModes } from './modes.ts'
+import { harvestExploration } from './harvest.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
@@ -1077,6 +1078,19 @@ const commands: Record<string, Command> = {
 	'export exploration': exportCommand('explorationId', explorationFormats, exportExploration),
 	'claim accept': claimCommand('approved'),
 	'claim reject': claimCommand('rejected'),
+	harvest: {
+		positionals: ['explorationId'],
+		flags: { observations: 'switch' },
+		write: true,
+		run: (store, args, { actor }) =>
+			harvestExploration(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				observations: args.observations === true,
+			}),
+		print: (reply) => ({
+			facts: { tests: reply.data.tests, skipped: reply.data.skipped || undefined, edit: reply.data.edit },
+		}),
+	},
 	setup: {
 		positionals: [],
 		flags: { url: 'value', target: 'value', instance: 'value', operations: 'list', environment: 'value' },

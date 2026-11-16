@@ -38,6 +38,7 @@ Run a decision only when the oracle tells you the decision in this session:
 
 - Answer a question or a gap: `checkmate gap answer <planId> <id> --kind clarify|accept_assumption|defer --value "<answer>" --source "<source>" --rationale "<why>"`. A question ID has a slash, for example `a1/Q1`.
 - Decide a claim: `checkmate claim accept <planId> <claimId> --rationale "<why>"` or `checkmate claim reject <planId> <claimId> --rationale "<why>"`.
+- Keep the claims as stored tests: `checkmate harvest <explorationId>`. Add `--observations` only when the oracle asks for it.
 - When `checkmate status <planId>` shows `needs_revision` after an answer, follow the revise skill at once. Do not wait for another request.
 
 ## Claims

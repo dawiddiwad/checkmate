@@ -195,7 +195,7 @@ export function recorderPrompt(
 		'Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.',
 		`Reply with only one JSON array of the new entries, and nothing else. Use no tool. Checkmate logs your reply${build ? ` with build ${build}` : ''}.`,
 		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
-		'Evidence is the path of a file that already exists in the workspace, or the text that you saw.',
+		'Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.',
 		'',
 		'The entries:',
 		entryText(),

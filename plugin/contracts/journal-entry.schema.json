@@ -48,7 +48,7 @@
 				"steps": "Add 5 pens in the cart",
 				"value": "50.00",
 				"via": "ui",
-				"evidence": "evidence/cart-5.png"
+				"evidence": "cart-5.png"
 			}
 		]
 	],

@@ -26,6 +26,9 @@
 		},
 		"area": {
 			"$ref": "journal-entry.schema.json#/definitions/area"
+		},
+		"evidence": {
+			"$ref": "journal-entry.schema.json#/definitions/evidence"
 		}
 	},
 	"required": ["kind", "text"],

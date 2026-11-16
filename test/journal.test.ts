@@ -381,7 +381,7 @@ test('the journal guide comes from the entry schemas and stays short', (t) => {
 	assert(guide.includes(JSON.stringify(schema.example)))
 	assert.doesNotMatch(guide, /checklist/i)
 	assert(guide.length / 4 < 1000, `${guide.length / 4} tokens`)
-	writeFileSync(join(workspace, 'evidence', 'cart-5.png'), 'png')
+	writeFileSync(join(workspace, 'cart-5.png'), 'png')
 	const entries = JSON.parse(guide.split("<<'EOF'\n")[1].split('\nEOF')[0])
 	const reply = log(workspace, 'b1', entries)
 	assert.deepEqual(reply.body.refused, [])
@@ -1051,4 +1051,31 @@ test('a defect with saw, value, or via is also an observation for coverage and g
 		via: 'api',
 	})
 	assert(!kinds(gaps(workspace, 'b3')).includes('build'))
+})
+
+test('a defect links a question, and a note has evidence, without a change to the matrix', (t) => {
+	const workspace = opened(t)
+	const entries = [
+		{ kind: 'criterion', id: 'C1', text: 'A coupon does not stack.' },
+		{ kind: 'question', id: 'Q1', question: 'Does a coupon stack?' },
+		{ kind: 'note', text: 'Saved the total.', evidence: 'evidence/total.txt' },
+		{
+			kind: 'defect',
+			title: 'Coupon stacks',
+			severity: 'high',
+			expected: '450.00',
+			actual: '400.00',
+			saw: '400.00',
+			links: ['Q1', 'C1'],
+		},
+	]
+	assert.equal(log(workspace, 'b1', entries).code, 0)
+	const record = JSON.parse(cli(workspace, ['export', 'cart']).output)
+	assert.deepEqual(record.entries.find((entry: { kind: string }) => entry.kind === 'defect').links, ['Q1', 'C1'])
+	assert.equal(
+		record.entries.find((entry: { kind: string }) => entry.kind === 'note').evidence[0].path,
+		'evidence/total.txt'
+	)
+	assert.deepEqual(record.matrix, [{ about: 'C1', cells: { b1: { ok: 0, wrong: 1, seen: 0 } } }])
+	assert.equal(json(workspace, ['gaps', 'cart', '--build', 'b1']).code, 0)
 })

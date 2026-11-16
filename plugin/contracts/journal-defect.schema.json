@@ -55,7 +55,7 @@
 			"$ref": "journal-entry.schema.json#/definitions/evidence"
 		},
 		"links": {
-			"description": "The IDs of the observations or criteria that show it.",
+			"description": "The IDs of the observations, criteria, or questions that show it.",
 			"type": "array",
 			"items": {
 				"type": "string",

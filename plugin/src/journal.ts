@@ -12,8 +12,8 @@ import {
 import { findInstance, targetRequest } from './targets.ts'
 import issueSchema from '../contracts/journal-issue.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 export const entryKinds = ['criterion', 'observation', 'defect', 'question', 'verdict', 'note', 'issue'] as const
 type Kind = (typeof entryKinds)[number] | 'answer' | 'decision'
@@ -57,6 +57,7 @@ type Row = Entry & { seq: number; actor: string; at: string; ref: string }
 type Journal = ReturnType<typeof journal>
 export type Gap = { kind: string; subject: string; idea: string }
 type Fix = Record<string, unknown>
+type Recorded = { replyIds: Set<string>; dropped: string[] }
 
 const prefixes: Record<Kind, string> = {
 	criterion: 'C',
@@ -300,8 +301,42 @@ function insideWorkspace(store: Store, path: string) {
 	return realpathSync(path).startsWith(realpathSync(store.workspace) + sep)
 }
 
+const skippedFolders = ['node_modules', '.git', '.checkmate']
+const isEvidenceText = (spec: string) => /\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)
+
+function entriesOf(folder: string) {
+	try {
+		return readdirSync(folder, { withFileTypes: true })
+	} catch {
+		return []
+	}
+}
+
+function filesEndingWith(folder: string, segments: string[], above: string[] = []): string[] {
+	return entriesOf(folder).flatMap((item) => {
+		if (item.isFile()) {
+			const path = [...above, item.name]
+			const tail = path.slice(-segments.length)
+			return tail.length === segments.length && tail.every((name, index) => name === segments[index])
+				? [join(folder, item.name)]
+				: []
+		}
+		if (!item.isDirectory() || skippedFolders.includes(item.name)) return []
+		return filesEndingWith(join(folder, item.name), segments, [...above, item.name])
+	})
+}
+
+function onlyFileEndingWith(cwd: string, spec: string) {
+	const segments = spec.split(/[/\\]/).filter((name) => name && name !== '.')
+	if (isAbsolute(spec) || !segments.length || segments.includes('..')) return undefined
+	const matches = filesEndingWith(cwd, segments)
+	return matches.length === 1 ? matches[0] : undefined
+}
+
 function evidenceOf(store: Store, spec: string, cwd: string, missing?: string[]): Evidence {
-	const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path))
+	const found =
+		[resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path)) ??
+		(missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : undefined)
 	if (found && (!missing || insideWorkspace(store, found))) {
 		const name = relative(store.workspace, found)
 		const bytes = evidenceFile(store, name)
@@ -315,8 +350,7 @@ function evidenceOf(store: Store, spec: string, cwd: string, missing?: string[])
 		)
 		return { path: name, sha256, size: bytes.length }
 	}
-	if (!found && (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)))
-		return { text: spec }
+	if (!found && isEvidenceText(spec)) return { text: spec }
 	if (missing) {
 		missing.push(spec)
 		return { text: spec }
@@ -436,7 +470,8 @@ function checkedEntry(
 	state: Journal,
 	actor: string,
 	cwd: string,
-	missing?: string[]
+	missing?: string[],
+	recorded?: Recorded
 ): Entry {
 	if (raw instanceof Unreadable)
 		throw new EntryRefusal(
@@ -516,6 +551,17 @@ function checkedEntry(
 			.slice(-6)
 			.join('|') || `<${kinds.join(' or ')} ID>`
 	const defectOrIssue: Kind[] = ['defect', 'issue']
+	if (recorded) {
+		const unknown = (id: string) => !known.has(id) && !recorded.replyIds.has(id)
+		const links = entry.links?.filter((id) => !unknown(id))
+		recorded.dropped.push(...(entry.links ?? []).filter(unknown))
+		if (links?.length) entry.links = links
+		else delete entry.links
+		if (entry.repeats !== undefined && entry.repeats !== 'none' && unknown(entry.repeats)) {
+			recorded.dropped.push(entry.repeats)
+			delete entry.repeats
+		}
+	}
 	if (entry.defect !== undefined) entry.defect = refer(entry.defect, defectOrIssue, 'defect', idsOf(['defect']))
 	if (entry.confirms !== undefined)
 		entry.confirms = refer(entry.confirms, defectOrIssue, 'confirms', idsOf(defectOrIssue))
@@ -529,7 +575,7 @@ function checkedEntry(
 		const fix = ids.filter((item) => kinds.includes(known.get(item)?.kind as Kind))
 		entry[field] = ids.map((item) => refer(item, kinds, field, field === 'links' ? fix : idsOf(kinds)))
 	}
-	listed('links', ['observation', 'criterion'])
+	listed('links', ['observation', 'criterion', 'question'])
 	listed('reports', ['defect'])
 	if (entry.about !== undefined)
 		entry.about = entry.about
@@ -594,6 +640,10 @@ function insert(store: Store, changeId: string, entry: Entry, actor: string, ope
 	)
 }
 
+function replyIds(list: unknown[]) {
+	return new Set(list.flatMap((raw) => (typeof (raw as Entry | null)?.id === 'string' ? [(raw as Entry).id] : [])))
+}
+
 type Saved = { index: number; id: string; kind: string; build: string | null }
 type Refused = { index: number; field: string; reason: string; hint?: string; fix?: Fix }
 
@@ -602,9 +652,16 @@ const fixText = (item: Refused) => (item.fix ? ` Send: ${JSON.stringify(item.fix
 export function logEntries(
 	store: Store,
 	actor: string | undefined,
-	input: { changeId: string; build?: string; entries: unknown; cwd?: string; missingEvidence?: string[] }
+	input: {
+		changeId: string
+		build?: string
+		entries: unknown
+		cwd?: string
+		missingEvidence?: string[]
+		droppedReferences?: string[]
+	}
 ) {
-	const { cwd, missingEvidence, ...logged } = input
+	const { cwd, missingEvidence, droppedReferences, ...logged } = input
 	const operation = { actor, command: 'log', subject: input.changeId, input: logged }
 	return write(store, operation, (operationId, _, actor) => {
 		const { changeId } = changeRow(store, input.changeId)
@@ -612,6 +669,7 @@ export function logEntries(
 		requireCondition(list.length, 'The array has no entry.', 'Send one entry, or an array of entries.')
 		const saved: Saved[] = []
 		const refused: Refused[] = []
+		const recorded = droppedReferences && { replyIds: replyIds(list), dropped: droppedReferences }
 		for (const [index, raw] of list.entries()) {
 			const state = journal(store, changeId, actor)
 			const builds = [...state.builds]
@@ -625,7 +683,8 @@ export function logEntries(
 					state,
 					actor,
 					cwd ?? store.workspace,
-					missingEvidence
+					missingEvidence,
+					recorded
 				)
 			} catch (error) {
 				if (!(error instanceof EntryRefusal)) throw error

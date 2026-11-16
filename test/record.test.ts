@@ -49,6 +49,19 @@ const replies = {
 		{ ...defect, id: 'D1', links: ['O1', 'C1'] },
 	]),
 	missing: json([{ ...defect, evidence: ['evidence/gone.png', 'evidence/total.txt'] }]),
+	dangling: repair
+		? json([{ kind: 'verdict', defect: 'D11', result: 'fixed' }])
+		: json([
+				{ kind: 'observation', id: 'O1', about: 'coupon', saw: 'The total is 450.00.' },
+				{ ...defect, id: 'D1', links: ['O1', 'Q9'] },
+				{ kind: 'observation', id: 'O2', saw: 'Again 450.00.', repeats: 'O7' },
+				{ kind: 'verdict', defect: 'D11', result: 'fixed' },
+			]),
+	asked: json([
+		{ kind: 'question', id: 'Q1', question: 'Does a coupon stack?' },
+		{ ...defect, links: ['Q1'], evidence: ['total.txt', 'gone.png'] },
+		{ kind: 'note', text: 'Saved the total.', evidence: 'total.txt' },
+	]),
 }
 const mode = process.env.FAKE_CLAUDE
 if (mode === 'fail') {
@@ -152,6 +165,7 @@ test('record forks the latest test session, and Checkmate logs the reply of the 
 		refused: 0,
 		added: { observation: 1, defect: 1 },
 		evidenceMissing: 0,
+		referencesDropped: 0,
 		costUsd: 0.25,
 		durationMs: 1000,
 	})
@@ -369,4 +383,48 @@ test('record runs in the directory of the caller, and finds its session and its 
 		(entry: { kind: string }) => entry.kind === 'defect'
 	)
 	assert.equal(defect.evidence[0].path, 'qa/evidence/total.txt')
+})
+
+test('record saves a defect that links a question, and a note with evidence found by the end of its path', (t) => {
+	const { workspace, record } = setup(t)
+	const reply = record(['--build', 'b1'], { FAKE_CLAUDE: 'asked' })
+	assert.equal(reply.code, 0, reply.output)
+	assert.deepEqual([reply.body.saved, reply.body.refused, reply.body.calls], [3, 0, 1])
+	assert.deepEqual([reply.body.evidenceMissing, reply.body.missingEvidence], [1, ['gone.png']])
+	const entries = JSON.parse(cli(workspace, ['export', 'cart']).output).entries
+	const kind = (name: string) => entries.find((entry: { kind: string }) => entry.kind === name)
+	assert.deepEqual(kind('defect').links, ['Q1'])
+	assert.equal(kind('defect').evidence[0].path, 'evidence/total.txt')
+	assert.equal(kind('note').evidence[0].path, 'evidence/total.txt')
+	assert.equal(cli(workspace, ['show', 'cart']).code, 0)
+	assert.equal(cli(workspace, ['gaps', 'cart', '--build', 'b1']).code, 0)
+})
+
+test('record keeps evidence as text when the end of its path matches no file or two files', (t) => {
+	const { workspace, record } = setup(t)
+	mkdirSync(join(workspace, 'qa', 'evidence'), { recursive: true })
+	mkdirSync(join(workspace, 'node_modules', 'pkg'), { recursive: true })
+	writeFileSync(join(workspace, 'qa', 'evidence', 'total.txt'), 'Total: 401.00')
+	writeFileSync(join(workspace, 'node_modules', 'pkg', 'gone.png'), 'png')
+	const reply = record(['--build', 'b1'], { FAKE_CLAUDE: 'asked' })
+	assert.equal(reply.code, 0, reply.output)
+	assert.deepEqual(reply.body.missingEvidence, ['total.txt', 'gone.png', 'total.txt'])
+})
+
+test('record drops a link to an ID that is nowhere, and refuses a verdict for a defect that is nowhere', (t) => {
+	const { workspace, record } = setup(t)
+	const reply = record(['--build', 'b1'], { FAKE_CLAUDE: 'dangling' })
+	assert.equal(reply.code, 0, reply.output)
+	assert.deepEqual([reply.body.saved, reply.body.refused, reply.body.calls], [3, 1, 2])
+	assert.deepEqual([reply.body.referencesDropped, reply.body.droppedReferences], [2, ['Q9', 'O7']])
+	assert.match(reply.body.reasons.at(-1), /^Refused: \[0\]\.defect names no defect or issue: D11\./)
+	const entries = JSON.parse(cli(workspace, ['export', 'cart']).output).entries
+	const byId = (id: string) => entries.find((entry: { id: string }) => entry.id === id)
+	assert.deepEqual([byId('D1').links, byId('O2').repeats], [['O1'], undefined])
+	const strict = cli(
+		workspace,
+		['log', 'cart', '--build', 'b1', '--json'],
+		[{ kind: 'defect', title: 't', severity: 'low', expected: 'e', actual: 'a', links: ['Q9'] }]
+	)
+	assert.match(JSON.parse(strict.output).reasons[1], /\.links names no observation or criterion or question: Q9/)
 })

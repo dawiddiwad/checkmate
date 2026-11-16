@@ -209,7 +209,15 @@ export function replyArray(text: unknown): unknown[] | undefined {
 	return undefined
 }
 
-function logReply(store: Store, actor: string, input: RecordInput, entries: unknown[], missing: string[], cwd: string) {
+function logReply(
+	store: Store,
+	actor: string,
+	input: RecordInput,
+	entries: unknown[],
+	missing: string[],
+	dropped: string[],
+	cwd: string
+) {
 	try {
 		const reply = logEntries(store, actor, {
 			changeId: input.changeId,
@@ -217,6 +225,7 @@ function logReply(store: Store, actor: string, input: RecordInput, entries: unkn
 			entries: freshIds(store, input.changeId, actor, entries),
 			cwd,
 			missingEvidence: missing,
+			droppedReferences: dropped,
 		})
 		const refused = reply.data.refused as Array<{ index: number; reason: string; hint?: string; fix?: unknown }>
 		return refused.map(refusalText)
@@ -268,14 +277,15 @@ export function recordSession(
 		),
 	]
 	const missing: string[] = []
+	const dropped: string[] = []
 	const first = calls[0].reply
-	let refusals = first ? logReply(store, plan.actor, input, first, missing, cwd) : []
+	let refusals = first ? logReply(store, plan.actor, input, first, missing, dropped, cwd) : []
 	if (!calls[0].failure && refusals.length && left() > 0) {
 		calls.push(
 			callRecorder(plan.claude, recorderArgs([plan.recorder]), repairPrompt(refusals), cwd, childEnv, left())
 		)
 		const fix = calls[1].reply
-		if (fix) refusals = logReply(store, plan.actor, input, fix, missing, cwd)
+		if (fix) refusals = logReply(store, plan.actor, input, fix, missing, dropped, cwd)
 	}
 	const added = addedEntries(store, input.changeId, plan.actor, after)
 	const saved = Object.values(added).reduce((total, count) => total + count, 0)
@@ -307,6 +317,8 @@ export function recordSession(
 			added,
 			evidenceMissing: missing.length,
 			...(missing.length ? { missingEvidence: missing } : {}),
+			referencesDropped: dropped.length,
+			...(dropped.length ? { droppedReferences: dropped } : {}),
 			...sum(calls, 'costUsd'),
 			...sum(calls, 'durationMs'),
 		},

@@ -514,6 +514,7 @@ const commands: Record<string, Command> = {
 				saved: reply.data.saved,
 				refused: reply.data.refused,
 				evidenceMissing: reply.data.evidenceMissing || undefined,
+				referencesDropped: reply.data.referencesDropped || undefined,
 				costUsd: reply.data.costUsd,
 				durationMs: reply.data.durationMs,
 			},

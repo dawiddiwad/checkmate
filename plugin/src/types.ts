@@ -60,6 +60,7 @@ export type JournalNote = {
 	text: string
 	about?: string
 	area?: string
+	evidence?: string | Array<string>
 }
 
 export type JournalObservation = {

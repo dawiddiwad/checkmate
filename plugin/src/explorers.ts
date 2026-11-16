@@ -25,6 +25,8 @@ import {
 	checkClaudeArgs,
 	checkmateScript,
 	childArgs,
+	authenticationFailed,
+	authenticationHint,
 	callClaude,
 	childEnv,
 	installedPluginId,
@@ -182,7 +184,8 @@ export function startOf(events: ExplorationEvent[]) {
 	return events.find((item) => item.step === 'start')?.detail as Launch | undefined
 }
 
-function modelHint(launch: Launch, call: ClaudeCall) {
+function failureHint(launch: Launch, call: ClaudeCall) {
+	if (authenticationFailed(call)) return authenticationHint
 	if (!/model/i.test([call.failure?.[1] ?? '', ...(call.stderr ?? [])].join(' '))) return undefined
 	return launch.modelFrom === 'level'
 		? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.`
@@ -214,7 +217,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	})
 	const ended = await Promise.all(runs)
 	for (const { explorer, session, call } of ended) {
-		const hint = modelHint(launch, call)
+		const hint = failureHint(launch, call)
 		event(store, actor, explorationId, {
 			step: 'end',
 			explorer,
@@ -298,6 +301,7 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 			reports: items.defects.length,
 			refused: refusals.length,
 			...(failure ? { reason: failure[1] } : {}),
+			...(calls.some(authenticationFailed) ? { hint: authenticationHint } : {}),
 			...(calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr)!.stderr } : {}),
 			...costOf(calls),
 		},
@@ -349,9 +353,14 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 					? {}
 					: { reason: 'The verifier gave no result.' }),
 			...(call.stderr ? { stderr: call.stderr } : {}),
+			...(authenticationFailed(call) ? { hint: authenticationHint } : {}),
 			...costOf([call]),
 		},
 	})
+}
+
+function hostAuthentication(store: Store, explorationId: string) {
+	return explorationEvents(store, explorationId).some((item) => item.detail.hint === authenticationHint)
 }
 
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
@@ -389,7 +398,14 @@ export async function driveExploration(workspace: string, explorationId: string,
 			status: ok ? 'completed' : 'failed',
 			detail: {
 				recorded: ok,
-				...(ok ? {} : { reason: 'No explorer session was recorded.' }),
+				...(ok
+					? {}
+					: {
+							reason: hostAuthentication(store, explorationId)
+								? 'Host authentication: no session could log in.'
+								: 'No explorer session was recorded.',
+						}),
+				...(!ok && hostAuthentication(store, explorationId) ? { hint: authenticationHint } : {}),
 			},
 		})
 	} catch (error) {
@@ -467,6 +483,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 		phases: events
 			.filter((item) => item.step === 'merge' || item.step === 'verify')
 			.map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
+		doneHint: (done?.detail.hint ?? null) as string | null,
 		reason: (done?.detail.reason ?? (state === 'stopped' ? 'The supervisor stopped before the end.' : null)) as
 			string | null,
 	}
@@ -479,7 +496,10 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 		const ended = ['completed', 'failed', 'stopped', 'open'].includes(status.state)
 		if (ended || Date.now() >= until) {
 			const outcome = status.state === 'completed' ? 'done' : ended ? 'failed' : 'timeout'
-			const hints = status.explorers.flatMap((item) => (item.hint ? [item.hint] : []))
+			const hints = [
+				...status.explorers.flatMap((item) => (item.hint ? [item.hint] : [])),
+				...(status.doneHint ? [status.doneHint] : []),
+			]
 			return {
 				status: outcome === 'done' ? 'completed' : outcome === 'timeout' ? 'interrupted' : 'operational_error',
 				subject: explorationId,

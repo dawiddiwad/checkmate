@@ -126,6 +126,20 @@ export function requireClaude(env: Env) {
 	return claude
 }
 
+export const authenticationHint =
+	'The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.'
+
+export function authenticationFailed(call: ClaudeCall) {
+	return (
+		Boolean(call.failure) &&
+		/authentication/i.test(
+			[call.failure?.[1] ?? '', ...(call.stderr ?? []), typeof call.result === 'string' ? call.result : ''].join(
+				' '
+			)
+		)
+	)
+}
+
 const stderrLines = 10
 const stderrLineLength = 300
 

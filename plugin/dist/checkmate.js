@@ -8228,6 +8228,14 @@ function requireClaude(env) {
     );
   return claude;
 }
+var authenticationHint = "The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.";
+function authenticationFailed(call) {
+  return Boolean(call.failure) && /authentication/i.test(
+    [call.failure?.[1] ?? "", ...call.stderr ?? [], typeof call.result === "string" ? call.result : ""].join(
+      " "
+    )
+  );
+}
 var stderrLines = 10;
 var stderrLineLength = 300;
 function stderrTail(text) {
@@ -12875,7 +12883,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     status,
     subject: exploration2.exploration_id,
     reasons: reasons2,
-    ...status === "completed" ? {} : {
+    ...status === "completed" ? {} : calls.some(authenticationFailed) ? { hint: authenticationHint } : {
       hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`
     },
     data
@@ -12884,7 +12892,12 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     addEvent(
       store,
       exploration2.exploration_id,
-      { step: "record", explorer: plan.explorer, status, detail: { ...data, reasons: reasons2 } },
+      {
+        step: "record",
+        explorer: plan.explorer,
+        status,
+        detail: { ...data, reasons: reasons2, ...reply.hint ? { hint: reply.hint } : {} }
+      },
       operationId,
       at
     );
@@ -13006,7 +13019,8 @@ function event(store, actor, explorationId, item) {
 function startOf(events) {
   return events.find((item) => item.step === "start")?.detail;
 }
-function modelHint(launch, call) {
+function failureHint(launch, call) {
+  if (authenticationFailed(call)) return authenticationHint;
   if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
   return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
 }
@@ -13035,7 +13049,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   });
   const ended = await Promise.all(runs);
   for (const { explorer, session, call } of ended) {
-    const hint = modelHint(launch, call);
+    const hint = failureHint(launch, call);
     event(store, actor, explorationId, {
       step: "end",
       explorer,
@@ -13108,6 +13122,7 @@ function mergeReports(store, actor, explorationId, launch, env) {
       reports: items.defects.length,
       refused: refusals.length,
       ...failure ? { reason: failure[1] } : {},
+      ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
       ...calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr).stderr } : {},
       ...costOf(calls)
     }
@@ -13151,9 +13166,13 @@ async function verifyClaims(store, actor, explorationId, launch, env) {
       verified: observations.length,
       ...call.failure ? { reason: call.failure[1] } : observations.length ? {} : { reason: "The verifier gave no result." },
       ...call.stderr ? { stderr: call.stderr } : {},
+      ...authenticationFailed(call) ? { hint: authenticationHint } : {},
       ...costOf([call])
     }
   });
+}
+function hostAuthentication(store, explorationId) {
+  return explorationEvents(store, explorationId).some((item) => item.detail.hint === authenticationHint);
 }
 async function driveExploration(workspace, explorationId, env) {
   const store = openStore(workspace);
@@ -13190,7 +13209,10 @@ async function driveExploration(workspace, explorationId, env) {
       status: ok ? "completed" : "failed",
       detail: {
         recorded: ok,
-        ...ok ? {} : { reason: "No explorer session was recorded." }
+        ...ok ? {} : {
+          reason: hostAuthentication(store, explorationId) ? "Host authentication: no session could log in." : "No explorer session was recorded."
+        },
+        ...!ok && hostAuthentication(store, explorationId) ? { hint: authenticationHint } : {}
       }
     });
   } catch (error) {
@@ -13263,6 +13285,7 @@ function explorationStatus(store, explorationId) {
     pluginHidden: launch?.pluginHidden ?? null,
     explorers,
     phases: events.filter((item) => item.step === "merge" || item.step === "verify").map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
+    doneHint: done?.detail.hint ?? null,
     reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -13273,7 +13296,10 @@ function waitExploration(store, explorationId, timeoutSeconds) {
     const ended = ["completed", "failed", "stopped", "open"].includes(status.state);
     if (ended || Date.now() >= until) {
       const outcome = status.state === "completed" ? "done" : ended ? "failed" : "timeout";
-      const hints = status.explorers.flatMap((item) => item.hint ? [item.hint] : []);
+      const hints = [
+        ...status.explorers.flatMap((item) => item.hint ? [item.hint] : []),
+        ...status.doneHint ? [status.doneHint] : []
+      ];
       return {
         status: outcome === "done" ? "completed" : outcome === "timeout" ? "interrupted" : "operational_error",
         subject: explorationId,

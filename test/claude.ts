@@ -29,6 +29,10 @@ if (reply === '!fail') {
 	process.stderr.write('API error: overloaded\\n')
 	process.exit(2)
 }
+if (reply === '!auth') {
+	process.stderr.write('Invalid API key. Authentication error.\\n')
+	process.exit(1)
+}
 if (reply === '!crash') {
 	for (let line = 1; line <= 12; line++) process.stderr.write('stack line ' + line + '\\n')
 	process.exit(1)

@@ -6,7 +6,15 @@ import { recorderPrompt, repairPrompt } from './briefs.ts'
 import { explorationRow, freshIds, logEntries, recordText, refusalText } from './journal.ts'
 import type { Refused } from './journal.ts'
 import { addEvent, explorationEvents } from './explorations.ts'
-import { callClaude, childArgs, childEnv, replyArray, requireClaude } from './sessions.ts'
+import {
+	authenticationFailed,
+	authenticationHint,
+	callClaude,
+	childArgs,
+	childEnv,
+	replyArray,
+	requireClaude,
+} from './sessions.ts'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -252,16 +260,23 @@ function recordLocked(
 		reasons,
 		...(status === 'completed'
 			? {}
-			: {
-					hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`,
-				}),
+			: calls.some(authenticationFailed)
+				? { hint: authenticationHint }
+				: {
+						hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`,
+					}),
 		data,
 	}
 	return write(store, { ...operation, input: { ...input, recorder: plan.recorder } }, (operationId, at) => {
 		addEvent(
 			store,
 			exploration.exploration_id,
-			{ step: 'record', explorer: plan.explorer, status, detail: { ...data, reasons } },
+			{
+				step: 'record',
+				explorer: plan.explorer,
+				status,
+				detail: { ...data, reasons, ...(reply.hint ? { hint: reply.hint } : {}) },
+			},
 			operationId,
 			at
 		)

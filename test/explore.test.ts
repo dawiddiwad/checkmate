@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore } from '../plugin/src/store.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
+import { authenticationHint } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import type { FakeReplies } from './claude.ts'
@@ -204,4 +205,22 @@ test('a failed launch keeps the last lines of stderr, and status offers the test
 			['checkmate test later --allow Read --allow Bash'],
 		]
 	)
+})
+
+test('a host authentication failure fails the exploration with the plain hint, and nothing retries', (t) => {
+	const { start, wait, called, command } = setup(t, { replies: { explorer: '!auth', recorder: '!auth' } })
+	start(['--level', 'smoke'])
+	const failed = wait()
+	assert.equal(failed.code, 1)
+	assert.equal(failed.body.outcome, 'failed')
+	assert.deepEqual(failed.body.reasons, ['Host authentication: no session could log in.'])
+	assert.equal(failed.body.hint, authenticationHint)
+	assert.deepEqual(
+		called().map((call) => call.role),
+		['explorer']
+	)
+	const recorded = command(['record', 'x-1', '--explorer', 'b1', '--session', '44444444-4444-4444-8444-444444444444'])
+	assert.equal(recorded.body.status, 'operational_error')
+	assert.equal(recorded.body.hint, authenticationHint)
+	assert.equal(called().length, 1)
 })

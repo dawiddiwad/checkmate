@@ -54,4 +54,4 @@ Run a decision only when the oracle tells you the decision in this session:
 
 Do not change a state. Do not remove a claim.
 
-When `explore wait` gives `outcome=failed`, report the `reason:` and `hint:` lines. A refused model has a hint with the override. Do not try another model yourself.
+When `explore wait` gives `outcome=failed`, report the `reason:` and `hint:` lines. For a host authentication failure, give the hint as it is, and do not suggest a repair of your own. A refused model has a hint with the override. Do not try another model yourself.

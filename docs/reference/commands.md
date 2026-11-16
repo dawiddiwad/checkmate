@@ -236,6 +236,8 @@ The supervisor does these steps:
 - Number of explorers: `--explorers`, else `explore.explorers` of the profile, else the number of the level.
 - Model: `--claude-arg --model --claude-arg <model>`, else the alias of the level. Checkmate gives the alias as `--model <alias>`. The host resolves it.
 
+**Host authentication.** When the output of an explorer, a recorder, the merger, or the verifier contains `authentication`, in any letter case, Checkmate stores a hint and does not try again. A Claude Code session does not pass its login token to the commands that it runs. Log in on the machine so that Claude Code stores the login, or run `checkmate test` from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an `apiKeyHelper` in the host settings. When no session could log in, the exploration fails with the reason `Host authentication: no session could log in.` Checkmate does not read or copy a credential.
+
 When the host refuses the model, the launch of that explorer fails. `explore wait` gives a hint that names the override. Checkmate does not try another model.
 
 **Permissions.** Give the tool rules of the explorers with `--allow`, one for each rule. Checkmate passes each one as `--allowedTools`. An explorer cannot answer a permission prompt. `--claude-arg` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--plugin-dir`, `--settings`, `--resume`, `--fork-session`, `--session-id`, `--permission-prompts`, and the tool list arguments.

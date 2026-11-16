@@ -362,7 +362,11 @@ test('a run gap that names a removed test is still answerable and keeps the scop
 	start(opened, 'run-1', 'checkout@2', 'b1', ['T1', 'T2'])
 	recordGap(opened, actor, { runId: 'run-1', gap: gap('G9', 'blocking', ['T2']) })
 	record(opened, 'run-1', { T1: 'passed', T2: 'passed' })
-	patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T2: null }, gaps: { G1: { testIds: [] } } } })
+	patchPlan(opened, actor, {
+		reference: 'checkout@2',
+		patch: { tests: { T2: null }, gaps: { G1: { testIds: [] } } },
+		rationale: 'The promotion is out of scope.',
+	})
 	approved(opened, 'checkout', 3)
 	assert.equal(planStatus(opened, 'checkout').state, 'needs_answers')
 	followHints(t, opened)

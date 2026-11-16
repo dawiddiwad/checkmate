@@ -237,27 +237,85 @@ export function frozenRevision(store: Store, planId: string, revision: number) {
 export function editPlan(
 	store: Store,
 	actor: string | undefined,
-	input: { reference: string; candidate: unknown; expectSha256?: string }
+	input: { reference: string; candidate: unknown; expectSha256?: string; rationale?: string }
 ) {
-	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) => {
-		const base = editableRevision(store, input.reference, input.expectSha256)
-		const candidate = validate('plan-candidate', input.candidate)
-		gapEditCheck(store, base.plan, candidate)
-		return storeEdit(store, operationId, base, candidate)
-	})
+	return write(
+		store,
+		{ actor, command: 'plan edit', subject: input.reference, input },
+		(operationId, _at, writer) => {
+			const base = editableRevision(store, input.reference, input.expectSha256)
+			const candidate = validate('plan-candidate', input.candidate)
+			return storeEditedPlan(store, operationId, base, candidate, writer, input.rationale)
+		}
+	)
 }
 
 export function patchPlan(
 	store: Store,
 	actor: string | undefined,
-	input: { reference: string; patch: unknown; expectSha256?: string }
+	input: { reference: string; patch: unknown; expectSha256?: string; rationale?: string }
 ) {
-	return write(store, { actor, command: 'plan edit', subject: input.reference, input }, (operationId) => {
-		const base = editableRevision(store, input.reference, input.expectSha256)
-		const patch = validate('plan-patch', input.patch)
-		const candidate = patchedCandidate(base.plan, patch)
-		gapEditCheck(store, base.plan, candidate)
-		return storeEdit(store, operationId, base, candidate)
+	return write(
+		store,
+		{ actor, command: 'plan edit', subject: input.reference, input },
+		(operationId, _at, writer) => {
+			const base = editableRevision(store, input.reference, input.expectSha256)
+			const patch = validate('plan-patch', input.patch)
+			const candidate = patchedCandidate(base.plan, patch)
+			return storeEditedPlan(store, operationId, base, candidate, writer, input.rationale)
+		}
+	)
+}
+
+function withoutRemovedTests(
+	plan: Plan,
+	candidate: PlanCandidate & { tests: Array<{ id: string; requirementIds: string[] }>; gaps: Gap[] }
+) {
+	const kept = new Set(candidate.tests.map((test) => test.id))
+	const removed = plan.tests.map((test) => test.id).filter((id) => !kept.has(id))
+	const stripped = candidate.gaps.map((gap) => ({
+		...gap,
+		testIds: gap.testIds.filter((id) => id.includes(':') || !removed.includes(id)),
+	}))
+	const closedGaps: Array<{ gapId: string; reason: string }> = []
+	const gaps = stripped.map((gap) => {
+		const lost = (candidate.gaps.find((item) => item.id === gap.id)?.testIds ?? []).filter((id) =>
+			removed.includes(id)
+		)
+		const used =
+			gap.testIds.length ||
+			candidate.tests.some((test) => test.requirementIds.some((id) => gap.requirementIds.includes(id)))
+		if (!lost.length || used || gap.status === 'not_needed') return gap
+		closedGaps.push({
+			gapId: gap.id,
+			reason: `Not needed: only the removed tests ${lost.join(', ')} used this gap.`,
+		})
+		return { ...gap, status: 'not_needed' as const }
+	})
+	return { removed, stripped: { ...candidate, gaps: stripped }, closed: { ...candidate, gaps }, closedGaps }
+}
+
+function storeEditedPlan(
+	store: Store,
+	operationId: string,
+	base: PlanRevision,
+	candidate: PlanCandidate & { tests: Array<{ id: string; requirementIds: string[] }>; gaps: Gap[] },
+	actor: string,
+	rationale: string | undefined
+) {
+	const removal = withoutRemovedTests(base.plan, candidate)
+	gapEditCheck(store, base.plan, removal.stripped)
+	if (!removal.removed.length) return storeEdit(store, operationId, base, candidate)
+	requireWellFormed(
+		rationale?.trim(),
+		`The edit removes ${removal.removed.join(', ')}. Give the reason with --rationale.`,
+		'The new revision records who removed which tests and why.'
+	)
+	return storeEdit(store, operationId, base, removal.closed, {
+		actor,
+		rationale: rationale!.trim(),
+		testIds: removal.removed,
+		closedGaps: removal.closedGaps,
 	})
 }
 
@@ -373,10 +431,23 @@ function editableRevision(store: Store, text: string, expectSha256: string | und
 	return base
 }
 
-export function storeEdit(store: Store, operationId: string, base: PlanRevision, value: unknown): Change {
+type Removal = {
+	actor: string
+	rationale: string
+	testIds: string[]
+	closedGaps: Array<{ gapId: string; reason: string }>
+}
+
+export function storeEdit(
+	store: Store,
+	operationId: string,
+	base: PlanRevision,
+	value: unknown,
+	removal?: Removal
+): Change {
 	const candidate = validate('plan-candidate', value)
 	const planId = base.plan.planId
-	const frozen = frozenRevision(store, planId, base.plan.revision)
+	const frozen = removal ? 'removal' : frozenRevision(store, planId, base.plan.revision)
 	const { coverage, tests, ...kept } = structuredClone(base.plan)
 	const draft: PlanDraft = {
 		...kept,
@@ -384,10 +455,13 @@ export function storeEdit(store: Store, operationId: string, base: PlanRevision,
 		requirements: candidate.requirements ?? kept.requirements,
 		tests: candidate.tests,
 		gaps: candidate.gaps,
+		...(removal ? { removals: [...(kept.removals ?? []), { revision: base.plan.revision + 1, ...removal }] } : {}),
 	}
 	for (const decision of pendingDecisions(store, planId))
 		requireCondition(
-			draft.gaps.some((gap) => gap.id === decision.gap_id && gap.status === 'open'),
+			draft.gaps.some(
+				(gap) => gap.id === decision.gap_id && (gap.status === 'open' || gap.status === 'not_needed')
+			),
 			`Gap ${decision.gap_id} has a pending decision ${decision.id}. Keep the gap open.`
 		)
 	for (const test of draft.tests) {
@@ -403,6 +477,10 @@ export function storeEdit(store: Store, operationId: string, base: PlanRevision,
 		const change = storeRevision(store, draft, operationId)
 		change.reply.data.edit = 'new_revision'
 		change.reply.data.reason = frozen
+		if (removal) {
+			change.reply.data.removed = removal.testIds
+			change.reply.data.closedGaps = removal.closedGaps
+		}
 		return change
 	}
 	const { plan, body, sha256 } = checkedRevision(store, draft)
@@ -684,7 +762,7 @@ export function revisePlan(
 		draft.previousRevision = base.plan.revision
 		for (const decision of decisions) {
 			const gap = draft.gaps.find((gap) => gap.id === decision.gap_id)!
-			gap.status = decision.kind === 'defer' ? 'deferred' : 'resolved'
+			if (gap.status !== 'not_needed') gap.status = decision.kind === 'defer' ? 'deferred' : 'resolved'
 			gap.decisionId = decision.id
 			draft.decisions.push(decisionSnapshot(decision))
 			if (decision.kind === 'accept_assumption')

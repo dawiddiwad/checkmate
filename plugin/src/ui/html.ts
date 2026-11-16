@@ -55,6 +55,7 @@ const statusLook: Record<string, [string, Tone]> = {
 	not_required: ['–', 'block'],
 	started: ['●', 'acc'],
 	given: ['○', 'acc'],
+	not_needed: ['–', 'block'],
 	ended: ['✓', 'pass'],
 	active: ['●', 'pass'],
 	retired: ['–', 'block'],

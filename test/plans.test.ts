@@ -947,3 +947,55 @@ test('without a policy a run needs no approval, and the gate selects the ready t
 	assert.deepEqual(checked.reply.data.tests, ['T1'])
 	assert.equal(planStatus(opened, 'checkout').approval, 'not_required')
 })
+
+test('the oracle removes tests whose gap has a decision: a new revision records it and closes the gap', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	revised(opened)
+	approved(opened)
+	const before = planRevision(opened, 'checkout', 2).plan
+	assert.equal(before.tests.find((test) => test.id === 'T3')!.readiness, 'deferred')
+	assert.throws(
+		() => patchPlan(opened, actor, { reference: 'checkout@2', patch: { tests: { T3: null } } }),
+		/^Error: The edit removes T3\. Give the reason with --rationale\.$/
+	)
+	const reply = patchPlan(opened, actor, {
+		reference: 'checkout@2',
+		patch: { tests: { T3: null } },
+		rationale: 'Refunds are not part of this plan.',
+	})
+	assert.equal(reply.status, 'completed', JSON.stringify(reply))
+	assert.deepEqual([reply.data.edit, reply.data.removed], ['new_revision', ['T3']])
+	const now = planRevision(opened, 'checkout').plan
+	assert.equal(now.revision, 3)
+	assert.deepEqual(
+		now.tests.map((test) => test.id),
+		['T1', 'T2']
+	)
+	const g2 = now.gaps.find((gap) => gap.id === 'G2')!
+	const g1 = now.gaps.find((gap) => gap.id === 'G1')!
+	assert.deepEqual([g2.status, g2.testIds, g2.decisionId], ['not_needed', [], before.gaps[1].decisionId])
+	assert.deepEqual([g1.status, g1.decisionId], [before.gaps[0].status, before.gaps[0].decisionId])
+	assert.deepEqual(now.decisions, before.decisions)
+	assert.deepEqual(now.removals, [
+		{
+			revision: 3,
+			actor,
+			rationale: 'Refunds are not part of this plan.',
+			testIds: ['T3'],
+			closedGaps: [{ gapId: 'G2', reason: 'Not needed: only the removed tests T3 used this gap.' }],
+		},
+	])
+	assert(now.tests.every((test) => test.readiness === 'ready'))
+	const kept = planRevision(opened, 'checkout', 2).plan
+	assert.deepEqual(kept, before)
+	const unapproved = patchPlan(opened, actor, {
+		reference: 'checkout@3',
+		patch: { tests: { T2: null } },
+		rationale: 'No promotion test.',
+	})
+	assert.deepEqual([unapproved.data.edit, planRevision(opened, 'checkout').plan.revision], ['new_revision', 4])
+	assert.equal(planRevision(opened, 'checkout', 3).plan.tests.length, 2)
+	assert.equal(planRevision(opened, 'checkout').plan.removals!.length, 2)
+})

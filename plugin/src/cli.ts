@@ -746,17 +746,20 @@ const commands: Record<string, Command> = {
 	},
 	'plan edit': {
 		positionals: ['reference'],
-		flags: { patch: 'switch', 'expect-sha': 'value' },
+		flags: { patch: 'switch', 'expect-sha': 'value', rationale: 'value' },
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) => {
 			const reference = value(args, 'reference')!
 			const expectSha256 = value(args, 'expect-sha')
+			const rationale = value(args, 'rationale')
 			return args.patch
-				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256 })
-				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256 })
+				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256, rationale })
+				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256, rationale })
 		},
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), edit: reply.data.edit } }),
+		print: (reply) => ({
+			facts: { sha256: short(reply.data.sha256), edit: reply.data.edit, removed: reply.data.removed },
+		}),
 	},
 	'plan adopt-gaps': {
 		positionals: ['reference'],

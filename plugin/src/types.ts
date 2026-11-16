@@ -15,7 +15,7 @@ export type Finding = {
 export type Gap = {
 	id: string
 	severity: 'blocking' | 'non_blocking'
-	status: 'open' | 'resolved' | 'deferred'
+	status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 	requirementIds: Array<string>
 	testIds: Array<string>
 	question: string
@@ -161,7 +161,7 @@ export type PlanCandidate = {
 	gaps: Array<{
 		id: string
 		severity: 'blocking' | 'non_blocking'
-		status: 'open' | 'resolved' | 'deferred'
+		status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 		requirementIds: Array<string>
 		testIds: Array<string>
 		question: string
@@ -292,7 +292,7 @@ export type Plan = {
 	gaps: Array<{
 		id: string
 		severity: 'blocking' | 'non_blocking'
-		status: 'open' | 'resolved' | 'deferred'
+		status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 		requirementIds: Array<string>
 		testIds: Array<string>
 		question: string
@@ -311,6 +311,16 @@ export type Plan = {
 		rationale: string
 		value: string
 		source: string | null
+	}>
+	removals?: Array<{
+		revision: number
+		actor: string
+		rationale: string
+		testIds: Array<string>
+		closedGaps: Array<{
+			gapId: string
+			reason: string
+		}>
 	}>
 	coverage: Array<{
 		requirementId: string
@@ -422,7 +432,7 @@ export type Result = {
 	newGaps: Array<{
 		id: string
 		severity: 'blocking' | 'non_blocking'
-		status: 'open' | 'resolved' | 'deferred'
+		status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 		requirementIds: Array<string>
 		testIds: Array<string>
 		question: string

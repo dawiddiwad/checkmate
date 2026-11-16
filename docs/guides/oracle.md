@@ -51,7 +51,7 @@ Choose one kind:
 
 `--source` is necessary only for `clarify`. The `next` hint of `status` always shows `--source "<source>"`, because each kind takes it.
 
-An answer is a pending decision. It does not change the plan. After you answer a gap, `plan edit` cannot change the gap. Only an open gap without a decision can change. When an edit removes a test, it can remove that test from an answered gap. The revise stage applies the answers and writes the next revision: `checkmate delegate revise <planId>`, or `/checkmate:revise <planId>` in Claude Code. Then approve that revision.
+An answer is a pending decision. It does not change the plan. After you answer a gap, `plan edit` cannot change the gap. Only an open gap without a decision can change. You can still remove a test at any time, also a test of an answered or deferred gap: give the reason with `--rationale`. Checkmate saves a new revision that records who removed which tests and why, and closes a gap that only the removed tests used as `not_needed`. The earlier revisions keep the removed tests. The revise stage applies the answers and writes the next revision: `checkmate delegate revise <planId>`, or `/checkmate:revise <planId>` in Claude Code. Then approve that revision.
 
 A gap can have one pending decision. The gap must be open in the latest revision, or be a gap of a run of the plan.
 

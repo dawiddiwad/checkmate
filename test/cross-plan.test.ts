@@ -145,7 +145,7 @@ test('an edit cannot remove a test that another plan depends on', (t) => {
 	const content = planCandidate(planRevision(opened, 'login').plan)
 	content.tests[0].id = 'T4'
 	assert.throws(
-		() => editPlan(opened, actor, { reference: 'login@1', candidate: content }),
-		/Unknown test in login:T3: T3 is not in login@1/
+		() => editPlan(opened, actor, { reference: 'login@1', candidate: content, rationale: 'Renamed.' }),
+		/Unknown test in login:T3: T3 is not in login@2/
 	)
 })

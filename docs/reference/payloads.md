@@ -238,7 +238,8 @@ Checkmate builds the next revision:
 - `plan edit` names the latest revision.
 - A revision with no approval and no run changes in place. Else Checkmate saves the next revision.
 - A gap with a pending decision stays open.
-- Only an open gap without a decision can change. An answered or deferred gap stays the same. An edit that removes a test can remove that test from such a gap.
+- Only an open gap without a decision can change by an edit. An answered or deferred gap keeps its status and its decision.
+- The oracle can remove a test at any time, also when its gap has a decision or is deferred. Give the reason with `--rationale`. Checkmate then saves the next revision, also for a revision without an approval and without a run, so that the earlier revision keeps the test. It removes the test from each gap. A gap that only the removed tests used gets the status `not_needed`, and keeps its decision. The new revision adds one entry to `removals`: `revision`, `actor`, `rationale`, `testIds`, and `closedGaps` with the reason of each closed gap. The reply prints `removed=`.
 - A new gap cannot use the ID of an open gap of a run of the plan.
 - An assertion ID that an earlier revision used cannot come back with a new meaning.
 - The reply prints `edit=in_place` or `edit=new_revision`.

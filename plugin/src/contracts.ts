@@ -289,6 +289,11 @@ export function planCheck(value: unknown): Plan {
 		references(gap.requirementIds, requirements, `requirement in gap ${gap.id}`)
 		references(localReferences(gap.testIds), tests, `test in gap ${gap.id}`)
 		if (gap.status === 'open') requireWellFormed(gap.decisionId === null, `Open gap ${gap.id} has a decision`)
+		else if (gap.status === 'not_needed')
+			requireWellFormed(
+				gap.decisionId === null || decisions.get(gap.decisionId)?.gapId === gap.id,
+				`Gap ${gap.id} needs a matching decision`
+			)
 		else {
 			const decision = decisions.get(gap.decisionId ?? '')
 			requireWellFormed(decision?.gapId === gap.id, `Gap ${gap.id} needs a matching decision`)

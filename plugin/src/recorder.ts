@@ -146,7 +146,7 @@ function recorderArgs(session: string, recorder: string, checkmate: string, file
 		'--allowedTools',
 		`Bash(${checkmate} *)`,
 		'Read',
-		`Write(/${files}/**)`,
+		`Edit(/${files}/**)`,
 	]
 }
 

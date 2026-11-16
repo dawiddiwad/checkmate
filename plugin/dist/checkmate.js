@@ -4606,7 +4606,7 @@ function recorderArgs(session, recorder, checkmate, files2) {
     "--allowedTools",
     `Bash(${checkmate} *)`,
     "Read",
-    `Write(/${files2}/**)`
+    `Edit(/${files2}/**)`
   ];
 }
 function recordSession(store, actor, input, host) {

@@ -137,7 +137,7 @@ test('record forks the latest test session, and the recorder logs as the actor o
 		'--allowedTools',
 		`Bash(node ${script} *)`,
 		'Read',
-		`Write(/${call.files}/**)`,
+		`Edit(/${call.files}/**)`,
 	])
 	assert.equal(call.files, join(workspace, '.checkmate', 'tmp', `record-${recorder}`))
 	assert.equal(call.prompt, recorderPrompt('cart', 'b1', { command: `node ${script}`, files: call.files }))

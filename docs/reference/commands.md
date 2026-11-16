@@ -183,7 +183,7 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 
    ```sh
    claude -p --resume <sessionId> --fork-session --session-id <recorderId> --output-format json \
-     --permission-prompts none --allowedTools "Bash(node <checkmate.js> *)" Read "Write(/<files>/**)"
+     --permission-prompts none --allowedTools "Bash(node <checkmate.js> *)" Read "Edit(/<files>/**)"
    ```
 
    The recorder is a new session with the history of the test session. The test session does not see what the recorder does. `<files>` is `<workspace>/.checkmate/tmp/record-<recorderId>`, an absolute path: `Write(//abs/path/**)` is the host rule form for an absolute path. The prompt on standard input is the text of `checkmate guide <changeId> --role recorder [--build <build>]`, with `node <checkmate.js>` in place of `checkmate`. It tells the recorder to write the entries to a JSON file in `<files>` with the Write tool and to log them with `log --from <file>`, not with a heredoc. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, `CHECKMATE_RECORDER=1`, `CHECKMATE_RECORDER_COMMAND` (the command that the allow rule matches), and `CHECKMATE_RECORDER_FILES` (`<files>`). With these three set, `guide` names that command and shows the `--from` form, and no heredoc. The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.

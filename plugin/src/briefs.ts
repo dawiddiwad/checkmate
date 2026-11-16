@@ -314,6 +314,13 @@ export function mergeAgainPrompt(unplaced: Unplaced[]) {
 
 type VerifyItem = { id: string; title: string; expected: string; actual: string; steps: string | string[] | null }
 
+const verifierReplyText =
+	'reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
+
+export function verifierRepairPrompt() {
+	return `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText} Use no tool.`
+}
+
 export function verifierBrief(
 	items: VerifyItem[],
 	entries: EntryPointValue[],
@@ -335,6 +342,6 @@ export function verifierBrief(
 				`- ${item.id}: ${item.title} Steps: ${[item.steps ?? 'not given'].flat().join(' ')} Expected: ${item.expected} Reported: ${item.actual}`
 		),
 		'',
-		'At the end, reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.',
+		`At the end, ${verifierReplyText}`,
 	].join('\n')
 }

@@ -21,7 +21,15 @@ import {
 } from './journal.ts'
 import { defaultLevel, levelNames, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
-import { explorerBrief, followBrief, mergeAgainPrompt, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
+import {
+	explorerBrief,
+	followBrief,
+	mergeAgainPrompt,
+	mergerPrompt,
+	repairPrompt,
+	verifierBrief,
+	verifierRepairPrompt,
+} from './briefs.ts'
 import { findInstance, targetRevision } from './targets.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
@@ -423,34 +431,43 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	const session = randomUUID()
 	const brief = verifierBrief(items, entries, opened.charter.operations, `qa-${explorationId}-verify-`)
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
-	const call = await launchClaude(
-		requireClaude(env),
-		childArgs({ ...launch.context, deny: storeDenyRules }, ['--session-id', session, ...allowed]),
-		brief,
-		store.workspace,
-		childEnv(env),
-		launch.timeoutSeconds
-	)
-	const observations = call.failure
-		? []
-		: verifiedEntries(replyArray(call.result), new Set(items.map((item) => item.id)))
+	const ask = (own: string[], prompt: string) =>
+		launchClaude(
+			requireClaude(env),
+			childArgs({ ...launch.context, deny: storeDenyRules }, [...own, ...allowed]),
+			prompt,
+			store.workspace,
+			childEnv(env),
+			launch.timeoutSeconds
+		)
+	const ids = new Set(items.map((item) => item.id))
+	const calls = [await ask(['--session-id', session], brief)]
+	let observations = calls[0].failure ? [] : verifiedEntries(replyArray(calls[0].result), ids)
+	if (!calls[0].failure && !observations.length) {
+		calls.push(await ask(['--resume', session], verifierRepairPrompt()))
+		observations = calls[1].failure ? [] : verifiedEntries(replyArray(calls[1].result), ids)
+	}
 	if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations })
+	const failure = calls.find((call) => call.failure)?.failure
+	const stderr = calls.find((call) => call.stderr)?.stderr
 	event(store, actor, explorationId, {
 		step: 'verify',
 		explorer: null,
-		status: call.failure?.[0] ?? (observations.length ? 'completed' : 'operational_error'),
+		status: observations.length ? 'completed' : calls[0].failure ? calls[0].failure[0] : 'skipped',
 		detail: {
 			session,
 			items: items.length,
 			verified: observations.length,
-			...(call.failure
-				? { reason: call.failure[1] }
-				: observations.length
-					? {}
-					: { reason: 'The verifier gave no result.' }),
-			...(call.stderr ? { stderr: call.stderr } : {}),
-			...(authenticationFailed(call) ? { hint: authenticationHint } : {}),
-			...costOf([call]),
+			...(observations.length
+				? {}
+				: calls[0].failure
+					? { reason: calls[0].failure[1] }
+					: {
+							reason: `The verifier gave no result, also after one repair${failure ? ` (${failure[1]})` : ''}. The claims keep their states.`,
+						}),
+			...(stderr ? { stderr } : {}),
+			...(calls.some(authenticationFailed) ? { hint: authenticationHint } : {}),
+			...costOf(calls),
 		},
 	})
 }

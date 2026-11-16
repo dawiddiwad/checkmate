@@ -13027,6 +13027,10 @@ function mergeAgainPrompt(unplaced) {
     'For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. Reply with only one JSON array of entries, and nothing else. Use no tool. Reply [] when none is the same.'
   ].join("\n");
 }
+var verifierReplyText = 'reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.';
+function verifierRepairPrompt() {
+  return `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText} Use no tool.`;
+}
 function verifierBrief(items, entries, operations, dataPrefix) {
   return [
     "Reproduce each problem below on the application. Do not test other things.",
@@ -13042,7 +13046,7 @@ function verifierBrief(items, entries, operations, dataPrefix) {
       (item) => `- ${item.id}: ${item.title} Steps: ${[item.steps ?? "not given"].flat().join(" ")} Expected: ${item.expected} Reported: ${item.actual}`
     ),
     "",
-    'At the end, reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
+    `At the end, ${verifierReplyText}`
   ].join("\n");
 }
 
@@ -13663,28 +13667,38 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   const session = randomUUID3();
   const brief = verifierBrief(items, entries, opened.charter.operations, `qa-${explorationId}-verify-`);
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
-  const call = await launchClaude(
+  const ask = (own, prompt) => launchClaude(
     requireClaude(env),
-    childArgs({ ...launch.context, deny: storeDenyRules }, ["--session-id", session, ...allowed]),
-    brief,
+    childArgs({ ...launch.context, deny: storeDenyRules }, [...own, ...allowed]),
+    prompt,
     store.workspace,
     childEnv(env),
     launch.timeoutSeconds
   );
-  const observations = call.failure ? [] : verifiedEntries(replyArray(call.result), new Set(items.map((item) => item.id)));
+  const ids2 = new Set(items.map((item) => item.id));
+  const calls = [await ask(["--session-id", session], brief)];
+  let observations = calls[0].failure ? [] : verifiedEntries(replyArray(calls[0].result), ids2);
+  if (!calls[0].failure && !observations.length) {
+    calls.push(await ask(["--resume", session], verifierRepairPrompt()));
+    observations = calls[1].failure ? [] : verifiedEntries(replyArray(calls[1].result), ids2);
+  }
   if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations });
+  const failure = calls.find((call) => call.failure)?.failure;
+  const stderr = calls.find((call) => call.stderr)?.stderr;
   event(store, actor, explorationId, {
     step: "verify",
     explorer: null,
-    status: call.failure?.[0] ?? (observations.length ? "completed" : "operational_error"),
+    status: observations.length ? "completed" : calls[0].failure ? calls[0].failure[0] : "skipped",
     detail: {
       session,
       items: items.length,
       verified: observations.length,
-      ...call.failure ? { reason: call.failure[1] } : observations.length ? {} : { reason: "The verifier gave no result." },
-      ...call.stderr ? { stderr: call.stderr } : {},
-      ...authenticationFailed(call) ? { hint: authenticationHint } : {},
-      ...costOf([call])
+      ...observations.length ? {} : calls[0].failure ? { reason: calls[0].failure[1] } : {
+        reason: `The verifier gave no result, also after one repair${failure ? ` (${failure[1]})` : ""}. The claims keep their states.`
+      },
+      ...stderr ? { stderr } : {},
+      ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
+      ...costOf(calls)
     }
   });
 }

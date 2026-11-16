@@ -365,3 +365,55 @@ test('a report left out of the merge goes to one more round, and a defect of a l
 	)
 	assert.deepEqual(claims[0].statuses.b2, { status: 'not_fixed', basis: 'reported' })
 })
+
+test('a verifier without a usable reply gets one repair, then the verify step is skipped and the claims keep their states', (t) => {
+	const context = setup(t)
+	const { command, called, reply } = context
+	const verified = [
+		{ id: 'a1/D1', seen: true, saw: 'The total is 400 again.' },
+		{ id: 'a2/D1', seen: true, saw: 'Tax 23% again.' },
+	]
+	reply({
+		recorder: { [first]: [stacks], [second]: [tax] },
+		merger: [],
+		verifier: 'I checked both.',
+		repair: verified,
+	})
+	command(['explore', 'open', 'checkout', '--build', 'b1'])
+	command(['record', 'x-1', '--explorer', 'a1', '--session', first])
+	command(['record', 'x-1', '--explorer', 'a2', '--session', second])
+	command(['explore', 'finish', 'x-1', ...allow])
+	const repaired = command(['explore', 'wait', 'x-1', '--timeout', '60']).body
+	assert.equal(repaired.phases.find((item: { step: string }) => item.step === 'verify').status, 'completed')
+	const calls = called()
+	const verifier = calls.find((call) => call.role === 'verifier')
+	const repair = calls.find((call) => call.role === 'repair')
+	assert.equal(repair.args[repair.args.indexOf('--resume') + 1], verifier.session)
+	assert.match(
+		repair.prompt,
+		/^Your reply has no JSON array that I can use\. Do not test again\. Now reply with only one JSON array/
+	)
+
+	reply({
+		recorder: { [first]: [stacks], [second]: [tax] },
+		merger: [],
+		verifier: 'I checked.',
+		repair: 'Still none.',
+	})
+	command(['plan', 'open', 'later', '--target', 'checkout-local@1', '--objective', 'Later.', '--source', 't.md'])
+	command(['explore', 'open', 'later', '--build', 'b1'])
+	command(['record', 'x-2', '--explorer', 'a1', '--session', first])
+	command(['record', 'x-2', '--explorer', 'a2', '--session', second])
+	command(['explore', 'finish', 'x-2', ...allow])
+	const skipped = command(['explore', 'wait', 'x-2', '--timeout', '60'])
+	assert.equal(skipped.code, 0)
+	const verify = skipped.body.phases.find((item: { step: string }) => item.step === 'verify')
+	assert.deepEqual(
+		[skipped.body.outcome, verify.status, verify.detail.reason],
+		['done', 'skipped', 'The verifier gave no result, also after one repair. The claims keep their states.']
+	)
+	assert.deepEqual(
+		command(['claim', 'list', 'later']).body.claims.map((claim: { state: string }) => claim.state),
+		['observed', 'observed']
+	)
+})

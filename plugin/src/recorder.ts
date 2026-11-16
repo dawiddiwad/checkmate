@@ -143,6 +143,93 @@ function releaseLock(path: string) {
 	if (lockHolder(path) === process.pid) rmSync(path, { force: true })
 }
 
+function promptOf(
+	store: Store,
+	exploration: { plan_id: string; build: string },
+	actor: string,
+	earlier: Entry[],
+	answer?: string
+) {
+	return recorderPrompt(
+		exploration.build,
+		recordText(store, exploration.plan_id, actor, exploration.build),
+		earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`),
+		answer
+	)
+}
+
+export function recordTask(store: Store, explorationId: string, explorer: string, answer: string) {
+	const exploration = explorationRow(store, explorationId)
+	const actor = explorerActor(explorer)
+	return promptOf(store, exploration, actor, savedEntries(store, exploration.plan_id, explorationId, actor), answer)
+}
+
+export type Carried = { given: boolean; repeated: number; refusals: string[]; missing: string[]; dropped: string[] }
+export type AnswerInput = {
+	explorationId: string
+	explorer: string
+	answer: string
+	after: number
+	round: number
+	carried?: Carried
+	failed?: string
+}
+
+function readText(path: string) {
+	try {
+		return readFileSync(path, 'utf8')
+	} catch {
+		return undefined
+	}
+}
+
+export function recordAnswer(store: Store, input: AnswerInput) {
+	const exploration = explorationRow(store, input.explorationId)
+	const actor = explorerActor(input.explorer)
+	const earlier = savedEntries(store, exploration.plan_id, exploration.exploration_id, actor)
+	const carried = input.carried ?? { given: false, repeated: 0, refusals: [], missing: [], dropped: [] }
+	const missing = [...carried.missing]
+	const dropped = [...carried.dropped]
+	const work = join(store.workspace, workFolder(exploration.exploration_id, input.explorer))
+	const given = input.failed ? undefined : replyArray(readText(join(store.workspace, input.answer)))
+	const fresh = given && newEntries(given, earlier)
+	const repeated = input.round > 1 ? carried.repeated : given && fresh ? given.length - fresh.length : 0
+	const logged = fresh?.length
+		? logReply(store, actor, exploration.exploration_id, exploration.plan_id, fresh, missing, dropped, work)
+		: []
+	const refusals = input.round > 1 && !given ? carried.refusals : logged
+	const first = input.round > 1 ? carried.given : Boolean(given)
+	if (input.round === 1 && refusals.length)
+		return { repair: true, carried: { given: first, repeated, refusals, missing, dropped } }
+	const added = addedEntries(store, exploration.exploration_id, actor, input.after)
+	const saved = Object.values(added).reduce((total, count) => total + count, 0)
+	const status: Status = input.failed || (!saved && !repeated) ? 'operational_error' : 'completed'
+	const reasons = [
+		...(input.failed ? [input.failed] : []),
+		...(first || input.failed ? [] : ['The answer file of the tester has no JSON array of entries.']),
+		...(first && !saved && !repeated ? [`The tester added no entry to ${exploration.exploration_id}.`] : []),
+		...refusals.map((refusal) => `Refused: ${refusal}`),
+	]
+	return {
+		repair: false,
+		status,
+		detail: {
+			explorationId: exploration.exploration_id,
+			explorer: input.explorer,
+			calls: input.round,
+			saved,
+			repeated,
+			refused: refusals.length,
+			added,
+			evidenceMissing: missing.length,
+			...(missing.length ? { missingEvidence: missing } : {}),
+			referencesDropped: dropped.length,
+			...(dropped.length ? { droppedReferences: dropped } : {}),
+			reasons,
+		},
+	}
+}
+
 function prepare(store: Store, input: RecordInput, env: Env) {
 	if (env.CHECKMATE_RECORDER)
 		throw new Refusal(
@@ -221,11 +308,7 @@ function recordLocked(
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
 	const earlier = savedEntries(store, exploration.plan_id, exploration.exploration_id, actor)
-	const prompt = recorderPrompt(
-		exploration.build,
-		recordText(store, exploration.plan_id, actor, exploration.build),
-		earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`)
-	)
+	const prompt = promptOf(store, exploration, actor, earlier)
 	const resume = ['--resume', input.session, '--fork-session', '--session-id', plan.recorder]
 	const calls = [
 		callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left())),

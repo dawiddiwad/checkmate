@@ -12885,11 +12885,17 @@ function entryText(kinds2 = recordedKinds, keep = (field2) => !teamFields.includ
   const described = /* @__PURE__ */ new Set();
   return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
 }
-function recorderPrompt(build, record, saved = []) {
-  return [
+function withoutName(text) {
+  return text.replace(/(^|\. )Checkmate\b/gm, "$1The record").replace(/\bCheckmate\b/g, "the record");
+}
+function replyText(what, answer, which = "") {
+  return answer ? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else. Then reply with one word: done.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
+}
+function recorderPrompt(build, record, saved = [], answer) {
+  const text = [
     `Now write the record of this test session for the QA record of the team (build ${build}).`,
     "Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
-    "Reply with only one JSON array of the new entries, and nothing else. Use no tool.",
+    replyText("the new entries", answer),
     "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
     "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
     "When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.",
@@ -12904,10 +12910,11 @@ function recorderPrompt(build, record, saved = []) {
     record,
     ...saved.length ? [
       "",
-      "This session was recorded before. The record already holds these entries of the session. Reply with only the entries that are not in this list:",
+      `This session was recorded before. The record already holds these entries of the session. ${answer ? "Write" : "Reply with"} only the entries that are not in this list:`,
       ...saved
     ] : []
   ].join("\n");
+  return answer ? withoutName(text) : text;
 }
 function followBrief(questions, workFolder2, seconds) {
   return [
@@ -12920,12 +12927,13 @@ function followBrief(questions, workFolder2, seconds) {
     `You have ${seconds} seconds for this turn.`
   ].join("\n");
 }
-function repairPrompt(refusals) {
-  return [
-    "Checkmate refused these entries of your reply:",
+function repairPrompt(refusals, answer) {
+  const text = [
+    answer ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
     ...refusals.map((refusal) => `- ${refusal}`),
-    "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
+    answer ? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again. Then reply with one word: done.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
+  return answer ? withoutName(text) : text;
 }
 function operationText(operations) {
   return operations.includes(anyTestOperation) ? anyTestOperationText : `You can: ${operations.join(", ")}.`;
@@ -12990,12 +12998,12 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   ];
   return { study: study.join("\n"), test: test.join("\n") };
 }
-function mergerPrompt(build, reports, groups, questions = [], earlier = []) {
-  return [
+function mergerPrompt(build, reports, groups, questions = [], earlier = [], answer) {
+  const text = [
     `Merge the reports of independent testers of build ${build}. Do not test.`,
     "Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.",
     "Two questions are one topic when one answer answers both. A question that is in no topic stays its own question.",
-    "Reply with only one JSON array of issue and topic entries, one for each defect that two or more reports describe and one for each question that two or more questions ask, and nothing else. Use no tool. Reply [] when nothing is the same.",
+    `${replyText("issue and topic entries", answer, ", one for each defect that two or more reports describe and one for each question that two or more questions ask")} ${answer ? "Write" : "Reply"} [] when nothing is the same.`,
     "",
     entryText(["issue", "topic"], () => true),
     "",
@@ -13022,21 +13030,25 @@ function mergerPrompt(build, reports, groups, questions = [], earlier = []) {
       )
     ] : []
   ].join("\n");
+  return answer ? withoutName(text) : text;
 }
-function mergeAgainPrompt(unplaced) {
+function mergeAgainPrompt(unplaced, answer) {
   return [
     "These reports are in no issue, but they look like other reports or issues:",
     ...unplaced.map(
       (item) => `- ${item.report}: ${item.title} Looks like: ${item.like.map((like) => `${like.id} (${like.title}; ${like.reason})`).join(", ")}`
     ),
-    'For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. Reply with only one JSON array of entries, and nothing else. Use no tool. Reply [] when none is the same.'
+    `For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. ${replyText("entries", answer)} ${answer ? "Write" : "Reply"} [] when none is the same.`
   ].join("\n");
 }
-var verifierReplyText = 'reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.';
-function verifierRepairPrompt() {
-  return `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText} Use no tool.`;
+var verifierObject = 'with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.';
+function verifierReplyText(answer) {
+  return answer ? `write only one JSON array to ${answer}, ${verifierObject} Then reply with one word: done.` : `reply with only one JSON array, ${verifierObject}`;
 }
-function verifierBrief(items, entries, operations, dataPrefix) {
+function verifierRepairPrompt(answer) {
+  return answer ? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer)}` : `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`;
+}
+function verifierBrief(items, entries, operations, dataPrefix, answer) {
   return [
     "Reproduce each problem below on the application. Do not test other things.",
     "",
@@ -13051,7 +13063,7 @@ function verifierBrief(items, entries, operations, dataPrefix) {
       (item) => `- ${item.id}: ${item.title} Steps: ${[item.steps ?? "not given"].flat().join(" ")} Expected: ${item.expected} Reported: ${item.actual}`
     ),
     "",
-    `At the end, ${verifierReplyText}`
+    `At the end, ${verifierReplyText(answer)}`
   ].join("\n");
 }
 
@@ -13151,6 +13163,70 @@ function takeLock(path, until) {
 function releaseLock(path) {
   if (lockHolder(path) === process.pid) rmSync3(path, { force: true });
 }
+function promptOf(store, exploration2, actor, earlier, answer) {
+  return recorderPrompt(
+    exploration2.build,
+    recordText(store, exploration2.plan_id, actor, exploration2.build),
+    earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`),
+    answer
+  );
+}
+function recordTask(store, explorationId, explorer, answer) {
+  const exploration2 = explorationRow(store, explorationId);
+  const actor = explorerActor(explorer);
+  return promptOf(store, exploration2, actor, savedEntries(store, exploration2.plan_id, explorationId, actor), answer);
+}
+function readText(path) {
+  try {
+    return readFileSync4(path, "utf8");
+  } catch {
+    return void 0;
+  }
+}
+function recordAnswer(store, input) {
+  const exploration2 = explorationRow(store, input.explorationId);
+  const actor = explorerActor(input.explorer);
+  const earlier = savedEntries(store, exploration2.plan_id, exploration2.exploration_id, actor);
+  const carried = input.carried ?? { given: false, repeated: 0, refusals: [], missing: [], dropped: [] };
+  const missing = [...carried.missing];
+  const dropped = [...carried.dropped];
+  const work = join6(store.workspace, workFolder(exploration2.exploration_id, input.explorer));
+  const given = input.failed ? void 0 : replyArray(readText(join6(store.workspace, input.answer)));
+  const fresh = given && newEntries(given, earlier);
+  const repeated = input.round > 1 ? carried.repeated : given && fresh ? given.length - fresh.length : 0;
+  const logged = fresh?.length ? logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, fresh, missing, dropped, work) : [];
+  const refusals = input.round > 1 && !given ? carried.refusals : logged;
+  const first = input.round > 1 ? carried.given : Boolean(given);
+  if (input.round === 1 && refusals.length)
+    return { repair: true, carried: { given: first, repeated, refusals, missing, dropped } };
+  const added = addedEntries(store, exploration2.exploration_id, actor, input.after);
+  const saved = Object.values(added).reduce((total, count) => total + count, 0);
+  const status = input.failed || !saved && !repeated ? "operational_error" : "completed";
+  const reasons2 = [
+    ...input.failed ? [input.failed] : [],
+    ...first || input.failed ? [] : ["The answer file of the tester has no JSON array of entries."],
+    ...first && !saved && !repeated ? [`The tester added no entry to ${exploration2.exploration_id}.`] : [],
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
+  ];
+  return {
+    repair: false,
+    status,
+    detail: {
+      explorationId: exploration2.exploration_id,
+      explorer: input.explorer,
+      calls: input.round,
+      saved,
+      repeated,
+      refused: refusals.length,
+      added,
+      evidenceMissing: missing.length,
+      ...missing.length ? { missingEvidence: missing } : {},
+      referencesDropped: dropped.length,
+      ...dropped.length ? { droppedReferences: dropped } : {},
+      reasons: reasons2
+    }
+  };
+}
 function prepare(store, input, env) {
   if (env.CHECKMATE_RECORDER)
     throw new Refusal(
@@ -13213,11 +13289,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
   const earlier = savedEntries(store, exploration2.plan_id, exploration2.exploration_id, actor);
-  const prompt = recorderPrompt(
-    exploration2.build,
-    recordText(store, exploration2.plan_id, actor, exploration2.build),
-    earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`)
-  );
+  const prompt = promptOf(store, exploration2, actor, earlier);
   const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
   const calls = [
     callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
@@ -13377,11 +13449,31 @@ function launchPlan(profile, input, env) {
     "test level (--level)"
   );
   const row = testLevels[level];
+  const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers;
+  const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds;
+  if (input.session) {
+    requireWellFormed(
+      !input.claudeArgs.length && input.timeoutSeconds === void 0,
+      "--claude-arg and --timeout are for testers in new processes. With --session, the host session starts the testers as agents."
+    );
+    return {
+      level,
+      explorers,
+      model: null,
+      modelFrom: "agent",
+      verifier: row.verifier,
+      context: { hiddenPlugin: null, claudeArgs: [] },
+      allow: input.allow,
+      studySeconds: row.studySeconds,
+      testSeconds,
+      timeoutSeconds: 0,
+      pluginHidden: true,
+      path: "session"
+    };
+  }
   const claudeArgs = checkClaudeArgs(input.claudeArgs);
   const host = hostModel(claudeArgs);
   const hiddenPlugin = installedPluginId(env);
-  const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers;
-  const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds;
   requireWellFormed(
     input.allow.length || explorers === 0 && !row.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
@@ -13462,7 +13554,7 @@ function startExploration(store, actor, given, env) {
   const change = changeOf(store.workspace, given);
   const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) };
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
-    requireClaude(env);
+    if (!input.session) requireClaude(env);
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
     const row = explorationRow(store, opened.explorationId);
     const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env);
@@ -13483,12 +13575,13 @@ function startExploration(store, actor, given, env) {
         studySeconds: launch.studySeconds,
         testSeconds: launch.testSeconds,
         pluginHidden: launch.pluginHidden,
-        next: [`checkmate explore wait ${opened.explorationId}`]
+        path: launch.path ?? "process",
+        next: [`checkmate explore ${input.session ? "next" : "wait"} ${opened.explorationId}`]
       }),
       subjects: [`exploration:${opened.explorationId}`, `plan:${opened.planId}`]
     };
   });
-  startSupervisor(store, reply.subject, actor, env);
+  if (!input.session) startSupervisor(store, reply.subject, actor, env);
   return reply;
 }
 function finishable(store, explorationId) {
@@ -13518,11 +13611,15 @@ function failureHint(launch, call) {
   if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
   return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
 }
-async function launchExplorers(store, actor, explorationId, launch, env) {
+function entryValues(store, explorationId) {
   const opened = exploration(store, explorationId);
   const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
   const instance = findInstance(store, opened.target_id, opened.instance_id);
-  const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
+  return profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
+}
+async function launchExplorers(store, actor, explorationId, launch, env) {
+  const opened = exploration(store, explorationId);
+  const entries = entryValues(store, explorationId);
   const claude = requireClaude(env);
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
@@ -13593,13 +13690,40 @@ function costOf(calls) {
   const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
   return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {};
 }
-function mergeReports(store, actor, explorationId, launch, env, after = 0) {
+function mergeInput(store, explorationId, after = 0) {
   const opened = explorationRow(store, explorationId);
   const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id), after);
   const later = items.earlier.length > 0 && items.defects.length > 0;
   const defects = later || items.testers > 1 && items.defects.length > 1;
   const questions = items.questionTesters > 1 && items.questions.length > 1;
-  if (!defects && !questions) return;
+  if (!defects && !questions) return null;
+  return {
+    build: opened.build,
+    count: items.defects.length,
+    defects: defects ? items.defects : [],
+    groups: defects ? items.groups : [],
+    questions: questions ? items.questions : [],
+    earlier: later ? items.earlier : []
+  };
+}
+function logMerge(store, explorationId, reply) {
+  if (!reply?.length) return [];
+  const planId = explorationRow(store, explorationId).plan_id;
+  try {
+    const entries = joinClaims(reply, planClaims(store, planId));
+    return logEntries(store, mergerActor, { explorationId, entries }).data.refused.map(refusalText);
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
+  }
+}
+function unplacedReports(store, explorationId, after = 0) {
+  const opened = explorationRow(store, explorationId);
+  return unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build, after);
+}
+function mergeReports(store, actor, explorationId, launch, env, after = 0) {
+  const input = mergeInput(store, explorationId, after);
+  if (!input) return;
   const session = randomUUID3();
   const claude = requireClaude(env);
   const call = (args, prompt) => callClaude(
@@ -13610,28 +13734,11 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
     childEnv(env),
     defaultRecorderTimeout
   );
-  const log = (reply) => {
-    if (!reply?.length) return [];
-    try {
-      const entries = joinClaims(reply, planClaims(store, opened.plan_id));
-      return logEntries(store, mergerActor, { explorationId, entries }).data.refused.map(
-        refusalText
-      );
-    } catch (error) {
-      if (!(error instanceof Refusal)) throw error;
-      return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
-    }
-  };
+  const log = (reply) => logMerge(store, explorationId, reply);
   const calls = [
     call(
       ["--session-id", session],
-      mergerPrompt(
-        opened.build,
-        defects ? items.defects : [],
-        defects ? items.groups : [],
-        questions ? items.questions : [],
-        later ? items.earlier : []
-      )
+      mergerPrompt(input.build, input.defects, input.groups, input.questions, input.earlier)
     )
   ];
   let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result));
@@ -13639,7 +13746,7 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
     calls.push(call(["--resume", session], repairPrompt(refusals)));
     refusals = log(replyArray(calls.at(-1).result));
   }
-  const unplaced = calls.some((item) => item.failure) ? [] : unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build, after);
+  const unplaced = calls.some((item) => item.failure) ? [] : unplacedReports(store, explorationId, after);
   if (unplaced.length) {
     calls.push(call(["--resume", session], mergeAgainPrompt(unplaced)));
     refusals = [...refusals, ...log(replyArray(calls.at(-1).result))];
@@ -13651,7 +13758,7 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
     status: failure?.[0] ?? "completed",
     detail: {
       session,
-      reports: items.defects.length,
+      reports: input.count,
       refused: refusals.length,
       ...failure ? { reason: failure[1] } : {},
       ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
@@ -13668,16 +13775,24 @@ function verifiedEntries(reply, ids2) {
     return [{ kind: "observation", saw, [item.seen ? "confirms" : "refutes"]: item.id }];
   });
 }
-async function verifyClaims(store, actor, explorationId, launch, env, after = 0) {
+function verifyInput(store, explorationId, after = 0) {
   const opened = exploration(store, explorationId);
   const fresh = after ? newDefects(store, opened.plan_id, after) : void 0;
   const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh);
-  if (!items.length) return;
-  const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
-  const instance = findInstance(store, opened.target_id, opened.instance_id);
-  const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
+  if (!items.length) return null;
+  return {
+    items,
+    entries: entryValues(store, explorationId),
+    operations: opened.charter.operations,
+    dataPrefix: `qa-${explorationId}-verify-`
+  };
+}
+async function verifyClaims(store, actor, explorationId, launch, env, after = 0) {
+  const input = verifyInput(store, explorationId, after);
+  if (!input) return;
+  const { items } = input;
   const session = randomUUID3();
-  const brief = verifierBrief(items, entries, opened.charter.operations, `qa-${explorationId}-verify-`);
+  const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix);
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const ask = (own, prompt) => launchClaude(
     requireClaude(env),
@@ -13800,10 +13915,12 @@ function followCount(store, explorationId) {
 }
 function startFollow(store, actor, input, env) {
   const id2 = input.explorationId;
+  let session = false;
   const reply = write(store, { actor, command: "explore follow", subject: id2, input }, (operationId, at) => {
-    requireClaude(env);
     const row = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
+    session = startOf(events)?.path === "session";
+    if (!session) requireClaude(env);
     const state = explorationState(events);
     requireCondition(
       followable(events),
@@ -13825,13 +13942,13 @@ function startFollow(store, actor, input, env) {
       allow: input.allow.length ? input.allow : stored.allow,
       context: claudeArgs.length ? {
         ...stored.context,
-        claudeArgs: hostModel(claudeArgs) ? claudeArgs : [...claudeArgs, "--model", stored.model]
+        claudeArgs: hostModel(claudeArgs) || !stored.model ? claudeArgs : [...claudeArgs, "--model", stored.model]
       } : stored.context,
       timeoutSeconds: input.timeoutSeconds ?? stored.timeoutSeconds,
       seconds: testLevels[stored.level].followSeconds
     };
     requireWellFormed(
-      plan.allow.length,
+      plan.allow.length || session,
       "Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash",
       "The host owns the permissions. An explorer cannot answer a permission prompt."
     );
@@ -13843,12 +13960,12 @@ function startFollow(store, actor, input, env) {
         build: row.build,
         answers: plan.answers.length,
         followSeconds: plan.seconds,
-        next: [`checkmate explore wait ${id2}`]
+        next: [`checkmate explore ${session ? "next" : "wait"} ${id2}`]
       }),
       subjects: [`exploration:${id2}`, `plan:${row.plan_id}`]
     };
   });
-  startSupervisor(store, reply.subject, actor, env, ["--follow"]);
+  if (!session) startSupervisor(store, reply.subject, actor, env, ["--follow"]);
   return reply;
 }
 function followSessions(events) {
@@ -13977,7 +14094,7 @@ function explorationState(events) {
   const supervisor = events.find((item) => item.step === "supervisor");
   if (supervisor && !running2(supervisor.detail.pid)) return "stopped";
   if (!events.some((item) => item.step === "start")) return "open";
-  if (!supervisor) return "starting";
+  if (!supervisor && startOf(events)?.path !== "session") return "starting";
   if (events.some((item) => item.step === "merge")) return "verifying";
   if (events.some((item) => item.step === "record")) return "recording";
   return "testing";
@@ -13997,7 +14114,7 @@ function explorationStatus(store, explorationId) {
     return {
       explorer,
       actor: explorerActor(explorer),
-      session: last("launch")?.detail.session ?? record?.detail.session ?? null,
+      session: last("launch")?.detail.session ?? record?.detail.session ?? own.findLast((item) => item.detail.agent)?.detail.agent ?? null,
       ended: end?.status ?? null,
       recorded: record?.status ?? null,
       saved: record?.detail.saved ?? 0,
@@ -14016,6 +14133,7 @@ function explorationStatus(store, explorationId) {
     mode: row.mode,
     instanceId: row.instance_id,
     state,
+    path: launch ? launch.path ?? "process" : null,
     level: launch?.level ?? null,
     explorerCount: launch?.explorers ?? null,
     model: launch?.model ?? null,
@@ -14370,7 +14488,7 @@ function planExplorations(store, planId) {
 }
 function explorerLive(store, explorationId, events, item, running3, now) {
   const own = events.filter((event2) => event2.explorer === item.explorer);
-  const launch = own.find((event2) => event2.step === "launch");
+  const launch = own.find((event2) => event2.step === "launch" || event2.step === "action");
   const end = own.findLast((event2) => event2.step === "end");
   const follow = events.findLastIndex((event2) => event2.step === "follow");
   const followed = events.slice(follow + 1);
@@ -14524,7 +14642,9 @@ function loopStatus(store, planId) {
         "exploring",
         "qa",
         running3.map((item) => `${item.explorationId} is ${item.state} on build ${item.build}`),
-        running3.map((item) => `checkmate explore wait ${item.explorationId}`)
+        running3.map(
+          (item) => `checkmate explore ${explorationStatus(store, item.explorationId).path === "session" ? "next" : "wait"} ${item.explorationId}`
+        )
       )
     };
   const triage = claims.filter((claim) => oracleStates.includes(claim.state));
@@ -19831,6 +19951,433 @@ data: ${matched.join(",") || "*"}
   };
 }
 
+// plugin/src/agents.ts
+import { mkdirSync as mkdirSync6, readFileSync as readFileSync7, rmSync as rmSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname, join as join11 } from "node:path";
+var testerAgent = "checkmate:tester";
+var clerkAgent = "checkmate:clerk";
+var doneSteps = ["study", "test", "record", "follow", "merge", "verify"];
+var ownerOf = (item) => item.explorer ?? item.detail.name;
+function agentOf(events, name) {
+  return events.findLast((item) => ownerOf(item) === name && typeof item.detail.agent === "string")?.detail.agent;
+}
+function sessionLaunch(events, explorationId) {
+  const launch = startOf(events);
+  requireCondition(
+    launch?.path === "session",
+    `Exploration ${explorationId} does not run in a session. Its testers run as processes.`,
+    `Run checkmate explore wait ${explorationId}.`
+  );
+  return launch;
+}
+function phaseOf2(events) {
+  const index2 = events.findLastIndex((item) => item.step === "follow");
+  if (index2 !== -1 && !events.slice(index2 + 1).some((item) => item.step === "followed"))
+    return {
+      follow: events[index2].detail,
+      events: events.slice(index2 + 1),
+      name: `follow-${events.filter((item) => item.step === "follow").length}`
+    };
+  if (events.some((item) => item.step === "done")) return null;
+  return { follow: null, events, name: "test" };
+}
+function followTesters(events, launch) {
+  return explorerNames(launch.explorers).map((explorer) => {
+    const own = events.filter((item) => item.explorer === explorer);
+    const agent = agentOf(own, explorer);
+    const skipped = !agent ? `${explorer} has no agent.` : own.findLast((item) => item.step === "end")?.detail.turn === "study" ? `The agent of ${explorer} ended in its study step.` : void 0;
+    return { explorer, skipped };
+  });
+}
+function testerDue(own, first) {
+  const last = own.at(-1);
+  if (!last) return first;
+  if (last.step === "action") return "running";
+  if (last.step === "turn") return "test";
+  if (["end", "follow-turn"].includes(last.step) && last.status === "completed") return "record";
+  if (last.step === "repair") return "repair";
+  return "settled";
+}
+function stageDue(own, round, needed) {
+  const last = own.at(-1);
+  if (!last) return needed() ? round : "settled";
+  if (last.step === "action") return "running";
+  if (last.step.endsWith("-round")) return last.detail.round;
+  return "settled";
+}
+function testerAction(store, explorationId, explorer, due, phase) {
+  const folder = workFolder(explorationId, explorer);
+  const own = phase.events.filter((item) => item.explorer === explorer);
+  const agent = agentOf(explorationEvents(store, explorationId), explorer);
+  const answer = `${folder}/entries.json`;
+  const action = (step, file, text, extra, answered = false) => ({
+    action: step === "study" ? "start" : "message",
+    explorer,
+    name: explorer,
+    step,
+    to: step === "study" ? testerAgent : agent,
+    task: `${folder}/${file}`,
+    ...answered ? { answer } : {},
+    text,
+    extra
+  });
+  if (due === "follow")
+    return action("follow", "task-follow.md", followBrief(phase.follow.questions, folder, phase.follow.seconds));
+  if (due === "record")
+    return action(
+      "record",
+      "task-record.md",
+      recordTask(store, explorationId, explorer, answer),
+      { round: 1, after: lastEntry(store) },
+      true
+    );
+  if (due === "repair") {
+    const repair = own.findLast((item) => item.step === "repair").detail.carried;
+    const first = own.findLast((item) => item.step === "action" && item.detail.step === "record");
+    return action(
+      "record",
+      "task-repair.md",
+      repairPrompt(repair.refusals, answer),
+      { round: 2, after: first.detail.after },
+      true
+    );
+  }
+  const opened = exploration(store, explorationId);
+  const launch = startOf(explorationEvents(store, explorationId));
+  const brief = explorerBrief(
+    opened.charter,
+    entryValues(store, explorationId),
+    `qa-${explorationId}-${explorer}-`,
+    folder,
+    {
+      study: launch.studySeconds,
+      test: launch.testSeconds
+    }
+  );
+  if (due === "test") return action("test", "task-test.md", brief.test);
+  return action(
+    "study",
+    "task-study.md",
+    `${brief.study}
+
+Your shell does not keep settings between commands. Start each shell command with export PLAYWRIGHT_CLI_SESSION=qa-${explorationId}-${explorer}; so that your browser is your own.`
+  );
+}
+function mergeAction(store, explorationId, round, phase) {
+  const folder = `${workFolder(explorationId)}/merge`;
+  const answer = `${folder}/answer.json`;
+  const own = phase.events.filter((item) => ownerOf(item) === "merge");
+  const last = own.findLast((item) => item.step === "merge-round");
+  const action = (file, text, extra) => ({
+    action: round === "merge" ? "start" : "message",
+    explorer: null,
+    name: "merge",
+    step: "merge",
+    to: round === "merge" ? clerkAgent : agentOf(own, "merge"),
+    task: `${folder}/${file}`,
+    answer,
+    text,
+    extra: { round, ...extra }
+  });
+  if (round === "repair") return action("task-repair.md", repairPrompt(last.detail.refusals, answer));
+  if (round === "again")
+    return action(
+      "task-again.md",
+      mergeAgainPrompt(last.detail.unplaced, answer)
+    );
+  const input = mergeInput(store, explorationId, phase.follow?.after ?? 0);
+  return action(
+    "task.md",
+    mergerPrompt(input.build, input.defects, input.groups, input.questions, input.earlier, answer),
+    { reports: input.count }
+  );
+}
+function verifyAction(store, explorationId, round, phase) {
+  const folder = `${workFolder(explorationId)}/verify`;
+  const answer = `${folder}/answer.json`;
+  const own = phase.events.filter((item) => ownerOf(item) === "verify");
+  const action = (file, text, extra) => ({
+    action: round === "verify" ? "start" : "message",
+    explorer: null,
+    name: "verify",
+    step: "verify",
+    to: round === "verify" ? testerAgent : agentOf(own, "verify"),
+    task: `${folder}/${file}`,
+    answer,
+    text,
+    extra: { round, ...extra }
+  });
+  if (round === "repair") return action("task-repair.md", verifierRepairPrompt(answer));
+  const input = verifyInput(store, explorationId, phase.follow?.after ?? 0);
+  return action("task.md", verifierBrief(input.items, input.entries, input.operations, input.dataPrefix, answer), {
+    ids: input.items.map((item) => item.id)
+  });
+}
+function promptOf2(action) {
+  return action.name === "merge" ? `Read ${action.task} and write your answer to ${action.answer}.` : `Read ${action.task} and do what it says.`;
+}
+function lineOf(action) {
+  return `${action.action} ${action.name} ${action.step} agent=${action.to} prompt="${promptOf2(action)}"`;
+}
+function writeFile(store, path, text) {
+  const full = join11(store.workspace, path);
+  mkdirSync6(dirname(full), { recursive: true });
+  writeFileSync3(full, text.endsWith("\n") ? text : `${text}
+`);
+}
+function answerNext(store, actor, explorationId, actions, word) {
+  return write(
+    store,
+    { actor, command: "explore next", subject: explorationId, input: { explorationId } },
+    (operationId, at) => {
+      for (const action of actions) {
+        writeFile(store, action.task, action.text);
+        if (action.answer) rmSync5(join11(store.workspace, action.answer), { force: true });
+        addEvent(
+          store,
+          explorationId,
+          {
+            step: "action",
+            explorer: action.explorer,
+            status: "started",
+            detail: {
+              name: action.name,
+              step: action.step,
+              to: action.to,
+              task: action.task,
+              prompt: promptOf2(action),
+              ...action.extra
+            }
+          },
+          operationId,
+          at
+        );
+      }
+      const lines2 = actions.length ? actions.map((action) => ({
+        action: action.action,
+        name: action.name,
+        step: action.step,
+        agent: action.to,
+        prompt: promptOf2(action),
+        line: lineOf(action)
+      })) : [{ action: word, line: word }];
+      const events = explorationEvents(store, explorationId);
+      const ended = [...events].reverse().find((item) => ["done", "followed"].includes(item.step));
+      const failed = word === "finished" && ended?.status !== "completed";
+      return {
+        reply: {
+          status: failed ? "operational_error" : "completed",
+          subject: explorationId,
+          reasons: failed ? [String(ended?.detail.reason ?? `Exploration ${explorationId} failed.`)] : [],
+          ...failed && ended?.detail.hint ? { hint: String(ended.detail.hint) } : {},
+          data: { explorationId, actions: lines2 }
+        },
+        subjects: [`exploration:${explorationId}`]
+      };
+    }
+  );
+}
+function addOutcome(store, actor, explorationId, item) {
+  return write(store, { actor, command: "explore done", subject: explorationId, input: item }, (operationId, at) => {
+    addEvent(store, explorationId, item, operationId, at);
+    return {
+      reply: completed(explorationId, {
+        explorationId,
+        name: ownerOf({ ...item, at }),
+        event: item.step,
+        state: item.status,
+        ...item.detail,
+        next: [`checkmate explore next ${explorationId}`]
+      }),
+      subjects: [`exploration:${explorationId}`]
+    };
+  });
+}
+function finishPhase(store, actor, explorationId, phase, launch) {
+  const recorded = phase.events.filter((item) => item.step === "record" && item.status === "completed").length;
+  if (recorded) removeWork(store, explorationId);
+  if (!phase.follow) {
+    addOutcome(store, actor, explorationId, {
+      step: "done",
+      explorer: null,
+      status: recorded ? "completed" : "failed",
+      detail: { recorded, ...recorded ? {} : { reason: "No explorer session was recorded." } }
+    });
+    return;
+  }
+  const events = explorationEvents(store, explorationId);
+  const reached = phase.events.filter((item) => item.step === "follow-turn" && item.status === "completed").length;
+  const row = explorationRow(store, explorationId);
+  addOutcome(store, actor, explorationId, {
+    step: "followed",
+    explorer: null,
+    status: recorded ? "completed" : "failed",
+    detail: {
+      recorded,
+      answers: phase.follow.answers,
+      skipped: [
+        ...followTesters(events, launch).flatMap((item) => item.skipped ? [item.skipped] : []),
+        ...phase.events.filter((item) => item.step === "follow-turn" && item.status !== "completed").map((item) => `The agent of ${item.explorer} could not be reached: ${String(item.detail.reason)}`)
+      ],
+      ...recorded ? {} : reached ? { reason: "No explorer session of the follow-up was recorded." } : {
+        reason: "No tester of the follow-up could be reached.",
+        hint: `The testers ran in a session that ended. Run checkmate test ${row.plan_id} --build ${row.build} --session again. The answers reach the new testers through the known-state file.`
+      }
+    }
+  });
+}
+function nextActions(store, actor, explorationId) {
+  const events = explorationEvents(store, explorationId);
+  const launch = sessionLaunch(events, explorationId);
+  const phase = phaseOf2(events);
+  if (!phase) return answerNext(store, actor, explorationId, [], "finished");
+  const testers = phase.follow ? followTesters(events, launch).flatMap((item) => item.skipped ? [] : [item.explorer]) : explorerNames(launch.explorers);
+  const steps = testers.map((explorer) => ({
+    explorer,
+    due: testerDue(
+      phase.events.filter((item) => item.explorer === explorer),
+      phase.follow ? "follow" : "study"
+    )
+  }));
+  if (steps.some((item) => item.due !== "settled"))
+    return answerNext(
+      store,
+      actor,
+      explorationId,
+      steps.filter((item) => !["running", "settled"].includes(item.due)).map((item) => testerAction(store, explorationId, item.explorer, item.due, phase)),
+      "wait"
+    );
+  const after = phase.follow?.after ?? 0;
+  if (phase.events.some((item) => item.step === "record" && item.status === "completed")) {
+    const owned = (name) => phase.events.filter((item) => ownerOf(item) === name && item.explorer === null);
+    const merge = stageDue(owned("merge"), "merge", () => mergeInput(store, explorationId, after) !== null);
+    if (merge === "running") return answerNext(store, actor, explorationId, [], "wait");
+    if (merge !== "settled")
+      return answerNext(store, actor, explorationId, [mergeAction(store, explorationId, merge, phase)], "wait");
+    const verify = stageDue(
+      owned("verify"),
+      "verify",
+      () => launch.verifier && verifyInput(store, explorationId, after) !== null
+    );
+    if (verify === "running") return answerNext(store, actor, explorationId, [], "wait");
+    if (verify !== "settled")
+      return answerNext(store, actor, explorationId, [verifyAction(store, explorationId, verify, phase)], "wait");
+  }
+  finishPhase(store, actor, explorationId, phase, launch);
+  return answerNext(store, actor, explorationId, [], "finished");
+}
+function readText2(store, path) {
+  try {
+    return readFileSync7(join11(store.workspace, path), "utf8");
+  } catch {
+    return void 0;
+  }
+}
+function mergeDone(store, actor, explorationId, own, base, failed, after) {
+  const round = own.at(-1).detail.round;
+  const answer = `${workFolder(explorationId)}/merge/answer.json`;
+  const refusals = failed ? [] : logMerge(store, explorationId, replyArray(readText2(store, answer)));
+  const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
+    step,
+    explorer: null,
+    status,
+    detail: { name: "merge", ...base, ...detail }
+  });
+  if (!failed && round === "merge" && refusals.length)
+    return outcome("merge-round", "started", { round: "repair", refusals });
+  const unplaced = failed || round === "again" ? [] : unplacedReports(store, explorationId, after);
+  if (unplaced.length)
+    return outcome("merge-round", "started", { round: "again", unplaced, refused: refusals.length });
+  const carried = round === "again" ? own.findLast((item) => item.step === "merge-round").detail.refused : 0;
+  const first = own.find((item) => item.step === "action");
+  return outcome("merge", failed ? "operational_error" : "completed", {
+    reports: first.detail.reports,
+    refused: carried + refusals.length
+  });
+}
+function verifyDone(store, actor, explorationId, own, base, failed) {
+  const round = own.at(-1).detail.round;
+  const first = own.find((item) => item.step === "action");
+  const ids2 = new Set(first.detail.ids);
+  const answer = `${workFolder(explorationId)}/verify/answer.json`;
+  const observations = failed ? [] : verifiedEntries(replyArray(readText2(store, answer)), ids2);
+  const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
+    step,
+    explorer: null,
+    status,
+    detail: { name: "verify", ...base, ...detail }
+  });
+  if (!failed && !observations.length && round === "verify")
+    return outcome("verify-round", "started", { round: "repair" });
+  if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations });
+  return outcome(
+    "verify",
+    observations.length ? "completed" : failed && round === "verify" ? "operational_error" : "skipped",
+    {
+      items: ids2.size,
+      verified: observations.length,
+      ...observations.length ? {} : failed && round === "verify" ? { reason: failed } : {
+        reason: `The verifier gave no result, also after one repair${failed ? ` (${failed})` : ""}. The claims keep their states.`
+      }
+    }
+  );
+}
+function recordDone(store, actor, explorationId, explorer, own, base, failed, phase) {
+  const last = own.at(-1);
+  const recorded = recordAnswer(store, {
+    explorationId,
+    explorer,
+    answer: `${workFolder(explorationId, explorer)}/entries.json`,
+    after: last.detail.after,
+    round: last.detail.round,
+    carried: own.findLast((item) => item.step === "repair")?.detail.carried,
+    failed
+  });
+  if (recorded.repair)
+    return addOutcome(store, actor, explorationId, {
+      step: "repair",
+      explorer,
+      status: "started",
+      detail: { ...base, carried: recorded.carried }
+    });
+  const reply = addOutcome(store, actor, explorationId, {
+    step: "record",
+    explorer,
+    status: recorded.status,
+    detail: { ...base, ...recorded.detail }
+  });
+  keepWorkFiles(store, actor, explorationId, explorer, phase.name);
+  return reply;
+}
+function stepDone(store, actor, input) {
+  const { explorationId, name, step, failed } = input;
+  const events = explorationEvents(store, explorationId);
+  sessionLaunch(events, explorationId);
+  const phase = phaseOf2(events);
+  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name);
+  const last = own.at(-1);
+  requireCondition(
+    last?.step === "action" && last.detail.step === step,
+    `No ${step} step of ${name} runs in exploration ${explorationId}.`,
+    `Run checkmate explore next ${explorationId}, and carry out its actions.`
+  );
+  const agent = input.agent ?? agentOf(name === "merge" || name === "verify" ? own : events, name);
+  requireWellFormed(agent || failed, "Give --agent with the agent ID that the Agent tool returned.");
+  const base = {
+    ...agent ? { agent } : {},
+    activity: input.activity ?? (failed ? `${step} failed: ${failed}` : `${step} ended`),
+    ...failed ? { reason: failed } : {}
+  };
+  if (name === "merge") return mergeDone(store, actor, explorationId, own, base, failed, phase.follow?.after ?? 0);
+  if (name === "verify") return verifyDone(store, actor, explorationId, own, base, failed);
+  if (step === "record") return recordDone(store, actor, explorationId, name, own, base, failed, phase);
+  const status = failed ? "operational_error" : "completed";
+  const item = step === "study" && !failed ? { step: "turn", status: "started", detail: { ...base, turn: "test" } } : step === "follow" ? { step: "follow-turn", status, detail: base } : { step: "end", status, detail: { ...base, ...failed ? { turn: step } : {} } };
+  const reply = addOutcome(store, actor, explorationId, { ...item, explorer: name });
+  if (failed) keepWorkFiles(store, actor, explorationId, name, phase.name);
+  return reply;
+}
+
 // plugin/src/modes.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { resolve as resolve4 } from "node:path";
@@ -19892,7 +20439,10 @@ function openRequest(store, actor, input, env, assumed) {
   const opened = openPlan(store, actor, {
     planId: input.planId,
     target: `${targetId}@${revision}`,
-    request: { objective, context: { sources } }
+    request: {
+      objective,
+      context: { sources, ...input.instructions ? { instructions: input.instructions } : {} }
+    }
   });
   if (opened.status !== "completed") throw new Refusal("malformed", opened.reasons.join(" "));
 }
@@ -19940,7 +20490,7 @@ function runTest(store, actor, given, env) {
         ...check.run ? [
           `Execute the stored tests of ${check.run.runId}: /checkmate:execute ${check.run.runId}, or checkmate delegate execute ${check.run.runId}`
         ] : [],
-        `checkmate explore wait ${explored.subject}`
+        ...explored.data.next
       ]
     }
   };
@@ -20103,8 +20653,8 @@ function harvestExploration(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname, resolve as resolve5 } from "node:path";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync8, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname2, resolve as resolve5 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -20227,7 +20777,8 @@ function explorationLines(reply) {
       testSeconds: status.testSeconds ?? void 0,
       workFolder: status.workFolder ?? void 0,
       follow: status.follow ?? void 0,
-      followReason: status.followReason ?? void 0
+      followReason: status.followReason ?? void 0,
+      path: status.path === "session" ? "session" : void 0
     },
     lines: [
       ...status.explorers.map((item) => [
@@ -21075,11 +21626,13 @@ var commands = {
       objective: "value",
       target: "value",
       source: "repeat",
+      instructions: "value",
       since: "value",
       until: "value",
       scope: "list",
       url: "value",
-      repo: "value"
+      repo: "value",
+      session: "switch"
     },
     write: true,
     run: (store, args, { actor, env }) => runTest(
@@ -21099,11 +21652,13 @@ var commands = {
         objective: value(args, "objective"),
         target: value(args, "target"),
         sources: list(args, "source"),
+        instructions: value(args, "instructions"),
         since: value(args, "since"),
         until: value(args, "until"),
         scope: list(args, "scope"),
         url: value(args, "url"),
-        repo: value(args, "repo")
+        repo: value(args, "repo"),
+        session: args.session === true
       },
       env
     ),
@@ -21116,8 +21671,9 @@ var commands = {
           mode: reply.data.mode,
           level: reply.data.level,
           explorers: reply.data.explorers,
-          model: reply.data.model,
+          model: reply.data.model ?? void 0,
           verifier: reply.data.verifier,
+          path: reply.data.path === "session" ? "session" : void 0,
           run: run2?.runId,
           tests: run2?.tests
         },
@@ -21241,6 +21797,40 @@ var commands = {
         build: reply.data.build,
         answers: reply.data.answers,
         followSeconds: reply.data.followSeconds
+      },
+      lines: reply.data.next.map((line) => ["next", line])
+    })
+  },
+  "explore next": {
+    positionals: ["explorationId"],
+    write: true,
+    run: (store, args, { actor }) => nextActions(store, actor, value(args, "explorationId")),
+    print: (reply) => ({
+      lines: (reply.data.actions ?? []).map((item) => [item.line])
+    })
+  },
+  "explore done": {
+    positionals: ["explorationId", "name", "step"],
+    flags: { agent: "value", failed: "value", activity: "value" },
+    write: true,
+    check: (args) => {
+      requireChoice(value(args, "step"), doneSteps, "step");
+    },
+    run: (store, args, { actor }) => stepDone(store, actor, {
+      explorationId: value(args, "explorationId"),
+      name: value(args, "name"),
+      step: value(args, "step"),
+      agent: value(args, "agent"),
+      failed: value(args, "failed"),
+      activity: value(args, "activity")
+    }),
+    print: (reply) => ({
+      facts: {
+        name: reply.data.name,
+        event: reply.data.event,
+        state: reply.data.state,
+        saved: reply.data.saved,
+        refused: reply.data.refused
       },
       lines: reply.data.next.map((line) => ["next", line])
     })
@@ -21623,9 +22213,9 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve5(store.workspace, out);
-  mkdirSync6(dirname(path), { recursive: true });
+  mkdirSync7(dirname2(path), { recursive: true });
   try {
-    writeFileSync3(path, content, { flag: "wx" });
+    writeFileSync4(path, content, { flag: "wx" });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(`Output file exists: ${out}. Choose a new path.`, { cause: error });
@@ -21775,7 +22365,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync7(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync8(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
   requireWellFormed(
@@ -21887,7 +22477,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync7(0, "utf8")
+    stdin: () => readFileSync8(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

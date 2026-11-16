@@ -413,7 +413,7 @@ function explorerLive(
 	now: number
 ) {
 	const own = events.filter((event) => event.explorer === item.explorer)
-	const launch = own.find((event) => event.step === 'launch')
+	const launch = own.find((event) => event.step === 'launch' || event.step === 'action')
 	const end = own.findLast((event) => event.step === 'end')
 	const follow = events.findLastIndex((event) => event.step === 'follow')
 	const followed = events.slice(follow + 1)
@@ -603,7 +603,10 @@ function loopStatus(store: Store, planId: string) {
 				'exploring',
 				'qa',
 				running.map((item) => `${item.explorationId} is ${item.state} on build ${item.build}`),
-				running.map((item) => `checkmate explore wait ${item.explorationId}`)
+				running.map(
+					(item) =>
+						`checkmate explore ${explorationStatus(store, item.explorationId).path === 'session' ? 'next' : 'wait'} ${item.explorationId}`
+				)
 			),
 		}
 	const triage = claims.filter((claim) => oracleStates.includes(claim.state))

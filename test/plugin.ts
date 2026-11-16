@@ -16,6 +16,7 @@ try {
 
 	assert.deepEqual((await readdir(source)).sort(), [
 		'.claude-plugin',
+		'agents',
 		'bin',
 		'contracts',
 		'dist',
@@ -42,6 +43,7 @@ try {
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
 	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui', 'test'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
+	for (const name of ['tester', 'clerk']) await readFile(join(source, `agents/${name}.md`))
 	const stageWrites: Record<string, RegExp> = {
 		setup: /checkmate target (save|instance add) /,
 		plan: /checkmate plan save /,

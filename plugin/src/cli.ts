@@ -91,6 +91,7 @@ import {
 	startFollow,
 	waitExploration,
 } from './explorers.ts'
+import { doneSteps, nextActions, stepDone } from './agents.ts'
 import { levelNames, testLevels } from './levels.ts'
 import { runTest, testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
@@ -256,6 +257,7 @@ function explorationLines(reply: Reply): Printed {
 			workFolder: status.workFolder ?? undefined,
 			follow: status.follow ?? undefined,
 			followReason: status.followReason ?? undefined,
+			path: status.path === 'session' ? 'session' : undefined,
 		},
 		lines: [
 			...status.explorers.map((item) => [
@@ -1164,11 +1166,13 @@ const commands: Record<string, Command> = {
 			objective: 'value',
 			target: 'value',
 			source: 'repeat',
+			instructions: 'value',
 			since: 'value',
 			until: 'value',
 			scope: 'list',
 			url: 'value',
 			repo: 'value',
+			session: 'switch',
 		},
 		write: true,
 		run: (store, args, { actor, env }) =>
@@ -1189,11 +1193,13 @@ const commands: Record<string, Command> = {
 					objective: value(args, 'objective'),
 					target: value(args, 'target'),
 					sources: list(args, 'source'),
+					instructions: value(args, 'instructions'),
 					since: value(args, 'since'),
 					until: value(args, 'until'),
 					scope: list(args, 'scope'),
 					url: value(args, 'url'),
 					repo: value(args, 'repo'),
+					session: args.session === true,
 				},
 				env
 			),
@@ -1206,8 +1212,9 @@ const commands: Record<string, Command> = {
 					mode: reply.data.mode,
 					level: reply.data.level,
 					explorers: reply.data.explorers,
-					model: reply.data.model,
+					model: reply.data.model ?? undefined,
 					verifier: reply.data.verifier,
+					path: reply.data.path === 'session' ? 'session' : undefined,
 					run: run?.runId,
 					tests: run?.tests,
 				},
@@ -1335,6 +1342,41 @@ const commands: Record<string, Command> = {
 				build: reply.data.build,
 				answers: reply.data.answers,
 				followSeconds: reply.data.followSeconds,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore next': {
+		positionals: ['explorationId'],
+		write: true,
+		run: (store, args, { actor }) => nextActions(store, actor, value(args, 'explorationId')!),
+		print: (reply) => ({
+			lines: ((reply.data.actions ?? []) as Array<{ line: string }>).map((item) => [item.line]),
+		}),
+	},
+	'explore done': {
+		positionals: ['explorationId', 'name', 'step'],
+		flags: { agent: 'value', failed: 'value', activity: 'value' },
+		write: true,
+		check: (args) => {
+			requireChoice(value(args, 'step'), doneSteps, 'step')
+		},
+		run: (store, args, { actor }) =>
+			stepDone(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				name: value(args, 'name')!,
+				step: value(args, 'step')!,
+				agent: value(args, 'agent'),
+				failed: value(args, 'failed'),
+				activity: value(args, 'activity'),
+			}),
+		print: (reply) => ({
+			facts: {
+				name: reply.data.name,
+				event: reply.data.event,
+				state: reply.data.state,
+				saved: reply.data.saved,
+				refused: reply.data.refused,
 			},
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
 		}),

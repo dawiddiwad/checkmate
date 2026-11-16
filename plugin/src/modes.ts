@@ -20,6 +20,7 @@ export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	objective?: string
 	target?: string
 	sources?: string[]
+	instructions?: string
 	scope?: string[]
 }
 
@@ -86,7 +87,10 @@ function openRequest(store: Store, actor: string | undefined, input: TestInput, 
 	const opened = openPlan(store, actor, {
 		planId: input.planId,
 		target: `${targetId}@${revision}`,
-		request: { objective, context: { sources } },
+		request: {
+			objective,
+			context: { sources, ...(input.instructions ? { instructions: input.instructions } : {}) },
+		},
 	})
 	if (opened.status !== 'completed') throw new Refusal('malformed', opened.reasons.join(' '))
 }
@@ -140,7 +144,7 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 							`Execute the stored tests of ${check.run.runId}: /checkmate:execute ${check.run.runId}, or checkmate delegate execute ${check.run.runId}`,
 						]
 					: []),
-				`checkmate explore wait ${explored.subject}`,
+				...(explored.data.next as string[]),
 			],
 		},
 	}

@@ -106,11 +106,21 @@ export function entryText(
 	return [commonText(kinds, described), ...kinds.map((kind) => kindText(kind, keep, described))].join('\n')
 }
 
-export function recorderPrompt(build: string, record: string, saved: string[] = []) {
-	return [
+function withoutName(text: string) {
+	return text.replace(/(^|\. )Checkmate\b/gm, '$1The record').replace(/\bCheckmate\b/g, 'the record')
+}
+
+function replyText(what: string, answer?: string, which = '') {
+	return answer
+		? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else. Then reply with one word: done.`
+		: `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`
+}
+
+export function recorderPrompt(build: string, record: string, saved: string[] = [], answer?: string) {
+	const text = [
 		`Now write the record of this test session for the QA record of the team (build ${build}).`,
 		'Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.',
-		'Reply with only one JSON array of the new entries, and nothing else. Use no tool.',
+		replyText('the new entries', answer),
 		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
 		'Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.',
 		'When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.',
@@ -126,11 +136,12 @@ export function recorderPrompt(build: string, record: string, saved: string[] = 
 		...(saved.length
 			? [
 					'',
-					'This session was recorded before. The record already holds these entries of the session. Reply with only the entries that are not in this list:',
+					`This session was recorded before. The record already holds these entries of the session. ${answer ? 'Write' : 'Reply with'} only the entries that are not in this list:`,
 					...saved,
 				]
 			: []),
 	].join('\n')
+	return answer ? withoutName(text) : text
 }
 
 export function followBrief(
@@ -149,12 +160,15 @@ export function followBrief(
 	].join('\n')
 }
 
-export function repairPrompt(refusals: string[]) {
-	return [
-		'Checkmate refused these entries of your reply:',
+export function repairPrompt(refusals: string[], answer?: string) {
+	const text = [
+		answer ? 'These entries of your file were refused:' : 'Checkmate refused these entries of your reply:',
 		...refusals.map((refusal) => `- ${refusal}`),
-		'Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool.',
+		answer
+			? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again. Then reply with one word: done.`
+			: 'Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool.',
 	].join('\n')
+	return answer ? withoutName(text) : text
 }
 
 function operationText(operations: string[]) {
@@ -254,13 +268,14 @@ export function mergerPrompt(
 	reports: MergeReport[],
 	groups: string[][],
 	questions: Array<{ id: string; question: string }> = [],
-	earlier: Array<{ id: string; reports: string[]; title: string; expected: string; actual: string }> = []
+	earlier: Array<{ id: string; reports: string[]; title: string; expected: string; actual: string }> = [],
+	answer?: string
 ) {
-	return [
+	const text = [
 		`Merge the reports of independent testers of build ${build}. Do not test.`,
 		'Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.',
 		'Two questions are one topic when one answer answers both. A question that is in no topic stays its own question.',
-		'Reply with only one JSON array of issue and topic entries, one for each defect that two or more reports describe and one for each question that two or more questions ask, and nothing else. Use no tool. Reply [] when nothing is the same.',
+		`${replyText('issue and topic entries', answer, ', one for each defect that two or more reports describe and one for each question that two or more questions ask')} ${answer ? 'Write' : 'Reply'} [] when nothing is the same.`,
 		'',
 		entryText(['issue', 'topic'], () => true),
 		'',
@@ -297,35 +312,45 @@ export function mergerPrompt(
 				]
 			: []),
 	].join('\n')
+	return answer ? withoutName(text) : text
 }
 
 type Unplaced = { report: string; title: string; like: Array<{ id: string; title: string; reason: string }> }
 
-export function mergeAgainPrompt(unplaced: Unplaced[]) {
+export function mergeAgainPrompt(unplaced: Unplaced[], answer?: string) {
 	return [
 		'These reports are in no issue, but they look like other reports or issues:',
 		...unplaced.map(
 			(item) =>
 				`- ${item.report}: ${item.title} Looks like: ${item.like.map((like) => `${like.id} (${like.title}; ${like.reason})`).join(', ')}`
 		),
-		'For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. Reply with only one JSON array of entries, and nothing else. Use no tool. Reply [] when none is the same.',
+		`For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. ${replyText('entries', answer)} ${answer ? 'Write' : 'Reply'} [] when none is the same.`,
 	].join('\n')
 }
 
 type VerifyItem = { id: string; title: string; expected: string; actual: string; steps: string | string[] | null }
 
-const verifierReplyText =
-	'reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
+const verifierObject =
+	'with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
 
-export function verifierRepairPrompt() {
-	return `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText} Use no tool.`
+function verifierReplyText(answer?: string) {
+	return answer
+		? `write only one JSON array to ${answer}, ${verifierObject} Then reply with one word: done.`
+		: `reply with only one JSON array, ${verifierObject}`
+}
+
+export function verifierRepairPrompt(answer?: string) {
+	return answer
+		? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer)}`
+		: `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`
 }
 
 export function verifierBrief(
 	items: VerifyItem[],
 	entries: EntryPointValue[],
 	operations: string[],
-	dataPrefix: string
+	dataPrefix: string,
+	answer?: string
 ) {
 	return [
 		'Reproduce each problem below on the application. Do not test other things.',
@@ -342,6 +367,6 @@ export function verifierBrief(
 				`- ${item.id}: ${item.title} Steps: ${[item.steps ?? 'not given'].flat().join(' ')} Expected: ${item.expected} Reported: ${item.actual}`
 		),
 		'',
-		`At the end, ${verifierReplyText}`,
+		`At the end, ${verifierReplyText(answer)}`,
 	].join('\n')
 }

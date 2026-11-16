@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
@@ -213,11 +213,8 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 	assert.equal(cli(workspace, ['query', 'PRAGMA journal_mode']).lines[2], 'wal')
 	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 5)
 	const fresh = directory(t)
-	assert.deepEqual(cli(fresh, ['query', 'SELECT count(*) AS n FROM plan_revisions']).lines, [
-		'completed query rows=1',
-		'n',
-		'0',
-	])
+	assert.equal(cli(fresh, ['query', 'SELECT count(*) AS n FROM plan_revisions']).code, 1)
+	assert(!existsSync(join(fresh, '.checkmate')))
 })
 
 test('--actor names the writer; parse errors are invalid requests', (t) => {

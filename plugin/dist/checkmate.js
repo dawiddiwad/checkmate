@@ -8,7 +8,7 @@ var __export = (target, all2) => {
 // plugin/src/store.ts
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, rmdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 var contractVersion = "toolkit-2";
 var schemaVersion = "4";
@@ -263,9 +263,16 @@ function busyTimeout(value2 = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
   const milliseconds = Number(value2);
   return value2 !== void 0 && /^[1-9][0-9]*$/.test(value2) && milliseconds <= 2147483647 ? milliseconds : 3e4;
 }
-function openStore(workspace) {
-  const path = databasePath(workspace);
+function createStore(workspace) {
   mkdirSync(join(workspace, ".checkmate"), { recursive: true });
+  return connect(workspace);
+}
+function openStore(workspace) {
+  if (!existsSync(databasePath(workspace))) throw new Error(`No Checkmate store at ${databasePath(workspace)}.`);
+  return connect(workspace);
+}
+function connect(workspace) {
+  const path = databasePath(workspace);
   const db = new DatabaseSync(path);
   try {
     db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`);
@@ -12784,7 +12791,7 @@ function pagedOperations(store, query = {}) {
 }
 
 // plugin/src/lite.ts
-import { existsSync } from "node:fs";
+import { existsSync as existsSync2 } from "node:fs";
 import { resolve as resolve2 } from "node:path";
 var recordedBy = "lite";
 var consequence = "Until the oracle answers, the check of the item uses the ticket and the docs.";
@@ -13195,7 +13202,7 @@ function newReferences(items, checks, build) {
   }
 }
 function inline(store, spec) {
-  return /\s/.test(spec.trim()) && !existsSync(resolve2(store.workspace, spec));
+  return /\s/.test(spec.trim()) && !existsSync2(resolve2(store.workspace, spec));
 }
 function stored(store, runId, testId, assertion, name, evidence2, operationId) {
   const files2 = evidence2.map(
@@ -14479,7 +14486,7 @@ var journal_issue_schema_default = {
 };
 
 // plugin/src/journal.ts
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync3 } from "node:fs";
 import { relative, resolve as resolve3 } from "node:path";
 var entryKinds = ["criterion", "observation", "defect", "question", "verdict", "note", "issue"];
 var prefixes = {
@@ -14533,11 +14540,16 @@ function changeRow(store, changeId) {
     "SELECT change_id, target_id, instance_id FROM changes WHERE change_id = ?",
     changeId
   );
-  requireCondition(
-    row,
-    `Unknown change: ${changeId}.`,
-    `Open it first: checkmate journal open ${changeId} --target <targetId>.`
-  );
+  if (!row) {
+    const ids2 = all(store, "SELECT change_id FROM changes ORDER BY rowid").map(
+      (item) => item.change_id
+    );
+    throw new Refusal(
+      "prohibited",
+      `Unknown change: ${changeId}. The store ${store.path} has ${ids2.length ? `the changes ${ids2.join(", ")}` : "no change"}.`,
+      "Check the change ID and the directory. To use the store of another project, run the command in that project directory, or set CHECKMATE_WORKSPACE to it, or pass --workspace <path>."
+    );
+  }
   return { changeId: row.change_id, targetId: row.target_id, instanceId: row.instance_id };
 }
 function withRefs(entry, name) {
@@ -14650,7 +14662,7 @@ function openChange(store, actor, input) {
   });
 }
 function evidenceOf(store, spec, cwd) {
-  const found = [resolve3(cwd, spec), resolve3(store.workspace, spec)].find((path) => existsSync2(path));
+  const found = [resolve3(cwd, spec), resolve3(store.workspace, spec)].find((path) => existsSync3(path));
   if (found) {
     const name = relative(store.workspace, found);
     const file = readEvidence(store, "./", name);
@@ -16318,7 +16330,7 @@ function exportRun(store, runId, format2) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // plugin/src/actor.ts
@@ -18976,7 +18988,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath(new URL(candidate, import.meta.url));
-    if (existsSync3(path + file)) return path;
+    if (existsSync4(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -19639,7 +19651,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/cli.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve4 } from "node:path";
 import { constants } from "node:sqlite";
 var testFields2 = [
@@ -19827,6 +19839,7 @@ function nextLines(next) {
 var commands = {
   init: {
     positionals: [],
+    creates: true,
     run: (store) => completed(".checkmate/checkmate.db", { path: store.path })
   },
   inbox: {
@@ -19933,6 +19946,7 @@ var commands = {
     flags: { "entry-point": "repeat", capabilities: "list", operations: "list", tool: "repeat" },
     required: ["entry-point", "capabilities", "operations"],
     write: true,
+    creates: true,
     run: (store, args, { actor }) => openTarget(store, actor, {
       targetId: value(args, "targetId"),
       entryPoints: (list(args, "entry-point") ?? []).map(entryPointSpec),
@@ -21340,10 +21354,12 @@ function run(argv, io) {
   const command = commands[name];
   const first = command.positionals[0]?.replace(/\?$/, "");
   const subject = first && name !== "query" ? String(args[first] ?? name) : name;
-  const workspace = workspaceOf(io.cwd, value(args, "workspace"));
+  const found = workspaceOf(io.cwd, value(args, "workspace"), io.env);
+  const { workspace } = found;
   let store;
   try {
-    store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
+    if (!command.creates && !existsSync5(databasePath(workspace))) throw missingStore(found);
+    store = command.readOnly ? openReadOnlyStore(workspace) : command.creates ? createStore(workspace) : openStore(workspace);
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, {
       actor,
@@ -21363,12 +21379,22 @@ function run(argv, io) {
     if (store) closeStore(store);
   }
 }
-function workspaceOf(cwd, given) {
-  if (given !== void 0) return resolve4(cwd, given);
+function workspaceOf(cwd, given, env) {
+  if (given !== void 0) return { workspace: resolve4(cwd, given), from: "--workspace" };
+  const named = env.CHECKMATE_WORKSPACE;
+  if (named) return { workspace: resolve4(cwd, named), from: "CHECKMATE_WORKSPACE" };
   for (let directory2 = resolve4(cwd); ; directory2 = dirname(directory2)) {
-    if (existsSync4(databasePath(directory2))) return directory2;
-    if (dirname(directory2) === directory2) return resolve4(cwd);
+    if (existsSync5(databasePath(directory2))) return { workspace: directory2, from: "search" };
+    if (dirname(directory2) === directory2) return { workspace: resolve4(cwd), from: "search" };
   }
+}
+function missingStore({ workspace, from }) {
+  const searched = from === "search" ? `${workspace} and its parent directories` : `${workspace}, the directory that ${from} names`;
+  return new Refusal(
+    "prohibited",
+    `No Checkmate store in ${searched}. Nothing changed.`,
+    "Run the command in the project directory, or set CHECKMATE_WORKSPACE to the project directory, or pass --workspace <path>."
+  );
 }
 function uiOptions(tokens, cwd) {
   const values = {};
@@ -21389,7 +21415,7 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: workspaceOf(cwd, values.workspace), port };
+  return { found: workspaceOf(cwd, values.workspace, process.env), port };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");
@@ -21401,7 +21427,13 @@ async function serveUi(tokens) {
     process.exitCode = 1;
     return;
   }
-  const ui = await startUi(options2);
+  const { workspace } = options2.found;
+  if (!existsSync5(databasePath(workspace))) {
+    process.stdout.write(format(refused("rejected", "ui", missingStore(options2.found)), json) + "\n");
+    process.exitCode = 1;
+    return;
+  }
+  const ui = await startUi({ workspace, port: options2.port });
   process.stdout.write(
     format(completed("ui", { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + "\n"
   );

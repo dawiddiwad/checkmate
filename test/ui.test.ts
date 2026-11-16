@@ -16,6 +16,7 @@ import {
 	checkAssertion,
 	closeStore,
 	openPlan,
+	createStore,
 	openStore,
 	addInstance,
 	instanceList,
@@ -35,7 +36,7 @@ import { copied, directory, evidenceFile, root } from './support.ts'
 const payload = '<script>alert("gap")</script>'
 
 function seedPayload(workspace: string) {
-	const store = openStore(workspace)
+	const store = createStore(workspace)
 	openPlan(store, agent, {
 		planId: 'xss',
 		target: 'shop-local@1',

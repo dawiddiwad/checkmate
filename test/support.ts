@@ -6,7 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import { closeStore, createStore, openStore } from '../plugin/src/store.ts'
 import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
 import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
 import {
@@ -43,7 +43,7 @@ export function copied(t: TestContext, template: string) {
 }
 
 export function store(t: TestContext, workspace = directory(t)): Store {
-	const opened = openStore(workspace)
+	const opened = createStore(workspace)
 	t.after(() => {
 		if (opened.db.isOpen) closeStore(opened)
 	})

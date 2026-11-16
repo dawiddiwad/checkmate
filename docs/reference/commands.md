@@ -15,7 +15,7 @@ Checkmate has one command set with two command lines. Small values go in flags, 
 
 The skills run the plugin CLI with its absolute path. Claude Code gives the path to a skill when it loads the skill. The plugin has no npm dependencies and no global `checkmate` command.
 
-Every command takes `--workspace <path>` and `--json`. Put options after the command name, for example `checkmate plan list --workspace ../app`. The workspace is the nearest directory with a `.checkmate` store, from the current directory up. When no directory has a store, the workspace is the current directory. A write takes `--actor <name>`.
+Every command takes `--workspace <path>` and `--json`. Put options after the command name, for example `checkmate plan list --workspace ../app`. Checkmate finds the workspace in this order: `--workspace <path>`, then `CHECKMATE_WORKSPACE`, then the nearest directory with a `.checkmate` store, from the current directory up. Only `init` and `target open` create a store. Every other command refuses when the workspace has no store. The refusal names the directory that Checkmate searched. A write takes `--actor <name>`.
 
 `checkmate --help` prints every command with its options. `checkmate <command> --help` prints the usage of that command with `completed` on line 1. For a group, for example `checkmate plan --help`, it prints each command of the group. `checkmate --version` prints the npm CLI version.
 
@@ -425,6 +425,7 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 | Variable                    | Read by        | Effect                                                                                                                            |
 | --------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                                                             |
+| `CHECKMATE_WORKSPACE`       | Checkmate      | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
 | `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate      | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
 | `ANTHROPIC_MODEL`           | The host       | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it.                                          |
 | `PLAYWRIGHT_MCP_OUTPUT_DIR` | Playwright CLI | `delegate execute` sets it to `.checkmate/tmp/<runId>`, so browser output stays there.                                            |

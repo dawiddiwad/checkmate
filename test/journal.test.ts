@@ -362,10 +362,14 @@ test('a change needs a known target, and a question ID for an answer', (t) => {
 	const answer = cli(workspace, ['journal', 'answer', 'cart', 'Q9', '--answer', 'Yes.'])
 	assert(answer.lines.includes('reason: Unknown question: Q9.'), answer.output)
 	const unknown = cli(workspace, ['journal', 'gaps', 'none'])
-	assert(
-		unknown.lines.includes('hint: Open it first: checkmate journal open none --target <targetId>.'),
-		unknown.output
-	)
+	const path = join(workspace, '.checkmate', 'checkmate.db')
+	assert.deepEqual(unknown.lines, [
+		'rejected none refusal=prohibited',
+		'reason: Refused: prohibited in the current state.',
+		`reason: Unknown change: none. The store ${path} has the changes cart.`,
+		'hint: Check the change ID and the directory. To use the store of another project, run the command in that project directory, or set CHECKMATE_WORKSPACE to it, or pass --workspace <path>.',
+	])
+	assert.doesNotMatch(unknown.output, /journal open/)
 })
 
 test('the journal guide comes from the entry schemas and stays short', (t) => {

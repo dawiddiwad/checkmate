@@ -3,7 +3,16 @@ import type { Plan, Profile } from './types.ts'
 import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from './targets.ts'
 import type { Approval, PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
-import { busyReason, closeStore, completed, databasePath, isBusy, openReadOnlyStore, openStore } from './store.ts'
+import {
+	busyReason,
+	closeStore,
+	completed,
+	createStore,
+	databasePath,
+	isBusy,
+	openReadOnlyStore,
+	openStore,
+} from './store.ts'
 import {
 	Refusal,
 	dependencyWarnings,
@@ -113,6 +122,7 @@ type Command = {
 	flags?: Record<string, FlagKind>
 	required?: string[]
 	write?: boolean
+	creates?: boolean
 	stdin?: boolean
 	readOnly?: boolean
 	check?: (args: Args) => void
@@ -368,6 +378,7 @@ function nextLines(next: string[]) {
 const commands: Record<string, Command> = {
 	init: {
 		positionals: [],
+		creates: true,
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
 	},
 	inbox: {
@@ -478,6 +489,7 @@ const commands: Record<string, Command> = {
 		flags: { 'entry-point': 'repeat', capabilities: 'list', operations: 'list', tool: 'repeat' },
 		required: ['entry-point', 'capabilities', 'operations'],
 		write: true,
+		creates: true,
 		run: (store, args, { actor }) =>
 			openTarget(store, actor, {
 				targetId: value(args, 'targetId')!,
@@ -2021,10 +2033,16 @@ export function run(argv: string[], io: Io): Outcome {
 	const command = commands[name]
 	const first = command.positionals[0]?.replace(/\?$/, '')
 	const subject = first && name !== 'query' ? String(args[first] ?? name) : name
-	const workspace = workspaceOf(io.cwd, value(args, 'workspace'))
+	const found = workspaceOf(io.cwd, value(args, 'workspace'), io.env)
+	const { workspace } = found
 	let store: Store | undefined
 	try {
-		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
+		if (!command.creates && !existsSync(databasePath(workspace))) throw missingStore(found)
+		store = command.readOnly
+			? openReadOnlyStore(workspace)
+			: command.creates
+				? createStore(workspace)
+				: openStore(workspace)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		const reply = command.run(store, args, {
 			actor,
@@ -2047,12 +2065,26 @@ export function run(argv: string[], io: Io): Outcome {
 	}
 }
 
-function workspaceOf(cwd: string, given: string | undefined) {
-	if (given !== undefined) return resolve(cwd, given)
+type Workspace = { workspace: string; from: '--workspace' | 'CHECKMATE_WORKSPACE' | 'search' }
+
+function workspaceOf(cwd: string, given: string | undefined, env: Io['env']): Workspace {
+	if (given !== undefined) return { workspace: resolve(cwd, given), from: '--workspace' }
+	const named = env.CHECKMATE_WORKSPACE
+	if (named) return { workspace: resolve(cwd, named), from: 'CHECKMATE_WORKSPACE' }
 	for (let directory = resolve(cwd); ; directory = dirname(directory)) {
-		if (existsSync(databasePath(directory))) return directory
-		if (dirname(directory) === directory) return resolve(cwd)
+		if (existsSync(databasePath(directory))) return { workspace: directory, from: 'search' }
+		if (dirname(directory) === directory) return { workspace: resolve(cwd), from: 'search' }
 	}
+}
+
+function missingStore({ workspace, from }: Workspace) {
+	const searched =
+		from === 'search' ? `${workspace} and its parent directories` : `${workspace}, the directory that ${from} names`
+	return new Refusal(
+		'prohibited',
+		`No Checkmate store in ${searched}. Nothing changed.`,
+		'Run the command in the project directory, or set CHECKMATE_WORKSPACE to the project directory, or pass --workspace <path>.'
+	)
 }
 
 function uiOptions(tokens: string[], cwd: string) {
@@ -2074,7 +2106,7 @@ function uiOptions(tokens: string[], cwd: string) {
 		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
 		`Invalid --port: ${values.port}. Use 0 to 65535.`
 	)
-	return { workspace: workspaceOf(cwd, values.workspace), port }
+	return { found: workspaceOf(cwd, values.workspace, process.env), port }
 }
 
 export async function serveUi(tokens: string[]) {
@@ -2087,7 +2119,13 @@ export async function serveUi(tokens: string[]) {
 		process.exitCode = 1
 		return
 	}
-	const ui = await startUi(options)
+	const { workspace } = options.found
+	if (!existsSync(databasePath(workspace))) {
+		process.stdout.write(format(refused('rejected', 'ui', missingStore(options.found)), json) + '\n')
+		process.exitCode = 1
+		return
+	}
+	const ui = await startUi({ workspace, port: options.port })
 	process.stdout.write(
 		format(completed('ui', { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + '\n'
 	)

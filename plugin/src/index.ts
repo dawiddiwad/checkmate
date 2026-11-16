@@ -1,6 +1,16 @@
 export type { Store, Reply, Status } from './store.ts'
 export type { Profile } from './types.ts'
-export { openStore, openReadOnlyStore, closeStore, canonical, digest, ulid, isBusy, busyReason } from './store.ts'
+export {
+	createStore,
+	openStore,
+	openReadOnlyStore,
+	closeStore,
+	canonical,
+	digest,
+	ulid,
+	isBusy,
+	busyReason,
+} from './store.ts'
 export {
 	Refusal,
 	refused,

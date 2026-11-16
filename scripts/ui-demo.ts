@@ -15,7 +15,7 @@ import {
 	editPlan,
 	finishRun,
 	openPlan,
-	openStore,
+	createStore,
 	openTarget,
 	planCandidate,
 	planDetail,
@@ -607,7 +607,7 @@ function seedStartedRun(store: Store) {
 }
 
 export function seedDemo(workspace: string) {
-	const store = openStore(workspace)
+	const store = createStore(workspace)
 	globalThis.Date = DemoDate as DateConstructor
 	try {
 		minutesAgo(5000)

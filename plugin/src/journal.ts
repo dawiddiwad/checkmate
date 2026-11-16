@@ -115,11 +115,16 @@ function changeRow(store: Store, changeId: string) {
 		'SELECT change_id, target_id, instance_id FROM changes WHERE change_id = ?',
 		changeId
 	)
-	requireCondition(
-		row,
-		`Unknown change: ${changeId}.`,
-		`Open it first: checkmate journal open ${changeId} --target <targetId>.`
-	)
+	if (!row) {
+		const ids = all<{ change_id: string }>(store, 'SELECT change_id FROM changes ORDER BY rowid').map(
+			(item) => item.change_id
+		)
+		throw new Refusal(
+			'prohibited',
+			`Unknown change: ${changeId}. The store ${store.path} has ${ids.length ? `the changes ${ids.join(', ')}` : 'no change'}.`,
+			'Check the change ID and the directory. To use the store of another project, run the command in that project directory, or set CHECKMATE_WORKSPACE to it, or pass --workspace <path>.'
+		)
+	}
 	return { changeId: row.change_id, targetId: row.target_id, instanceId: row.instance_id }
 }
 

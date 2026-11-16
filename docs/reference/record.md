@@ -8,9 +8,9 @@ All state is in one SQLite file in the application workspace. Rows do not change
 
 ## Location
 
-The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the current directory, or the value of `--workspace <path>`.
+The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the value of `--workspace <path>`, else the value of `CHECKMATE_WORKSPACE`, else the nearest directory with a store, from the current directory up.
 
-- Any command creates `.checkmate/` and the schema when they are missing. `checkmate init` only creates them.
+- Only `init` and `target open` create `.checkmate/` and the schema. `checkmate init` only creates them. Every other command, the read-only commands too, refuses when the workspace has no store. It names the directory that it searched.
 - `.checkmate/tmp/` holds binary evidence and browser output for a short time. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
 - Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.
 

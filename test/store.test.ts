@@ -10,6 +10,7 @@ import {
 	execute,
 	isBusy,
 	openReadOnlyStore,
+	createStore,
 	openStore,
 	ulid,
 	write,
@@ -67,7 +68,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 
 test('a database with another schema version is refused', (t) => {
 	const workspace = directory(t)
-	closeStore(openStore(workspace))
+	closeStore(createStore(workspace))
 	const db = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
 	db.exec('DROP TRIGGER meta_update')
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")

@@ -1,7 +1,7 @@
 import type { SQLInputValue } from 'node:sqlite'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync, rmdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Status =
@@ -282,9 +282,18 @@ export function busyTimeout(value = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
 	return value !== undefined && /^[1-9][0-9]*$/.test(value) && milliseconds <= 2147483647 ? milliseconds : 30000
 }
 
-export function openStore(workspace: string): Store {
-	const path = databasePath(workspace)
+export function createStore(workspace: string): Store {
 	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
+	return connect(workspace)
+}
+
+export function openStore(workspace: string): Store {
+	if (!existsSync(databasePath(workspace))) throw new Error(`No Checkmate store at ${databasePath(workspace)}.`)
+	return connect(workspace)
+}
+
+function connect(workspace: string): Store {
+	const path = databasePath(workspace)
 	const db = new DatabaseSync(path)
 	try {
 		db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)

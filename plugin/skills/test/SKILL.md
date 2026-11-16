@@ -34,15 +34,18 @@ Run `checkmate target list`. When it shows no target:
 ## Loop
 
 1. Run `checkmate explore next <explorationId>`. Each line after line 1 is one action:
-   - `start <name> <step> agent=<type> prompt="<prompt>"`: start an agent with the Agent tool. Set `subagent_type` to `<type>`. Give the prompt exactly.
+   - `start <name> <step> agent=<type> description="<description>" prompt="<prompt>"`: start an agent with the Agent tool. Set `subagent_type` to `<type>` and `description` to `<description>`. Give the prompt exactly.
    - `message <name> <step> agent=<agent id> prompt="<prompt>"`: send the prompt exactly to that agent with the SendMessage tool. When you do not have SendMessage, load it with ToolSearch.
    - `wait`: an agent runs. Wait until it ends.
    - `finished`: go to Report.
 2. Carry out all the actions of one `next` in one message, so that the agents run at the same time.
 3. Tell the person in one line what runs, for example `3 testers study the change.`
-4. When an agent ends, run `checkmate explore done <explorationId> <name> <step> --agent <agent id> --activity "<what the agent did, in one line>"`. When the agent failed, or you cannot reach it, add `--failed "<reason>"`.
-5. When two or more agents end, run their `done` commands and `next` in one shell command, joined with `&&`.
-6. Run `next` again. Do this until it prints `finished`.
+4. When an agent ends, find its tester and step. The description of the agent and the last line of its reply, for example `tester a2 study done`, name them. Use them, not the order of the results.
+5. Run `checkmate explore done <explorationId> <name> <step> --agent <agent id> --reply-line "<last line of the reply>" --activity "<what the agent did, in one line>"`. When the agent failed, or you cannot reach it, add `--failed "<reason>"`.
+6. When two or more agents end, run their `done` commands and `next` in one shell command, joined with `&&`.
+7. Run `next` again. Do this until it prints `finished`.
+
+When `done` refuses, read the `reason:` and `hint:` lines. Correct the command as the hint says, and continue. Do not stop to ask the person about a mistake in the agent IDs. `checkmate explore status <explorationId>` shows the agent ID of each tester.
 
 When the person asks for another model, give it as the `model` parameter of the Agent tool.
 

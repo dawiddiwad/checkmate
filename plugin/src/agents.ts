@@ -62,6 +62,7 @@ export type DoneInput = {
 	agent?: string
 	failed?: string
 	activity?: string
+	replyLine?: string
 }
 
 const ownerOf = (item: ExplorationEvent) => item.explorer ?? (item.detail.name as string | undefined)
@@ -107,7 +108,7 @@ function followTesters(events: ExplorationEvent[], launch: Launch) {
 }
 
 function testerDue(own: ExplorationEvent[], first: 'study' | 'follow') {
-	const last = own.at(-1)
+	const last = own.filter((item) => item.step !== 'bind').at(-1)
 	if (!last) return first
 	if (last.step === 'action') return 'running'
 	if (last.step === 'turn') return 'test'
@@ -245,8 +246,17 @@ function promptOf(action: Action) {
 		: `Read ${action.task} and do what it says.`
 }
 
-function lineOf(action: Action) {
-	return `${action.action} ${action.name} ${action.step} agent=${action.to} prompt="${promptOf(action)}"`
+function descriptionOf(explorationId: string, action: Action) {
+	return `${explorationId} ${action.name} ${action.step}`
+}
+
+function replyLineOf(name: string, step: string) {
+	return name === 'merge' || name === 'verify' ? `${name} done` : `tester ${name} ${step} done`
+}
+
+function lineOf(explorationId: string, action: Action) {
+	const description = action.action === 'start' ? ` description="${descriptionOf(explorationId, action)}"` : ''
+	return `${action.action} ${action.name} ${action.step} agent=${action.to}${description} prompt="${promptOf(action)}"`
 }
 
 function writeFile(store: Store, path: string, text: string) {
@@ -267,7 +277,11 @@ function answerNext(
 		{ actor, command: 'explore next', subject: explorationId, input: { explorationId } },
 		(operationId, at) => {
 			for (const action of actions) {
-				writeFile(store, action.task, action.text)
+				writeFile(
+					store,
+					action.task,
+					`${action.text.trimEnd()}\n\nEnd your reply with this line: ${replyLineOf(action.name, action.step)}`
+				)
 				if (action.answer) rmSync(join(store.workspace, action.answer), { force: true })
 				addEvent(
 					store,
@@ -295,8 +309,9 @@ function answerNext(
 						name: action.name,
 						step: action.step,
 						agent: action.to,
+						...(action.action === 'start' ? { description: descriptionOf(explorationId, action) } : {}),
 						prompt: promptOf(action),
-						line: lineOf(action),
+						line: lineOf(explorationId, action),
 					}))
 				: [{ action: word, line: word }]
 			const events = explorationEvents(store, explorationId)
@@ -541,17 +556,65 @@ function recordDone(
 	return reply
 }
 
+function checkReplyLine(explorationId: string, name: string, step: string, given: string | undefined) {
+	const line = given?.trim()
+	const match = line ? /^(?:tester (\S+) (\S+)|(merge|verify)) done$/.exec(line) : null
+	if (!match) return
+	const [named, namedStep] = match[3] ? [match[3], match[3]] : [match[1], match[2]]
+	requireCondition(
+		named === name && (Boolean(match[3]) || namedStep === step),
+		`The reply line "${line}" names ${named} ${namedStep}, not ${name} ${step}.`,
+		`Record this reply for ${named}: checkmate explore done ${explorationId} ${named} ${namedStep} --agent <the agent ID of this reply> --reply-line "${line}". Then record the reply of ${name}.`
+	)
+}
+
+function lastStep(events: ExplorationEvent[], name: string) {
+	return events.findLast((item) => ownerOf(item) === name && item.step === 'action')?.detail.step as
+		string | undefined
+}
+
+function checkBinding(events: ExplorationEvent[], explorationId: string, name: string, agent: string) {
+	const owners = [...new Set(events.flatMap((item) => (ownerOf(item) ? [ownerOf(item)!] : [])))]
+	const other = owners.find((owner) => owner !== name && agentOf(events, owner) === agent)
+	requireCondition(
+		!other,
+		`Agent ${agent} is bound to ${other} in exploration ${explorationId}, not to ${name}.`,
+		`Give the agent ID of ${name}: the description and the last line of its reply name it. When ${other} has the wrong agent ID, correct it first: checkmate explore done ${explorationId} ${other} ${lastStep(events, other!)} --agent <the agent ID of ${other}>.`
+	)
+}
+
+function runningSteps(events: ExplorationEvent[]) {
+	const owners = [...new Set(events.flatMap((item) => (ownerOf(item) ? [ownerOf(item)!] : [])))]
+	return owners.flatMap((owner) => {
+		const last = events.filter((item) => ownerOf(item) === owner && item.step !== 'bind').at(-1)
+		return last?.step === 'action' ? [`${owner} ${String(last.detail.step)}`] : []
+	})
+}
+
 export function stepDone(store: Store, actor: string | undefined, input: DoneInput): Reply {
 	const { explorationId, name, step, failed } = input
 	const events = explorationEvents(store, explorationId)
 	sessionLaunch(events, explorationId)
 	const phase = phaseOf(events)
-	const own = (phase?.events ?? []).filter((item) => ownerOf(item) === name)
+	const own = (phase?.events ?? []).filter((item) => ownerOf(item) === name && item.step !== 'bind')
 	const last = own.at(-1)
+	checkReplyLine(explorationId, name, step, input.replyLine)
+	if (input.agent) checkBinding(events, explorationId, name, input.agent)
+	const tester = name !== 'merge' && name !== 'verify'
+	if (tester && input.agent && last && last.step !== 'action' && lastStep(own, name) === step)
+		return addOutcome(store, actor, explorationId, {
+			step: 'bind',
+			explorer: name,
+			status: 'completed',
+			detail: { agent: input.agent, step, ...(input.activity ? { activity: input.activity } : {}) },
+		})
+	const running = runningSteps(phase?.events ?? [])
 	requireCondition(
 		last?.step === 'action' && last.detail.step === step,
 		`No ${step} step of ${name} runs in exploration ${explorationId}.`,
-		`Run checkmate explore next ${explorationId}, and carry out its actions.`
+		running.length
+			? `The steps that run: ${running.join(', ')}. Correct the name or the step, and run explore done again.`
+			: `Run checkmate explore next ${explorationId}, and carry out its actions.`
 	)
 	const agent = input.agent ?? agentOf(name === 'merge' || name === 'verify' ? own : events, name)
 	requireWellFormed(agent || failed, 'Give --agent with the agent ID that the Agent tool returned.')

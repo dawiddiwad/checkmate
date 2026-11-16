@@ -42,4 +42,7 @@ test('the test skill runs the session loop and names no removed level', () => {
 	assert.match(text, /checkmate explore done <explorationId> <name> <step> --agent <agent id>/)
 	assert.match(text, /Carry out all the actions of one `next` in one message/)
 	assert.match(text, /`model` parameter of the Agent tool/)
+	assert.match(text, /Set `subagent_type` to `<type>` and `description` to `<description>`/)
+	assert.match(text, /--reply-line "<last line of the reply>"/)
+	assert.match(text, /Do not stop to ask the person about a mistake in the agent IDs\./)
 })

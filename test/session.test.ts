@@ -83,7 +83,7 @@ test('a session run gives the actions of each step until it is finished, and the
 		lines(),
 		['a1', 'a2', 'a3'].map(
 			(name) =>
-				`start ${name} study agent=checkmate:tester prompt="Read ${work(name)}/task-study.md and do what it says."`
+				`start ${name} study agent=checkmate:tester description="x-1 ${name} study" prompt="Read ${work(name)}/task-study.md and do what it says."`
 		)
 	)
 	assert.deepEqual(lines(), ['wait'])
@@ -102,7 +102,10 @@ test('a session run gives the actions of each step until it is finished, and the
 
 	assert.deepEqual(lines(), [tester('a1', 'test'), tester('a2', 'test'), tester('a3', 'test')])
 	for (const name of ['a1', 'a2', 'a3']) {
-		assert.equal(file(`${work(name)}/task-test.md`), `${expectedBrief(workspace, name).test}\n`)
+		assert.equal(
+			file(`${work(name)}/task-test.md`),
+			`${expectedBrief(workspace, name).test}\n\nEnd your reply with this line: tester ${name} test done\n`
+		)
 		put(`${work(name)}/report.md`, `report of ${name}\n`)
 		done(name, 'test')
 	}
@@ -111,7 +114,7 @@ test('a session run gives the actions of each step until it is finished, and the
 	const record = file(`${work('a1')}/task-record.md`)
 	assert.match(
 		record,
-		/\nWrite only one JSON array of the new entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\. Then reply with one word: done\.\n/
+		/\nWrite only one JSON array of the new entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\. Then reply in short\.\n/
 	)
 	assert.doesNotMatch(record, /Use no tool/)
 	assert.doesNotMatch(clean(record), /checkmate/i)
@@ -121,7 +124,7 @@ test('a session run gives the actions of each step until it is finished, and the
 	for (const name of ['a1', 'a2', 'a3']) assert.equal(done(name, 'record').state, 'completed')
 
 	assert.deepEqual(lines(), [
-		'start merge merge agent=checkmate:clerk prompt="Read .checkmate/work/x-1/merge/task.md and write your answer to .checkmate/work/x-1/merge/answer.json."',
+		'start merge merge agent=checkmate:clerk description="x-1 merge merge" prompt="Read .checkmate/work/x-1/merge/task.md and write your answer to .checkmate/work/x-1/merge/answer.json."',
 	])
 	const merge = file(`${work()}/merge/task.md`)
 	assert.match(merge, /^Merge the reports of independent testers of build b1\. Do not test\.\n/)
@@ -133,8 +136,16 @@ test('a session run gives the actions of each step until it is finished, and the
 	assert.equal(done('merge', 'merge', ['--agent', 'clerk-1']).event, 'merge')
 
 	assert.deepEqual(lines(), [
-		'start verify verify agent=checkmate:tester prompt="Read .checkmate/work/x-1/verify/task.md and do what it says."',
+		'start verify verify agent=checkmate:tester description="x-1 verify verify" prompt="Read .checkmate/work/x-1/verify/task.md and do what it says."',
 	])
+	for (const [path, line] of [
+		[`${work('a1')}/task-study.md`, 'tester a1 study done'],
+		[`${work('a2')}/task-test.md`, 'tester a2 test done'],
+		[`${work('a3')}/task-record.md`, 'tester a3 record done'],
+		[`${work()}/merge/task.md`, 'merge done'],
+		[`${work()}/verify/task.md`, 'verify done'],
+	])
+		assert(file(path).endsWith(`\n\nEnd your reply with this line: ${line}\n`), path)
 	const verify = file(`${work()}/verify/task.md`)
 	assert.match(verify, /^Reproduce each problem below on the application\./)
 	assert.match(verify, /\n- a3\/D1: Sale price shows twice /)
@@ -146,6 +157,9 @@ test('a session run gives the actions of each step until it is finished, and the
 	assert.deepEqual(lines(), ['finished'])
 	assert.deepEqual(lines(), ['finished'])
 	assert(!existsSync(join(workspace, work())), 'work folder removed')
+	assert(!existsSync(join(workspace, '.checkmate', 'work')), 'empty work folder removed')
+	assert(!existsSync(join(workspace, '.checkmate', 'tmp')), 'empty tmp folder removed')
+	assert.match(text(['explore', 'status', 'x-1']), /\na1\tagent=agent-a1\tended=completed/)
 	const shown = command(['explore', 'show', 'x-1']).body
 	assert.equal(shown.state, 'completed')
 	assert.deepEqual(
@@ -198,6 +212,7 @@ test('a refused entry gets one repair round, and the entries keep their evidence
 	assert.deepEqual(lines(), [tester('a1', 'repair').replace(' repair ', ' record ')])
 	const repair = file(`${work('a1')}/task-repair.md`)
 	assert.match(repair, /^These entries of your file were refused:\n- /)
+	assert.match(repair, /\n\nEnd your reply with this line: tester a1 record done\n$/)
 	assert.match(
 		repair,
 		/\nWrite only one JSON array of the corrected entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\./
@@ -287,6 +302,37 @@ test('a refused merge answer gets one repair round from the same clerk', (t) => 
 	)
 })
 
+test('done refuses an agent ID of another tester, a rebind corrects it, and the reply line is checked', (t) => {
+	const { start, lines, done, command } = setup(t)
+	start()
+	lines()
+	done('a1', 'study', ['--agent', 'agent-a1'])
+	done('a2', 'study', ['--agent', 'agent-a3'])
+	const twice = command(['explore', 'done', 'x-1', 'a3', 'study', '--agent', 'agent-a3'])
+	assert.equal(twice.code, 1)
+	assert.equal(twice.body.reasons[1], 'Agent agent-a3 is bound to a2 in exploration x-1, not to a3.')
+	assert.match(
+		twice.body.hint,
+		/correct it first: checkmate explore done x-1 a2 study --agent <the agent ID of a2>\.$/
+	)
+	assert.equal(done('a2', 'study', ['--agent', 'agent-a2']).event, 'bind')
+	done('a3', 'study', ['--agent', 'agent-a3'])
+	assert.deepEqual(lines(), [tester('a1', 'test'), tester('a2', 'test'), tester('a3', 'test')])
+	const late = command(['explore', 'done', 'x-1', 'a2', 'study', '--agent', 'agent-a2b'])
+	assert.equal(late.body.reasons[1], 'No study step of a2 runs in exploration x-1.')
+	assert.match(late.body.hint, /^The steps that run: a1 test, a2 test, a3 test\./)
+	const other = command(['explore', 'done', 'x-1', 'a1', 'test', '--reply-line', 'tester a2 test done'])
+	assert.equal(other.code, 1)
+	assert.equal(other.body.reasons[1], 'The reply line "tester a2 test done" names a2 test, not a1 test.')
+	assert.match(other.body.hint, /^Record this reply for a2: checkmate explore done x-1 a2 test --agent /)
+	assert.equal(done('a1', 'test', ['--reply-line', 'tester a1 test done']).state, 'completed')
+	const status = command(['explore', 'status', 'x-1']).body
+	assert.deepEqual(
+		status.explorers.map((item: { session: string }) => item.session),
+		['agent-a1', 'agent-a2', 'agent-a3']
+	)
+})
+
 test('--instructions of a new plan reach the study task, for example the way to sign in', (t) => {
 	const { command, file } = setup(t)
 	const started = command([
@@ -337,7 +383,7 @@ test('a follow-up messages each tester that can be reached, and skips the one th
 	assert.deepEqual(lines(), [tester('a1', 'follow'), tester('a2', 'follow')])
 	assert.equal(
 		file(`${work('a1')}/task-follow.md`),
-		`${followBrief([{ question: question.question, answer: 'No.' }], work('a1'), 300)}\n`
+		`${followBrief([{ question: question.question, answer: 'No.' }], work('a1'), 300)}\n\nEnd your reply with this line: tester a1 follow done\n`
 	)
 	assert.equal(command(['explore', 'status', 'x-1']).body.state, 'following')
 	put(`${work('a1')}/follow-up-report.md`, 'more\n')

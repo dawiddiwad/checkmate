@@ -49,7 +49,7 @@ import {
 } from './sessions.ts'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type StartInput = OpenInput & {
@@ -186,9 +186,15 @@ export function keepWorkFiles(store: Store, actor: string, explorationId: string
 	})
 }
 
+function removeIfEmpty(folder: string) {
+	if (existsSync(folder) && !readdirSync(folder).length) rmdirSync(folder)
+}
+
 export function removeWork(store: Store, explorationId: string) {
 	rmSync(join(store.workspace, workFolder(explorationId)), { recursive: true, force: true })
 	rmSync(join(store.workspace, '.checkmate', 'tmp', `explore-${explorationId}.log`), { force: true })
+	removeIfEmpty(join(store.workspace, '.checkmate', 'work'))
+	removeIfEmpty(join(store.workspace, '.checkmate', 'tmp'))
 }
 
 function startSupervisor(store: Store, explorationId: string, actor: string, env: Env, extra: string[] = []) {

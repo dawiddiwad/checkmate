@@ -12889,7 +12889,7 @@ function withoutName(text) {
   return text.replace(/(^|\. )Checkmate\b/gm, "$1The record").replace(/\bCheckmate\b/g, "the record");
 }
 function replyText(what, answer, which = "") {
-  return answer ? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else. Then reply with one word: done.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
+  return answer ? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else. Then reply in short.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
 }
 function recorderPrompt(build, record, saved = [], answer) {
   const text = [
@@ -12931,7 +12931,7 @@ function repairPrompt(refusals, answer) {
   const text = [
     answer ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
     ...refusals.map((refusal) => `- ${refusal}`),
-    answer ? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again. Then reply with one word: done.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
+    answer ? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again. Then reply in short.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
   return answer ? withoutName(text) : text;
 }
@@ -13043,7 +13043,7 @@ function mergeAgainPrompt(unplaced, answer) {
 }
 var verifierObject = 'with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.';
 function verifierReplyText(answer) {
-  return answer ? `write only one JSON array to ${answer}, ${verifierObject} Then reply with one word: done.` : `reply with only one JSON array, ${verifierObject}`;
+  return answer ? `write only one JSON array to ${answer}, ${verifierObject} Then reply in short.` : `reply with only one JSON array, ${verifierObject}`;
 }
 function verifierRepairPrompt(answer) {
   return answer ? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer)}` : `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`;
@@ -13429,7 +13429,7 @@ function upstreamBase(repository) {
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readFileSync as readFileSync5, rmSync as rmSync4 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readdirSync as readdirSync2, readFileSync as readFileSync5, rmdirSync as rmdirSync2, rmSync as rmSync4 } from "node:fs";
 import { join as join7 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
@@ -13530,9 +13530,14 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
     return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
   });
 }
+function removeIfEmpty(folder) {
+  if (existsSync3(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
+}
 function removeWork(store, explorationId) {
   rmSync4(join7(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
   rmSync4(join7(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
+  removeIfEmpty(join7(store.workspace, ".checkmate", "work"));
+  removeIfEmpty(join7(store.workspace, ".checkmate", "tmp"));
 }
 function startSupervisor(store, explorationId, actor, env, extra = []) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
@@ -19990,7 +19995,7 @@ function followTesters(events, launch) {
   });
 }
 function testerDue(own, first) {
-  const last = own.at(-1);
+  const last = own.filter((item) => item.step !== "bind").at(-1);
   if (!last) return first;
   if (last.step === "action") return "running";
   if (last.step === "turn") return "test";
@@ -20116,8 +20121,15 @@ function verifyAction(store, explorationId, round, phase) {
 function promptOf2(action) {
   return action.name === "merge" ? `Read ${action.task} and write your answer to ${action.answer}.` : `Read ${action.task} and do what it says.`;
 }
-function lineOf(action) {
-  return `${action.action} ${action.name} ${action.step} agent=${action.to} prompt="${promptOf2(action)}"`;
+function descriptionOf(explorationId, action) {
+  return `${explorationId} ${action.name} ${action.step}`;
+}
+function replyLineOf(name, step) {
+  return name === "merge" || name === "verify" ? `${name} done` : `tester ${name} ${step} done`;
+}
+function lineOf(explorationId, action) {
+  const description = action.action === "start" ? ` description="${descriptionOf(explorationId, action)}"` : "";
+  return `${action.action} ${action.name} ${action.step} agent=${action.to}${description} prompt="${promptOf2(action)}"`;
 }
 function writeFile(store, path, text) {
   const full = join11(store.workspace, path);
@@ -20131,7 +20143,13 @@ function answerNext(store, actor, explorationId, actions, word) {
     { actor, command: "explore next", subject: explorationId, input: { explorationId } },
     (operationId, at) => {
       for (const action of actions) {
-        writeFile(store, action.task, action.text);
+        writeFile(
+          store,
+          action.task,
+          `${action.text.trimEnd()}
+
+End your reply with this line: ${replyLineOf(action.name, action.step)}`
+        );
         if (action.answer) rmSync5(join11(store.workspace, action.answer), { force: true });
         addEvent(
           store,
@@ -20158,8 +20176,9 @@ function answerNext(store, actor, explorationId, actions, word) {
         name: action.name,
         step: action.step,
         agent: action.to,
+        ...action.action === "start" ? { description: descriptionOf(explorationId, action) } : {},
         prompt: promptOf2(action),
-        line: lineOf(action)
+        line: lineOf(explorationId, action)
       })) : [{ action: word, line: word }];
       const events = explorationEvents(store, explorationId);
       const ended = [...events].reverse().find((item) => ["done", "followed"].includes(item.step));
@@ -20349,17 +20368,58 @@ function recordDone(store, actor, explorationId, explorer, own, base, failed, ph
   keepWorkFiles(store, actor, explorationId, explorer, phase.name);
   return reply;
 }
+function checkReplyLine(explorationId, name, step, given) {
+  const line = given?.trim();
+  const match = line ? /^(?:tester (\S+) (\S+)|(merge|verify)) done$/.exec(line) : null;
+  if (!match) return;
+  const [named, namedStep] = match[3] ? [match[3], match[3]] : [match[1], match[2]];
+  requireCondition(
+    named === name && (Boolean(match[3]) || namedStep === step),
+    `The reply line "${line}" names ${named} ${namedStep}, not ${name} ${step}.`,
+    `Record this reply for ${named}: checkmate explore done ${explorationId} ${named} ${namedStep} --agent <the agent ID of this reply> --reply-line "${line}". Then record the reply of ${name}.`
+  );
+}
+function lastStep(events, name) {
+  return events.findLast((item) => ownerOf(item) === name && item.step === "action")?.detail.step;
+}
+function checkBinding(events, explorationId, name, agent) {
+  const owners = [...new Set(events.flatMap((item) => ownerOf(item) ? [ownerOf(item)] : []))];
+  const other = owners.find((owner) => owner !== name && agentOf(events, owner) === agent);
+  requireCondition(
+    !other,
+    `Agent ${agent} is bound to ${other} in exploration ${explorationId}, not to ${name}.`,
+    `Give the agent ID of ${name}: the description and the last line of its reply name it. When ${other} has the wrong agent ID, correct it first: checkmate explore done ${explorationId} ${other} ${lastStep(events, other)} --agent <the agent ID of ${other}>.`
+  );
+}
+function runningSteps(events) {
+  const owners = [...new Set(events.flatMap((item) => ownerOf(item) ? [ownerOf(item)] : []))];
+  return owners.flatMap((owner) => {
+    const last = events.filter((item) => ownerOf(item) === owner && item.step !== "bind").at(-1);
+    return last?.step === "action" ? [`${owner} ${String(last.detail.step)}`] : [];
+  });
+}
 function stepDone(store, actor, input) {
   const { explorationId, name, step, failed } = input;
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
   const phase = phaseOf2(events);
-  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name);
+  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name && item2.step !== "bind");
   const last = own.at(-1);
+  checkReplyLine(explorationId, name, step, input.replyLine);
+  if (input.agent) checkBinding(events, explorationId, name, input.agent);
+  const tester = name !== "merge" && name !== "verify";
+  if (tester && input.agent && last && last.step !== "action" && lastStep(own, name) === step)
+    return addOutcome(store, actor, explorationId, {
+      step: "bind",
+      explorer: name,
+      status: "completed",
+      detail: { agent: input.agent, step, ...input.activity ? { activity: input.activity } : {} }
+    });
+  const running3 = runningSteps(phase?.events ?? []);
   requireCondition(
     last?.step === "action" && last.detail.step === step,
     `No ${step} step of ${name} runs in exploration ${explorationId}.`,
-    `Run checkmate explore next ${explorationId}, and carry out its actions.`
+    running3.length ? `The steps that run: ${running3.join(", ")}. Correct the name or the step, and run explore done again.` : `Run checkmate explore next ${explorationId}, and carry out its actions.`
   );
   const agent = input.agent ?? agentOf(name === "merge" || name === "verify" ? own : events, name);
   requireWellFormed(agent || failed, "Give --agent with the agent ID that the Agent tool returned.");
@@ -20783,7 +20843,7 @@ function explorationLines(reply) {
     lines: [
       ...status.explorers.map((item) => [
         item.explorer,
-        item.session ?? "-",
+        status.path === "session" ? `agent=${item.session ?? "-"}` : item.session ?? "-",
         `ended=${item.ended ?? "-"}`,
         `recorded=${item.recorded ?? "-"}`,
         `saved=${item.saved}`
@@ -21811,7 +21871,7 @@ var commands = {
   },
   "explore done": {
     positionals: ["explorationId", "name", "step"],
-    flags: { agent: "value", failed: "value", activity: "value" },
+    flags: { agent: "value", failed: "value", activity: "value", "reply-line": "value" },
     write: true,
     check: (args) => {
       requireChoice(value(args, "step"), doneSteps, "step");
@@ -21822,7 +21882,8 @@ var commands = {
       step: value(args, "step"),
       agent: value(args, "agent"),
       failed: value(args, "failed"),
-      activity: value(args, "activity")
+      activity: value(args, "activity"),
+      replyLine: value(args, "reply-line")
     }),
     print: (reply) => ({
       facts: {

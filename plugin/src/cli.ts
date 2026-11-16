@@ -262,7 +262,7 @@ function explorationLines(reply: Reply): Printed {
 		lines: [
 			...status.explorers.map((item) => [
 				item.explorer,
-				item.session ?? '-',
+				status.path === 'session' ? `agent=${item.session ?? '-'}` : (item.session ?? '-'),
 				`ended=${item.ended ?? '-'}`,
 				`recorded=${item.recorded ?? '-'}`,
 				`saved=${item.saved}`,
@@ -1356,7 +1356,7 @@ const commands: Record<string, Command> = {
 	},
 	'explore done': {
 		positionals: ['explorationId', 'name', 'step'],
-		flags: { agent: 'value', failed: 'value', activity: 'value' },
+		flags: { agent: 'value', failed: 'value', activity: 'value', 'reply-line': 'value' },
 		write: true,
 		check: (args) => {
 			requireChoice(value(args, 'step'), doneSteps, 'step')
@@ -1369,6 +1369,7 @@ const commands: Record<string, Command> = {
 				agent: value(args, 'agent'),
 				failed: value(args, 'failed'),
 				activity: value(args, 'activity'),
+				replyLine: value(args, 'reply-line'),
 			}),
 		print: (reply) => ({
 			facts: {

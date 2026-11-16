@@ -47,6 +47,14 @@ test('the test skill runs the session loop and names no removed level', () => {
 	assert.match(text, /Do not stop to ask the person about a mistake in the agent IDs\./)
 	assert.match(text, /A later build never needs a decision before the test\./)
 	assert.match(text, /checkmate explore started <explorationId> <names>/)
+	assert.match(text, /When the host of the URL is not local \(`localhost`, `127\.0\.0\.1`, a private address/)
+	assert.match(
+		text,
+		/is this a test environment, staging, or production, and can testers make and change data there\?/
+	)
+	assert.match(text, /Do not ask when the URL is local\./)
+	assert.match(text, /Add `--environment "<the answer>"` when you asked\./)
+	assert.match(text, /For production, also add `--operations <a,b>`/)
 	assert.match(
 		text,
 		/Before you ask the person anything in the middle of a run, record the pause: `checkmate explore pause/

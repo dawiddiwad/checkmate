@@ -7,13 +7,29 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 You are the operator. You do not test. Checkmate gives you actions, and you carry them out with agents of this session. Checkmate writes the task of each agent. Do not write a task. Do not give an agent other instructions. Do not test yourself.
 
+## Ask the person
+
+When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.
+
+When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle answers in text or with the CLI commands.
+
+For a value with no fixed choices, for example a URL or how to sign in, ask one short text question. Do not ask for a secret. Ask where it is kept.
+
+Ask with the tool for:
+
+- The environment of a URL that is not local, and whether testers can make and change data there.
+- The target or the instance, when more than one exists.
+- The level, only when the person asks for a choice.
+- A decision in the middle of a run, for example stop, use another URL, or continue. Record the pause first.
+- Accept or reject of a `suspected` or `unresolved` claim, when the person asks to triage.
+
 ## First run
 
 Run `checkmate target list`. When it shows no target:
 
 1. Tell the person in two or three lines: a target is the record of where the application runs and what a tester can do there. Checkmate needs the URL of the running application, and how to sign in when the application needs a login.
 2. Use the values that the message of the person gives. Ask only for a missing value. Do not ask for a password or a token. Ask for the name of the environment variable or the file that has it.
-3. When the host of the URL is not local (`localhost`, `127.0.0.1`, a private address, or a name that ends with `.local` or `.test`), and the person did not say which environment it is, ask one question before setup: is this a test environment, staging, or production, and can testers make and change data there? Do not ask when the URL is local.
+3. When the host of the URL is not local (`localhost`, `127.0.0.1`, a private address, or a name that ends with `.local` or `.test`), and the person did not say which environment it is, ask one question before setup: is this a test environment, staging, or production, and can testers make and change data there? Ask the two questions in one call, as Ask the person says. Ask only for what the message of the person does not give. Do not ask when the URL is local.
 4. Run `checkmate setup --url <url>`. Add `--environment "<the answer>"` when you asked. Start the value with `test`, `staging`, or `production`, for example `--environment "production, read only"`. For production, also add `--operations <a,b>` with the operations that the person permits. Checkmate refuses production without them.
 5. Show a short table of what Checkmate set and what it assumed. Use the facts and each `assumed:` line.
 6. Continue with the test in the same turn.

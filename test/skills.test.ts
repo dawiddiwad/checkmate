@@ -62,3 +62,51 @@ test('the test skill runs the session loop and names no removed level', () => {
 	)
 	assert.match(text, /Offer `harvest` only in the final report, as an option\./)
 })
+
+const skillNames = ['test', 'plan', 'execute', 'revise', 'setup', 'status', 'report', 'ui']
+const asksForChoice = /\bask (the person|the oracle|one question|which)|\band ask\b|AskUserQuestion/i
+
+function askSection(text: string) {
+	return /\n## Ask the person\n\n([\s\S]*?)(?=\n## |\nAsk with the tool|$)/.exec(text)?.[1]
+}
+
+test('each skill that asks the person for a choice has the shared question rules with the fallback', () => {
+	const asking = skillNames.filter((skill) =>
+		asksForChoice.test(readFileSync(join(root, 'plugin/skills', skill, 'SKILL.md'), 'utf8'))
+	)
+	assert.deepEqual(asking, ['test', 'setup', 'report'])
+	const sections = asking.map((skill) =>
+		askSection(readFileSync(join(root, 'plugin/skills', skill, 'SKILL.md'), 'utf8'))
+	)
+	for (const [index, section] of sections.entries()) {
+		assert(section, asking[index])
+		assert.equal(section, sections[0], asking[index])
+	}
+	const rules = sections[0]!
+	assert.match(rules, /the `AskUserQuestion` tool is in your tool list, ask with that tool\./)
+	assert.match(rules, /one call with at most 4 questions and 2 to 4 options for each question/)
+	assert.match(rules, /Put the recommended option first, and add "\(Recommended\)" to its label\./)
+	assert.match(rules, /a header of at most 12 characters/)
+	assert.match(rules, /Do not add an "Other" option\. The tool adds it\./)
+	assert.match(
+		rules,
+		/When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool\./
+	)
+	assert.match(rules, /as a short numbered list, or return `needs_decision` with the reason\./)
+	assert.match(rules, /An agent that is the oracle answers in text or with the CLI commands\./)
+	assert.match(rules, /Do not ask for a secret\. Ask where it is kept\./)
+})
+
+test('the test skill names when to ask with the tool, and asks the first-run questions in one call', () => {
+	const text = readFileSync(join(root, 'plugin/skills/test/SKILL.md'), 'utf8')
+	assert.match(
+		text,
+		/The environment of a URL that is not local, and whether testers can make and change data there\./
+	)
+	assert.match(text, /The target or the instance, when more than one exists\./)
+	assert.match(text, /The level, only when the person asks for a choice\./)
+	assert.match(text, /for example stop, use another URL, or continue\. Record the pause first\./)
+	assert.match(text, /Accept or reject of a `suspected` or `unresolved` claim, when the person asks to triage\./)
+	assert.match(text, /Ask the two questions in one call, as Ask the person says\./)
+	assert.match(text, /Ask only for what the message of the person does not give\./)
+})

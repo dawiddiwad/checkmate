@@ -341,6 +341,8 @@ After an answer to a question of a completed exploration, the first `next` line 
 
 The session path is the default of the test skill in Claude Code. Checkmate keeps the state. The operator agent only carries out the actions. The plugin has two agents in `agents/`: `tester` (tools `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) and `clerk` (tools `Read`, `Write`). Their text does not name Checkmate, and they get no skills. The model is in the front matter of each agent. The level sets the number of testers and the verifier. To use another model, the operator gives it as the `model` parameter of the Agent tool.
 
+When the operator needs a choice from the person, for example the environment of a URL that is not local, the skills tell it to ask with the `AskUserQuestion` tool of the host: one call, at most 4 questions, 2 to 4 options each, the recommended option first. A subagent and a run without a person do not have that tool, and a task from an agent, a factory, or a script must not use it. Then the operator writes the question and its options as a numbered list in its reply, or returns `needs_decision`. The CLI does not ask questions.
+
 `checkmate explore next <explorationId>` prints the actions that are due now, one on each line, and in `actions` of the JSON:
 
 | Action                                                                                                      | The operator                                                                     |

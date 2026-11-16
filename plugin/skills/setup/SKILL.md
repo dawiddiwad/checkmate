@@ -11,6 +11,16 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <id>`, `--instance <name>`, `--operations <a,b>`, or `--environment <text>` only when the oracle gives them. Do not ask for a value that has a default. Report each `assumed:` line, so that the oracle can correct it. Ask only for a missing URL, credentials, or the operations of a production instance. Use the steps below only for full control.
 
+## Ask the person
+
+When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.
+
+When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle answers in text or with the CLI commands.
+
+For a value with no fixed choices, for example a URL or how to sign in, ask one short text question. Do not ask for a secret. Ask where it is kept.
+
+Ask with the tool for the environment of a URL that is not local, and whether testers can make and change data there. Ask in the same call for the target or the instance, when more than one exists.
+
 ## Tools
 
 A target profile lists the tools that the stages can use. Each tool has a `name`, a `kind`, and a `purpose`:

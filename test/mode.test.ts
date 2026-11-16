@@ -84,8 +84,21 @@ test('test in regression mode begins a run of the ready tests and explores the c
 		'checkmate explore wait x-1',
 	])
 	wait('x-1')
-	const [explorer] = called().filter((call) => call.role === 'explorer')
-	assert.match(explorer.prompt, /\nChanged files:\n- cart\.js\n/)
+	const calls = called()
+	const [explorer] = calls.filter((call) => call.role === 'explorer')
+	const [tester] = calls.filter((call) => call.role === 'tester')
+	assert.match(
+		explorer.prompt,
+		/\nChanged files:\n- cart\.js\n\nThe code of the change is shown by git diff --merge-base HEAD in the workspace\.\nRead the diff first\. Test what the diff changes and what depends on it\.\n/
+	)
+	assert.match(
+		tester.prompt,
+		/unclear\.\nThe code of the change is shown by git diff --merge-base HEAD in the workspace\.\nRead the diff first\. Test what the diff changes and what depends on it\.\nUse the existing records/
+	)
+	assert.doesNotMatch(explorer.prompt + tester.prompt, /version before the change/)
+	const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: workspace, encoding: 'utf8' }).trim()
+	const status = command(['explore', 'status', 'x-1']).body
+	assert.deepEqual([status.since, status.until], ['HEAD', head])
 	const text = run(
 		['test', 'checkout', '--build', 'b2', '--since', 'no-such-ref', ...allow, '--workspace', workspace],
 		{
@@ -94,5 +107,76 @@ test('test in regression mode begins a run of the ready tests and explores the c
 			stdin: () => '',
 		}
 	).output
-	assert.match(text, /reason: git diff --name-only no-such-ref failed/)
+	assert.match(text, /reason: git diff --name-only --merge-base no-such-ref failed/)
+})
+
+function commit(cwd: string, text: string) {
+	writeFileSync(join(cwd, 'cart.js'), text)
+	execFileSync('git', ['add', 'cart.js'], { cwd })
+	execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', text], { cwd })
+}
+
+test('--until names the end of the change; the checked-out files are then the version before it', (t) => {
+	const { command, wait, called, workspace } = setup(t, ready)
+	execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: workspace })
+	commit(workspace, 'one')
+	execFileSync('git', ['checkout', '-qb', 'feature'], { cwd: workspace })
+	commit(workspace, 'two')
+	execFileSync('git', ['checkout', '-q', 'main'], { cwd: workspace })
+	const lone = command(['test', 'checkout', '--build', 'b1', '--until', 'feature', ...allow])
+	assert.match(lone.body.reasons[1], /--until needs --since/)
+	const reply = command([
+		'explore',
+		'start',
+		'checkout',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--since',
+		'main',
+		'--until',
+		'feature',
+		...allow,
+	])
+	assert.equal(reply.code, 0, reply.output)
+	wait('x-1')
+	const turns = called().filter((call) => call.role === 'explorer' || call.role === 'tester')
+	for (const turn of turns)
+		assert.match(
+			turn.prompt,
+			/\nThe code of the change is shown by git diff main\.\.\.feature in the workspace\.\nThe checked-out files are the version before the change, and the diff shows the change\.\nRead the diff first\./
+		)
+	assert.match(turns[0].prompt, /\nChanged files:\n- cart\.js\n/)
+	const status = command(['explore', 'status', 'x-1']).body
+	assert.deepEqual([status.since, status.until], ['main', 'feature'])
+	const shown = run(['explore', 'show', 'x-1', '--workspace', workspace], {
+		cwd: workspace,
+		env: {},
+		stdin: () => '',
+	})
+	assert.match(shown.output, / since=main until=feature /)
+})
+
+test('without --since, test assumes the default branch of origin when it is behind the checked-out commit', (t) => {
+	const { command, wait, called, workspace } = setup(t, ready)
+	execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: workspace })
+	commit(workspace, 'one')
+	const none = command(['test', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow])
+	assert.deepEqual(none.body.assumed, [
+		'since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)',
+	])
+	wait('x-1')
+	assert.doesNotMatch(called()[0].prompt, /git diff/)
+	execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: workspace })
+	execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'], { cwd: workspace })
+	commit(workspace, 'two')
+	const assumed = command(['test', 'checkout', '--build', 'b2', '--level', 'smoke', ...allow])
+	assert.deepEqual(assumed.body.assumed, [
+		'since=origin/main (the default branch of origin, behind the checked-out commit)',
+	])
+	assert.deepEqual(assumed.body.scope, ['cart.js'])
+	wait('x-2')
+	assert.match(called()[0].prompt, /git diff --merge-base origin\/main in the workspace\./)
+	assert.equal(command(['explore', 'status', 'x-2']).body.since, 'origin/main')
 })

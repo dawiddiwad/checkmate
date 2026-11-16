@@ -138,6 +138,7 @@ test('the plan and the gate accept any operation of the default, and the brief s
 			operations: [anyTestOperation],
 			tools: [],
 			scope: [],
+			change: null,
 			knownState: null,
 		},
 		[],
@@ -165,6 +166,10 @@ test('test with no build, no git, and no target sets up the target from --url an
 	assert.match(reply.output, /\nassumed: build=local-[0-9]{8}-[0-9]{4}\n/)
 	assert.match(reply.output, /\nassumed: target=cart-app \(the workspace folder name\)\n/)
 	assert.match(reply.output, /\nassumed: objective=Test the change that ticket\.md describes\.$/m)
+	assert.match(
+		reply.output,
+		/\nassumed: since=none \(no diff is given: no --since, and no default branch of origin behind the checked-out commit\)/
+	)
 	assert.equal(command(folder, ['explore', 'wait', 'x-1', '--timeout', '60'], env).code, 0)
 	const again = command(
 		folder,

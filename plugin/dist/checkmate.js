@@ -12054,7 +12054,7 @@ function latestRevision(store, planId) {
   );
   return row ? { revision: row.revision, plan: JSON.parse(row.body) } : null;
 }
-function charterOf(store, planId, scope, knownState = null) {
+function charterOf(store, planId, scope, change, knownState = null) {
   const { request, target } = planRequest(store, planId);
   const latest = latestRevision(store, planId);
   const requirements = latest?.plan.requirements ?? request.requirements ?? [];
@@ -12067,6 +12067,7 @@ function charterOf(store, planId, scope, knownState = null) {
     operations: target.profile.allowedOperations,
     tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
     scope,
+    change,
     knownState
   };
 }
@@ -12176,7 +12177,13 @@ function insertExploration(store, input, operationId, at) {
   const mode = requireChoice(input.mode ?? "exploratory", explorationModes, "mode (--mode)");
   const instance = runInstance(store, target.profile.targetId, input.instance);
   const explorationId = input.explorationId ?? nextExplorationId(store);
-  const charter = charterOf(store, planId, input.scope ?? [], writeKnownState(store, planId, explorationId, build));
+  const charter = charterOf(
+    store,
+    planId,
+    input.scope ?? [],
+    input.change ?? null,
+    writeKnownState(store, planId, explorationId, build)
+  );
   execute(
     store,
     "INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -12875,7 +12882,16 @@ function entryPointLine(entry) {
     return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
   return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
 }
+function testDataText(dataPrefix) {
+  return `Use the existing records of the application, and make new records when a case needs them. Start each name or value that you make with ${dataPrefix}.`;
+}
 function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
+  const change = charter.change;
+  const diff = change ? [
+    `The code of the change is shown by git diff ${change.range.join(" ")} in ${change.repo === "." ? "the workspace" : `the folder ${change.repo}`}.`,
+    ...change.checkedOut ? [] : ["The checked-out files are the version before the change, and the diff shows the change."],
+    "Read the diff first. Test what the diff changes and what depends on it."
+  ] : [];
   const study = [
     "A change of the application is ready for test. Study it before you test.",
     "",
@@ -12884,6 +12900,7 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
     ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
     ...charter.instructions ? ["", charter.instructions] : [],
     ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
+    ...diff.length ? ["", ...diff] : [],
     ...charter.knownState ? [
       "",
       `Read ${charter.knownState}. It has the results of earlier builds. Retest each open problem in it, and say for each one if it is still there or fixed.`
@@ -12908,7 +12925,8 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
   const test = [
     "Now test the change and the existing behaviour that it can break.",
     "The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.",
-    `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+    ...diff,
+    testDataText(dataPrefix),
     `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
     `Write ${evidenceFolder2}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
     ...charter.knownState ? [
@@ -12968,7 +12986,7 @@ function verifierBrief(items, entries, operations, dataPrefix) {
     ...entries.map(entryPointLine),
     "",
     `${operationText(operations)} Do not change the code, the configuration, or the deployment of the application.`,
-    `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+    testDataText(dataPrefix),
     "",
     "The problems:",
     ...items.map(
@@ -13197,6 +13215,62 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   });
 }
 
+// plugin/src/change.ts
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { relative as relative2, resolve as resolve3 } from "node:path";
+var refHint = "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.";
+function git(cwd, args) {
+  const out = spawnSync3("git", args, { cwd, encoding: "utf8" });
+  return out.status === 0 ? out.stdout.trim() : void 0;
+}
+function commit(cwd, ref) {
+  return git(cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+}
+function rangeArgs(since, until) {
+  return until ? [`${since}...${until}`] : ["--merge-base", since];
+}
+function changeOf(workspace, input) {
+  requireWellFormed(
+    !input.until || input.since,
+    "--until needs --since.",
+    "Give the base of the change with --since."
+  );
+  if (!input.since) return null;
+  const repository = resolve3(workspace, input.repo ?? ".");
+  const head = commit(repository, "HEAD");
+  const until = input.until ?? git(repository, ["rev-parse", "--short", "HEAD"]);
+  const range = rangeArgs(input.since, input.until);
+  if (!head || !until || !commit(repository, input.since) || input.until && !commit(repository, input.until))
+    throw new Refusal("malformed", `git diff --name-only ${range.join(" ")} failed: unknown revision.`, refHint);
+  return {
+    since: input.since,
+    until,
+    repo: relative2(workspace, repository) || ".",
+    range,
+    checkedOut: commit(repository, until) === head
+  };
+}
+function changedFiles(workspace, change) {
+  const diff = spawnSync3("git", ["diff", "--name-only", ...change.range, "--"], {
+    cwd: resolve3(workspace, change.repo),
+    encoding: "utf8"
+  });
+  if (diff.status !== 0)
+    throw new Refusal(
+      "malformed",
+      `git diff --name-only ${change.range.join(" ")} failed${diff.stderr ? `: ${diff.stderr.trim().split("\n")[0]}` : ""}`,
+      refHint
+    );
+  return diff.stdout.split("\n").filter(Boolean);
+}
+function upstreamBase(repository) {
+  const branch = git(repository, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+  const head = commit(repository, "HEAD");
+  if (!branch || !head || commit(repository, branch) === head) return void 0;
+  const ancestor = spawnSync3("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
+  return ancestor.status === 0 ? branch : void 0;
+}
+
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
@@ -13263,7 +13337,9 @@ function startSupervisor(store, explorationId, actor, env) {
   );
   child.unref();
 }
-function startExploration(store, actor, input, env) {
+function startExploration(store, actor, given, env) {
+  const change = changeOf(store.workspace, given);
+  const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) };
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
     requireClaude(env);
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
@@ -13578,6 +13654,7 @@ function explorationStatus(store, explorationId) {
   const row = explorationRow(store, explorationId);
   const events = explorationEvents(store, explorationId);
   const launch = startOf(events);
+  const charter = JSON.parse(row.charter);
   const state = explorationState(events);
   const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
   const explorers = names.map((explorer) => {
@@ -13610,6 +13687,8 @@ function explorationStatus(store, explorationId) {
     model: launch?.model ?? null,
     modelFrom: launch?.modelFrom ?? null,
     verifier: launch?.verifier ?? null,
+    since: charter.change?.since ?? null,
+    until: charter.change?.until ?? null,
     studySeconds: launch?.studySeconds ?? null,
     testSeconds: launch?.testSeconds ?? null,
     pluginHidden: launch?.pluginHidden ?? null,
@@ -18179,7 +18258,7 @@ function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve5, reject) => {
+  return new Promise((resolve6, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -18188,7 +18267,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve5(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve6(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -18836,9 +18915,9 @@ data: ${matched.join(",") || "*"}
   const server = createServer((req, res) => {
     void handle(req, res);
   });
-  await new Promise((resolve5, reject) => {
+  await new Promise((resolve6, reject) => {
     server.once("error", reject);
-    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve5());
+    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve6());
   });
   const address = server.address();
   port = typeof address === "object" && address ? address.port : 0;
@@ -18849,8 +18928,8 @@ data: ${matched.join(",") || "*"}
       clearInterval(heartbeat);
       for (const client of clients) client.res.end();
       clients.clear();
-      await new Promise((resolve5) => {
-        server.close(() => resolve5());
+      await new Promise((resolve6) => {
+        server.close(() => resolve6());
         server.closeAllConnections();
       });
       closeStore(watch);
@@ -18860,8 +18939,8 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/modes.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
-import { resolve as resolve3 } from "node:path";
+import { spawnSync as spawnSync4 } from "node:child_process";
+import { resolve as resolve4 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 function hasRequest(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId));
@@ -18871,16 +18950,6 @@ function autoMode(store, planId) {
   const checked = one(store, "SELECT 1 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?", planId);
   return explored || checked ? "regression" : "exploratory";
 }
-function changedFiles(workspace, since) {
-  const diff = spawnSync3("git", ["diff", "--name-only", since, "--"], { cwd: workspace, encoding: "utf8" });
-  if (diff.status !== 0)
-    throw new Refusal(
-      "malformed",
-      `git diff --name-only ${since} failed${diff.stderr ? `: ${diff.stderr.trim().split("\n")[0]}` : ""}`,
-      "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope."
-    );
-  return diff.stdout.split("\n").filter(Boolean);
-}
 function nextRunId(store) {
   return unusedId(
     "run-",
@@ -18888,7 +18957,7 @@ function nextRunId(store) {
   );
 }
 function gitBuild(workspace) {
-  const head = spawnSync3("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace, encoding: "utf8" });
+  const head = spawnSync4("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace, encoding: "utf8" });
   return head.status === 0 ? head.stdout.trim() || void 0 : void 0;
 }
 function dateBuild(now = /* @__PURE__ */ new Date()) {
@@ -18956,9 +19025,13 @@ function runTest(store, actor, given, env) {
   const input = { ...given, build };
   if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed);
   const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
-  const repository = resolve3(store.workspace, input.repo ?? ".");
-  const scope = input.scope ?? (input.since ? changedFiles(repository, input.since) : []);
-  const explored = startExploration(store, actor, { ...input, mode, scope }, env);
+  const base = input.since ? void 0 : upstreamBase(resolve4(store.workspace, input.repo ?? "."));
+  if (!input.since)
+    assumed.push(
+      base ? `since=${base} (the default branch of origin, behind the checked-out commit)` : "since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)"
+    );
+  const explored = startExploration(store, actor, { ...input, since: input.since ?? base, mode }, env);
+  const charter = explored.data.charter;
   const check = mode === "regression" ? checkRun(store, actor, input) : { run: null, skipped: [] };
   return {
     ...explored,
@@ -18966,7 +19039,7 @@ function runTest(store, actor, given, env) {
       ...explored.data,
       mode,
       chosenBy: input.mode && input.mode !== "auto" ? "flag" : "auto",
-      scope,
+      scope: charter.scope,
       run: check.run,
       checkSkipped: check.skipped,
       assumed,
@@ -19138,7 +19211,7 @@ function harvestExploration(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname, resolve as resolve4 } from "node:path";
+import { dirname, resolve as resolve5 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -19255,6 +19328,8 @@ function explorationLines(reply) {
       model: status.model ?? void 0,
       modelFrom: status.modelFrom ?? void 0,
       verifier: status.verifier ?? void 0,
+      since: status.since ?? void 0,
+      until: status.until ?? void 0,
       studySeconds: status.studySeconds ?? void 0,
       testSeconds: status.testSeconds ?? void 0
     },
@@ -20103,6 +20178,7 @@ var commands = {
       target: "value",
       source: "repeat",
       since: "value",
+      until: "value",
       scope: "list",
       url: "value",
       repo: "value"
@@ -20126,6 +20202,7 @@ var commands = {
         target: value(args, "target"),
         sources: list(args, "source"),
         since: value(args, "since"),
+        until: value(args, "until"),
         scope: list(args, "scope"),
         url: value(args, "url"),
         repo: value(args, "repo")
@@ -20178,6 +20255,9 @@ var commands = {
       minutes: { min: 1, max: 240 },
       instance: "value",
       mode: explorationModes,
+      since: "value",
+      until: "value",
+      repo: "value",
       allow: "repeat",
       "claude-arg": "repeat",
       timeout: { min: 60, max: 7200 }
@@ -20195,6 +20275,9 @@ var commands = {
         level: value(args, "level"),
         explorers: integer(args, "explorers"),
         minutes: integer(args, "minutes"),
+        since: value(args, "since"),
+        until: value(args, "until"),
+        repo: value(args, "repo"),
         allow: list(args, "allow") ?? [],
         claudeArgs: list(args, "claude-arg") ?? [],
         timeoutSeconds: integer(args, "timeout")
@@ -20614,7 +20697,7 @@ function printPlan(reply) {
   };
 }
 function writeOutput(store, out, content) {
-  const path = resolve4(store.workspace, out);
+  const path = resolve5(store.workspace, out);
   mkdirSync6(dirname(path), { recursive: true });
   try {
     writeFileSync3(path, content, { flag: "wx" });
@@ -20807,7 +20890,7 @@ function run(argv, io) {
   }
   const command = commands[name];
   const subject = command.positionals.length && name !== "query" ? String(args[command.positionals[0]]) : name;
-  const workspace = resolve4(io.cwd, value(args, "workspace") ?? ".");
+  const workspace = resolve5(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
@@ -20849,7 +20932,7 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: resolve4(cwd, values.workspace ?? "."), port };
+  return { workspace: resolve5(cwd, values.workspace ?? "."), port };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");

@@ -1,8 +1,10 @@
 import type { Reply, Store } from './store.ts'
 import type { Env } from './sessions.ts'
 import type { StartInput } from './explorers.ts'
+import type { Charter } from './explorations.ts'
 import { all, one } from './store.ts'
 import { Refusal, requireWellFormed, unusedId } from './contracts.ts'
+import { upstreamBase } from './change.ts'
 import { openPlan } from './plans.ts'
 import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
@@ -14,12 +16,10 @@ export const testModes = ['exploratory', 'regression', 'auto'] as const
 export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string
-	repo?: string
 	mode?: string
 	objective?: string
 	target?: string
 	sources?: string[]
-	since?: string
 	scope?: string[]
 }
 
@@ -31,17 +31,6 @@ export function autoMode(store: Store, planId: string) {
 	const explored = one(store, 'SELECT 1 FROM explorations WHERE plan_id = ?', planId)
 	const checked = one(store, 'SELECT 1 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?', planId)
 	return explored || checked ? 'regression' : 'exploratory'
-}
-
-export function changedFiles(workspace: string, since: string) {
-	const diff = spawnSync('git', ['diff', '--name-only', since, '--'], { cwd: workspace, encoding: 'utf8' })
-	if (diff.status !== 0)
-		throw new Refusal(
-			'malformed',
-			`git diff --name-only ${since} failed${diff.stderr ? `: ${diff.stderr.trim().split('\n')[0]}` : ''}`,
-			'Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.'
-		)
-	return diff.stdout.split('\n').filter(Boolean)
 }
 
 function nextRunId(store: Store) {
@@ -125,9 +114,15 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 	const input = { ...given, build }
 	if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed)
 	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
-	const repository = resolve(store.workspace, input.repo ?? '.')
-	const scope = input.scope ?? (input.since ? changedFiles(repository, input.since) : [])
-	const explored = startExploration(store, actor, { ...input, mode, scope }, env)
+	const base = input.since ? undefined : upstreamBase(resolve(store.workspace, input.repo ?? '.'))
+	if (!input.since)
+		assumed.push(
+			base
+				? `since=${base} (the default branch of origin, behind the checked-out commit)`
+				: 'since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)'
+		)
+	const explored = startExploration(store, actor, { ...input, since: input.since ?? base, mode }, env)
+	const charter = explored.data.charter as Charter
 	const check = mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
 	return {
 		...explored,
@@ -135,7 +130,7 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 			...explored.data,
 			mode,
 			chosenBy: input.mode && input.mode !== 'auto' ? 'flag' : 'auto',
-			scope,
+			scope: charter.scope,
 			run: check.run,
 			checkSkipped: check.skipped,
 			assumed,

@@ -104,7 +104,7 @@ test('explore start launches the explorers of the level in a clean context, then
 		assert.deepEqual(call.args.filter((arg: string) => arg === '--allowedTools').length, 2)
 		assert.deepEqual(call.env, [])
 		assert.equal(call.cwd, workspace)
-		assert.doesNotMatch(call.prompt, /checkmate|record|journal/i)
+		assert.doesNotMatch(call.prompt, /checkmate|journal|recorder|\brecord\b/i)
 		assert.doesNotMatch(call.prompt, /minutes|Test until|First read|At the end/)
 		assert.match(call.prompt, /http:\/\/127\.0\.0\.1:4173/)
 		assert.match(call.args.join(' '), /--session-id/)
@@ -123,7 +123,7 @@ test('explore start launches the explorers of the level in a clean context, then
 			['Read', 'Bash']
 		)
 		assert(!call.args.some((arg: string) => /--tools|disallowed|--session-id|--fork-session/.test(arg)))
-		assert.doesNotMatch(call.prompt, /checkmate|record|journal/i)
+		assert.doesNotMatch(call.prompt, /checkmate|journal|recorder|\brecord\b/i)
 		const explorer = /qa-evidence\/x-1\/(a\d)\/plan\.md/.exec(study.prompt)![1]
 		assert.match(
 			call.prompt,
@@ -131,7 +131,7 @@ test('explore start launches the explorers of the level in a clean context, then
 				[
 					'^Now test the change and the existing behaviour that it can break\\.',
 					'The owner of the product has not answered your questions yet\\. Use the sources where they decide the point, and report the rest as unclear\\.',
-					`Make your own test data\\. Start each name or value that you make with qa-x-1-${explorer}-\\.`,
+					`Use the existing records of the application, and make new records when a case needs them\\. Start each name or value that you make with qa-x-1-${explorer}-\\.`,
 					`Save the files that show a problem, for example screenshots or responses, in qa-evidence/x-1/${explorer}/\\.`,
 					`Write qa-evidence/x-1/${explorer}/report\\.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files\\. Number the defects D1, D2, and so on\\. List also what you tested and what is still unclear\\.`,
 					'You have 900 seconds for this turn\\. Write the report early and update it as you go\\.$',
@@ -331,6 +331,7 @@ test('the brief of a retest asks for one line in the report for each problem of 
 			operations: [],
 			tools: [],
 			scope: [],
+			change: null,
 			knownState: 'qa-evidence/x-2/known-state.md',
 		},
 		[],

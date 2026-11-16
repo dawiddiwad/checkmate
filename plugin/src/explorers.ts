@@ -1,7 +1,7 @@
 import type { Reply, Store } from './store.ts'
 import type { Profile } from './types.ts'
 import type { ChildContext, ClaudeCall, Env } from './sessions.ts'
-import type { ExplorationEvent, OpenInput } from './explorations.ts'
+import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { closeStore, completed, openStore, write } from './store.ts'
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
@@ -22,6 +22,7 @@ import { defaultLevel, levelNames, testLevels } from './levels.ts'
 import { explorerActor, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import { explorerBrief, mergeAgainPrompt, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
 import { findInstance, targetRevision } from './targets.ts'
+import { changeOf, changedFiles } from './change.ts'
 import {
 	checkClaudeArgs,
 	checkmateScript,
@@ -44,6 +45,9 @@ export type StartInput = OpenInput & {
 	level?: string
 	explorers?: number
 	minutes?: number
+	since?: string
+	until?: string
+	repo?: string
 	allow: string[]
 	claudeArgs: string[]
 	timeoutSeconds?: number
@@ -129,7 +133,9 @@ function startSupervisor(store: Store, explorationId: string, actor: string, env
 	child.unref()
 }
 
-export function startExploration(store: Store, actor: string | undefined, input: StartInput, env: Env) {
+export function startExploration(store: Store, actor: string | undefined, given: StartInput, env: Env) {
+	const change = changeOf(store.workspace, given)
+	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
 		requireClaude(env)
 		const opened = input.explorationId
@@ -490,6 +496,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 	const row = explorationRow(store, explorationId)
 	const events = explorationEvents(store, explorationId)
 	const launch = startOf(events)
+	const charter = JSON.parse(row.charter) as Charter
 	const state = explorationState(events)
 	const names = [...new Set(events.flatMap((item) => (item.explorer ? [item.explorer] : [])))]
 	const explorers = names.map((explorer) => {
@@ -522,6 +529,8 @@ export function explorationStatus(store: Store, explorationId: string) {
 		model: launch?.model ?? null,
 		modelFrom: launch?.modelFrom ?? null,
 		verifier: launch?.verifier ?? null,
+		since: charter.change?.since ?? null,
+		until: charter.change?.until ?? null,
 		studySeconds: launch?.studySeconds ?? null,
 		testSeconds: launch?.testSeconds ?? null,
 		pluginHidden: launch?.pluginHidden ?? null,

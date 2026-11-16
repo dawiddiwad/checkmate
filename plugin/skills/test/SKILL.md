@@ -18,7 +18,7 @@ You are the operator. You do not test. Checkmate starts the testers in new sessi
 
    - Add `--build`, `--objective`, or `--target` only when the oracle gives them. Add `--url <url>` when the store has no target.
    - Give one `--allow` for each tool rule that the oracle or the project gives, for example `--allow "Bash(playwright-cli:*)"`. The host owns the permissions.
-   - Add `--level smoke|standard|deep` only when the oracle asks for it. Add `--since <git ref>` when the oracle names the base of the change.
+   - Add `--level smoke|standard|deep` only when the oracle asks for it. Add `--since <git ref>` when the oracle names the base of the change, and `--until <git ref>` when the change is not the checked-out commit.
    - `--mode` is `auto` when you do not give it: the first test of a plan explores, a later test checks the stored tests and explores again.
 
 3. When the command refuses, read the `reason:` lines and the `hint:` line. Correct the command and run it again.

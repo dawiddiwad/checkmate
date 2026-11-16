@@ -89,6 +89,10 @@ test('explore finish merges the reports, verifies single reports, and keeps a re
 	assert.match(verifier.prompt, /^Reproduce each problem below on the application\./)
 	assert.match(verifier.prompt, /- a2\/D1: Wrong tax on shipping Steps: Ship to PL\./)
 	assert.doesNotMatch(verifier.prompt, /checkmate/i)
+	assert.match(
+		verifier.prompt,
+		/\nUse the existing records of the application, and make new records when a case needs them\. Start each name or value that you make with qa-x-1-verify-\.\n/
+	)
 	assert(verifier.args.includes('--allowedTools'))
 	assert.deepEqual(verifier.env, [])
 	const shown = command(['explore', 'show', 'x-1']).body

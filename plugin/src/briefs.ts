@@ -146,6 +146,10 @@ function entryPointLine(entry: EntryPointValue) {
 	return `- ${entry.name}: ${entry.value}. ${entry.purpose}`
 }
 
+function testDataText(dataPrefix: string) {
+	return `Use the existing records of the application, and make new records when a case needs them. Start each name or value that you make with ${dataPrefix}.`
+}
+
 export function explorerBrief(
 	charter: Charter,
 	entries: EntryPointValue[],
@@ -153,6 +157,16 @@ export function explorerBrief(
 	evidenceFolder: string,
 	seconds: { study: number; test: number }
 ) {
+	const change = charter.change
+	const diff = change
+		? [
+				`The code of the change is shown by git diff ${change.range.join(' ')} in ${change.repo === '.' ? 'the workspace' : `the folder ${change.repo}`}.`,
+				...(change.checkedOut
+					? []
+					: ['The checked-out files are the version before the change, and the diff shows the change.']),
+				'Read the diff first. Test what the diff changes and what depends on it.',
+			]
+		: []
 	const study = [
 		'A change of the application is ready for test. Study it before you test.',
 		'',
@@ -163,6 +177,7 @@ export function explorerBrief(
 		...(charter.sources.length ? ['', `Read: ${charter.sources.join(', ')}`] : []),
 		...(charter.instructions ? ['', charter.instructions] : []),
 		...(charter.scope.length ? ['', 'Changed files:', ...charter.scope.map((path) => `- ${path}`)] : []),
+		...(diff.length ? ['', ...diff] : []),
 		...(charter.knownState
 			? [
 					'',
@@ -194,7 +209,8 @@ export function explorerBrief(
 	const test = [
 		'Now test the change and the existing behaviour that it can break.',
 		'The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.',
-		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+		...diff,
+		testDataText(dataPrefix),
 		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
 		`Write ${evidenceFolder}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
 		...(charter.knownState
@@ -286,7 +302,7 @@ export function verifierBrief(
 		...entries.map(entryPointLine),
 		'',
 		`${operationText(operations)} Do not change the code, the configuration, or the deployment of the application.`,
-		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+		testDataText(dataPrefix),
 		'',
 		'The problems:',
 		...items.map(

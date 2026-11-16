@@ -1,5 +1,6 @@
 import type { Store } from './store.ts'
 import type { Plan } from './types.ts'
+import type { Change } from './change.ts'
 import { all, canonical, completed, execute, one, write } from './store.ts'
 import { requireChoice, requireIdentifier, requireText, unusedId } from './contracts.ts'
 import { planRequest, planTools } from './plans.ts'
@@ -19,6 +20,7 @@ export type Charter = {
 	operations: string[]
 	tools: Array<{ name: string; purpose: string }>
 	scope: string[]
+	change: Change | null
 	knownState: string | null
 }
 export type ExplorationEvent = {
@@ -38,7 +40,13 @@ function latestRevision(store: Store, planId: string) {
 	return row ? { revision: row.revision, plan: JSON.parse(row.body) as Plan } : null
 }
 
-export function charterOf(store: Store, planId: string, scope: string[], knownState: string | null = null): Charter {
+export function charterOf(
+	store: Store,
+	planId: string,
+	scope: string[],
+	change: Change | null,
+	knownState: string | null = null
+): Charter {
 	const { request, target } = planRequest(store, planId)
 	const latest = latestRevision(store, planId)
 	const requirements = latest?.plan.requirements ?? request.requirements ?? []
@@ -51,6 +59,7 @@ export function charterOf(store: Store, planId: string, scope: string[], knownSt
 		operations: target.profile.allowedOperations,
 		tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
 		scope,
+		change,
 		knownState,
 	}
 }
@@ -186,6 +195,7 @@ export type OpenInput = {
 	instance?: string
 	mode?: string
 	scope?: string[]
+	change?: Change | null
 	explorationId?: string
 }
 
@@ -196,7 +206,13 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
 	const instance = runInstance(store, target.profile.targetId, input.instance)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
-	const charter = charterOf(store, planId, input.scope ?? [], writeKnownState(store, planId, explorationId, build))
+	const charter = charterOf(
+		store,
+		planId,
+		input.scope ?? [],
+		input.change ?? null,
+		writeKnownState(store, planId, explorationId, build)
+	)
 	execute(
 		store,
 		'INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',

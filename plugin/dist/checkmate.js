@@ -4348,30 +4348,71 @@ function roleSteps(changeId, role) {
     "Do not explore beyond the list."
   ];
 }
-function journalSteps(changeId, shell) {
-  const checkmate = shell?.command ?? "checkmate";
+function journalSteps(changeId) {
   return [
-    shell ? `Log what you did and saw. Write the entries as one JSON array to a new file in ${shell.files} with the Write tool. Then run ${checkmate} log ${changeId} --build <build> --from ${shell.files}/<file>.json. Do not use a heredoc.` : `Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+    `Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
     'With a repository or a merge request, log each changed area that you tested as a note with "area".',
-    `Then run ${checkmate} gaps ${changeId} --build <build>. Its lines are ideas, not rules. ${checkmate} show ${changeId} prints the record.`
+    `Then run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`
   ];
 }
-function recorderPrompt(changeId, build, shell) {
-  const checkmate = shell?.command ?? "checkmate";
+function fieldText(fields, described) {
+  return fields.map((field) => {
+    const name = `${field.path}${field.type.includes("|") ? ` (${field.type})` : ""}${field.required ? " (required)" : ""}`;
+    if (described.has(field.description)) return `${name}.`;
+    described.add(field.description);
+    return `${name}: ${field.description}`;
+  }).join(" ");
+}
+function entryText() {
+  const schema = journalSchema();
+  const described = /* @__PURE__ */ new Set();
   return [
-    `Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ""}). Run \`${checkmate} guide ${changeId}\` first. \`${checkmate} show ${changeId}\` prints what the record already holds.`,
-    ...build ? [`Give \`--build ${build}\` to each \`${checkmate} log\` call.`] : [],
-    ...shell ? [
-      `Write the entries to a file in ${shell.files} with the Write tool, and log them with \`${checkmate} log ${changeId} --from <file>\`. Do not use a heredoc.`
-    ] : [],
-    "Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project."
+    `${schema.about} Every entry has: ${fieldText(schema.common, described)}`,
+    ...schema.kinds.map((kind) => `Kind ${kind.kind}: ${kind.about} ${fieldText(kind.fields, described)}`)
   ].join("\n");
 }
-function guideJournal(store, changeId, role = "tester", viewer, build, shell) {
+function recordText(store, changeId, viewer) {
+  const state = changeState(store, changeId, viewer);
+  const lines = [
+    ...state.criteria.map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
+    ...state.defects.map(
+      (defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}${defect.verdicts.length ? `. Verdicts: ${defect.verdicts.map((verdict) => `${verdict.build}=${verdict.result}`).join(", ")}` : ""}`
+    ),
+    ...state.questions.map(
+      (question) => `question ${question.id} (${question.status}): ${question.question}${question.answer ? ` Answer: ${question.answer}` : ""}`
+    )
+  ];
+  return lines.length ? lines.join("\n") : "No criterion, defect, or question yet.";
+}
+function recorderPrompt(changeId, build, files2 = "<files>", record = "<the criteria, defects with verdicts, and questions with answers of this change>") {
+  return [
+    `Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ""}).`,
+    "Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds. To name an entry of the record, use its ID.",
+    `Write all new entries as one JSON array to ${files2}/entries.json with the Write tool. That is your only task. Do not run commands. When you end, Checkmate logs the file${build ? ` with build ${build}` : ""}.`,
+    "Evidence is the path of a file that already exists in the workspace, or the text that you saw.",
+    "",
+    "The entries:",
+    entryText(),
+    "",
+    `Example of ${files2}/entries.json:`,
+    JSON.stringify(journalSchema().example),
+    "",
+    "The record already holds:",
+    record
+  ].join("\n");
+}
+function repairPrompt(files2, refusals) {
+  return [
+    `Checkmate refused these entries of ${files2}/entries.json:`,
+    ...refusals.map((refusal) => `- ${refusal}`),
+    `Write only the corrected entries, as one JSON array, to ${files2}/fix.json with the Write tool. Do not write the saved entries again. Do not run commands.`
+  ].join("\n");
+}
+function guideJournal(store, changeId, role = "tester", viewer, build) {
   const change = changeId ?? "<changeId>";
   if (role === "recorder") {
     if (changeId !== void 0) changeState(store, changeId);
-    return completed(changeId ?? "guide", { format: "text", content: recorderPrompt(change, build, shell) });
+    return completed(changeId ?? "guide", { format: "text", content: recorderPrompt(change, build) });
   }
   if (role !== "tester") {
     if (changeId !== void 0) changeState(store, changeId);
@@ -4385,12 +4426,9 @@ function guideJournal(store, changeId, role = "tester", viewer, build, shell) {
   }
   const state = changeId === void 0 ? void 0 : changeState(store, changeId, viewer);
   return completed(changeId ?? "guide", {
-    steps: journalSteps(change, shell),
+    steps: journalSteps(change),
     ...journalSchema(),
-    ...shell ? {
-      command: `${shell.command} log ${change} --build b1 --from ${shell.files}/entries.json`,
-      from: `${shell.files}/entries.json`
-    } : { command: `checkmate log ${change} --build b1` },
+    command: `checkmate log ${change} --build b1`,
     answers: (state?.questions ?? []).filter((question) => question.answer !== null),
     openDefects: (state?.defects ?? []).filter((defect) => state.openDefects.includes(defect.id))
   });
@@ -4493,7 +4531,7 @@ function pagedOperations(store, query = {}) {
 // plugin/src/recorder.ts
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync2, rmSync, statSync as statSync2 } from "node:fs";
+import { accessSync, constants, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync2, rmSync, statSync as statSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join as join2 } from "node:path";
 var defaultRecorderTimeout = 600;
@@ -4591,79 +4629,144 @@ function prepare(store, actor, input, env) {
     );
   return { claude, session, recorder: randomUUID(), actor: writer };
 }
-function recorderArgs(session, recorder, checkmate, files2) {
+function recorderArgs(files2, resume) {
   return [
     "-p",
     "--resume",
-    session,
-    "--fork-session",
-    "--session-id",
-    recorder,
+    ...resume,
     "--output-format",
     "json",
     "--permission-prompts",
     "none",
     "--allowedTools",
-    `Bash(${checkmate} *)`,
     "Read",
     `Edit(/${files2}/**)`
   ];
 }
-function recordSession(store, actor, input, host) {
+function callRecorder(claude, args, prompt, cwd, env, seconds) {
+  const child = spawnSync(claude, args, {
+    cwd,
+    env,
+    input: prompt,
+    encoding: "utf8",
+    timeout: seconds * 1e3,
+    killSignal: "SIGTERM",
+    maxBuffer: maxOutputBytes
+  });
+  const result = claudeResult(child.stdout ?? "");
+  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
+  const failure = code === "ETIMEDOUT" ? ["interrupted", `The recorder did not end in ${seconds} seconds. Checkmate stopped it.`] : code ? ["operational_error", `The recorder failed: ${code}.`] : child.status !== 0 ? [
+    "operational_error",
+    `The recorder exited with ${child.signal ? `signal ${child.signal}` : `code ${child.status}`}${excerpt(child.stderr || result.result)}`
+  ] : result.is_error === true ? ["operational_error", `The recorder ended with an error${excerpt(result.result)}`] : void 0;
+  return {
+    failure,
+    ...typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {},
+    ...typeof result.duration_ms === "number" ? { durationMs: result.duration_ms } : {},
+    ...typeof result.session_id === "string" ? { sessionId: result.session_id } : {}
+  };
+}
+function refusalText(item) {
+  return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ""}${item.fix ? ` Send: ${JSON.stringify(item.fix)}` : ""}`;
+}
+function logFile(store, actor, input, path) {
+  if (!existsSync3(path)) return void 0;
+  try {
+    const reply = logEntries(store, actor, {
+      changeId: input.changeId,
+      build: input.build,
+      entries: readEntries(entriesFile(store, path, store.workspace)),
+      cwd: store.workspace
+    });
+    const refused2 = reply.data.refused;
+    return { refusals: refused2.map(refusalText) };
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return { refusals: [`${error.message}${error.hint ? ` ${error.hint}` : ""}`] };
+  }
+}
+function sum(calls, key) {
+  const values = calls.flatMap((call) => call[key] === void 0 ? [] : [call[key]]);
+  return values.length ? { [key]: values.reduce((total, value2) => total + value2, 0) } : {};
+}
+function recordSession(store, actor, input, env) {
   const operation = { actor, command: "record", subject: input.changeId, input };
   let plan;
   try {
-    plan = prepare(store, actor, input, host.env);
+    plan = prepare(store, actor, input, env);
   } catch (error) {
     return write(store, operation, () => {
       throw error;
     });
   }
-  const checkmate = host.script ? `node ${host.script}` : "checkmate";
   const files2 = join2(realpathSync2(store.workspace), ".checkmate", "tmp", `record-${plan.recorder}`);
   mkdirSync2(files2, { recursive: true });
+  const childEnv = {
+    ...env,
+    CHECKMATE_WORKSPACE: store.workspace,
+    CHECKMATE_ACTOR: plan.actor,
+    CHECKMATE_RECORDER: "1"
+  };
+  const started = Date.now();
+  const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
-  const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate, files2), {
-    cwd: store.workspace,
-    env: {
-      ...host.env,
-      CHECKMATE_WORKSPACE: store.workspace,
-      CHECKMATE_ACTOR: plan.actor,
-      CHECKMATE_RECORDER: "1",
-      CHECKMATE_RECORDER_COMMAND: checkmate,
-      CHECKMATE_RECORDER_FILES: files2
-    },
-    input: recorderPrompt(input.changeId, input.build, { command: checkmate, files: files2 }),
-    encoding: "utf8",
-    timeout: input.timeoutSeconds * 1e3,
-    killSignal: "SIGTERM",
-    maxBuffer: maxOutputBytes
-  });
+  const prompt = recorderPrompt(input.changeId, input.build, files2, recordText(store, input.changeId, plan.actor));
+  const calls = [
+    callRecorder(
+      plan.claude,
+      recorderArgs(files2, [plan.session, "--fork-session", "--session-id", plan.recorder]),
+      prompt,
+      store.workspace,
+      childEnv,
+      input.timeoutSeconds
+    )
+  ];
+  const first = logFile(store, plan.actor, input, join2(files2, "entries.json"));
+  let refusals = first?.refusals ?? [];
+  if (!calls[0].failure && refusals.length && left() > 0) {
+    calls.push(
+      callRecorder(
+        plan.claude,
+        recorderArgs(files2, [plan.recorder]),
+        repairPrompt(files2, refusals),
+        store.workspace,
+        childEnv,
+        left()
+      )
+    );
+    const fixed = logFile(store, plan.actor, input, join2(files2, "fix.json"));
+    if (fixed) refusals = fixed.refusals;
+  }
   rmSync(files2, { recursive: true, force: true });
   const added = addedEntries(store, input.changeId, plan.actor, after);
-  const entries = Object.values(added).reduce((sum, count) => sum + count, 0);
-  const result = claudeResult(child.stdout ?? "");
-  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
-  const [status, reason] = code === "ETIMEDOUT" ? ["interrupted", `The recorder did not end in ${input.timeoutSeconds} seconds. Checkmate stopped it.`] : code ? ["operational_error", `The recorder failed: ${code}.`] : child.status !== 0 ? [
-    "operational_error",
-    `The recorder exited with ${child.signal ? `signal ${child.signal}` : `code ${child.status}`}${excerpt(child.stderr || result.result)}`
-  ] : result.is_error === true ? ["operational_error", `The recorder ended with an error${excerpt(result.result)}`] : !entries ? ["operational_error", `The recorder added no entry to ${input.changeId}.`] : ["completed", void 0];
+  const saved = Object.values(added).reduce((total, count) => total + count, 0);
+  const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
+  const status = timedOut ? "interrupted" : calls[0].failure || !saved ? "operational_error" : "completed";
+  const reasons2 = [
+    ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
+    ...timedOut && first ? ["Checkmate logged the entries of the file that the recorder wrote before it stopped."] : [],
+    ...first ? [] : [`The recorder wrote no file ${files2}/entries.json.`],
+    ...first && !saved ? [`The recorder added no entry to ${input.changeId}.`] : [],
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
+  ];
   const reply = {
     status,
     subject: input.changeId,
-    reasons: reason ? [reason] : [],
-    ...reason ? {
-      hint: `The entries that the recorder added stay. To read what it did, run claude --resume ${plan.recorder}. Then run checkmate record ${input.changeId} again.`
-    } : {},
+    reasons: reasons2,
+    ...status === "completed" ? {} : {
+      hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run checkmate record ${input.changeId} again.`
+    },
     data: {
       changeId: input.changeId,
       build: input.build ?? null,
       session: plan.session,
-      recorder: typeof result.session_id === "string" ? result.session_id : plan.recorder,
+      recorder: calls[0].sessionId ?? plan.recorder,
+      calls: calls.length,
+      saved,
+      refused: refusals.length,
       added,
-      entries,
-      ...typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {},
-      ...typeof result.duration_ms === "number" ? { durationMs: result.duration_ms } : {}
+      ...sum(calls, "costUsd"),
+      ...sum(calls, "durationMs")
     }
   };
   return write(store, { ...operation, input: { ...input, session: plan.session, recorder: plan.recorder } }, () => ({
@@ -4675,7 +4778,7 @@ function recordSession(store, actor, input, host) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // plugin/src/actor.ts
@@ -5532,7 +5635,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath(new URL(candidate, import.meta.url));
-    if (existsSync3(path + file)) return path;
+    if (existsSync4(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -5895,7 +5998,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/cli.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve2 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 function value(args, name) {
@@ -5989,14 +6092,6 @@ function notShownLines(changeId, open) {
       open.tester ? "Run checkmate gaps again after you log entries." : `Run checkmate gaps ${changeId} --build ${open.build} --all to see all of them.`
     ]
   ];
-}
-function fieldText(fields, described) {
-  return fields.map((field) => {
-    const name = `${field.path}${field.type.includes("|") ? ` (${field.type})` : ""}${field.required ? " (required)" : ""}`;
-    if (described.has(field.description)) return `${name}.`;
-    described.add(field.description);
-    return `${name}: ${field.description}`;
-  }).join(" ");
 }
 function cellText(cell2) {
   const parts = Object.entries(cell2).filter(([, count]) => count);
@@ -6223,13 +6318,12 @@ var commands = {
       value(args, "build") === void 0 || value(args, "role") === "recorder",
       "--build is only for --role recorder."
     ),
-    run: (store, args, { viewer, env }) => guideJournal(
+    run: (store, args, { viewer }) => guideJournal(
       store,
       value(args, "changeId"),
       value(args, "role"),
       viewer(),
-      value(args, "build"),
-      recorderShell(env)
+      value(args, "build")
     ),
     print: (reply) => {
       const data = reply.data;
@@ -6243,16 +6337,9 @@ var commands = {
             kind.kind,
             `${kind.about} ${fieldText(kind.fields, described)}`
           ]),
-          [
-            "example",
-            {
-              preformatted: data.from ? `Write to ${data.from}:
+          ["example", { preformatted: `${data.command} <<'EOF'
 ${JSON.stringify(data.example)}
-Then run: ${data.command}` : `${data.command} <<'EOF'
-${JSON.stringify(data.example)}
-EOF`
-            }
-          ],
+EOF` }],
           ...data.answers.map((answer) => ["answer", answer.id, answer.question, answer.answer]),
           ...data.openDefects.map((defect) => [
             "open_defect",
@@ -6269,7 +6356,7 @@ EOF`
     positionals: ["changeId"],
     flags: { build: "value", session: "value", timeout: { min: 1, max: 86400 } },
     write: true,
-    run: (store, args, { actor, env, script }) => recordSession(
+    run: (store, args, { actor, env }) => recordSession(
       store,
       actor,
       {
@@ -6278,13 +6365,14 @@ EOF`
         session: value(args, "session"),
         timeoutSeconds: integer(args, "timeout") ?? defaultRecorderTimeout
       },
-      { env, script }
+      env
     ),
     print: (reply) => ({
       facts: {
         session: reply.data.session,
         recorder: reply.data.recorder,
-        entries: reply.data.entries,
+        saved: reply.data.saved,
+        refused: reply.data.refused,
         costUsd: reply.data.costUsd,
         durationMs: reply.data.durationMs
       },
@@ -6532,11 +6620,6 @@ EOF`
     }
   }
 };
-function recorderShell(env) {
-  const command = env.CHECKMATE_RECORDER_COMMAND;
-  const files2 = env.CHECKMATE_RECORDER_FILES;
-  return env.CHECKMATE_RECORDER && command && files2 ? { command, files: files2 } : void 0;
-}
 var readOnlyReason = "query is read-only. Use the Checkmate commands to change the record.";
 var readPragmas = [
   "table_info",
@@ -6793,7 +6876,7 @@ function run(argv, io) {
   const { workspace } = found;
   let store;
   try {
-    if (!command.creates && !existsSync4(databasePath(workspace))) throw missingStore(found);
+    if (!command.creates && !existsSync5(databasePath(workspace))) throw missingStore(found);
     store = command.readOnly ? openReadOnlyStore(workspace) : command.creates ? createStore(workspace) : openStore(workspace);
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, {
@@ -6802,8 +6885,7 @@ function run(argv, io) {
       text: io.stdin,
       cwd: resolve2(io.cwd),
       viewer: () => args.all === true ? void 0 : defaultActor(workspace, io.env),
-      env: io.env,
-      script: io.script
+      env: io.env
     });
     const code = reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
     if (!json && typeof reply.data.content === "string")
@@ -6821,7 +6903,7 @@ function workspaceOf(cwd, given, env) {
   const named = env.CHECKMATE_WORKSPACE;
   if (named) return { workspace: resolve2(cwd, named), from: "CHECKMATE_WORKSPACE" };
   for (let directory2 = resolve2(cwd); ; directory2 = dirname(directory2)) {
-    if (existsSync4(databasePath(directory2))) return { workspace: directory2, from: "search" };
+    if (existsSync5(databasePath(directory2))) return { workspace: directory2, from: "search" };
     if (dirname(directory2) === directory2) return { workspace: resolve2(cwd), from: "search" };
   }
 }
@@ -6865,7 +6947,7 @@ async function serveUi(tokens) {
     return;
   }
   const { workspace } = options2.found;
-  if (!existsSync4(databasePath(workspace))) {
+  if (!existsSync5(databasePath(workspace))) {
     process.stdout.write(format(refused("rejected", "ui", missingStore(options2.found)), json) + "\n");
     process.exitCode = 1;
     return;
@@ -6886,8 +6968,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync3(0, "utf8"),
-    script: process.argv[1]
+    stdin: () => readFileSync3(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

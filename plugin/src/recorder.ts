@@ -1,11 +1,11 @@
 import type { Reply, Status, Store } from './store.ts'
 import { all, one, write } from './store.ts'
 import { Refusal } from './contracts.ts'
-import { recorderPrompt } from './guide.ts'
-import { changeState } from './journal.ts'
+import { recorderPrompt, recordText, repairPrompt } from './guide.ts'
+import { changeState, entriesFile, logEntries, readEntries } from './journal.ts'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { accessSync, constants, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
@@ -131,68 +131,38 @@ function prepare(store: Store, actor: string | undefined, input: RecordInput, en
 	return { claude, session, recorder: randomUUID(), actor: writer }
 }
 
-function recorderArgs(session: string, recorder: string, checkmate: string, files: string) {
+function recorderArgs(files: string, resume: string[]) {
 	return [
 		'-p',
 		'--resume',
-		session,
-		'--fork-session',
-		'--session-id',
-		recorder,
+		...resume,
 		'--output-format',
 		'json',
 		'--permission-prompts',
 		'none',
 		'--allowedTools',
-		`Bash(${checkmate} *)`,
 		'Read',
 		`Edit(/${files}/**)`,
 	]
 }
 
-export function recordSession(
-	store: Store,
-	actor: string | undefined,
-	input: RecordInput,
-	host: { env: Env; script?: string }
-): Reply {
-	const operation = { actor, command: 'record', subject: input.changeId, input }
-	let plan: ReturnType<typeof prepare>
-	try {
-		plan = prepare(store, actor, input, host.env)
-	} catch (error) {
-		return write(store, operation, () => {
-			throw error
-		})
-	}
-	const checkmate = host.script ? `node ${host.script}` : 'checkmate'
-	const files = join(realpathSync(store.workspace), '.checkmate', 'tmp', `record-${plan.recorder}`)
-	mkdirSync(files, { recursive: true })
-	const after = lastEntry(store)
-	const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate, files), {
-		cwd: store.workspace,
-		env: {
-			...host.env,
-			CHECKMATE_WORKSPACE: store.workspace,
-			CHECKMATE_ACTOR: plan.actor,
-			CHECKMATE_RECORDER: '1',
-			CHECKMATE_RECORDER_COMMAND: checkmate,
-			CHECKMATE_RECORDER_FILES: files,
-		},
-		input: recorderPrompt(input.changeId, input.build, { command: checkmate, files }),
+type Call = { failure?: [Status, string]; costUsd?: number; durationMs?: number; sessionId?: string }
+
+function callRecorder(claude: string, args: string[], prompt: string, cwd: string, env: Env, seconds: number): Call {
+	const child = spawnSync(claude, args, {
+		cwd,
+		env,
+		input: prompt,
 		encoding: 'utf8',
-		timeout: input.timeoutSeconds * 1000,
+		timeout: seconds * 1000,
 		killSignal: 'SIGTERM',
 		maxBuffer: maxOutputBytes,
 	})
-	rmSync(files, { recursive: true, force: true })
-	const added = addedEntries(store, input.changeId, plan.actor, after)
-	const entries = Object.values(added).reduce((sum, count) => sum + count, 0)
 	const result = claudeResult(child.stdout ?? '')
 	const code = child.error && 'code' in child.error ? String(child.error.code) : undefined
-	const [status, reason]: [Status, string | undefined] =
+	const failure: [Status, string] | undefined =
 		code === 'ETIMEDOUT'
-			? ['interrupted', `The recorder did not end in ${input.timeoutSeconds} seconds. Checkmate stopped it.`]
+			? ['interrupted', `The recorder did not end in ${seconds} seconds. Checkmate stopped it.`]
 			: code
 				? ['operational_error', `The recorder failed: ${code}.`]
 				: child.status !== 0
@@ -202,27 +172,123 @@ export function recordSession(
 						]
 					: result.is_error === true
 						? ['operational_error', `The recorder ended with an error${excerpt(result.result)}`]
-						: !entries
-							? ['operational_error', `The recorder added no entry to ${input.changeId}.`]
-							: ['completed', undefined]
+						: undefined
+	return {
+		failure,
+		...(typeof result.total_cost_usd === 'number' ? { costUsd: result.total_cost_usd } : {}),
+		...(typeof result.duration_ms === 'number' ? { durationMs: result.duration_ms } : {}),
+		...(typeof result.session_id === 'string' ? { sessionId: result.session_id } : {}),
+	}
+}
+
+function refusalText(item: { index: number; reason: string; hint?: string; fix?: unknown }) {
+	return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ''}${item.fix ? ` Send: ${JSON.stringify(item.fix)}` : ''}`
+}
+
+function logFile(store: Store, actor: string, input: RecordInput, path: string) {
+	if (!existsSync(path)) return undefined
+	try {
+		const reply = logEntries(store, actor, {
+			changeId: input.changeId,
+			build: input.build,
+			entries: readEntries(entriesFile(store, path, store.workspace)),
+			cwd: store.workspace,
+		})
+		const refused = reply.data.refused as Array<{ index: number; reason: string; hint?: string; fix?: unknown }>
+		return { refusals: refused.map(refusalText) }
+	} catch (error) {
+		if (!(error instanceof Refusal)) throw error
+		return { refusals: [`${error.message}${error.hint ? ` ${error.hint}` : ''}`] }
+	}
+}
+
+function sum(calls: Call[], key: 'costUsd' | 'durationMs') {
+	const values = calls.flatMap((call) => (call[key] === undefined ? [] : [call[key]]))
+	return values.length ? { [key]: values.reduce((total, value) => total + value, 0) } : {}
+}
+
+export function recordSession(store: Store, actor: string | undefined, input: RecordInput, env: Env): Reply {
+	const operation = { actor, command: 'record', subject: input.changeId, input }
+	let plan: ReturnType<typeof prepare>
+	try {
+		plan = prepare(store, actor, input, env)
+	} catch (error) {
+		return write(store, operation, () => {
+			throw error
+		})
+	}
+	const files = join(realpathSync(store.workspace), '.checkmate', 'tmp', `record-${plan.recorder}`)
+	mkdirSync(files, { recursive: true })
+	const childEnv = {
+		...env,
+		CHECKMATE_WORKSPACE: store.workspace,
+		CHECKMATE_ACTOR: plan.actor,
+		CHECKMATE_RECORDER: '1',
+	}
+	const started = Date.now()
+	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
+	const after = lastEntry(store)
+	const prompt = recorderPrompt(input.changeId, input.build, files, recordText(store, input.changeId, plan.actor))
+	const calls = [
+		callRecorder(
+			plan.claude,
+			recorderArgs(files, [plan.session, '--fork-session', '--session-id', plan.recorder]),
+			prompt,
+			store.workspace,
+			childEnv,
+			input.timeoutSeconds
+		),
+	]
+	const first = logFile(store, plan.actor, input, join(files, 'entries.json'))
+	let refusals = first?.refusals ?? []
+	if (!calls[0].failure && refusals.length && left() > 0) {
+		calls.push(
+			callRecorder(
+				plan.claude,
+				recorderArgs(files, [plan.recorder]),
+				repairPrompt(files, refusals),
+				store.workspace,
+				childEnv,
+				left()
+			)
+		)
+		const fixed = logFile(store, plan.actor, input, join(files, 'fix.json'))
+		if (fixed) refusals = fixed.refusals
+	}
+	rmSync(files, { recursive: true, force: true })
+	const added = addedEntries(store, input.changeId, plan.actor, after)
+	const saved = Object.values(added).reduce((total, count) => total + count, 0)
+	const timedOut = calls.find((call) => call.failure?.[0] === 'interrupted')
+	const status: Status = timedOut ? 'interrupted' : calls[0].failure || !saved ? 'operational_error' : 'completed'
+	const reasons = [
+		...calls.flatMap((call) => (call.failure ? [call.failure[1]] : [])),
+		...(timedOut && first
+			? ['Checkmate logged the entries of the file that the recorder wrote before it stopped.']
+			: []),
+		...(first ? [] : [`The recorder wrote no file ${files}/entries.json.`]),
+		...(first && !saved ? [`The recorder added no entry to ${input.changeId}.`] : []),
+		...refusals.map((refusal) => `Refused: ${refusal}`),
+	]
 	const reply: Reply = {
 		status,
 		subject: input.changeId,
-		reasons: reason ? [reason] : [],
-		...(reason
-			? {
-					hint: `The entries that the recorder added stay. To read what it did, run claude --resume ${plan.recorder}. Then run checkmate record ${input.changeId} again.`,
-				}
-			: {}),
+		reasons,
+		...(status === 'completed'
+			? {}
+			: {
+					hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run checkmate record ${input.changeId} again.`,
+				}),
 		data: {
 			changeId: input.changeId,
 			build: input.build ?? null,
 			session: plan.session,
-			recorder: typeof result.session_id === 'string' ? result.session_id : plan.recorder,
+			recorder: calls[0].sessionId ?? plan.recorder,
+			calls: calls.length,
+			saved,
+			refused: refusals.length,
 			added,
-			entries,
-			...(typeof result.total_cost_usd === 'number' ? { costUsd: result.total_cost_usd } : {}),
-			...(typeof result.duration_ms === 'number' ? { durationMs: result.duration_ms } : {}),
+			...sum(calls, 'costUsd'),
+			...sum(calls, 'durationMs'),
 		},
 	}
 	return write(store, { ...operation, input: { ...input, session: plan.session, recorder: plan.recorder } }, () => ({

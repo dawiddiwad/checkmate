@@ -47,7 +47,7 @@ checkmate open shop-12 --target shop
 checkmate record shop-12 --build b1
 ```
 
-Run `record` after a Claude Code test session in the project directory. `checkmate guide shop-12` prints the entry kinds, their fields, and an example `checkmate log` call: the text that the recorder reads.
+Run `record` after a Claude Code test session in the project directory. `checkmate guide shop-12` prints the entry kinds, their fields, and an example `checkmate log` call. The recorder gets the same entry kinds in its prompt.
 
 ### Why the tester does not log
 

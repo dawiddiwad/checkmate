@@ -43,7 +43,7 @@ After the test session, or after a turn of it, run this command in a terminal in
 checkmate record shop-12 --build b1
 ```
 
-`record` copies the latest Claude Code session of the project with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. It reads `checkmate guide shop-12` and logs what the tester did and found, the questions for the PM, and the answers. It does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
+`record` copies the latest Claude Code session of the project with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. Its prompt holds the entry kinds and what the record already holds. It writes what the tester did and found, the questions for the PM, and the answers to one JSON file, and Checkmate logs that file. It runs no command and does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
 
 ### 4. Read the record
 
@@ -60,7 +60,7 @@ checkmate gaps shop-12 --build b1
 checkmate answer shop-12 Q1 --answer "The coupon does not stack with loyalty."
 ```
 
-The next `guide` call of a recorder prints the answer.
+The next recorder gets the answer in its prompt.
 
 ### 6. Decide on the build
 

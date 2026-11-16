@@ -79,7 +79,7 @@ An agent that changes its directory, for example with `cd /tmp`, sets `CHECKMATE
   EOF
   ```
 
-- `log --from <file>` reads the same JSON from a file instead of standard input. The path is relative to the current directory, or absolute. The file must be inside the workspace. Evidence paths in the entries work the same as from standard input. The recorder uses `--from`, because the host refuses a heredoc with JSON under its allow rule.
+- `log --from <file>` reads the same JSON from a file instead of standard input. The path is relative to the current directory, or absolute. The file must be inside the workspace. Evidence paths in the entries work the same as from standard input. `record` logs the file of its recorder the same way.
 - `target open` takes `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. It needs one or more. The name uses letters, digits, `_`, and `-`. The purpose can contain `:`.
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool. The name uses letters, digits, `_`, and `-`, with an optional `<plugin>:` prefix.
 - `target instance add` takes `--entry <entryPoint>=<value>` once for each entry point, `--environment <text>`, and `--reference <text>` (repeatable). Without `--entry`, it reads the instance JSON on standard input. The schema is `plugin/contracts/instance.schema.json`.
@@ -129,19 +129,19 @@ hint: Check the change ID and the directory. To use the store of another project
 | `needs_decision`    | `target save` saved a profile that is not ready. Read the `reason:` lines.     | 0    |
 | `rejected`          | Checkmate refused the command. Nothing changed. Read the hint, then try again. | 1    |
 | `invalid_request`   | The command name or the options are wrong. Read the hint for the usage.        | 1    |
-| `operational_error` | The database lock stopped the command, or the recorder of `record` failed.     | 1    |
+| `operational_error` | The database lock stopped the command, or `record` saved no entry.             | 1    |
 | `interrupted`       | The recorder of `record` did not end before `--timeout`. Checkmate stopped it. | 1    |
 
 **Lock.** One command writes at a time. Every command waits up to 30 seconds for the database lock, also a read. Set `CHECKMATE_BUSY_TIMEOUT_MS` to change the wait. When it cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again. The log has no row for that attempt.
 
 ## The journal
 
-The tester tests freely and does not talk to Checkmate. After the test session, the recorder writes down what the tester did and saw. Read [record](#record). The journal has no checklist step, no finish step, and no completeness refusal.
+The tester tests freely and does not talk to Checkmate. After the test session, the recorder of `record` writes down what the tester did and saw, and Checkmate logs it. A person or another agent can also log entries. Read [record](#record). The journal has no checklist step, no finish step, and no completeness refusal.
 
 1. The opener runs `open <changeId> --target <targetId>`. The target must exist. The opener can log criteria with `log`.
-2. The recorder runs `guide <changeId>`. The guide comes from the `description` and `examples` of `plugin/contracts/journal-*.schema.json`. It prints each field description one time. A later field with the same description shows only its name. No output of a later command tells the recorder to read the guide again.
-3. The recorder runs `log` at any time, in any order. Standard input is one entry, a JSON array of entries, an object with an `entries` array, or one entry on each line. Checkmate removes a Markdown code fence around the JSON and a comma before `}` or `]`. When the array is not valid JSON, Checkmate reads each entry alone. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, a hint, and `fix`: the entry with each bad field corrected or removed. A call that saves no entry is refused. A call that saves one or more entries completes. When it refuses no entry, it prints one line: `completed <changeId> saved=<IDs>`. Else that line also has `refused=<count>`, and a `refused` line follows for each refused entry. It prints nothing else: the recorder runs `gaps` to read what the record does not show yet.
-4. The recorder runs `gaps` at any time. `gaps` always completes, and no command needs it to be empty.
+2. The writer of the entries runs `guide <changeId>`. `record` puts the same entry descriptions in the prompt of its recorder. The guide comes from the `description` and `examples` of `plugin/contracts/journal-*.schema.json`. It prints each field description one time. A later field with the same description shows only its name. No output of a later command tells the writer to read the guide again.
+3. The writer runs `log` at any time, in any order. Standard input is one entry, a JSON array of entries, an object with an `entries` array, or one entry on each line. Checkmate removes a Markdown code fence around the JSON and a comma before `}` or `]`. When the array is not valid JSON, Checkmate reads each entry alone. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, a hint, and `fix`: the entry with each bad field corrected or removed. A call that saves no entry is refused. A call that saves one or more entries completes. When it refuses no entry, it prints one line: `completed <changeId> saved=<IDs>`. Else that line also has `refused=<count>`, and a `refused` line follows for each refused entry. It prints nothing else: the writer runs `gaps` to read what the record does not show yet.
+4. The writer runs `gaps` at any time. `gaps` always completes, and no command needs it to be empty.
 5. The PM runs `answer`. The oracle runs `accept` and `reject`.
 
 The entry kinds are `criterion`, `observation`, `defect`, `question`, `verdict`, and `note`. The merger also logs `issue`: read [Several testers](#several-testers). Checkmate gives an ID with the prefix `C`, `O`, `D`, `Q`, `V`, or `N` when the entry has no `id`. An entry with `supersedes` replaces the earlier entry of the same kind and keeps its ID. Nothing is deleted: `export` has each version in `history`. Evidence is a file path in the workspace or a text. Checkmate stores the bytes of each file in `blobs`. A string with a space or `://`, or a string that does not look like a path, is text. The `source` of a criterion and the `saw` of a verdict are optional.
@@ -179,31 +179,38 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 
 1. It refuses when `CHECKMATE_RECORDER` is set: a recorder cannot start another recorder. It refuses an unknown change, and a `PATH` without `claude`.
 2. It finds the session to copy. `--session` names it. Without `--session`, it uses the latest session of the workspace: the newest `<sessionId>.jsonl` file in `<config>/projects/<name>/`. `<config>` is `CLAUDE_CONFIG_DIR`, else `~/.claude`. `<name>` is the real path of the workspace with each character that is not a letter or a digit changed to `-`. A name of more than 200 characters is cut to 200 and ends with `-<hash>`. It skips the sessions of earlier recorders of the store, and the session in `CLAUDE_CODE_SESSION_ID`: the Claude Code session that runs `record`. When it finds no session, it refuses and tells you to pass `--session`.
-3. It starts one recorder in the workspace, in print mode, and waits for it to end:
+3. It makes the folder `<files>`: `<workspace>/.checkmate/tmp/record-<recorderId>`, an absolute real path.
+4. It starts one recorder in the workspace, in print mode, and waits for it to end:
 
    ```sh
    claude -p --resume <sessionId> --fork-session --session-id <recorderId> --output-format json \
-     --permission-prompts none --allowedTools "Bash(node <checkmate.js> *)" Read "Edit(/<files>/**)"
+     --permission-prompts none --allowedTools Read "Edit(/<files>/**)"
    ```
 
-   The recorder is a new session with the history of the test session. The test session does not see what the recorder does. `<files>` is `<workspace>/.checkmate/tmp/record-<recorderId>`, an absolute path: `Write(//abs/path/**)` is the host rule form for an absolute path. The prompt on standard input is the text of `checkmate guide <changeId> --role recorder [--build <build>]`, with `node <checkmate.js>` in place of `checkmate`. It tells the recorder to write the entries to a JSON file in `<files>` with the Write tool and to log them with `log --from <file>`, not with a heredoc. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, `CHECKMATE_RECORDER=1`, `CHECKMATE_RECORDER_COMMAND` (the command that the allow rule matches), and `CHECKMATE_RECORDER_FILES` (`<files>`). With these three set, `guide` names that command and shows the `--from` form, and no heredoc. The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
+   The recorder is a new session with the history of the test session. The test session does not see what the recorder does. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, and `CHECKMATE_RECORDER=1`.
 
-4. It removes `<files>`, and counts the entries of the change that the actor added during the run, for each kind.
+   The prompt on standard input has all that the recorder needs: the task, the entry kinds and their fields, an example file, and what the record already holds for the actor (the criteria, the defects with their verdicts, and the questions with their answers). Its only task is to write one JSON array of new entries to `<files>/entries.json` with the Write tool. It runs no command. `checkmate guide <changeId> --role recorder [--build <build>]` prints the same prompt, with `<files>` and a placeholder for the record text.
 
-The permissions let the recorder run the Checkmate CLI, read files, and write files in `<files>` without a prompt. Evidence is the files that the tester saved in the workspace: the recorder names their paths and needs no other permission. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
+5. Checkmate logs `<files>/entries.json` as `log --from` does, with the actor and `--build`. It saves each valid entry and refuses each invalid entry alone.
+6. When it refuses one or more entries, it resumes the recorder one time: `claude -p --resume <recorderId>`, with the same permission arguments and no fork. The prompt lists the refusals and asks for the corrected entries only, in `<files>/fix.json`. Checkmate logs that file. There is no second repair.
+7. It removes `<files>`, and counts the entries of the change that the actor added, for each kind.
 
-`--timeout` is in seconds, from 1 to 86400. The default is 600.
+The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
 
-Output: line 1 is `<status> <changeId> session=<id> recorder=<id> entries=<n>`, with `costUsd=` and `durationMs=` when the result of `claude` has them. An `added` line follows for each kind: `added<TAB><kind><TAB><count>`. `--json` prints `{ "status", "subject", "reasons", "changeId", "build", "session", "recorder", "added": { "<kind>": <count> }, "entries", "costUsd", "durationMs" }`.
+The permissions let the recorder read files and write files only in `<files>`, without a prompt. `Edit(//abs/path/**)` is the host rule form for an absolute path, and the host checks a file write against `Edit` rules. The recorder has no Bash rule. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. Evidence is a path of a file that the tester saved in the workspace, or the text that the tester saw. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
 
-| Status              | When                                                                                         |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `completed`         | The recorder ended without an error and added one or more entries.                           |
-| `operational_error` | The recorder exited with an error, the `claude` result has `is_error`, or it added no entry. |
-| `interrupted`       | The recorder did not end before `--timeout`. Checkmate stopped it.                           |
-| `rejected`          | A refusal before the start. No recorder started.                                             |
+`--timeout` is in seconds, from 1 to 86400, for all recorder calls together. The default is 600.
 
-A failure has a `hint:` line. The entries that the recorder added stay. The operation log has one `record` row for each call, with the session and the recorder ID.
+Output: line 1 is `<status> <changeId> session=<id> recorder=<id> saved=<n> refused=<n>`, with `costUsd=` and `durationMs=`: the sums over the recorder calls, when the results of `claude` have them. An `added` line follows for each kind: `added<TAB><kind><TAB><count>`. The `reason:` lines give the failures and the refusals that remain. `--json` prints `{ "status", "subject", "reasons", "changeId", "build", "session", "recorder", "calls", "saved", "refused", "added": { "<kind>": <count> }, "costUsd", "durationMs" }`.
+
+| Status              | When                                                                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `completed`         | Checkmate saved one or more entries.                                                                                                   |
+| `operational_error` | The first recorder call exited with an error or the `claude` result has `is_error`, the recorder wrote no file, or no entry was saved. |
+| `interrupted`       | A recorder call did not end before `--timeout`. Checkmate stopped it, and still logged the file that the recorder wrote before.        |
+| `rejected`          | A refusal before the start. No recorder started.                                                                                       |
+
+A failure has a `hint:` line. The entries that Checkmate logged stay. The operation log has a `log` row for each file and one `record` row for each call of `record`, with the session and the recorder ID.
 
 ## Several testers
 
@@ -240,16 +247,14 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 
 ## Environment variables
 
-| Variable                     | Read by   | Effect                                                                                                                            |
-| ---------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `CHECKMATE_ACTOR`            | Checkmate | The default actor of a write. `--actor` overrides it.                                                                             |
-| `CHECKMATE_WORKSPACE`        | Checkmate | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
-| `CHECKMATE_BUSY_TIMEOUT_MS`  | Checkmate | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
-| `CHECKMATE_RECORDER`         | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set.                                                        |
-| `CHECKMATE_RECORDER_COMMAND` | Checkmate | `record` sets it for the recorder: the Checkmate command that the allow rule matches. `guide` names it.                           |
-| `CHECKMATE_RECORDER_FILES`   | Checkmate | `record` sets it for the recorder: the folder for the entry files. `guide` shows `log --from` with it.                            |
-| `CLAUDE_CONFIG_DIR`          | `record`  | The Claude Code configuration directory where `record` finds the sessions. The default is `~/.claude`.                            |
-| `CLAUDE_CODE_SESSION_ID`     | `record`  | The Claude Code session that runs `record`. The default session lookup skips it.                                                  |
+| Variable                    | Read by   | Effect                                                                                                                            |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `CHECKMATE_ACTOR`           | Checkmate | The default actor of a write. `--actor` overrides it.                                                                             |
+| `CHECKMATE_WORKSPACE`       | Checkmate | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
+| `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
+| `CHECKMATE_RECORDER`        | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set.                                                        |
+| `CLAUDE_CONFIG_DIR`         | `record`  | The Claude Code configuration directory where `record` finds the sessions. The default is `~/.claude`.                            |
+| `CLAUDE_CODE_SESSION_ID`    | `record`  | The Claude Code session that runs `record`. The default session lookup skips it.                                                  |
 
 ## Next
 

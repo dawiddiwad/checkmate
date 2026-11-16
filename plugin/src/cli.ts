@@ -25,8 +25,7 @@ import {
 	showTargetRequest,
 	targetList,
 } from './targets.ts'
-import { guideJournal, guideRoles } from './guide.ts'
-import type { RecorderShell } from './guide.ts'
+import { fieldText, guideJournal, guideRoles } from './guide.ts'
 import {
 	answerQuestion,
 	changeGaps,
@@ -60,7 +59,6 @@ type Context = {
 	cwd: string
 	viewer: () => string | undefined
 	env: Io['env']
-	script: string | undefined
 }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
@@ -75,7 +73,7 @@ type Command = {
 	run: (store: Store, args: Args, context: Context) => Reply
 	print?: (reply: Reply) => Printed
 }
-export type Io = { cwd: string; env: Record<string, string | undefined>; stdin: () => string; script?: string }
+export type Io = { cwd: string; env: Record<string, string | undefined>; stdin: () => string }
 export type Outcome = { code: number; output: string }
 
 function value(args: Args, name: string) {
@@ -207,17 +205,6 @@ function notShownLines(changeId: string, open: OpenItems) {
 				: `Run checkmate gaps ${changeId} --build ${open.build} --all to see all of them.`,
 		],
 	]
-}
-
-function fieldText(fields: Field[], described: Set<string>) {
-	return fields
-		.map((field) => {
-			const name = `${field.path}${field.type.includes('|') ? ` (${field.type})` : ''}${field.required ? ' (required)' : ''}`
-			if (described.has(field.description)) return `${name}.`
-			described.add(field.description)
-			return `${name}: ${field.description}`
-		})
-		.join(' ')
 }
 
 function cellText(cell: { ok: number; wrong: number; seen: number }) {
@@ -461,14 +448,13 @@ const commands: Record<string, Command> = {
 				value(args, 'build') === undefined || value(args, 'role') === 'recorder',
 				'--build is only for --role recorder.'
 			),
-		run: (store, args, { viewer, env }) =>
+		run: (store, args, { viewer }) =>
 			guideJournal(
 				store,
 				value(args, 'changeId'),
 				value(args, 'role') as GuideRole | undefined,
 				viewer(),
-				value(args, 'build'),
-				recorderShell(env)
+				value(args, 'build')
 			),
 		print: (reply) => {
 			const data = reply.data as {
@@ -477,7 +463,6 @@ const commands: Record<string, Command> = {
 				common: Field[]
 				kinds: Array<{ kind: string; about: string; fields: Field[] }>
 				command: string
-				from?: string
 				example: unknown
 				answers: Array<{ id: string; question: string; answer: string }>
 				openDefects: Array<{ id: string; build: string; severity: string; title: string }>
@@ -492,14 +477,7 @@ const commands: Record<string, Command> = {
 						kind.kind,
 						`${kind.about} ${fieldText(kind.fields, described)}`,
 					]),
-					[
-						'example',
-						{
-							preformatted: data.from
-								? `Write to ${data.from}:\n${JSON.stringify(data.example)}\nThen run: ${data.command}`
-								: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF`,
-						},
-					],
+					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
 					...data.answers.map((answer) => ['answer', answer.id, answer.question, answer.answer]),
 					...data.openDefects.map((defect) => [
 						'open_defect',
@@ -516,7 +494,7 @@ const commands: Record<string, Command> = {
 		positionals: ['changeId'],
 		flags: { build: 'value', session: 'value', timeout: { min: 1, max: 86400 } },
 		write: true,
-		run: (store, args, { actor, env, script }) =>
+		run: (store, args, { actor, env }) =>
 			recordSession(
 				store,
 				actor,
@@ -526,13 +504,14 @@ const commands: Record<string, Command> = {
 					session: value(args, 'session'),
 					timeoutSeconds: integer(args, 'timeout') ?? defaultRecorderTimeout,
 				},
-				{ env, script }
+				env
 			),
 		print: (reply) => ({
 			facts: {
 				session: reply.data.session,
 				recorder: reply.data.recorder,
-				entries: reply.data.entries,
+				saved: reply.data.saved,
+				refused: reply.data.refused,
 				costUsd: reply.data.costUsd,
 				durationMs: reply.data.durationMs,
 			},
@@ -778,12 +757,6 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-}
-
-function recorderShell(env: Io['env']): RecorderShell | undefined {
-	const command = env.CHECKMATE_RECORDER_COMMAND
-	const files = env.CHECKMATE_RECORDER_FILES
-	return env.CHECKMATE_RECORDER && command && files ? { command, files } : undefined
 }
 
 const readOnlyReason = 'query is read-only. Use the Checkmate commands to change the record.'
@@ -1089,7 +1062,6 @@ export function run(argv: string[], io: Io): Outcome {
 			cwd: resolve(io.cwd),
 			viewer: () => (args.all === true ? undefined : defaultActor(workspace, io.env)),
 			env: io.env,
-			script: io.script,
 		})
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		if (!json && typeof reply.data.content === 'string')
@@ -1183,7 +1155,6 @@ export async function main(argv: string[]) {
 		cwd: process.cwd(),
 		env: process.env,
 		stdin: () => readFileSync(0, 'utf8'),
-		script: process.argv[1],
 	})
 	process.stdout.write(outcome.output + '\n')
 	process.exitCode = outcome.code

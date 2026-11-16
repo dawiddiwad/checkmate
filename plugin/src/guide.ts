@@ -141,30 +141,78 @@ function roleSteps(changeId: string, role: 'merger' | 'verifier') {
 	]
 }
 
-export type RecorderShell = { command: string; files: string }
-
-export function journalSteps(changeId: string, shell?: RecorderShell) {
-	const checkmate = shell?.command ?? 'checkmate'
+export function journalSteps(changeId: string) {
 	return [
-		shell
-			? `Log what you did and saw. Write the entries as one JSON array to a new file in ${shell.files} with the Write tool. Then run ${checkmate} log ${changeId} --build <build> --from ${shell.files}/<file>.json. Do not use a heredoc.`
-			: `Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+		`Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
 		'With a repository or a merge request, log each changed area that you tested as a note with "area".',
-		`Then run ${checkmate} gaps ${changeId} --build <build>. Its lines are ideas, not rules. ${checkmate} show ${changeId} prints the record.`,
+		`Then run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`,
 	]
 }
 
-export function recorderPrompt(changeId: string, build?: string, shell?: RecorderShell) {
-	const checkmate = shell?.command ?? 'checkmate'
+export function fieldText(fields: Field[], described: Set<string>) {
+	return fields
+		.map((field) => {
+			const name = `${field.path}${field.type.includes('|') ? ` (${field.type})` : ''}${field.required ? ' (required)' : ''}`
+			if (described.has(field.description)) return `${name}.`
+			described.add(field.description)
+			return `${name}: ${field.description}`
+		})
+		.join(' ')
+}
+
+function entryText() {
+	const schema = journalSchema()
+	const described = new Set<string>()
 	return [
-		`Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ''}). Run \`${checkmate} guide ${changeId}\` first. \`${checkmate} show ${changeId}\` prints what the record already holds.`,
-		...(build ? [`Give \`--build ${build}\` to each \`${checkmate} log\` call.`] : []),
-		...(shell
-			? [
-					`Write the entries to a file in ${shell.files} with the Write tool, and log them with \`${checkmate} log ${changeId} --from <file>\`. Do not use a heredoc.`,
-				]
-			: []),
-		'Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project.',
+		`${schema.about} Every entry has: ${fieldText(schema.common, described)}`,
+		...schema.kinds.map((kind) => `Kind ${kind.kind}: ${kind.about} ${fieldText(kind.fields, described)}`),
+	].join('\n')
+}
+
+export function recordText(store: Store, changeId: string, viewer?: string) {
+	const state = changeState(store, changeId, viewer)
+	const lines = [
+		...state.criteria.map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
+		...state.defects.map(
+			(defect) =>
+				`defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}${defect.verdicts.length ? `. Verdicts: ${defect.verdicts.map((verdict) => `${verdict.build}=${verdict.result}`).join(', ')}` : ''}`
+		),
+		...state.questions.map(
+			(question) =>
+				`question ${question.id} (${question.status}): ${question.question}${question.answer ? ` Answer: ${question.answer}` : ''}`
+		),
+	]
+	return lines.length ? lines.join('\n') : 'No criterion, defect, or question yet.'
+}
+
+export function recorderPrompt(
+	changeId: string,
+	build: string | undefined,
+	files = '<files>',
+	record = '<the criteria, defects with verdicts, and questions with answers of this change>'
+) {
+	return [
+		`Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ''}).`,
+		'Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds. To name an entry of the record, use its ID.',
+		`Write all new entries as one JSON array to ${files}/entries.json with the Write tool. That is your only task. Do not run commands. When you end, Checkmate logs the file${build ? ` with build ${build}` : ''}.`,
+		'Evidence is the path of a file that already exists in the workspace, or the text that you saw.',
+		'',
+		'The entries:',
+		entryText(),
+		'',
+		`Example of ${files}/entries.json:`,
+		JSON.stringify(journalSchema().example),
+		'',
+		'The record already holds:',
+		record,
+	].join('\n')
+}
+
+export function repairPrompt(files: string, refusals: string[]) {
+	return [
+		`Checkmate refused these entries of ${files}/entries.json:`,
+		...refusals.map((refusal) => `- ${refusal}`),
+		`Write only the corrected entries, as one JSON array, to ${files}/fix.json with the Write tool. Do not write the saved entries again. Do not run commands.`,
 	].join('\n')
 }
 
@@ -173,13 +221,12 @@ export function guideJournal(
 	changeId: string | undefined,
 	role: GuideRole = 'tester',
 	viewer?: string,
-	build?: string,
-	shell?: RecorderShell
+	build?: string
 ) {
 	const change = changeId ?? '<changeId>'
 	if (role === 'recorder') {
 		if (changeId !== undefined) changeState(store, changeId)
-		return completed(changeId ?? 'guide', { format: 'text', content: recorderPrompt(change, build, shell) })
+		return completed(changeId ?? 'guide', { format: 'text', content: recorderPrompt(change, build) })
 	}
 	if (role !== 'tester') {
 		if (changeId !== undefined) changeState(store, changeId)
@@ -193,14 +240,9 @@ export function guideJournal(
 	}
 	const state = changeId === undefined ? undefined : changeState(store, changeId, viewer)
 	return completed(changeId ?? 'guide', {
-		steps: journalSteps(change, shell),
+		steps: journalSteps(change),
 		...journalSchema(),
-		...(shell
-			? {
-					command: `${shell.command} log ${change} --build b1 --from ${shell.files}/entries.json`,
-					from: `${shell.files}/entries.json`,
-				}
-			: { command: `checkmate log ${change} --build b1` }),
+		command: `checkmate log ${change} --build b1`,
 		answers: (state?.questions ?? []).filter((question) => question.answer !== null),
 		openDefects: (state?.defects ?? []).filter((defect) => state!.openDefects.includes(defect.id)),
 	})

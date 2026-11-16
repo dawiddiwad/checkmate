@@ -1,6 +1,7 @@
 ---
 name: qa
 description: Keep the QA record of a change in Checkmate. Use it when you open a change for test, or when a test session of a change must be recorded.
+disable-model-invocation: true
 ---
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path.

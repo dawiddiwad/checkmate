@@ -1,5 +1,5 @@
 import { Refusal } from './contracts.ts'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
@@ -204,4 +204,45 @@ export function replyArray(text: unknown): unknown[] | undefined {
 		} catch {}
 	}
 	return undefined
+}
+
+export function launchClaude(
+	claude: string,
+	args: string[],
+	prompt: string,
+	cwd: string,
+	env: Env,
+	seconds: number
+): Promise<ClaudeCall> {
+	return new Promise((resolvePromise) => {
+		const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		let output = ''
+		let errors = ''
+		let failure: ClaudeCall['failure']
+		const kill = (signal: NodeJS.Signals) => {
+			try {
+				process.kill(-child.pid!, signal)
+			} catch {}
+		}
+		const timer = setTimeout(() => {
+			failure = ['interrupted', `claude did not end in ${seconds} seconds. Checkmate stopped it.`]
+			kill('SIGTERM')
+			setTimeout(() => kill('SIGKILL'), 1500).unref()
+		}, seconds * 1000)
+		child.stdout.on('data', (bytes: Buffer) => {
+			if (output.length < maxOutputBytes) output += bytes.toString()
+		})
+		child.stderr.on('data', (bytes: Buffer) => {
+			if (errors.length < 4096) errors += bytes.toString()
+		})
+		child.stdin.on('error', () => {})
+		child.stdin.end(prompt)
+		child.on('error', (error) => {
+			failure ??= ['operational_error', `claude failed: ${'code' in error ? String(error.code) : 'unknown'}.`]
+		})
+		child.on('close', (status, signal) => {
+			clearTimeout(timer)
+			resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal))
+		})
+	})
 }

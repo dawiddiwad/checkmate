@@ -78,6 +78,8 @@ import { explorationModes, openExploration } from './explorations.ts'
 import { logEntries, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs } from './sessions.ts'
+import { driveExploration, explorationStatus, startExploration, waitExploration } from './explorers.ts'
+import { levelNames, testLevels } from './levels.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
@@ -217,6 +219,42 @@ function planRequestInput(args: Args, stdin: () => unknown) {
 function leftOutLines(reply: Reply) {
 	const leftOut = (reply.data.leftOut ?? []) as Array<{ testId: string; reason: string }>
 	return leftOut.map((item) => [item.testId, 'left_out', item.reason])
+}
+
+function explorationLines(reply: Reply): Printed {
+	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string }
+	if (!status.explorers) return {}
+	return {
+		facts: {
+			state: status.state,
+			outcome: status.outcome,
+			plan: status.planId,
+			build: status.build,
+			level: status.level ?? undefined,
+			explorers: status.explorerCount ?? undefined,
+			model: status.model ?? undefined,
+			modelFrom: status.modelFrom ?? undefined,
+			verifier: status.verifier ?? undefined,
+			pluginHidden: status.pluginHidden ?? undefined,
+		},
+		lines: [
+			...(status.pluginHidden === false
+				? [
+						[
+							'note',
+							'No install record of the Checkmate plugin was found. The explorers started without the plugin override.',
+						],
+					]
+				: []),
+			...status.explorers.map((item) => [
+				item.explorer,
+				item.session ?? '-',
+				`ended=${item.ended ?? '-'}`,
+				`recorded=${item.recorded ?? '-'}`,
+				`saved=${item.saved}`,
+			]),
+		],
+	}
 }
 
 function short(sha256: unknown) {
@@ -1012,6 +1050,78 @@ const commands: Record<string, Command> = {
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
 		}),
 	},
+	'explore start': {
+		positionals: ['planId'],
+		flags: {
+			build: 'value',
+			level: levelNames,
+			explorers: { min: 1, max: 10 },
+			instance: 'value',
+			mode: explorationModes,
+			allow: 'repeat',
+			'claude-arg': 'repeat',
+			timeout: { min: 60, max: 7200 },
+		},
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor, env }) =>
+			startExploration(
+				store,
+				actor,
+				{
+					planId: value(args, 'planId')!,
+					build: value(args, 'build')!,
+					instance: value(args, 'instance'),
+					mode: value(args, 'mode'),
+					level: value(args, 'level'),
+					explorers: integer(args, 'explorers'),
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+				},
+				env
+			),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.planId,
+				build: reply.data.build,
+				level: reply.data.level,
+				explorers: reply.data.explorers,
+				model: reply.data.model,
+				verifier: reply.data.verifier,
+				pluginHidden: reply.data.pluginHidden,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore status': {
+		positionals: ['explorationId'],
+		readOnly: true,
+		run: (store, args) => {
+			const explorationId = value(args, 'explorationId')!
+			return completed(explorationId, explorationStatus(store, explorationId))
+		},
+		print: explorationLines,
+	},
+	'explore wait': {
+		positionals: ['explorationId'],
+		flags: { timeout: { min: 1, max: 86400 } },
+		readOnly: true,
+		run: (store, args) => waitExploration(store, value(args, 'explorationId')!, integer(args, 'timeout') ?? 3600),
+		print: explorationLines,
+	},
+	'explore levels': {
+		positionals: [],
+		run: () => completed('levels', { levels: testLevels }),
+		print: (reply) => ({
+			lines: Object.entries(reply.data.levels as typeof testLevels).map(([name, level]) => [
+				name,
+				`explorers=${level.explorers}`,
+				`model=${level.model}`,
+				`verifier=${level.verifier}`,
+			]),
+		}),
+	},
 	'explore log': {
 		positionals: ['explorationId'],
 		write: true,
@@ -1628,6 +1738,8 @@ export async function serveUi(tokens: string[]) {
 
 export async function main(argv: string[]) {
 	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
+	if (argv[0] === 'explore' && argv[1] === 'drive' && argv[3] === '--workspace')
+		return driveExploration(argv[4], argv[2], process.env)
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,

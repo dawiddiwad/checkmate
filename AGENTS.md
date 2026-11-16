@@ -31,7 +31,7 @@ This codebase is for humans first, and must be:
 ## Task-Specific Skills
 
 - `.agents/skills/update-documentation/SKILL.md` for public API, configuration, behavior, and workflow documentation.
-- `.agents/skills/update-model-policy/SKILL.md` for host model selection, authentication, and permissions.
+- `.agents/skills/update-model-policy/SKILL.md` for model aliases, authentication, and permissions.
 
 ## Non-Negotiables
 
@@ -40,4 +40,4 @@ This codebase is for humans first, and must be:
 - Do not add abstractions unless they remove real complexity.
 - If behavior changes, update tests.
 - If public API, config, or workflow changes, update documentation.
-- Keep model selection, authentication, and permissions with the host. Use ASD-STE100 style for documentation, instructions, and skills.
+- Keep authentication, credentials, and permissions with the host. Checkmate names a default model alias only for the sessions that it starts. The host can override it. Use ASD-STE100 style for documentation, instructions, and skills.

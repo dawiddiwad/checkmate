@@ -58,7 +58,11 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `run resume <runId>`                                      | Records a new attempt for a stalled run.                                                                                          |
 |           | `run show <runId>`, `run list`                            | Prints a run, or lists runs.                                                                                                      |
 |           | `finding list [--plan <planId>] [--open]`                 | Lists the findings of all runs, one line for each finding.                                                                        |
-| Explore   | `explore open <planId> --build <build>`                   | Records an exploration without explorers. Read [Explore](#explore).                                                               |
+| Explore   | `explore start <planId> --build <build> --allow <rule>`   | Records an exploration and starts its explorers in the background. Read [Explore](#explore).                                      |
+|           | `explore status <explorationId>`                          | Prints the state, the level, the model, and each explorer.                                                                        |
+|           | `explore wait <explorationId> [--timeout <s>]`            | Waits until the exploration ends, and prints the status.                                                                          |
+|           | `explore levels`                                          | Prints the test levels: explorers, model alias, and verifier.                                                                     |
+|           | `explore open <planId> --build <build>`                   | Records an exploration without explorers.                                                                                         |
 |           | `record <explorationId> --explorer <name> --session <id>` | Starts a recorder: a copy of a test session that writes the record of that session.                                               |
 |           | `explore log <explorationId>`                             | Saves each valid entry from standard input for the actor, and refuses each invalid entry alone.                                   |
 | Output    | `export plan <ref>`, `export run <runId>`                 | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
@@ -150,7 +154,65 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 
 An exploration is free testing of one build of a plan. The plan needs a request. It does not need a revision or an approval. A tester of an exploration does not use Checkmate. A recorder writes the record after the test session.
 
-`checkmate explore open <planId> --build <build> [--instance <id>] [--mode exploratory|regression]` records an exploration with the next free ID, for example `x-1`. It uses the only active instance when you give no `--instance`. It stores a charter from the plan request and the target profile: the goal, the requirements, the sources, the capabilities, the allowed operations, and the tools.
+`explore start` and `checkmate explore open <planId> --build <build> [--instance <id>] [--mode exploratory|regression]` record an exploration with the next free ID, for example `x-1`. It uses the only active instance when you give no `--instance`. It stores a charter from the plan request and the target profile: the goal, the requirements, the sources, the capabilities, the allowed operations, and the tools.
+
+### explore start
+
+```sh
+checkmate explore start <planId> --build <build> --allow <rule> [--allow <rule>] [--level smoke|standard|deep] [--explorers <n>] [--instance <id>] [--mode exploratory|regression] [--claude-arg <arg>] [--timeout <seconds>]
+```
+
+`explore start` records the exploration and starts a supervisor in the background. It returns at once with the exploration ID. Then run `explore wait <explorationId>`.
+
+The supervisor does these steps:
+
+1. It starts the explorers at the same time. Each explorer is a new Claude Code session in the workspace, with a pre-assigned session ID:
+
+   ```sh
+   claude -p <host arguments> --model <alias> --settings '{"enabledPlugins":{"<plugin id>":false}}' --session-id <id> --allowedTools <rule> ... --output-format json --permission-prompts none
+   ```
+
+   The explorer gets a short brief: the goal, the requirements, the sources, the entry values of the instance, the allowed operations, the tools, a data prefix `qa-<explorationId>-<explorer>-`, and the folder `qa-evidence/<explorationId>/<explorer>/` for its evidence files. The brief does not name Checkmate. The explorer does not run a Checkmate command.
+
+2. When all explorers end, it records each explorer that completed, one after the other, as `record` does. The recorder gets the same `--model` and `--settings` as its explorer, and no `--allowedTools`.
+
+**Clean context.** Checkmate reads the ID of its own plugin from `plugins/installed_plugins.json` in the Claude Code configuration directory (`CLAUDE_CONFIG_DIR`, else `~/.claude`). The `--settings` argument turns that plugin off for the session. So the skills of Checkmate are not in the context of the explorer, but the other skills of the host are. When Checkmate finds no install record, for example when the operator loads the plugin with `--plugin-dir`, it starts the session without `--settings`, and `explore status` prints a `note` line. Checkmate removes each `CHECKMATE_*` environment variable from the environment of an explorer.
+
+**Levels.** A test level sets the number of explorers, the model alias, and whether a verifier runs. `checkmate explore levels` prints the levels. The order of choice is:
+
+- Level: `--level`, else `explore.level` of the target profile, else `standard`.
+- Number of explorers: `--explorers`, else `explore.explorers` of the profile, else the number of the level.
+- Model: `--claude-arg --model --claude-arg <model>`, else the alias of the level. Checkmate gives the alias as `--model <alias>`. The host resolves it.
+
+When the host refuses the model, the launch of that explorer fails. `explore wait` gives a hint that names the override. Checkmate does not try another model.
+
+**Permissions.** Give the tool rules of the explorers with `--allow`, one for each rule. Checkmate passes each one as `--allowedTools`. An explorer cannot answer a permission prompt. `--claude-arg` refuses `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--plugin-dir`, `--settings`, `--resume`, `--fork-session`, `--session-id`, `--permission-prompts`, and the tool list arguments.
+
+`--timeout` is the deadline of each explorer in seconds. The default is 1800. The supervisor writes its output to `.checkmate/tmp/explore-<explorationId>.log`.
+
+### explore status and explore wait
+
+`explore status <explorationId>` prints the state, the level, the number of explorers, the model and where it came from (`level` or `host`), the verifier choice, whether the plugin was turned off, and one line for each explorer: its session, its end, its record, and the number of saved entries.
+
+| State       | Meaning                                                          |
+| ----------- | ---------------------------------------------------------------- |
+| `open`      | The exploration has no explorers. Record sessions with `record`. |
+| `starting`  | The supervisor did not start yet.                                |
+| `testing`   | The explorers run.                                               |
+| `recording` | The recorders run.                                               |
+| `completed` | One or more sessions were recorded.                              |
+| `failed`    | No session was recorded, or a step failed.                       |
+| `stopped`   | The supervisor process stopped before the end.                   |
+
+`explore wait <explorationId> [--timeout <seconds>]` waits until the state is `completed`, `failed`, `stopped`, or `open`, or until the timeout. The default timeout is 3600 seconds. The JSON has `outcome`:
+
+| `outcome` | Status              | Exit |
+| --------- | ------------------- | ---- |
+| `done`    | `completed`         | 0    |
+| `failed`  | `operational_error` | 1    |
+| `timeout` | `interrupted`       | 1    |
+
+An operator agent runs `explore wait` as a background command. A factory runs it directly.
 
 ### record
 

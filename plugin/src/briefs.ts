@@ -1,3 +1,4 @@
+import type { Charter } from './explorations.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -126,5 +127,43 @@ export function repairPrompt(refusals: string[]) {
 		'Checkmate refused these entries of your reply:',
 		...refusals.map((refusal) => `- ${refusal}`),
 		'Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool.',
+	].join('\n')
+}
+
+export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
+
+function entryPointLine(entry: EntryPointValue) {
+	if (entry.kind === 'command')
+		return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`
+	return `- ${entry.name}: ${entry.value}. ${entry.purpose}`
+}
+
+export function explorerBrief(
+	charter: Charter,
+	entries: EntryPointValue[],
+	dataPrefix: string,
+	evidenceFolder: string
+) {
+	return [
+		'Test this change of the application and find its defects.',
+		'',
+		`Goal: ${charter.goal}`,
+		...(charter.requirements.length
+			? ['', 'Rules of the change:', ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)]
+			: []),
+		...(charter.sources.length ? ['', `Read: ${charter.sources.join(', ')}`] : []),
+		...(charter.instructions ? ['', charter.instructions] : []),
+		...(charter.scope.length ? ['', 'Changed files:', ...charter.scope.map((path) => `- ${path}`)] : []),
+		'',
+		'The application:',
+		...entries.map(entryPointLine),
+		'',
+		`You can: ${charter.operations.join(', ')}. Do not change the code, the configuration, or the deployment of the application.`,
+		...(charter.tools.length
+			? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join('; ')}`]
+			: []),
+		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
+		'At the end, list what you tested and each problem that you found, with its steps.',
 	].join('\n')
 }

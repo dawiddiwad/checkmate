@@ -432,8 +432,8 @@ __export(validators_exports, {
   journalIssue: () => Os,
   journalNote: () => Zs,
   journalObservation: () => _s,
-  journalQuestion: () => $s,
-  journalVerdict: () => Ns,
+  journalQuestion: () => Ns,
+  journalVerdict: () => $s,
   plan: () => Vs,
   planCandidate: () => Ts,
   planDelta: () => Ls,
@@ -454,8 +454,8 @@ var oe = H((X) => {
   "use strict";
   Object.defineProperty(X, "__esModule", { value: true });
   function pe(i) {
-    let t = i.length, _ = 0, Z = 0, $;
-    for (; Z < t; ) _++, $ = i.charCodeAt(Z++), $ >= 55296 && $ <= 56319 && Z < t && ($ = i.charCodeAt(Z), ($ & 64512) === 56320 && Z++);
+    let t = i.length, _ = 0, Z = 0, N;
+    for (; Z < t; ) _++, N = i.charCodeAt(Z++), N >= 55296 && N <= 56319 && Z < t && (N = i.charCodeAt(Z), (N & 64512) === 56320 && Z++);
     return _;
   }
   X.default = pe;
@@ -467,19 +467,19 @@ var le = H((ks, me) => {
     if (t === _) return true;
     if (t && _ && typeof t == "object" && typeof _ == "object") {
       if (t.constructor !== _.constructor) return false;
-      var Z, $, e;
+      var Z, N, e;
       if (Array.isArray(t)) {
         if (Z = t.length, Z != _.length) return false;
-        for ($ = Z; $-- !== 0; ) if (!i(t[$], _[$])) return false;
+        for (N = Z; N-- !== 0; ) if (!i(t[N], _[N])) return false;
         return true;
       }
       if (t.constructor === RegExp) return t.source === _.source && t.flags === _.flags;
       if (t.valueOf !== Object.prototype.valueOf) return t.valueOf() === _.valueOf();
       if (t.toString !== Object.prototype.toString) return t.toString() === _.toString();
       if (e = Object.keys(t), Z = e.length, Z !== Object.keys(_).length) return false;
-      for ($ = Z; $-- !== 0; ) if (!Object.prototype.hasOwnProperty.call(_, e[$])) return false;
-      for ($ = Z; $-- !== 0; ) {
-        var s = e[$];
+      for (N = Z; N-- !== 0; ) if (!Object.prototype.hasOwnProperty.call(_, e[N])) return false;
+      for (N = Z; N-- !== 0; ) {
+        var s = e[N];
         if (!i(t[s], _[s])) return false;
       }
       return true;
@@ -511,8 +511,8 @@ var we = H((E) => {
   function ye(i) {
     let t = He.exec(i);
     if (!t) return false;
-    let _ = +t[1], Z = +t[2], $ = +t[3];
-    return Z >= 1 && Z <= 12 && $ >= 1 && $ <= (Z === 2 && Se(_) ? 29 : Ye[Z]);
+    let _ = +t[1], Z = +t[2], N = +t[3];
+    return Z >= 1 && Z <= 12 && N >= 1 && N <= (Z === 2 && Se(_) ? 29 : Ye[Z]);
   }
   function re(i, t) {
     if (i && t) return i > t ? 1 : i < t ? -1 : 0;
@@ -522,10 +522,10 @@ var we = H((E) => {
     return function(_) {
       let Z = ee.exec(_);
       if (!Z) return false;
-      let $ = +Z[1], e = +Z[2], s = +Z[3], v = Z[4], p = Z[5] === "-" ? -1 : 1, r = +(Z[6] || 0), l = +(Z[7] || 0);
+      let N = +Z[1], e = +Z[2], s = +Z[3], v = Z[4], p = Z[5] === "-" ? -1 : 1, r = +(Z[6] || 0), l = +(Z[7] || 0);
       if (r > 23 || l > 59 || i && !v) return false;
-      if ($ <= 23 && e <= 59 && s < 60) return true;
-      let d = e - l * p, h = $ - r * p - (d < 0 ? 1 : 0);
+      if (N <= 23 && e <= 59 && s < 60) return true;
+      let d = e - l * p, h = N - r * p - (d < 0 ? 1 : 0);
       return (h === 23 || h === -1) && (d === 59 || d === -1) && s < 61;
     };
   }
@@ -543,8 +543,8 @@ var we = H((E) => {
   function ce(i) {
     let t = se(i);
     return function(Z) {
-      let $ = Z.split(te);
-      return $.length === 2 && ye($[0]) && t($[1]);
+      let N = Z.split(te);
+      return N.length === 2 && ye(N[0]) && t(N[1]);
     };
   }
   function Pe(i, t) {
@@ -554,7 +554,7 @@ var we = H((E) => {
   }
   function ke(i, t) {
     if (!(i && t)) return;
-    let [_, Z] = i.split(te), [$, e] = t.split(te), s = re(_, $);
+    let [_, Z] = i.split(te), [N, e] = t.split(te), s = re(_, N);
     if (s !== void 0) return s || ie(Z, e);
   }
   var Ue = /\/|:/, Qe = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
@@ -587,13 +587,13 @@ var we = H((E) => {
 });
 var qs = Ae;
 var ae = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
-var G = { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 };
+var F = { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 };
 var K = Object.prototype.hasOwnProperty;
 var A = oe().default;
 var O = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
 var je = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-var F = new RegExp("^[A-Za-z][A-Za-z0-9_.-]{0,63}$", "u");
-function Ae(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+var R = new RegExp("^[A-Za-z][A-Za-z0-9_.-]{0,63}$", "u");
+function Ae(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.id === void 0) {
@@ -875,7 +875,7 @@ function Ae(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         }
         for (let r in p) {
           let l = s;
-          if (typeof r == "string" && !F.test(r)) {
+          if (typeof r == "string" && !R.test(r)) {
             let d = { instancePath: t + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: r };
             e === null ? e = [d] : e.push(d), s++;
           }
@@ -888,7 +888,7 @@ function Ae(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         for (let r in p) {
           let l = p[r];
           if (typeof l != "string" && !(typeof l == "number" && isFinite(l)) && typeof l != "boolean") {
-            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
             e === null ? e = [d] : e.push(d), s++;
           }
           if (typeof l == "string" && A(l) > 500) {
@@ -910,7 +910,7 @@ function Ae(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 var bs = ze;
 var W = { $schema: "http://json-schema.org/draft-07/schema#", $id: "gap.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, severity: { enum: ["blocking", "non_blocking"] }, status: { enum: ["open", "resolved", "deferred"] }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, question: { type: "string", minLength: 1 }, consequence: { type: "string", minLength: 1 }, decisionId: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] } }, required: ["id", "severity", "status", "requirementIds", "testIds", "question", "consequence", "decisionId"], additionalProperties: false };
 var B = new RegExp("^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-function ze(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function ze(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.id === void 0) {
@@ -1115,7 +1115,7 @@ function ze(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return ze.errors = e, s === 0;
 }
 var Is = Oe;
-function Oe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Oe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.entries === void 0) {
@@ -1235,7 +1235,7 @@ function Oe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 }
 var js = Ze;
 var M = new RegExp("^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$", "u");
-function Ze(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Ze(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -1332,10 +1332,10 @@ function Ze(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   }
   return Ze.errors = e, s === 0;
 }
-var As = $e;
+var As = Ne;
 var ve = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-defect.schema.json", description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.", type: "object", properties: { kind: { const: "defect" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong.", type: "string", minLength: 1 }, expected: { description: "The correct result and its source.", type: "string", minLength: 1 }, actual: { description: "What you saw.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.", $ref: "journal-entry.schema.json#/definitions/evidence" }, links: { description: "The IDs of the observations, criteria, or questions that show it.", type: "array", items: { type: "string", minLength: 1 } }, suspected: { description: "true when you are not sure.", type: "boolean" }, question: { description: "The question that settles a suspected defect.", type: "string", minLength: 1 } }, required: ["kind", "build", "title", "expected", "actual", "severity"], additionalProperties: false };
 var _e = { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] };
-function $e(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Ne(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -1623,11 +1623,11 @@ function $e(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
     let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [r] : e.push(r), s++;
   }
-  return $e.errors = e, s === 0;
+  return Ne.errors = e, s === 0;
 }
-var zs = Ne;
+var zs = $e;
 var ns = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-entry.schema.json", description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.", type: "object", properties: { kind: { description: "The kind.", enum: ["criterion", "observation", "defect", "question", "verdict", "note", "issue"] }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" } }, required: ["kind"], examples: [[{ kind: "criterion", id: "C1", text: "5 or more items get 10% off.", source: "ticket.md#AC2" }, { kind: "observation", id: "O1", about: "C1", steps: "Add 4 pens in the cart", saw: "Total 40.00", value: "40.00", verdict: "ok", via: "ui" }, { kind: "defect", id: "D1", title: "No discount at 5 items", expected: "45.00 (AC2)", actual: "Total 50.00", severity: "high", links: ["C1"], steps: "Add 5 pens in the cart", value: "50.00", via: "ui", evidence: "cart-5.png" }]], definitions: { id: { description: "Your ID, for example D1. Without it, Checkmate gives one.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, build: { description: "The build that you tested. Checkmate gives the build of the exploration.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, supersedes: { description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, about: { description: "A criterion ID, a question ID, a diff area, or free text.", type: "string", minLength: 1 }, area: { description: "A changed area, for example src/cart.js.", type: "string", minLength: 1 }, steps: { description: "What you did.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] }, saw: { description: "What you saw.", type: "string", minLength: 1 }, value: { description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.", type: "string", minLength: 1 }, via: { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] }, evidence: { description: "A workspace file or the text that you saw, or an array of them.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] } } };
-function Ne(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function $e(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -1681,11 +1681,11 @@ function Ne(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
     let v = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [v] : e.push(v), s++;
   }
-  return Ne.errors = e, s === 0;
+  return $e.errors = e, s === 0;
 }
 var Os = Te;
 var ps = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-issue.schema.json", description: "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.", type: "object", properties: { kind: { const: "issue" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong, in one line.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, reports: { description: "The full IDs of the defect entries that describe this defect, for example a1/D1.", type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, note: { description: "Why these reports are one defect.", type: "string", minLength: 1 } }, required: ["kind", "title", "severity", "reports"], additionalProperties: false, examples: [{ kind: "issue", title: "No discount at 5 items", severity: "high", reports: ["a1/D1", "a3/D2"], note: "The same total of 50.00 for 5 items." }] };
-function Te(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Te(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -1811,7 +1811,7 @@ function Te(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return Te.errors = e, s === 0;
 }
 var Zs = Le;
-function Le(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Le(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -1956,7 +1956,7 @@ function Le(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 var _s = xe;
 var qe = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-observation.schema.json", description: "What you did and what you saw.", type: "object", properties: { kind: { const: "observation" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, repeats: { description: "The ID of an earlier observation that you did again.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$" }, verdict: { description: "ok when the result is correct. wrong when it is not.", enum: ["ok", "wrong"] }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" }, confirms: { description: "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.", type: "string", minLength: 1 }, refutes: { description: "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.", type: "string", minLength: 1 } }, required: ["kind", "build", "saw"], additionalProperties: false, examples: [{ kind: "observation", confirms: "a1/D3", steps: "Add 5 pens in the cart", saw: "Total 50.00, no discount", via: "ui", evidence: "evidence/cart-5.png" }] };
 var os = new RegExp("^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$", "u");
-function xe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function xe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -2197,8 +2197,8 @@ function xe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   }
   return xe.errors = e, s === 0;
 }
-var $s = De;
-function De(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+var Ns = De;
+function De(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -2283,9 +2283,9 @@ function De(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   }
   return De.errors = e, s === 0;
 }
-var Ns = Ve;
+var $s = Ve;
 var ms = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-verdict.schema.json", description: "The retest of an earlier defect on this build.", type: "object", properties: { kind: { const: "verdict" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, defect: { description: "The ID of the earlier defect or issue.", type: "string", minLength: 1 }, result: { description: "The result of the retest.", enum: ["fixed", "not_fixed"] }, saw: { description: "What you saw.", type: "string", minLength: 1 }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "defect", "result"], additionalProperties: false };
-function Ve(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Ve(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.kind === void 0) {
@@ -2434,7 +2434,7 @@ var Ts = Ee;
 var ls = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-candidate.schema.json", type: "object", properties: { requirements: { $ref: "plan.schema.json#/properties/requirements" }, tests: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "plan.schema.json#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true } }, required: ["tests", "gaps"], additionalProperties: false };
 var Ce = { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] } }, required: ["id", "check", "checkKind"], additionalProperties: false };
 var L = de().default;
-function Y(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Y(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (Array.isArray(i)) {
     if (i.length < 1) {
@@ -2506,7 +2506,7 @@ function Y(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
             }
             for (let c in m) {
               let n = s;
-              if (typeof c == "string" && !F.test(c)) {
+              if (typeof c == "string" && !R.test(c)) {
                 let a = { instancePath: t + "/" + d + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: c };
                 e === null ? e = [a] : e.push(a), s++;
               }
@@ -2519,7 +2519,7 @@ function Y(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
             for (let c in m) {
               let n = m[c];
               if (typeof n != "string" && !(typeof n == "number" && isFinite(n)) && typeof n != "boolean") {
-                let a = { instancePath: t + "/" + d + "/metadata/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                let a = { instancePath: t + "/" + d + "/metadata/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                 e === null ? e = [a] : e.push(a), s++;
               }
               if (typeof n == "string" && A(n) > 500) {
@@ -2551,7 +2551,7 @@ function Y(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
   }
   return Y.errors = e, s === 0;
 }
-function Ee(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Ee(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.tests === void 0) {
@@ -2566,7 +2566,7 @@ function Ee(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
       e === null ? e = [l] : e.push(l), s++;
     }
-    if (i.requirements !== void 0 && (Y(i.requirements, { instancePath: t + "/requirements", parentData: i, parentDataProperty: "requirements", rootData: $ }) || (e = e === null ? Y.errors : e.concat(Y.errors), s = e.length)), i.tests !== void 0) {
+    if (i.requirements !== void 0 && (Y(i.requirements, { instancePath: t + "/requirements", parentData: i, parentDataProperty: "requirements", rootData: N }) || (e = e === null ? Y.errors : e.concat(Y.errors), s = e.length)), i.tests !== void 0) {
       let r = i.tests;
       if (Array.isArray(r)) {
         if (r.length < 0) {
@@ -2918,7 +2918,7 @@ function Ee(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 }
                 for (let a in n) {
                   let o = s;
-                  if (typeof a == "string" && !F.test(a)) {
+                  if (typeof a == "string" && !R.test(a)) {
                     let u = { instancePath: t + "/tests/" + m + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: a };
                     e === null ? e = [u] : e.push(u), s++;
                   }
@@ -2931,7 +2931,7 @@ function Ee(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 for (let a in n) {
                   let o = n[a];
                   if (typeof o != "string" && !(typeof o == "number" && isFinite(o)) && typeof o != "boolean") {
-                    let u = { instancePath: t + "/tests/" + m + "/metadata/" + a.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let u = { instancePath: t + "/tests/" + m + "/metadata/" + a.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [u] : e.push(u), s++;
                   }
                   if (typeof o == "string" && A(o) > 500) {
@@ -3194,7 +3194,7 @@ function Ee(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 }
 var Ls = Ke;
 var us = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-delta.schema.json", type: "object", properties: { tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { type: "object", properties: { action: { type: "string", minLength: 1 }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, assertions: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 } }, additionalProperties: false, minProperties: 1 } } }, required: ["tests"], additionalProperties: false };
-function Ke(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Ke(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.tests === void 0) {
@@ -3378,7 +3378,7 @@ var xs = Ge;
 var ds = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-patch.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { title: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/title" }, requirementIds: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds" }, capability: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/capability" }, operations: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/operations" }, dependsOn: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn" }, preconditions: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions" }, action: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/action" }, assertions: { $ref: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions" }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, gaps: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { severity: { $ref: "gap.schema.json#/properties/severity" }, requirementIds: { $ref: "gap.schema.json#/properties/requirementIds" }, testIds: { $ref: "gap.schema.json#/properties/testIds" }, question: { $ref: "gap.schema.json#/properties/question" }, consequence: { $ref: "gap.schema.json#/properties/consequence" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } } }, additionalProperties: false, minProperties: 1 };
 var cs = { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 };
 var hs = { enum: ["blocking", "non_blocking"] };
-function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (Object.keys(i).length < 1) {
@@ -3448,7 +3448,7 @@ function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 }
                 for (let w in y) {
                   let j = s;
-                  if (typeof w == "string" && !F.test(w)) {
+                  if (typeof w == "string" && !R.test(w)) {
                     let q = { instancePath: t + "/requirements/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: w };
                     e === null ? e = [q] : e.push(q), s++;
                   }
@@ -3461,7 +3461,7 @@ function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 for (let w in y) {
                   let j = y[w];
                   if (typeof j != "string" && !(typeof j == "number" && isFinite(j)) && typeof j != "boolean") {
-                    let q = { instancePath: t + "/requirements/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + w.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let q = { instancePath: t + "/requirements/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + w.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [q] : e.push(q), s++;
                   }
                   if (typeof j == "string" && A(j) > 500) {
@@ -3812,7 +3812,7 @@ function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 }
                 for (let w in y) {
                   let j = s;
-                  if (typeof w == "string" && !F.test(w)) {
+                  if (typeof w == "string" && !R.test(w)) {
                     let q = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: w };
                     e === null ? e = [q] : e.push(q), s++;
                   }
@@ -3825,7 +3825,7 @@ function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 for (let w in y) {
                   let j = y[w];
                   if (typeof j != "string" && !(typeof j == "number" && isFinite(j)) && typeof j != "boolean") {
-                    let q = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + w.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let q = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + w.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [q] : e.push(q), s++;
                   }
                   if (typeof j == "string" && A(j) > 500) {
@@ -4035,7 +4035,7 @@ function Ge(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 }
 var Ds = Fe;
 var fs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-request.schema.json", type: "object", properties: { objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, sourceContext: { type: "array", items: { type: "object", properties: { uri: { type: "string", minLength: 1 }, content: { type: "string", minLength: 1 } }, required: ["uri", "content"], additionalProperties: false }, minItems: 0, uniqueItems: true }, context: { type: "object", properties: { sources: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, instructions: { type: "string", minLength: 1 } }, required: ["sources"], additionalProperties: false }, tools: { type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }] }, minItems: 0, uniqueItems: true } }, required: ["objective"], additionalProperties: false };
-function Fe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Fe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.objective === void 0) {
@@ -4130,7 +4130,7 @@ function Fe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 }
                 for (let a in n) {
                   let o = s;
-                  if (typeof a == "string" && !F.test(a)) {
+                  if (typeof a == "string" && !R.test(a)) {
                     let u = { instancePath: t + "/requirements/" + m + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: a };
                     e === null ? e = [u] : e.push(u), s++;
                   }
@@ -4143,7 +4143,7 @@ function Fe(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 for (let a in n) {
                   let o = n[a];
                   if (typeof o != "string" && !(typeof o == "number" && isFinite(o)) && typeof o != "boolean") {
-                    let u = { instancePath: t + "/requirements/" + m + "/metadata/" + a.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let u = { instancePath: t + "/requirements/" + m + "/metadata/" + a.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [u] : e.push(u), s++;
                   }
                   if (typeof o == "string" && A(o) > 500) {
@@ -4414,7 +4414,7 @@ var Vs = Re;
 var ne = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, planId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, previousRevision: { anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }] }, target: { type: "object", properties: { targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, tests: { type: "array", items: { $ref: "#/definitions/test" }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, assumptions: { type: "array", items: { type: "object", properties: { decisionId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 } }, required: ["decisionId", "text"], additionalProperties: false }, minItems: 0, uniqueItems: true }, decisions: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, gapId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["clarify", "accept_assumption", "defer"] }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, value: { type: "string", minLength: 1 }, source: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["id", "gapId", "kind", "actor", "rationale", "value", "source"], additionalProperties: false }, minItems: 0, uniqueItems: true }, coverage: { type: "array", items: { type: "object", properties: { requirementId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, status: { enum: ["planned", "blocked", "deferred"] } }, required: ["requirementId", "testIds", "status"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["contractVersion", "planId", "revision", "previousRevision", "target", "objective", "requirements", "tests", "gaps", "assumptions", "decisions", "coverage"], additionalProperties: false, definitions: { test: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, assertion: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] } }, required: ["id", "check", "checkKind"], additionalProperties: false }, metadata: { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 } } };
 var U = new RegExp("^[a-f0-9]{64}$", "u");
 var be = { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false };
-function Q(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Q(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.id === void 0) {
@@ -4814,7 +4814,7 @@ function Q(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
         }
         for (let r in p) {
           let l = s;
-          if (typeof r == "string" && !F.test(r)) {
+          if (typeof r == "string" && !R.test(r)) {
             let d = { instancePath: t + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: r };
             e === null ? e = [d] : e.push(d), s++;
           }
@@ -4827,7 +4827,7 @@ function Q(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
         for (let r in p) {
           let l = p[r];
           if (typeof l != "string" && !(typeof l == "number" && isFinite(l)) && typeof l != "boolean") {
-            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
             e === null ? e = [d] : e.push(d), s++;
           }
           if (typeof l == "string" && A(l) > 500) {
@@ -4846,7 +4846,7 @@ function Q(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, root
   }
   return Q.errors = e, s === 0;
 }
-function Re(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Re(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.contractVersion === void 0) {
@@ -5097,7 +5097,7 @@ function Re(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 }
                 for (let u in o) {
                   let k = s;
-                  if (typeof u == "string" && !F.test(u)) {
+                  if (typeof u == "string" && !R.test(u)) {
                     let f = { instancePath: t + "/requirements/" + n + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: u };
                     e === null ? e = [f] : e.push(f), s++;
                   }
@@ -5110,7 +5110,7 @@ function Re(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 for (let u in o) {
                   let k = o[u];
                   if (typeof k != "string" && !(typeof k == "number" && isFinite(k)) && typeof k != "boolean") {
-                    let f = { instancePath: t + "/requirements/" + n + "/metadata/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let f = { instancePath: t + "/requirements/" + n + "/metadata/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [f] : e.push(f), s++;
                   }
                   if (typeof k == "string" && A(k) > 500) {
@@ -5149,7 +5149,7 @@ function Re(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
           e === null ? e = [n] : e.push(n), s++;
         }
         let h = d.length;
-        for (let n = 0; n < h; n++) Q(d[n], { instancePath: t + "/tests/" + n, parentData: d, parentDataProperty: n, rootData: $ }) || (e = e === null ? Q.errors : e.concat(Q.errors), s = e.length);
+        for (let n = 0; n < h; n++) Q(d[n], { instancePath: t + "/tests/" + n, parentData: d, parentDataProperty: n, rootData: N }) || (e = e === null ? Q.errors : e.concat(Q.errors), s = e.length);
         let m = d.length, c;
         if (m > 1) {
           e: for (; m--; ) for (c = m; c--; ) if (L(d[m], d[c])) {
@@ -5719,8 +5719,8 @@ function Re(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return Re.errors = e, s === 0;
 }
 var Cs = We;
-var R = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
-function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+var G = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "standard", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.contractVersion === void 0) {
@@ -5767,7 +5767,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "readyForLiveExecution" }, message: "must have required property 'readyForLiveExecution'" };
       e === null ? e = [r] : e.push(r), s++;
     }
-    for (let r in i) if (!K.call(R.properties, r)) {
+    for (let r in i) if (!K.call(G.properties, r)) {
       let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
       e === null ? e = [l] : e.push(l), s++;
     }
@@ -5840,7 +5840,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
             if (c.kind !== void 0) {
               let n = c.kind;
               if (!(n === "url" || n === "command" || n === "value")) {
-                let a = { instancePath: t + "/entryPoints/" + m + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: R.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let a = { instancePath: t + "/entryPoints/" + m + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: G.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [a] : e.push(a), s++;
               }
             }
@@ -5961,7 +5961,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
             if (c.kind !== void 0) {
               let n = c.kind;
               if (!(n === "cli" || n === "mcp" || n === "skill")) {
-                let a = { instancePath: t + "/tools/" + m + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: R.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let a = { instancePath: t + "/tools/" + m + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: G.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [a] : e.push(a), s++;
               }
             }
@@ -6029,7 +6029,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (r.kind !== void 0) {
           let l = r.kind;
           if (!(l === "none" || l === "environment" || l === "browser_session")) {
-            let d = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: R.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+            let d = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: G.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [d] : e.push(d), s++;
           }
         }
@@ -6138,7 +6138,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (r.owner !== void 0) {
           let l = r.owner;
           if (!(l === "factory" || l === "checkmate")) {
-            let d = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: R.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            let d = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: G.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [d] : e.push(d), s++;
           }
         }
@@ -6233,7 +6233,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (r.owner !== void 0) {
           let l = r.owner;
           if (!(l === "factory" || l === "checkmate")) {
-            let d = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: R.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            let d = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: G.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [d] : e.push(d), s++;
           }
         }
@@ -6302,6 +6302,42 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
       let r = { instancePath: t + "/readyForLiveExecution", schemaPath: "#/properties/readyForLiveExecution/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
       e === null ? e = [r] : e.push(r), s++;
     }
+    if (i.explore !== void 0) {
+      let r = i.explore;
+      if (r && typeof r == "object" && !Array.isArray(r)) {
+        for (let l in r) if (!(l === "level" || l === "explorers")) {
+          let d = { instancePath: t + "/explore", schemaPath: "#/properties/explore/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
+          e === null ? e = [d] : e.push(d), s++;
+        }
+        if (r.level !== void 0) {
+          let l = r.level;
+          if (!(l === "smoke" || l === "standard" || l === "deep")) {
+            let d = { instancePath: t + "/explore/level", schemaPath: "#/properties/explore/properties/level/enum", keyword: "enum", params: { allowedValues: G.properties.explore.properties.level.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [d] : e.push(d), s++;
+          }
+        }
+        if (r.explorers !== void 0) {
+          let l = r.explorers;
+          if (!(typeof l == "number" && !(l % 1) && !isNaN(l) && isFinite(l))) {
+            let d = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+            e === null ? e = [d] : e.push(d), s++;
+          }
+          if (typeof l == "number" && isFinite(l)) {
+            if (l > 10 || isNaN(l)) {
+              let d = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/maximum", keyword: "maximum", params: { comparison: "<=", limit: 10 }, message: "must be <= 10" };
+              e === null ? e = [d] : e.push(d), s++;
+            }
+            if (l < 1 || isNaN(l)) {
+              let d = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+              e === null ? e = [d] : e.push(d), s++;
+            }
+          }
+        }
+      } else {
+        let l = { instancePath: t + "/explore", schemaPath: "#/properties/explore/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
+      }
+    }
     if (i.approvals !== void 0) {
       let r = i.approvals;
       if (r && typeof r == "object" && !Array.isArray(r)) {
@@ -6320,14 +6356,14 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
         if (r.plan !== void 0) {
           let l = r.plan;
           if (!(l === "required" || l === "none")) {
-            let d = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: R.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
+            let d = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: G.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [d] : e.push(d), s++;
           }
         }
         if (r.result !== void 0) {
           let l = r.result;
           if (!(l === "required" || l === "none")) {
-            let d = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: R.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
+            let d = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: G.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [d] : e.push(d), s++;
           }
         }
@@ -6344,7 +6380,7 @@ function We(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 }
 var Es = Be;
 var ys = { $schema: "http://json-schema.org/draft-07/schema#", $id: "response.schema.json", type: "object", properties: { status: { enum: ["completed", "needs_decision", "interrupted", "operational_error", "rejected"] }, subject: { type: "string", minLength: 1 }, reasons: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["status", "subject", "reasons"], additionalProperties: false };
-function Be(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Be(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.status === void 0) {
@@ -6432,7 +6468,7 @@ function Be(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 var Ks = Me;
 var D = { $schema: "http://json-schema.org/draft-07/schema#", $id: "result.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, runId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, plan: { type: "object", properties: { planId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["planId", "revision", "sha256"], additionalProperties: false }, target: { type: "object", properties: { targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, instanceId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, applicationBuild: { type: "string", minLength: 1 }, selectedTestIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, retestOf: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, startedAt: { type: "string", format: "date-time" }, finishedAt: { type: "string", format: "date-time" }, attempts: { type: "integer", minimum: 1 }, completion: { enum: ["completed", "interrupted", "operational_error"] }, completionCause: { enum: ["deadline", "host_stopped", "tool_unavailable", null] }, completionReason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, tests: { type: "array", items: { type: "object", properties: { testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, outcome: { enum: ["passed", "failed", "inconclusive", "blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, assertions: { type: "array", items: { type: "object", properties: { assertionId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"] }, observed: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true } }, required: ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"], additionalProperties: false }, minItems: 0, uniqueItems: true } }, required: ["testId", "outcome", "reason", "assertions"], additionalProperties: false }, minItems: 1, uniqueItems: true }, findings: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds", "testIds", "assertionIds"], additionalProperties: false }, minItems: 0, uniqueItems: true }, newGaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, evidence: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, assertionId: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, kind: { enum: ["observation", "http_exchange", "screenshot", "trace"] }, name: { type: "string", minLength: 1 }, mediaType: { type: "string", minLength: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" }, size: { type: "integer", minimum: 0 } }, required: ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"], additionalProperties: false }, minItems: 0, uniqueItems: true }, cleanup: { type: "object", properties: { status: { enum: ["completed", "failed", "not_applicable"] }, reason: { type: "string", minLength: 1 } }, required: ["status", "reason"], additionalProperties: false }, coverage: { type: "object", properties: { status: { enum: ["complete", "partial", "not_executed"] }, requirements: { type: "array", items: { type: "object", properties: { requirementId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, status: { enum: ["tested", "deferred", "uncovered"] }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["requirementId", "status", "testIds", "reason"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["status", "requirements"], additionalProperties: false } }, required: ["contractVersion", "runId", "plan", "target", "instanceId", "applicationBuild", "selectedTestIds", "retestOf", "startedAt", "finishedAt", "attempts", "completion", "tests", "findings", "newGaps", "evidence", "cleanup", "coverage"], additionalProperties: false };
 var Ie = we().fullFormats["date-time"];
-function Me(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: $ = i } = {}) {
+function Me(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, rootData: N = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
     if (i.contractVersion === void 0) {
@@ -6979,89 +7015,89 @@ function Me(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                       let b = I.observed, z = s, T = false, V = s;
                       if (typeof b == "string") {
                         if (A(b) < 1) {
-                          let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [N] : e.push(N), s++;
+                          let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [$] : e.push($), s++;
                         }
                       } else {
-                        let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [N] : e.push(N), s++;
+                        let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [$] : e.push($), s++;
                       }
                       var l = V === s;
                       if (T = T || l, !T) {
-                        let N = s;
+                        let $ = s;
                         if (b !== null) {
                           let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                           e === null ? e = [x] : e.push(x), s++;
                         }
-                        var l = N === s;
+                        var l = $ === s;
                         T = T || l;
                       }
                       if (T) s = z, e !== null && (z ? e.length = z : e = null);
                       else {
-                        let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                        e === null ? e = [N] : e.push(N), s++;
+                        let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                        e === null ? e = [$] : e.push($), s++;
                       }
                     }
                     if (I.reason !== void 0) {
                       let b = I.reason, z = s, T = false, V = s;
                       if (typeof b == "string") {
                         if (A(b) < 1) {
-                          let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [N] : e.push(N), s++;
+                          let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [$] : e.push($), s++;
                         }
                       } else {
-                        let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [N] : e.push(N), s++;
+                        let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [$] : e.push($), s++;
                       }
                       var d = V === s;
                       if (T = T || d, !T) {
-                        let N = s;
+                        let $ = s;
                         if (b !== null) {
                           let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                           e === null ? e = [x] : e.push(x), s++;
                         }
-                        var d = N === s;
+                        var d = $ === s;
                         T = T || d;
                       }
                       if (T) s = z, e !== null && (z ? e.length = z : e = null);
                       else {
-                        let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                        e === null ? e = [N] : e.push(N), s++;
+                        let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                        e === null ? e = [$] : e.push($), s++;
                       }
                     }
                     if (I.evidenceIds !== void 0) {
                       let b = I.evidenceIds;
                       if (Array.isArray(b)) {
                         if (b.length < 0) {
-                          let N = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-                          e === null ? e = [N] : e.push(N), s++;
+                          let $ = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+                          e === null ? e = [$] : e.push($), s++;
                         }
                         let z = b.length;
-                        for (let N = 0; N < z; N++) {
-                          let S = b[N];
+                        for (let $ = 0; $ < z; $++) {
+                          let S = b[$];
                           if (typeof S == "string") {
                             if (!O.test(S)) {
-                              let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds/" + N, schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                              let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds/" + $, schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                               e === null ? e = [x] : e.push(x), s++;
                             }
                           } else {
-                            let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds/" + N, schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                            let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds/" + $, schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                             e === null ? e = [x] : e.push(x), s++;
                           }
                         }
                         let T = b.length, V;
                         if (T > 1) {
-                          let N = {};
+                          let $ = {};
                           for (; T--; ) {
                             let S = b[T];
                             if (typeof S == "string") {
-                              if (typeof N[S] == "number") {
-                                V = N[S];
+                              if (typeof $[S] == "number") {
+                                V = $[S];
                                 let x = { instancePath: t + "/tests/" + f + "/assertions/" + q + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: T, j: V }, message: "must NOT have duplicate items (items ## " + V + " and " + T + " are identical)" };
                                 e === null ? e = [x] : e.push(x), s++;
                                 break;
                               }
-                              N[S] = T;
+                              $[S] = T;
                             }
                           }
                         }
@@ -7441,7 +7477,7 @@ function Me(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 }
                 for (let y in g) {
                   let w = s;
-                  if (typeof y == "string" && !F.test(y)) {
+                  if (typeof y == "string" && !R.test(y)) {
                     let j = { instancePath: t + "/findings/" + f + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: y };
                     e === null ? e = [j] : e.push(j), s++;
                   }
@@ -7454,7 +7490,7 @@ function Me(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
                 for (let y in g) {
                   let w = g[y];
                   if (typeof w != "string" && !(typeof w == "number" && isFinite(w)) && typeof w != "boolean") {
-                    let j = { instancePath: t + "/findings/" + f + "/metadata/" + y.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: G.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let j = { instancePath: t + "/findings/" + f + "/metadata/" + y.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [j] : e.push(j), s++;
                   }
                   if (typeof w == "string" && A(w) > 500) {
@@ -15970,21 +16006,21 @@ function logEntries(store, actor, input) {
   const { cwd, missingEvidence, droppedReferences, ...logged } = input;
   const operation = { actor, command: "log", subject: input.explorationId, input: logged };
   return write(store, operation, (operationId, _, actor2) => {
-    const exploration = explorationRow(store, input.explorationId);
+    const exploration2 = explorationRow(store, input.explorationId);
     const list2 = entryList2(input.entries);
     requireCondition(list2.length, "The array has no entry.", "Send one entry, or an array of entries.");
     const saved = [];
     const refused2 = [];
     const recorded = droppedReferences && { replyIds: replyIds(list2), dropped: droppedReferences };
     for (const [index2, raw] of list2.entries()) {
-      const state = journal(store, exploration.plan_id, actor2);
+      const state = journal(store, exploration2.plan_id, actor2);
       let entry;
       try {
         entry = checkedEntry(
           store,
           raw,
           `[${index2}]`,
-          exploration.build,
+          exploration2.build,
           state,
           actor2,
           cwd ?? store.workspace,
@@ -15996,7 +16032,7 @@ function logEntries(store, actor, input) {
         refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
         continue;
       }
-      insertEntry(store, exploration.exploration_id, entry, actor2, operationId);
+      insertEntry(store, exploration2.exploration_id, entry, actor2, operationId);
       saved.push({ index: index2, id: entry.id, kind: entry.kind });
     }
     if (!saved.length)
@@ -16006,8 +16042,8 @@ function logEntries(store, actor, input) {
         [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
       );
     return {
-      reply: completed(exploration.exploration_id, { saved, refused: refused2 }),
-      subjects: [`exploration:${exploration.exploration_id}`, `plan:${exploration.plan_id}`]
+      reply: completed(exploration2.exploration_id, { saved, refused: refused2 }),
+      subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`]
     };
   });
 }
@@ -16126,16 +16162,16 @@ function openExploration(store, actor, input) {
     };
   });
 }
-function addEvent(store, explorationId, event, operationId, at) {
+function addEvent(store, explorationId, event2, operationId, at) {
   execute(
     store,
     "INSERT INTO exploration_events (exploration_id, at, step, explorer, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
     explorationId,
     at,
-    event.step,
-    event.explorer,
-    event.status,
-    canonical(event.detail),
+    event2.step,
+    event2.explorer,
+    event2.status,
+    canonical(event2.detail),
     operationId
   );
 }
@@ -16145,6 +16181,10 @@ function explorationEvents(store, explorationId) {
     "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
     explorationId
   ).map((row) => ({ ...row, detail: JSON.parse(row.detail) }));
+}
+function exploration(store, explorationId) {
+  const row = explorationRow(store, explorationId);
+  return { ...row, charter: JSON.parse(row.charter) };
 }
 
 // plugin/contracts/journal-entry.schema.json
@@ -16720,10 +16760,36 @@ function repairPrompt(refusals) {
     "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
 }
+function entryPointLine(entry) {
+  if (entry.kind === "command")
+    return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
+  return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
+}
+function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
+  return [
+    "Test this change of the application and find its defects.",
+    "",
+    `Goal: ${charter.goal}`,
+    ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
+    ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
+    ...charter.instructions ? ["", charter.instructions] : [],
+    ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
+    "",
+    "The application:",
+    ...entries.map(entryPointLine),
+    "",
+    `You can: ${charter.operations.join(", ")}. Do not change the code, the configuration, or the deployment of the application.`,
+    ...charter.tools.length ? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join("; ")}`] : [],
+    `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+    `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
+    "At the end, list what you tested and each problem that you found, with its steps."
+  ].join("\n");
+}
 
 // plugin/src/sessions.ts
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, readFileSync as readFileSync4, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, join as join6 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var pluginRoot = fileURLToPath2(new URL("..", import.meta.url));
@@ -16746,6 +16812,33 @@ var reservedClaudeArgs = [
   "--disallowedTools",
   "--disallowed-tools"
 ];
+function checkmateScript() {
+  const own = fileURLToPath2(import.meta.url);
+  return own.endsWith(".ts") ? join6(pluginRoot, "bin", "checkmate.ts") : own;
+}
+function claudeConfigDir(env) {
+  return env.CLAUDE_CONFIG_DIR?.trim() || join6(homedir(), ".claude");
+}
+function realPath(path) {
+  try {
+    return realpathSync3(path);
+  } catch {
+    return void 0;
+  }
+}
+function installedPluginId(env, root = pluginRoot) {
+  let installed;
+  try {
+    installed = JSON.parse(readFileSync4(join6(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
+  } catch {
+    return null;
+  }
+  const own = realPath(root);
+  for (const [id2, installs] of Object.entries(installed.plugins ?? {}))
+    for (const install of Array.isArray(installs) ? installs : [])
+      if (typeof install.installPath === "string" && own && realPath(install.installPath) === own) return id2;
+  return null;
+}
 function checkClaudeArgs(claudeArgs) {
   for (const arg of claudeArgs) {
     const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`));
@@ -16863,6 +16956,41 @@ function replyArray(text) {
   }
   return void 0;
 }
+function launchClaude(claude, args, prompt, cwd, env, seconds) {
+  return new Promise((resolvePromise) => {
+    const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    let output = "";
+    let errors = "";
+    let failure;
+    const kill = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+      }
+    };
+    const timer = setTimeout(() => {
+      failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
+      kill("SIGTERM");
+      setTimeout(() => kill("SIGKILL"), 1500).unref();
+    }, seconds * 1e3);
+    child.stdout.on("data", (bytes) => {
+      if (output.length < maxOutputBytes) output += bytes.toString();
+    });
+    child.stderr.on("data", (bytes) => {
+      if (errors.length < 4096) errors += bytes.toString();
+    });
+    child.stdin.on("error", () => {
+    });
+    child.stdin.end(prompt);
+    child.on("error", (error) => {
+      failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
+    });
+    child.on("close", (status, signal) => {
+      clearTimeout(timer);
+      resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
+    });
+  });
+}
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
@@ -16887,7 +17015,7 @@ function addedEntries(store, explorationId, actor, after) {
   return Object.fromEntries(rows.map((row) => [row.kind, row.count]));
 }
 function launchContext(store, explorationId, explorer, session) {
-  const launch = explorationEvents(store, explorationId).filter((event) => event.step === "launch" && event.explorer === explorer && event.detail.session === session).at(-1);
+  const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
   return launch ? launch.detail.context : void 0;
 }
 function logReply(store, actor, explorationId, planId, entries, missing, dropped, cwd) {
@@ -16962,13 +17090,13 @@ function prepare(store, input, env) {
     `Invalid session ID: ${input.session}. Give the session_id of the test session.`,
     "claude -p --output-format json gives it in session_id. In an interactive session, /status shows it."
   );
-  const exploration = explorationRow(store, input.explorationId);
+  const exploration2 = explorationRow(store, input.explorationId);
   const claude = requireClaude(env);
-  const context = launchContext(store, exploration.exploration_id, explorer, input.session) ?? {
+  const context = launchContext(store, exploration2.exploration_id, explorer, input.session) ?? {
     hiddenPlugin: null,
     claudeArgs: input.claudeArgs ?? []
   };
-  return { claude, exploration, explorer, context, recorder: randomUUID2(), actor: explorerActor(explorer) };
+  return { claude, exploration: exploration2, explorer, context, recorder: randomUUID2(), actor: explorerActor(explorer) };
 }
 function recordSession(store, actor, input, env, cwd) {
   const operation = { actor, command: "record", subject: input.explorationId, input };
@@ -17002,18 +17130,18 @@ function recordSession(store, actor, input, env, cwd) {
   }
 }
 function recordLocked(store, operation, input, plan, env, cwd, started) {
-  const { exploration, actor } = plan;
+  const { exploration: exploration2, actor } = plan;
   const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" });
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
-  const prompt = recorderPrompt(exploration.build, recordText(store, exploration.plan_id, actor));
+  const prompt = recorderPrompt(exploration2.build, recordText(store, exploration2.plan_id, actor));
   const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
   const calls = [
     callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
   ];
   const missing = [];
   const dropped = [];
-  const log = (entries) => logReply(store, actor, exploration.exploration_id, exploration.plan_id, entries, missing, dropped, cwd);
+  const log = (entries) => logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, entries, missing, dropped, cwd);
   const first = replyArray(calls[0].result);
   let refusals = first ? log(first) : [];
   if (!calls[0].failure && refusals.length && left() > 0) {
@@ -17030,18 +17158,18 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     const fix = replyArray(calls[1].result);
     if (fix) refusals = log(fix);
   }
-  const added = addedEntries(store, exploration.exploration_id, actor, after);
+  const added = addedEntries(store, exploration2.exploration_id, actor, after);
   const saved = Object.values(added).reduce((total, count) => total + count, 0);
   const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
   const status = timedOut ? "interrupted" : calls[0].failure || !saved ? "operational_error" : "completed";
   const reasons2 = [
     ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
     ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
-    ...first && !saved ? [`The recorder added no entry to ${exploration.exploration_id}.`] : [],
+    ...first && !saved ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
     ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
   const data = {
-    explorationId: exploration.exploration_id,
+    explorationId: exploration2.exploration_id,
     explorer: plan.explorer,
     session: input.session,
     recorder: calls[0].sessionId ?? plan.recorder,
@@ -17058,7 +17186,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   };
   const reply = {
     status,
-    subject: exploration.exploration_id,
+    subject: exploration2.exploration_id,
     reasons: reasons2,
     ...status === "completed" ? {} : {
       hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`
@@ -17068,17 +17196,298 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   return write(store, { ...operation, input: { ...input, recorder: plan.recorder } }, (operationId, at) => {
     addEvent(
       store,
-      exploration.exploration_id,
+      exploration2.exploration_id,
       { step: "record", explorer: plan.explorer, status, detail: { ...data, reasons: reasons2 } },
       operationId,
       at
     );
-    return { reply, subjects: [`exploration:${exploration.exploration_id}`, `plan:${exploration.plan_id}`] };
+    return { reply, subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`] };
   });
 }
 
+// plugin/src/levels.ts
+var testLevels = {
+  smoke: { explorers: 1, model: "haiku", verifier: false },
+  standard: { explorers: 3, model: "haiku", verifier: true },
+  deep: { explorers: 2, model: "sonnet", verifier: true }
+};
+var levelNames = Object.keys(testLevels);
+var defaultLevel = "standard";
+
+// plugin/src/explorers.ts
+import { spawn as spawn2 } from "node:child_process";
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { mkdirSync as mkdirSync4, openSync } from "node:fs";
+import { join as join8 } from "node:path";
+var defaultExplorerTimeout = 1800;
+var pollMilliseconds = 500;
+function hostModel(claudeArgs) {
+  for (const [index2, arg] of claudeArgs.entries()) {
+    if (arg === "--model") return claudeArgs[index2 + 1];
+    if (arg.startsWith("--model=")) return arg.slice("--model=".length);
+  }
+  return void 0;
+}
+function launchPlan(profile, input, env) {
+  const level = requireChoice(
+    input.level ?? profile.explore?.level ?? defaultLevel,
+    levelNames,
+    "test level (--level)"
+  );
+  const row = testLevels[level];
+  const claudeArgs = checkClaudeArgs(input.claudeArgs);
+  const host = hostModel(claudeArgs);
+  const hiddenPlugin = installedPluginId(env);
+  requireWellFormed(
+    input.allow.length,
+    "Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash",
+    "The host owns the permissions. An explorer cannot answer a permission prompt."
+  );
+  return {
+    level,
+    explorers: input.explorers ?? profile.explore?.explorers ?? row.explorers,
+    model: host ?? row.model,
+    modelFrom: host ? "host" : "level",
+    verifier: row.verifier,
+    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row.model] },
+    allow: input.allow,
+    timeoutSeconds: input.timeoutSeconds ?? defaultExplorerTimeout,
+    pluginHidden: hiddenPlugin !== null
+  };
+}
+function explorerNames(count) {
+  return Array.from({ length: count }, (_, index2) => `a${index2 + 1}`);
+}
+function evidenceFolder(explorationId, explorer) {
+  return `qa-evidence/${explorationId}/${explorer}`;
+}
+function startSupervisor(store, explorationId, actor, env) {
+  const folder = join8(store.workspace, ".checkmate", "tmp");
+  mkdirSync4(folder, { recursive: true });
+  const log = openSync(join8(folder, `explore-${explorationId}.log`), "a");
+  const child = spawn2(
+    process.execPath,
+    [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace],
+    {
+      cwd: store.workspace,
+      env: { ...env, CHECKMATE_ACTOR: actor },
+      detached: true,
+      stdio: ["ignore", log, log]
+    }
+  );
+  child.unref();
+}
+function startExploration(store, actor, input, env) {
+  const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
+    requireClaude(env);
+    const opened = insertExploration(store, input, operationId, at);
+    const row = explorationRow(store, opened.explorationId);
+    const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env);
+    addEvent(
+      store,
+      opened.explorationId,
+      { step: "start", explorer: null, status: "started", detail: launch },
+      operationId,
+      at
+    );
+    return {
+      reply: completed(opened.explorationId, {
+        ...opened,
+        level: launch.level,
+        explorers: launch.explorers,
+        model: launch.model,
+        verifier: launch.verifier,
+        pluginHidden: launch.pluginHidden,
+        next: [`checkmate explore wait ${opened.explorationId}`]
+      }),
+      subjects: [`exploration:${opened.explorationId}`, `plan:${opened.planId}`]
+    };
+  });
+  startSupervisor(store, reply.subject, actor, env);
+  return reply;
+}
+function event(store, actor, explorationId, item) {
+  write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
+    addEvent(store, explorationId, item, operationId, at);
+    return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
+  });
+}
+function startOf(events) {
+  return events.find((item) => item.step === "start")?.detail;
+}
+function modelHint(launch, call) {
+  if (!/model/i.test(call.failure?.[1] ?? "")) return void 0;
+  return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
+}
+async function launchExplorers(store, actor, explorationId, launch, env) {
+  const opened = exploration(store, explorationId);
+  const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
+  const instance = findInstance(store, opened.target_id, opened.instance_id);
+  const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
+  const claude = requireClaude(env);
+  const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
+  const runs = explorerNames(launch.explorers).map((explorer) => {
+    const session = randomUUID3();
+    const folder = evidenceFolder(explorationId, explorer);
+    mkdirSync4(join8(store.workspace, folder), { recursive: true });
+    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder);
+    event(store, actor, explorationId, {
+      step: "launch",
+      explorer,
+      status: "started",
+      detail: { session, context: launch.context, brief }
+    });
+    const args = childArgs(launch.context, ["--session-id", session, ...allowed]);
+    return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
+      (call) => ({ explorer, session, call })
+    );
+  });
+  const ended = await Promise.all(runs);
+  for (const { explorer, session, call } of ended) {
+    const hint = modelHint(launch, call);
+    event(store, actor, explorationId, {
+      step: "end",
+      explorer,
+      status: call.failure?.[0] ?? "completed",
+      detail: {
+        session,
+        ...call.failure ? { reason: call.failure[1] } : {},
+        ...hint ? { hint } : {},
+        ...call.costUsd === void 0 ? {} : { costUsd: call.costUsd },
+        ...call.durationMs === void 0 ? {} : { durationMs: call.durationMs }
+      }
+    });
+  }
+  return ended;
+}
+function recordExplorers(store, actor, explorationId, sessions, env) {
+  return sessions.map(
+    ({ explorer, session }) => recordSession(
+      store,
+      actor,
+      { explorationId, explorer, session, timeoutSeconds: defaultRecorderTimeout },
+      env,
+      store.workspace
+    ).status
+  );
+}
+async function driveExploration(workspace, explorationId, env) {
+  const store = openStore(workspace);
+  const actor = env.CHECKMATE_ACTOR ?? "checkmate";
+  try {
+    event(store, actor, explorationId, {
+      step: "supervisor",
+      explorer: null,
+      status: "started",
+      detail: { pid: process.pid }
+    });
+    const launch = startOf(explorationEvents(store, explorationId));
+    if (!launch) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
+    const ended = await launchExplorers(store, actor, explorationId, launch, env);
+    const finished = ended.filter((item) => !item.call.failure);
+    const recorded = recordExplorers(store, actor, explorationId, finished, env);
+    const ok = recorded.filter((status) => status === "completed").length;
+    event(store, actor, explorationId, {
+      step: "done",
+      explorer: null,
+      status: ok ? "completed" : "failed",
+      detail: {
+        recorded: ok,
+        ...ok ? {} : { reason: "No explorer session was recorded." }
+      }
+    });
+  } catch (error) {
+    event(store, actor, explorationId, {
+      step: "done",
+      explorer: null,
+      status: "failed",
+      detail: { reason: error instanceof Error ? error.message : String(error) }
+    });
+  } finally {
+    closeStore(store);
+  }
+}
+function running2(pid) {
+  if (typeof pid !== "number") return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+function explorationState(events) {
+  const done = events.find((item) => item.step === "done");
+  if (done) return done.status === "completed" ? "completed" : "failed";
+  const supervisor = events.find((item) => item.step === "supervisor");
+  if (supervisor && !running2(supervisor.detail.pid)) return "stopped";
+  if (!events.some((item) => item.step === "start")) return "open";
+  if (!supervisor) return "starting";
+  if (events.some((item) => item.step === "record")) return "recording";
+  return "testing";
+}
+function explorationStatus(store, explorationId) {
+  const row = explorationRow(store, explorationId);
+  const events = explorationEvents(store, explorationId);
+  const launch = startOf(events);
+  const state = explorationState(events);
+  const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
+  const explorers = names.map((explorer) => {
+    const own = events.filter((item) => item.explorer === explorer);
+    const last = (step) => own.filter((item) => item.step === step).at(-1);
+    const end = last("end");
+    const record = last("record");
+    return {
+      explorer,
+      actor: explorerActor(explorer),
+      session: last("launch")?.detail.session ?? record?.detail.session ?? null,
+      ended: end?.status ?? null,
+      recorded: record?.status ?? null,
+      saved: record?.detail.saved ?? 0,
+      reason: end?.detail.reason ?? record?.detail.reasons ?? null,
+      hint: end?.detail.hint ?? null
+    };
+  });
+  const done = events.find((item) => item.step === "done");
+  return {
+    explorationId: row.exploration_id,
+    planId: row.plan_id,
+    build: row.build,
+    mode: row.mode,
+    instanceId: row.instance_id,
+    state,
+    level: launch?.level ?? null,
+    explorerCount: launch?.explorers ?? null,
+    model: launch?.model ?? null,
+    modelFrom: launch?.modelFrom ?? null,
+    verifier: launch?.verifier ?? null,
+    pluginHidden: launch?.pluginHidden ?? null,
+    explorers,
+    reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
+  };
+}
+function waitExploration(store, explorationId, timeoutSeconds) {
+  const until = Date.now() + timeoutSeconds * 1e3;
+  for (; ; ) {
+    const status = explorationStatus(store, explorationId);
+    const ended = ["completed", "failed", "stopped", "open"].includes(status.state);
+    if (ended || Date.now() >= until) {
+      const outcome = status.state === "completed" ? "done" : ended ? "failed" : "timeout";
+      const hints = status.explorers.flatMap((item) => item.hint ? [item.hint] : []);
+      return {
+        status: outcome === "done" ? "completed" : outcome === "timeout" ? "interrupted" : "operational_error",
+        subject: explorationId,
+        reasons: outcome === "timeout" ? [`Exploration ${explorationId} is ${status.state} after ${timeoutSeconds} seconds.`] : outcome === "failed" ? [status.reason ?? `Exploration ${explorationId} is ${status.state}.`] : [],
+        ...outcome === "timeout" ? { hint: `Run checkmate explore wait ${explorationId} again.` } : hints.length ? { hint: [...new Set(hints)].join(" ") } : {},
+        data: { ...status, outcome }
+      };
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMilliseconds);
+  }
+}
+
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync4, readFileSync as readFileSync6, writeFileSync as writeFileSync2 } from "node:fs";
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname, resolve as resolve3 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
@@ -17181,6 +17590,39 @@ function planRequestInput(args, stdin) {
 function leftOutLines(reply) {
   const leftOut = reply.data.leftOut ?? [];
   return leftOut.map((item) => [item.testId, "left_out", item.reason]);
+}
+function explorationLines(reply) {
+  const status = reply.data;
+  if (!status.explorers) return {};
+  return {
+    facts: {
+      state: status.state,
+      outcome: status.outcome,
+      plan: status.planId,
+      build: status.build,
+      level: status.level ?? void 0,
+      explorers: status.explorerCount ?? void 0,
+      model: status.model ?? void 0,
+      modelFrom: status.modelFrom ?? void 0,
+      verifier: status.verifier ?? void 0,
+      pluginHidden: status.pluginHidden ?? void 0
+    },
+    lines: [
+      ...status.pluginHidden === false ? [
+        [
+          "note",
+          "No install record of the Checkmate plugin was found. The explorers started without the plugin override."
+        ]
+      ] : [],
+      ...status.explorers.map((item) => [
+        item.explorer,
+        item.session ?? "-",
+        `ended=${item.ended ?? "-"}`,
+        `recorded=${item.recorded ?? "-"}`,
+        `saved=${item.saved}`
+      ])
+    ]
+  };
 }
 function short2(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
@@ -17918,6 +18360,77 @@ var commands = {
       lines: reply.data.next.map((line) => ["next", line])
     })
   },
+  "explore start": {
+    positionals: ["planId"],
+    flags: {
+      build: "value",
+      level: levelNames,
+      explorers: { min: 1, max: 10 },
+      instance: "value",
+      mode: explorationModes,
+      allow: "repeat",
+      "claude-arg": "repeat",
+      timeout: { min: 60, max: 7200 }
+    },
+    required: ["build"],
+    write: true,
+    run: (store, args, { actor, env }) => startExploration(
+      store,
+      actor,
+      {
+        planId: value(args, "planId"),
+        build: value(args, "build"),
+        instance: value(args, "instance"),
+        mode: value(args, "mode"),
+        level: value(args, "level"),
+        explorers: integer(args, "explorers"),
+        allow: list(args, "allow") ?? [],
+        claudeArgs: list(args, "claude-arg") ?? [],
+        timeoutSeconds: integer(args, "timeout")
+      },
+      env
+    ),
+    print: (reply) => ({
+      facts: {
+        plan: reply.data.planId,
+        build: reply.data.build,
+        level: reply.data.level,
+        explorers: reply.data.explorers,
+        model: reply.data.model,
+        verifier: reply.data.verifier,
+        pluginHidden: reply.data.pluginHidden
+      },
+      lines: reply.data.next.map((line) => ["next", line])
+    })
+  },
+  "explore status": {
+    positionals: ["explorationId"],
+    readOnly: true,
+    run: (store, args) => {
+      const explorationId = value(args, "explorationId");
+      return completed(explorationId, explorationStatus(store, explorationId));
+    },
+    print: explorationLines
+  },
+  "explore wait": {
+    positionals: ["explorationId"],
+    flags: { timeout: { min: 1, max: 86400 } },
+    readOnly: true,
+    run: (store, args) => waitExploration(store, value(args, "explorationId"), integer(args, "timeout") ?? 3600),
+    print: explorationLines
+  },
+  "explore levels": {
+    positionals: [],
+    run: () => completed("levels", { levels: testLevels }),
+    print: (reply) => ({
+      lines: Object.entries(reply.data.levels).map(([name, level]) => [
+        name,
+        `explorers=${level.explorers}`,
+        `model=${level.model}`,
+        `verifier=${level.verifier}`
+      ])
+    })
+  },
   "explore log": {
     positionals: ["explorationId"],
     write: true,
@@ -18214,7 +18727,7 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve3(store.workspace, out);
-  mkdirSync4(dirname(path), { recursive: true });
+  mkdirSync5(dirname(path), { recursive: true });
   try {
     writeFileSync2(path, content, { flag: "wx" });
   } catch (error) {
@@ -18472,6 +18985,8 @@ async function serveUi(tokens) {
 }
 async function main(argv) {
   if (argv[0] === "ui" && !argv.includes("--help")) return serveUi(argv.slice(1));
+  if (argv[0] === "explore" && argv[1] === "drive" && argv[3] === "--workspace")
+    return driveExploration(argv[4], argv[2], process.env);
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,

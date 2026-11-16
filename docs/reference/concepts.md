@@ -85,12 +85,13 @@ QA can run the ready tests early, before the feature exists. Then most tests fai
 
 | Checkmate owns                                                  | The host (Claude Code) owns               |
 | --------------------------------------------------------------- | ----------------------------------------- |
-| The contracts and the rule checks                               | The agent loop, the model, and context    |
+| The contracts and the rule checks                               | The agent loop and context                |
 | The record of target and plan tools                             | Tool installation and tool access         |
 | The database, the digests, and the operation log                | Authentication                            |
 | The gates: approval, readiness, prerequisites, and dependencies | Tool permissions and the `--allow` rules  |
 | Outcomes, coverage, and exports                                 | Browser sessions and access to the target |
-| The review UI on `127.0.0.1`                                    |                                           |
+| The review UI on `127.0.0.1`                                    | The model, when it gives `--model`        |
+| The default model alias of the sessions that Checkmate starts   |                                           |
 
 The oracle owns the scope, the decisions, and release decisions. The factory owns application startup and fixes. The workspace owner owns the evidence and how long it stays.
 

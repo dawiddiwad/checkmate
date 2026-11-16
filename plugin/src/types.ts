@@ -341,6 +341,10 @@ export type Profile = {
 		command: Array<string> | null
 	}
 	readyForLiveExecution: boolean
+	explore?: {
+		level?: 'smoke' | 'standard' | 'deep'
+		explorers?: number
+	}
 	approvals?: {
 		plan: 'required' | 'none'
 		result: 'required' | 'none'

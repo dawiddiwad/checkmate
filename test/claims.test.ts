@@ -298,12 +298,16 @@ test('the merge joins questions that ask the same thing, one answer answers each
 	)
 })
 
-test('a blocking question makes the plan wait on the oracle', (t) => {
+test('a blocking question makes the plan wait on the oracle after the exploration is completed', (t) => {
 	const context = setup(t)
 	context.reply({ recorder: { [first]: [{ kind: 'question', question: 'Which tax rate?', blocking: true }] } })
 	const { command } = context
 	command(['explore', 'open', 'checkout', '--build', 'b1'])
 	command(['record', 'x-1', '--explorer', 'a1', '--session', first])
+	assert.notEqual(command(['status', 'checkout']).body.state, 'needs_triage')
+	assert.deepEqual(command(['inbox']).body.gaps, [])
+	command(['explore', 'finish', 'x-1', '--level', 'smoke'])
+	assert.equal(command(['explore', 'wait', 'x-1', '--timeout', '60']).code, 0)
 	const status = command(['status', 'checkout']).body
 	assert.deepEqual(
 		[status.state, status.waitsOn, status.why],

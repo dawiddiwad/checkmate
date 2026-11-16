@@ -291,6 +291,13 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 				launch.timeoutSeconds
 			)
 		const study = await turn(['--session-id', session], brief.study)
+		if (!study.failure)
+			event(store, actor, explorationId, {
+				step: 'turn',
+				explorer,
+				status: 'started',
+				detail: { session, turn: 'test' },
+			})
 		const calls = study.failure ? [study] : [study, await turn(['--resume', session], brief.test)]
 		return { explorer, session, calls }
 	})

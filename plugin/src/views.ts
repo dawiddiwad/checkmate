@@ -1,7 +1,10 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
-import { explorationStatus, followCount } from './explorers.ts'
-import { factoryStates, oracleStates, planClaims, planQuestions } from './journal.ts'
+import type { ExplorationEvent } from './explorations.ts'
+import type { Row } from './journal.ts'
+import { explorationStatus, followCount, startOf } from './explorers.ts'
+import { exploration, explorationEvents } from './explorations.ts'
+import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
 import {
@@ -36,6 +39,8 @@ import {
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
 import { findInstance, instanceList } from './targets.ts'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 type RevisionRow = { plan_id: string; revision: number; sha256: string; body: string; at: string; actor: string }
 type ApprovalState = ReturnType<typeof approvalState>
@@ -124,7 +129,7 @@ export function inbox(store: Store) {
 	])
 	const explored = exploredPlans(store)
 	const questions = explored.flatMap((planId) =>
-		planQuestions(store, planId)
+		mergedQuestions(store, planId)
 			.filter((question) => question.answer === null)
 			.map((question) => ({
 				planId,
@@ -141,7 +146,7 @@ export function inbox(store: Store) {
 		bySince
 	)
 	const claims = explored.flatMap((planId) =>
-		planClaims(store, planId)
+		mergedClaims(store, planId)
 			.filter((claim) => claim.open && oracleStates.includes(claim.state))
 			.map((claim) => ({
 				planId,
@@ -335,6 +340,221 @@ export function exploredPlans(store: Store) {
 }
 
 const runningExploration = ['starting', 'testing', 'recording', 'verifying', 'following']
+
+function mergedUpTo(events: ExplorationEvent[]) {
+	if (events.find((item) => item.step === 'done')?.status !== 'completed') return 0
+	const follow = events.findLastIndex((item) => item.step === 'follow')
+	if (follow === -1) return Infinity
+	const ended = events.slice(follow + 1).find((item) => item.step === 'followed')
+	return ended?.status === 'completed' ? Infinity : Number(events[follow].detail.after ?? 0)
+}
+
+const fromSession = (row: Row) => row.actor.startsWith('qa:')
+
+export function mergedEntries(store: Store, planId: string) {
+	const limits = new Map(
+		all<{ exploration_id: string }>(store, 'SELECT exploration_id FROM explorations WHERE plan_id = ?', planId).map(
+			(row) => [row.exploration_id, mergedUpTo(explorationEvents(store, row.exploration_id))]
+		)
+	)
+	return (row: Row) => !fromSession(row) || row.seq <= (limits.get(row.explorationId) ?? 0)
+}
+
+export function mergedClaims(store: Store, planId: string) {
+	return planClaims(store, planId, mergedEntries(store, planId))
+}
+
+export function mergedQuestions(store: Store, planId: string) {
+	return planQuestions(store, planId, mergedEntries(store, planId))
+}
+
+function explorationData(store: Store, status: ReturnType<typeof explorationStatus>) {
+	const log = `.checkmate/tmp/explore-${status.explorationId}.log`
+	return [...(status.workFolder ? [status.workFolder] : []), ...(existsSync(join(store.workspace, log)) ? [log] : [])]
+}
+
+export function planHasRevision(store: Store, planId: string) {
+	return Boolean(one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId))
+}
+
+export function planExplorations(store: Store, planId: string) {
+	return all<{ exploration_id: string; started_at: string }>(
+		store,
+		'SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid',
+		planId
+	).map((row) => {
+		const status = explorationStatus(store, row.exploration_id)
+		const ended = ['failed', 'stopped'].includes(status.state)
+		return {
+			explorationId: status.explorationId,
+			state: status.state,
+			running: runningExploration.includes(status.state),
+			build: status.build,
+			instanceId: status.instanceId,
+			level: status.level,
+			explorers: status.explorerCount,
+			startedAt: row.started_at,
+			reason: ended ? status.reason : null,
+			follow: status.follow,
+			followReason: status.followReason,
+			data: explorationData(store, status),
+		}
+	})
+}
+
+type Explorer = ReturnType<typeof explorationStatus>['explorers'][number]
+
+function explorerLive(
+	store: Store,
+	explorationId: string,
+	events: ExplorationEvent[],
+	item: Explorer,
+	running: boolean,
+	now: number
+) {
+	const own = events.filter((event) => event.explorer === item.explorer)
+	const launch = own.find((event) => event.step === 'launch')
+	const end = own.findLast((event) => event.step === 'end')
+	const follow = events.findLastIndex((event) => event.step === 'follow')
+	const followed = events.slice(follow + 1)
+	const followTurn = followed.find((event) => event.explorer === item.explorer && event.step === 'follow-turn')
+	const inFollow = follow !== -1 && item.session !== null
+	const turn = inFollow
+		? 'follow-up'
+		: end
+			? String(end.detail.turn ?? 'test')
+			: launch
+				? String(own.findLast((event) => event.step === 'turn')?.detail.turn ?? 'study')
+				: null
+	const startedAt = inFollow ? events[follow].at : (launch?.at ?? null)
+	const endedAt = inFollow ? (followTurn?.at ?? null) : (end?.at ?? null)
+	const stopped = followed.some((event) => event.step === 'followed') ? 'skipped' : 'stopped'
+	const state = inFollow
+		? (followTurn?.status ?? (running ? 'running' : stopped))
+		: (end?.status ?? (launch ? (running ? 'running' : 'stopped') : null))
+	const until = endedAt ? Date.parse(endedAt) : running ? now : null
+	const activity = own.findLast((event) => typeof event.detail.activity === 'string' && event.detail.activity)
+	const files = own
+		.filter((event) => event.step === 'files')
+		.flatMap((event) =>
+			(event.detail.files as Array<{ name: string }>).map((file) => ({
+				phase: String(event.detail.phase),
+				name: file.name,
+			}))
+		)
+	return {
+		explorer: item.explorer,
+		turn,
+		state,
+		startedAt,
+		elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
+		activity: (activity?.detail.activity as string | undefined) ?? null,
+		recorded: item.recorded,
+		saved: item.saved,
+		files: running ? [] : files,
+	}
+}
+
+function phaseRows(events: ExplorationEvent[], status: ReturnType<typeof explorationStatus>, verifier: boolean | null) {
+	const state = status.state
+	const running = runningExploration.includes(state)
+	const later = running ? 'pending' : 'not_run'
+	const last = (step: string) => events.findLast((event) => event.step === step)
+	const reason = (event: ExplorationEvent | undefined) => (event?.detail.reason as string | undefined) ?? null
+	const records = events.filter((event) => event.step === 'record')
+	const refused = records.filter((event) => event.status !== 'completed')
+	const merge = last('merge')
+	const verify = last('verify')
+	return [
+		{
+			phase: 'record',
+			state: !records.length
+				? later
+				: state === 'recording'
+					? 'running'
+					: refused.length < records.length
+						? 'completed'
+						: 'failed',
+			reason: refused.length
+				? refused
+						.map(
+							(event) =>
+								`${event.explorer}: ${[event.detail.reasons ?? []].flat().join(' ') || event.status}`
+						)
+						.join(' ')
+				: null,
+		},
+		{ phase: 'merge', state: merge?.status ?? later, reason: reason(merge) },
+		{
+			phase: 'verify',
+			state: verify?.status ?? (verifier === false ? 'not_in_level' : state === 'verifying' ? 'running' : later),
+			reason: reason(verify),
+		},
+		{
+			phase: 'follow-up',
+			state: status.follow ?? 'not_run',
+			reason: status.followReason,
+		},
+	]
+}
+
+const phaseOf: Record<string, string> = {
+	starting: 'start',
+	testing: 'test',
+	recording: 'record and merge',
+	verifying: 'verify',
+	following: 'follow-up',
+}
+
+export function explorationLive(store: Store, explorationId: string, now = Date.now()) {
+	const status = explorationStatus(store, explorationId)
+	const opened = exploration(store, explorationId)
+	const events = explorationEvents(store, explorationId)
+	const running = runningExploration.includes(status.state)
+	const limit = mergedUpTo(events)
+	const kept = mergedEntries(store, status.planId)
+	const own = (item: { explorationId: string }) => item.explorationId === explorationId
+	const ended = ['failed', 'stopped'].includes(status.state)
+	return {
+		explorationId,
+		planId: status.planId,
+		goal: opened.charter.goal,
+		build: status.build,
+		instanceId: status.instanceId,
+		mode: status.mode,
+		level: status.level,
+		explorerCount: status.explorerCount,
+		model: status.model,
+		startedAt: opened.started_at,
+		state: status.state,
+		running,
+		phase: phaseOf[status.state] ?? null,
+		reason: ended ? status.reason : null,
+		follow: status.follow,
+		followReason: status.followReason,
+		data: explorationData(store, status),
+		explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running, now)),
+		phases: phaseRows(events, status, startOf(events)?.verifier ?? null),
+		unmerged: journal(store, status.planId)
+			.team.filter(
+				(entry) =>
+					own(entry) &&
+					isTester(entry.actor) &&
+					entry.seq > limit &&
+					(entry.kind === 'question' || entry.kind === 'defect')
+			)
+			.map((entry) => ({
+				id: entry.id,
+				explorer: shortName(entry.actor),
+				kind: entry.kind,
+				text: (entry.kind === 'question' ? entry.question : entry.title) ?? '',
+				severity: entry.severity ?? null,
+				blocking: entry.blocking === true,
+			})),
+		claims: planClaims(store, status.planId, kept).filter(own),
+		questions: planQuestions(store, status.planId, kept).filter(own),
+	}
+}
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
 export function planStatus(store: Store, planId: string) {
@@ -360,7 +580,7 @@ function loopStatus(store: Store, planId: string) {
 		const status = explorationStatus(store, row.exploration_id)
 		return { explorationId: status.explorationId, build: status.build, state: status.state, reason: status.reason }
 	})
-	const claims = planClaims(store, planId)
+	const claims = mergedClaims(store, planId)
 		.filter((claim) => claim.open)
 		.map((claim) => ({
 			claimId: claim.id,
@@ -371,7 +591,7 @@ function loopStatus(store: Store, planId: string) {
 			title: claim.title,
 			reason: claim.reason,
 		}))
-	const questions = planQuestions(store, planId).filter((question) => question.answer === null)
+	const questions = mergedQuestions(store, planId).filter((question) => question.answer === null)
 	const extra = { explorations, claims, questions }
 	if (!overlaid.includes(base.state)) return { ...base, ...extra }
 	const running = explorations.filter((item) => runningExploration.includes(item.state))

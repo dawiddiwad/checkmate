@@ -21,16 +21,16 @@ import {
 } from '../plans.ts'
 import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow } from '../journal.ts'
-import { claimPage, explorationPage, questionPage } from './exploration.ts'
+import { claimPage, explorationPage, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
-import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
+import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, planHasRevision, runDetail } from '../views.ts'
 import { defaultActor } from '../actor.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
-import { gapPage, planHistoryList, planPage } from './plan.ts'
+import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, ownChanges } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
@@ -60,6 +60,7 @@ const routes = {
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
 	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
 	exploration: new RegExp(`^/explorations/(${id})$`),
+	explorerFile: new RegExp(`^/explorations/(${id})/explorers/(${id})/(${id})/([a-z-]+\\.md)$`),
 	explorationExport: new RegExp(`^/explorations/(${id})/export\\.(md|json)$`),
 	question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
@@ -341,6 +342,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		const latest = routes.latestPlan.exec(pathname)
 		if (latest) {
+			if (!planHasRevision(store, latest[1])) return render(request, requestPage(store, latest[1]))
 			const detail = planDetail(store, latest[1])
 			return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`)
 		}
@@ -378,6 +380,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		const exploration = routes.exploration.exec(pathname)
 		if (exploration) return render(request, explorationPage(store, exploration[1]))
+		const file = routes.explorerFile.exec(pathname)
+		if (file) return render(request, explorerFilePage(store, file[1], file[2], file[3], file[4]))
 		const explorationExport = routes.explorationExport.exec(pathname)
 		if (explorationExport) {
 			const [, explorationId, format] = explorationExport

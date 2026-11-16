@@ -1,6 +1,6 @@
 ---
 name: revise
-description: Apply recorded oracle decisions to a Checkmate plan. Write a delta for the affected tests and save the next revision with plan revise.
+description: Apply recorded oracle answers to a Checkmate plan and save the next revision. Not for testing: a request to test goes to the test skill.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to report.

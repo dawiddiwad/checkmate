@@ -1,6 +1,6 @@
 ---
 name: test
-description: Test a change or a build with Checkmate. Independent testers explore the build, Checkmate records what they found, and the stored tests run again. Use for a request to test, retest, or QA a ticket, a change, or a build.
+description: Main entry for testing with Checkmate. Use for any request to test, QA, check, verify, or retest a change, a ticket, or a build, also when the acceptance criteria are in a file such as ticket.md. Starts independent testers and records what they find.
 ---
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.

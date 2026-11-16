@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Create revision 1 of a Checkmate test plan for a ticket or a change, from a recorded plan request. Write tests with explicit assertions, and gaps for unknown behavior. Not for running or retesting tests.
+description: Write a stored Checkmate test plan: test cases with assertions, and gaps. Use only when the oracle asks for a test plan, test cases, or a review of the requirements before testing, or names this skill. A request to test a change goes to the test skill.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to record a missing request and how to report.

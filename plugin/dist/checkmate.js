@@ -14687,8 +14687,8 @@ function loopStatus(store, planId) {
     ...questions.length ? [
       `${amount(questions.length, "open question")} can be answered at any time and do not block: checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`
     ] : [],
-    ...finished && fixes.length ? [`Store the claims as tests: checkmate harvest ${finished.explorationId}`] : [],
-    `Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`
+    `Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
+    ...finished && fixes.length ? [`Optional, at any time: keep the claims as stored tests: checkmate harvest ${finished.explorationId}`] : []
   ];
   if (fixes.length)
     return { ...base, ...extra, ...loop("defects_open", "factory", [amount(fixes.length, "open claim")], after) };
@@ -20462,6 +20462,7 @@ function stepDone(store, actor, input) {
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { resolve as resolve4 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
+var storedTestsNone = "none, the testers retest the earlier findings";
 function hasRequest(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId));
 }
@@ -20528,7 +20529,7 @@ function openRequest(store, actor, input, env, assumed) {
 }
 function checkRun(store, actor, input) {
   const latest = one(store, "SELECT revision FROM latest_plans WHERE plan_id = ?", input.planId);
-  if (!latest) return { run: null, skipped: [`Plan ${input.planId} has no stored tests.`] };
+  if (!latest) return { run: null, skipped: [], storedTests: storedTestsNone };
   const runId = nextRunId(store);
   const begun = beginRun(store, actor, {
     runId,
@@ -20565,6 +20566,7 @@ function runTest(store, actor, given, env) {
       scope: charter.scope,
       run: check.run,
       checkSkipped: check.skipped,
+      ...check.storedTests ? { storedTests: check.storedTests } : {},
       assumed,
       next: [
         ...check.run ? [
@@ -21758,6 +21760,7 @@ var commands = {
           tests: run2?.tests
         },
         lines: [
+          ...reply.data.storedTests ? [["stored_tests", reply.data.storedTests]] : [],
           ...reply.data.checkSkipped.map((line) => ["check_skipped", line]),
           ...reply.data.next.map((line) => ["next", line])
         ]

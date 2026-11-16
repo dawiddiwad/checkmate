@@ -333,6 +333,34 @@ test('done refuses an agent ID of another tester, a rebind corrects it, and the 
 	)
 })
 
+test('a later build without stored tests is a plain retest, and nothing asks for a decision first', (t) => {
+	const { command, text, lines, done, put, file } = setup(t)
+	const first = ['test', 'login', '--source', 'ticket.md', '--level', 'smoke', '--session']
+	assert.equal(command([...first, '--build', 'b1']).code, 0)
+	lines()
+	done('a1', 'study', ['--agent', 'agent-a1'])
+	lines()
+	done('a1', 'test')
+	lines()
+	put(`${work('a1')}/entries.json`, [{ ...stacks, steps: 'Add two coupons.' }])
+	done('a1', 'record')
+	assert.deepEqual(lines(), ['finished'])
+	const after = command(['status', 'login']).body.next as string[]
+	assert.match(after.at(-2)!, /^Retest on the next build: /)
+	assert.match(after.at(-1)!, /^Optional, at any time: keep the claims as stored tests: checkmate harvest x-1$/)
+	const again = text([...first, '--build', 'b2', '--actor', actor])
+	assert.match(again, /^completed x-2 .*mode=regression/)
+	assert.match(again, /\nstored_tests\tnone, the testers retest the earlier findings\n/)
+	assert.match(again, /\nnext\tcheckmate explore next x-2\n/)
+	assert.doesNotMatch(again, /harvest|no stored tests|check_skipped/i)
+	const next = text(['explore', 'next', 'x-2', '--actor', actor])
+	assert.doesNotMatch(next, /harvest|stored tests/i)
+	assert.match(file('.checkmate/work/x-2/a1/task-study.md'), /\nRead \.checkmate\/work\/x-2\/known-state\.md\./)
+	const status = command(['status', 'login']).body
+	assert.deepEqual(status.next, ['checkmate explore next x-2'])
+	assert.doesNotMatch(JSON.stringify(status.why), /harvest|stored tests/i)
+})
+
 test('--instructions of a new plan reach the study task, for example the way to sign in', (t) => {
 	const { command, file } = setup(t)
 	const started = command([

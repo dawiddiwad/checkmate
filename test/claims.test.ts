@@ -275,8 +275,8 @@ test('the merge joins questions that ask the same thing, one answer answers each
 	assert.deepEqual(status.next, [
 		'1 confirmed or observed claim ready for the factory: checkmate claim list checkout',
 		'2 open questions can be answered at any time and do not block: checkmate gap answer checkout <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"',
-		'Store the claims as tests: checkmate harvest x-1',
 		'Retest on the next build: checkmate test checkout --build <new build> --allow Read --allow Bash',
+		'Optional, at any time: keep the claims as stored tests: checkmate harvest x-1',
 	])
 	assert.equal(command(['claim', 'list', 'checkout']).body.claims[0].id, 'merge/I1')
 	const answered = command([

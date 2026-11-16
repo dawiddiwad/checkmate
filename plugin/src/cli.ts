@@ -1219,6 +1219,7 @@ const commands: Record<string, Command> = {
 					tests: run?.tests,
 				},
 				lines: [
+					...(reply.data.storedTests ? [['stored_tests', reply.data.storedTests]] : []),
 					...(reply.data.checkSkipped as string[]).map((line) => ['check_skipped', line]),
 					...(reply.data.next as string[]).map((line) => ['next', line]),
 				],

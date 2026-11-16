@@ -50,7 +50,12 @@ test('test records a missing request, explores first, and checks the stored test
 	wait('x-1')
 	const second = command(['test', 'cart', '--build', 'b2', '--level', 'smoke', ...allow])
 	assert.deepEqual([second.body.mode, second.body.run], ['regression', null])
-	assert.deepEqual(second.body.checkSkipped, ['Plan cart has no stored tests.'])
+	assert.deepEqual(
+		[second.body.checkSkipped, second.body.storedTests],
+		[[], 'none, the testers retest the earlier findings']
+	)
+	assert.deepEqual(second.body.next, ['checkmate explore wait x-2'])
+	assert.doesNotMatch(second.output, /harvest|no stored tests/i)
 	wait('x-2')
 	const shown = command(['explore', 'show', 'x-2']).body
 	assert.equal(shown.mode, 'regression')

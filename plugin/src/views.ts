@@ -647,8 +647,10 @@ function loopStatus(store: Store, planId: string) {
 					`${amount(questions.length, 'open question')} can be answered at any time and do not block: checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
 				]
 			: []),
-		...(finished && fixes.length ? [`Store the claims as tests: checkmate harvest ${finished.explorationId}`] : []),
 		`Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
+		...(finished && fixes.length
+			? [`Optional, at any time: keep the claims as stored tests: checkmate harvest ${finished.explorationId}`]
+			: []),
 	]
 	if (fixes.length)
 		return { ...base, ...extra, ...loop('defects_open', 'factory', [amount(fixes.length, 'open claim')], after) }

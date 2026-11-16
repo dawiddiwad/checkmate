@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 export const testModes = ['exploratory', 'regression', 'auto'] as const
+export const storedTestsNone = 'none, the testers retest the earlier findings'
 export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string
@@ -97,7 +98,7 @@ function openRequest(store: Store, actor: string | undefined, input: TestInput, 
 
 function checkRun(store: Store, actor: string | undefined, input: TestInput & { build: string }) {
 	const latest = one<{ revision: number }>(store, 'SELECT revision FROM latest_plans WHERE plan_id = ?', input.planId)
-	if (!latest) return { run: null, skipped: [`Plan ${input.planId} has no stored tests.`] }
+	if (!latest) return { run: null, skipped: [], storedTests: storedTestsNone }
 	const runId = nextRunId(store)
 	const begun = beginRun(store, actor, {
 		runId,
@@ -127,7 +128,8 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 		)
 	const explored = startExploration(store, actor, { ...input, since: input.since ?? base, mode }, env)
 	const charter = explored.data.charter as Charter
-	const check = mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
+	const check: { run: { runId: string; tests: string[] } | null; skipped: string[]; storedTests?: string } =
+		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
 	return {
 		...explored,
 		data: {
@@ -137,6 +139,7 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 			scope: charter.scope,
 			run: check.run,
 			checkSkipped: check.skipped,
+			...(check.storedTests ? { storedTests: check.storedTests } : {}),
 			assumed,
 			next: [
 				...(check.run

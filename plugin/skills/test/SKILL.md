@@ -9,14 +9,14 @@ You are the operator. You do not test. Checkmate starts the testers in new sessi
 
 ## Steps
 
-1. Find the plan ID, the build, and the target in the message of the oracle. Use the ticket ID as the plan ID, for example `shop-12`. When the oracle gives no build, use the output of `git rev-parse --short HEAD`.
+1. Find the plan ID in the message of the oracle. Use the ticket ID or the file name, for example `shop-12`. Do not ask for a value that has a default: Checkmate chooses the build, the target, and the objective, and prints each one on an `assumed:` line.
 2. Run one command:
 
    ```sh
-   checkmate test <planId> --build <build> --allow Read --allow Bash
+   checkmate test <planId> --source <ticket or file> --allow Read --allow Bash
    ```
 
-   - The first time for a plan, add `--objective "<goal>" --target <targetId> --source <ticket or file>`. Give `--source` once for each source.
+   - Add `--build`, `--objective`, or `--target` only when the oracle gives them. Add `--url <url>` when the store has no target.
    - Give one `--allow` for each tool rule that the oracle or the project gives, for example `--allow "Bash(playwright-cli:*)"`. The host owns the permissions.
    - Add `--level smoke|standard|deep` only when the oracle asks for it. Add `--since <git ref>` when the oracle names the base of the change.
    - `--mode` is `auto` when you do not give it: the first test of a plan explores, a later test checks the stored tests and explores again.
@@ -29,6 +29,7 @@ You are the operator. You do not test. Checkmate starts the testers in new sessi
    - A table of the claims: Claim, State, Severity, Title. Give the reason of an `unresolved` claim.
    - A table of the open questions: Question ID, Question.
    - The outcomes of the run, when there is one.
+   - Each `assumed:` line, so that the oracle can correct it.
    - `Done:` one line. `Next:` the `next` lines of `status`, and who acts.
 
 ## Decisions of the oracle

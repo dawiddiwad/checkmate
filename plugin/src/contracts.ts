@@ -14,6 +14,7 @@ import type {
 import type { Reply } from './store.ts'
 import { canonical } from './store.ts'
 import * as validators from './validators.js'
+import { operationAllowed } from './targets.ts'
 
 export type Test = Plan['tests'][number]
 export type Assertion = Test['assertions'][number]
@@ -356,7 +357,7 @@ export function planTargetCheck(plan: Plan, profile: Profile) {
 		)
 		for (const operation of test.operations)
 			requireCondition(
-				profile.allowedOperations.includes(operation),
+				operationAllowed(profile, operation),
 				`Test ${test.id} uses operation ${operation}, which the target does not permit`
 			)
 	}

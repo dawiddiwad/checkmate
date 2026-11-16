@@ -1,4 +1,5 @@
 import type { Charter } from './explorations.ts'
+import { anyTestOperation, anyTestOperationText } from './targets.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -130,6 +131,10 @@ export function repairPrompt(refusals: string[]) {
 	].join('\n')
 }
 
+function operationText(operations: string[]) {
+	return operations.includes(anyTestOperation) ? anyTestOperationText : `You can: ${operations.join(', ')}.`
+}
+
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
 
 function entryPointLine(entry: EntryPointValue) {
@@ -158,7 +163,7 @@ export function explorerBrief(
 		'The application:',
 		...entries.map(entryPointLine),
 		'',
-		`You can: ${charter.operations.join(', ')}. Do not change the code, the configuration, or the deployment of the application.`,
+		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		...(charter.tools.length
 			? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join('; ')}`]
 			: []),
@@ -210,7 +215,7 @@ export function verifierBrief(
 		'The application:',
 		...entries.map(entryPointLine),
 		'',
-		`You can: ${operations.join(', ')}. Do not change the code, the configuration, or the deployment of the application.`,
+		`${operationText(operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
 		'',
 		'The problems:',

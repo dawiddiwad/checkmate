@@ -1,6 +1,7 @@
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
+import { operationAllowed } from './targets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
@@ -938,7 +939,7 @@ export function gate(store: Store, input: GateInput) {
 		}
 		if (!target.profile.capabilities.includes(test.capability))
 			reasons.push(`Missing capability: ${test.capability}`)
-		if (!test.operations.every((operation) => target.profile.allowedOperations.includes(operation)))
+		if (!test.operations.every((operation) => operationAllowed(target.profile, operation)))
 			reasons.push(`Operation is not permitted: ${id}`)
 		if (!test.assertions.length) reasons.push(`Test has no assertions: ${id}`)
 		for (const dependency of test.dependsOn)

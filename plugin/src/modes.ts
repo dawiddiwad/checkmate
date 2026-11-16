@@ -6,11 +6,13 @@ import { Refusal, requireWellFormed, unusedId } from './contracts.ts'
 import { openPlan } from './plans.ts'
 import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
-import { targetRevision } from './targets.ts'
+import { setupTarget, targetRevision } from './targets.ts'
 import { spawnSync } from 'node:child_process'
 
 export const testModes = ['exploratory', 'regression', 'auto'] as const
-export type TestInput = Omit<StartInput, 'mode' | 'scope'> & {
+export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
+	build?: string
+	url?: string
 	mode?: string
 	objective?: string
 	target?: string
@@ -47,22 +49,58 @@ function nextRunId(store: Store) {
 	)
 }
 
-function openRequest(store: Store, actor: string | undefined, input: TestInput) {
-	requireWellFormed(
-		input.objective && input.target,
-		`Unknown plan: ${input.planId}. Give --objective, --target, and --source to record its request.`,
-		`checkmate test ${input.planId} --build ${input.build} --objective "<goal>" --target <targetId> --source <file or ticket>`
+function gitBuild(workspace: string) {
+	const head = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: workspace, encoding: 'utf8' })
+	return head.status === 0 ? head.stdout.trim() || undefined : undefined
+}
+
+export function dateBuild(now = new Date()) {
+	return `local-${now.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}`
+}
+
+function chosenTarget(store: Store, actor: string | undefined, input: TestInput, env: Env, assumed: string[]) {
+	if (input.target) return input.target
+	const targets = all<{ target_id: string }>(store, 'SELECT target_id FROM profiles GROUP BY target_id').map(
+		(row) => row.target_id
 	)
-	const revision = targetRevision(store, input.target!).revision
+	if (targets.length === 1) {
+		assumed.push(`target=${targets[0]} (the only target)`)
+		return targets[0]
+	}
+	requireWellFormed(
+		!targets.length,
+		`The store has ${targets.length} targets: ${targets.join(', ')}. Name one with --target.`
+	)
+	requireWellFormed(
+		input.url,
+		'The store has no target. Give the URL of the application with --url.',
+		`checkmate test ${input.planId} --url <url> --source <ticket file>`
+	)
+	const set = setupTarget(store, actor, { url: input.url!, instanceId: input.instance, env })
+	assumed.push(...((set.data.assumed ?? []) as string[]))
+	return set.data.targetId as string
+}
+
+function openRequest(store: Store, actor: string | undefined, input: TestInput, env: Env, assumed: string[]) {
+	const sources = input.sources ?? []
+	requireWellFormed(
+		input.objective || sources.length,
+		`Unknown plan: ${input.planId}. Give the ticket or the criteria file with --source.`,
+		`checkmate test ${input.planId} --source <ticket file>`
+	)
+	const targetId = chosenTarget(store, actor, input, env, assumed)
+	const objective = input.objective ?? `Test the change that ${sources.join(', ')} describes.`
+	if (!input.objective) assumed.push(`objective=${objective}`)
+	const revision = targetRevision(store, targetId).revision
 	const opened = openPlan(store, actor, {
 		planId: input.planId,
-		target: `${input.target}@${revision}`,
-		request: { objective: input.objective, context: { sources: input.sources ?? [] } },
+		target: `${targetId}@${revision}`,
+		request: { objective, context: { sources } },
 	})
 	if (opened.status !== 'completed') throw new Refusal('malformed', opened.reasons.join(' '))
 }
 
-function checkRun(store: Store, actor: string | undefined, input: TestInput) {
+function checkRun(store: Store, actor: string | undefined, input: TestInput & { build: string }) {
 	const latest = one<{ revision: number }>(store, 'SELECT revision FROM latest_plans WHERE plan_id = ?', input.planId)
 	if (!latest) return { run: null, skipped: [`Plan ${input.planId} has no stored tests.`] }
 	const runId = nextRunId(store)
@@ -78,8 +116,12 @@ function checkRun(store: Store, actor: string | undefined, input: TestInput) {
 	return { run: { runId, tests: begun.data.tests as string[] }, skipped: [] }
 }
 
-export function runTest(store: Store, actor: string | undefined, input: TestInput, env: Env): Reply {
-	if (!hasRequest(store, input.planId)) openRequest(store, actor, input)
+export function runTest(store: Store, actor: string | undefined, given: TestInput, env: Env): Reply {
+	const assumed: string[] = []
+	const build = given.build ?? gitBuild(store.workspace) ?? dateBuild()
+	if (!given.build) assumed.push(`build=${build}`)
+	const input = { ...given, build }
+	if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed)
 	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
 	const scope = input.scope ?? (input.since ? changedFiles(store.workspace, input.since) : [])
 	const explored = startExploration(store, actor, { ...input, mode, scope }, env)
@@ -93,6 +135,7 @@ export function runTest(store: Store, actor: string | undefined, input: TestInpu
 			scope,
 			run: check.run,
 			checkSkipped: check.skipped,
+			assumed,
 			next: [
 				...(check.run
 					? [

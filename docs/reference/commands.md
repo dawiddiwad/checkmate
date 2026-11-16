@@ -28,6 +28,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `status <planId>`                                            | Prints the loop state of one plan.                                                                                                |
 |           | `log [--subject <s>] [--limit <n>] [--after <rowid>]`        | Lists the operation log, newest first. The limit is 1 to 1000. The default is 50.                                                 |
 |           | `query "<sql>"`                                              | Runs one SQL statement on a read-only connection. It refuses a second statement, a write, and a statement without result columns. |
+| Target    | `setup --url <url> [--target <id>] [--instance <name>]`      | Sets up a target from a URL with defaults in one step. Read [setup](#setup).                                                      |
 | Target    | `target open <targetId>`                                     | Records a setup request.                                                                                                          |
 |           | `target request <targetId>`                                  | Prints the setup request.                                                                                                         |
 |           | `target save <targetId>`                                     | Saves a profile from standard input.                                                                                              |
@@ -159,18 +160,42 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 
 **Nothing to run.** When `needs_retest` or `ready_to_run` would apply, `status` uses the selection of `run gate --partial ready_only`. Checkmate tries the build of each run that needs a rerun, then each build on which a cross-plan dependency passed, newest first. When the gate cannot select a test that needs a run on any of these builds, the state is `nothing_to_run`. The `why` lines give the reason for each test that the gate leaves out, for example a deferred prerequisite. For a cross-plan dependency that has not passed, `status` waits on `qa`, and the `next` line is `checkmate status <otherPlanId>`. Else it waits on `oracle`, and the `next` line is `plan edit --patch`.
 
+## setup
+
+```sh
+checkmate setup --url <url> [--target <targetId>] [--instance <name>] [--operations <a,b>] [--environment <text>]
+```
+
+`setup` records the setup request, saves profile revision 1, and adds the instance in one step. It prints each value that it assumed on an `assumed:` line:
+
+| Value              | Default                                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| Target ID          | The workspace folder name, in lower case, with each other character changed to `-`.                  |
+| Instance           | `local`                                                                                              |
+| Entry point        | `web`, kind `url`, with the URL as its value.                                                        |
+| Capabilities       | `http`, and `browser` when `playwright-cli` is on `PATH`. The tools are `node` and `playwright-cli`. |
+| Allowed operations | `any_test_operation`                                                                                 |
+| Reset              | None.                                                                                                |
+| Authentication     | None.                                                                                                |
+
+`setup` sends one `GET` to an `http` or `https` URL. When the application does not answer, the profile has `readyForLiveExecution: false`. When the target exists, `setup` changes no profile and adds the instance only when it is new.
+
+**Any test operation.** `any_test_operation` in `allowedOperations` permits any action that the application offers to a test user, on test data, in this instance. The plan check and the gate accept each operation of a test. An explicit list is the strict form. Checkmate refuses `any_test_operation` for a production instance: an instance whose ID or environment starts with `prod`, in any letter case. Give an explicit list with `--operations` for it.
+
 ## test
 
 ```sh
-checkmate test <planId> --build <build> --allow <rule> [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source>]
+checkmate test <planId> --allow <rule> [--build <build>] [--url <url>] [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source>]
 ```
 
 `test` does the common sequence in one command:
 
-1. When the plan has no request, it records one from `--objective`, `--target` (the latest revision), and `--source`. Without them, it refuses with the full command in the hint.
-2. It chooses the mode. `--mode auto` is the default. The rule: when the plan has no exploration and no finished run, the mode is `exploratory`. Else it is `regression`.
-3. It starts an exploration, as `explore start` does, with the mode. `--since <git ref>` gives the changed files: `git diff --name-only <ref>` in the workspace. `--scope` gives them as a list. The explorer brief lists the changed files.
-4. In `regression` mode, when the plan has a revision, it begins a run of the ready tests of the latest revision with the next free run ID, for example `run-2`. When the gate refuses, no run starts, and `check_skipped` lines give the reasons.
+1. Without `--build`, it uses `git rev-parse --short HEAD`. Without git, it uses the date and time in UTC, for example `local-20261116-1530`.
+2. When the plan has no request, it records one from `--objective`, `--target` (the latest revision), and `--source`. It needs `--source` or `--objective`. Without `--objective`, the objective is `Test the change that <sources> describes.` Without `--target`, it uses the only target. When the store has no target, it runs `setup --url <url>` first, and needs `--url`.
+3. It prints each assumed value on an `assumed:` line, the values of `setup` too.
+4. It chooses the mode. `--mode auto` is the default. The rule: when the plan has no exploration and no finished run, the mode is `exploratory`. Else it is `regression`.
+5. It starts an exploration, as `explore start` does, with the mode. `--since <git ref>` gives the changed files: `git diff --name-only <ref>` in the workspace. `--scope` gives them as a list. The explorer brief lists the changed files.
+6. In `regression` mode, when the plan has a revision, it begins a run of the ready tests of the latest revision with the next free run ID, for example `run-2`. When the gate refuses, no run starts, and `check_skipped` lines give the reasons.
 
 Output: line 1 has `mode=`, `level=`, `explorers=`, `model=`, `verifier=`, and `run=` when a run began. The `next` lines name the execute stage for the run and `checkmate explore wait <explorationId>`. The JSON has `chosenBy`: `auto` or `flag`.
 

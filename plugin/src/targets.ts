@@ -12,6 +12,9 @@ import {
 	approvalPolicy,
 	validate,
 } from './contracts.ts'
+import { executableOnPath } from './sessions.ts'
+import { spawnSync } from 'node:child_process'
+import { basename } from 'node:path'
 
 export type ToolKind = Profile['tools'][number]['kind']
 export type RequestedTool = { name: string; kind: ToolKind; purpose: string }
@@ -33,6 +36,21 @@ export type InstanceRecord = {
 	addedBy: string
 	retired: { at: string; actor: string } | null
 }
+
+export const anyTestOperation = 'any_test_operation'
+export const anyTestOperationText =
+	'You can do any action that the application offers to a test user, on test data, in this instance.'
+
+export function operationAllowed(profile: Pick<Profile, 'allowedOperations'>, operation: string) {
+	return profile.allowedOperations.includes(operation) || profile.allowedOperations.includes(anyTestOperation)
+}
+
+export function isProduction(instanceId: string, environment: string | null | undefined) {
+	return /^prod/i.test(instanceId) || /^prod/i.test(environment ?? '')
+}
+
+const productionHint =
+	'Give the allowed operations as an explicit list for a production instance, for example --operations read_catalog. Save a new profile revision with that list.'
 
 export const toolKinds = ['cli', 'mcp', 'skill'] as const
 export const entryPointKinds = ['url', 'command', 'value'] as const
@@ -169,6 +187,16 @@ function save(store: Store, actor: string | undefined, input: { targetId: string
 			requireCondition(
 				tool.kind === requested.kind,
 				`Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
+			)
+		}
+		if (profile.allowedOperations.includes(anyTestOperation)) {
+			const production = instanceList(store, profile.targetId).filter(
+				(instance) => !instance.retired && isProduction(instance.instanceId, instance.environment)
+			)
+			requireCondition(
+				!production.length,
+				`Target ${profile.targetId} has the production instance ${production[0]?.instanceId}. ${anyTestOperation} is not permitted with it.`,
+				productionHint
 			)
 		}
 		const unreachable = profile.tools
@@ -334,6 +362,17 @@ export function addInstance(
 		const instanceId = requireIdentifier(input.instanceId, 'instance ID')
 		const instance = instanceCheck(request.entryPoints, input.instance)
 		const subject = `${input.targetId}/${instanceId}`
+		const latest = one<{ body: string }>(
+			store,
+			'SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+			input.targetId
+		)
+		const operations = latest ? (JSON.parse(latest.body) as Profile).allowedOperations : request.allowedOperations
+		requireCondition(
+			!isProduction(instanceId, instance.environment) || !operations.includes(anyTestOperation),
+			`Instance ${subject} is a production instance. ${anyTestOperation} is not permitted on it.`,
+			productionHint
+		)
 		const existing = one<{ body: string }>(
 			store,
 			'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
@@ -469,4 +508,131 @@ export function runInstance(store: Store, targetId: string, instanceId: string |
 		`Target ${targetId} has ${active.length} active instances: ${active.map((instance) => instance.instanceId).join(', ')}. Name one with --instance.`
 	)
 	return active[0]
+}
+
+export type SetupInput = {
+	url: string
+	targetId?: string
+	instanceId?: string
+	operations?: string[]
+	environment?: string
+	env: Record<string, string | undefined>
+}
+
+export function folderTargetId(workspace: string) {
+	const name = basename(workspace)
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, '-')
+		.replace(/^[^a-z0-9]+/, '')
+		.slice(0, 96)
+	return name || 'app'
+}
+
+function toolVersion(path: string) {
+	const run = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5000 })
+	const line = run.status === 0 ? run.stdout.trim().split('\n')[0] : ''
+	return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0]
+}
+
+function urlAnswers(url: string) {
+	if (!/^https?:\/\//i.test(url)) return true
+	const check = spawnSync(
+		process.execPath,
+		[
+			'-e',
+			'fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(2))',
+			url,
+		],
+		{ timeout: 8000 }
+	)
+	return check.status === 0
+}
+
+export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
+	const assumed: string[] = []
+	const url = requireText(input.url, 'application URL (--url)')
+	const targetId = input.targetId ?? folderTargetId(store.workspace)
+	if (!input.targetId) assumed.push(`target=${targetId} (the workspace folder name)`)
+	const instanceId = input.instanceId ?? 'local'
+	if (!input.instanceId) assumed.push('instance=local')
+	requireCondition(
+		input.operations?.length || !isProduction(instanceId, input.environment),
+		`Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
+		productionHint
+	)
+	const browser = executableOnPath('playwright-cli', input.env)
+	const tools = [
+		{
+			name: 'node',
+			kind: 'cli' as const,
+			purpose: 'Send HTTP requests.',
+			version: process.version.slice(1),
+			reachable: true,
+		},
+		...(browser
+			? [
+					{
+						name: 'playwright-cli',
+						kind: 'cli' as const,
+						purpose: 'Drive the browser.',
+						...(toolVersion(browser) ? { version: toolVersion(browser) } : {}),
+						reachable: true,
+					},
+				]
+			: []),
+	]
+	const capabilities = browser ? ['browser', 'http'] : ['http']
+	assumed.push(
+		'entry point=web (url)',
+		`capabilities=${capabilities.join(',')} (${browser ? 'playwright-cli is on PATH' : 'no browser tool on PATH'})`
+	)
+	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
+	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
+	assumed.push('reset=none', 'authentication=none')
+	const entryPoints = [{ name: 'web', kind: 'url' as const, purpose: 'The application.' }]
+	const known = one(store, 'SELECT 1 FROM target_requests WHERE target_id = ?', targetId)
+	if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] })
+	const request = targetRequest(store, targetId)
+	const saved = one<{ revision: number }>(
+		store,
+		'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+		targetId
+	)
+	const reachable = saved ? true : urlAnswers(url)
+	if (!reachable) assumed.push(`ready=false (${url} did not answer)`)
+	if (!saved)
+		saveTarget(store, actor, {
+			targetId,
+			profile: {
+				contractVersion: 'toolkit-2',
+				targetId,
+				revision: 1,
+				entryPoints: request.entryPoints,
+				capabilities: request.capabilities,
+				tools,
+				authentication: { kind: 'none', references: [] },
+				allowedOperations: request.allowedOperations,
+				startup: { owner: 'factory', command: null },
+				cleanup: 'Leave the test data. Remove it only when the application offers a way.',
+				readyForLiveExecution: reachable,
+			},
+		})
+	const instance = addInstance(store, actor, {
+		targetId,
+		instanceId,
+		instance: { entries: { web: url }, ...(input.environment ? { environment: input.environment } : {}) },
+	})
+	if (instance.status !== 'completed') return instance
+	const latest = targetRevision(store, targetId)
+	return completed(targetId, {
+		targetId,
+		revision: latest.revision,
+		instanceId,
+		url,
+		capabilities: latest.profile.capabilities,
+		allowedOperations: latest.profile.allowedOperations,
+		ready: latest.profile.readyForLiveExecution,
+		created: !known,
+		assumed: known ? [] : assumed,
+	})
 }

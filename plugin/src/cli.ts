@@ -16,6 +16,7 @@ import {
 import {
 	addInstance,
 	entryPointKinds,
+	setupTarget,
 	instanceList,
 	openTarget,
 	retireInstance,
@@ -1076,6 +1077,30 @@ const commands: Record<string, Command> = {
 	'export exploration': exportCommand('explorationId', explorationFormats, exportExploration),
 	'claim accept': claimCommand('approved'),
 	'claim reject': claimCommand('rejected'),
+	setup: {
+		positionals: [],
+		flags: { url: 'value', target: 'value', instance: 'value', operations: 'list', environment: 'value' },
+		required: ['url'],
+		write: true,
+		run: (store, args, { actor, env }) =>
+			setupTarget(store, actor, {
+				url: value(args, 'url')!,
+				targetId: value(args, 'target'),
+				instanceId: value(args, 'instance'),
+				operations: list(args, 'operations'),
+				environment: value(args, 'environment'),
+				env,
+			}),
+		print: (reply) => ({
+			facts: {
+				revision: reply.data.revision,
+				instance: reply.data.instanceId,
+				capabilities: reply.data.capabilities,
+				operations: reply.data.allowedOperations,
+				ready: reply.data.ready,
+			},
+		}),
+	},
 	test: {
 		positionals: ['planId'],
 		flags: {
@@ -1092,8 +1117,8 @@ const commands: Record<string, Command> = {
 			source: 'repeat',
 			since: 'value',
 			scope: 'list',
+			url: 'value',
 		},
-		required: ['build'],
 		write: true,
 		run: (store, args, { actor, env }) =>
 			runTest(
@@ -1101,7 +1126,7 @@ const commands: Record<string, Command> = {
 				actor,
 				{
 					planId: value(args, 'planId')!,
-					build: value(args, 'build')!,
+					build: value(args, 'build'),
 					mode: value(args, 'mode'),
 					level: value(args, 'level'),
 					explorers: integer(args, 'explorers'),
@@ -1114,6 +1139,7 @@ const commands: Record<string, Command> = {
 					sources: list(args, 'source'),
 					since: value(args, 'since'),
 					scope: list(args, 'scope'),
+					url: value(args, 'url'),
 				},
 				env
 			),
@@ -1662,6 +1688,7 @@ function compact(reply: Reply, printed: Printed) {
 		[reply.status, reply.subject, ...(reply.refusal ? [`refusal=${reply.refusal}`] : []), ...facts].join(' '),
 		...(printed.lines ?? []).map((line) => line.map(cell).join('\t')),
 		...warnings.map((warning) => `warning\t${cell(warning)}`),
+		...((reply.data.assumed ?? []) as string[]).map((value) => `assumed: ${cell(value)}`),
 		...reply.reasons.map((reason) => `reason: ${cell(reason)}`),
 		...(reply.hint ? [`hint: ${cell(reply.hint)}`] : []),
 	].join('\n')

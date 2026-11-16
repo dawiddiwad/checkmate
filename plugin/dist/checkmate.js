@@ -8124,6 +8124,744 @@ function Me(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return Me.errors = e, s === 0;
 }
 
+// plugin/src/sessions.ts
+import { spawn, spawnSync } from "node:child_process";
+import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, join as join2 } from "node:path";
+import { fileURLToPath } from "node:url";
+var pluginRoot = fileURLToPath(new URL("..", import.meta.url));
+var maxOutputBytes = 4 * 1024 * 1024;
+var reservedClaudeArgs = [
+  "-p",
+  "--print",
+  "--output-format",
+  "--input-format",
+  "--json-schema",
+  "--plugin-dir",
+  "--settings",
+  "--resume",
+  "--fork-session",
+  "--session-id",
+  "--permission-prompts",
+  "--allowedTools",
+  "--allowed-tools",
+  "--tools",
+  "--disallowedTools",
+  "--disallowed-tools"
+];
+function checkmateScript() {
+  const own = fileURLToPath(import.meta.url);
+  return own.endsWith(".ts") ? join2(pluginRoot, "bin", "checkmate.ts") : own;
+}
+function claudeConfigDir(env) {
+  return env.CLAUDE_CONFIG_DIR?.trim() || join2(homedir(), ".claude");
+}
+function realPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return void 0;
+  }
+}
+function installedPluginId(env, root = pluginRoot) {
+  let installed;
+  try {
+    installed = JSON.parse(readFileSync(join2(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
+  } catch {
+    return null;
+  }
+  const own = realPath(root);
+  for (const [id2, installs] of Object.entries(installed.plugins ?? {}))
+    for (const install of Array.isArray(installs) ? installs : [])
+      if (typeof install.installPath === "string" && own && realPath(install.installPath) === own) return id2;
+  return null;
+}
+function checkClaudeArgs(claudeArgs) {
+  for (const arg of claudeArgs) {
+    const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`));
+    if (reserved)
+      throw new Refusal(
+        "malformed",
+        `--claude-arg ${arg} is not permitted. Checkmate needs its own control of ${reserved}.`,
+        "Give tool rules with --allow. Give other host choices, for example --model, with --claude-arg."
+      );
+  }
+  return claudeArgs;
+}
+function childArgs(context, own) {
+  return [
+    "-p",
+    ...context.claudeArgs,
+    ...context.hiddenPlugin ? ["--settings", JSON.stringify({ enabledPlugins: { [context.hiddenPlugin]: false } })] : [],
+    ...own,
+    "--output-format",
+    "json",
+    "--permission-prompts",
+    "none"
+  ];
+}
+function childEnv(env, extra = {}) {
+  return {
+    ...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith("CHECKMATE_"))),
+    ...extra
+  };
+}
+function executableOnPath(name, env) {
+  for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    const path = join2(directory2, name);
+    try {
+      accessSync(path, constants.X_OK);
+      if (statSync(path).isFile()) return path;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function requireClaude(env) {
+  const claude = executableOnPath("claude", env);
+  if (!claude)
+    throw new Refusal(
+      "prohibited",
+      "No claude executable on PATH. Nothing changed.",
+      "Install Claude Code, or add the directory of claude to PATH. Then run the command again."
+    );
+  return claude;
+}
+function excerpt(text) {
+  const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
+  return line ? `: ${line}` : "";
+}
+function claudeResult(output, error, status, signal) {
+  let parsed = {};
+  try {
+    const value2 = JSON.parse(output);
+    if (value2 && typeof value2 === "object") parsed = value2;
+  } catch {
+  }
+  const failure = status !== 0 ? [
+    "operational_error",
+    `claude exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || parsed.result)}`
+  ] : parsed.is_error === true ? ["operational_error", `claude ended with an error${excerpt(parsed.result)}`] : void 0;
+  return {
+    failure,
+    result: parsed.result,
+    ...typeof parsed.total_cost_usd === "number" ? { costUsd: parsed.total_cost_usd } : {},
+    ...typeof parsed.duration_ms === "number" ? { durationMs: parsed.duration_ms } : {},
+    ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
+  };
+}
+function callClaude(claude, args, prompt, cwd, env, seconds) {
+  const child = spawnSync(claude, args, {
+    cwd,
+    env,
+    input: prompt,
+    encoding: "utf8",
+    timeout: seconds * 1e3,
+    killSignal: "SIGTERM",
+    maxBuffer: maxOutputBytes
+  });
+  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
+  if (code === "ETIMEDOUT")
+    return { failure: ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`] };
+  if (code) return { failure: ["operational_error", `claude failed: ${code}.`] };
+  return claudeResult(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
+}
+function closingBracket(text, start) {
+  let depth = 0;
+  let quoted = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === "\\") i++;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "[") depth++;
+    else if (char === "]" && --depth === 0) return i;
+  }
+  return -1;
+}
+function replyArray(text) {
+  if (typeof text !== "string") return void 0;
+  for (let start = text.indexOf("["); start !== -1; start = text.indexOf("[", start + 1)) {
+    const end = closingBracket(text, start);
+    if (end === -1) continue;
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1));
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function launchClaude(claude, args, prompt, cwd, env, seconds) {
+  return new Promise((resolvePromise) => {
+    const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    let output = "";
+    let errors = "";
+    let failure;
+    const kill = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+      }
+    };
+    const timer = setTimeout(() => {
+      failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
+      kill("SIGTERM");
+      setTimeout(() => kill("SIGKILL"), 1500).unref();
+    }, seconds * 1e3);
+    child.stdout.on("data", (bytes) => {
+      if (output.length < maxOutputBytes) output += bytes.toString();
+    });
+    child.stderr.on("data", (bytes) => {
+      if (errors.length < 4096) errors += bytes.toString();
+    });
+    child.stdin.on("error", () => {
+    });
+    child.stdin.end(prompt);
+    child.on("error", (error) => {
+      failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
+    });
+    child.on("close", (status, signal) => {
+      clearTimeout(timer);
+      resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
+    });
+  });
+}
+
+// plugin/src/targets.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { basename } from "node:path";
+var anyTestOperation = "any_test_operation";
+var anyTestOperationText = "You can do any action that the application offers to a test user, on test data, in this instance.";
+function operationAllowed(profile, operation) {
+  return profile.allowedOperations.includes(operation) || profile.allowedOperations.includes(anyTestOperation);
+}
+function isProduction(instanceId, environment) {
+  return /^prod/i.test(instanceId) || /^prod/i.test(environment ?? "");
+}
+var productionHint = "Give the allowed operations as an explicit list for a production instance, for example --operations read_catalog. Save a new profile revision with that list.";
+var toolKinds = ["cli", "mcp", "skill"];
+var entryPointKinds = ["url", "command", "value"];
+function openTarget(store, actor, input) {
+  return write(store, { actor, command: "target open", subject: input.targetId, input }, (operationId) => {
+    const request = targetRequestCheck(input);
+    const existing = one(
+      store,
+      "SELECT body FROM target_requests WHERE target_id = ?",
+      request.targetId
+    );
+    if (existing) {
+      requireCondition(
+        existing.body === canonical(request),
+        `Target ${request.targetId} is open with other values. Use a new target ID for a different scope.`
+      );
+      return { reply: completed(request.targetId, { request, recorded: false }), subjects: [] };
+    }
+    execute(
+      store,
+      "INSERT INTO target_requests (target_id, body, operation_id) VALUES (?, ?, ?)",
+      request.targetId,
+      canonical(request),
+      operationId
+    );
+    return {
+      reply: completed(request.targetId, { request, recorded: true }),
+      subjects: [`target:${request.targetId}`]
+    };
+  });
+}
+function targetRequestCheck(input) {
+  requireIdentifier(input.targetId, "target ID");
+  requireCondition(
+    Array.isArray(input.entryPoints) && input.entryPoints.length > 0,
+    "Missing entry points. Give one or more --entry-point <name>:<url|command|value>:<purpose>."
+  );
+  const entryPoints = input.entryPoints.map(entryPointCheck);
+  requireCondition(
+    new Set(entryPoints.map((entry) => entry.name)).size === entryPoints.length,
+    "Duplicate entry point name"
+  );
+  for (const [name, list2] of [
+    ["capabilities", input.capabilities],
+    ["operations", input.allowedOperations]
+  ]) {
+    requireCondition(Array.isArray(list2) && list2.length > 0, `Missing ${name}`);
+    list2.forEach((item) => requireIdentifier(item, name));
+    requireCondition(new Set(list2).size === list2.length, `Duplicate item in ${name}`);
+  }
+  const tools = (input.tools ?? []).map((tool) => toolCheck(tool));
+  requireCondition(new Set(tools.map((tool) => tool.name)).size === tools.length, "Duplicate tool name");
+  return {
+    targetId: input.targetId,
+    entryPoints,
+    capabilities: input.capabilities,
+    allowedOperations: input.allowedOperations,
+    tools
+  };
+}
+function entryPointCheck(entry) {
+  const name = requireIdentifier(entry.name, "entry point name");
+  return {
+    name,
+    kind: requireChoice(entry.kind, entryPointKinds, `kind of entry point ${name}`),
+    purpose: requireText(entry.purpose, `purpose of entry point ${name}`).trim()
+  };
+}
+function toolName(value2) {
+  const name = typeof value2 === "string" ? value2.trim() : value2;
+  requireCondition(
+    typeof name === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(:[A-Za-z0-9][A-Za-z0-9_-]{0,95})?$/.test(name),
+    `Invalid tool name: ${String(name)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit, with an optional <plugin>: prefix.`
+  );
+  return name;
+}
+function toolCheck(tool) {
+  return {
+    name: toolName(tool.name),
+    kind: requireChoice(tool.kind, toolKinds, `kind of tool ${tool.name}`),
+    purpose: requireText(tool.purpose, `purpose of tool ${tool.name}`)
+  };
+}
+function targetRequest(store, targetId) {
+  const row = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
+  requireCondition(row, `Unknown target: ${targetId}. Run target open first.`);
+  return JSON.parse(row.body);
+}
+function showTargetRequest(store, targetId) {
+  return completed(targetId, { request: targetRequest(store, targetId) });
+}
+function saveTarget(store, actor, input) {
+  const reply = save(store, actor, input);
+  removeTemporaryDirectory(store, `setup-${input.targetId}`);
+  return reply;
+}
+function save(store, actor, input) {
+  return write(store, { actor, command: "target save", subject: input.targetId, input }, (operationId) => {
+    const request = targetRequest(store, input.targetId);
+    const profile = profileCheck(input.profile);
+    requireCondition(
+      profile.targetId === request.targetId,
+      `Profile targetId ${profile.targetId} differs from ${request.targetId}`
+    );
+    requireCondition(
+      same(profile.entryPoints, request.entryPoints),
+      "Profile entryPoints differ from the setup request"
+    );
+    requireCondition(
+      same(profile.capabilities, request.capabilities),
+      "Profile capabilities differ from the setup request"
+    );
+    requireCondition(
+      same(profile.allowedOperations, request.allowedOperations),
+      "Profile allowedOperations differ from the setup request"
+    );
+    for (const requested of request.tools) {
+      const tool = profile.tools.find((tool2) => tool2.name === requested.name);
+      requireCondition(tool, `Profile has no entry for the requested tool ${requested.name}`);
+      requireCondition(
+        tool.kind === requested.kind,
+        `Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
+      );
+    }
+    if (profile.allowedOperations.includes(anyTestOperation)) {
+      const production = instanceList(store, profile.targetId).filter(
+        (instance) => !instance.retired && isProduction(instance.instanceId, instance.environment)
+      );
+      requireCondition(
+        !production.length,
+        `Target ${profile.targetId} has the production instance ${production[0]?.instanceId}. ${anyTestOperation} is not permitted with it.`,
+        productionHint
+      );
+    }
+    const unreachable = profile.tools.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name)).map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`);
+    requireCondition(
+      !unreachable.length || !profile.readyForLiveExecution,
+      `${unreachable.join(". ")}. Set readyForLiveExecution to false.`
+    );
+    const body = canonical(profile);
+    const latest = one(
+      store,
+      "SELECT revision, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
+      profile.targetId
+    );
+    const subject = `${profile.targetId}@${profile.revision}`;
+    const reasons2 = profile.readyForLiveExecution ? [] : [...unreachable, "Target prerequisites are not ready. Inspect the profile."];
+    const status = profile.readyForLiveExecution ? "completed" : "needs_decision";
+    const data = { targetId: profile.targetId, revision: profile.revision, sha256: digest(body) };
+    if (latest && latest.revision === profile.revision) {
+      requireCondition(
+        latest.body === body,
+        `Profile ${subject} exists with other content. Save revision ${latest.revision + 1} for changes.`
+      );
+      return { reply: { status, subject, reasons: reasons2, data: { ...data, recorded: false } }, subjects: [] };
+    }
+    const next = (latest?.revision ?? 0) + 1;
+    requireCondition(profile.revision === next, `Profile revision must be ${next}, not ${profile.revision}`);
+    execute(
+      store,
+      "INSERT INTO profiles (target_id, revision, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?)",
+      profile.targetId,
+      profile.revision,
+      data.sha256,
+      body,
+      operationId
+    );
+    return {
+      reply: { status, subject, reasons: reasons2, data: { ...data, recorded: true } },
+      subjects: [`target:${profile.targetId}`]
+    };
+  });
+}
+function targetRevision(store, targetId, revision = null) {
+  const row = one(
+    store,
+    revision === null ? "SELECT revision, sha256, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1" : "SELECT revision, sha256, body FROM profiles WHERE target_id = ? AND revision = ?",
+    targetId,
+    ...revision === null ? [] : [revision]
+  );
+  requireCondition(row, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
+  return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 };
+}
+function showTarget(store, reference, instanceId) {
+  const { id: id2, revision } = revisionReference(reference, "target reference");
+  const target = targetRevision(store, id2, revision);
+  return completed(`${id2}@${target.revision}`, {
+    targetId: id2,
+    revision: target.revision,
+    sha256: target.sha256,
+    approvals: approvalPolicy(target.profile),
+    profile: target.profile,
+    instances: instanceList(store, id2).filter((instance) => !instance.retired),
+    ...instanceId === void 0 ? {} : { instance: findInstance(store, id2, instanceId) }
+  });
+}
+function targetList(store) {
+  return all(
+    store,
+    `SELECT r.target_id, r.body, (SELECT max(revision) FROM profiles p WHERE p.target_id = r.target_id) AS revision,
+			(SELECT count(*) FROM instances i WHERE i.target_id = r.target_id AND NOT EXISTS
+				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
+				AS instances
+		FROM target_requests r ORDER BY r.target_id`
+  ).map((row) => {
+    const request = JSON.parse(row.body);
+    return {
+      targetId: row.target_id,
+      revision: row.revision,
+      capabilities: request.capabilities,
+      entryPoints: request.entryPoints.map((entry) => entry.name),
+      activeInstances: row.instances
+    };
+  });
+}
+function targetHistory(store, targetId) {
+  targetRequest(store, targetId);
+  const rows = all(
+    store,
+    `SELECT p.revision, p.sha256, p.body, o.at, o.actor FROM profiles p JOIN operations o ON o.id = p.operation_id
+		WHERE p.target_id = ? ORDER BY p.revision`,
+    targetId
+  );
+  return rows.map((row, i) => {
+    const profile = JSON.parse(row.body);
+    const before = i ? JSON.parse(rows[i - 1].body) : null;
+    const keys = [.../* @__PURE__ */ new Set([...Object.keys(profile), ...Object.keys(before ?? {})])].sort();
+    return {
+      revision: row.revision,
+      sha256: row.sha256,
+      at: row.at,
+      actor: row.actor,
+      changed: before ? keys.filter((key) => key !== "revision" && canonical(profile[key]) !== canonical(before[key])) : []
+    };
+  });
+}
+function instanceCheck(entryPoints, value2) {
+  const instance = validate("instance", value2);
+  const names = Object.keys(instance.entries);
+  const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
+  const unknown = names.filter((name) => !entryPoints.some((entry) => entry.name === name));
+  requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
+  requireCondition(
+    !unknown.length,
+    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints.map((entry) => entry.name).join(", ")}.`
+  );
+  const entries = {};
+  for (const entry of entryPoints) {
+    const text = requireText(instance.entries[entry.name], `value for entry point ${entry.name}`).trim();
+    entries[entry.name] = text;
+    if (entry.kind !== "url") continue;
+    let url;
+    try {
+      url = new URL(text);
+    } catch {
+      throw new Error(`Entry point ${entry.name} needs a valid URL, not ${text}`);
+    }
+    requireCondition(
+      !url.username && !url.password,
+      `Entry point ${entry.name} has URL credentials. Use authentication references instead.`
+    );
+  }
+  const references2 = (instance.references ?? []).map((reference) => requireText(reference, "reference").trim());
+  const repeated = references2.find((reference, i) => references2.indexOf(reference) !== i);
+  requireCondition(repeated === void 0, `Reference ${repeated} is given twice`);
+  return {
+    entries,
+    ...instance.environment === void 0 ? {} : { environment: requireText(instance.environment, "environment").trim() },
+    references: references2
+  };
+}
+function addInstance(store, actor, input) {
+  return write(store, { actor, command: "target instance add", subject: input.targetId, input }, (operationId) => {
+    const request = targetRequest(store, input.targetId);
+    const instanceId = requireIdentifier(input.instanceId, "instance ID");
+    const instance = instanceCheck(request.entryPoints, input.instance);
+    const subject = `${input.targetId}/${instanceId}`;
+    const latest = one(
+      store,
+      "SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
+      input.targetId
+    );
+    const operations = latest ? JSON.parse(latest.body).allowedOperations : request.allowedOperations;
+    requireCondition(
+      !isProduction(instanceId, instance.environment) || !operations.includes(anyTestOperation),
+      `Instance ${subject} is a production instance. ${anyTestOperation} is not permitted on it.`,
+      productionHint
+    );
+    const existing = one(
+      store,
+      "SELECT body FROM instances WHERE target_id = ? AND instance_id = ?",
+      input.targetId,
+      instanceId
+    );
+    if (existing) {
+      requireCondition(
+        !retirement(store, input.targetId, instanceId),
+        `Instance ${subject} is retired. Use a new instance ID.`
+      );
+      requireCondition(
+        existing.body === canonical(instance),
+        `Instance ${subject} exists. An instance does not change. Use a new instance ID.`
+      );
+      return { reply: completed(subject, { ...instance, instanceId, recorded: false }), subjects: [] };
+    }
+    execute(
+      store,
+      "INSERT INTO instances (target_id, instance_id, body, operation_id) VALUES (?, ?, ?, ?)",
+      input.targetId,
+      instanceId,
+      canonical(instance),
+      operationId
+    );
+    return {
+      reply: completed(subject, { ...instance, instanceId, recorded: true }),
+      subjects: [`target:${input.targetId}`]
+    };
+  });
+}
+function retireInstance(store, actor, input) {
+  return write(store, { actor, command: "target instance retire", subject: input.targetId, input }, (operationId) => {
+    const instance = findInstance(store, input.targetId, input.instanceId);
+    const subject = `${input.targetId}/${input.instanceId}`;
+    if (instance.retired)
+      return {
+        reply: completed(subject, { instanceId: input.instanceId, recorded: false }),
+        subjects: []
+      };
+    execute(
+      store,
+      "INSERT INTO instance_retirements (target_id, instance_id, operation_id) VALUES (?, ?, ?)",
+      input.targetId,
+      input.instanceId,
+      operationId
+    );
+    const startedRuns = all(
+      store,
+      "SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid",
+      input.targetId,
+      input.instanceId
+    ).map((row) => row.run_id);
+    return {
+      reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
+      subjects: [`target:${input.targetId}`]
+    };
+  });
+}
+function retirement(store, targetId, instanceId) {
+  return one(
+    store,
+    `SELECT o.at, o.actor FROM instance_retirements x JOIN operations o ON o.id = x.operation_id
+		WHERE x.target_id = ? AND x.instance_id = ?`,
+    targetId,
+    instanceId
+  );
+}
+function instanceRecord(store, targetId, row) {
+  const body = JSON.parse(row.body);
+  const order = targetRequest(store, targetId).entryPoints.map((entry) => entry.name);
+  const retired = retirement(store, targetId, row.instance_id);
+  return {
+    targetId,
+    instanceId: row.instance_id,
+    entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
+    environment: body.environment ?? null,
+    references: body.references ?? [],
+    addedAt: row.at,
+    addedBy: row.actor,
+    retired: retired ? { at: retired.at, actor: retired.actor } : null
+  };
+}
+function instanceList(store, targetId) {
+  targetRequest(store, targetId);
+  return all(
+    store,
+    `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
+		WHERE i.target_id = ? ORDER BY i.rowid`,
+    targetId
+  ).map((row) => instanceRecord(store, targetId, row));
+}
+function findInstance(store, targetId, instanceId) {
+  targetRequest(store, targetId);
+  const row = one(
+    store,
+    `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
+		WHERE i.target_id = ? AND i.instance_id = ?`,
+    targetId,
+    instanceId
+  );
+  requireCondition(row, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
+  return instanceRecord(store, targetId, row);
+}
+function runInstance(store, targetId, instanceId) {
+  if (instanceId !== void 0) {
+    const instance = findInstance(store, targetId, instanceId);
+    requireCondition(
+      !instance.retired,
+      `Instance ${targetId}/${instanceId} is retired. A retired instance cannot start a run.`
+    );
+    return instance;
+  }
+  const active = instanceList(store, targetId).filter((instance) => !instance.retired);
+  requireCondition(
+    active.length,
+    `Target ${targetId} has no active instance. Add one with target instance add ${targetId} <instanceId>.`
+  );
+  requireCondition(
+    active.length === 1,
+    `Target ${targetId} has ${active.length} active instances: ${active.map((instance) => instance.instanceId).join(", ")}. Name one with --instance.`
+  );
+  return active[0];
+}
+function folderTargetId(workspace) {
+  const name = basename(workspace).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 96);
+  return name || "app";
+}
+function toolVersion(path) {
+  const run2 = spawnSync2(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
+  const line = run2.status === 0 ? run2.stdout.trim().split("\n")[0] : "";
+  return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0];
+}
+function urlAnswers(url) {
+  if (!/^https?:\/\//i.test(url)) return true;
+  const check = spawnSync2(
+    process.execPath,
+    [
+      "-e",
+      "fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(2))",
+      url
+    ],
+    { timeout: 8e3 }
+  );
+  return check.status === 0;
+}
+function setupTarget(store, actor, input) {
+  const assumed = [];
+  const url = requireText(input.url, "application URL (--url)");
+  const targetId = input.targetId ?? folderTargetId(store.workspace);
+  if (!input.targetId) assumed.push(`target=${targetId} (the workspace folder name)`);
+  const instanceId = input.instanceId ?? "local";
+  if (!input.instanceId) assumed.push("instance=local");
+  requireCondition(
+    input.operations?.length || !isProduction(instanceId, input.environment),
+    `Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
+    productionHint
+  );
+  const browser = executableOnPath("playwright-cli", input.env);
+  const tools = [
+    {
+      name: "node",
+      kind: "cli",
+      purpose: "Send HTTP requests.",
+      version: process.version.slice(1),
+      reachable: true
+    },
+    ...browser ? [
+      {
+        name: "playwright-cli",
+        kind: "cli",
+        purpose: "Drive the browser.",
+        ...toolVersion(browser) ? { version: toolVersion(browser) } : {},
+        reachable: true
+      }
+    ] : []
+  ];
+  const capabilities = browser ? ["browser", "http"] : ["http"];
+  assumed.push(
+    "entry point=web (url)",
+    `capabilities=${capabilities.join(",")} (${browser ? "playwright-cli is on PATH" : "no browser tool on PATH"})`
+  );
+  const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
+  if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
+  assumed.push("reset=none", "authentication=none");
+  const entryPoints = [{ name: "web", kind: "url", purpose: "The application." }];
+  const known = one(store, "SELECT 1 FROM target_requests WHERE target_id = ?", targetId);
+  if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] });
+  const request = targetRequest(store, targetId);
+  const saved = one(
+    store,
+    "SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
+    targetId
+  );
+  const reachable = saved ? true : urlAnswers(url);
+  if (!reachable) assumed.push(`ready=false (${url} did not answer)`);
+  if (!saved)
+    saveTarget(store, actor, {
+      targetId,
+      profile: {
+        contractVersion: "toolkit-2",
+        targetId,
+        revision: 1,
+        entryPoints: request.entryPoints,
+        capabilities: request.capabilities,
+        tools,
+        authentication: { kind: "none", references: [] },
+        allowedOperations: request.allowedOperations,
+        startup: { owner: "factory", command: null },
+        cleanup: "Leave the test data. Remove it only when the application offers a way.",
+        readyForLiveExecution: reachable
+      }
+    });
+  const instance = addInstance(store, actor, {
+    targetId,
+    instanceId,
+    instance: { entries: { web: url }, ...input.environment ? { environment: input.environment } : {} }
+  });
+  if (instance.status !== "completed") return instance;
+  const latest = targetRevision(store, targetId);
+  return completed(targetId, {
+    targetId,
+    revision: latest.revision,
+    instanceId,
+    url,
+    capabilities: latest.profile.capabilities,
+    allowedOperations: latest.profile.allowedOperations,
+    ready: latest.profile.readyForLiveExecution,
+    created: !known,
+    assumed: known ? [] : assumed
+  });
+}
+
 // plugin/src/contracts.ts
 var identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/;
 var Refusal = class extends Error {
@@ -8390,7 +9128,7 @@ function planTargetCheck(plan, profile) {
     );
     for (const operation of test.operations)
       requireCondition(
-        profile.allowedOperations.includes(operation),
+        operationAllowed(profile, operation),
         `Test ${test.id} uses operation ${operation}, which the target does not permit`
       );
   }
@@ -8487,401 +9225,9 @@ function resultCoverage(plan, tests, newGaps2) {
   };
 }
 
-// plugin/src/targets.ts
-var toolKinds = ["cli", "mcp", "skill"];
-var entryPointKinds = ["url", "command", "value"];
-function openTarget(store, actor, input) {
-  return write(store, { actor, command: "target open", subject: input.targetId, input }, (operationId) => {
-    const request = targetRequestCheck(input);
-    const existing = one(
-      store,
-      "SELECT body FROM target_requests WHERE target_id = ?",
-      request.targetId
-    );
-    if (existing) {
-      requireCondition(
-        existing.body === canonical(request),
-        `Target ${request.targetId} is open with other values. Use a new target ID for a different scope.`
-      );
-      return { reply: completed(request.targetId, { request, recorded: false }), subjects: [] };
-    }
-    execute(
-      store,
-      "INSERT INTO target_requests (target_id, body, operation_id) VALUES (?, ?, ?)",
-      request.targetId,
-      canonical(request),
-      operationId
-    );
-    return {
-      reply: completed(request.targetId, { request, recorded: true }),
-      subjects: [`target:${request.targetId}`]
-    };
-  });
-}
-function targetRequestCheck(input) {
-  requireIdentifier(input.targetId, "target ID");
-  requireCondition(
-    Array.isArray(input.entryPoints) && input.entryPoints.length > 0,
-    "Missing entry points. Give one or more --entry-point <name>:<url|command|value>:<purpose>."
-  );
-  const entryPoints = input.entryPoints.map(entryPointCheck);
-  requireCondition(
-    new Set(entryPoints.map((entry) => entry.name)).size === entryPoints.length,
-    "Duplicate entry point name"
-  );
-  for (const [name, list2] of [
-    ["capabilities", input.capabilities],
-    ["operations", input.allowedOperations]
-  ]) {
-    requireCondition(Array.isArray(list2) && list2.length > 0, `Missing ${name}`);
-    list2.forEach((item) => requireIdentifier(item, name));
-    requireCondition(new Set(list2).size === list2.length, `Duplicate item in ${name}`);
-  }
-  const tools = (input.tools ?? []).map((tool) => toolCheck(tool));
-  requireCondition(new Set(tools.map((tool) => tool.name)).size === tools.length, "Duplicate tool name");
-  return {
-    targetId: input.targetId,
-    entryPoints,
-    capabilities: input.capabilities,
-    allowedOperations: input.allowedOperations,
-    tools
-  };
-}
-function entryPointCheck(entry) {
-  const name = requireIdentifier(entry.name, "entry point name");
-  return {
-    name,
-    kind: requireChoice(entry.kind, entryPointKinds, `kind of entry point ${name}`),
-    purpose: requireText(entry.purpose, `purpose of entry point ${name}`).trim()
-  };
-}
-function toolName(value2) {
-  const name = typeof value2 === "string" ? value2.trim() : value2;
-  requireCondition(
-    typeof name === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(:[A-Za-z0-9][A-Za-z0-9_-]{0,95})?$/.test(name),
-    `Invalid tool name: ${String(name)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit, with an optional <plugin>: prefix.`
-  );
-  return name;
-}
-function toolCheck(tool) {
-  return {
-    name: toolName(tool.name),
-    kind: requireChoice(tool.kind, toolKinds, `kind of tool ${tool.name}`),
-    purpose: requireText(tool.purpose, `purpose of tool ${tool.name}`)
-  };
-}
-function targetRequest(store, targetId) {
-  const row = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
-  requireCondition(row, `Unknown target: ${targetId}. Run target open first.`);
-  return JSON.parse(row.body);
-}
-function showTargetRequest(store, targetId) {
-  return completed(targetId, { request: targetRequest(store, targetId) });
-}
-function saveTarget(store, actor, input) {
-  const reply = save(store, actor, input);
-  removeTemporaryDirectory(store, `setup-${input.targetId}`);
-  return reply;
-}
-function save(store, actor, input) {
-  return write(store, { actor, command: "target save", subject: input.targetId, input }, (operationId) => {
-    const request = targetRequest(store, input.targetId);
-    const profile = profileCheck(input.profile);
-    requireCondition(
-      profile.targetId === request.targetId,
-      `Profile targetId ${profile.targetId} differs from ${request.targetId}`
-    );
-    requireCondition(
-      same(profile.entryPoints, request.entryPoints),
-      "Profile entryPoints differ from the setup request"
-    );
-    requireCondition(
-      same(profile.capabilities, request.capabilities),
-      "Profile capabilities differ from the setup request"
-    );
-    requireCondition(
-      same(profile.allowedOperations, request.allowedOperations),
-      "Profile allowedOperations differ from the setup request"
-    );
-    for (const requested of request.tools) {
-      const tool = profile.tools.find((tool2) => tool2.name === requested.name);
-      requireCondition(tool, `Profile has no entry for the requested tool ${requested.name}`);
-      requireCondition(
-        tool.kind === requested.kind,
-        `Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
-      );
-    }
-    const unreachable = profile.tools.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name)).map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`);
-    requireCondition(
-      !unreachable.length || !profile.readyForLiveExecution,
-      `${unreachable.join(". ")}. Set readyForLiveExecution to false.`
-    );
-    const body = canonical(profile);
-    const latest = one(
-      store,
-      "SELECT revision, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
-      profile.targetId
-    );
-    const subject = `${profile.targetId}@${profile.revision}`;
-    const reasons2 = profile.readyForLiveExecution ? [] : [...unreachable, "Target prerequisites are not ready. Inspect the profile."];
-    const status = profile.readyForLiveExecution ? "completed" : "needs_decision";
-    const data = { targetId: profile.targetId, revision: profile.revision, sha256: digest(body) };
-    if (latest && latest.revision === profile.revision) {
-      requireCondition(
-        latest.body === body,
-        `Profile ${subject} exists with other content. Save revision ${latest.revision + 1} for changes.`
-      );
-      return { reply: { status, subject, reasons: reasons2, data: { ...data, recorded: false } }, subjects: [] };
-    }
-    const next = (latest?.revision ?? 0) + 1;
-    requireCondition(profile.revision === next, `Profile revision must be ${next}, not ${profile.revision}`);
-    execute(
-      store,
-      "INSERT INTO profiles (target_id, revision, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?)",
-      profile.targetId,
-      profile.revision,
-      data.sha256,
-      body,
-      operationId
-    );
-    return {
-      reply: { status, subject, reasons: reasons2, data: { ...data, recorded: true } },
-      subjects: [`target:${profile.targetId}`]
-    };
-  });
-}
-function targetRevision(store, targetId, revision = null) {
-  const row = one(
-    store,
-    revision === null ? "SELECT revision, sha256, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1" : "SELECT revision, sha256, body FROM profiles WHERE target_id = ? AND revision = ?",
-    targetId,
-    ...revision === null ? [] : [revision]
-  );
-  requireCondition(row, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
-  return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 };
-}
-function showTarget(store, reference, instanceId) {
-  const { id: id2, revision } = revisionReference(reference, "target reference");
-  const target = targetRevision(store, id2, revision);
-  return completed(`${id2}@${target.revision}`, {
-    targetId: id2,
-    revision: target.revision,
-    sha256: target.sha256,
-    approvals: approvalPolicy(target.profile),
-    profile: target.profile,
-    instances: instanceList(store, id2).filter((instance) => !instance.retired),
-    ...instanceId === void 0 ? {} : { instance: findInstance(store, id2, instanceId) }
-  });
-}
-function targetList(store) {
-  return all(
-    store,
-    `SELECT r.target_id, r.body, (SELECT max(revision) FROM profiles p WHERE p.target_id = r.target_id) AS revision,
-			(SELECT count(*) FROM instances i WHERE i.target_id = r.target_id AND NOT EXISTS
-				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
-				AS instances
-		FROM target_requests r ORDER BY r.target_id`
-  ).map((row) => {
-    const request = JSON.parse(row.body);
-    return {
-      targetId: row.target_id,
-      revision: row.revision,
-      capabilities: request.capabilities,
-      entryPoints: request.entryPoints.map((entry) => entry.name),
-      activeInstances: row.instances
-    };
-  });
-}
-function targetHistory(store, targetId) {
-  targetRequest(store, targetId);
-  const rows = all(
-    store,
-    `SELECT p.revision, p.sha256, p.body, o.at, o.actor FROM profiles p JOIN operations o ON o.id = p.operation_id
-		WHERE p.target_id = ? ORDER BY p.revision`,
-    targetId
-  );
-  return rows.map((row, i) => {
-    const profile = JSON.parse(row.body);
-    const before = i ? JSON.parse(rows[i - 1].body) : null;
-    const keys = [.../* @__PURE__ */ new Set([...Object.keys(profile), ...Object.keys(before ?? {})])].sort();
-    return {
-      revision: row.revision,
-      sha256: row.sha256,
-      at: row.at,
-      actor: row.actor,
-      changed: before ? keys.filter((key) => key !== "revision" && canonical(profile[key]) !== canonical(before[key])) : []
-    };
-  });
-}
-function instanceCheck(entryPoints, value2) {
-  const instance = validate("instance", value2);
-  const names = Object.keys(instance.entries);
-  const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
-  const unknown = names.filter((name) => !entryPoints.some((entry) => entry.name === name));
-  requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
-  requireCondition(
-    !unknown.length,
-    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints.map((entry) => entry.name).join(", ")}.`
-  );
-  const entries = {};
-  for (const entry of entryPoints) {
-    const text = requireText(instance.entries[entry.name], `value for entry point ${entry.name}`).trim();
-    entries[entry.name] = text;
-    if (entry.kind !== "url") continue;
-    let url;
-    try {
-      url = new URL(text);
-    } catch {
-      throw new Error(`Entry point ${entry.name} needs a valid URL, not ${text}`);
-    }
-    requireCondition(
-      !url.username && !url.password,
-      `Entry point ${entry.name} has URL credentials. Use authentication references instead.`
-    );
-  }
-  const references2 = (instance.references ?? []).map((reference) => requireText(reference, "reference").trim());
-  const repeated = references2.find((reference, i) => references2.indexOf(reference) !== i);
-  requireCondition(repeated === void 0, `Reference ${repeated} is given twice`);
-  return {
-    entries,
-    ...instance.environment === void 0 ? {} : { environment: requireText(instance.environment, "environment").trim() },
-    references: references2
-  };
-}
-function addInstance(store, actor, input) {
-  return write(store, { actor, command: "target instance add", subject: input.targetId, input }, (operationId) => {
-    const request = targetRequest(store, input.targetId);
-    const instanceId = requireIdentifier(input.instanceId, "instance ID");
-    const instance = instanceCheck(request.entryPoints, input.instance);
-    const subject = `${input.targetId}/${instanceId}`;
-    const existing = one(
-      store,
-      "SELECT body FROM instances WHERE target_id = ? AND instance_id = ?",
-      input.targetId,
-      instanceId
-    );
-    if (existing) {
-      requireCondition(
-        !retirement(store, input.targetId, instanceId),
-        `Instance ${subject} is retired. Use a new instance ID.`
-      );
-      requireCondition(
-        existing.body === canonical(instance),
-        `Instance ${subject} exists. An instance does not change. Use a new instance ID.`
-      );
-      return { reply: completed(subject, { ...instance, instanceId, recorded: false }), subjects: [] };
-    }
-    execute(
-      store,
-      "INSERT INTO instances (target_id, instance_id, body, operation_id) VALUES (?, ?, ?, ?)",
-      input.targetId,
-      instanceId,
-      canonical(instance),
-      operationId
-    );
-    return {
-      reply: completed(subject, { ...instance, instanceId, recorded: true }),
-      subjects: [`target:${input.targetId}`]
-    };
-  });
-}
-function retireInstance(store, actor, input) {
-  return write(store, { actor, command: "target instance retire", subject: input.targetId, input }, (operationId) => {
-    const instance = findInstance(store, input.targetId, input.instanceId);
-    const subject = `${input.targetId}/${input.instanceId}`;
-    if (instance.retired)
-      return {
-        reply: completed(subject, { instanceId: input.instanceId, recorded: false }),
-        subjects: []
-      };
-    execute(
-      store,
-      "INSERT INTO instance_retirements (target_id, instance_id, operation_id) VALUES (?, ?, ?)",
-      input.targetId,
-      input.instanceId,
-      operationId
-    );
-    const startedRuns = all(
-      store,
-      "SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid",
-      input.targetId,
-      input.instanceId
-    ).map((row) => row.run_id);
-    return {
-      reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
-      subjects: [`target:${input.targetId}`]
-    };
-  });
-}
-function retirement(store, targetId, instanceId) {
-  return one(
-    store,
-    `SELECT o.at, o.actor FROM instance_retirements x JOIN operations o ON o.id = x.operation_id
-		WHERE x.target_id = ? AND x.instance_id = ?`,
-    targetId,
-    instanceId
-  );
-}
-function instanceRecord(store, targetId, row) {
-  const body = JSON.parse(row.body);
-  const order = targetRequest(store, targetId).entryPoints.map((entry) => entry.name);
-  const retired = retirement(store, targetId, row.instance_id);
-  return {
-    targetId,
-    instanceId: row.instance_id,
-    entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
-    environment: body.environment ?? null,
-    references: body.references ?? [],
-    addedAt: row.at,
-    addedBy: row.actor,
-    retired: retired ? { at: retired.at, actor: retired.actor } : null
-  };
-}
-function instanceList(store, targetId) {
-  targetRequest(store, targetId);
-  return all(
-    store,
-    `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
-		WHERE i.target_id = ? ORDER BY i.rowid`,
-    targetId
-  ).map((row) => instanceRecord(store, targetId, row));
-}
-function findInstance(store, targetId, instanceId) {
-  targetRequest(store, targetId);
-  const row = one(
-    store,
-    `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
-		WHERE i.target_id = ? AND i.instance_id = ?`,
-    targetId,
-    instanceId
-  );
-  requireCondition(row, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
-  return instanceRecord(store, targetId, row);
-}
-function runInstance(store, targetId, instanceId) {
-  if (instanceId !== void 0) {
-    const instance = findInstance(store, targetId, instanceId);
-    requireCondition(
-      !instance.retired,
-      `Instance ${targetId}/${instanceId} is retired. A retired instance cannot start a run.`
-    );
-    return instance;
-  }
-  const active = instanceList(store, targetId).filter((instance) => !instance.retired);
-  requireCondition(
-    active.length,
-    `Target ${targetId} has no active instance. Add one with target instance add ${targetId} <instanceId>.`
-  );
-  requireCondition(
-    active.length === 1,
-    `Target ${targetId} has ${active.length} active instances: ${active.map((instance) => instance.instanceId).join(", ")}. Name one with --instance.`
-  );
-  return active[0];
-}
-
 // plugin/src/journal.ts
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join as join2, relative, resolve, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync as readFileSync2, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
+import { isAbsolute, join as join3, relative, resolve, sep } from "node:path";
 var entryKinds = ["criterion", "observation", "defect", "question", "verdict", "note", "issue"];
 var prefixes = {
   criterion: "C",
@@ -8981,18 +9327,18 @@ var storedRef = (target, actor) => target.actor === actor ? bareOf(target.id) : 
 var ofKind = (state, kind) => state.entries.filter((entry) => entry.kind === kind);
 function evidenceFile(store, name) {
   requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
-  const real = realpathSync(resolve(store.workspace, name));
+  const real = realpathSync2(resolve(store.workspace, name));
   requireWellFormed(
-    real.startsWith(realpathSync(store.workspace) + sep),
+    real.startsWith(realpathSync2(store.workspace) + sep),
     `Evidence file must be inside the workspace: ${name}`
   );
-  const stats = statSync(real);
+  const stats = statSync2(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
   requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
-  return readFileSync(real);
+  return readFileSync2(real);
 }
 function insideWorkspace(store, path) {
-  return realpathSync(path).startsWith(realpathSync(store.workspace) + sep);
+  return realpathSync2(path).startsWith(realpathSync2(store.workspace) + sep);
 }
 var skippedFolders = ["node_modules", ".git", ".checkmate"];
 var isEvidenceText = (spec) => /\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec);
@@ -9008,10 +9354,10 @@ function filesEndingWith(folder, segments, above = []) {
     if (item.isFile()) {
       const path = [...above, item.name];
       const tail = path.slice(-segments.length);
-      return tail.length === segments.length && tail.every((name, index2) => name === segments[index2]) ? [join2(folder, item.name)] : [];
+      return tail.length === segments.length && tail.every((name, index2) => name === segments[index2]) ? [join3(folder, item.name)] : [];
     }
     if (!item.isDirectory() || skippedFolders.includes(item.name)) return [];
-    return filesEndingWith(join2(folder, item.name), segments, [...above, item.name]);
+    return filesEndingWith(join3(folder, item.name), segments, [...above, item.name]);
   });
 }
 function onlyFileEndingWith(cwd, spec) {
@@ -10305,7 +10651,7 @@ function gate(store, input) {
     }
     if (!target.profile.capabilities.includes(test.capability))
       reasons2.push(`Missing capability: ${test.capability}`);
-    if (!test.operations.every((operation) => target.profile.allowedOperations.includes(operation)))
+    if (!test.operations.every((operation) => operationAllowed(target.profile, operation)))
       reasons2.push(`Operation is not permitted: ${id2}`);
     if (!test.assertions.length) reasons2.push(`Test has no assertions: ${id2}`);
     for (const dependency of test.dependsOn)
@@ -10642,8 +10988,8 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync2, readFileSync as readFileSync2, realpathSync as realpathSync2, rmSync as rmSync2, statSync as statSync2 } from "node:fs";
-import { basename, extname, isAbsolute as isAbsolute2, join as join3, resolve as resolve2, sep as sep2 } from "node:path";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, realpathSync as realpathSync3, rmSync as rmSync2, statSync as statSync3 } from "node:fs";
+import { basename as basename2, extname, isAbsolute as isAbsolute2, join as join4, resolve as resolve2, sep as sep2 } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes2 = 32 * 1024 * 1024;
 var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
@@ -10852,7 +11198,7 @@ function beginRun(store, actor, input) {
     }
   );
   if (reply.status === "completed")
-    mkdirSync2(join3(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
+    mkdirSync2(join4(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
 function plannedTarget(store, text) {
@@ -10889,27 +11235,27 @@ function readEvidence(store, runId, spec) {
   let root;
   let real;
   try {
-    root = realpathSync2(join3(store.workspace, directory2));
+    root = realpathSync3(join4(store.workspace, directory2));
   } catch {
     throw new Error(`Evidence directory ${directory2} does not exist`);
   }
   const path = resolve2(store.workspace, name);
   try {
-    real = realpathSync2(path);
+    real = realpathSync3(path);
   } catch {
     throw new Refusal("malformed", `Evidence file not found: ${name}`, `Save the file in ${directory2} first.`);
   }
   requireWellFormed(real.startsWith(root + sep2), `Evidence file must be inside ${directory2}: ${name}`);
-  const stats = statSync2(real);
+  const stats = statSync3(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
   requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name}`);
   const extension = extname(name).toLowerCase();
   return {
     path,
-    name: basename(name),
+    name: basename2(name),
     kind: match ? match[2] : kindByExtension[extension] ?? "observation",
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
-    bytes: readFileSync2(real)
+    bytes: readFileSync3(real)
   };
 }
 function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
@@ -12166,6 +12512,9 @@ function repairPrompt(refusals) {
     "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
 }
+function operationText(operations) {
+  return operations.includes(anyTestOperation) ? anyTestOperationText : `You can: ${operations.join(", ")}.`;
+}
 function entryPointLine(entry) {
   if (entry.kind === "command")
     return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
@@ -12184,7 +12533,7 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
     "The application:",
     ...entries.map(entryPointLine),
     "",
-    `You can: ${charter.operations.join(", ")}. Do not change the code, the configuration, or the deployment of the application.`,
+    `${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
     ...charter.tools.length ? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join("; ")}`] : [],
     `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
     `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
@@ -12220,7 +12569,7 @@ function verifierBrief(items, entries, operations, dataPrefix) {
     "The application:",
     ...entries.map(entryPointLine),
     "",
-    `You can: ${operations.join(", ")}. Do not change the code, the configuration, or the deployment of the application.`,
+    `${operationText(operations)} Do not change the code, the configuration, or the deployment of the application.`,
     `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
     "",
     "The problems:",
@@ -12230,212 +12579,6 @@ function verifierBrief(items, entries, operations, dataPrefix) {
     "",
     'At the end, reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
   ].join("\n");
-}
-
-// plugin/src/sessions.ts
-import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, readFileSync as readFileSync3, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
-import { homedir } from "node:os";
-import { delimiter, join as join4 } from "node:path";
-import { fileURLToPath } from "node:url";
-var pluginRoot = fileURLToPath(new URL("..", import.meta.url));
-var maxOutputBytes = 4 * 1024 * 1024;
-var reservedClaudeArgs = [
-  "-p",
-  "--print",
-  "--output-format",
-  "--input-format",
-  "--json-schema",
-  "--plugin-dir",
-  "--settings",
-  "--resume",
-  "--fork-session",
-  "--session-id",
-  "--permission-prompts",
-  "--allowedTools",
-  "--allowed-tools",
-  "--tools",
-  "--disallowedTools",
-  "--disallowed-tools"
-];
-function checkmateScript() {
-  const own = fileURLToPath(import.meta.url);
-  return own.endsWith(".ts") ? join4(pluginRoot, "bin", "checkmate.ts") : own;
-}
-function claudeConfigDir(env) {
-  return env.CLAUDE_CONFIG_DIR?.trim() || join4(homedir(), ".claude");
-}
-function realPath(path) {
-  try {
-    return realpathSync3(path);
-  } catch {
-    return void 0;
-  }
-}
-function installedPluginId(env, root = pluginRoot) {
-  let installed;
-  try {
-    installed = JSON.parse(readFileSync3(join4(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
-  } catch {
-    return null;
-  }
-  const own = realPath(root);
-  for (const [id2, installs] of Object.entries(installed.plugins ?? {}))
-    for (const install of Array.isArray(installs) ? installs : [])
-      if (typeof install.installPath === "string" && own && realPath(install.installPath) === own) return id2;
-  return null;
-}
-function checkClaudeArgs(claudeArgs) {
-  for (const arg of claudeArgs) {
-    const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`));
-    if (reserved)
-      throw new Refusal(
-        "malformed",
-        `--claude-arg ${arg} is not permitted. Checkmate needs its own control of ${reserved}.`,
-        "Give tool rules with --allow. Give other host choices, for example --model, with --claude-arg."
-      );
-  }
-  return claudeArgs;
-}
-function childArgs(context, own) {
-  return [
-    "-p",
-    ...context.claudeArgs,
-    ...context.hiddenPlugin ? ["--settings", JSON.stringify({ enabledPlugins: { [context.hiddenPlugin]: false } })] : [],
-    ...own,
-    "--output-format",
-    "json",
-    "--permission-prompts",
-    "none"
-  ];
-}
-function childEnv(env, extra = {}) {
-  return {
-    ...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith("CHECKMATE_"))),
-    ...extra
-  };
-}
-function executableOnPath(name, env) {
-  for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const path = join4(directory2, name);
-    try {
-      accessSync(path, constants.X_OK);
-      if (statSync3(path).isFile()) return path;
-    } catch {
-    }
-  }
-  return void 0;
-}
-function requireClaude(env) {
-  const claude = executableOnPath("claude", env);
-  if (!claude)
-    throw new Refusal(
-      "prohibited",
-      "No claude executable on PATH. Nothing changed.",
-      "Install Claude Code, or add the directory of claude to PATH. Then run the command again."
-    );
-  return claude;
-}
-function excerpt(text) {
-  const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
-  return line ? `: ${line}` : "";
-}
-function claudeResult(output, error, status, signal) {
-  let parsed = {};
-  try {
-    const value2 = JSON.parse(output);
-    if (value2 && typeof value2 === "object") parsed = value2;
-  } catch {
-  }
-  const failure = status !== 0 ? [
-    "operational_error",
-    `claude exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || parsed.result)}`
-  ] : parsed.is_error === true ? ["operational_error", `claude ended with an error${excerpt(parsed.result)}`] : void 0;
-  return {
-    failure,
-    result: parsed.result,
-    ...typeof parsed.total_cost_usd === "number" ? { costUsd: parsed.total_cost_usd } : {},
-    ...typeof parsed.duration_ms === "number" ? { durationMs: parsed.duration_ms } : {},
-    ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
-  };
-}
-function callClaude(claude, args, prompt, cwd, env, seconds) {
-  const child = spawnSync(claude, args, {
-    cwd,
-    env,
-    input: prompt,
-    encoding: "utf8",
-    timeout: seconds * 1e3,
-    killSignal: "SIGTERM",
-    maxBuffer: maxOutputBytes
-  });
-  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
-  if (code === "ETIMEDOUT")
-    return { failure: ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`] };
-  if (code) return { failure: ["operational_error", `claude failed: ${code}.`] };
-  return claudeResult(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
-}
-function closingBracket(text, start) {
-  let depth = 0;
-  let quoted = false;
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-    if (quoted) {
-      if (char === "\\") i++;
-      else if (char === '"') quoted = false;
-    } else if (char === '"') quoted = true;
-    else if (char === "[") depth++;
-    else if (char === "]" && --depth === 0) return i;
-  }
-  return -1;
-}
-function replyArray(text) {
-  if (typeof text !== "string") return void 0;
-  for (let start = text.indexOf("["); start !== -1; start = text.indexOf("[", start + 1)) {
-    const end = closingBracket(text, start);
-    if (end === -1) continue;
-    try {
-      const parsed = JSON.parse(text.slice(start, end + 1));
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-    }
-  }
-  return void 0;
-}
-function launchClaude(claude, args, prompt, cwd, env, seconds) {
-  return new Promise((resolvePromise) => {
-    const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
-    let output = "";
-    let errors = "";
-    let failure;
-    const kill = (signal) => {
-      try {
-        process.kill(-child.pid, signal);
-      } catch {
-      }
-    };
-    const timer = setTimeout(() => {
-      failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
-      kill("SIGTERM");
-      setTimeout(() => kill("SIGKILL"), 1500).unref();
-    }, seconds * 1e3);
-    child.stdout.on("data", (bytes) => {
-      if (output.length < maxOutputBytes) output += bytes.toString();
-    });
-    child.stderr.on("data", (bytes) => {
-      if (errors.length < 4096) errors += bytes.toString();
-    });
-    child.stdin.on("error", () => {
-    });
-    child.stdin.end(prompt);
-    child.on("error", (error) => {
-      failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
-    });
-  });
 }
 
 // plugin/src/recorder.ts
@@ -18240,7 +18383,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/modes.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
+import { spawnSync as spawnSync3 } from "node:child_process";
 var testModes = ["exploratory", "regression", "auto"];
 function hasRequest(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId));
@@ -18251,7 +18394,7 @@ function autoMode(store, planId) {
   return explored || checked ? "regression" : "exploratory";
 }
 function changedFiles(workspace, since) {
-  const diff = spawnSync2("git", ["diff", "--name-only", since, "--"], { cwd: workspace, encoding: "utf8" });
+  const diff = spawnSync3("git", ["diff", "--name-only", since, "--"], { cwd: workspace, encoding: "utf8" });
   if (diff.status !== 0)
     throw new Refusal(
       "malformed",
@@ -18266,17 +18409,50 @@ function nextRunId(store) {
     all(store, "SELECT run_id FROM runs").map((row) => row.run_id)
   );
 }
-function openRequest(store, actor, input) {
-  requireWellFormed(
-    input.objective && input.target,
-    `Unknown plan: ${input.planId}. Give --objective, --target, and --source to record its request.`,
-    `checkmate test ${input.planId} --build ${input.build} --objective "<goal>" --target <targetId> --source <file or ticket>`
+function gitBuild(workspace) {
+  const head = spawnSync3("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace, encoding: "utf8" });
+  return head.status === 0 ? head.stdout.trim() || void 0 : void 0;
+}
+function dateBuild(now = /* @__PURE__ */ new Date()) {
+  return `local-${now.toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-")}`;
+}
+function chosenTarget(store, actor, input, env, assumed) {
+  if (input.target) return input.target;
+  const targets = all(store, "SELECT target_id FROM profiles GROUP BY target_id").map(
+    (row) => row.target_id
   );
-  const revision = targetRevision(store, input.target).revision;
+  if (targets.length === 1) {
+    assumed.push(`target=${targets[0]} (the only target)`);
+    return targets[0];
+  }
+  requireWellFormed(
+    !targets.length,
+    `The store has ${targets.length} targets: ${targets.join(", ")}. Name one with --target.`
+  );
+  requireWellFormed(
+    input.url,
+    "The store has no target. Give the URL of the application with --url.",
+    `checkmate test ${input.planId} --url <url> --source <ticket file>`
+  );
+  const set = setupTarget(store, actor, { url: input.url, instanceId: input.instance, env });
+  assumed.push(...set.data.assumed ?? []);
+  return set.data.targetId;
+}
+function openRequest(store, actor, input, env, assumed) {
+  const sources = input.sources ?? [];
+  requireWellFormed(
+    input.objective || sources.length,
+    `Unknown plan: ${input.planId}. Give the ticket or the criteria file with --source.`,
+    `checkmate test ${input.planId} --source <ticket file>`
+  );
+  const targetId = chosenTarget(store, actor, input, env, assumed);
+  const objective = input.objective ?? `Test the change that ${sources.join(", ")} describes.`;
+  if (!input.objective) assumed.push(`objective=${objective}`);
+  const revision = targetRevision(store, targetId).revision;
   const opened = openPlan(store, actor, {
     planId: input.planId,
-    target: `${input.target}@${revision}`,
-    request: { objective: input.objective, context: { sources: input.sources ?? [] } }
+    target: `${targetId}@${revision}`,
+    request: { objective, context: { sources } }
   });
   if (opened.status !== "completed") throw new Refusal("malformed", opened.reasons.join(" "));
 }
@@ -18295,8 +18471,12 @@ function checkRun(store, actor, input) {
     return { run: null, skipped: begun.reasons.filter((reason) => !/^Refused/.test(reason)) };
   return { run: { runId, tests: begun.data.tests }, skipped: [] };
 }
-function runTest(store, actor, input, env) {
-  if (!hasRequest(store, input.planId)) openRequest(store, actor, input);
+function runTest(store, actor, given, env) {
+  const assumed = [];
+  const build = given.build ?? gitBuild(store.workspace) ?? dateBuild();
+  if (!given.build) assumed.push(`build=${build}`);
+  const input = { ...given, build };
+  if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed);
   const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
   const scope = input.scope ?? (input.since ? changedFiles(store.workspace, input.since) : []);
   const explored = startExploration(store, actor, { ...input, mode, scope }, env);
@@ -18310,6 +18490,7 @@ function runTest(store, actor, input, env) {
       scope,
       run: check.run,
       checkSkipped: check.skipped,
+      assumed,
       next: [
         ...check.run ? [
           `Execute the stored tests of ${check.run.runId}: /checkmate:execute ${check.run.runId}, or checkmate delegate execute ${check.run.runId}`
@@ -19211,6 +19392,29 @@ var commands = {
   "export exploration": exportCommand("explorationId", explorationFormats, exportExploration),
   "claim accept": claimCommand("approved"),
   "claim reject": claimCommand("rejected"),
+  setup: {
+    positionals: [],
+    flags: { url: "value", target: "value", instance: "value", operations: "list", environment: "value" },
+    required: ["url"],
+    write: true,
+    run: (store, args, { actor, env }) => setupTarget(store, actor, {
+      url: value(args, "url"),
+      targetId: value(args, "target"),
+      instanceId: value(args, "instance"),
+      operations: list(args, "operations"),
+      environment: value(args, "environment"),
+      env
+    }),
+    print: (reply) => ({
+      facts: {
+        revision: reply.data.revision,
+        instance: reply.data.instanceId,
+        capabilities: reply.data.capabilities,
+        operations: reply.data.allowedOperations,
+        ready: reply.data.ready
+      }
+    })
+  },
   test: {
     positionals: ["planId"],
     flags: {
@@ -19226,9 +19430,9 @@ var commands = {
       target: "value",
       source: "repeat",
       since: "value",
-      scope: "list"
+      scope: "list",
+      url: "value"
     },
-    required: ["build"],
     write: true,
     run: (store, args, { actor, env }) => runTest(
       store,
@@ -19247,7 +19451,8 @@ var commands = {
         target: value(args, "target"),
         sources: list(args, "source"),
         since: value(args, "since"),
-        scope: list(args, "scope")
+        scope: list(args, "scope"),
+        url: value(args, "url")
       },
       env
     ),
@@ -19754,6 +19959,7 @@ function compact(reply, printed) {
     [reply.status, reply.subject, ...reply.refusal ? [`refusal=${reply.refusal}`] : [], ...facts2].join(" "),
     ...(printed.lines ?? []).map((line) => line.map(cell2).join("	")),
     ...warnings.map((warning) => `warning	${cell2(warning)}`),
+    ...(reply.data.assumed ?? []).map((value2) => `assumed: ${cell2(value2)}`),
     ...reply.reasons.map((reason) => `reason: ${cell2(reason)}`),
     ...reply.hint ? [`hint: ${cell2(reply.hint)}`] : []
   ].join("\n");

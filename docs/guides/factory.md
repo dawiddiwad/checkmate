@@ -53,6 +53,8 @@ An argument can change the permissions of the worker, for example `--permission-
 
 ### 1. Set up the target
 
+For a target with defaults, run one command: `checkmate setup --url <url>`. Read [setup](../reference/commands.md#setup). For full control, use the commands below.
+
 Set up the target once. Name each entry point with `--entry-point <name>:<url|command|value>:<purpose>`. Name the tools that the stages can use with `--tool <name>:<cli|mcp|skill>:<purpose>`. When no tool is named for a capability, the setup stage adds `playwright-cli` for `browser` and `node` for `http`.
 
 Then add the first instance: the place where the application runs. An instance gives a value for each entry point. The setup stage checks the target through it.

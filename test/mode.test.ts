@@ -33,7 +33,7 @@ test('test records a missing request, explores first, and checks the stored test
 	const { command, wait } = setup(t)
 	const bare = command(['test', 'cart', '--build', 'b1', ...allow])
 	assert.equal(bare.code, 1)
-	assert.match(bare.body.reasons[1], /^Unknown plan: cart\. Give --objective, --target, and --source/)
+	assert.match(bare.body.reasons[1], /^Unknown plan: cart\. Give the ticket or the criteria file with --source\./)
 	const base = ['test', 'cart', '--build', 'b1', '--level', 'smoke', ...allow]
 	const first = command([
 		...base,

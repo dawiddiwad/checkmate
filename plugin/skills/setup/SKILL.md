@@ -7,6 +7,10 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, t
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
+## Quick setup
+
+When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <id>`, `--instance <name>`, `--operations <a,b>`, or `--environment <text>` only when the oracle gives them. Do not ask for a value that has a default. Report each `assumed:` line, so that the oracle can correct it. Ask only for a missing URL, credentials, or the operations of a production instance. Use the steps below only for full control.
+
 ## Tools
 
 A target profile lists the tools that the stages can use. Each tool has a `name`, a `kind`, and a `purpose`:

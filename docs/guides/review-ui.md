@@ -22,11 +22,28 @@ The command prints `completed ui url=<url>`. Open that URL in a browser on the s
 
 ## Pages
 
-### Inbox
+### Needs you
 
-<img src="../img/ui/inbox.jpg" alt="The inbox in dark mode with four items: two gaps to answer, one of them from run-7, one plan to approve, and one result to accept." width="100%"/>
+The start page. It shows the items that wait for your decision in a list on the left, and the selected item on the right. The most urgent item is first, and the page selects it when it opens. The list has these groups, in this order:
 
-The start page. It groups the gaps to answer, the plans to approve or change, the results to accept, and the plans to draft. A rejected plan shows `rejected`, and its summary starts with `Rejected. Change the plan.` The number next to `Inbox` counts the oracle actions only. A rejected plan is an oracle action. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. A question of an exploration is in the same list and shows `from exploration <explorationId>`. You answer it with the same form as a gap. The group `Claims to decide` lists the claims that are `suspected` or `unresolved`. After a decision, the UI opens the next item.
+1. `Blocks testing`: the open questions and gaps that block testing.
+2. `Claims to decide`: the claims that are `suspected` or `unresolved`, the most severe first.
+3. `Approvals`: the plans to approve or change, and the results to accept.
+4. `Questions that do not block`: the other open questions and gaps. This group is folded. Click its title to open it.
+
+Above the groups, `Explorations` names each running, paused, or failed exploration, with a link to its live view. A paused exploration waits for you in the Claude Code session, not in the UI.
+
+The number next to `Needs you` counts the items of the first three groups. The questions that do not block are not in the number.
+
+- On a question, choose the kind of answer, write the answer and the rationale, then click `Record answer`.
+- On a claim, read the expected and the actual result, the steps, and the evidence. Choose `Accept as a defect` or `Reject`, write the rationale, then click `Record decision`.
+- On a plan or a result, click `Review and decide`. The plan page or the run page opens.
+
+After you record an answer or a decision, the list selects the next item. The page does not load again. The address of the page keeps the selected item and the filters, for example `/?plan=checkout&q=coupon&item=...`. Thus Back in the browser and a copied link show the same list and item. The breadcrumb above the item goes back to the list. `Open full page` opens the claim, question, or gap page.
+
+On a window narrower than 760 pixels, the list and the item take turns. Select an item to show it. Click `Needs you` in the breadcrumb to show the list again.
+
+`/inbox` shows all items as one list, oldest first.
 
 ### Exploration
 
@@ -41,11 +58,11 @@ The start page. It groups the gaps to answer, the plans to approve or change, th
 
 A verify step that ends as `skipped` shows its reason. A failed or stopped exploration shows its reason and the kept work folder `.checkmate/work/<explorationId>` and the log. A failed follow-up does not change a completed exploration. The page shows the reason of the follow-up and its kept data, and the claims and questions stay.
 
-A claim page shows the expected result, the actual result, the steps, and the reporters. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
+A claim page shows the expected result, the actual result, the steps, the evidence, and the reporters. An image shows as a thumbnail. Click it to see it larger. A small text file shows as text. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
 
-### Inbox and running explorations
+### Running explorations
 
-The inbox, the plan pages, the loop state, and the counts show only the merged claims and questions of completed explorations. While a follow-up runs, its new entries wait in the same way. The plan page names each running exploration in one banner: `Exploration <id> is running`, with a link to the live view.
+`Needs you`, the inbox, the plan pages, the loop state, and the counts show only the merged claims and questions of completed explorations. While a follow-up runs, its new entries wait in the same way. The plan page names each running exploration in one banner: `Exploration <id> is running`, with a link to the live view.
 
 ### Plans
 
@@ -92,7 +109,7 @@ Each change records your name and shows in the Log, as with the command `target 
 
 1. Type a rationale. The action button stays disabled until the rationale has text.
 2. Click the action, for example `Approve checkout@2`. The panel shows a short summary and a `Confirm` button.
-3. Click `Confirm`. The UI records the decision and opens the next inbox item.
+3. Click `Confirm`. The UI records the decision and opens `Needs you`.
 
 Each form sends the digest of the snapshot that you see. A decision form also sends a token of the latest decision on the subject. When the record changed after the page loaded, the UI refuses the action, keeps your text, and shows a message.
 
@@ -111,14 +128,17 @@ Each page updates when another process writes to the record, for example a deleg
 
 ## Keyboard
 
-| Key     | Action                             |
-| ------- | ---------------------------------- |
-| `/`     | Focus the search field.            |
-| `j` `k` | Move down and up in a list.        |
-| `Enter` | Open the selected item.            |
-| `g` `i` | Go to the inbox.                   |
-| `Esc`   | Close the evidence viewer or menu. |
-| `?`     | Show the shortcuts.                |
+| Key            | Action                                                                  |
+| -------------- | ----------------------------------------------------------------------- |
+| `/`            | Focus the search field.                                                 |
+| `j` `k`        | Move down and up in a list. On `Needs you`, select the next item.       |
+| `Enter`        | Open the selected item. On `Needs you`, go to the form of the item.     |
+| `a` `r`        | On a claim in `Needs you`: choose `Accept as a defect` or `Reject`.     |
+| `c` `s` `d`    | On a question in `Needs you`: choose Clarify, Accept assumption, Defer. |
+| `Ctrl` `Enter` | Send the form of the item.                                              |
+| `g` `i`        | Go to `Needs you`.                                                      |
+| `Esc`          | Close the evidence viewer or menu.                                      |
+| `?`            | Show the shortcuts.                                                     |
 
 ## Next
 

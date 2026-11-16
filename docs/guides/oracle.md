@@ -19,13 +19,13 @@ run-1	result	checkout@1	b1	partial	passed=1
 
 The inbox lists the gaps to answer, the gaps of runs that the plan does not have yet (`run_gap`), the plans to approve, the rejected plans to change, the results to accept, and the plan requests without a revision (`requested`). The plan requests wait for the planner, not for you. The summary of a rejected plan starts with `Rejected. Change the plan.`
 
-To see one ticket, run `checkmate status <planId>`. It names the loop state and who acts next. In the review UI, the inbox is the start page.
+To see one ticket, run `checkmate status <planId>`. It names the loop state and who acts next. In the review UI, `Needs you` is the start page. It shows the most urgent item first.
 
 ## The decisions
 
 | Decision          | Command                                                            | In the UI                         |
 | ----------------- | ------------------------------------------------------------------ | --------------------------------- |
-| Answer a gap      | `checkmate gap answer <planId> <gapId> --kind ...`                 | Inbox or plan page                |
+| Answer a gap      | `checkmate gap answer <planId> <gapId> --kind ...`                 | `Needs you` or plan page          |
 | Change a plan     | `checkmate plan edit <planId@rev>`, or with `--patch`              | `Edit plan`                       |
 | Adopt run gaps    | `checkmate plan adopt-gaps <planId@rev> --run <runId> [--gaps G4]` | `Bring into plan` on the run page |
 | Approve or reject | `checkmate plan approve\|reject <planId@rev> --rationale ...`      | Plan page                         |

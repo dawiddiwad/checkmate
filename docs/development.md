@@ -70,6 +70,8 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 | `test/ui.test.ts`               | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.            |
 | `test/ui.browser.test.ts`       | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                        |
 | `test/ui.pages.browser.test.ts` | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width. |
+| `test/ui.queue.test.ts`         | `Needs you` on the volume seed: order, filters in the address, inline answers and decisions, evidence.  |
+| `test/ui.queue.browser.test.ts` | `Needs you` in a real browser: keys, decisions without a page load, and a narrow window.                |
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
 
@@ -203,6 +205,16 @@ Use the terms of the manual and values that a real run prints, for example the s
 ```sh
 node scripts/render-diagrams.ts
 ```
+
+### Review UI on a volume of data
+
+`scripts/ui-volume.ts` fills a new workspace with a realistic volume: 5 plans, 10 explorations (one running, one paused, one failed), 60 claims in all states with steps and evidence, 81 merged questions, 3 runs, and their operations. It uses only the store functions and starts no model. Open the UI on it with one command:
+
+```sh
+npm run ui:volume
+```
+
+The command prints the URL. Ctrl+C stops the UI and deletes the workspace. To keep the workspace, seed a folder: `node scripts/ui-volume.ts --seed <folder>`, then run `checkmate ui --workspace <folder>`.
 
 ### Review UI screenshots
 

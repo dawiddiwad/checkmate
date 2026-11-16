@@ -88,6 +88,21 @@ const statusLook: Record<string, [string, Tone]> = {
 	needs_retest: ['!', 'warn'],
 	awaits_acceptance: ['○', 'acc'],
 	accepted: ['✓', 'pass'],
+	running: ['●', 'acc'],
+	starting: ['●', 'acc'],
+	testing: ['●', 'acc'],
+	recording: ['●', 'acc'],
+	verifying: ['●', 'acc'],
+	following: ['●', 'acc'],
+	stopped: ['!', 'fail'],
+	skipped: ['–', 'block'],
+	not_in_level: ['–', 'block'],
+	confirmed: ['✗', 'fail'],
+	observed: ['✗', 'fail'],
+	suspected: ['?', 'warn'],
+	unresolved: ['?', 'warn'],
+	answered: ['✓', 'pass'],
+	requested: ['○', 'acc'],
 }
 
 export function words(status: string) {
@@ -143,4 +158,12 @@ export function metadataList(values: Record<string, string | number | boolean> =
 
 export function plural(count: number, one: string, many = `${one}s`) {
 	return `${count} ${count === 1 ? one : many}`
+}
+
+export function duration(ms: number) {
+	const seconds = Math.round(ms / 1000)
+	if (seconds < 60) return `${seconds} s`
+	const minutes = Math.floor(seconds / 60)
+	if (minutes < 60) return `${minutes} min ${seconds % 60} s`
+	return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }

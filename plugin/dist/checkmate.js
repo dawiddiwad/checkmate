@@ -9423,8 +9423,8 @@ function withRefs(entry, name) {
     ...entry.kind === "answer" && { question: name(entry.question) }
   };
 }
-function journal(store, planId, viewer2) {
-  const rows = all(
+function journal(store, planId, viewer2, keep = () => true) {
+  const listed = all(
     store,
     `SELECT e.rowid AS seq, e.body, e.actor, e.exploration_id, o.at FROM journal_entries e
 		JOIN explorations x ON x.exploration_id = e.exploration_id
@@ -9442,6 +9442,7 @@ function journal(store, planId, viewer2) {
       explorationId: row.exploration_id
     };
   });
+  const rows = listed.filter(keep);
   const latest = /* @__PURE__ */ new Map();
   for (const row of rows) latest.set(row.ref, row);
   const seen = (row) => !isTester(viewer2) || row.actor === viewer2 || !isTester(row.actor) || sharedKinds.includes(row.kind);
@@ -9941,13 +9942,13 @@ function claimList(state, decided = /* @__PURE__ */ new Map()) {
     };
   });
 }
-function planClaims(store, planId) {
-  return claimList(journal(store, planId), claimDecisions(store, planId));
+function planClaims(store, planId, keep) {
+  return claimList(journal(store, planId, void 0, keep), claimDecisions(store, planId));
 }
 var factoryStates = ["observed", "confirmed", "accepted"];
 var oracleStates = ["suspected", "unresolved"];
-function planQuestions(store, planId) {
-  const state = journal(store, planId);
+function planQuestions(store, planId, keep) {
+  const state = journal(store, planId, void 0, keep);
   const answers = state.team.filter((entry) => entry.kind === "answer");
   const questions = new Map(state.team.filter((entry) => entry.kind === "question").map((entry) => [entry.id, entry]));
   const topics = state.team.filter((entry) => entry.kind === "topic");
@@ -13472,6 +13473,13 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       launch.timeoutSeconds
     );
     const study = await turn(["--session-id", session], brief.study);
+    if (!study.failure)
+      event(store, actor, explorationId, {
+        step: "turn",
+        explorer,
+        status: "started",
+        detail: { session, turn: "test" }
+      });
     const calls = study.failure ? [study] : [study, await turn(["--resume", session], brief.test)];
     return { explorer, session, calls };
   });
@@ -13968,6 +13976,8 @@ function explorationReport(store, explorationId) {
 }
 
 // plugin/src/views.ts
+import { existsSync as existsSync2 } from "node:fs";
+import { join as join8 } from "node:path";
 function approvalLabel(state) {
   if (state.approved) return "approved";
   if (state.rejected) return "rejected";
@@ -14030,7 +14040,7 @@ function inbox(store) {
   ]);
   const explored = exploredPlans(store);
   const questions = explored.flatMap(
-    (planId) => planQuestions(store, planId).filter((question) => question.answer === null).map((question) => ({
+    (planId) => mergedQuestions(store, planId).filter((question) => question.answer === null).map((question) => ({
       planId,
       revision: null,
       gapId: question.id,
@@ -14045,7 +14055,7 @@ function inbox(store) {
     bySince
   );
   const claims = explored.flatMap(
-    (planId) => planClaims(store, planId).filter((claim) => claim.open && oracleStates.includes(claim.state)).map((claim) => ({
+    (planId) => mergedClaims(store, planId).filter((claim) => claim.open && oracleStates.includes(claim.state)).map((claim) => ({
       planId,
       claimId: claim.id,
       explorationId: claim.explorationId,
@@ -14197,6 +14207,166 @@ function exploredPlans(store) {
   );
 }
 var runningExploration = ["starting", "testing", "recording", "verifying", "following"];
+function mergedUpTo(events) {
+  if (events.find((item) => item.step === "done")?.status !== "completed") return 0;
+  const follow = events.findLastIndex((item) => item.step === "follow");
+  if (follow === -1) return Infinity;
+  const ended = events.slice(follow + 1).find((item) => item.step === "followed");
+  return ended?.status === "completed" ? Infinity : Number(events[follow].detail.after ?? 0);
+}
+var fromSession = (row) => row.actor.startsWith("qa:");
+function mergedEntries(store, planId) {
+  const limits = new Map(
+    all(store, "SELECT exploration_id FROM explorations WHERE plan_id = ?", planId).map(
+      (row) => [row.exploration_id, mergedUpTo(explorationEvents(store, row.exploration_id))]
+    )
+  );
+  return (row) => !fromSession(row) || row.seq <= (limits.get(row.explorationId) ?? 0);
+}
+function mergedClaims(store, planId) {
+  return planClaims(store, planId, mergedEntries(store, planId));
+}
+function mergedQuestions(store, planId) {
+  return planQuestions(store, planId, mergedEntries(store, planId));
+}
+function explorationData(store, explorationId) {
+  return [evidenceFolder(explorationId, ""), `.checkmate/tmp/explore-${explorationId}.log`].filter(
+    (path) => existsSync2(join8(store.workspace, path))
+  );
+}
+function planHasRevision(store, planId) {
+  return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
+}
+function planExplorations(store, planId) {
+  return all(
+    store,
+    "SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid",
+    planId
+  ).map((row) => {
+    const status = explorationStatus(store, row.exploration_id);
+    const ended = ["failed", "stopped"].includes(status.state);
+    return {
+      explorationId: status.explorationId,
+      state: status.state,
+      running: runningExploration.includes(status.state),
+      build: status.build,
+      instanceId: status.instanceId,
+      level: status.level,
+      explorers: status.explorerCount,
+      startedAt: row.started_at,
+      reason: ended ? status.reason : null,
+      data: ended ? explorationData(store, status.explorationId) : []
+    };
+  });
+}
+function explorerLive(store, explorationId, events, item, running3, now) {
+  const own = events.filter((event2) => event2.explorer === item.explorer);
+  const launch = own.find((event2) => event2.step === "launch");
+  const end = own.findLast((event2) => event2.step === "end");
+  const follow = events.findLastIndex((event2) => event2.step === "follow");
+  const followed = events.slice(follow + 1);
+  const followTurn = followed.find((event2) => event2.explorer === item.explorer && event2.step === "follow-turn");
+  const inFollow = follow !== -1 && item.session !== null;
+  const turn = inFollow ? "follow-up" : end ? String(end.detail.turn ?? "test") : launch ? String(own.findLast((event2) => event2.step === "turn")?.detail.turn ?? "study") : null;
+  const startedAt = inFollow ? events[follow].at : launch?.at ?? null;
+  const endedAt = inFollow ? followTurn?.at ?? null : end?.at ?? null;
+  const stopped = followed.some((event2) => event2.step === "followed") ? "skipped" : "stopped";
+  const state = inFollow ? followTurn?.status ?? (running3 ? "running" : stopped) : end?.status ?? (launch ? running3 ? "running" : "stopped" : null);
+  const until = endedAt ? Date.parse(endedAt) : running3 ? now : null;
+  const activity = own.findLast((event2) => typeof event2.detail.activity === "string" && event2.detail.activity);
+  const report = `${evidenceFolder(explorationId, item.explorer)}/report.md`;
+  return {
+    explorer: item.explorer,
+    turn,
+    state,
+    startedAt,
+    elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
+    activity: activity?.detail.activity ?? null,
+    recorded: item.recorded,
+    saved: item.saved,
+    report: !running3 && existsSync2(join8(store.workspace, report)) ? report : null
+  };
+}
+function phaseRows(events, state, verifier) {
+  const running3 = runningExploration.includes(state);
+  const later = running3 ? "pending" : "not_run";
+  const last = (step) => events.findLast((event2) => event2.step === step);
+  const reason = (event2) => event2?.detail.reason ?? null;
+  const records = events.filter((event2) => event2.step === "record");
+  const refused2 = records.filter((event2) => event2.status !== "completed");
+  const merge = last("merge");
+  const verify = last("verify");
+  const follow = last("follow");
+  const followed = follow ? events.slice(events.lastIndexOf(follow) + 1).find((e) => e.step === "followed") : void 0;
+  return [
+    {
+      phase: "record",
+      state: !records.length ? later : state === "recording" ? "running" : refused2.length < records.length ? "completed" : "failed",
+      reason: refused2.length ? refused2.map(
+        (event2) => `${event2.explorer}: ${[event2.detail.reasons ?? []].flat().join(" ") || event2.status}`
+      ).join(" ") : null
+    },
+    { phase: "merge", state: merge?.status ?? later, reason: reason(merge) },
+    {
+      phase: "verify",
+      state: verifier === false ? "not_in_level" : verify?.status ?? (state === "verifying" ? "running" : later),
+      reason: reason(verify)
+    },
+    {
+      phase: "follow-up",
+      state: !follow ? "not_run" : followed?.status ?? (state === "following" ? "running" : "stopped"),
+      reason: reason(followed)
+    }
+  ];
+}
+var phaseOf = {
+  starting: "start",
+  testing: "test",
+  recording: "record and merge",
+  verifying: "verify",
+  following: "follow-up"
+};
+function explorationLive(store, explorationId, now = Date.now()) {
+  const status = explorationStatus(store, explorationId);
+  const opened = exploration(store, explorationId);
+  const events = explorationEvents(store, explorationId);
+  const running3 = runningExploration.includes(status.state);
+  const limit = mergedUpTo(events);
+  const kept = mergedEntries(store, status.planId);
+  const own = (item) => item.explorationId === explorationId;
+  const ended = ["failed", "stopped"].includes(status.state);
+  return {
+    explorationId,
+    planId: status.planId,
+    goal: opened.charter.goal,
+    build: status.build,
+    instanceId: status.instanceId,
+    mode: status.mode,
+    level: status.level,
+    explorerCount: status.explorerCount,
+    model: status.model,
+    startedAt: opened.started_at,
+    state: status.state,
+    running: running3,
+    phase: phaseOf[status.state] ?? null,
+    reason: ended ? status.reason : null,
+    data: ended ? explorationData(store, explorationId) : [],
+    explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running3, now)),
+    phases: phaseRows(events, status.state, startOf(events)?.verifier ?? null),
+    unmerged: journal(store, status.planId).team.filter(
+      (entry) => own(entry) && isTester(entry.actor) && entry.seq > limit && (entry.kind === "question" || entry.kind === "defect")
+    ).map((entry) => ({
+      id: entry.id,
+      explorer: shortName(entry.actor),
+      kind: entry.kind,
+      text: (entry.kind === "question" ? entry.question : entry.title) ?? "",
+      severity: entry.severity ?? null,
+      blocking: entry.blocking === true
+    })),
+    claims: planClaims(store, status.planId, kept).filter(own),
+    questions: planQuestions(store, status.planId, kept).filter(own)
+  };
+}
 var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
 function planStatus(store, planId) {
   const status = loopStatus(store, planId);
@@ -14218,7 +14388,7 @@ function loopStatus(store, planId) {
     const status = explorationStatus(store, row.exploration_id);
     return { explorationId: status.explorationId, build: status.build, state: status.state, reason: status.reason };
   });
-  const claims = planClaims(store, planId).filter((claim) => claim.open).map((claim) => ({
+  const claims = mergedClaims(store, planId).filter((claim) => claim.open).map((claim) => ({
     claimId: claim.id,
     explorationId: claim.explorationId,
     build: claim.build,
@@ -14227,7 +14397,7 @@ function loopStatus(store, planId) {
     title: claim.title,
     reason: claim.reason
   }));
-  const questions = planQuestions(store, planId).filter((question) => question.answer === null);
+  const questions = mergedQuestions(store, planId).filter((question) => question.answer === null);
   const extra = { explorations, claims, questions };
   if (!overlaid.includes(base.state)) return { ...base, ...extra };
   const running3 = explorations.filter((item) => runningExploration.includes(item.state));
@@ -15017,8 +15187,8 @@ var tones = {
   not_executed: "muted"
 };
 var none = "\u2014";
-var join8 = (values) => values.length ? values.join(", ") : none;
-var pairs = (metadata = {}) => join8(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
+var join9 = (values) => values.length ? values.join(", ") : none;
+var pairs = (metadata = {}) => join9(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
 function markdownText(value2) {
   return value2.replace(/\\/g, "\\\\").replace(/([|[\]*_`])/g, "\\$1").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, " ");
 }
@@ -15162,7 +15332,7 @@ function runDocument(report) {
   const { result, sha256, acceptance, plan } = report;
   const planned = new Map(plan.tests.map((test) => [test.id, test]));
   const evidence2 = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files2 = (ids2) => join8(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
+  const files2 = (ids2) => join9(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
   const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
   const assertions = result.tests.flatMap((test) => test.assertions);
   const blocks = [
@@ -15240,8 +15410,8 @@ function runDocument(report) {
     blocks.push({
       table: ["Field", "Value"],
       rows: [
-        ["Assertions", join8(finding.assertionIds)],
-        ["Requirements", join8(finding.requirementIds)],
+        ["Assertions", join9(finding.assertionIds)],
+        ["Requirements", join9(finding.requirementIds)],
         ["Expected", finding.expected],
         ["Observed", finding.observed],
         ["Evidence", files2(finding.evidenceIds)],
@@ -15260,8 +15430,8 @@ function runDocument(report) {
         gap.severity,
         gap.question,
         gap.consequence,
-        join8(gap.requirementIds),
-        join8(gap.testIds)
+        join9(gap.requirementIds),
+        join9(gap.testIds)
       ])
     });
   blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
@@ -15322,7 +15492,7 @@ function runDocument(report) {
           row.requirementId,
           requirement?.text ?? none,
           row.status,
-          join8(row.testIds),
+          join9(row.testIds),
           row.reason ?? none,
           pairs(requirement?.metadata)
         ];
@@ -15368,9 +15538,9 @@ function planReport(plan, sha256) {
         test.id,
         test.title,
         test.readiness,
-        join8(test.requirementIds),
-        join8(test.dependsOn),
-        join8(test.preconditions),
+        join9(test.requirementIds),
+        join9(test.dependsOn),
+        join9(test.preconditions),
         test.action,
         pairs(test.metadata)
       ])
@@ -15622,8 +15792,12 @@ function exportExploration(store, explorationId, format2) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync2, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync6 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// plugin/src/ui/exploration.ts
+import { readFileSync as readFileSync5 } from "node:fs";
+import { join as joinPath } from "node:path";
 
 // plugin/src/ui/html.ts
 var entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -15644,7 +15818,7 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
   return { html: text };
 }
-function join9(items, separator) {
+function join10(items, separator) {
   return html2`${items.flatMap((item, i) => i ? [separator, item] : [item])}`;
 }
 var statusLook = {
@@ -15705,7 +15879,22 @@ var statusLook = {
   defects_open: ["\u2717", "fail"],
   needs_retest: ["!", "warn"],
   awaits_acceptance: ["\u25CB", "acc"],
-  accepted: ["\u2713", "pass"]
+  accepted: ["\u2713", "pass"],
+  running: ["\u25CF", "acc"],
+  starting: ["\u25CF", "acc"],
+  testing: ["\u25CF", "acc"],
+  recording: ["\u25CF", "acc"],
+  verifying: ["\u25CF", "acc"],
+  following: ["\u25CF", "acc"],
+  stopped: ["!", "fail"],
+  skipped: ["\u2013", "block"],
+  not_in_level: ["\u2013", "block"],
+  confirmed: ["\u2717", "fail"],
+  observed: ["\u2717", "fail"],
+  suspected: ["?", "warn"],
+  unresolved: ["?", "warn"],
+  answered: ["\u2713", "pass"],
+  requested: ["\u25CB", "acc"]
 };
 function words(status) {
   return status.replace(/_/g, " ");
@@ -15751,6 +15940,13 @@ function metadataList(values = {}) {
 }
 function plural(count, one2, many = `${one2}s`) {
   return `${count} ${count === 1 ? one2 : many}`;
+}
+function duration(ms2) {
+  const seconds = Math.round(ms2 / 1e3);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ${seconds % 60} s`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 // plugin/src/ui/layout.ts
@@ -16102,73 +16298,301 @@ function recordPanel(title, content, decided = "") {
 }
 
 // plugin/src/ui/exploration.ts
-function claimRow(explorationId, claim) {
-  return html2`<tr id="${claim.id}">
-		<td><a class="mono" href="/explorations/${explorationId}/claims/${claim.id}">${claim.id}</a></td>
+function claimRow(claim) {
+  return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
+		<td>
+			<a
+				class="mono"
+				href="/explorations/${claim.explorationId}/claims/${claim.id}${claim.decision ? "" : "#decide"}"
+				>${claim.id}</a
+			>
+		</td>
 		<td>${pill(claim.state)}</td>
 		<td>${pill(claim.severity)}</td>
 		<td>${claim.actors.join(", ")}</td>
 		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
 	</tr>`;
 }
-function explorationPage(store, explorationId) {
-  const report = explorationReport(store, explorationId);
-  const meta = html2`<div class="meta">
-		${pill(report.state)} <a class="pill" href="/plans/${report.planId}">${report.planId}</a>
-		<span class="pill">build ${report.build}</span>
-		<span class="pill"
-			>${report.level ?? "no level"} · ${report.explorerCount ?? 0} explorers · ${report.model ?? "-"}</span
-		>
+function claimsTable(claims) {
+  if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Claim</th>
+					<th scope="col">State</th>
+					<th scope="col">Severity</th>
+					<th scope="col">Reporters</th>
+					<th scope="col">Title</th>
+				</tr>
+			</thead>
+			<tbody>
+				${claims.map(claimRow)}
+			</tbody>
+		</table>
 	</div>`;
-  const body = html2`${heading(html2`Exploration ${explorationId}`, report.charter.goal, meta)}
-		<section class="panel" aria-labelledby="claims-title">
-			<h2 class="lab" id="claims-title">Claims</h2>
-			${report.claims.length ? html2`<table class="table">
-							<thead>
-								<tr>
-									<th>Claim</th>
-									<th>State</th>
-									<th>Severity</th>
-									<th>Reporters</th>
-									<th>Title</th>
-								</tr>
-							</thead>
-							<tbody>
-								${report.claims.map((claim) => claimRow(explorationId, claim))}
-							</tbody>
-						</table>` : html2`<p class="none">No claim.</p>`}
-		</section>
-		<section class="panel" aria-labelledby="questions-title">
-			<h2 class="lab" id="questions-title">Questions</h2>
-			${report.questions.length ? html2`<ul class="items">
-							${report.questions.map(
-    (question) => html2`<li>
-										<a
-											class="item"
-											href="/explorations/${explorationId}/questions/${question.id}#answer"
-											><span class="id">${question.id}</span
-											><span class="what">${question.question}</span
-											><span class="end"
-												>${pill(question.answer === null ? "open" : "answered")}</span
-											></a
-										>
-									</li>`
+}
+function questionsList(questions) {
+  if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
+  return html2`<ul class="items">
+		${questions.map(
+    (question) => html2`<li data-key="question:${question.id}">
+					<a
+						class="item"
+						href="/explorations/${question.explorationId}/questions/${question.id}${question.answer === null ? "#answer" : ""}"
+						><span class="id">${question.id}</span><span class="what">${question.question}</span
+						><span class="end"
+							>${question.blocking ? html2`${pill("blocking")} ` : ""}${pill(
+      question.answer === null ? "open" : "answered"
+    )}</span
+						></a
+					>
+				</li>`
   )}
-						</ul>` : html2`<p class="none">No question.</p>`}
-		</section>
-		<section class="panel" aria-labelledby="explorers-title">
-			<h2 class="lab" id="explorers-title">Explorers</h2>
-			<ul class="items">
-				${report.explorers.map(
-    (item) => html2`<li>
-							<span class="id">${item.explorer}</span> ended ${item.ended ?? "-"} · recorded
-							${item.recorded ?? "-"} · ${item.saved} entries
-						</li>`
+	</ul>`;
+}
+function dataLine(reason, data) {
+  return html2`${reason ?? "No reason is recorded."}
+	${data.length ? html2` Its data:
+				${join10(
+    data.map((path) => html2`<code>${path}</code>`),
+    ", "
+  )}.` : ""}`;
+}
+function explorationBanners(explorations) {
+  const running3 = explorations.filter((item) => item.running);
+  const last = explorations.at(-1);
+  return html2`${running3.map(
+    (item) => banner(
+      "info",
+      html2`<span data-key="running:${item.explorationId}"
+				>Exploration ${item.explorationId} is running.
+				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
+				when it is completed.</span
+			>`
+    )
   )}
-			</ul>
+	${last && (last.state === "failed" || last.state === "stopped") ? banner(
+    "fail",
+    html2`<span data-key="failed:${last.explorationId}"
+						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
+						${dataLine(last.reason, last.data)}
+						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
+					>`
+  ) : ""}`;
+}
+function explorationsTable(explorations) {
+  if (!explorations.length)
+    return html2`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Exploration</th>
+					<th scope="col">State</th>
+					<th scope="col">Build</th>
+					<th scope="col">Instance</th>
+					<th scope="col">Level</th>
+					<th scope="col">Started</th>
+				</tr>
+			</thead>
+			<tbody>
+				${[...explorations].reverse().map(
+    (item) => html2`<tr data-key="exploration:${item.explorationId}">
+							<td>
+								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
+							</td>
+							<td>
+								${pill(item.state)}
+								${item.reason !== null || item.data.length ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
+							</td>
+							<td class="mono">${item.build}</td>
+							<td class="mono">${item.instanceId}</td>
+							<td>
+								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
+							</td>
+							<td class="nowrap">${time(item.startedAt)}</td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+function explorationSections(store, planId) {
+  const explorations = planExplorations(store, planId);
+  const claims = mergedClaims(store, planId);
+  const questions = mergedQuestions(store, planId);
+  return html2`<section aria-labelledby="explorations" data-region="explorations">
+			<h2 id="explorations">Explorations <span class="n">${explorations.length}</span></h2>
+			${explorationsTable(explorations)}
 		</section>
-		${downloads("Download report", `/explorations/${explorationId}/export`, "The record of this exploration.", ["md", "json"])}`;
-  return { title: `Exploration ${explorationId}`, section: "plans", subjects: [`exploration:${explorationId}`], body };
+		<section aria-labelledby="claims" data-region="claims">
+			<h2 id="claims">Claims <span class="n">${claims.length}</span></h2>
+			<p class="help">The merged claims of completed explorations.</p>
+			${claimsTable(claims)}
+		</section>
+		<section aria-labelledby="questions" data-region="questions">
+			<h2 id="questions">Questions <span class="n">${questions.length}</span></h2>
+			<p class="help">The merged questions of completed explorations.</p>
+			${questionsList(questions)}
+		</section>`;
+}
+function explorerRow(live, item) {
+  const none3 = html2`<span class="muted">–</span>`;
+  return html2`<tr data-key="explorer:${item.explorer}">
+		<td class="mono">${item.explorer}</td>
+		<td>${item.turn ?? none3}</td>
+		<td>${item.state ? pill(item.state) : none3}</td>
+		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none3}</td>
+		<td class="nowrap">${item.elapsedMs === null ? none3 : duration(item.elapsedMs)}</td>
+		<td>${item.activity ?? ""}</td>
+		<td>
+			${item.recorded ? html2`${pill(item.recorded)} <span class="muted small">${plural(item.saved, "entry", "entries")}</span>` : none3}
+		</td>
+		<td>
+			${item.report ? html2`<a href="/explorations/${live.explorationId}/explorers/${item.explorer}/report"
+							>report.md</a
+						>` : none3}
+		</td>
+	</tr>`;
+}
+function stateBanner(live) {
+  if (live.running)
+    return banner(
+      "info",
+      html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
+    );
+  if (live.state === "failed" || live.state === "stopped")
+    return banner(
+      "fail",
+      html2`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
+    );
+  if (live.state === "open")
+    return banner(
+      "info",
+      html2`Exploration ${live.explorationId} is open. Record its sessions, then run
+				<code>checkmate explore finish ${live.explorationId}</code>.`
+    );
+  return "";
+}
+function unmergedSection(live) {
+  if (!live.unmerged.length) return "";
+  return html2`<section class="panel" aria-labelledby="unmerged-title" data-key="unmerged">
+		<h2 class="lab" id="unmerged-title">Not merged yet <span class="n">${live.unmerged.length}</span></h2>
+		<p class="help">
+			These are the raw questions and defects of single explorers. They are not merged yet. They are not in the
+			inbox and not on the plan page. They can change before the exploration is completed.
+		</p>
+		<ul class="items">
+			${live.unmerged.map(
+    (item) => html2`<li data-key="raw:${item.id}">
+						<div class="item">
+							<span class="id">${item.id}</span>
+							<span class="what">${item.text}</span>
+							<span class="end"
+								>${pill("pending", `${item.kind}, not merged`)}
+								${item.severity ? pill(item.severity) : item.blocking ? pill("blocking") : ""}</span
+							>
+						</div>
+					</li>`
+  )}
+		</ul>
+	</section>`;
+}
+function explorationPage(store, explorationId) {
+  const live = explorationLive(store, explorationId);
+  const meta = html2`<div class="meta">
+		<span data-region="exploration-state">${pill(live.state)}</span>
+		<a class="pill" href="/plans/${live.planId}">${live.planId}</a>
+		<span class="pill">build ${live.build}</span>
+		<span class="pill">instance ${live.instanceId}</span>
+		<span class="pill"
+			>${live.level ?? "no level"} · ${plural(live.explorerCount ?? 0, "explorer")} · ${live.model ?? "-"}</span
+		>
+		<span class="pill">started ${time(live.startedAt, clock(live.startedAt))}</span>
+	</div>`;
+  const merged = live.state === "completed" || live.claims.length + live.questions.length > 0;
+  const body = html2`${heading(html2`Exploration ${explorationId}`, live.goal, meta)}
+		<div class="stack" data-region="exploration-live">
+			${stateBanner(live)}
+			<section class="panel" aria-labelledby="explorers-title">
+				<h2 class="lab" id="explorers-title">Explorers</h2>
+				${live.explorers.length ? html2`<div class="scroll">
+								<table>
+									<thead>
+										<tr>
+											<th scope="col">Explorer</th>
+											<th scope="col">Turn</th>
+											<th scope="col">State</th>
+											<th scope="col">Started</th>
+											<th scope="col">Elapsed</th>
+											<th scope="col">Last activity</th>
+											<th scope="col">Record</th>
+											<th scope="col">Report</th>
+										</tr>
+									</thead>
+									<tbody>
+										${live.explorers.map((item) => explorerRow(live, item))}
+									</tbody>
+								</table>
+							</div>` : html2`<p class="none">No explorer has started yet.</p>`}
+			</section>
+			<section class="panel" aria-labelledby="phases-title">
+				<h2 class="lab" id="phases-title">Phases</h2>
+				<div class="scroll">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Phase</th>
+								<th scope="col">State</th>
+								<th scope="col">Reason</th>
+							</tr>
+						</thead>
+						<tbody>
+							${live.phases.map(
+    (row) => html2`<tr data-key="phase:${row.phase}">
+										<td>${row.phase}</td>
+										<td>${pill(row.state)}</td>
+										<td>${row.reason ?? ""}</td>
+									</tr>`
+  )}
+						</tbody>
+					</table>
+				</div>
+			</section>
+			${unmergedSection(live)}
+			<section class="panel" aria-labelledby="claims-title">
+				<h2 class="lab" id="claims-title">Claims</h2>
+				${merged ? claimsTable(live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
+			</section>
+			<section class="panel" aria-labelledby="questions-title">
+				<h2 class="lab" id="questions-title">Questions</h2>
+				${merged ? questionsList(live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
+			</section>
+		</div>
+		<div class="actions">
+			${downloads("Download report", `/explorations/${explorationId}/export`, "The record of this exploration.", ["md", "json"])}
+		</div>`;
+  return {
+    title: `Exploration ${explorationId}`,
+    section: "plans",
+    subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
+    body
+  };
+}
+function explorerReportPage(store, explorationId, explorer) {
+  const live = explorationLive(store, explorationId);
+  const path = live.explorers.find((item) => item.explorer === explorer)?.report;
+  if (!path) throw new Error(`Unknown report of ${explorer} in ${explorationId}`);
+  const text = readFileSync5(joinPath(store.workspace, path), "utf8");
+  return {
+    title: `${explorationId} \xB7 ${explorer} report`,
+    section: "plans",
+    subjects: [`exploration:${explorationId}`],
+    body: html2`${heading(html2`${explorationId} · ${explorer}`, html2`The saved report of explorer ${explorer}.`)}
+			<p><a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · <code>${path}</code></p>
+			<section class="panel" aria-label="Report"><pre class="report">${text}</pre></section>`
+  };
 }
 function questionPage(store, context, explorationId, questionId, state = null) {
   const report = explorationReport(store, explorationId);
@@ -16192,6 +16616,7 @@ function questionPage(store, context, explorationId, questionId, state = null) {
     subjects: [`exploration:${explorationId}`, "inbox"],
     body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
 			<p>
+				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
 			</p>
 			${panel}`
@@ -16229,6 +16654,7 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 				<section class="panel" aria-labelledby="claim-title">
 					<h2 class="lab" id="claim-title">Claim</h2>
 					<p>
+						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
 					</p>
 					<p class="lab">Expected</p>
@@ -16388,7 +16814,7 @@ function inboxPage(store) {
   );
   const requests = waiting.requests.map(
     (request) => html2`<div class="item" data-key="request:${request.planId}">
-				<span class="id">${request.planId}</span>
+				<a class="id" href="/plans/${request.planId}">${request.planId}</a>
 				<span class="what"
 					>${request.objective} · target <code>${request.target}</code> · run
 					<code>/checkmate:plan ${request.planId}</code></span
@@ -16616,7 +17042,7 @@ function testSummary(tests) {
 }
 function requestedPlanRow(row) {
   return html2`<tr data-key="plan:${row.planId}" data-nav-row>
-		<td><span class="mono">${row.planId}</span></td>
+		<td><a class="mono" href="/plans/${row.planId}" data-nav-item>${row.planId}</a></td>
 		<td>${loopState(row.loop)}</td>
 		<td><span class="muted">no revision yet</span></td>
 		<td><span class="muted">none</span></td>
@@ -16634,7 +17060,7 @@ function planRow(row) {
 		<td>${loopState(row.loop)}</td>
 		<td>${testSummary(row.tests)}</td>
 		<td>
-			${row.openGaps.length ? join9(
+			${row.openGaps.length ? join10(
     row.openGaps.map(
       (id2) => html2`<a class="mono" href="/plans/${row.planId}@${row.revision}/gaps/${id2}"
 										>${id2}${row.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
@@ -16813,7 +17239,7 @@ function logRow(row) {
 		</td>
 		<td>${pill(row.status === "rejected" ? "rejected_operation" : row.status, words(row.status))}</td>
 		<td>
-			${row.subjects.length ? join9(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
+			${row.subjects.length ? join10(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
 		</td>
 		<td class="mono muted">${row.id}</td>
 	</tr>`;
@@ -16836,7 +17262,7 @@ function testLink(planId, revision, reference) {
   return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision}#${id2}">${reference}</a>`;
 }
 function ids(values, link) {
-  return values.length ? join9(values.map(link), ", ") : html2`<span class="muted">none</span>`;
+  return values.length ? join10(values.map(link), ", ") : html2`<span class="muted">none</span>`;
 }
 function facts(rows) {
   const shown = rows.filter(([, value2]) => value2 !== false);
@@ -17170,13 +17596,15 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 				${detail.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
 				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(", ")}.`
   ) : "";
+  const explorations = planExplorations(store, planId);
   const body = html2`${heading(subject, plan.objective, meta)}
-		<div data-region="banners">${newerBanner(detail)} ${pending}</div>
+		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(explorations)}</div>
 		<div class="split">
 			<div class="main-col">
 				<nav class="jump" aria-label="On this page">
 					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
-					><a href="#runs">Runs</a><a href="#decisions">Decisions</a><a href="#history">History</a>
+					><a href="#runs">Runs</a><a href="#explorations">Explorations</a><a href="#decisions">Decisions</a
+					><a href="#history">History</a>
 				</nav>
 				<section aria-labelledby="tests" data-region="tests">
 					<h2 id="tests">
@@ -17200,6 +17628,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 					<h2 id="runs">Runs <span class="n">${detail.runs.length}</span></h2>
 					${runsTable(detail)}
 				</section>
+				${explorationSections(store, planId)}
 				<section aria-labelledby="decisions">
 					<h2 id="decisions">Decisions</h2>
 					${decisionsList(plan)}
@@ -17214,7 +17643,96 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   return {
     title: subject,
     section: "plans",
-    subjects: [`plan:${planId}`, "inbox", ...detail.runs.map((run2) => `run:${run2.runId}`)],
+    subjects: [
+      `plan:${planId}`,
+      "inbox",
+      ...detail.runs.map((run2) => `run:${run2.runId}`),
+      ...explorations.map((item) => `exploration:${item.explorationId}`)
+    ],
+    body
+  };
+}
+function storedTestsEmpty(planId, completed2) {
+  return html2`<div class="empty" data-key="no-tests">
+		<p class="empty-title">No stored tests yet.</p>
+		<p>
+			A stored test comes from the claims of a completed exploration. To store them, run
+			<code>checkmate harvest ${completed2 ?? "<explorationId>"}</code>. To write a plan with tests, run
+			<code>/checkmate:plan ${planId}</code>.
+		</p>
+	</div>`;
+}
+function requestPage(store, planId) {
+  const { request, target } = planRequest(store, planId);
+  const status = planStatus(store, planId);
+  const explorations = planExplorations(store, planId);
+  const targetRef = `${target.profile.targetId}@${target.revision}`;
+  const targetLink = html2`<a
+		class="mono"
+		href="/settings/targets/${target.profile.targetId}?revision=${target.revision}"
+		>${targetRef}</a
+	>`;
+  const instances = [...new Set(explorations.map((item) => item.instanceId))];
+  const sources = [...request.context?.sources ?? [], ...(request.sourceContext ?? []).map((item) => item.uri)];
+  const completed2 = explorations.filter((item) => item.state === "completed").at(-1)?.explorationId;
+  const meta = html2`<div class="meta">
+		${loopState(status)} ${pill("requested", "no revision yet")}
+		<span class="pill">target <span class="mono">${targetRef}</span></span>
+	</div>`;
+  const body = html2`${heading(planId, request.objective, meta)}
+		<div data-region="banners">${explorationBanners(explorations)}</div>
+		<div class="split">
+			<div class="main-col">
+				<nav class="jump" aria-label="On this page">
+					<a href="#request">Request</a><a href="#explorations">Explorations</a><a href="#claims">Claims</a
+					><a href="#questions">Questions</a><a href="#tests">Stored tests</a>
+				</nav>
+				<section aria-labelledby="request">
+					<h2 id="request">Request</h2>
+					${facts([
+    ["Objective", request.objective],
+    ["Target", targetLink],
+    [
+      "Instance",
+      instances.length ? html2`<span class="mono">${instances.join(", ")}</span>` : html2`<span class="muted">none yet</span>`
+    ],
+    [
+      "Sources",
+      sources.length ? html2`<ul class="plain">
+										${sources.map((source) => html2`<li><code>${source}</code></li>`)}
+									</ul>` : html2`<span class="muted">none</span>`
+    ],
+    ["Instructions", request.context?.instructions || false],
+    [
+      "Requirements",
+      (request.requirements ?? []).length > 0 && html2`<ul class="plain">
+									${(request.requirements ?? []).map(
+        (item) => html2`<li><span class="mono">${item.id}</span> ${item.text}</li>`
+      )}
+								</ul>`
+    ]
+  ])}
+				</section>
+				${explorationSections(store, planId)}
+				<section aria-labelledby="tests" data-region="tests">
+					<h2 id="tests">Stored tests <span class="n">0</span></h2>
+					${storedTestsEmpty(planId, completed2)}
+				</section>
+			</div>
+			${side(
+    recordPanel(
+      "Next",
+      html2`${status.why.map((line) => html2`<p class="help">${line}</p>`)}
+						<ul class="plain">
+							${status.next.map((line) => html2`<li><code>${line}</code></li>`)}
+						</ul>`
+    )
+  )}
+		</div>`;
+  return {
+    title: planId,
+    section: "plans",
+    subjects: [`plan:${planId}`, "inbox", ...explorations.map((item) => `exploration:${item.explorationId}`)],
     body
   };
 }
@@ -17655,7 +18173,7 @@ function findingRefs(detail, reference) {
   const findings2 = detail.findings.filter((finding) => finding.assertionIds.includes(reference));
   if (!findings2.length) return "";
   return html2` ·
-	${join9(
+	${join10(
     findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
     ", "
   )}`;
@@ -17769,7 +18287,7 @@ function findings(store, detail) {
 										</ol>` : ""}
 						<p class="muted small">
 							Assertions
-							${join9(
+							${join10(
       finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
       ", "
     )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
@@ -18058,7 +18576,7 @@ function none2(text = "none") {
   return html2`<span class="muted">${text}</span>`;
 }
 function words3(items) {
-  return items.length ? join9(
+  return items.length ? join10(
     items.map((item) => html2`<code>${item}</code>`),
     " "
   ) : none2();
@@ -18219,7 +18737,7 @@ function entryList2(instance) {
 					<dt class="mono">${name}</dt>
 					<dd>
 						<code
-							>${join9(
+							>${join10(
       value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -18434,6 +18952,7 @@ var routes = {
   addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
   retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
   exploration: new RegExp(`^/explorations/(${id})$`),
+  explorerReport: new RegExp(`^/explorations/(${id})/explorers/(${id})/report$`),
   explorationExport: new RegExp(`^/explorations/(${id})/export\\.(md|json)$`),
   question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
   claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
@@ -18452,19 +18971,19 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath2(new URL(candidate, import.meta.url));
-    if (existsSync2(path + file)) return path;
+    if (existsSync3(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name) => readFileSync5(files2 + name);
+  const read = (name) => readFileSync6(files2 + name);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name) => readFileSync5(`${fonts}${name}.woff2`)
+    font: (name) => readFileSync6(`${fonts}${name}.woff2`)
   };
 }
 function securityHeaders() {
@@ -18678,6 +19197,7 @@ data: ${matched.join(",") || "*"}
     }
     const latest = routes.latestPlan.exec(pathname);
     if (latest) {
+      if (!planHasRevision(store, latest[1])) return render(request, requestPage(store, latest[1]));
       const detail = planDetail(store, latest[1]);
       return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`);
     }
@@ -18715,6 +19235,8 @@ data: ${matched.join(",") || "*"}
     }
     const exploration2 = routes.exploration.exec(pathname);
     if (exploration2) return render(request, explorationPage(store, exploration2[1]));
+    const explorerReport = routes.explorerReport.exec(pathname);
+    if (explorerReport) return render(request, explorerReportPage(store, explorerReport[1], explorerReport[2]));
     const explorationExport = routes.explorationExport.exec(pathname);
     if (explorationExport) {
       const [, explorationId, format2] = explorationExport;
@@ -19451,7 +19973,7 @@ function harvestExploration(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync3 } from "node:fs";
 import { dirname, resolve as resolve5 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
@@ -21119,7 +21641,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync6(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync7(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
   requireWellFormed(
@@ -21231,7 +21753,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync6(0, "utf8")
+    stdin: () => readFileSync7(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

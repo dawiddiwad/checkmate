@@ -30,19 +30,38 @@ The start page. It groups the gaps to answer, the plans to approve or change, th
 
 ### Exploration
 
-`/explorations/<explorationId>` shows the state, the level, the claims with their states and reasons, the questions, and the explorers. A claim page shows the expected result, the actual result, the steps, and the reporters. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
+`/explorations/<explorationId>` is the live view of one exploration. It updates by itself while the exploration runs. It shows:
+
+- The state of the exploration and, while it runs, its phase.
+- One row for each explorer: the turn (`study`, `test`, or `follow-up`), the state, the start time, the elapsed time, and the last activity line when the record has one.
+- The phases `record`, `merge`, `verify`, and `follow-up` with their states and reasons.
+- `Not merged yet`: the raw questions and defects of single explorers. They can change before the exploration is completed. The inbox and the plan page do not show them.
+- The merged claims and questions. They show when the exploration is completed.
+- After the end, a `report.md` link for each explorer with a saved report in `qa-evidence/<explorationId>/<explorer>/`.
+
+A failed or stopped exploration shows its reason and the folders and logs that keep its data.
+
+A claim page shows the expected result, the actual result, the steps, and the reporters. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
+
+### Inbox and running explorations
+
+The inbox, the plan pages, the loop state, and the counts show only the merged claims and questions of completed explorations. While a follow-up runs, its new entries wait in the same way. The plan page names each running exploration in one banner: `Exploration <id> is running`, with a link to the live view.
 
 ### Plans
 
 <img src="../img/ui/plans.jpg" alt="The plan list in dark mode. Each row shows a plan, its loop state with the role it waits on, its tests, open gaps, approval, and blocks." width="100%"/>
 
-Each plan at its latest revision. The `Loop` column shows the [loop state](../reference/commands.md#loop-states) and the role that it waits on. Filter with `Waits on`, sort by a column header, and type in the search field to filter. Lists show 25, 50, or 100 rows for each page. The URL keeps the list state.
+Each plan at its latest revision. A plan without a revision shows `no revision yet`, and its link opens its plan page. The `Loop` column shows the [loop state](../reference/commands.md#loop-states) and the role that it waits on. Filter with `Waits on`, sort by a column header, and type in the search field to filter. Lists show 25, 50, or 100 rows for each page. The URL keeps the list state.
 
 ### Plan
 
 <img src="../img/ui/plan.jpg" alt="The plan page of checkout@2 in dark mode. The header shows the loop state needs answers, waits on oracle, and the approval. Below are the tests with their assertions, and an approval panel on the right." width="100%"/>
 
 The tests, gaps, requirements and coverage, runs, decisions, and history of one revision. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. Resolved and deferred gaps are folded below the open gaps.
+
+The plan page also lists the explorations of the plan, and the merged claims and questions of the completed explorations. Each claim links to its decision form. Each open question links to its answer form.
+
+A plan without a revision has a plan page from its first test. Open it from the plan list, the inbox, or an exploration. It shows the objective, the target, the instance, the sources, the explorations with their state, build, level, and start time, the claims, the questions, and the stored tests. When there are no stored tests, it tells you how to make them with `checkmate harvest <explorationId>`.
 
 `Edit plan` opens the editor. It has forms for the requirements, tests, assertions, and coverage. `Edit as JSON` adds or removes items. Only the latest revision can change, and the rules of `plan edit` apply.
 

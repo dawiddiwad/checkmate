@@ -149,7 +149,7 @@ export function inboxPage(store: Store): Page {
 	const requests = waiting.requests.map(
 		(request) =>
 			html`<div class="item" data-key="request:${request.planId}">
-				<span class="id">${request.planId}</span>
+				<a class="id" href="/plans/${request.planId}">${request.planId}</a>
 				<span class="what"
 					>${request.objective} · target <code>${request.target}</code> · run
 					<code>/checkmate:plan ${request.planId}</code></span
@@ -439,7 +439,7 @@ function testSummary(tests: PlanRow['tests']) {
 
 function requestedPlanRow(row: PlanRow) {
 	return html`<tr data-key="plan:${row.planId}" data-nav-row>
-		<td><span class="mono">${row.planId}</span></td>
+		<td><a class="mono" href="/plans/${row.planId}" data-nav-item>${row.planId}</a></td>
 		<td>${loopState(row.loop)}</td>
 		<td><span class="muted">no revision yet</span></td>
 		<td><span class="muted">none</span></td>

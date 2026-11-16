@@ -3,13 +3,14 @@ import type { Plan } from '../types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
-import { planDetail, planHistory, planStatus } from '../views.ts'
-import { decisionToken, planRunGaps } from '../plans.ts'
+import { planDetail, planExplorations, planHistory, planStatus } from '../views.ts'
+import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
 import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
+import { explorationBanners, explorationSections } from './exploration.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]
@@ -416,13 +417,15 @@ export function planPage(
 				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(', ')}.`
 			)
 		: ''
+	const explorations = planExplorations(store, planId)
 	const body = html`${heading(subject, plan.objective, meta)}
-		<div data-region="banners">${newerBanner(detail)} ${pending}</div>
+		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(explorations)}</div>
 		<div class="split">
 			<div class="main-col">
 				<nav class="jump" aria-label="On this page">
 					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
-					><a href="#runs">Runs</a><a href="#decisions">Decisions</a><a href="#history">History</a>
+					><a href="#runs">Runs</a><a href="#explorations">Explorations</a><a href="#decisions">Decisions</a
+					><a href="#history">History</a>
 				</nav>
 				<section aria-labelledby="tests" data-region="tests">
 					<h2 id="tests">
@@ -446,6 +449,7 @@ export function planPage(
 					<h2 id="runs">Runs <span class="n">${detail.runs.length}</span></h2>
 					${runsTable(detail)}
 				</section>
+				${explorationSections(store, planId)}
 				<section aria-labelledby="decisions">
 					<h2 id="decisions">Decisions</h2>
 					${decisionsList(plan)}
@@ -460,7 +464,103 @@ export function planPage(
 	return {
 		title: subject,
 		section: 'plans',
-		subjects: [`plan:${planId}`, 'inbox', ...detail.runs.map((run) => `run:${run.runId}`)],
+		subjects: [
+			`plan:${planId}`,
+			'inbox',
+			...detail.runs.map((run) => `run:${run.runId}`),
+			...explorations.map((item) => `exploration:${item.explorationId}`),
+		],
+		body,
+	}
+}
+
+function storedTestsEmpty(planId: string, completed: string | undefined) {
+	return html`<div class="empty" data-key="no-tests">
+		<p class="empty-title">No stored tests yet.</p>
+		<p>
+			A stored test comes from the claims of a completed exploration. To store them, run
+			<code>checkmate harvest ${completed ?? '<explorationId>'}</code>. To write a plan with tests, run
+			<code>/checkmate:plan ${planId}</code>.
+		</p>
+	</div>`
+}
+
+export function requestPage(store: Store, planId: string): Page {
+	const { request, target } = planRequest(store, planId)
+	const status = planStatus(store, planId)
+	const explorations = planExplorations(store, planId)
+	const targetRef = `${target.profile.targetId}@${target.revision}`
+	const targetLink = html`<a
+		class="mono"
+		href="/settings/targets/${target.profile.targetId}?revision=${target.revision}"
+		>${targetRef}</a
+	>`
+	const instances = [...new Set(explorations.map((item) => item.instanceId))]
+	const sources = [...(request.context?.sources ?? []), ...(request.sourceContext ?? []).map((item) => item.uri)]
+	const completed = explorations.filter((item) => item.state === 'completed').at(-1)?.explorationId
+	const meta = html`<div class="meta">
+		${loopState(status)} ${pill('requested', 'no revision yet')}
+		<span class="pill">target <span class="mono">${targetRef}</span></span>
+	</div>`
+	const body = html`${heading(planId, request.objective, meta)}
+		<div data-region="banners">${explorationBanners(explorations)}</div>
+		<div class="split">
+			<div class="main-col">
+				<nav class="jump" aria-label="On this page">
+					<a href="#request">Request</a><a href="#explorations">Explorations</a><a href="#claims">Claims</a
+					><a href="#questions">Questions</a><a href="#tests">Stored tests</a>
+				</nav>
+				<section aria-labelledby="request">
+					<h2 id="request">Request</h2>
+					${facts([
+						['Objective', request.objective],
+						['Target', targetLink],
+						[
+							'Instance',
+							instances.length
+								? html`<span class="mono">${instances.join(', ')}</span>`
+								: html`<span class="muted">none yet</span>`,
+						],
+						[
+							'Sources',
+							sources.length
+								? html`<ul class="plain">
+										${sources.map((source) => html`<li><code>${source}</code></li>`)}
+									</ul>`
+								: html`<span class="muted">none</span>`,
+						],
+						['Instructions', request.context?.instructions || false],
+						[
+							'Requirements',
+							(request.requirements ?? []).length > 0 &&
+								html`<ul class="plain">
+									${(request.requirements ?? []).map(
+										(item) => html`<li><span class="mono">${item.id}</span> ${item.text}</li>`
+									)}
+								</ul>`,
+						],
+					])}
+				</section>
+				${explorationSections(store, planId)}
+				<section aria-labelledby="tests" data-region="tests">
+					<h2 id="tests">Stored tests <span class="n">0</span></h2>
+					${storedTestsEmpty(planId, completed)}
+				</section>
+			</div>
+			${side(
+				recordPanel(
+					'Next',
+					html`${status.why.map((line) => html`<p class="help">${line}</p>`)}
+						<ul class="plain">
+							${status.next.map((line) => html`<li><code>${line}</code></li>`)}
+						</ul>`
+				)
+			)}
+		</div>`
+	return {
+		title: planId,
+		section: 'plans',
+		subjects: [`plan:${planId}`, 'inbox', ...explorations.map((item) => `exploration:${item.explorationId}`)],
 		body,
 	}
 }

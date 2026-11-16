@@ -344,6 +344,19 @@ async function refresh() {
 	}
 }
 
+function duration(ms) {
+	const seconds = Math.round(ms / 1000)
+	if (seconds < 60) return `${seconds} s`
+	const minutes = Math.floor(seconds / 60)
+	if (minutes < 60) return `${minutes} min ${seconds % 60} s`
+	return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+}
+
+window.setInterval(() => {
+	for (const element of document.querySelectorAll('[data-since]'))
+		element.textContent = duration(Math.max(0, Date.now() - Date.parse(element.dataset.since)))
+}, 1000)
+
 const live = document.querySelector('[data-live]')
 let source = null
 let last = body.dataset.cursor ?? '0'

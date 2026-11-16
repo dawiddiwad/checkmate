@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { closeStore, openPlan, openStore } from '../plugin/src/index.ts'
 import { mergedQuestions } from '../plugin/src/views.ts'
 import { agent } from '../scripts/ui-demo.ts'
-import { launch, open, skip, stop } from './browser.ts'
+import { checkmate, launch, open, skip, stop } from './browser.ts'
 import { coupon, done, ended, launched, openTest, report, stacks } from './explorations.ts'
 
 test.before(launch)
@@ -59,5 +59,56 @@ test(
 			mergedQuestions(store, 'basket').map((question) => [question.id, question.answer]),
 			[['a1/Q1', 'No. A coupon does not apply to a sale item.']]
 		)
+	}
+)
+
+test(
+	'the live view of the session path changes without a reload when another process writes started, pause, or done',
+	{ skip },
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		const cli = async (args: string[]) => JSON.parse((await checkmate(workspace, [...args, '--json'])).stdout)
+		const started = await cli([
+			'test',
+			'basket',
+			'--target',
+			'shop-local',
+			'--objective',
+			'Test the basket.',
+			'--source',
+			'brief://basket',
+			'--build',
+			'b1',
+			'--level',
+			'smoke',
+			'--instance',
+			'local',
+			'--session',
+		])
+		const id = started.subject as string
+		await cli(['explore', 'next', id])
+		await page.goto(url(`/explorations/${id}`))
+		const row = page.locator('[data-key="explorer:a1"]')
+		await row.filter({ hasText: 'given to the session' }).waitFor()
+		const since = row.locator('[data-since]')
+		const first = await since.textContent()
+		await page.waitForFunction(
+			(before) => document.querySelector('[data-key="explorer:a1"] [data-since]')?.textContent !== before,
+			first,
+			{ timeout: 3000 }
+		)
+
+		await cli(['explore', 'started', id, 'a1'])
+		await row.filter({ hasText: 'running' }).waitFor({ timeout: 3000 })
+		await cli(['explore', 'pause', id, '--reason', 'Asked the person about the environment.'])
+		await page
+			.locator('[data-key="paused"]', { hasText: 'Paused: Asked the person about the environment.' })
+			.waitFor({
+				timeout: 3000,
+			})
+		await cli(['explore', 'done', id, 'a1', 'study', '--agent', 'agent-a1', '--activity', 'Studied the basket.'])
+		await row.filter({ hasText: 'study: Studied the basket.' }).waitFor({ timeout: 3000 })
+		await row.filter({ hasText: 'ended' }).waitFor({ timeout: 3000 })
+		assert.equal(await page.locator('[data-key="paused"]').count(), 0)
 	}
 )

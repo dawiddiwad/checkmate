@@ -126,8 +126,8 @@ function withRefs<T extends Entry>(entry: T, name: (word: string) => string): T 
 	}
 }
 
-export function journal(store: Store, planId: string, viewer?: string) {
-	const rows = all<{ seq: number; body: string; actor: string; at: string; exploration_id: string }>(
+export function journal(store: Store, planId: string, viewer?: string, keep: (row: Row) => boolean = () => true) {
+	const listed = all<{ seq: number; body: string; actor: string; at: string; exploration_id: string }>(
 		store,
 		`SELECT e.rowid AS seq, e.body, e.actor, e.exploration_id, o.at FROM journal_entries e
 		JOIN explorations x ON x.exploration_id = e.exploration_id
@@ -145,6 +145,7 @@ export function journal(store: Store, planId: string, viewer?: string) {
 			explorationId: row.exploration_id,
 		}
 	})
+	const rows = listed.filter(keep)
 	const latest = new Map<string, Row>()
 	for (const row of rows) latest.set(row.ref, row)
 	const seen = (row: Row) =>
@@ -751,15 +752,15 @@ export function claimList(state: Journal, decided: Map<string, ClaimDecision> = 
 	})
 }
 
-export function planClaims(store: Store, planId: string) {
-	return claimList(journal(store, planId), claimDecisions(store, planId))
+export function planClaims(store: Store, planId: string, keep?: (row: Row) => boolean) {
+	return claimList(journal(store, planId, undefined, keep), claimDecisions(store, planId))
 }
 
 export const factoryStates: ClaimState[] = ['observed', 'confirmed', 'accepted']
 export const oracleStates: ClaimState[] = ['suspected', 'unresolved']
 
-export function planQuestions(store: Store, planId: string) {
-	const state = journal(store, planId)
+export function planQuestions(store: Store, planId: string, keep?: (row: Row) => boolean) {
+	const state = journal(store, planId, undefined, keep)
 	const answers = state.team.filter((entry) => entry.kind === 'answer')
 	const questions = new Map(state.team.filter((entry) => entry.kind === 'question').map((entry) => [entry.id, entry]))
 	const topics = state.team.filter((entry) => entry.kind === 'topic')

@@ -144,7 +144,8 @@ function roleSteps(changeId: string, role: 'merger' | 'verifier') {
 export function journalSteps(changeId: string) {
 	return [
 		'Test the way you would test without this tool. Checkmate does not limit what you test, or how.',
-		`Log what you see as you go, and at the latest before your turn ends: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+		'The record does not replace a test. Do not test less, and do not stop sooner, because of the record. A log call takes a few seconds.',
+		`Log what you see as you go: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
 		'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
 		`When you think that you are done, run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`,
 	]

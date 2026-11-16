@@ -213,7 +213,9 @@ function observationsOf(state: Journal) {
 	const criteria = new Set(ofKind(state, 'criterion').map((entry) => entry.id))
 	return state.entries.flatMap((entry): Entry[] => {
 		if (entry.kind === 'observation') return [entry]
-		if (entry.kind !== 'defect' || !observed(entry)) return []
+		if (entry.kind !== 'defect') return []
+		const aboutCriterion = words(entry.about).some((id) => criteria.has(id))
+		if (!observed(entry) && !aboutCriterion) return []
 		const about = [...words(entry.about), ...(entry.links ?? []).filter((id) => criteria.has(id))].join(' ')
 		return [{ ...entry, saw: entry.saw ?? entry.actual, verdict: 'wrong', ...(about && { about }) }]
 	})
@@ -726,7 +728,7 @@ function gapList(state: Journal, build: string): Gap[] {
 			entry.id,
 			'wrong',
 			`${entry.id} ${short(entry.saw)}`,
-			`Marked wrong without a defect. Log a defect with "links": ["${entry.id}"], or a note with "about": "${entry.id}" that says why not.`
+			`Marked wrong without a defect. Log a defect with "links": ["${entry.id}"].`
 		)
 	for (const defect of defects.filter((entry) => entry.build === build)) {
 		const seen = [
@@ -763,7 +765,7 @@ function gapList(state: Journal, build: string): Gap[] {
 			entry.id,
 			'open_end',
 			`${entry.id} ${short(entry.text ?? entry.saw)}`,
-			`Your record says that this is open. Test it, or log a note with "about": "${entry.id}" that says why not.`
+			`Your record says that this is open. Test it and log an observation with "about": "${entry.id}".`
 		)
 	const verdicts = ofKind(state, 'verdict')
 	for (const defect of defects.filter(earlier)) {
@@ -1002,7 +1004,8 @@ function criteriaOf(defect: Entry, team: Map<string, Row>) {
 		if (target?.kind === 'criterion') return [id]
 		return words(target?.about).filter((word) => team.get(word)?.kind === 'criterion')
 	})
-	return [...new Set(linked)]
+	const own = words(defect.about).filter((word) => team.get(word)?.kind === 'criterion')
+	return [...new Set([...linked, ...own])]
 }
 
 export function mergeBuild(store: Store, changeId: string, build: string) {

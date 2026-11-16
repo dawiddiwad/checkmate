@@ -1,7 +1,7 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "journal-question.schema.json",
-	"description": "A question for the PM. The PM answers before the next build.",
+	"description": "A question for the PM. The PM answers before the next build. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.",
 	"type": "object",
 	"properties": {
 		"kind": {

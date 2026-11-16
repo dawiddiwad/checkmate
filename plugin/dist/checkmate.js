@@ -511,7 +511,7 @@ function E(n, { instancePath: r = "", parentData: g, parentDataProperty: k, root
   return E.errors = e, s === 0;
 }
 var ie = C;
-var N = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-defect.schema.json", description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.", type: "object", properties: { kind: { const: "defect" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong.", type: "string", minLength: 1 }, expected: { description: "The correct result and its source.", type: "string", minLength: 1 }, actual: { description: "What you saw.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" }, links: { description: "The IDs of the observations or criteria that show it.", type: "array", items: { type: "string", minLength: 1 } }, suspected: { description: "true when you are not sure.", type: "boolean" }, question: { description: "The question that settles a suspected defect.", type: "string", minLength: 1 } }, required: ["kind", "build", "title", "expected", "actual", "severity"], additionalProperties: false };
+var N = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-defect.schema.json", description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.", type: "object", properties: { kind: { const: "defect" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong.", type: "string", minLength: 1 }, expected: { description: "The correct result and its source.", type: "string", minLength: 1 }, actual: { description: "What you saw.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.", $ref: "journal-entry.schema.json#/definitions/evidence" }, links: { description: "The IDs of the observations or criteria that show it.", type: "array", items: { type: "string", minLength: 1 } }, suspected: { description: "true when you are not sure.", type: "boolean" }, question: { description: "The question that settles a suspected defect.", type: "string", minLength: 1 } }, required: ["kind", "build", "title", "expected", "actual", "severity"], additionalProperties: false };
 var W = { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] };
 var L = Object.prototype.hasOwnProperty;
 function C(n, { instancePath: r = "", parentData: g, parentDataProperty: k, rootData: w = n } = {}) {
@@ -2991,6 +2991,7 @@ var journal_defect_schema_default = {
       $ref: "journal-entry.schema.json#/definitions/via"
     },
     evidence: {
+      description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.",
       $ref: "journal-entry.schema.json#/definitions/evidence"
     },
     links: {
@@ -3019,7 +3020,7 @@ var journal_defect_schema_default = {
 var journal_question_schema_default = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "journal-question.schema.json",
-  description: "A question for the PM. The PM answers before the next build.",
+  description: "A question for the PM. The PM answers before the next build. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.",
   type: "object",
   properties: {
     kind: {
@@ -3317,7 +3318,9 @@ function observationsOf(state) {
   const criteria = new Set(ofKind(state, "criterion").map((entry) => entry.id));
   return state.entries.flatMap((entry) => {
     if (entry.kind === "observation") return [entry];
-    if (entry.kind !== "defect" || !observed(entry)) return [];
+    if (entry.kind !== "defect") return [];
+    const aboutCriterion = words(entry.about).some((id2) => criteria.has(id2));
+    if (!observed(entry) && !aboutCriterion) return [];
     const about = [...words(entry.about), ...(entry.links ?? []).filter((id2) => criteria.has(id2))].join(" ");
     return [{ ...entry, saw: entry.saw ?? entry.actual, verdict: "wrong", ...about && { about } }];
   });
@@ -3749,7 +3752,7 @@ function gapList(state, build) {
       entry.id,
       "wrong",
       `${entry.id} ${short(entry.saw)}`,
-      `Marked wrong without a defect. Log a defect with "links": ["${entry.id}"], or a note with "about": "${entry.id}" that says why not.`
+      `Marked wrong without a defect. Log a defect with "links": ["${entry.id}"].`
     );
   for (const defect of defects.filter((entry) => entry.build === build)) {
     const seen = [
@@ -3782,7 +3785,7 @@ function gapList(state, build) {
       entry.id,
       "open_end",
       `${entry.id} ${short(entry.text ?? entry.saw)}`,
-      `Your record says that this is open. Test it, or log a note with "about": "${entry.id}" that says why not.`
+      `Your record says that this is open. Test it and log an observation with "about": "${entry.id}".`
     );
   const verdicts = ofKind(state, "verdict");
   for (const defect of defects.filter(earlier)) {
@@ -3984,7 +3987,8 @@ function criteriaOf(defect, team) {
     if (target?.kind === "criterion") return [id2];
     return words(target?.about).filter((word) => team.get(word)?.kind === "criterion");
   });
-  return [...new Set(linked)];
+  const own = words(defect.about).filter((word) => team.get(word)?.kind === "criterion");
+  return [.../* @__PURE__ */ new Set([...linked, ...own])];
 }
 function mergeBuild(store, changeId, build) {
   const state = journal(store, changeId);
@@ -4333,7 +4337,8 @@ function roleSteps(changeId, role) {
 function journalSteps(changeId) {
   return [
     "Test the way you would test without this tool. Checkmate does not limit what you test, or how.",
-    `Log what you see as you go, and at the latest before your turn ends: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+    "The record does not replace a test. Do not test less, and do not stop sooner, because of the record. A log call takes a few seconds.",
+    `Log what you see as you go: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
     'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
     `When you think that you are done, run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`
   ];

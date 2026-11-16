@@ -51,6 +51,7 @@
 			"$ref": "journal-entry.schema.json#/definitions/via"
 		},
 		"evidence": {
+			"description": "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.",
 			"$ref": "journal-entry.schema.json#/definitions/evidence"
 		},
 		"links": {

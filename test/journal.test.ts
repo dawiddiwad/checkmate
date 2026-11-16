@@ -513,6 +513,34 @@ test('notes and observations that say something is open are open ends until an e
 	assert.equal(ends().length, 3)
 })
 
+test('a defect with about equal to a criterion ID counts as a link to that criterion', (t) => {
+	const workspace = opened(t, 'http')
+	log(workspace, 'b1', [
+		{ kind: 'criterion', id: 'C1', text: 'Five items get 10% off.' },
+		{ kind: 'criterion', id: 'C2', text: 'The cart total has two decimals.' },
+		{
+			kind: 'defect',
+			about: 'C1',
+			title: 'No discount',
+			expected: '10% off',
+			actual: 'no discount',
+			severity: 'high',
+		},
+	])
+	const subjects = () =>
+		gaps(workspace, 'b1')
+			.filter((gap) => gap.kind === 'criterion')
+			.map((gap) => gap.subject)
+	assert.deepEqual(subjects(), ['C2 The cart total has two decimals.'])
+	const state = json(workspace, ['show', 'cart']).body
+	assert.deepEqual(state.matrix.find((row: { about: string }) => row.about === 'C1').cells.b1, {
+		ok: 0,
+		wrong: 1,
+		seen: 0,
+	})
+	assert.deepEqual(json(workspace, ['merge', 'cart', '--build', 'b1']).body.defects[0].criteria, ['tester/C1'])
+})
+
 test('the log input can be one object, an array, a wrapper, JSON lines, a code fence, or have trailing commas', (t) => {
 	const workspace = opened(t, 'http')
 	const ids = (stdin: string) => {

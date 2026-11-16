@@ -26,6 +26,16 @@ async function fits(page: Page, path: string) {
 						.length
 			)
 			assert.equal(clipped, 0, `${path} clips a preformatted block at ${width}`)
+			const small = await page.evaluate(() =>
+				[...document.querySelectorAll('body *')]
+					.filter((element) =>
+						[...element.childNodes].some((node) => node.nodeType === 3 && node.textContent!.trim())
+					)
+					.filter((element) => (element as HTMLElement).offsetParent !== null)
+					.filter((element) => parseFloat(getComputedStyle(element).fontSize) < 12)
+					.map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+			)
+			assert.deepEqual(small, [], `${path} has text below 12 px at ${width}`)
 		}
 	await page.setViewportSize({ width: 1440, height: 900 })
 }
@@ -382,4 +392,63 @@ test('a form sent while the UI is stopped keeps the text and sends again later',
 		.getByRole('status')
 		.filter({ hasText: /^Answered / })
 		.waitFor()
+})
+
+test('the queue keeps drafts, moves at once, has one Tab stop, and checks an empty answer', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const items = needsYou(store).items
+	const detailKey = () => page.locator('[data-region="queue-detail"]').getAttribute('data-key')
+	const shows = (key: string) =>
+		page.waitForFunction(
+			(wanted) => document.querySelector('[data-region="queue-detail"]')?.getAttribute('data-key') === wanted,
+			`detail:${key}`
+		)
+	await page.goto(url('/'))
+	const stops = await page
+		.locator('[data-queue-link]')
+		.evaluateAll((rows) => rows.filter((row) => (row as HTMLElement).tabIndex === 0).length)
+	assert.equal(stops, 1)
+	await page.locator('[data-queue-link][aria-current="true"]').focus()
+	await page.keyboard.press('Tab')
+	assert.equal(await page.evaluate(() => document.activeElement?.matches('[data-queue-link]')), false)
+
+	let posts = 0
+	page.on('request', (request) => {
+		if (request.method() === 'POST') posts++
+	})
+	await page.getByText('Accept assumption').click()
+	await page.getByRole('button', { name: 'Record answer' }).click()
+	assert.equal(posts, 0)
+	assert.equal(await page.locator('#value:invalid').count(), 1)
+
+	await page.getByLabel('Answer', { exact: true }).fill('Draft for the first item.')
+	await page.locator('[data-queue-link][aria-current="true"]').focus()
+	await page.keyboard.press('j')
+	await shows(items[1].key)
+	await page.keyboard.press('k')
+	await shows(items[0].key)
+	assert.equal(await page.getByLabel('Answer', { exact: true }).inputValue(), 'Draft for the first item.')
+	await page.reload()
+	assert.equal(await page.getByLabel('Answer', { exact: true }).inputValue(), 'Draft for the first item.')
+
+	let loads = 0
+	page.on('request', (request) => {
+		if (request.method() === 'GET' && new URL(request.url()).searchParams.has('item')) loads++
+	})
+	await page.locator('[data-queue-link][aria-current="true"]').focus()
+	for (let step = 0; step < 20; step++) await page.keyboard.press('j')
+	assert.equal(new URL(page.url()).searchParams.get('item'), items[20].key)
+	await shows(items[20].key)
+	assert(loads <= 2, `${loads} loads`)
+	assert.equal(await detailKey(), `detail:${items[20].key}`)
+
+	await page.setViewportSize({ width: 700, height: 900 })
+	await page.goto(url(`/?item=${encodeURIComponent(items[12].key)}`))
+	await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Needs you' }).click()
+	await page.locator('.q-list').waitFor()
+	assert.equal(await selected(page), items[12].key)
+	const box = await page.locator('[data-queue-link][aria-current="true"]').boundingBox()
+	assert(box && box.y >= 0 && box.y + box.height <= 900, JSON.stringify(box))
 })

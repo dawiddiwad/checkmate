@@ -512,7 +512,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				gapId,
 				kind: input.kind,
 				value: input.value,
-				source: input.kind === 'clarify' ? input.source : null,
+				source: input.source || null,
 				rationale: input.rationale,
 				expectSha256: form.get('sha') ?? '',
 			})
@@ -588,7 +588,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				gapId: questionId,
 				kind: input.kind,
 				value: input.value,
-				source: input.kind === 'clarify' ? input.source : null,
+				source: input.source || null,
 				rationale: input.rationale,
 			})
 		} catch (error) {

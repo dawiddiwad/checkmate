@@ -16904,8 +16904,12 @@ function listAndItem(split) {
 		${split.open ? html2`data-open` : ""}
 		${split.keep ? html2`data-queue-keep` : ""}
 	>
-		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">${split.list}</section>
+		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">
+			<a class="skip skip-item" href="#item">Skip to the selected item</a>
+			${split.list}
+		</section>
 		<section
+			id="item"
 			class="q-detail"
 			aria-label="Selected ${split.label.toLowerCase()} item"
 			tabindex="-1"
@@ -17160,7 +17164,7 @@ function claimRow(planId, claim) {
 		<td>${pill(claim.state)}</td>
 		<td>${pill(claim.severity)}</td>
 		<td>${claim.actors.join(", ")}</td>
-		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
+		<td class="wrap-cell">${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
 	</tr>`;
 }
 function claimsTable(planId, claims) {
@@ -18328,13 +18332,16 @@ function claimFilters(params) {
     severity: severities.includes(value2("severity")) ? value2("severity") : "",
     plan: value2("plan"),
     build: value2("build"),
-    since: periods.some(([days]) => days === value2("since")) ? value2("since") : ""
+    since: periods.some(([days]) => days === value2("since")) ? value2("since") : "",
+    limit: /^[1-9][0-9]{0,5}$/.test(value2("limit")) ? value2("limit") : ""
   };
 }
-function claimsHref(filters, key = null) {
+function claimsHref(filters, key = null, list2 = false) {
   const params = new URLSearchParams();
   for (const name of names) if (filters[name]) params.set(name, filters[name]);
   if (key) params.set("item", key);
+  if (filters.limit) params.set("limit", filters.limit);
+  if (key && list2) params.set("view", "list");
   const query = params.toString();
   return query ? `/claims?${query}` : "/claims";
 }
@@ -18368,9 +18375,11 @@ ${state.values.rationale ?? ""}</textarea>
 					${actorField(context, state)}
 					<div class="btns">
 						<button class="btn primary" name="verdict" value="approved">
-							Accept as a defect <kbd>a</kbd>
+							Accept as a defect <kbd aria-hidden="true">a</kbd>
 						</button>
-						<button class="btn" name="verdict" value="rejected">Reject <kbd>r</kbd></button>
+						<button class="btn" name="verdict" value="rejected">
+							Reject <kbd aria-hidden="true">r</kbd>
+						</button>
 					</div>
 				</form>
 			</section>`;
@@ -18467,7 +18476,9 @@ function crumbs(item, filters) {
   return html2`<div class="q-crumbs">
 		<nav aria-label="Breadcrumb">
 			<ol>
-				<li><a href="${claimsHref(filters)}" data-queue-back>Claims</a></li>
+				<li>
+					<a href="${claimsHref(filters, claimKey(item.planId, item.id), true)}" data-queue-back>Claims</a>
+				</li>
 				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
 				<li><a href="/explorations/${item.explorationId}">${item.explorationId}</a></li>
 				<li aria-current="page">${item.id}</li>
@@ -18476,7 +18487,7 @@ function crumbs(item, filters) {
 		<a class="btn small ghost" href="${claimAddress(item)}">Open full page</a>
 	</div>`;
 }
-var shownLimit = 200;
+var shownLimit = 50;
 function nextKey(shown, item) {
   const index2 = shown.indexOf(item);
   const next = shown[index2 + 1] ?? shown[index2 - 1];
@@ -18490,8 +18501,8 @@ function claimsPage(store, context, params, refusal = null, now = Date.now()) {
   const item = asked ? shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null : shown[0] ?? null;
   const key = item ? claimKey(item.planId, item.id) : null;
   const filtered = names.some((name) => filters[name]);
-  const list2 = html2`<section class="q-list" aria-labelledby="claims-title" data-region="queue-list">
-		<div class="q-head">
+  const limit = Math.max(shownLimit, Number(filters.limit) || 0);
+  const list2 = html2`<div class="q-head">
 			<h1 id="claims-title">Claims</h1>
 			<p class="sub">
 				${filtered ? `${shown.length} of ${plural(rows.length, "claim")} match.` : `${plural(rows.length, "claim")}, newest first.`}
@@ -18499,12 +18510,20 @@ function claimsPage(store, context, params, refusal = null, now = Date.now()) {
 		</div>
 		${filterForm(rows, filters)}
 		${shown.length ? html2`<ul class="q-items">
-						${shown.slice(0, shownLimit).map((entry) => row(entry, filters, key))}
+						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
 					</ul>` : html2`<p class="none">
 						No claim matches these filters. <a href="/claims" data-queue-back>Clear the filters</a>
 					</p>`}
-		${shown.length > shownLimit ? html2`<p class="help">The list shows the first ${shownLimit}. Add a filter to see the others.</p>` : ""}
-	</section>`;
+		${shown.length > limit ? html2`<p class="q-more">
+						<a
+							class="btn small"
+							href="${claimsHref({ ...filters, limit: String(limit + shownLimit) }, key)}"
+							data-queue-go
+							data-more-rows
+							>Show ${Math.min(shownLimit, shown.length - limit)} more</a
+						>
+						<span class="muted">${limit} of ${shown.length} shown</span>
+					</p>` : ""}`;
   const pane = item ? claimPane(store, context, item.planId, item, crumbs(item, filters), {
     key,
     back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
@@ -18518,18 +18537,13 @@ function claimsPage(store, context, params, refusal = null, now = Date.now()) {
     section: "claims",
     subjects: ["*"],
     status: refusal ? 422 : void 0,
-    body: html2`<div class="queue" data-queue data-selected="${key ?? ""}" ${asked ? html2`data-open` : ""}>
-			${list2}
-			<section
-				class="q-detail"
-				aria-label="Selected claim"
-				tabindex="-1"
-				data-region="queue-detail"
-				data-key="detail:${key ?? ""}"
-			>
-				${pane}
-			</section>
-		</div>`
+    body: listAndItem({
+      label: "Claims",
+      list: list2,
+      detail: pane,
+      selected: key ?? "",
+      open: Boolean(asked) && params.get("view") !== "list"
+    })
   };
 }
 
@@ -19728,11 +19742,12 @@ var groups = [
 function queueFilters(params) {
   return { plan: params.get("plan")?.trim() ?? "", q: params.get("q")?.trim() ?? "" };
 }
-function queueHref(filters, key = null) {
+function queueHref(filters, key = null, list2 = false) {
   const params = new URLSearchParams();
   if (filters.plan) params.set("plan", filters.plan);
   if (filters.q) params.set("q", filters.q);
   if (key) params.set("item", key);
+  if (key && list2) params.set("view", "list");
   const query = params.toString();
   return query ? `/?${query}` : "/";
 }
@@ -19791,8 +19806,9 @@ function groupList(group2, items, filters, selected) {
 		${list2}
 	</details>`;
 }
-function exploring(waiting) {
-  const running3 = waiting.running.map(
+function exploring(waiting, filters) {
+  const shown = (item) => (!filters.plan || item.planId === filters.plan) && (!filters.q || filters.q.toLowerCase().split(/\s+/).every((word) => `${item.planId} ${item.explorationId}`.toLowerCase().includes(word)));
+  const running3 = waiting.running.filter(shown).map(
     (item) => html2`<li data-key="running:${item.explorationId}">
 				<a href="/explorations/${item.explorationId}"
 					>${item.paused ? pill("stopped", "paused") : pill("running")}
@@ -19803,7 +19819,7 @@ function exploring(waiting) {
 				>
 			</li>`
   );
-  const failed = waiting.failed.map(
+  const failed = waiting.failed.filter(shown).map(
     (item) => html2`<li data-key="failed:${item.explorationId}">
 				<a href="/explorations/${item.explorationId}"
 					>${pill(item.state)} <span class="mono">${item.planId} · ${item.explorationId}</span></a
@@ -19832,13 +19848,15 @@ function filterForm2(waiting, filters) {
 			autocomplete="off"
 			data-search
 		/>
-		<label class="sr-only" for="queue-plan">Plan</label>
-		<select id="queue-plan" name="plan">
-			<option value="">All plans</option>
-			${plans.map(
-    (plan) => html2`<option value="${plan}" ${plan === filters.plan ? html2`selected` : ""}>${plan}</option>`
+		${plans.length || filters.plan ? html2`<label class="sr-only" for="queue-plan">Plan</label>
+						<select id="queue-plan" name="plan">
+							<option value="">All plans</option>
+							${plans.map(
+    (plan) => html2`<option value="${plan}" ${plan === filters.plan ? html2`selected` : ""}>
+										${plan}
+									</option>`
   )}
-		</select>
+						</select>` : ""}
 		<button class="btn small" data-queue-submit>Filter</button>
 	</form>`;
 }
@@ -19846,7 +19864,7 @@ function crumbs2(item, filters, full) {
   return html2`<div class="q-crumbs">
 		<nav aria-label="Breadcrumb">
 			<ol>
-				<li><a href="${queueHref(filters)}" data-queue-back>Needs you</a></li>
+				<li><a href="${queueHref(filters, item.key, true)}" data-queue-back>Needs you</a></li>
 				<li>${groupTitle(item.group)}</li>
 				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
 				<li aria-current="page">${item.kind === "plan" ? `revision ${item.revision}` : item.id}</li>
@@ -19897,7 +19915,9 @@ function questionDetail(store, context, item, filters, back, state) {
 										name="kind"
 										value="${kind.value}"
 										${selected === kind.value ? html2`checked` : ""}
-									/><label for="kind-${kind.value}">${kind.label} <kbd>${kind.key}</kbd></label>`
+									/><label for="kind-${kind.value}"
+										>${kind.label} <kbd aria-hidden="true">${kind.key}</kbd></label
+									>`
   )}
 					</div>
 				</fieldset>
@@ -19936,7 +19956,8 @@ function approvalDetail(store, context, item, filters, back, state) {
 			<h2 class="q-h">Accept the result of ${item.runId}?</h2>
 			<p class="q-meta">
 				${item.planId}@${item.revision} · build <code>${detail3.build}</code> · coverage
-				${detail3.result?.coverage ?? "none"} · ${counts(outcomes(detail3.tests))}
+				${detail3.result ? pill(detail3.result.coverage.status) : "not known yet"} ·
+				${counts(outcomes(detail3.tests))}
 			</p>
 			${findings.length ? html2`<p class="lab">Defects</p>
 							<ul class="plain">
@@ -19968,7 +19989,11 @@ function nothing(waiting, filters) {
   const filtered = filters.plan || filters.q;
   return html2`<div class="empty">
 		<p class="empty-title">${filtered ? "No item matches these filters." : "Nothing waits for you."}</p>
-		${filtered ? html2`<p><a href="/" data-queue-back>Clear the filters</a></p>` : html2`<p>${plural(waiting.running.length, "exploration")} running. The list updates by itself.</p>`}
+		${filtered ? html2`<p><a href="/" data-queue-back>Clear the filters</a></p>` : html2`<p>
+						${waiting.running.length ? `${plural(waiting.running.length, "exploration")} running. ` : ""}New
+						questions, claims, and approvals show here by themselves. To start, run
+						<code>/checkmate:test</code> in Claude Code.
+					</p>`}
 	</div>`;
 }
 function detail(store, context, waiting, item, filters, back, state) {
@@ -19994,15 +20019,13 @@ function queuePage(store, context, params, refusal = null) {
   const index2 = item ? shown.indexOf(item) : -1;
   const next = shown[index2 + 1] ?? shown[index2 - 1] ?? null;
   const back = queueHref(filters, next?.key ?? null);
-  const open = asked ? html2` data-open` : "";
-  const urgent = waiting.urgent;
-  const sub = urgent ? `${plural(urgent, "item")} ${urgent === 1 ? "needs" : "need"} your decision. The most urgent is first.` : "No decision waits for you.";
-  const list2 = html2`<section class="q-list" aria-labelledby="queue-title" data-region="queue-list">
-		<div class="q-head">
+  const urgent = shown.filter((entry) => entry.group !== "questions").length;
+  const sub = !shown.length ? "" : urgent ? `${plural(urgent, "item")} ${urgent === 1 ? "needs" : "need"} your decision. The most urgent is first.` : "No decision waits for you. The questions that do not block are below.";
+  const list2 = html2`<div class="q-head">
 			<h1 id="queue-title">Needs you</h1>
-			<p class="sub">${sub}</p>
+			${sub ? html2`<p class="sub">${sub}</p>` : ""}
 		</div>
-		${filterForm2(waiting, filters)} ${exploring(waiting)}
+		${filterForm2(waiting, filters)} ${exploring(waiting, filters)}
 		${groups.map(
     (group2) => groupList(
       group2,
@@ -20011,27 +20034,20 @@ function queuePage(store, context, params, refusal = null) {
       item?.key ?? null
     )
   )}
-		${shown.length ? "" : html2`<p class="none">${filters.plan || filters.q ? "No item matches these filters." : "Nothing waits for you."}</p>`}
-		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>
-	</section>`;
+		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>`;
   const pane = asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
     section: "inbox",
     subjects: ["*"],
     status: refusal ? 422 : void 0,
-    body: html2`<div class="queue" data-queue data-selected="${item?.key ?? ""}" ${open}>
-			${list2}
-			<section
-				class="q-detail"
-				aria-label="Selected item"
-				tabindex="-1"
-				data-region="queue-detail"
-				data-key="detail:${item?.key ?? ""}"
-			>
-				${pane}
-			</section>
-		</div>`
+    body: listAndItem({
+      label: "Needs you",
+      list: list2,
+      detail: pane,
+      selected: item?.key ?? "",
+      open: Boolean(asked) && params.get("view") !== "list" || !shown.length
+    })
   };
 }
 function queueCount(store) {
@@ -21129,7 +21145,7 @@ data: ${matched.join(",") || "*"}
         gapId,
         kind: input.kind,
         value: input.value,
-        source: input.kind === "clarify" ? input.source : null,
+        source: input.source || null,
         rationale: input.rationale,
         expectSha256: form.get("sha") ?? ""
       });
@@ -21197,7 +21213,7 @@ data: ${matched.join(",") || "*"}
         gapId: questionId,
         kind: input.kind,
         value: input.value,
-        source: input.kind === "clarify" ? input.source : null,
+        source: input.source || null,
         rationale: input.rationale
       });
     } catch (error) {

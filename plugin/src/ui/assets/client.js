@@ -14,6 +14,11 @@ function syncRationale(root = document) {
 }
 
 function syncSource(root = document) {
+	for (const form of root.querySelectorAll('[data-quick-form]')) {
+		const kind = form.querySelector('input[name="kind"]:checked')
+		const value = form.querySelector('#value')
+		if (value) value.required = kind?.value !== 'defer'
+	}
 	for (const form of root.querySelectorAll('[data-gap-form]')) {
 		const kind = form.querySelector('input[name="kind"]:checked')
 		const source = form.querySelector('[data-source]')
@@ -661,7 +666,7 @@ function showToast(fresh) {
 	setTimeout(() => shown.remove(), 6000)
 }
 
-function swapQueue(fresh, keepDetail = false, live = false) {
+function swapQueue(fresh, keepDetail = false, live = false, detailOnly = false) {
 	const messages = []
 	const next = fresh.querySelector('[data-queue]')
 	if (!next) return false
@@ -669,7 +674,7 @@ function swapQueue(fresh, keepDetail = false, live = false) {
 	const opened = new Map(
 		[...queue.querySelectorAll('details[data-open-key]')].map((details) => [details.dataset.openKey, details.open])
 	)
-	for (const name of ['queue-list', 'queue-detail']) {
+	for (const name of detailOnly ? ['queue-detail'] : ['queue-list', 'queue-detail']) {
 		const region = queue.querySelector(`[data-region="${name}"]`)
 		const replacement = next.querySelector(`[data-region="${name}"]`)
 		const previous = served.get(name)
@@ -705,13 +710,16 @@ function swapQueue(fresh, keepDetail = false, live = false) {
 	syncRationale(queue)
 	syncSource(queue)
 	keepMore()
+	rove()
+	restoreDrafts()
 	showToast(fresh)
 	return true
 }
 
 function queueFocus(focus) {
 	const row = currentRow()
-	row?.scrollIntoView({ block: 'nearest' })
+	if (row && !narrowQueue.matches) row.scrollIntoView({ block: 'nearest' })
+	if (row && narrowQueue.matches && !queue.hasAttribute('data-open')) row.scrollIntoView({ block: 'center' })
 	if (focus === 'row') row?.focus({ preventScroll: true })
 	if (focus === 'detail') queueDetail().focus()
 	if (focus === 'form') (queueDetail().querySelector('.form-error') ? queueDetail() : firstField())?.focus()
@@ -738,18 +746,20 @@ async function queueRefresh() {
 	} catch {}
 }
 
-async function queueGo(url, mode, focus) {
+async function queueGo(url, mode, focus, detailOnly = false) {
+	if (!detailOnly) clearTimeout(stepTimer)
 	const ticket = ++queueTicket
 	queueBusy = true
 	try {
 		const response = await fetch(url, { cache: 'no-store', headers: { 'X-Checkmate-Queue': '1' } })
 		if (ticket !== queueTicket) return
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
-		if (!swapQueue(fresh)) return void location.assign(url)
+		if (ticket !== queueTicket) return
+		if (!swapQueue(fresh, false, false, detailOnly)) return void location.assign(url)
 		if (mode === 'push') window.history.pushState(null, '', url)
 		if (mode === 'replace') window.history.replaceState(null, '', url)
 		window.dispatchEvent(new window.Event('queue-moved'))
-		window.scrollTo(0, 0)
+		if (!detailOnly) window.scrollTo(0, 0)
 		queueFocus(focus)
 		if (location.hash) {
 			openTarget()
@@ -762,6 +772,14 @@ async function queueGo(url, mode, focus) {
 	}
 }
 
+let stepTimer = null
+
+function rove() {
+	const rows = [...queue.querySelectorAll('[data-queue-link]')]
+	const current = currentRow() ?? rows[0]
+	for (const row of rows) row.tabIndex = row === current ? 0 : -1
+}
+
 function queueStep(step) {
 	const rows = queueRows()
 	if (!rows.length) return
@@ -770,9 +788,48 @@ function queueStep(step) {
 	if (index >= 0 && next === rows[index]) return
 	currentRow()?.removeAttribute('aria-current')
 	next.setAttribute('aria-current', 'true')
+	rove()
 	next.focus({ preventScroll: true })
 	next.scrollIntoView({ block: 'nearest' })
-	queueGo(next.href, 'replace', 'row')
+	window.history.replaceState(null, '', next.href)
+	window.dispatchEvent(new window.Event('queue-moved'))
+	queueTicket++
+	clearTimeout(stepTimer)
+	stepTimer = setTimeout(() => queueGo(next.href, null, null, true), 90)
+}
+
+function draftPrefix(key = queue.dataset.selected) {
+	return `checkmate-draft:${location.pathname}:${key}:`
+}
+
+function draftFields() {
+	return [...queueDetail().querySelectorAll('form[method="post"] textarea, form[method="post"] input:not([type])')]
+}
+
+function saveDraft(field) {
+	try {
+		if (field.value) window.sessionStorage.setItem(draftPrefix() + field.name, field.value)
+		else window.sessionStorage.removeItem(draftPrefix() + field.name)
+	} catch {}
+}
+
+function restoreDrafts() {
+	try {
+		for (const field of draftFields()) {
+			if (field.value) continue
+			const kept = window.sessionStorage.getItem(draftPrefix() + field.name)
+			if (kept) field.value = kept
+		}
+	} catch {}
+	syncRationale(queueDetail())
+}
+
+function clearDrafts(key) {
+	try {
+		const prefix = draftPrefix(key)
+		for (const name of Object.keys(window.sessionStorage))
+			if (name.startsWith(prefix)) window.sessionStorage.removeItem(name)
+	} catch {}
 }
 
 function queueKind(event, value, send) {
@@ -780,6 +837,7 @@ function queueKind(event, value, send) {
 	if (!input) return false
 	event.preventDefault()
 	input.checked = true
+	syncSource()
 	if (send) {
 		input.form.requestSubmit()
 		return true
@@ -907,6 +965,7 @@ async function queueSend(form, submitter) {
 	if (button) button.disabled = true
 	const ticket = ++queueTicket
 	queueBusy = true
+	const sentKey = queue.dataset.selected
 	const post = () => {
 		const body = new URLSearchParams(new FormData(form))
 		if (submitter?.name) body.set(submitter.name, submitter.value)
@@ -917,6 +976,7 @@ async function queueSend(form, submitter) {
 		if (response.status === 403 && (await renewToken())) response = await post()
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (!swapQueue(fresh)) return void sendFailed(form, button)
+		if (response.ok) clearDrafts(sentKey)
 		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
 		window.dispatchEvent(new window.Event('queue-moved'))
 		window.scrollTo(0, 0)
@@ -938,6 +998,12 @@ if (queue) {
 			event.preventDefault()
 			if (row.getAttribute('aria-current') === 'true' && !narrowQueue.matches) return void queueFocus('form')
 			return void queueGo(row.href, queueMode, narrowQueue.matches ? 'detail' : 'row')
+		}
+		const more = event.target.closest('[data-more-rows]')
+		if (more) {
+			event.preventDefault()
+			const count = queueRows().length
+			return void queueGo(more.href, 'replace', null).then(() => queueRows()[count]?.focus())
 		}
 		const back = event.target.closest('[data-queue-back], [data-queue-go]')
 		if (back) {
@@ -968,6 +1034,11 @@ if (queue) {
 		true
 	)
 	keepMore()
+	rove()
+	restoreDrafts()
+	document.addEventListener('input', (event) => {
+		if (draftFields().includes(event.target)) saveDraft(event.target)
+	})
 	document.addEventListener('change', (event) => {
 		const form = event.target.closest?.('[data-queue-filter]')
 		if (form && event.target.tagName === 'SELECT') queueGo(queueFilterUrl(form), 'push', null)

@@ -143,7 +143,7 @@ pre,
 	font-family: var(--font-mono);
 }
 code {
-	font-size: 0.86em;
+	font-size: max(12px, 0.86em);
 	background: var(--code-bg);
 	padding: 1px 5px;
 	border-radius: 4px;
@@ -159,7 +159,7 @@ a.mono:hover {
 	text-decoration: underline;
 }
 kbd {
-	font-size: 11.5px;
+	font-size: 12px;
 	border: 1px solid var(--line-strong);
 	border-bottom-width: 2px;
 	border-radius: 4px;
@@ -282,7 +282,7 @@ blockquote {
 }
 .count {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 500;
 	margin-left: 6px;
 	background: var(--accent);
@@ -412,7 +412,7 @@ a.pill:hover {
 	align-items: center;
 	gap: 4px;
 	font-family: var(--font-mono);
-	font-size: 11.5px;
+	font-size: 12px;
 	line-height: 19px;
 	padding: 0 8px;
 	border-radius: 999px;
@@ -465,7 +465,7 @@ a.pill:hover {
 }
 .tag {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	padding: 1px 7px;
 	border-radius: 4px;
 	background: var(--code-bg);
@@ -568,7 +568,7 @@ a.pill:hover {
 }
 .group-h {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.07em;
@@ -765,7 +765,7 @@ tbody tr:last-child td {
 }
 th {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	color: var(--muted);
@@ -783,7 +783,7 @@ table.log td {
 	font-size: 13.5px;
 }
 table.log td.mono {
-	font-size: 11.5px;
+	font-size: 12px;
 }
 .reason {
 	color: var(--fail);
@@ -856,7 +856,7 @@ table.log td.mono {
 }
 .facts dt {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	color: var(--muted);
@@ -933,7 +933,7 @@ summary.asr-row::-webkit-details-marker {
 summary.asr-row::after {
 	content: '▸';
 	color: var(--muted);
-	font-size: 11px;
+	font-size: 12px;
 	justify-self: end;
 }
 details[open] > summary.asr-row::after {
@@ -990,7 +990,7 @@ summary.asr-row:focus-visible {
 }
 .asr-body .reason strong {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	color: var(--muted);
@@ -1068,7 +1068,7 @@ pre.report {
 .chip {
 	display: inline-block;
 	font-family: var(--font-mono);
-	font-size: 11.5px;
+	font-size: 12px;
 	border: 1px solid var(--line);
 	border-radius: 5px;
 	padding: 1px 7px;
@@ -1098,7 +1098,7 @@ pre.report {
 .compare small {
 	display: block;
 	font-family: var(--font-mono);
-	font-size: 10.5px;
+	font-size: 12px;
 	text-transform: uppercase;
 	letter-spacing: 0.07em;
 	color: var(--muted);
@@ -1122,7 +1122,7 @@ pre.report {
 }
 .minor {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.07em;
@@ -1258,7 +1258,7 @@ pre.report {
 .lab {
 	display: block;
 	font-family: var(--font-mono);
-	font-size: 10.5px;
+	font-size: 12px;
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.07em;
@@ -1601,7 +1601,7 @@ pre.report {
 	border-top: 1px solid var(--line);
 }
 .foot code {
-	font-size: 11.5px;
+	font-size: 12px;
 }
 
 .list-count {
@@ -1673,7 +1673,7 @@ th a.sort:hover .arrow {
 }
 .menu > summary::after {
 	content: '▾';
-	font-size: 11px;
+	font-size: 12px;
 	color: var(--muted);
 }
 .menu-list {
@@ -2111,7 +2111,7 @@ main:has(> .queue) {
 }
 .q-group-h {
 	font-family: var(--font-mono);
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.07em;
@@ -2120,7 +2120,7 @@ main:has(> .queue) {
 	padding-left: 10px;
 }
 .q-group-h .n {
-	font-size: 11px;
+	font-size: 12px;
 }
 .q-fold > summary {
 	cursor: pointer;
@@ -2345,7 +2345,7 @@ body:has(.queue) .foot {
 .q-detail .seg label kbd,
 .q-detail .btn kbd {
 	margin-left: 6px;
-	font-size: 10.5px;
+	font-size: 12px;
 }
 .q-detail .btn.primary kbd {
 	background: transparent;
@@ -2522,4 +2522,30 @@ body:has(.queue) .foot {
 }
 .kept blockquote {
 	margin: 0;
+}
+.skip.skip-item {
+	position: static;
+	justify-self: start;
+}
+.skip.skip-item:not(:focus) {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	padding: 0;
+}
+.q-row {
+	scroll-margin: 40px 0 16px;
+}
+.q-more {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding-left: 10px;
+	font-size: 13px;
+}
+.wrap-cell {
+	overflow-wrap: anywhere;
+	min-width: 12ch;
 }

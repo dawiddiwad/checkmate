@@ -89,7 +89,7 @@ test('filters and the selected item live in the URL', async (t) => {
 	const claim = read(needsYou).items.find((item) => item.kind === 'claim')!
 	const selected = await call(`/?plan=${claim.planId}&item=${encodeURIComponent(claim.key)}`)
 	assert.match(selected.body, new RegExp(`data-selected="${claim.key}"\\s+data-open`))
-	assert.match(selected.body, /href="\/\?plan=[a-z]+" data-queue-back>Needs you<\/a>/)
+	assert.match(selected.body, /href="\/\?plan=[a-z]+&amp;item=[^"]+&amp;view=list" data-queue-back>Needs you<\/a>/)
 	assert.match(selected.body, /<h3 class="lab" id="decide-title">Is [^ ]+ a defect\?<\/h3>/)
 	const gone = await call('/?item=claim:checkout:none')
 	assert.match(gone.body, /This item does not wait for you now\./)
@@ -196,6 +196,43 @@ test('a second decision on a claim or a question is refused and names the first'
 	assert.equal(decisions(), before + 2)
 })
 
+test('the queue follows its filters and records the same default source for each kind of answer', async (t) => {
+	const { call, read } = await start(t)
+	const login = read(needsYou).items.filter((item) => item.planId === 'login')
+	const urgent = login.filter((item) => item.group !== 'questions').length
+	const page = await call('/?plan=login')
+	assert.match(page.body, new RegExp(`${urgent} items need your decision`))
+	assert.doesNotMatch(page.body, /data-key="running:x-9"/)
+	assert.match((await call('/?plan=checkout')).body, /data-key="running:x-9"/)
+	const result = (await call('/?item=run%3Arun-7')).body
+	assert.doesNotMatch(result, /\[object Object\]/)
+	assert.match(result, /coverage\s*<span class="st warn"><span aria-hidden="true">◐<\/span> partial<\/span>/)
+	const question = login.find((item) => item.kind === 'question')!
+	const form = await call(`/?item=${encodeURIComponent(question.key)}`)
+	assert.match(form.body, /<kbd aria-hidden="true">c<\/kbd>/)
+	const sent = await call(`/explorations/${question.explorationId}/questions/${question.id}`, {
+		csrf: field(form.body, 'csrf'),
+		item: question.key,
+		return: '/',
+		kind: 'accept_assumption',
+		value: 'Yes, for all customers.',
+	})
+	assert.equal(sent.status, 303)
+	const answer = read((store) => journal(store, 'login').team.findLast((entry) => entry.kind === 'answer'))
+	assert.equal((answer as { source?: string }).source, 'qa-lead, in the review UI')
+})
+
+test('an empty workspace says once that nothing waits and how to start', async (t) => {
+	const workspace = directory(t)
+	const ui = await startUi({ workspace, defaultActor: 'qa-lead' })
+	t.after(() => ui.close())
+	const body = await (await fetch(ui.url)).text()
+	assert.equal(body.match(/Nothing waits for you|No decision waits for you/g)?.length, 1)
+	assert.doesNotMatch(body, /0 explorations/)
+	assert.doesNotMatch(body, /id="queue-plan"/)
+	assert.match(body, /<code>\/checkmate:test<\/code>/)
+})
+
 test('a plan is approved inside the queue with its confirm step', async (t) => {
 	const { call, read } = await start(t)
 	const plan = read(needsYou).items.find((item) => item.kind === 'plan')!
@@ -227,7 +264,9 @@ test('the claims list filters by state, severity, plan, build, time, and text in
 	const { call } = await start(t)
 	const all = await call('/claims')
 	assert.equal(all.status, 200)
-	assert.equal(keys(all.body).length, 60)
+	assert.equal(keys(all.body).length, 50)
+	assert.match(all.body, /href="\/claims\?item=[^"]+&amp;limit=100"[^>]*>Show 10 more<\/a/)
+	assert.equal(keys((await call('/claims?limit=100')).body).length, 60)
 	const week = await call('/claims?since=7&severity=high')
 	assert(keys(week.body).length > 0 && keys(week.body).length < 60)
 	assert.match(week.body, /<option value="7" selected>Last 7 days<\/option>/)
@@ -235,10 +274,13 @@ test('the claims list filters by state, severity, plan, build, time, and text in
 	assert.deepEqual(keys(found.body), ['claim:checkout:a1/D1'])
 	assert.match(found.body, /data-selected="claim:checkout:a1\/D1"/)
 	assert.match(found.body, /href="\/explorations\/x-1\/claims\/a1\/D1\/evidence\/0"/)
-	assert.match(found.body, /href="\/claims\?q=coupons\+stack&amp;plan=checkout" data-queue-back>Claims<\/a>/)
+	assert.match(
+		found.body,
+		/href="\/claims\?q=coupons\+stack&amp;plan=checkout&amp;item=claim%3Acheckout%3Aa1%2FD1&amp;view=list" data-queue-back>Claims<\/a>/
+	)
 	const accepted = await call('/claims?state=accepted')
 	assert.match(accepted.body, /<h2 class="lab" id="decide-title">Decision<\/h2>/)
-	assert.equal(keys((await call('/claims?state=none')).body).length, 60)
+	assert.equal(keys((await call('/claims?state=none&limit=100')).body).length, 60)
 })
 
 test('pages that are not rebuilt have a breadcrumb and a back link', async (t) => {

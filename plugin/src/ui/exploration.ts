@@ -24,7 +24,7 @@ function claimRow(planId: string, claim: Claim) {
 		<td>${pill(claim.state)}</td>
 		<td>${pill(claim.severity)}</td>
 		<td>${claim.actors.join(', ')}</td>
-		<td>${claim.title}${claim.reason ? html`<p class="help">${claim.reason}</p>` : ''}</td>
+		<td class="wrap-cell">${claim.title}${claim.reason ? html`<p class="help">${claim.reason}</p>` : ''}</td>
 	</tr>`
 }
 

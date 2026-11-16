@@ -33,22 +33,28 @@ The start page. It shows the items that wait for your decision in a list on the 
 
 Above the groups, `Explorations` names each running, paused, or failed exploration, with a link to its live view. A paused exploration waits for you in the Claude Code session, not in the UI.
 
-The number next to `Needs you` counts the items of the first three groups. The questions that do not block are not in the number.
+The number next to `Needs you` counts the items of the first three groups. The questions that do not block are not in the number. The line below the title counts only the items that the filters show, and `Explorations` shows only the explorations of the filtered plan.
 
 - On a question, write the answer, then click `Record answer` or press `Ctrl` `Enter`. The kind of answer is `Clarify` by default. Click `Accept assumption` or `Defer` to change it. `Defer` needs no answer.
 - `Add source and reason` opens two optional fields. When you leave them empty, the record names you and the review UI as the source, and states that no reason was given. Once you open the fields, they stay open until you close the browser tab.
 - On a claim, read the expected and the actual result, the steps, and the evidence. Click `Accept as a defect`, or write a short reason and click `Reject`. A reject needs a reason. An accept does not.
 - On a plan or a result, read the summary, write a rationale, choose the decision, then click `Confirm`. The plan page and the run page show the full record.
 
+Each answer records a source. When you leave it empty, the source is `<your name>, in the review UI`, for each kind of answer. The UI records one decision for each item. When somebody decided the item after you opened it, the UI does not record your decision. It names who decided and how, and it shows your text again.
+
+The UI keeps the text that you type for each item until you close the browser tab. When you select another item and come back, or load the page again, the text is there. When the UI does not answer, for example because it stopped, the form shows an error and keeps your text. Start the UI again, then send the form again.
+
 After you record an answer or a decision, the list selects the next item. The page does not load again. The address of the page keeps the selected item and the filters, for example `/?plan=checkout&q=coupon&item=...`. Thus Back in the browser and a copied link show the same list and item. The breadcrumb above the item goes back to the list. `Open full page` opens the claim, question, or gap page.
 
-On a window narrower than 760 pixels, the list and the item take turns. Select an item to show it. Click `Needs you` in the breadcrumb to show the list again.
+On a window narrower than 760 pixels, the list and the item take turns. Select an item to show it. Click `Needs you` in the breadcrumb to show the list again, with the same item selected.
+
+The list is one stop for the `Tab` key. Use `j` and `k` or the arrow keys to move in it. The first `Tab` stop of the list is `Skip to the selected item`.
 
 `/inbox` shows all items as one list, oldest first.
 
 ### Claims
 
-`/claims` lists the claims of all plans, newest first, in the same layout as `Needs you`. Filter them by state, severity, plan, build, and the time when the exploration found them, for example `Last 7 days`. The search field looks in the title, the expected and the actual result, the build, and the exploration. The filters and the selected claim are in the address, so a link shows the same list.
+`/claims` lists the claims of all plans, newest first, in the same layout as `Needs you`. The list shows 50 claims. `Show 50 more` adds the next claims and keeps the filters. Filter them by state, severity, plan, build, and the time when the exploration found them, for example `Last 7 days`. The search field looks in the title, the expected and the actual result, the build, and the exploration. The filters and the selected claim are in the address, so a link shows the same list.
 
 The selected claim shows its steps and its evidence. A claim without a decision has the same decision form as in `Needs you`.
 

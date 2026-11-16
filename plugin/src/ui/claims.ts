@@ -5,7 +5,7 @@ import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { claimsAcross } from '../views.ts'
 import { html, pill, plural, time } from './html.ts'
-import { banner } from './layout.ts'
+import { banner, listAndItem } from './layout.ts'
 import { actorField, emptyState, hidden, keptText, messages, recordPanel, returnFields } from './forms.ts'
 import { claimEvidenceList } from './exploration.ts'
 
@@ -16,6 +16,7 @@ export type ClaimFilters = {
 	plan: string
 	build: string
 	since: string
+	limit: string
 }
 export type ClaimRefusal = { key: string; state: FormState }
 type Row = ReturnType<typeof claimsAcross>[number]
@@ -47,13 +48,16 @@ export function claimFilters(params: URLSearchParams): ClaimFilters {
 		plan: value('plan'),
 		build: value('build'),
 		since: periods.some(([days]) => days === value('since')) ? value('since') : '',
+		limit: /^[1-9][0-9]{0,5}$/.test(value('limit')) ? value('limit') : '',
 	}
 }
 
-export function claimsHref(filters: Partial<ClaimFilters>, key: string | null = null) {
+export function claimsHref(filters: Partial<ClaimFilters>, key: string | null = null, list = false) {
 	const params = new URLSearchParams()
 	for (const name of names) if (filters[name]) params.set(name, filters[name])
 	if (key) params.set('item', key)
+	if (filters.limit) params.set('limit', filters.limit)
+	if (key && list) params.set('view', 'list')
 	const query = params.toString()
 	return query ? `/claims?${query}` : '/claims'
 }
@@ -103,9 +107,11 @@ ${state.values.rationale ?? ''}</textarea>
 					${actorField(context, state)}
 					<div class="btns">
 						<button class="btn primary" name="verdict" value="approved">
-							Accept as a defect <kbd>a</kbd>
+							Accept as a defect <kbd aria-hidden="true">a</kbd>
 						</button>
-						<button class="btn" name="verdict" value="rejected">Reject <kbd>r</kbd></button>
+						<button class="btn" name="verdict" value="rejected">
+							Reject <kbd aria-hidden="true">r</kbd>
+						</button>
 					</div>
 				</form>
 			</section>`
@@ -211,7 +217,9 @@ function crumbs(item: Row, filters: ClaimFilters) {
 	return html`<div class="q-crumbs">
 		<nav aria-label="Breadcrumb">
 			<ol>
-				<li><a href="${claimsHref(filters)}" data-queue-back>Claims</a></li>
+				<li>
+					<a href="${claimsHref(filters, claimKey(item.planId, item.id), true)}" data-queue-back>Claims</a>
+				</li>
 				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
 				<li><a href="/explorations/${item.explorationId}">${item.explorationId}</a></li>
 				<li aria-current="page">${item.id}</li>
@@ -221,7 +229,7 @@ function crumbs(item: Row, filters: ClaimFilters) {
 	</div>`
 }
 
-const shownLimit = 200
+const shownLimit = 50
 
 function nextKey(shown: Row[], item: Row) {
 	const index = shown.indexOf(item)
@@ -245,8 +253,8 @@ export function claimsPage(
 		: (shown[0] ?? null)
 	const key = item ? claimKey(item.planId, item.id) : null
 	const filtered = names.some((name) => filters[name])
-	const list = html`<section class="q-list" aria-labelledby="claims-title" data-region="queue-list">
-		<div class="q-head">
+	const limit = Math.max(shownLimit, Number(filters.limit) || 0)
+	const list = html`<div class="q-head">
 			<h1 id="claims-title">Claims</h1>
 			<p class="sub">
 				${filtered ? `${shown.length} of ${plural(rows.length, 'claim')} match.` : `${plural(rows.length, 'claim')}, newest first.`}
@@ -256,14 +264,26 @@ export function claimsPage(
 		${
 			shown.length
 				? html`<ul class="q-items">
-						${shown.slice(0, shownLimit).map((entry) => row(entry, filters, key))}
+						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
 					</ul>`
 				: html`<p class="none">
 						No claim matches these filters. <a href="/claims" data-queue-back>Clear the filters</a>
 					</p>`
 		}
-		${shown.length > shownLimit ? html`<p class="help">The list shows the first ${shownLimit}. Add a filter to see the others.</p>` : ''}
-	</section>`
+		${
+			shown.length > limit
+				? html`<p class="q-more">
+						<a
+							class="btn small"
+							href="${claimsHref({ ...filters, limit: String(limit + shownLimit) }, key)}"
+							data-queue-go
+							data-more-rows
+							>Show ${Math.min(shownLimit, shown.length - limit)} more</a
+						>
+						<span class="muted">${limit} of ${shown.length} shown</span>
+					</p>`
+				: ''
+		}`
 	const pane = item
 		? claimPane(store, context, item.planId, item, crumbs(item, filters), {
 				key: key!,
@@ -279,17 +299,12 @@ export function claimsPage(
 		section: 'claims',
 		subjects: ['*'],
 		status: refusal ? 422 : undefined,
-		body: html`<div class="queue" data-queue data-selected="${key ?? ''}" ${asked ? html`data-open` : ''}>
-			${list}
-			<section
-				class="q-detail"
-				aria-label="Selected claim"
-				tabindex="-1"
-				data-region="queue-detail"
-				data-key="detail:${key ?? ''}"
-			>
-				${pane}
-			</section>
-		</div>`,
+		body: listAndItem({
+			label: 'Claims',
+			list,
+			detail: pane,
+			selected: key ?? '',
+			open: Boolean(asked) && params.get('view') !== 'list',
+		}),
 	}
 }

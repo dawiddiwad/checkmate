@@ -215,8 +215,12 @@ export function listAndItem(split: Split) {
 		${split.open ? html`data-open` : ''}
 		${split.keep ? html`data-queue-keep` : ''}
 	>
-		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">${split.list}</section>
+		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">
+			<a class="skip skip-item" href="#item">Skip to the selected item</a>
+			${split.list}
+		</section>
 		<section
+			id="item"
 			class="q-detail"
 			aria-label="Selected ${split.label.toLowerCase()} item"
 			tabindex="-1"

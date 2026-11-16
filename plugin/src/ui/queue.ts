@@ -8,6 +8,7 @@ import { html, pill, plural, time } from './html.ts'
 import { actorField, emptyState, hidden, keptText, messages, returnFields, sourceAndReason } from './forms.ts'
 import { counts } from './lists.ts'
 import { approvalPanel } from './plan.ts'
+import { listAndItem } from './layout.ts'
 import { decisionPanel } from './run.ts'
 
 export type QueueFilters = { plan: string; q: string }
@@ -26,11 +27,12 @@ export function queueFilters(params: URLSearchParams): QueueFilters {
 	return { plan: params.get('plan')?.trim() ?? '', q: params.get('q')?.trim() ?? '' }
 }
 
-export function queueHref(filters: QueueFilters, key: string | null = null) {
+export function queueHref(filters: QueueFilters, key: string | null = null, list = false) {
 	const params = new URLSearchParams()
 	if (filters.plan) params.set('plan', filters.plan)
 	if (filters.q) params.set('q', filters.q)
 	if (key) params.set('item', key)
+	if (key && list) params.set('view', 'list')
 	const query = params.toString()
 	return query ? `/?${query}` : '/'
 }
@@ -98,8 +100,15 @@ function groupList(group: (typeof groups)[number], items: QueueItem[], filters: 
 	</details>`
 }
 
-function exploring(waiting: Waiting) {
-	const running = waiting.running.map(
+function exploring(waiting: Waiting, filters: QueueFilters) {
+	const shown = (item: { planId: string; explorationId: string }) =>
+		(!filters.plan || item.planId === filters.plan) &&
+		(!filters.q ||
+			filters.q
+				.toLowerCase()
+				.split(/\s+/)
+				.every((word) => `${item.planId} ${item.explorationId}`.toLowerCase().includes(word)))
+	const running = waiting.running.filter(shown).map(
 		(item) =>
 			html`<li data-key="running:${item.explorationId}">
 				<a href="/explorations/${item.explorationId}"
@@ -111,7 +120,7 @@ function exploring(waiting: Waiting) {
 				>
 			</li>`
 	)
-	const failed = waiting.failed.map(
+	const failed = waiting.failed.filter(shown).map(
 		(item) =>
 			html`<li data-key="failed:${item.explorationId}">
 				<a href="/explorations/${item.explorationId}"
@@ -142,13 +151,20 @@ function filterForm(waiting: Waiting, filters: QueueFilters) {
 			autocomplete="off"
 			data-search
 		/>
-		<label class="sr-only" for="queue-plan">Plan</label>
-		<select id="queue-plan" name="plan">
-			<option value="">All plans</option>
-			${plans.map(
-				(plan) => html`<option value="${plan}" ${plan === filters.plan ? html`selected` : ''}>${plan}</option>`
-			)}
-		</select>
+		${
+			plans.length || filters.plan
+				? html`<label class="sr-only" for="queue-plan">Plan</label>
+						<select id="queue-plan" name="plan">
+							<option value="">All plans</option>
+							${plans.map(
+								(plan) =>
+									html`<option value="${plan}" ${plan === filters.plan ? html`selected` : ''}>
+										${plan}
+									</option>`
+							)}
+						</select>`
+				: ''
+		}
 		<button class="btn small" data-queue-submit>Filter</button>
 	</form>`
 }
@@ -157,7 +173,7 @@ function crumbs(item: QueueItem, filters: QueueFilters, full: string) {
 	return html`<div class="q-crumbs">
 		<nav aria-label="Breadcrumb">
 			<ol>
-				<li><a href="${queueHref(filters)}" data-queue-back>Needs you</a></li>
+				<li><a href="${queueHref(filters, item.key, true)}" data-queue-back>Needs you</a></li>
 				<li>${groupTitle(item.group)}</li>
 				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
 				<li aria-current="page">${item.kind === 'plan' ? `revision ${item.revision}` : item.id}</li>
@@ -226,7 +242,9 @@ function questionDetail(
 										name="kind"
 										value="${kind.value}"
 										${selected === kind.value ? html`checked` : ''}
-									/><label for="kind-${kind.value}">${kind.label} <kbd>${kind.key}</kbd></label>`
+									/><label for="kind-${kind.value}"
+										>${kind.label} <kbd aria-hidden="true">${kind.key}</kbd></label
+									>`
 						)}
 					</div>
 				</fieldset>
@@ -282,7 +300,8 @@ function approvalDetail(
 			<h2 class="q-h">Accept the result of ${item.runId}?</h2>
 			<p class="q-meta">
 				${item.planId}@${item.revision} · build <code>${detail.build}</code> · coverage
-				${detail.result?.coverage ?? 'none'} · ${counts(outcomes(detail.tests))}
+				${detail.result ? pill(detail.result.coverage.status) : 'not known yet'} ·
+				${counts(outcomes(detail.tests))}
 			</p>
 			${
 				findings.length
@@ -323,7 +342,11 @@ function nothing(waiting: Waiting, filters: QueueFilters) {
 		${
 			filtered
 				? html`<p><a href="/" data-queue-back>Clear the filters</a></p>`
-				: html`<p>${plural(waiting.running.length, 'exploration')} running. The list updates by itself.</p>`
+				: html`<p>
+						${waiting.running.length ? `${plural(waiting.running.length, 'exploration')} running. ` : ''}New
+						questions, claims, and approvals show here by themselves. To start, run
+						<code>/checkmate:test</code> in Claude Code.
+					</p>`
 		}
 	</div>`
 }
@@ -365,17 +388,17 @@ export function queuePage(
 	const index = item ? shown.indexOf(item) : -1
 	const next = shown[index + 1] ?? shown[index - 1] ?? null
 	const back = queueHref(filters, next?.key ?? null)
-	const open = asked ? html` data-open` : ''
-	const urgent = waiting.urgent
-	const sub = urgent
-		? `${plural(urgent, 'item')} ${urgent === 1 ? 'needs' : 'need'} your decision. The most urgent is first.`
-		: 'No decision waits for you.'
-	const list = html`<section class="q-list" aria-labelledby="queue-title" data-region="queue-list">
-		<div class="q-head">
+	const urgent = shown.filter((entry) => entry.group !== 'questions').length
+	const sub = !shown.length
+		? ''
+		: urgent
+			? `${plural(urgent, 'item')} ${urgent === 1 ? 'needs' : 'need'} your decision. The most urgent is first.`
+			: 'No decision waits for you. The questions that do not block are below.'
+	const list = html`<div class="q-head">
 			<h1 id="queue-title">Needs you</h1>
-			<p class="sub">${sub}</p>
+			${sub ? html`<p class="sub">${sub}</p>` : ''}
 		</div>
-		${filterForm(waiting, filters)} ${exploring(waiting)}
+		${filterForm(waiting, filters)} ${exploring(waiting, filters)}
 		${groups.map((group) =>
 			groupList(
 				group,
@@ -384,9 +407,7 @@ export function queuePage(
 				item?.key ?? null
 			)
 		)}
-		${shown.length ? '' : html`<p class="none">${filters.plan || filters.q ? 'No item matches these filters.' : 'Nothing waits for you.'}</p>`}
-		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>
-	</section>`
+		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>`
 	const pane =
 		asked && !item
 			? gone(filters, refusal?.state)
@@ -396,18 +417,13 @@ export function queuePage(
 		section: 'inbox',
 		subjects: ['*'],
 		status: refusal ? 422 : undefined,
-		body: html`<div class="queue" data-queue data-selected="${item?.key ?? ''}" ${open}>
-			${list}
-			<section
-				class="q-detail"
-				aria-label="Selected item"
-				tabindex="-1"
-				data-region="queue-detail"
-				data-key="detail:${item?.key ?? ''}"
-			>
-				${pane}
-			</section>
-		</div>`,
+		body: listAndItem({
+			label: 'Needs you',
+			list,
+			detail: pane,
+			selected: item?.key ?? '',
+			open: (Boolean(asked) && params.get('view') !== 'list') || !shown.length,
+		}),
 	}
 }
 

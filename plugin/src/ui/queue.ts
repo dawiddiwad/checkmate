@@ -434,8 +434,7 @@ export function queuePage(
 				filters,
 				item?.key ?? null
 			)
-		)}
-		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>`
+		)}`
 	const pane =
 		picked.length || bulk
 			? bulkPanel(context, picked, queueHref({ ...filters, picks: [] }, item?.key ?? null), bulk)

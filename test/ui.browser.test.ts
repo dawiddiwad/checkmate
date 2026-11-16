@@ -2,29 +2,20 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
 import { human } from '../scripts/ui-demo.ts'
-import { approval, focusedKey, launch, open, skip, stop } from './browser.ts'
+import { approval, launch, open, skip, stop } from './browser.ts'
 
 test.before(launch)
 test.after(stop)
 
-test('the inbox works from the keyboard and a #decide or #answer link focuses its form', { skip }, async (t) => {
+test('the shortcuts panel opens by key and a #decide or #answer link focuses its form', { skip }, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/inbox'))
+	await page.waitForURL(url('/'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
-	assert.equal(await focusedKey(page), 'gap:checkout:G2')
-	await page.keyboard.press('j')
-	assert.equal(await focusedKey(page), 'gap:checkout:G4')
-	await page.keyboard.press('j')
-	assert.equal(await focusedKey(page), 'plan:search@1')
-	await page.keyboard.press('j')
-	assert.equal(await focusedKey(page), 'run:run-7')
-	await page.keyboard.press('k')
 	await page.keyboard.press('?')
 	await page.getByRole('heading', { name: 'Keyboard shortcuts' }).waitFor()
 	await page.keyboard.press('Escape')
 	await page.getByRole('heading', { name: 'Keyboard shortcuts' }).waitFor({ state: 'hidden' })
-	await page.keyboard.press('Enter')
-	await page.waitForURL(/\/plans\/search@1#decide$/)
 	await page.goto(url('/plans'))
 	await page.keyboard.press('/')
 	assert.equal(await page.evaluate(() => document.activeElement?.id), 'q')
@@ -43,9 +34,7 @@ test('the inbox works from the keyboard and a #decide or #answer link focuses it
 
 test('a gap answer goes from the form to Needs you', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t)
-	await page.goto(url('/inbox'))
-	await page.keyboard.press('Enter')
-	await page.waitForURL(/\/plans\/checkout@2\/gaps\/G2#answer$/)
+	await page.goto(url('/plans/checkout@2/gaps/G2#answer'))
 	const record = page.getByRole('button', { name: 'Record answer' })
 	assert(await record.isDisabled())
 	assert(await page.getByLabel(/^Source/).isVisible())

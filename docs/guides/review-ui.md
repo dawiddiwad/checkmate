@@ -63,7 +63,7 @@ On a window narrower than 760 pixels, the list and the item take turns. Select a
 
 The list is one stop for the `Tab` key. Use `j` and `k` or the arrow keys to move in it. The first `Tab` stop of the list is `Skip to the selected item`.
 
-`/inbox` shows all items as one list, oldest first.
+The old address `/inbox` opens `Needs you`.
 
 ### Claims
 

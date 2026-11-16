@@ -2,27 +2,15 @@ import type { Store } from '../store.ts'
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
 import type { ListPage, ListQuery } from '../views.ts'
-import { inbox, operationLog, pagedOperations, pagedPlans, pagedRuns, planList, runList } from '../views.ts'
+import { operationLog, pagedOperations, pagedPlans, pagedRuns, planList, runList } from '../views.ts'
 import { html, join, pill, plural, time, words } from './html.ts'
 import { heading } from './layout.ts'
-
-type Waiting = ReturnType<typeof inbox>
-
-export function gapLink(gap: Waiting['gaps'][number]) {
-	return gap.explorationId
-		? `/explorations/${gap.explorationId}/questions/${gap.gapId}#answer`
-		: `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`
-}
 
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
 	return html`<span class="loop"
 		>${pill(loop.state)}${loop.waitsOn === 'none' ? '' : html` <span class="muted small">waits on ${role}</span>`}</span
 	>`
-}
-
-export function inboxCount(waiting: Waiting) {
-	return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.claims.length
 }
 
 const countOrder = ['passed', 'failed', 'inconclusive', 'error', 'blocked', 'not_run'] as const
@@ -48,146 +36,6 @@ export function counts(values: Record<string, number>) {
 				>`
 		)}</span
 	>`
-}
-
-function group(title: string, items: Html[], key: string) {
-	return html`<section class="group" aria-labelledby="group-${key}">
-		<h2 class="group-h" id="group-${key}">${title} · ${items.length}</h2>
-		${
-			items.length
-				? html`<ul class="items">
-						${items.map((item) => html`<li>${item}</li>`)}
-					</ul>`
-				: html`<p class="none">None.</p>`
-		}
-	</section>`
-}
-
-export function inboxPage(store: Store): Page {
-	const waiting = inbox(store)
-	const total = inboxCount(waiting)
-	const gaps = waiting.gaps.map(
-		(gap) =>
-			html`<a
-				class="item"
-				href="${gapLink(gap)}"
-				data-nav-item
-				data-key="gap:${gap.planId}:${gap.gapId}"
-				data-announce="New gap ${gap.planId} ${gap.gapId}"
-			>
-				<span class="id">${gap.planId} · ${gap.gapId}</span>
-				<span class="what"
-					>${gap.question}${gap.runId ? html` <span class="muted">· from run ${gap.runId}</span>` : ''}${
-						gap.explorationId
-							? html` <span class="muted">· from exploration ${gap.explorationId}</span>`
-							: ''
-					}</span
-				>
-				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
-			</a>`
-	)
-	const plans = waiting.plans.map(
-		(plan) =>
-			html`<a
-				class="item"
-				href="/plans/${plan.planId}@${plan.revision}#decide"
-				data-nav-item
-				data-key="plan:${plan.planId}@${plan.revision}"
-				data-announce="${plan.planId}@${plan.revision} ${plan.approval === 'rejected' ? 'was rejected. Change the plan.' : 'waits for approval'}"
-			>
-				<span class="id">${plan.planId}@${plan.revision}</span>
-				<span class="what">${plan.summary}</span>
-				<span class="end"
-					>${plan.approval === 'rejected' ? html`${pill('rejected')} ` : ''}<span class="age"
-						>${time(plan.since)}</span
-					></span
-				>
-			</a>`
-	)
-	const claims = waiting.claims.map(
-		(claim) =>
-			html`<a
-				class="item"
-				href="/explorations/${claim.explorationId}/claims/${claim.claimId}#decide"
-				data-nav-item
-				data-key="claim:${claim.planId}:${claim.claimId}"
-				data-announce="Claim ${claim.planId} ${claim.claimId} is ${claim.state}"
-			>
-				<span class="id">${claim.planId} · ${claim.claimId}</span>
-				<span class="what"
-					>${claim.title}${claim.reason ? html` <span class="muted">· ${claim.reason}</span>` : ''}</span
-				>
-				<span class="end">${pill(claim.state)} ${pill(claim.severity)}</span>
-			</a>`
-	)
-	const results = waiting.results.map(
-		(result) =>
-			html`<a
-				class="item"
-				href="/runs/${result.runId}#decide"
-				data-nav-item
-				data-key="run:${result.runId}"
-				data-announce="${result.runId} waits for acceptance"
-			>
-				<span class="id">${result.runId}</span>
-				<span class="what"
-					>${result.planId}@${result.revision} · build <code>${result.build}</code> · ${counts(result.counts)}
-					· coverage ${result.coverage}</span
-				>
-				<span class="end"><span class="age">${time(result.since)}</span></span>
-			</a>`
-	)
-	const requests = waiting.requests.map(
-		(request) =>
-			html`<div class="item" data-key="request:${request.planId}">
-				<a class="id" href="/plans/${request.planId}">${request.planId}</a>
-				<span class="what"
-					>${request.objective} · target <code>${request.target}</code> · run
-					<code>/checkmate:plan ${request.planId}</code></span
-				>
-				<span class="end">${pill('requested')} <span class="age">${time(request.since)}</span></span>
-			</div>`
-	)
-	const sub = total ? `${plural(total, 'item')} ${total === 1 ? 'waits' : 'wait'} for you, oldest first.` : null
-	const body =
-		total + requests.length
-			? html`${group('Gaps to answer', gaps, 'gaps')} ${group('Claims to decide', claims, 'claims')}
-				${group('Plans to approve or change', plans, 'plans')} ${group('Results to accept', results, 'results')}
-				${group('Plans to draft', requests, 'requests')}`
-			: emptyInbox(store)
-	return {
-		title: 'Inbox',
-		section: 'inbox',
-		subjects: ['inbox'],
-		body: html`${heading('Inbox', sub)}
-			<div class="stack" data-region="inbox" data-list>${body}</div>`,
-	}
-}
-
-function emptyInbox(store: Store) {
-	const latest = runList(store).slice(-3).reverse()
-	return html`<div class="empty">
-		<p class="empty-title">Nothing waits for you.</p>
-		${
-			latest.length
-				? html`<p>Latest runs:</p>
-						<ul class="items">
-							${latest.map(
-								(run) =>
-									html`<li>
-										<a class="item" href="/runs/${run.runId}" data-nav-item
-											><span class="id">${run.runId}</span
-											><span class="what"
-												>${run.planId}@${run.revision} · build <code>${run.build}</code></span
-											><span class="end">${pill(run.acceptance ?? run.state)}</span></a
-										>
-									</li>`
-							)}
-						</ul>`
-				: ''
-		}
-		<p><a href="/runs">All runs</a></p>
-	</div>`
 }
 
 type Direction = 'asc' | 'desc'

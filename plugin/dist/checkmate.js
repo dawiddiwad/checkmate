@@ -10050,7 +10050,7 @@ function claimGroups(state) {
   return [
     ...recorded.map((issue) => ({ issue, reports: (issue.reports ?? []).filter((id2) => defects.has(id2)) })),
     ...[...defects.values()].filter((defect) => !grouped.has(defect.id)).map((defect) => ({ issue: defect, reports: [defect.id] }))
-  ].filter((group2) => group2.reports.length).map((group2) => ({ ...group2, found: group2.reports.map((id2) => defects.get(id2)) }));
+  ].filter((group) => group.reports.length).map((group) => ({ ...group, found: group.reports.map((id2) => defects.get(id2)) }));
 }
 function claimList(state, decided = /* @__PURE__ */ new Map()) {
   const order = (build) => state.builds.indexOf(build ?? "");
@@ -10127,7 +10127,7 @@ function planQuestions(store, planId, keep) {
   const groups2 = [
     ...topics.map((topic) => ({ head: topic, members: (topic.members ?? []).filter((id2) => questions.has(id2)) })),
     ...[...questions.values()].filter((entry) => !grouped.has(entry.id)).map((entry) => ({ head: entry, members: [entry.id] }))
-  ].filter((group2) => group2.members.length);
+  ].filter((group) => group.members.length);
   return groups2.map(({ head, members }) => {
     const names2 = /* @__PURE__ */ new Set([head.id, ...members]);
     const found = members.map((id2) => questions.get(id2));
@@ -10193,9 +10193,9 @@ function mergeItems(state, build, claims = [], after = 0) {
   for (const [index2, a] of defects.entries())
     for (const b of defects.slice(index2 + 1)) {
       if (a.actor === b.actor || overlap(wordsOf(a), wordsOf(b)) < similarWords) continue;
-      const joined = groups2.filter((group3) => group3.includes(a.id) || group3.includes(b.id));
-      const group2 = [.../* @__PURE__ */ new Set([...joined.flat(), a.id, b.id])];
-      groups2.splice(0, groups2.length, ...groups2.filter((item) => !joined.includes(item)), group2);
+      const joined = groups2.filter((group2) => group2.includes(a.id) || group2.includes(b.id));
+      const group = [.../* @__PURE__ */ new Set([...joined.flat(), a.id, b.id])];
+      groups2.splice(0, groups2.length, ...groups2.filter((item) => !joined.includes(item)), group);
     }
   const questions = state.team.filter(
     (entry) => entry.kind === "question" && entry.build === build && entry.seq > after
@@ -13236,7 +13236,7 @@ function mergerPrompt(build, reports, groups2, questions = [], earlier = [], ans
     ...groups2.length ? [
       "",
       "Reports with many of the same words. These are ideas, not rules:",
-      ...groups2.map((group2) => `- ${group2.join(", ")}`)
+      ...groups2.map((group) => `- ${group.join(", ")}`)
     ] : [],
     ...questions.length ? ["", "The questions:", ...questions.map((question) => `${question.id}: ${question.question}`)] : [],
     ...earlier.length ? [
@@ -17974,17 +17974,11 @@ function bulkPanel(context, picked, back, state) {
 }
 
 // plugin/src/ui/lists.ts
-function gapLink(gap) {
-  return gap.explorationId ? `/explorations/${gap.explorationId}/questions/${gap.gapId}#answer` : `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`;
-}
 function loopState(loop2) {
   const role = loop2.waitsOn === "qa" ? "QA" : loop2.waitsOn;
   return html2`<span class="loop"
 		>${pill(loop2.state)}${loop2.waitsOn === "none" ? "" : html2` <span class="muted small">waits on ${role}</span>`}</span
 	>`;
-}
-function inboxCount(waiting) {
-  return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.claims.length;
 }
 var countOrder = ["passed", "failed", "inconclusive", "error", "blocked", "not_run"];
 var countLook = {
@@ -18007,122 +18001,6 @@ function counts(values) {
 				>`
   )}</span
 	>`;
-}
-function group(title, items, key) {
-  return html2`<section class="group" aria-labelledby="group-${key}">
-		<h2 class="group-h" id="group-${key}">${title} · ${items.length}</h2>
-		${items.length ? html2`<ul class="items">
-						${items.map((item) => html2`<li>${item}</li>`)}
-					</ul>` : html2`<p class="none">None.</p>`}
-	</section>`;
-}
-function inboxPage(store) {
-  const waiting = inbox(store);
-  const total = inboxCount(waiting);
-  const gaps = waiting.gaps.map(
-    (gap) => html2`<a
-				class="item"
-				href="${gapLink(gap)}"
-				data-nav-item
-				data-key="gap:${gap.planId}:${gap.gapId}"
-				data-announce="New gap ${gap.planId} ${gap.gapId}"
-			>
-				<span class="id">${gap.planId} · ${gap.gapId}</span>
-				<span class="what"
-					>${gap.question}${gap.runId ? html2` <span class="muted">· from run ${gap.runId}</span>` : ""}${gap.explorationId ? html2` <span class="muted">· from exploration ${gap.explorationId}</span>` : ""}</span
-				>
-				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
-			</a>`
-  );
-  const plans = waiting.plans.map(
-    (plan) => html2`<a
-				class="item"
-				href="/plans/${plan.planId}@${plan.revision}#decide"
-				data-nav-item
-				data-key="plan:${plan.planId}@${plan.revision}"
-				data-announce="${plan.planId}@${plan.revision} ${plan.approval === "rejected" ? "was rejected. Change the plan." : "waits for approval"}"
-			>
-				<span class="id">${plan.planId}@${plan.revision}</span>
-				<span class="what">${plan.summary}</span>
-				<span class="end"
-					>${plan.approval === "rejected" ? html2`${pill("rejected")} ` : ""}<span class="age"
-						>${time(plan.since)}</span
-					></span
-				>
-			</a>`
-  );
-  const claims = waiting.claims.map(
-    (claim) => html2`<a
-				class="item"
-				href="/explorations/${claim.explorationId}/claims/${claim.claimId}#decide"
-				data-nav-item
-				data-key="claim:${claim.planId}:${claim.claimId}"
-				data-announce="Claim ${claim.planId} ${claim.claimId} is ${claim.state}"
-			>
-				<span class="id">${claim.planId} · ${claim.claimId}</span>
-				<span class="what"
-					>${claim.title}${claim.reason ? html2` <span class="muted">· ${claim.reason}</span>` : ""}</span
-				>
-				<span class="end">${pill(claim.state)} ${pill(claim.severity)}</span>
-			</a>`
-  );
-  const results = waiting.results.map(
-    (result) => html2`<a
-				class="item"
-				href="/runs/${result.runId}#decide"
-				data-nav-item
-				data-key="run:${result.runId}"
-				data-announce="${result.runId} waits for acceptance"
-			>
-				<span class="id">${result.runId}</span>
-				<span class="what"
-					>${result.planId}@${result.revision} · build <code>${result.build}</code> · ${counts(result.counts)}
-					· coverage ${result.coverage}</span
-				>
-				<span class="end"><span class="age">${time(result.since)}</span></span>
-			</a>`
-  );
-  const requests = waiting.requests.map(
-    (request) => html2`<div class="item" data-key="request:${request.planId}">
-				<a class="id" href="/plans/${request.planId}">${request.planId}</a>
-				<span class="what"
-					>${request.objective} · target <code>${request.target}</code> · run
-					<code>/checkmate:plan ${request.planId}</code></span
-				>
-				<span class="end">${pill("requested")} <span class="age">${time(request.since)}</span></span>
-			</div>`
-  );
-  const sub = total ? `${plural(total, "item")} ${total === 1 ? "waits" : "wait"} for you, oldest first.` : null;
-  const body = total + requests.length ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Claims to decide", claims, "claims")}
-				${group("Plans to approve or change", plans, "plans")} ${group("Results to accept", results, "results")}
-				${group("Plans to draft", requests, "requests")}` : emptyInbox(store);
-  return {
-    title: "Inbox",
-    section: "inbox",
-    subjects: ["inbox"],
-    body: html2`${heading("Inbox", sub)}
-			<div class="stack" data-region="inbox" data-list>${body}</div>`
-  };
-}
-function emptyInbox(store) {
-  const latest = runList(store).slice(-3).reverse();
-  return html2`<div class="empty">
-		<p class="empty-title">Nothing waits for you.</p>
-		${latest.length ? html2`<p>Latest runs:</p>
-						<ul class="items">
-							${latest.map(
-    (run2) => html2`<li>
-										<a class="item" href="/runs/${run2.runId}" data-nav-item
-											><span class="id">${run2.runId}</span
-											><span class="what"
-												>${run2.planId}@${run2.revision} · build <code>${run2.build}</code></span
-											><span class="end">${pill(run2.acceptance ?? run2.state)}</span></a
-										>
-									</li>`
-  )}
-						</ul>` : ""}
-		<p><a href="/runs">All runs</a></p>
-	</div>`;
 }
 var pageSizes2 = [25, 50, 100];
 function listState(params, spec) {
@@ -19981,8 +19859,8 @@ function matches2(item, filters) {
   const text = `${item.planId} ${item.id} ${item.title} ${item.state ?? ""} ${item.severity ?? ""}`.toLowerCase();
   return filters.q.toLowerCase().split(/\s+/).every((word) => text.includes(word));
 }
-function groupTitle(group2) {
-  return groups.find((item) => item.group === group2).title;
+function groupTitle(group) {
+  return groups.find((item) => item.group === group).title;
 }
 function badge(item) {
   if (item.kind === "claim") return html2`${pill(item.severity)} ${pill(item.state)}`;
@@ -20015,20 +19893,20 @@ function row2(item, filters, selected) {
 		</a>
 	</li>`;
 }
-function groupList(group2, items, filters, selected) {
+function groupList(group, items, filters, selected) {
   if (!items.length) return "";
   const list2 = html2`<ul class="q-items">
 		${items.map((item) => row2(item, filters, selected))}
 	</ul>`;
-  const head = html2`<span class="q-group-title">${group2.title}</span> <span class="n">${items.length}</span>`;
-  if (group2.group !== "questions")
-    return html2`<section class="q-group" aria-labelledby="q-${group2.group}">
-			<h2 class="q-group-h" id="q-${group2.group}">${head}</h2>
+  const head = html2`<span class="q-group-title">${group.title}</span> <span class="n">${items.length}</span>`;
+  if (group.group !== "questions")
+    return html2`<section class="q-group" aria-labelledby="q-${group.group}">
+			<h2 class="q-group-h" id="q-${group.group}">${head}</h2>
 			${list2}
 		</section>`;
   const open = filters.q || items.some((item) => item.key === selected) ? html2` open` : "";
   return html2`<details class="q-group q-fold" data-open-key="queue:questions" ${open}>
-		<summary class="q-group-h">${head} <span class="q-fold-note">${group2.help}</span></summary>
+		<summary class="q-group-h">${head} <span class="q-fold-note">${group.help}</span></summary>
 		${list2}
 	</details>`;
 }
@@ -20272,14 +20150,13 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
   )}
 		${exploring(waiting, filters)}
 		${groups.map(
-    (group2) => groupList(
-      group2,
-      shown.filter((entry) => entry.group === group2.group),
+    (group) => groupList(
+      group,
+      shown.filter((entry) => entry.group === group.group),
       filters,
       item?.key ?? null
     )
-  )}
-		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>`;
+  )}`;
   const pane = picked.length || bulk ? bulkPanel(context, picked, queueHref({ ...filters, picks: [] }, item?.key ?? null), bulk) : asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
@@ -21169,7 +21046,7 @@ data: ${matched.join(",") || "*"}
       status,
       body: html2`${heading(title, message)}
 				<p class="actions">
-					<a class="btn primary" href="/">Back to inbox</a> <a class="btn" href="/plans">Plans</a>
+					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
 					<a class="btn" href="/runs">Runs</a>
 				</p>`
     });
@@ -21255,7 +21132,7 @@ data: ${matched.join(",") || "*"}
     if (evidence2) return serveEvidence(request, evidence2[1]);
     const shown = context(request);
     if (pathname === "/") return render(request, queuePage(store, shown, searchParams));
-    if (pathname === "/inbox") return render(request, inboxPage(store));
+    if (pathname === "/inbox") return redirect(request.res, "/");
     if (pathname === "/claims") return render(request, claimsPage(store, shown, searchParams));
     if (pathname === "/plans") return render(request, plansPage(store, searchParams));
     if (pathname === "/runs") return render(request, runsPage(store, searchParams));
@@ -21338,7 +21215,7 @@ data: ${matched.join(",") || "*"}
     if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]));
     const run2 = routes.run.exec(pathname);
     if (run2) return render(request, runPage(store, shown, run2[1], searchParams));
-    return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from the inbox.`);
+    return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from Needs you.`);
   }
   function actorPage(shown, back) {
     return {
@@ -24391,7 +24268,7 @@ function unknownCommand(words4) {
     const prefix = words4.slice(0, words4.length - i).join(" ");
     return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `));
   });
-  const names2 = groups2.find((group2) => group2.length) ?? [
+  const names2 = groups2.find((group) => group.length) ?? [
     .../* @__PURE__ */ new Set([...Object.keys(commands).map((name) => name.split(" ")[0]), "ui"])
   ];
   return new Refusal(

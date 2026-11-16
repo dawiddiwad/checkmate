@@ -76,7 +76,10 @@ test('the home lists what needs you in order and shows the first item next to th
 	assert.match(home.body, /data-key="failed:x-6"/)
 	assert.match(home.body, /<nav aria-label="Breadcrumb">/)
 	assert.doesNotMatch(home.body, /data-open[ >]/)
-	assert.match((await call('/inbox')).body, /Gaps to answer/)
+	const old = await call('/inbox')
+	assert.equal(old.status, 303)
+	assert.equal(old.location, '/')
+	assert.doesNotMatch(home.body, /href="\/inbox"/)
 })
 
 test('filters and the selected item live in the URL', async (t) => {

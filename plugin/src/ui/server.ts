@@ -44,7 +44,7 @@ import type { BulkState } from './bulk.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
-import { inboxPage, logPage, plansPage, runsPage } from './lists.ts'
+import { logPage, plansPage, runsPage } from './lists.ts'
 import type { QueueRefusal } from './queue.ts'
 import { queueCount, queuePage } from './queue.ts'
 import { claimsPage } from './claims.ts'
@@ -279,7 +279,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status,
 			body: html`${heading(title, message)}
 				<p class="actions">
-					<a class="btn primary" href="/">Back to inbox</a> <a class="btn" href="/plans">Plans</a>
+					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
 					<a class="btn" href="/runs">Runs</a>
 				</p>`,
 		})
@@ -376,7 +376,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
 		if (pathname === '/') return render(request, queuePage(store, shown, searchParams))
-		if (pathname === '/inbox') return render(request, inboxPage(store))
+		if (pathname === '/inbox') return redirect(request.res, '/')
 		if (pathname === '/claims') return render(request, claimsPage(store, shown, searchParams))
 		if (pathname === '/plans') return render(request, plansPage(store, searchParams))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
@@ -459,7 +459,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
 		const run = routes.run.exec(pathname)
 		if (run) return render(request, runPage(store, shown, run[1], searchParams))
-		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from the inbox.`)
+		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from Needs you.`)
 	}
 
 	function actorPage(shown: Context, back: string): Page {

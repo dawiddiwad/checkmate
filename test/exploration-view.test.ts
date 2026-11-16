@@ -263,7 +263,7 @@ test('a plan without a revision opens from the plan list and the inbox, and show
 	closeStore(opened)
 	const url = await ui(t, workspace)
 	assert.match((await call(url, '/plans')).body, /href="\/plans\/checkout" data-nav-item/)
-	assert.match((await call(url, '/inbox')).body, /<a class="id" href="\/plans\/draft">draft<\/a>/)
+	assert.match((await call(url, '/plans')).body, /href="\/plans\/draft" data-nav-item/)
 	const page = await call(url, '/plans/checkout')
 	assert.equal(page.status, 200)
 	assert.match(page.body, /Verify checkout and identify missing acceptance decisions\./)

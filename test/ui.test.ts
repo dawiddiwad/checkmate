@@ -513,7 +513,7 @@ test('lists page, sort, and filter on the server with the state in the URL', asy
 	assert.match(oldest, /<select id="dir" name="dir" data-default="desc">/)
 })
 
-test('the inbox and the plan list show a plan request without a revision', async (t) => {
+test('the plan list shows a plan request without a revision', async (t) => {
 	const { ui, workspace } = await start(t)
 	const store = openStore(workspace)
 	openPlan(store, agent, {
@@ -522,11 +522,8 @@ test('the inbox and the plan list show a plan request without a revision', async
 		request: { objective: `Draft ${payload}`, context: { sources: ['brief://draft'] } },
 	})
 	closeStore(store)
-	const home = (await call(ui, '/inbox')).body
-	assert.match(home, /Plans to draft · 1/)
-	assert.match(home, /data-key="request:draft"/)
-	assert.match(home, /Draft &lt;script&gt;/)
-	assert.match(home, /<code>\/checkmate:plan draft<\/code>/)
+	const home = (await call(ui, '/')).body
+	assert.doesNotMatch(home, /Draft <script>/)
 	const urgent = read(workspace, (store) => needsYou(store).urgent)
 	assert.match(home, new RegExp(`data-region="nav-count">${urgent}<`))
 	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
@@ -539,22 +536,20 @@ test('the inbox and the plan list show a plan request without a revision', async
 	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
 })
 
-test('the inbox says that a rejected plan was rejected and counts it in the badge', async (t) => {
+test('Needs you says that a rejected plan was rejected and counts it in the badge', async (t) => {
 	const { ui, workspace } = await start(t)
-	const before = (await call(ui, '/inbox')).body
+	const before = (await call(ui, '/')).body
 	const reference = before.match(/data-key="plan:(search@\d+)"/)![1]
 	const store = openStore(workspace)
 	rejectPlan(store, human, { reference, rationale: 'Cover the empty query.' })
 	closeStore(store)
-	const home = (await call(ui, '/inbox')).body
+	const home = (await call(ui, '/')).body
 	const item = home.match(new RegExp(`<a[^>]*data-key="plan:${reference}"[\\s\\S]*?</a>`))![0]
-	assert.match(item, new RegExp(`data-announce="${reference} was rejected. Change the plan."`))
-	assert.match(item, /Rejected\. Change the plan\./)
-	assert.doesNotMatch(item, /waits for approval/)
-	assert.match(home, /Plans to approve or change · 2/)
+	assert.match(item, /✗<\/span> plan<\/span>/)
+	const selected = (await call(ui, `/?item=${encodeURIComponent(`plan:${reference}`)}`)).body
+	assert.match(selected, new RegExp(`Change or approve ${reference}\\?`))
 	const urgent = read(workspace, (store) => needsYou(store).urgent)
 	assert.match(home, new RegExp(`data-region="nav-count">${urgent}<`))
-	assert.match((await call(ui, '/')).body, new RegExp(`data-key="plan:${reference}"`))
 })
 
 test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
@@ -583,11 +578,10 @@ test('a plan page lists its runs, folds closed gaps, and folds older history', a
 	assert.doesNotMatch((await call(ui, '/plans/login@1')).body, /data-history-more/)
 })
 
-test('a run gap is in the inbox, and its answer adopts it into the plan', async (t) => {
+test('a run gap is in Needs you, and its answer adopts it into the plan', async (t) => {
 	const { ui, workspace } = await start(t)
-	const home = (await call(ui, '/inbox')).body
-	assert.match(home, /href="\/plans\/checkout@2\/gaps\/G4#answer"/)
-	assert.match(home, /from run run-7/)
+	const home = (await call(ui, '/?item=gap%3Acheckout%3AG4')).body
+	assert.match(home, /Asked in\s*<a href="\/runs\/run-7">run run-7<\/a>/)
 	assert.match(
 		(await call(ui, '/runs/run-7?item=gap%3AG4')).body,
 		/href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</

@@ -182,7 +182,7 @@ test('list filters, sorting, and pages update in place, keep the URL, and update
 	await page.goBack()
 	await page.goBack()
 	await page.waitForURL(/\/log\?q=approve&actor=qa-lead&size=50$/)
-	assert.equal(await page.getByLabel('Sort by').inputValue(), 'time')
+	await page.waitForFunction(() => (document.querySelector('#sort') as HTMLSelectElement).value === 'time')
 	await page.getByRole('link', { name: 'Clear' }).click()
 	await page.waitForURL(/\/log$/)
 	assert.equal(await page.getByLabel('Search operations').inputValue(), '')

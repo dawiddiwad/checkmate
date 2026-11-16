@@ -5,7 +5,7 @@ import { request } from 'node:http'
 import { rmSync } from 'node:fs'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { closeStore, openStore } from '../plugin/src/index.ts'
-import { mergedClaims, mergedQuestions, needsYou } from '../plugin/src/views.ts'
+import { mergedClaims, mergedQuestions, needsYou, operationLog } from '../plugin/src/views.ts'
 import { journal } from '../plugin/src/journal.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { copied, directory } from './support.ts'
@@ -161,6 +161,39 @@ test('a question needs only the answer; the record names the review UI as the so
 		read((store) => mergedQuestions(store, other.planId).find((item) => item.id === other.id)!.answer),
 		'Deferred in the review UI.'
 	)
+})
+
+test('a second decision on a claim or a question is refused and names the first', async (t) => {
+	const { call, read } = await start(t)
+	const items = read(needsYou).items
+	const claim = items.find((item) => item.kind === 'claim')!
+	const question = items.find((item) => item.kind === 'question')!
+	const decisions = () =>
+		read((store) => operationLog(store, { limit: 1000 }).map((row) => row.command)).filter((command) =>
+			['claim accept', 'claim reject', 'gap answer'].includes(command)
+		).length
+	const before = decisions()
+	const page = await call(`/?item=${encodeURIComponent(claim.key)}`)
+	const base = { csrf: field(page.body, 'csrf'), return: '/' }
+	const claimAction = `/explorations/${claim.explorationId}/claims/${claim.id}`
+	const first = await call(claimAction, { ...base, item: claim.key, verdict: 'approved', rationale: '' })
+	assert.equal(first.status, 303)
+	const again = await call(claimAction, {
+		...base,
+		item: claim.key,
+		verdict: 'rejected',
+		rationale: 'Typed in tab B.',
+	})
+	assert.equal(again.status, 422)
+	assert.match(again.body, new RegExp(`${claim.id} was accepted by qa-lead\\.`))
+	assert.match(again.body, /<blockquote>Typed in tab B\.<\/blockquote>/)
+	const questionAction = `/explorations/${question.explorationId}/questions/${question.id}`
+	for (const status of [303, 422])
+		assert.equal(
+			(await call(questionAction, { ...base, item: question.key, kind: 'defer', value: '' })).status,
+			status
+		)
+	assert.equal(decisions(), before + 2)
 })
 
 test('a plan is approved inside the queue with its confirm step', async (t) => {

@@ -808,6 +808,10 @@ function queueVerdict(event, accept) {
 }
 
 function queueKey(event) {
+	if (queueSending && 'adrcs'.includes(event.key)) {
+		event.preventDefault()
+		return true
+	}
 	const onRow = event.target.matches?.('[data-queue-link]')
 	if (event.key === 'j' || (onRow && event.key === 'ArrowDown')) {
 		event.preventDefault()
@@ -867,28 +871,60 @@ function rejectWithoutReason(form, submitter) {
 	return true
 }
 
+let queueSending = false
+
+function sendFailed(form, button) {
+	if (button) button.disabled = false
+	let message = form.querySelector('[data-send-error]')
+	if (!message) {
+		message = document.createElement('p')
+		message.className = 'form-error'
+		message.setAttribute('role', 'alert')
+		message.dataset.sendError = ''
+		const buttons = form.querySelector('.btns')
+		if (buttons) buttons.before(message)
+		else form.append(message)
+	}
+	message.textContent =
+		'Checkmate did not answer. Nothing is recorded, and your text is kept. Start the UI again if it stopped, then send again.'
+	announce(message.textContent)
+}
+
+async function renewToken() {
+	const response = await fetch(location.pathname + location.search, { cache: 'no-store' })
+	if (!response.ok) return false
+	const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+	const token = fresh.querySelector('input[name="csrf"]')?.value
+	if (!token) return false
+	for (const field of document.querySelectorAll('input[name="csrf"]')) field.value = token
+	return true
+}
+
 async function queueSend(form, submitter) {
+	if (queueSending) return
+	queueSending = true
 	const button = form.querySelector('button.primary')
-	const body = new URLSearchParams(new FormData(form))
-	if (submitter?.name) body.set(submitter.name, submitter.value)
 	if (button) button.disabled = true
 	const ticket = ++queueTicket
 	queueBusy = true
+	const post = () => {
+		const body = new URLSearchParams(new FormData(form))
+		if (submitter?.name) body.set(submitter.name, submitter.value)
+		return fetch(form.action, { method: 'POST', body, headers: { 'X-Checkmate-Queue': '1' } })
+	}
 	try {
-		const response = await fetch(form.action, {
-			method: 'POST',
-			body,
-			headers: { 'X-Checkmate-Queue': '1' },
-		})
+		let response = await post()
+		if (response.status === 403 && (await renewToken())) response = await post()
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
-		if (!swapQueue(fresh)) return void form.submit()
+		if (!swapQueue(fresh)) return void sendFailed(form, button)
 		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
 		window.dispatchEvent(new window.Event('queue-moved'))
 		window.scrollTo(0, 0)
 		queueFocus(response.ok ? 'row' : 'form')
 	} catch {
-		form.submit()
+		sendFailed(form, button)
 	} finally {
+		queueSending = false
 		if (ticket === queueTicket) queueSettle()
 	}
 }

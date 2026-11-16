@@ -2,7 +2,9 @@ import type { Page } from 'playwright-core'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeStore, openStore } from '../plugin/src/index.ts'
-import { mergedClaims, needsYou } from '../plugin/src/views.ts'
+import { mergedClaims, needsYou, operationLog } from '../plugin/src/views.ts'
+import { decideClaim } from '../plugin/src/journal.ts'
+import { startUi } from '../plugin/src/ui/server.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { checkmate, focusedKey, launchWith, open, skip, stop } from './browser.ts'
 
@@ -320,4 +322,64 @@ test('the run page lists tests, findings, and gaps, and accepts the result from 
 	await page.locator('[data-region="state"]', { hasText: 'accepted' }).waitFor()
 	assert.match(page.url(), /\/runs\/run-7$/)
 	assert.equal(loads, 1)
+})
+
+test('a fast repeated key records one decision for each item', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const decisions = () =>
+		operationLog(store, { limit: 1000 }).filter((row) => ['claim accept', 'gap answer'].includes(row.command))
+	const before = decisions().length
+	const claim = needsYou(store).items.find((item) => item.kind === 'claim')!
+	await page.route('**/explorations/**', async (route) => {
+		await new Promise((resolve) => setTimeout(resolve, 300))
+		await route.continue()
+	})
+	await page.goto(url(`/?item=${encodeURIComponent(claim.key)}`))
+	await page.keyboard.press('a')
+	await page.keyboard.press('a')
+	await page.keyboard.press('a')
+	await page
+		.getByRole('status')
+		.filter({ hasText: `Accepted ${claim.planId} · ${claim.id}` })
+		.waitFor()
+	await page.waitForTimeout(800)
+	assert.equal(decisions().length, before + 1)
+})
+
+test('a stale tab names the first decision and keeps the typed text', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const claim = needsYou(store).items.find((item) => item.kind === 'claim')!
+	await page.route('**/events*', (route) => route.abort())
+	await page.goto(url(`/?item=${encodeURIComponent(claim.key)}`))
+	decideClaim(store, 'other-oracle', {
+		planId: claim.planId,
+		claimId: claim.id,
+		verdict: 'approved',
+		rationale: 'Seen in tab A.',
+	})
+	await page.getByLabel(/^Reason/).fill('Rejecting in the stale tab.')
+	await page.getByRole('button', { name: /^Reject/ }).click()
+	await page.locator('.q-detail', { hasText: `${claim.id} was accepted by other-oracle.` }).waitFor()
+	await page.locator('.q-detail blockquote', { hasText: 'Rejecting in the stale tab.' }).waitFor()
+})
+
+test('a form sent while the UI is stopped keeps the text and sends again later', { skip }, async (t) => {
+	const { page, url, ui, workspace } = await open(t)
+	await page.goto(url('/'))
+	await page.getByLabel('Answer', { exact: true }).fill('Card and bank transfer only.')
+	await ui.close()
+	await page.getByRole('button', { name: 'Record answer' }).click()
+	await page.getByRole('alert').filter({ hasText: 'Checkmate did not answer.' }).waitFor()
+	assert.equal(await page.getByLabel('Answer', { exact: true }).inputValue(), 'Card and bank transfer only.')
+	const again = await startUi({ workspace, port: Number(new URL(ui.url).port) })
+	t.after(() => again.close())
+	await page.getByRole('button', { name: 'Record answer' }).click()
+	await page
+		.getByRole('status')
+		.filter({ hasText: /^Answered / })
+		.waitFor()
 })

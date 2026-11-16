@@ -5,7 +5,7 @@ import type { QueueGroup, QueueItem } from '../views.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, runDetail } from '../views.ts'
 import { claimAddress, claimPane } from './claims.ts'
 import { html, pill, plural, time } from './html.ts'
-import { actorField, emptyState, hidden, messages, returnFields, sourceAndReason } from './forms.ts'
+import { actorField, emptyState, hidden, keptText, messages, returnFields, sourceAndReason } from './forms.ts'
 import { counts } from './lists.ts'
 import { approvalPanel } from './plan.ts'
 import { decisionPanel } from './run.ts'
@@ -306,10 +306,12 @@ function approvalDetail(
 		${approvalPanel(store, context, detail, state, extra)}`
 }
 
-function gone(filters: QueueFilters) {
+function gone(filters: QueueFilters, state: FormState = emptyState()) {
 	return html`<div class="empty">
+		${messages(state)}
 		<p class="empty-title">This item does not wait for you now.</p>
 		<p>Somebody decided it, or a filter hides it.</p>
+		${keptText(state)}
 		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
 	</div>`
 }
@@ -387,7 +389,7 @@ export function queuePage(
 	</section>`
 	const pane =
 		asked && !item
-			? gone(filters)
+			? gone(filters, refusal?.state)
 			: detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState())
 	return {
 		title: item ? `${item.planId} · ${item.id} · Needs you` : 'Needs you',

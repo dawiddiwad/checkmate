@@ -6,7 +6,7 @@ import type { Claim } from '../journal.ts'
 import { claimsAcross } from '../views.ts'
 import { html, pill, plural, time } from './html.ts'
 import { banner } from './layout.ts'
-import { actorField, emptyState, hidden, messages, recordPanel, returnFields } from './forms.ts'
+import { actorField, emptyState, hidden, keptText, messages, recordPanel, returnFields } from './forms.ts'
 import { claimEvidenceList } from './exploration.ts'
 
 export type ClaimFilters = {
@@ -87,8 +87,10 @@ export function claimPane(
 	const decision = claim.decision
 		? recordPanel(
 				'Decision',
-				html`<p class="subj">${pill(claim.state)} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Reason: ${claim.decision.rationale}</p>`
+				html`<div data-stale-slot>${messages(state)}</div>
+					<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Reason: ${claim.decision.rationale}</p>
+					${keptText(state)}`
 			)
 		: html`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
 				<h3 class="lab" id="decide-title">Is ${claim.id} a defect?</h3>

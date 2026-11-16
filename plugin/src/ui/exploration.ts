@@ -6,7 +6,7 @@ import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { explorationReport } from '../explorers.ts'
 import { claimEvidence, entryEvidence, explorationLive, planExplorations } from '../views.ts'
-import { actorField, emptyState, gapPanel, hidden, messages, rationaleField, recordPanel } from './forms.ts'
+import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, crumbBar, downloads, heading, listAndItem } from './layout.ts'
 import { duration, html, join, pill, plural, time } from './html.ts'
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
@@ -660,8 +660,10 @@ export function claimPage(
 	const panel = claim.decision
 		? recordPanel(
 				'Decision',
-				html`<p class="subj">${pill(claim.state)} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
+				html`<div>${messages(shown)}</div>
+					<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>
+					${keptText(shown)}`
 			)
 		: html`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
 				<h2 class="lab" id="decide-title">Decision</h2>

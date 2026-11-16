@@ -2516,3 +2516,10 @@ body:has(.queue) .foot {
 	font-family: var(--font-body);
 	font-size: 12.5px;
 }
+.kept {
+	display: grid;
+	gap: 4px;
+}
+.kept blockquote {
+	margin: 0;
+}

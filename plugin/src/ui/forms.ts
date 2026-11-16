@@ -48,6 +48,15 @@ export function messages(state: FormState) {
 	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
 }
 
+export function keptText(state: FormState) {
+	const typed = (state.values.value || state.values.rationale || '').trim()
+	if (!typed) return ''
+	return html`<div class="kept" data-kept>
+		<p class="lab">Your text</p>
+		<blockquote>${typed}</blockquote>
+	</div>`
+}
+
 export function rationaleField(state: FormState, placeholder: string) {
 	return html`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>

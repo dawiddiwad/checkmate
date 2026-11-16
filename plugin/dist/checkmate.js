@@ -16968,6 +16968,14 @@ function messages(state) {
   return html2`${state.stale ? banner("warn", state.stale) : ""}
 	${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}`;
 }
+function keptText(state) {
+  const typed = (state.values.value || state.values.rationale || "").trim();
+  if (!typed) return "";
+  return html2`<div class="kept" data-kept>
+		<p class="lab">Your text</p>
+		<blockquote>${typed}</blockquote>
+	</div>`;
+}
 function rationaleField(state, placeholder2) {
   return html2`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
@@ -17667,8 +17675,10 @@ function claimPage(store, context, explorationId, claimId, state = null) {
   const shown = state ?? emptyState();
   const panel = claim.decision ? recordPanel(
     "Decision",
-    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
+    html2`<div>${messages(shown)}</div>
+					<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>
+					${keptText(shown)}`
   ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
 				<h2 class="lab" id="decide-title">Decision</h2>
 				<p class="subj">Is ${claim.id} a defect?</p>
@@ -18343,8 +18353,10 @@ function claimPane(store, context, planId, claim, crumbs3, form) {
   const state = form.state;
   const decision = claim.decision ? recordPanel(
     "Decision",
-    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Reason: ${claim.decision.rationale}</p>`
+    html2`<div data-stale-slot>${messages(state)}</div>
+					<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Reason: ${claim.decision.rationale}</p>
+					${keptText(state)}`
   ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
 				<h3 class="lab" id="decide-title">Is ${claim.id} a defect?</h3>
 				<div data-stale-slot>${messages(state)}</div>
@@ -19943,10 +19955,12 @@ function approvalDetail(store, context, item, filters, back, state) {
 		</ul>
 		${approvalPanel(store, context, detail2, state, extra)}`;
 }
-function gone(filters) {
+function gone(filters, state = emptyState()) {
   return html2`<div class="empty">
+		${messages(state)}
 		<p class="empty-title">This item does not wait for you now.</p>
 		<p>Somebody decided it, or a filter hides it.</p>
+		${keptText(state)}
 		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
 	</div>`;
 }
@@ -20000,7 +20014,7 @@ function queuePage(store, context, params, refusal = null) {
 		${shown.length ? "" : html2`<p class="none">${filters.plan || filters.q ? "No item matches these filters." : "Nothing waits for you."}</p>`}
 		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>
 	</section>`;
-  const pane = asked && !item ? gone(filters) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
+  const pane = asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
     section: "inbox",
@@ -20837,6 +20851,7 @@ async function startUi(options2) {
   const fallbackActor = options2.defaultActor ?? defaultActor(options2.workspace, process.env) ?? "";
   const clients = /* @__PURE__ */ new Set();
   let port = 0;
+  let closed = false;
   const latestRowid = (source) => operationLog(source, { limit: 1 })[0]?.rowid ?? 0;
   const dataVersion = () => Number(watch.db.prepare("PRAGMA data_version").get()?.data_version ?? 0);
   let version2 = dataVersion();
@@ -21168,6 +21183,12 @@ data: ${matched.join(",") || "*"}
     const input = answerInput(form, state, actor);
     const planId = planOfExploration(explorationId);
     const page = () => questionPage(store, context(request), explorationId, questionId, state);
+    const asked = mergedQuestions(store, planId).find((item) => item.id === questionId);
+    if (asked && asked.answer !== null) {
+      state.stale = html2`<strong>${questionId} has an answer now: ${asked.answer}</strong> Your answer was not
+				recorded. Your text is kept below.`;
+      return refuse(request, inQueue(request, form, page, state), cookies);
+    }
     state.error = answerProblem(input, actor);
     if (state.error) return refuse(request, inQueue(request, form, page, state), cookies);
     try {
@@ -21199,6 +21220,13 @@ data: ${matched.join(",") || "*"}
     );
     if (verdict !== "approved" && verdict !== "rejected") {
       state.error = "Choose Accept as a defect or Reject.";
+      return refuse(request, page, cookies);
+    }
+    const decided = mergedClaims(store, planId).find((item) => item.id === claimId)?.decision;
+    if (decided) {
+      const verdict2 = decided.verdict === "approved" ? "accepted" : "rejected";
+      const what = `${claimId} was ${verdict2} by ${decided.actor}.`;
+      state.stale = html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below.`;
       return refuse(request, page, cookies);
     }
     const typed = state.values.rationale.trim();
@@ -21536,6 +21564,8 @@ data: ${matched.join(",") || "*"}
   return {
     url: `http://127.0.0.1:${port}/`,
     close: async () => {
+      if (closed) return;
+      closed = true;
       clearInterval(poll);
       clearInterval(heartbeat);
       for (const client of clients) client.res.end();

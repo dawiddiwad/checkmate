@@ -27,6 +27,8 @@ import { addInstance, retireInstance, targetRequest } from '../targets.ts'
 import {
 	changesAfter,
 	claimEvidence,
+	mergedClaims,
+	mergedQuestions,
 	entryEvidence,
 	evidenceBytes,
 	operationLog,
@@ -205,6 +207,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const fallbackActor = options.defaultActor ?? defaultActor(options.workspace, process.env) ?? ''
 	const clients = new Set<Client>()
 	let port = 0
+	let closed = false
 
 	const latestRowid = (source: Store) => operationLog(source, { limit: 1 })[0]?.rowid ?? 0
 	const dataVersion = () => Number(watch.db.prepare('PRAGMA data_version').get()?.data_version ?? 0)
@@ -571,6 +574,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const input = answerInput(form, state, actor)
 		const planId = planOfExploration(explorationId)
 		const page = () => questionPage(store, context(request), explorationId, questionId, state)
+		const asked = mergedQuestions(store, planId).find((item) => item.id === questionId)
+		if (asked && asked.answer !== null) {
+			state.stale = html`<strong>${questionId} has an answer now: ${asked.answer}</strong> Your answer was not
+				recorded. Your text is kept below.`
+			return refuse(request, inQueue(request, form, page, state), cookies)
+		}
 		state.error = answerProblem(input, actor)
 		if (state.error) return refuse(request, inQueue(request, form, page, state), cookies)
 		try {
@@ -603,6 +612,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		)
 		if (verdict !== 'approved' && verdict !== 'rejected') {
 			state.error = 'Choose Accept as a defect or Reject.'
+			return refuse(request, page, cookies)
+		}
+		const decided = mergedClaims(store, planId).find((item) => item.id === claimId)?.decision
+		if (decided) {
+			const verdict = decided.verdict === 'approved' ? 'accepted' : 'rejected'
+			const what = `${claimId} was ${verdict} by ${decided.actor}.`
+			state.stale = html`<strong>${what}</strong> Your decision was not recorded. Your text is kept below.`
 			return refuse(request, page, cookies)
 		}
 		const typed = state.values.rationale.trim()
@@ -972,6 +988,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	return {
 		url: `http://127.0.0.1:${port}/`,
 		close: async () => {
+			if (closed) return
+			closed = true
 			clearInterval(poll)
 			clearInterval(heartbeat)
 			for (const client of clients) client.res.end()

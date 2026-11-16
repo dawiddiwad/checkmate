@@ -57,7 +57,7 @@ An agent that changes its directory, for example with `cd /tmp`, sets `CHECKMATE
 | Journal | `open <changeId> --target <targetId> [--instance <id>]`                | Opens a change. The target must exist.                                                                                                                                                                           |
 |         | `guide [<changeId>] [--role <tester\|recorder\|merger\|verifier>]`     | Prints what the record holds and how to log an entry, from the entry schemas. With a change, it also prints the PM answers and the open defects. `--role recorder [--build <build>]` prints the recorder prompt. |
 |         | `record <changeId> [--build <build>] [--session <id>] [--timeout <s>]` | Starts a recorder: a fork of a Claude Code test session that writes the record. Read [record](#record).                                                                                                          |
-|         | `log <changeId> [--build <build>]`                                     | Saves each valid entry of standard input, and refuses each invalid entry alone.                                                                                                                                  |
+|         | `log <changeId> [--build <build>] [--from <file>]`                     | Saves each valid entry of standard input or of the `--from` file, and refuses each invalid entry alone.                                                                                                          |
 |         | `gaps <changeId> [--build <build>] [--all]`                            | Prints the open items of a build. `--all` prints all of them, for all actors.                                                                                                                                    |
 |         | `show <changeId> [--all]`                                              | Prints the record of a change. `--all` shows the entries of all actors.                                                                                                                                          |
 |         | `export <changeId> [--out <file>] [--all]`                             | Prints the record of a change as JSON, or writes it to a new file.                                                                                                                                               |
@@ -79,6 +79,7 @@ An agent that changes its directory, for example with `cd /tmp`, sets `CHECKMATE
   EOF
   ```
 
+- `log --from <file>` reads the same JSON from a file instead of standard input. The path is relative to the current directory, or absolute. The file must be inside the workspace. Evidence paths in the entries work the same as from standard input. The recorder uses `--from`, because the host refuses a heredoc with JSON under its allow rule.
 - `target open` takes `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. It needs one or more. The name uses letters, digits, `_`, and `-`. The purpose can contain `:`.
 - `target open` takes `--tool <name>:<cli|mcp|skill>:<purpose>` once for each tool. The name uses letters, digits, `_`, and `-`, with an optional `<plugin>:` prefix.
 - `target instance add` takes `--entry <entryPoint>=<value>` once for each entry point, `--environment <text>`, and `--reference <text>` (repeatable). Without `--entry`, it reads the instance JSON on standard input. The schema is `plugin/contracts/instance.schema.json`.
@@ -182,14 +183,14 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 
    ```sh
    claude -p --resume <sessionId> --fork-session --session-id <recorderId> --output-format json \
-     --permission-prompts none --allowedTools "Bash(node <checkmate.js> *)" Read
+     --permission-prompts none --allowedTools "Bash(node <checkmate.js> *)" Read "Write(/<files>/**)"
    ```
 
-   The recorder is a new session with the history of the test session. The test session does not see what the recorder does. The prompt on standard input is the text of `checkmate guide <changeId> --role recorder [--build <build>]`, and one line that tells how to run `checkmate`. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, and `CHECKMATE_RECORDER=1`. The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
+   The recorder is a new session with the history of the test session. The test session does not see what the recorder does. `<files>` is `<workspace>/.checkmate/tmp/record-<recorderId>`, an absolute path: `Write(//abs/path/**)` is the host rule form for an absolute path. The prompt on standard input is the text of `checkmate guide <changeId> --role recorder [--build <build>]`, with `node <checkmate.js>` in place of `checkmate`. It tells the recorder to write the entries to a JSON file in `<files>` with the Write tool and to log them with `log --from <file>`, not with a heredoc. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, `CHECKMATE_RECORDER=1`, `CHECKMATE_RECORDER_COMMAND` (the command that the allow rule matches), and `CHECKMATE_RECORDER_FILES` (`<files>`). With these three set, `guide` names that command and shows the `--from` form, and no heredoc. The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
 
-4. It counts the entries of the change that the actor added during the run, for each kind.
+4. It removes `<files>`, and counts the entries of the change that the actor added during the run, for each kind.
 
-The permissions let the recorder run the Checkmate CLI and read files without a prompt. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
+The permissions let the recorder run the Checkmate CLI, read files, and write files in `<files>` without a prompt. Evidence is the files that the tester saved in the workspace: the recorder names their paths and needs no other permission. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
 
 `--timeout` is in seconds, from 1 to 86400. The default is 600.
 
@@ -239,14 +240,16 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 
 ## Environment variables
 
-| Variable                    | Read by   | Effect                                                                                                                            |
-| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `CHECKMATE_ACTOR`           | Checkmate | The default actor of a write. `--actor` overrides it.                                                                             |
-| `CHECKMATE_WORKSPACE`       | Checkmate | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
-| `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
-| `CHECKMATE_RECORDER`        | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set.                                                        |
-| `CLAUDE_CONFIG_DIR`         | `record`  | The Claude Code configuration directory where `record` finds the sessions. The default is `~/.claude`.                            |
-| `CLAUDE_CODE_SESSION_ID`    | `record`  | The Claude Code session that runs `record`. The default session lookup skips it.                                                  |
+| Variable                     | Read by   | Effect                                                                                                                            |
+| ---------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `CHECKMATE_ACTOR`            | Checkmate | The default actor of a write. `--actor` overrides it.                                                                             |
+| `CHECKMATE_WORKSPACE`        | Checkmate | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
+| `CHECKMATE_BUSY_TIMEOUT_MS`  | Checkmate | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
+| `CHECKMATE_RECORDER`         | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set.                                                        |
+| `CHECKMATE_RECORDER_COMMAND` | Checkmate | `record` sets it for the recorder: the Checkmate command that the allow rule matches. `guide` names it.                           |
+| `CHECKMATE_RECORDER_FILES`   | Checkmate | `record` sets it for the recorder: the folder for the entry files. `guide` shows `log --from` with it.                            |
+| `CLAUDE_CONFIG_DIR`          | `record`  | The Claude Code configuration directory where `record` finds the sessions. The default is `~/.claude`.                            |
+| `CLAUDE_CODE_SESSION_ID`     | `record`  | The Claude Code session that runs `record`. The default session lookup skips it.                                                  |
 
 ## Next
 

@@ -281,6 +281,21 @@ function evidenceFile(store: Store, name: string) {
 	return readFileSync(real)
 }
 
+export function entriesFile(store: Store, name: string, cwd: string) {
+	const path = resolve(cwd, name)
+	requireWellFormed(
+		existsSync(path),
+		`No entries file: ${name}`,
+		'Give --from the path of a JSON file in the workspace.'
+	)
+	requireWellFormed(
+		realpathSync(path).startsWith(realpathSync(store.workspace) + sep),
+		`Entries file must be inside the workspace: ${name}`,
+		'Write the file in the workspace, then give its path to --from.'
+	)
+	return readFileSync(path, 'utf8')
+}
+
 function evidenceOf(store: Store, spec: string, cwd: string): Evidence {
 	const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path))
 	if (found) {

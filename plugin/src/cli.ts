@@ -26,9 +26,11 @@ import {
 	targetList,
 } from './targets.ts'
 import { guideJournal, guideRoles } from './guide.ts'
+import type { RecorderShell } from './guide.ts'
 import {
 	answerQuestion,
 	changeGaps,
+	entriesFile,
 	changeIssues,
 	changeState,
 	decideBuild,
@@ -402,16 +404,18 @@ const commands: Record<string, Command> = {
 	},
 	log: {
 		positionals: ['changeId'],
-		flags: { build: 'value' },
+		flags: { build: 'value', from: 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, text, cwd }) =>
-			logEntries(store, actor, {
+		run: (store, args, { actor, text, cwd }) => {
+			const from = value(args, 'from')
+			return logEntries(store, actor, {
 				changeId: value(args, 'changeId')!,
 				build: value(args, 'build'),
-				entries: readEntries(text()),
+				entries: readEntries(from === undefined ? text() : entriesFile(store, from, cwd)),
 				cwd,
-			}),
+			})
+		},
 		print: (reply) => {
 			const saved = reply.data.saved as Array<{ id: string }>
 			const refused = reply.data.refused as Array<{
@@ -457,13 +461,14 @@ const commands: Record<string, Command> = {
 				value(args, 'build') === undefined || value(args, 'role') === 'recorder',
 				'--build is only for --role recorder.'
 			),
-		run: (store, args, { viewer }) =>
+		run: (store, args, { viewer, env }) =>
 			guideJournal(
 				store,
 				value(args, 'changeId'),
 				value(args, 'role') as GuideRole | undefined,
 				viewer(),
-				value(args, 'build')
+				value(args, 'build'),
+				recorderShell(env)
 			),
 		print: (reply) => {
 			const data = reply.data as {
@@ -472,6 +477,7 @@ const commands: Record<string, Command> = {
 				common: Field[]
 				kinds: Array<{ kind: string; about: string; fields: Field[] }>
 				command: string
+				from?: string
 				example: unknown
 				answers: Array<{ id: string; question: string; answer: string }>
 				openDefects: Array<{ id: string; build: string; severity: string; title: string }>
@@ -486,7 +492,14 @@ const commands: Record<string, Command> = {
 						kind.kind,
 						`${kind.about} ${fieldText(kind.fields, described)}`,
 					]),
-					['example', { preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` }],
+					[
+						'example',
+						{
+							preformatted: data.from
+								? `Write to ${data.from}:\n${JSON.stringify(data.example)}\nThen run: ${data.command}`
+								: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF`,
+						},
+					],
 					...data.answers.map((answer) => ['answer', answer.id, answer.question, answer.answer]),
 					...data.openDefects.map((defect) => [
 						'open_defect',
@@ -765,6 +778,12 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
+}
+
+function recorderShell(env: Io['env']): RecorderShell | undefined {
+	const command = env.CHECKMATE_RECORDER_COMMAND
+	const files = env.CHECKMATE_RECORDER_FILES
+	return env.CHECKMATE_RECORDER && command && files ? { command, files } : undefined
 }
 
 const readOnlyReason = 'query is read-only. Use the Checkmate commands to change the record.'

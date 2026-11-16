@@ -226,7 +226,10 @@ test('--version and --help need no workspace', () => {
 	assert.equal(cli('/nonexistent', ['--version']).output, manifest.version)
 	const help = cli('/nonexistent', ['--help']).output
 	assert.match(help, /^checkmate init$/m)
-	assert.match(help, /^checkmate log <changeId> \[--build <value>\] \[--actor <name>\] <<'EOF' <json> EOF$/m)
+	assert.match(
+		help,
+		/^checkmate log <changeId> \[--build <value>\] \[--from <value>\] \[--actor <name>\] <<'EOF' <json> EOF$/m
+	)
 	assert.doesNotMatch(help, /journal|plan|lite|run |delegate/)
 	const group = cli('/nonexistent', ['target', '--help'])
 	assert.equal(group.code, 0)

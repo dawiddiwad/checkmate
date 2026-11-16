@@ -5,7 +5,7 @@ import { recorderPrompt } from './guide.ts'
 import { changeState } from './journal.ts'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { accessSync, constants, readdirSync, realpathSync, statSync } from 'node:fs'
+import { accessSync, constants, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
@@ -131,7 +131,7 @@ function prepare(store: Store, actor: string | undefined, input: RecordInput, en
 	return { claude, session, recorder: randomUUID(), actor: writer }
 }
 
-function recorderArgs(session: string, recorder: string, checkmate: string) {
+function recorderArgs(session: string, recorder: string, checkmate: string, files: string) {
 	return [
 		'-p',
 		'--resume',
@@ -146,6 +146,7 @@ function recorderArgs(session: string, recorder: string, checkmate: string) {
 		'--allowedTools',
 		`Bash(${checkmate} *)`,
 		'Read',
+		`Write(/${files}/**)`,
 	]
 }
 
@@ -165,25 +166,26 @@ export function recordSession(
 		})
 	}
 	const checkmate = host.script ? `node ${host.script}` : 'checkmate'
-	const prompt = [
-		recorderPrompt(input.changeId, input.build),
-		...(host.script ? [`\`checkmate <command>\` means \`${checkmate} <command>\`.`] : []),
-	].join('\n')
+	const files = join(realpathSync(store.workspace), '.checkmate', 'tmp', `record-${plan.recorder}`)
+	mkdirSync(files, { recursive: true })
 	const after = lastEntry(store)
-	const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate), {
+	const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate, files), {
 		cwd: store.workspace,
 		env: {
 			...host.env,
 			CHECKMATE_WORKSPACE: store.workspace,
 			CHECKMATE_ACTOR: plan.actor,
 			CHECKMATE_RECORDER: '1',
+			CHECKMATE_RECORDER_COMMAND: checkmate,
+			CHECKMATE_RECORDER_FILES: files,
 		},
-		input: prompt,
+		input: recorderPrompt(input.changeId, input.build, { command: checkmate, files }),
 		encoding: 'utf8',
 		timeout: input.timeoutSeconds * 1000,
 		killSignal: 'SIGTERM',
 		maxBuffer: maxOutputBytes,
 	})
+	rmSync(files, { recursive: true, force: true })
 	const added = addedEntries(store, input.changeId, plan.actor, after)
 	const entries = Object.values(added).reduce((sum, count) => sum + count, 0)
 	const result = claudeResult(child.stdout ?? '')

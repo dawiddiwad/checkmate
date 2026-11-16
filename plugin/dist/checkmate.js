@@ -3375,6 +3375,20 @@ function evidenceFile(store, name) {
   requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
   return readFileSync(real);
 }
+function entriesFile(store, name, cwd) {
+  const path = resolve(cwd, name);
+  requireWellFormed(
+    existsSync2(path),
+    `No entries file: ${name}`,
+    "Give --from the path of a JSON file in the workspace."
+  );
+  requireWellFormed(
+    realpathSync(path).startsWith(realpathSync(store.workspace) + sep),
+    `Entries file must be inside the workspace: ${name}`,
+    "Write the file in the workspace, then give its path to --from."
+  );
+  return readFileSync(path, "utf8");
+}
 function evidenceOf(store, spec, cwd) {
   const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync2(path));
   if (found) {
@@ -4334,25 +4348,30 @@ function roleSteps(changeId, role) {
     "Do not explore beyond the list."
   ];
 }
-function journalSteps(changeId) {
+function journalSteps(changeId, shell) {
+  const checkmate = shell?.command ?? "checkmate";
   return [
-    `Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+    shell ? `Log what you did and saw. Write the entries as one JSON array to a new file in ${shell.files} with the Write tool. Then run ${checkmate} log ${changeId} --build <build> --from ${shell.files}/<file>.json. Do not use a heredoc.` : `Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
     'With a repository or a merge request, log each changed area that you tested as a note with "area".',
-    `Then run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`
+    `Then run ${checkmate} gaps ${changeId} --build <build>. Its lines are ideas, not rules. ${checkmate} show ${changeId} prints the record.`
   ];
 }
-function recorderPrompt(changeId, build) {
+function recorderPrompt(changeId, build, shell) {
+  const checkmate = shell?.command ?? "checkmate";
   return [
-    `Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ""}). Run \`checkmate guide ${changeId}\` first. \`checkmate show ${changeId}\` prints what the record already holds.`,
-    ...build ? [`Give \`--build ${build}\` to each \`checkmate log\` call.`] : [],
+    `Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ""}). Run \`${checkmate} guide ${changeId}\` first. \`${checkmate} show ${changeId}\` prints what the record already holds.`,
+    ...build ? [`Give \`--build ${build}\` to each \`${checkmate} log\` call.`] : [],
+    ...shell ? [
+      `Write the entries to a file in ${shell.files} with the Write tool, and log them with \`${checkmate} log ${changeId} --from <file>\`. Do not use a heredoc.`
+    ] : [],
     "Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project."
   ].join("\n");
 }
-function guideJournal(store, changeId, role = "tester", viewer, build) {
+function guideJournal(store, changeId, role = "tester", viewer, build, shell) {
   const change = changeId ?? "<changeId>";
   if (role === "recorder") {
     if (changeId !== void 0) changeState(store, changeId);
-    return completed(changeId ?? "guide", { format: "text", content: recorderPrompt(change, build) });
+    return completed(changeId ?? "guide", { format: "text", content: recorderPrompt(change, build, shell) });
   }
   if (role !== "tester") {
     if (changeId !== void 0) changeState(store, changeId);
@@ -4366,9 +4385,12 @@ function guideJournal(store, changeId, role = "tester", viewer, build) {
   }
   const state = changeId === void 0 ? void 0 : changeState(store, changeId, viewer);
   return completed(changeId ?? "guide", {
-    steps: journalSteps(change),
+    steps: journalSteps(change, shell),
     ...journalSchema(),
-    command: `checkmate log ${change} --build b1`,
+    ...shell ? {
+      command: `${shell.command} log ${change} --build b1 --from ${shell.files}/entries.json`,
+      from: `${shell.files}/entries.json`
+    } : { command: `checkmate log ${change} --build b1` },
     answers: (state?.questions ?? []).filter((question) => question.answer !== null),
     openDefects: (state?.defects ?? []).filter((defect) => state.openDefects.includes(defect.id))
   });
@@ -4471,7 +4493,7 @@ function pagedOperations(store, query = {}) {
 // plugin/src/recorder.ts
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, readdirSync, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
+import { accessSync, constants, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync2, rmSync, statSync as statSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join as join2 } from "node:path";
 var defaultRecorderTimeout = 600;
@@ -4569,7 +4591,7 @@ function prepare(store, actor, input, env) {
     );
   return { claude, session, recorder: randomUUID(), actor: writer };
 }
-function recorderArgs(session, recorder, checkmate) {
+function recorderArgs(session, recorder, checkmate, files2) {
   return [
     "-p",
     "--resume",
@@ -4583,7 +4605,8 @@ function recorderArgs(session, recorder, checkmate) {
     "none",
     "--allowedTools",
     `Bash(${checkmate} *)`,
-    "Read"
+    "Read",
+    `Write(/${files2}/**)`
   ];
 }
 function recordSession(store, actor, input, host) {
@@ -4597,25 +4620,26 @@ function recordSession(store, actor, input, host) {
     });
   }
   const checkmate = host.script ? `node ${host.script}` : "checkmate";
-  const prompt = [
-    recorderPrompt(input.changeId, input.build),
-    ...host.script ? [`\`checkmate <command>\` means \`${checkmate} <command>\`.`] : []
-  ].join("\n");
+  const files2 = join2(realpathSync2(store.workspace), ".checkmate", "tmp", `record-${plan.recorder}`);
+  mkdirSync2(files2, { recursive: true });
   const after = lastEntry(store);
-  const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate), {
+  const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate, files2), {
     cwd: store.workspace,
     env: {
       ...host.env,
       CHECKMATE_WORKSPACE: store.workspace,
       CHECKMATE_ACTOR: plan.actor,
-      CHECKMATE_RECORDER: "1"
+      CHECKMATE_RECORDER: "1",
+      CHECKMATE_RECORDER_COMMAND: checkmate,
+      CHECKMATE_RECORDER_FILES: files2
     },
-    input: prompt,
+    input: recorderPrompt(input.changeId, input.build, { command: checkmate, files: files2 }),
     encoding: "utf8",
     timeout: input.timeoutSeconds * 1e3,
     killSignal: "SIGTERM",
     maxBuffer: maxOutputBytes
   });
+  rmSync(files2, { recursive: true, force: true });
   const added = addedEntries(store, input.changeId, plan.actor, after);
   const entries = Object.values(added).reduce((sum, count) => sum + count, 0);
   const result = claudeResult(child.stdout ?? "");
@@ -5871,7 +5895,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/cli.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync } from "node:fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve2 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 function value(args, name) {
@@ -6148,15 +6172,18 @@ var commands = {
   },
   log: {
     positionals: ["changeId"],
-    flags: { build: "value" },
+    flags: { build: "value", from: "value" },
     write: true,
     stdin: true,
-    run: (store, args, { actor, text, cwd }) => logEntries(store, actor, {
-      changeId: value(args, "changeId"),
-      build: value(args, "build"),
-      entries: readEntries(text()),
-      cwd
-    }),
+    run: (store, args, { actor, text, cwd }) => {
+      const from = value(args, "from");
+      return logEntries(store, actor, {
+        changeId: value(args, "changeId"),
+        build: value(args, "build"),
+        entries: readEntries(from === void 0 ? text() : entriesFile(store, from, cwd)),
+        cwd
+      });
+    },
     print: (reply) => {
       const saved = reply.data.saved;
       const refused2 = reply.data.refused;
@@ -6196,12 +6223,13 @@ var commands = {
       value(args, "build") === void 0 || value(args, "role") === "recorder",
       "--build is only for --role recorder."
     ),
-    run: (store, args, { viewer }) => guideJournal(
+    run: (store, args, { viewer, env }) => guideJournal(
       store,
       value(args, "changeId"),
       value(args, "role"),
       viewer(),
-      value(args, "build")
+      value(args, "build"),
+      recorderShell(env)
     ),
     print: (reply) => {
       const data = reply.data;
@@ -6215,9 +6243,16 @@ var commands = {
             kind.kind,
             `${kind.about} ${fieldText(kind.fields, described)}`
           ]),
-          ["example", { preformatted: `${data.command} <<'EOF'
+          [
+            "example",
+            {
+              preformatted: data.from ? `Write to ${data.from}:
 ${JSON.stringify(data.example)}
-EOF` }],
+Then run: ${data.command}` : `${data.command} <<'EOF'
+${JSON.stringify(data.example)}
+EOF`
+            }
+          ],
           ...data.answers.map((answer) => ["answer", answer.id, answer.question, answer.answer]),
           ...data.openDefects.map((defect) => [
             "open_defect",
@@ -6497,6 +6532,11 @@ EOF`
     }
   }
 };
+function recorderShell(env) {
+  const command = env.CHECKMATE_RECORDER_COMMAND;
+  const files2 = env.CHECKMATE_RECORDER_FILES;
+  return env.CHECKMATE_RECORDER && command && files2 ? { command, files: files2 } : void 0;
+}
 var readOnlyReason = "query is read-only. Use the Checkmate commands to change the record.";
 var readPragmas = [
   "table_info",
@@ -6556,7 +6596,7 @@ function rationaleOf(input) {
 }
 function writeOutput(store, out, content) {
   const path = resolve2(store.workspace, out);
-  mkdirSync2(dirname(path), { recursive: true });
+  mkdirSync3(dirname(path), { recursive: true });
   try {
     writeFileSync(path, content, { flag: "wx" });
   } catch (error) {

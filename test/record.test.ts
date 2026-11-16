@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
-import { chmodSync, mkdirSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { cli, directory, root } from './support.ts'
 import { run } from '../plugin/src/cli.ts'
@@ -19,26 +19,31 @@ const { join } = require('node:path')
 const args = process.argv.slice(2)
 const prompt = readFileSync(0, 'utf8')
 const recorder = args[args.indexOf('--session-id') + 1]
-const checkmate = /means \`node (\\S+) <command>\`/.exec(prompt)[1]
+const checkmate = /Run \`node (\\S+) guide cart\`/.exec(prompt)[1]
+const files = /to a file in (\\S+) with the Write tool/.exec(prompt)[1]
+const guide = execFileSync(process.execPath, [checkmate, 'guide', 'cart'], { encoding: 'utf8' })
 const folder = join(process.env.CLAUDE_CONFIG_DIR, 'projects', process.cwd().replace(/[^a-zA-Z0-9]/g, '-'))
 mkdirSync(folder, { recursive: true })
 writeFileSync(join(folder, recorder + '.jsonl'), '{}\\n')
 const nested = spawnSync(process.execPath, [checkmate, 'record', 'cart'], { encoding: 'utf8' }).stdout
 const env = ['CHECKMATE_WORKSPACE', 'CHECKMATE_ACTOR', 'CHECKMATE_RECORDER'].map((name) => process.env[name])
-writeFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ args, prompt, cwd: process.cwd(), env, nested }))
+writeFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ args, prompt, cwd: process.cwd(), env, nested, guide, files }))
 const mode = process.env.FAKE_CLAUDE
 if (mode === 'sleep') setTimeout(() => {}, 60000)
 else if (mode === 'fail') {
 	process.stderr.write('API error: overloaded\\n')
 	process.exit(2)
 } else {
-	if (mode === 'log')
-		execFileSync(process.execPath, [checkmate, 'log', 'cart', '--build', 'b1'], {
-			input: JSON.stringify([
+	if (mode === 'log') {
+		writeFileSync(
+			join(files, 'entries.json'),
+			JSON.stringify([
 				{ kind: 'observation', about: 'coupon', saw: 'The total is 450.00.' },
-				{ kind: 'defect', title: 'Coupon stacks', severity: 'high', expected: '450.00', actual: '400.00' },
-			]),
-		})
+				{ kind: 'defect', title: 'Coupon stacks', severity: 'high', expected: '450.00', actual: '400.00', evidence: ['evidence/total.txt'] },
+			])
+		)
+		execFileSync(process.execPath, [checkmate, 'log', 'cart', '--build', 'b1', '--from', join(files, 'entries.json')])
+	}
 	process.stdout.write(
 		JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: recorder, total_cost_usd: 0.25, duration_ms: 1234 })
 	)
@@ -62,6 +67,8 @@ function setup(t: TestContext) {
 		['open', 'cart', '--target', 'shop'],
 	])
 		assert.equal(cli(workspace, args).code, 0, args.join(' '))
+	mkdirSync(join(workspace, 'evidence'))
+	writeFileSync(join(workspace, 'evidence', 'total.txt'), 'Total: 400.00')
 	const bin = directory(t)
 	writeFileSync(join(bin, 'claude'), fakeClaude)
 	chmodSync(join(bin, 'claude'), 0o755)
@@ -130,11 +137,18 @@ test('record forks the latest test session, and the recorder logs as the actor o
 		'--allowedTools',
 		`Bash(node ${script} *)`,
 		'Read',
+		`Write(/${call.files}/**)`,
 	])
-	assert.equal(
-		call.prompt,
-		`${recorderPrompt('cart', 'b1')}\n\`checkmate <command>\` means \`node ${script} <command>\`.`
-	)
+	assert.equal(call.files, join(workspace, '.checkmate', 'tmp', `record-${recorder}`))
+	assert.equal(call.prompt, recorderPrompt('cart', 'b1', { command: `node ${script}`, files: call.files }))
+	assert(call.guide.includes(`node ${script} log cart --build <build> --from ${call.files}/<file>.json`), call.guide)
+	assert(call.guide.includes(`Write to ${call.files}/entries.json:`), call.guide)
+	assert.doesNotMatch(call.guide, /<<'EOF'|heredoc:|checkmate log/)
+	assert.equal(existsSync(call.files), false)
+	const evidence = JSON.parse(cli(workspace, ['export', 'cart']).output).entries.find(
+		(entry: { kind: string }) => entry.kind === 'defect'
+	).evidence
+	assert.equal(evidence[0].path, 'evidence/total.txt')
 	assert.equal(call.cwd, workspace)
 	assert.deepEqual(call.env, [workspace, 'qa:a1', '1'])
 	assert.match(call.nested, /^rejected cart refusal=prohibited\n.*\nreason: A recorder cannot start another recorder/)
@@ -201,4 +215,37 @@ test('guide --role recorder prints the recorder prompt', (t) => {
 	assert.match(prompt, /Do not test again for the record/)
 	assert.doesNotMatch(cli(workspace, ['guide', 'cart', '--role', 'recorder']).output, /build/)
 	assert.match(cli(workspace, ['guide', 'cart', '--build', 'b2']).output, /--build is only for --role recorder/)
+})
+
+test('log --from reads the entries from a file in the workspace, with the evidence paths of standard input', (t) => {
+	const { workspace } = setup(t)
+	const entries = [
+		{
+			kind: 'defect',
+			title: 'Wrong total',
+			severity: 'high',
+			expected: '450',
+			actual: '400',
+			evidence: ['evidence/total.txt'],
+		},
+	]
+	writeFileSync(join(workspace, 'entries.json'), JSON.stringify(entries))
+	const from = cli(workspace, ['log', 'cart', '--build', 'b1', '--from', 'entries.json', '--json'])
+	const piped = cli(workspace, ['log', 'cart', '--build', 'b1', '--json'], entries)
+	assert.equal(from.code, 0, from.output)
+	assert.equal(piped.code, 0, piped.output)
+	const defects = JSON.parse(cli(workspace, ['export', 'cart']).output).entries.filter(
+		(entry: { kind: string }) => entry.kind === 'defect'
+	)
+	assert.deepEqual(defects[0].evidence, defects[1].evidence)
+	const outside = join(directory(t), 'entries.json')
+	writeFileSync(outside, JSON.stringify(entries))
+	for (const [file, reason] of [
+		[outside, /^Entries file must be inside the workspace/],
+		['missing.json', /^No entries file: missing\.json/],
+	] as const) {
+		const refused = JSON.parse(cli(workspace, ['log', 'cart', '--from', file, '--json']).output)
+		assert.equal(refused.refusal, 'malformed')
+		assert.match(refused.reasons[1], reason)
+	}
 })

@@ -299,6 +299,24 @@ test('the plan page names a running exploration and links its live view, and sho
 	assert.doesNotMatch(live.body, /\/explorers\/a1\/test\/report\.md/)
 })
 
+test('the live view selects an explorer or a phase from the address', async (t) => {
+	const { workspace, opened } = seeded(t)
+	running(opened)
+	closeStore(opened)
+	const url = await ui(t, workspace)
+	assert.match((await call(url, '/explorations/x-1')).body, /data-selected="summary"/)
+	const a1 = (await call(url, '/explorations/x-1?item=explorer%3Aa1')).body
+	assert.match(a1, /data-selected="explorer:a1"\s+data-open/)
+	assert.match(a1, /<h2 class="q-h">Explorer a1<\/h2>/)
+	assert.match(a1, /<li><a href="\/explorations\/x-1" data-queue-back>x-1<\/a><\/li>/)
+	assert.match(a1, /<li aria-current="page">a1<\/li>/)
+	assert(keyed(a1, 'raw:a1/D1'))
+	assert.match(a1, /The files show when the explorer ends\./)
+	const merge = (await call(url, '/explorations/x-1?item=phase%3Amerge')).body
+	assert.match(merge, /<h2 class="q-h">Phase merge<\/h2>/)
+	assert.match((await call(url, '/explorations/x-1?item=explorer%3Anone')).body, /data-selected="summary"/)
+})
+
 test('after completion the plan page answers a merged question and decides a merged claim', async (t) => {
 	const { workspace, opened } = seeded(t)
 	completed(opened)
@@ -314,6 +332,12 @@ test('after completion the plan page answers a merged question and decides a mer
 	assert(!keyed(live, 'unmerged'))
 	assert.match(live, /href="\/explorations\/x-1\/explorers\/a1\/test\/report\.md"/)
 	assert.match((await call(url, '/explorations/x-1/explorers/a1/test/report.md')).body, /# Report of a1/)
+	const a1 = (await call(url, '/explorations/x-1?item=explorer%3Aa1')).body
+	assert.match(a1, /<pre tabindex="0" data-view-source># Report of a1/)
+	assert.match(a1, /href="\/explorations\/x-1\/explorers\/a1\/test\/report\.md\?download=1" download="report\.md"/)
+	assert(keyed(a1, 'found:a1/D1'))
+	const saved = await call(url, '/explorations/x-1/explorers/a1/test/report.md?download=1')
+	assert.equal(saved.body, '# Report of a1\n\nD1: Two coupons stack.\n')
 	assert.equal((await call(url, '/explorations/x-1/explorers/a2/test/report.md')).status, 404)
 	const form = (await call(url, '/explorations/x-1/questions/a1/Q1')).body
 	assert.match(form, /href="\/plans\/checkout">Plan checkout<\/a>/)

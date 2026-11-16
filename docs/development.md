@@ -71,7 +71,7 @@ The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is n
 | `test/ui.browser.test.ts`       | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                            |
 | `test/ui.pages.browser.test.ts` | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width.     |
 | `test/ui.queue.test.ts`         | `Needs you` and `Claims` on the volume seed: order, filters, short forms, approvals, evidence, breadcrumbs. |
-| `test/ui.queue.browser.test.ts` | `Needs you`, `Claims`, the plan page, and old pages in a real browser: width, themes, keys, and mouse.      |
+| `test/ui.queue.browser.test.ts` | `Needs you`, `Claims`, the plan, exploration, and old pages in a real browser: width, themes, keys, mouse.  |
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
 

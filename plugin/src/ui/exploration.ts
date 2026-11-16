@@ -1,13 +1,15 @@
 import type { Store } from '../store.ts'
+import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
+import type { EvidenceFile } from './evidence.ts'
 import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { explorationReport } from '../explorers.ts'
-import { claimEvidence, explorationLive, planExplorations } from '../views.ts'
+import { claimEvidence, entryEvidence, explorationLive, planExplorations } from '../views.ts'
 import { actorField, emptyState, gapPanel, hidden, messages, rationaleField, recordPanel } from './forms.ts'
-import { banner, downloads, heading } from './layout.ts'
-import { clock, duration, html, join, pill, plural, time } from './html.ts'
-import { imageTypes, size } from './run.ts'
+import { banner, crumbBar, downloads, heading, listAndItem } from './layout.ts'
+import { duration, html, join, pill, plural, time } from './html.ts'
+import { evidenceList, shownAsText, viewLink } from './evidence.ts'
 
 type Live = ReturnType<typeof explorationLive>
 type Question = Live['questions'][number]
@@ -46,6 +48,25 @@ export function claimsTable(planId: string, claims: Claim[]) {
 	</div>`
 }
 
+function claimLinks(planId: string, claims: Claim[]) {
+	if (!claims.length) return html`<p class="none">No claim.</p>`
+	return html`<ul class="items">
+		${claims.map(
+			(claim) =>
+				html`<li data-key="claim:${claim.id}">
+					<a
+						class="item"
+						href="/claims?plan=${planId}&amp;item=${encodeURIComponent(`claim:${planId}:${claim.id}`)}"
+						><span class="id">${claim.id}</span
+						><span class="what"
+							>${claim.title}${claim.reason ? html`<span class="help"> ${claim.reason}</span>` : ''}</span
+						><span class="end">${pill(claim.severity)} ${pill(claim.state)}</span></a
+					>
+				</li>`
+		)}
+	</ul>`
+}
+
 export function questionsList(planId: string, questions: Question[]) {
 	if (!questions.length) return html`<p class="empty-line">No question.</p>`
 	return html`<ul class="items">
@@ -71,37 +92,18 @@ export function questionsList(planId: string, questions: Question[]) {
 	</ul>`
 }
 
-const textTypes = ['text/plain', 'text/markdown', 'application/json']
-const inlineLimit = 64 * 1024
+export function claimEvidenceFiles(store: Store, planId: string, claim: Claim): EvidenceFile[] {
+	return claim.evidence.map((item, index) => {
+		if ('text' in item)
+			return { name: 'What the tester saw', mediaType: 'text/plain', size: 0, href: null, text: () => item.text }
+		const href = `/explorations/${claim.explorationId}/claims/${claim.id}/evidence/${index}`
+		const file = claimEvidence(store, planId, claim.id, index)
+		return { ...file, href, text: () => new TextDecoder().decode(file.bytes) }
+	})
+}
 
 export function claimEvidenceList(store: Store, planId: string, claim: Claim) {
-	if (!claim.evidence.length) return html`<p class="none">The tester gave no evidence.</p>`
-	return html`<div class="evidence">
-		${claim.evidence.map((item, index) => {
-			if ('text' in item)
-				return html`<figure class="ev ev-text">
-					<figcaption><span class="ev-name">What the tester saw</span></figcaption>
-					<pre tabindex="0">${item.text}</pre>
-				</figure>`
-			const href = `/explorations/${claim.explorationId}/claims/${claim.id}/evidence/${index}`
-			const file = claimEvidence(store, planId, claim.id, index)
-			const caption = html`<span class="ev-name">${file.name}</span>
-				<span class="muted">${size(file.size)}</span>`
-			if (imageTypes.includes(file.mediaType))
-				return html`<figure class="ev ev-image">
-					<a href="${href}" data-view-image data-name="${file.name}">
-						<img src="${href}" alt="Evidence ${file.name}" loading="lazy" />
-					</a>
-					<figcaption>${caption}</figcaption>
-				</figure>`
-			if (textTypes.includes(file.mediaType) && file.size <= inlineLimit)
-				return html`<figure class="ev ev-text">
-					<figcaption>${caption} <a href="${href}" download="${file.name}">Download</a></figcaption>
-					<pre tabindex="0">${new TextDecoder().decode(file.bytes)}</pre>
-				</figure>`
-			return html`<a class="chip" href="${href}" download="${file.name}">↓ ${file.name} · ${size(file.size)}</a>`
-		})}
-	</div>`
+	return evidenceList(claimEvidenceFiles(store, planId, claim), 'The tester gave no evidence.')
 }
 
 function dataLine(reason: string | null, data: string[]) {
@@ -194,52 +196,35 @@ export function explorationsTable(explorations: Listed[]) {
 	</div>`
 }
 
-function explorerRow(live: Live, item: Live['explorers'][number]) {
-	const none = html`<span class="muted">–</span>`
-	return html`<tr data-key="explorer:${item.explorer}">
-		<td class="mono">${item.explorer}</td>
-		<td>${item.turn ?? none}</td>
-		<td>${item.state ? pill(item.state, item.state === 'given' ? 'given to the session' : undefined) : none}</td>
-		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none}</td>
-		<td class="nowrap">
-			${
-				item.elapsedMs === null
-					? none
-					: item.startedAt && (item.state === 'running' || item.state === 'given')
-						? html`<span data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>`
-						: duration(item.elapsedMs)
-			}
-		</td>
-		<td>${item.activity ?? ''}</td>
-		<td>
-			${item.recorded ? html`${pill(item.recorded)} <span class="muted small">${plural(item.saved, 'entry', 'entries')}</span>` : none}
-		</td>
-		<td>
-			${
-				item.files.length
-					? join(
-							item.files.map(
-								(file) =>
-									html`<a
-										href="/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}"
-										>${file.name}${file.phase === 'test' ? '' : ` (${file.phase})`}</a
-									>`
-							),
-							html`<br />`
-						)
-					: none
-			}
-		</td>
-	</tr>`
+type LiveExplorer = Live['explorers'][number]
+type Found = Live['found'][number]
+
+const none = html`<span class="muted">–</span>`
+
+function explorerState(item: LiveExplorer) {
+	return item.state ? pill(item.state) : pill('pending', 'not started')
 }
 
-function stateBanner(live: Live) {
+function inState(item: LiveExplorer) {
+	if (item.elapsedMs === null) return ''
+	const live = item.startedAt && (item.state === 'running' || item.state === 'given')
+	return live
+		? html`<span class="age" data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>`
+		: html`<span class="age">${duration(item.elapsedMs)}</span>`
+}
+
+function explorationHref(explorationId: string, key: string | null) {
+	return key && key !== 'summary'
+		? `/explorations/${explorationId}?item=${encodeURIComponent(key)}`
+		: `/explorations/${explorationId}`
+}
+
+function stateLine(live: Live) {
 	if (live.running && live.paused)
 		return banner(
 			'warn',
 			html`<span data-key="paused"
-				><strong>Paused: ${live.paused}</strong> It waits on the oracle: answer the operator in the Claude Code
-				session.</span
+				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
 			>`
 		)
 	if (live.running)
@@ -269,126 +254,325 @@ function stateBanner(live: Live) {
 	return ''
 }
 
-function unmergedSection(live: Live) {
-	if (!live.unmerged.length) return ''
-	return html`<section class="panel" aria-labelledby="unmerged-title" data-key="unmerged">
-		<h2 class="lab" id="unmerged-title">Not merged yet <span class="n">${live.unmerged.length}</span></h2>
-		<p class="help">
-			These are the raw questions and defects of single explorers. They are not merged yet. They are not in the
-			inbox and not on the plan page. They can change before the exploration is completed.
+function listRow(
+	live: Live,
+	key: string,
+	selected: string,
+	top: Html | string,
+	tags: Html | string,
+	title: Html | string
+) {
+	return html`<li>
+		<a
+			class="q-row"
+			href="${explorationHref(live.explorationId, key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${key}"
+			${key === selected ? html`aria-current="true"` : ''}
+		>
+			<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
+			<span class="q-title">${title}</span>
+		</a>
+	</li>`
+}
+
+function rawCount(live: Live, explorer: string) {
+	const count = live.unmerged.filter((entry) => entry.explorer === explorer).length
+	return count ? html` ${pill('pending', `${count} not merged`)}` : ''
+}
+
+function explorationList(live: Live, selected: string) {
+	const totals = [
+		plural(live.claims.length, 'claim'),
+		plural(live.questions.length, 'question'),
+		...(live.unmerged.length ? [`${live.unmerged.length} not merged yet`] : []),
+	].join(' · ')
+	const explorers = live.explorers.map((item) =>
+		listRow(
+			live,
+			`explorer:${item.explorer}`,
+			selected,
+			html`${item.explorer}${item.turn ? ` · ${item.turn}` : ''}`,
+			html`${explorerState(item)}${rawCount(live, item.explorer)} ${inState(item)}`,
+			item.activity ??
+				html`<span class="muted"
+					>${item.state === 'running' || item.state === 'given' ? 'No activity yet.' : 'No activity line in the record.'}</span
+				>`
+		)
+	)
+	const phases = live.phases.map((row) =>
+		listRow(
+			live,
+			`phase:${row.phase}`,
+			selected,
+			row.phase,
+			pill(row.state),
+			row.reason ?? html`<span class="muted">${phaseNote(row.state)}</span>`
+		)
+	)
+	return html`<div class="q-head">
+			<h1>Exploration ${live.explorationId}</h1>
+			<p class="sub">${live.goal}</p>
+		</div>
+		<p class="q-facts">
+			<span data-region="exploration-state">${pill(live.state)}</span>
+			<a href="/plans/${live.planId}">${live.planId}</a> · build <code>${live.build}</code> · ${live.instanceId} ·
+			${live.level ?? 'no level'} · started ${time(live.startedAt)}
 		</p>
-		<ul class="items">
-			${live.unmerged.map(
-				(item) =>
-					html`<li data-key="raw:${item.id}">
-						<div class="item">
-							<span class="id">${item.id}</span>
-							<span class="what">${item.text}</span>
-							<span class="end"
-								>${pill('pending', `${item.kind}, not merged`)}
-								${item.severity ? pill(item.severity) : item.blocking ? pill('blocking') : ''}</span
-							>
-						</div>
-					</li>`
-			)}
+		${stateLine(live)}
+		<ul class="q-items">
+			${listRow(live, 'summary', selected, 'Overview', '', totals)}
+		</ul>
+		<section class="q-group" aria-labelledby="g-explorers">
+			<h2 class="q-group-h" id="g-explorers">Explorers <span class="n">${live.explorers.length}</span></h2>
+			${
+				explorers.length
+					? html`<ul class="q-items">
+							${explorers}
+						</ul>`
+					: html`<p class="none">No explorer has started yet.</p>`
+			}
+		</section>
+		<section class="q-group" aria-labelledby="g-phases">
+			<h2 class="q-group-h" id="g-phases">Phases</h2>
+			<ul class="q-items">
+				${phases}
+			</ul>
+		</section>`
+}
+
+const phaseNotes: Record<string, string> = {
+	pending: 'Starts after the explorers.',
+	running: 'Runs now.',
+	completed: 'Done.',
+	skipped: 'Skipped.',
+	not_in_level: 'The level of this exploration has no verify step.',
+	not_run: 'Did not run.',
+}
+
+function phaseNote(state: string) {
+	return phaseNotes[state] ?? 'No reason is recorded.'
+}
+
+function foundFiles(store: Store, live: Live, entry: Found): EvidenceFile[] {
+	return entry.evidence.map((file) => {
+		if (file.text !== null) return { ...file, href: null, text: () => file.text! }
+		const href = `/explorations/${live.explorationId}/entries/${entry.id}/evidence/${file.index}`
+		const text = shownAsText(file.mediaType, file.size)
+			? () => new TextDecoder().decode(entryEvidence(store, live.explorationId, entry.id, file.index).bytes)
+			: null
+		return { ...file, href, text }
+	})
+}
+
+function foundRow(store: Store, live: Live, entry: Found) {
+	const link = entry.claimId
+		? html`<a
+				class="mono"
+				href="/claims?plan=${live.planId}&amp;item=${encodeURIComponent(`claim:${live.planId}:${entry.claimId}`)}"
+				>${entry.claimId}</a
+			>`
+		: entry.questionId
+			? html`<a class="mono" href="/explorations/${live.explorationId}/questions/${entry.questionId}"
+					>${entry.questionId}</a
+				>`
+			: ''
+	const marker = entry.merged
+		? html`${pill('completed', 'merged')}${link ? html` into ${link}` : ''}`
+		: pill('pending', `${entry.kind}, not merged`)
+	return html`<li class="found${entry.merged ? '' : ' raw'}" data-key="${entry.merged ? 'found' : 'raw'}:${entry.id}">
+		<div class="found-h">
+			<span class="mono">${entry.id}</span>
+			${entry.severity ? pill(entry.severity) : entry.blocking ? pill('blocking') : ''} ${marker}
+		</div>
+		<p>${entry.text}</p>
+		${evidenceList(foundFiles(store, live, entry))}
+	</li>`
+}
+
+function rawSection(store: Store, live: Live, entries: Found[]) {
+	if (!entries.length) return ''
+	return html`<section class="raw-box" aria-labelledby="unmerged-title" data-key="unmerged">
+		<h3 class="lab" id="unmerged-title">Not merged yet <span class="n">${entries.length}</span></h3>
+		<p class="help">
+			These are the raw questions and defects of single explorers. They can change before the exploration is
+			completed. Needs you and the plan page do not show them.
+		</p>
+		<ul class="found-list">
+			${entries.map((entry) => foundRow(store, live, entry))}
 		</ul>
 	</section>`
 }
 
-export function explorationPage(store: Store, explorationId: string): Page {
-	const live = explorationLive(store, explorationId)
-	const meta = html`<div class="meta">
-		<span data-region="exploration-state">${pill(live.state)}</span>
-		<a class="pill" href="/plans/${live.planId}">${live.planId}</a>
-		<span class="pill">build ${live.build}</span>
-		<span class="pill">instance ${live.instanceId}</span>
-		<span class="pill"
-			>${live.level ?? 'no level'} · ${plural(live.explorerCount ?? 0, 'explorer')} · ${live.model ?? '-'}</span
-		>
-		<span class="pill">started ${time(live.startedAt, clock(live.startedAt))}</span>
-	</div>`
+function fileOpeners(live: Live, item: LiveExplorer) {
+	return item.files.map((file) => {
+		const page = `/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}`
+		return {
+			label: `${file.name}${file.phase === 'test' ? '' : ` (${file.phase})`}`,
+			opener: { name: `${item.explorer} · ${file.name}`, kind: 'text' as const, page, src: `${page}?download=1` },
+		}
+	})
+}
+
+function savedFiles(store: Store, live: Live, item: LiveExplorer) {
+	if (!item.files.length)
+		return html`<p class="none">
+			${live.running ? 'The files show when the explorer ends.' : 'The record keeps no file of this explorer.'}
+		</p>`
+	const texts = explorationReport(store, live.explorationId).files
+	return evidenceList(
+		item.files.map((file) => {
+			const page = `/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}`
+			const saved = texts.find(
+				(entry) => entry.explorer === item.explorer && entry.phase === file.phase && entry.name === file.name
+			)
+			return {
+				name: `${file.name}${file.phase === 'test' ? '' : ` (${file.phase})`}`,
+				mediaType: 'text/markdown',
+				size: saved?.size ?? 0,
+				href: `${page}?download=1`,
+				text: () => saved?.text ?? '',
+			}
+		})
+	)
+}
+
+function summaryDetail(store: Store, live: Live, crumbs: Html) {
 	const merged = live.state === 'completed' || live.claims.length + live.questions.length > 0
-	const body = html`${heading(html`Exploration ${explorationId}`, live.goal, meta)}
-		<div class="stack" data-region="exploration-live">
-			${stateBanner(live)}
-			<section class="panel" aria-labelledby="explorers-title">
-				<h2 class="lab" id="explorers-title">Explorers</h2>
-				${
-					live.explorers.length
-						? html`<div class="scroll">
-								<table>
-									<thead>
-										<tr>
-											<th scope="col">Explorer</th>
-											<th scope="col">${live.path === 'session' ? 'Step' : 'Turn'}</th>
-											<th scope="col">State</th>
-											<th scope="col">${live.path === 'session' ? 'Since' : 'Started'}</th>
-											<th scope="col">${live.path === 'session' ? 'In state' : 'Elapsed'}</th>
-											<th scope="col">Last activity</th>
-											<th scope="col">Record</th>
-											<th scope="col">Files</th>
-										</tr>
-									</thead>
-									<tbody>
-										${live.explorers.map((item) => explorerRow(live, item))}
-									</tbody>
-								</table>
-							</div>`
-						: html`<p class="none">No explorer has started yet.</p>`
-				}
-			</section>
-			<section class="panel" aria-labelledby="phases-title">
-				<h2 class="lab" id="phases-title">Phases</h2>
-				<div class="scroll">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">Phase</th>
-								<th scope="col">State</th>
-								<th scope="col">Reason</th>
-							</tr>
-						</thead>
-						<tbody>
-							${live.phases.map(
-								(row) =>
-									html`<tr data-key="phase:${row.phase}">
-										<td>${row.phase}</td>
-										<td>${pill(row.state)}</td>
-										<td>${row.reason ?? ''}</td>
-									</tr>`
-							)}
-						</tbody>
-					</table>
-				</div>
-			</section>
-			${unmergedSection(live)}
-			<section class="panel" aria-labelledby="claims-title">
-				<h2 class="lab" id="claims-title">Claims</h2>
-				${merged ? claimsTable(live.planId, live.claims) : html`<p class="none">The claims show when the exploration is completed.</p>`}
-			</section>
-			<section class="panel" aria-labelledby="questions-title">
-				<h2 class="lab" id="questions-title">Questions</h2>
-				${
-					merged
-						? questionsList(live.planId, live.questions)
-						: html`<p class="none">The merged questions show when the exploration is completed.</p>`
-				}
-			</section>
-		</div>
+	const files = live.explorers.flatMap((item) =>
+		fileOpeners(live, item).map((file) => html`<li>${item.explorer}: ${viewLink(file.opener, file.label)}</li>`)
+	)
+	return html`${crumbs}
+		<h2 class="q-h">Overview</h2>
+		${rawSection(store, live, live.unmerged)}
+		<section aria-labelledby="claims-title">
+			<h3 class="lab" id="claims-title">Claims <span class="n">${live.claims.length}</span></h3>
+			${merged ? claimLinks(live.planId, live.claims) : html`<p class="none">The claims show when the exploration is completed.</p>`}
+		</section>
+		<section aria-labelledby="questions-title">
+			<h3 class="lab" id="questions-title">Questions <span class="n">${live.questions.length}</span></h3>
+			${
+				merged
+					? questionsList(live.planId, live.questions)
+					: html`<p class="none">The merged questions show when the exploration is completed.</p>`
+			}
+		</section>
+		${
+			files.length
+				? html`<section aria-labelledby="files-title">
+						<h3 class="lab" id="files-title">Saved files</h3>
+						<ul class="plain">
+							${files}
+						</ul>
+					</section>`
+				: ''
+		}
 		<div class="actions">
-			${downloads('Download report', `/explorations/${explorationId}/export`, 'The record of this exploration.', ['md', 'json'])}
+			${downloads('Download report', `/explorations/${live.explorationId}/export`, 'The record of this exploration.', ['md', 'json'])}
 		</div>`
-	return {
-		title: `Exploration ${explorationId}`,
-		section: 'plans',
-		crumbs: [
+}
+
+function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Html) {
+	const found = live.found.filter((entry) => entry.explorer === item.explorer)
+	return html`${crumbs}
+		<h2 class="q-h">Explorer ${item.explorer}</h2>
+		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
+		<dl class="facts">
+			<div>
+				<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
+				<dd>${item.turn ?? none}</dd>
+			</div>
+			<div>
+				<dt>${live.path === 'session' ? 'Since' : 'Started'}</dt>
+				<dd>${item.startedAt ? time(item.startedAt) : none}</dd>
+			</div>
+			<div>
+				<dt>Last activity</dt>
+				<dd>${item.activity ?? none}</dd>
+			</div>
+			<div>
+				<dt>Record</dt>
+				<dd>
+					${item.recorded ? html`${pill(item.recorded)} ${plural(item.saved, 'entry', 'entries')}` : none}
+				</dd>
+			</div>
+		</dl>
+		${rawSection(
+			store,
+			live,
+			found.filter((entry) => !entry.merged)
+		)}
+		<section aria-labelledby="found-title">
+			<h3 class="lab" id="found-title">
+				Merged <span class="n">${found.filter((entry) => entry.merged).length}</span>
+			</h3>
+			${
+				found.some((entry) => entry.merged)
+					? html`<ul class="found-list">
+							${found.filter((entry) => entry.merged).map((entry) => foundRow(store, live, entry))}
+						</ul>`
+					: html`<p class="none">No entry of ${item.explorer} is merged yet.</p>`
+			}
+		</section>
+		<section aria-labelledby="saved-title">
+			<h3 class="lab" id="saved-title">Saved files</h3>
+			${savedFiles(store, live, item)}
+		</section>`
+}
+
+function phaseDetail(live: Live, row: Live['phases'][number], crumbs: Html) {
+	const failed = row.state === 'failed' || row.state === 'stopped'
+	return html`${crumbs}
+		<h2 class="q-h">Phase ${row.phase}</h2>
+		<p class="q-meta">${pill(row.state)}</p>
+		<p>${row.reason ?? phaseNote(row.state)}</p>
+		${failed ? html`<p class="help">${dataLine(null, live.data)}</p>` : ''}`
+}
+
+export function explorationPage(store: Store, explorationId: string, params = new URLSearchParams()): Page {
+	const live = explorationLive(store, explorationId)
+	const asked = params.get('item') ?? 'summary'
+	const explorer = live.explorers.find((item) => `explorer:${item.explorer}` === asked)
+	const phase = live.phases.find((row) => `phase:${row.phase}` === asked)
+	const selected = explorer || phase ? asked : 'summary'
+	const list = explorationHref(explorationId, null)
+	const label = explorer ? explorer.explorer : phase ? phase.phase : null
+	const crumbs = crumbBar(
+		[
 			['Plans', '/plans'],
 			[live.planId, `/plans/${live.planId}`],
-			[explorationId, null],
+			[explorationId, label ? list : null],
+			...(label ? [[label, null] as [string, null]] : []),
 		],
+		list
+	)
+	const detail = explorer
+		? explorerDetail(store, live, explorer, crumbs)
+		: phase
+			? phaseDetail(live, phase, crumbs)
+			: summaryDetail(store, live, crumbs)
+	return {
+		title: label ? `${explorationId} · ${label}` : `Exploration ${explorationId}`,
+		section: 'plans',
 		subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
-		body,
+		body: listAndItem({
+			label: 'Exploration',
+			list: explorationList(live, selected),
+			detail,
+			selected,
+			open: selected !== 'summary',
+			keep: true,
+		}),
 	}
+}
+
+export function explorerFile(store: Store, explorationId: string, explorer: string, phase: string, name: string) {
+	const file = explorationReport(store, explorationId).files.find(
+		(item) => item.explorer === explorer && item.phase === phase && item.name === name
+	)
+	if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`)
+	return file
 }
 
 export function explorerFilePage(
@@ -398,10 +582,7 @@ export function explorerFilePage(
 	phase: string,
 	name: string
 ): Page {
-	const file = explorationReport(store, explorationId).files.find(
-		(item) => item.explorer === explorer && item.phase === phase && item.name === name
-	)
-	if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`)
+	const file = explorerFile(store, explorationId, explorer, phase, name)
 	return {
 		title: `${explorationId} · ${explorer} · ${name}`,
 		section: 'plans',

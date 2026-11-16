@@ -6,7 +6,9 @@ import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
 import { clock, hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { downloads, heading } from './layout.ts'
+import type { EvidenceFile } from './evidence.ts'
 import { emptyState, recordPanel, verdictPanel } from './forms.ts'
+import { evidenceList, shownAsText } from './evidence.ts'
 import { counts } from './lists.ts'
 
 type Detail = ReturnType<typeof runDetail>
@@ -14,54 +16,20 @@ type Evidence = Detail['tests'][number]['evidence'][number]
 type RunTest = Detail['tests'][number]
 type Assertion = RunTest['assertions'][number]
 
-export const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const textTypes = ['text/plain', 'application/json', 'text/markdown', 'application/xml', 'text/csv']
-const inlineLimit = 64 * 1024
-
-export function size(bytes: number) {
-	if (bytes < 1024) return `${bytes} B`
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-	return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+function runFiles(store: Store, items: Evidence[]): EvidenceFile[] {
+	return items.map((item) => ({
+		name: item.name,
+		mediaType: item.mediaType,
+		size: item.size,
+		href: `/evidence/${item.id}`,
+		text: shownAsText(item.mediaType, item.size)
+			? () => new TextDecoder().decode(evidenceBytes(store, item.id).bytes)
+			: null,
+	}))
 }
 
-function evidenceItem(store: Store, item: Evidence) {
-	const href = `/evidence/${item.id}`
-	const caption = html`<span class="ev-name">${item.name}</span> <span class="muted">${size(item.size)}</span>`
-	if (imageTypes.includes(item.mediaType))
-		return html`<figure class="ev ev-image">
-			<a href="${href}" data-view-image data-name="${item.name}">
-				<img src="${href}" alt="Evidence ${item.name}" loading="lazy" />
-			</a>
-			<figcaption>${caption}</figcaption>
-		</figure>`
-	if (textTypes.includes(item.mediaType) && item.size <= inlineLimit) {
-		const text = new TextDecoder().decode(evidenceBytes(store, item.id).bytes)
-		return html`<figure class="ev ev-text">
-			<figcaption>${caption} <a href="${href}" download="${item.name}">Download</a></figcaption>
-			<pre tabindex="0">${text}</pre>
-		</figure>`
-	}
-	return html`<a class="chip" href="${href}" download="${item.name}">↓ ${item.name} · ${size(item.size)}</a>`
-}
-
-function evidenceChips(items: Evidence[]) {
-	if (!items.length) return ''
-	return html`<p class="evidence">
-		${items.map(
-			(item) =>
-				html`<a
-					class="chip"
-					href="/evidence/${item.id}"
-					${imageTypes.includes(item.mediaType) ? html`data-view-image data-name="${item.name}"` : html`download="${item.name}"`}
-					>${item.name} · ${size(item.size)}</a
-				>`
-		)}
-	</p>`
-}
-
-function evidenceList(store: Store, items: Evidence[]) {
-	if (!items.length) return ''
-	return html`<div class="evidence">${items.map((item) => evidenceItem(store, item))}</div>`
+function runEvidence(store: Store, items: Evidence[]) {
+	return evidenceList(runFiles(store, items))
 }
 
 function tone(result: string | null) {
@@ -117,7 +85,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 			<div class="asr-body">
 				${assertion.reason ? html`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ''}
 				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
-				${evidenceList(store, assertion.evidence)}
+				${runEvidence(store, assertion.evidence)}
 			</div>
 		</details>
 	</li>`
@@ -149,7 +117,7 @@ function testCard(store: Store, detail: Detail, test: RunTest) {
 		</header>
 		${hasMetadata(test.metadata) ? html`<p class="test-note">${metadataList(test.metadata)}</p>` : ''}
 		${test.reason ? html`<p class="test-note">${test.reason}</p>` : ''}
-		${test.evidence.length ? html`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ''}
+		${test.evidence.length ? html`<div class="test-ev">${runEvidence(store, test.evidence)}</div>` : ''}
 		<ul class="asrs">
 			${test.assertions.map((assertion) => assertionRow(store, detail, test, assertion))}
 		</ul>
@@ -214,7 +182,10 @@ function findings(store: Store, detail: Detail) {
 							)}${finding.requirementIds.length ? ` · requirements ${finding.requirementIds.join(', ')}` : ''}
 						</p>
 						${hasMetadata(finding.metadata) ? html`<p>${metadataList(finding.metadata)}</p>` : ''}
-						${evidenceChips(evidence.filter((item) => finding.evidenceIds.includes(item.id)))}
+						${runEvidence(
+							store,
+							evidence.filter((item) => finding.evidenceIds.includes(item.id))
+						)}
 					</div>
 				</article>`
 		)}

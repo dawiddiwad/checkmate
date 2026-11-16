@@ -16,7 +16,7 @@ export const entryKinds = [
 	'topic',
 ] as const
 type Kind = (typeof entryKinds)[number] | 'answer'
-type Evidence = { text: string } | { path: string; sha256: string; size: number }
+export type Evidence = { text: string } | { path: string; sha256: string; size: number }
 export type Entry = {
 	kind: Kind
 	id: string

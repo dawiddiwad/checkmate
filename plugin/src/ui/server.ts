@@ -21,12 +21,13 @@ import {
 } from '../plans.ts'
 import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow } from '../journal.ts'
-import { claimPage, explorationPage, explorerFilePage, questionPage } from './exploration.ts'
+import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
 import {
 	changesAfter,
 	claimEvidence,
+	entryEvidence,
 	evidenceBytes,
 	operationLog,
 	planDetail,
@@ -76,6 +77,7 @@ const routes = {
 	question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
 	claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
+	entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
 }
 const contentSecurityPolicy =
@@ -294,7 +296,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	}
 
 	function serveClaimEvidence(request: Request, explorationId: string, claimId: string, index: number) {
-		const evidence = claimEvidence(store, planOfExploration(explorationId), claimId, index)
+		serveFile(request, claimEvidence(store, planOfExploration(explorationId), claimId, index))
+	}
+
+	function serveFile(request: Request, evidence: { name: string; mediaType: string; bytes: Uint8Array }) {
 		const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === 'text/plain'
 		send(request.res, 200, evidence.mediaType, evidence.bytes, {
 			'Content-Disposition': `${inline ? 'inline' : 'attachment'}; ${attachmentName(evidence.name)}`,
@@ -415,8 +420,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return download(request, exportRun(store, runId, format), format, name)
 		}
 		const exploration = routes.exploration.exec(pathname)
-		if (exploration) return render(request, explorationPage(store, exploration[1]))
+		if (exploration) return render(request, explorationPage(store, exploration[1], searchParams))
 		const file = routes.explorerFile.exec(pathname)
+		if (file && searchParams.has('download')) {
+			const [, explorationId, explorer, phase, name] = file
+			const saved = explorerFile(store, explorationId, explorer, phase, name)
+			return download(request, saved.text, 'md', `${explorationId}-${explorer}-${name}`)
+		}
 		if (file) return render(request, explorerFilePage(store, file[1], file[2], file[3], file[4]))
 		const explorationExport = routes.explorationExport.exec(pathname)
 		if (explorationExport) {
@@ -434,6 +444,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]))
 		const claimFile = routes.claimEvidence.exec(pathname)
 		if (claimFile) return serveClaimEvidence(request, claimFile[1], claimFile[2], Number(claimFile[3]))
+		const entryFile = routes.entryEvidence.exec(pathname)
+		if (entryFile) return serveFile(request, entryEvidence(store, entryFile[1], entryFile[2], Number(entryFile[3])))
 		const gap = routes.gap.exec(pathname)
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
 		const run = routes.run.exec(pathname)

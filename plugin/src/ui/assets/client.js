@@ -95,11 +95,14 @@ function applyTheme(form, theme) {
 document.addEventListener('click', (event) => {
 	const back = event.target.closest('[data-confirm-back]')
 	if (back) return confirmStop(back.closest('form'))
-	const image = event.target.closest('a[data-view-image]')
-	if (image && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
+	const opener = event.target.closest('a[data-view]')
+	if (opener && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
 		event.preventDefault()
-		openViewer(image)
+		openViewer(opener)
 	}
+	const zoom = event.target.closest('[data-zoom]')
+	if (zoom) zoomViewer(zoom.dataset.zoom)
+	if (event.target.matches('[data-viewer-image]')) zoomViewer(viewerScale === 0 ? 'actual' : 'fit')
 	if (event.target.closest('[data-viewer-close]')) closeViewer()
 	if (event.target.matches('[data-viewer]')) closeViewer()
 	if (event.target.closest('[data-shortcuts-open]')) toggleShortcuts()
@@ -107,14 +110,61 @@ document.addEventListener('click', (event) => {
 })
 
 const viewer = document.querySelector('[data-viewer]')
+const viewerImage = viewer.querySelector('[data-viewer-image]')
+const viewerText = viewer.querySelector('[data-viewer-text]')
+const viewerScales = [0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
 let viewerOpener = null
+let viewerScale = 0
 
-function openViewer(link) {
+function zoomViewer(step) {
+	if (viewerImage.hidden) return
+	const index = viewerScales.indexOf(viewerScale)
+	if (step === 'fit') viewerScale = 0
+	else if (step === 'actual') viewerScale = 1
+	else if (step === 'in') viewerScale = index === 0 ? 1 : viewerScales[Math.min(viewerScales.length - 1, index + 1)]
+	else if (step === 'out') viewerScale = index <= 1 ? 0 : viewerScales[index - 1]
+	viewer.querySelector('[data-viewer-scale]').textContent = viewerScale ? `${Math.round(viewerScale * 100)} %` : 'Fit'
+	viewer.dataset.zoomed = viewerScale ? '1' : ''
+	viewerImage.style.width = viewerScale ? `${Math.round(viewerImage.naturalWidth * viewerScale)}px` : ''
+}
+
+function wrapViewer(on) {
+	const box = viewer.querySelector('[data-viewer-wrap]')
+	box.checked = on
+	viewerText.classList.toggle('nowrap', !on)
+}
+
+async function viewerSource(link) {
+	const inline = link.closest('figure')?.querySelector('[data-view-source]')
+	if (inline) return inline.textContent
+	const response = await fetch(link.dataset.src, { cache: 'no-store' })
+	if (!response.ok) throw new Error(String(response.status))
+	return response.text()
+}
+
+async function openViewer(link) {
 	viewerOpener = link
-	viewer.querySelector('[data-viewer-image]').src = link.href
-	viewer.querySelector('[data-viewer-image]').alt = link.querySelector('img')?.alt ?? ''
+	const kind = link.dataset.view
+	viewer.dataset.kind = kind
 	viewer.querySelector('[data-viewer-name]').textContent = link.dataset.name ?? ''
-	viewer.querySelector('[data-viewer-open]').href = link.href
+	const download = viewer.querySelector('[data-viewer-download]')
+	download.href = link.dataset.src || link.href
+	download.setAttribute('download', link.dataset.name ?? '')
+	for (const tools of viewer.querySelectorAll('[data-viewer-tools]'))
+		tools.hidden = tools.dataset.viewerTools !== kind
+	viewerImage.hidden = kind !== 'image'
+	viewerText.hidden = kind !== 'text'
+	if (kind === 'image') {
+		viewerImage.src = link.dataset.src || link.href
+		viewerImage.alt = link.querySelector('img')?.alt ?? link.dataset.name ?? ''
+		zoomViewer('fit')
+	} else {
+		viewerText.textContent = 'Loading…'
+		wrapViewer(true)
+		viewerSource(link)
+			.then((text) => (viewerText.textContent = text))
+			.catch(() => (viewerText.textContent = 'Checkmate could not load this file. Use Download.'))
+	}
 	viewer.hidden = false
 	document.querySelector('main').inert = true
 	viewer.querySelector('[data-viewer-close]').focus()
@@ -122,7 +172,9 @@ function openViewer(link) {
 
 function trapViewer(event) {
 	if (viewer.hidden || event.key !== 'Tab') return false
-	const stops = [...viewer.querySelectorAll('a[href], button')]
+	const stops = [...viewer.querySelectorAll('a[href], button, input, pre[tabindex]')].filter(
+		(element) => !element.closest('[hidden]')
+	)
 	const first = stops[0]
 	const last = stops[stops.length - 1]
 	if (event.shiftKey && document.activeElement === first) last.focus()
@@ -137,7 +189,9 @@ function closeViewer() {
 	if (viewer.hidden) return false
 	viewer.hidden = true
 	document.querySelector('main').inert = false
-	viewer.querySelector('[data-viewer-image]').removeAttribute('src')
+	viewerImage.removeAttribute('src')
+	viewerImage.style.width = ''
+	viewerText.textContent = ''
 	viewerOpener?.focus()
 	return true
 }
@@ -169,8 +223,24 @@ function move(step) {
 
 let pendingG = false
 
+function viewerKey(event) {
+	if (viewer.hidden || event.ctrlKey || event.metaKey || event.altKey) return false
+	if (event.target.matches?.('input[type="checkbox"]') && event.key === ' ') return false
+	const zoom = { '+': 'in', '=': 'in', '-': 'out', 0: 'fit', 1: 'actual' }[event.key]
+	if (zoom && !viewerImage.hidden) zoomViewer(zoom)
+	else if (event.key === 'w' && !viewerText.hidden) wrapViewer(viewerText.classList.contains('nowrap'))
+	else return false
+	event.preventDefault()
+	return true
+}
+
+document.addEventListener('change', (event) => {
+	if (event.target.matches('[data-viewer-wrap]')) wrapViewer(event.target.checked)
+})
+
 document.addEventListener('keydown', (event) => {
-	if (trapViewer(event)) return
+	if (trapViewer(event) || viewerKey(event)) return
+	if (!viewer.hidden && event.key !== 'Escape') return
 	if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
 	const target = event.target
 	const typing = target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
@@ -203,7 +273,10 @@ document.addEventListener('keydown', (event) => {
 })
 
 function normalize(text) {
-	return text.replace(/<time[^>]*>[\s\S]*?<\/time>/g, '').replace(/\s+/g, ' ')
+	return text
+		.replace(/<time[^>]*>[\s\S]*?<\/time>/g, '')
+		.replace(/(data-since="[^"]*">)[^<]*/g, '$1')
+		.replace(/\s+/g, ' ')
 }
 
 function dirty(region) {
@@ -549,6 +622,8 @@ if (!CSS.supports('field-sizing', 'content')) {
 }
 
 const queue = document.querySelector('[data-queue]')
+const queueKeep = queue?.hasAttribute('data-queue-keep')
+const queueMode = queueKeep ? 'replace' : 'push'
 const narrowQueue = window.matchMedia('(max-width: 760px)')
 let queueTicket = 0
 let queueTimer = null
@@ -588,9 +663,17 @@ function swapQueue(fresh, keepDetail = false) {
 	const opened = new Map(
 		[...queue.querySelectorAll('details[data-open-key]')].map((details) => [details.dataset.openKey, details.open])
 	)
-	for (const name of keepDetail ? ['queue-list'] : ['queue-list', 'queue-detail']) {
+	for (const name of ['queue-list', 'queue-detail']) {
 		const region = queue.querySelector(`[data-region="${name}"]`)
 		const replacement = next.querySelector(`[data-region="${name}"]`)
+		const previous = served.get(name)
+		if (previous && normalize(previous.outerHTML) === normalize(replacement.outerHTML)) continue
+		if (name === 'queue-detail' && keepDetail) {
+			const decision = region.querySelector('[data-region="decision"]')
+			const fresh = replacement.querySelector('[data-region="decision"]')
+			if (decision && fresh) staleNotice(decision, fresh)
+			continue
+		}
 		const scrolled = region.scrollTop
 		const imported = document.importNode(replacement, true)
 		for (const details of imported.querySelectorAll('details[data-open-key]'))
@@ -804,12 +887,12 @@ if (queue) {
 		if (row) {
 			event.preventDefault()
 			if (row.getAttribute('aria-current') === 'true' && !narrowQueue.matches) return void queueFocus('form')
-			return void queueGo(row.href, 'push', narrowQueue.matches ? 'detail' : 'row')
+			return void queueGo(row.href, queueMode, narrowQueue.matches ? 'detail' : 'row')
 		}
-		const back = event.target.closest('[data-queue-back]')
+		const back = event.target.closest('[data-queue-back], [data-queue-go]')
 		if (back) {
 			event.preventDefault()
-			queueGo(back.href, 'push', 'row')
+			queueGo(back.href, queueMode, back.matches('[data-queue-go]') ? 'detail' : 'row')
 		}
 	})
 	document.addEventListener('submit', (event) => {

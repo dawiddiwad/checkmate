@@ -366,8 +366,11 @@ test('evidence keeps its media type; images show inline, and plain text, XML, an
 		})
 	})
 	const feed = (await call(ui, '/runs/run-8')).body
-	assert.match(feed, /<pre tabindex="0">&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/)
-	assert.match(feed, /<pre tabindex="0">sku,total\nLAMP-01,400\n<\/pre>/)
+	assert.match(
+		feed,
+		/<pre tabindex="0" data-view-source>&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/
+	)
+	assert.match(feed, /<pre tabindex="0" data-view-source>sku,total\nLAMP-01,400\n<\/pre>/)
 })
 
 type Event = { id: string; data: string }

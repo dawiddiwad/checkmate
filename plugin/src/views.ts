@@ -1,7 +1,7 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
-import type { Row } from './journal.ts'
+import type { Evidence, Row } from './journal.ts'
 import { explorationStatus, followCount, startOf } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
@@ -559,6 +559,9 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 	const limit = mergedUpTo(events)
 	const kept = mergedEntries(store, status.planId)
 	const own = (item: { explorationId: string }) => item.explorationId === explorationId
+	const claims = planClaims(store, status.planId, kept).filter(own)
+	const questions = planQuestions(store, status.planId, kept).filter(own)
+	const found = foundEntries(store, status.planId, explorationId, limit, claims, questions)
 	const ended = ['failed', 'stopped'].includes(status.state)
 	return {
 		explorationId,
@@ -582,25 +585,56 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 		data: explorationData(store, status),
 		explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running, now)),
 		phases: phaseRows(events, status, startOf(events)?.verifier ?? null),
-		unmerged: journal(store, status.planId)
-			.team.filter(
-				(entry) =>
-					own(entry) &&
-					isTester(entry.actor) &&
-					entry.seq > limit &&
-					(entry.kind === 'question' || entry.kind === 'defect')
-			)
-			.map((entry) => ({
+		unmerged: found.filter((entry) => !entry.merged),
+		found,
+		claims,
+		questions,
+	}
+}
+
+function foundEntries(
+	store: Store,
+	planId: string,
+	explorationId: string,
+	limit: number,
+	claims: ReturnType<typeof planClaims>,
+	questions: ReturnType<typeof planQuestions>
+) {
+	return journal(store, planId)
+		.team.filter(
+			(entry) =>
+				entry.explorationId === explorationId &&
+				isTester(entry.actor) &&
+				(entry.kind === 'question' || entry.kind === 'defect')
+		)
+		.map((entry) => {
+			const merged = entry.seq <= limit
+			return {
 				id: entry.id,
 				explorer: shortName(entry.actor),
 				kind: entry.kind,
 				text: (entry.kind === 'question' ? entry.question : entry.title) ?? '',
 				severity: entry.severity ?? null,
 				blocking: entry.blocking === true,
-			})),
-		claims: planClaims(store, status.planId, kept).filter(own),
-		questions: planQuestions(store, status.planId, kept).filter(own),
-	}
+				merged,
+				claimId: merged ? (claims.find((claim) => claim.reports.includes(entry.id))?.id ?? null) : null,
+				questionId: merged
+					? (questions.find((question) => question.id === entry.id || question.members.includes(entry.id))
+							?.id ?? null)
+					: null,
+				evidence: (entry.evidence ?? []).map((item, index) =>
+					'path' in item
+						? {
+								index,
+								name: fileName(item.path),
+								mediaType: mediaTypeOf(item.path),
+								size: item.size,
+								text: null,
+							}
+						: { index, name: 'What the tester saw', mediaType: 'text/plain', size: 0, text: item.text }
+				),
+			}
+		})
 }
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
@@ -1672,21 +1706,34 @@ const evidenceTypes: Record<string, string> = {
 	json: 'application/json',
 }
 
+function fileName(path: string) {
+	return path.slice(path.lastIndexOf('/') + 1)
+}
+
+function mediaTypeOf(path: string) {
+	const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+	return evidenceTypes[extension] ?? 'application/octet-stream'
+}
+
+function evidenceOf(store: Store, item: Evidence | undefined, what: string) {
+	requireCondition(item && 'path' in item, `Unknown evidence ${what}`)
+	const row = one<{ bytes: Uint8Array }>(store, 'SELECT bytes FROM blobs WHERE sha256 = ?', item.sha256)
+	requireCondition(row, `Unknown evidence ${what}`)
+	return { name: fileName(item.path), mediaType: mediaTypeOf(item.path), size: item.size, bytes: row.bytes }
+}
+
 export function claimEvidence(store: Store, planId: string, claimId: string, index: number) {
 	const claim = planClaims(store, planId).find((item) => item.id === claimId)
 	requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`)
-	const item = claim.evidence[index]
-	requireCondition(item && 'path' in item, `Unknown evidence ${index} of claim ${claimId}`)
-	const row = one<{ bytes: Uint8Array }>(store, 'SELECT bytes FROM blobs WHERE sha256 = ?', item.sha256)
-	requireCondition(row, `Unknown evidence ${index} of claim ${claimId}`)
-	const name = item.path.slice(item.path.lastIndexOf('/') + 1)
-	const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
-	return {
-		name,
-		mediaType: evidenceTypes[extension] ?? 'application/octet-stream',
-		size: item.size,
-		bytes: row.bytes,
-	}
+	return evidenceOf(store, claim.evidence[index], `${index} of claim ${claimId}`)
+}
+
+export function entryEvidence(store: Store, explorationId: string, entryId: string, index: number) {
+	const entry = journal(store, exploration(store, explorationId).plan_id).team.find(
+		(item) => item.explorationId === explorationId && item.id === entryId && isTester(item.actor)
+	)
+	requireCondition(entry, `Unknown entry ${entryId} of exploration ${explorationId}`)
+	return evidenceOf(store, entry.evidence?.[index], `${index} of entry ${entryId}`)
 }
 
 export function claimsAcross(store: Store) {

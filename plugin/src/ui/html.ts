@@ -108,11 +108,15 @@ const statusLook: Record<string, [string, Tone]> = {
 	requested: ['○', 'acc'],
 }
 
+const labels: Record<string, string> = {
+	given: 'given to the session',
+}
+
 export function words(status: string) {
 	return status.replace(/_/g, ' ')
 }
 
-export function pill(status: string, label: string = words(status)) {
+export function pill(status: string, label: string = labels[status] ?? words(status)) {
 	const [icon, tone] = statusLook[status] ?? ['·', 'muted']
 	return html`<span class="st ${tone}"><span aria-hidden="true">${icon}</span> ${label}</span>`
 }

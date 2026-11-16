@@ -14840,6 +14840,9 @@ function explorationLive(store, explorationId, now = Date.now()) {
   const limit = mergedUpTo(events);
   const kept = mergedEntries(store, status.planId);
   const own = (item) => item.explorationId === explorationId;
+  const claims = planClaims(store, status.planId, kept).filter(own);
+  const questions = planQuestions(store, status.planId, kept).filter(own);
+  const found = foundEntries(store, status.planId, explorationId, limit, claims, questions);
   const ended = ["failed", "stopped"].includes(status.state);
   return {
     explorationId,
@@ -14863,19 +14866,38 @@ function explorationLive(store, explorationId, now = Date.now()) {
     data: explorationData(store, status),
     explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running3, now)),
     phases: phaseRows(events, status, startOf(events)?.verifier ?? null),
-    unmerged: journal(store, status.planId).team.filter(
-      (entry) => own(entry) && isTester(entry.actor) && entry.seq > limit && (entry.kind === "question" || entry.kind === "defect")
-    ).map((entry) => ({
+    unmerged: found.filter((entry) => !entry.merged),
+    found,
+    claims,
+    questions
+  };
+}
+function foundEntries(store, planId, explorationId, limit, claims, questions) {
+  return journal(store, planId).team.filter(
+    (entry) => entry.explorationId === explorationId && isTester(entry.actor) && (entry.kind === "question" || entry.kind === "defect")
+  ).map((entry) => {
+    const merged = entry.seq <= limit;
+    return {
       id: entry.id,
       explorer: shortName(entry.actor),
       kind: entry.kind,
       text: (entry.kind === "question" ? entry.question : entry.title) ?? "",
       severity: entry.severity ?? null,
-      blocking: entry.blocking === true
-    })),
-    claims: planClaims(store, status.planId, kept).filter(own),
-    questions: planQuestions(store, status.planId, kept).filter(own)
-  };
+      blocking: entry.blocking === true,
+      merged,
+      claimId: merged ? claims.find((claim) => claim.reports.includes(entry.id))?.id ?? null : null,
+      questionId: merged ? questions.find((question) => question.id === entry.id || question.members.includes(entry.id))?.id ?? null : null,
+      evidence: (entry.evidence ?? []).map(
+        (item, index2) => "path" in item ? {
+          index: index2,
+          name: fileName(item.path),
+          mediaType: mediaTypeOf(item.path),
+          size: item.size,
+          text: null
+        } : { index: index2, name: "What the tester saw", mediaType: "text/plain", size: 0, text: item.text }
+      )
+    };
+  });
 }
 var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
 function planStatus(store, planId) {
@@ -15776,21 +15798,30 @@ var evidenceTypes = {
   md: "text/markdown",
   json: "application/json"
 };
-function claimEvidence(store, planId, claimId, index2) {
-  const claim = planClaims(store, planId).find((item2) => item2.id === claimId);
-  requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`);
-  const item = claim.evidence[index2];
-  requireCondition(item && "path" in item, `Unknown evidence ${index2} of claim ${claimId}`);
+function fileName(path) {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+function mediaTypeOf(path) {
+  const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return evidenceTypes[extension] ?? "application/octet-stream";
+}
+function evidenceOf2(store, item, what) {
+  requireCondition(item && "path" in item, `Unknown evidence ${what}`);
   const row3 = one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", item.sha256);
-  requireCondition(row3, `Unknown evidence ${index2} of claim ${claimId}`);
-  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
-  const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
-  return {
-    name,
-    mediaType: evidenceTypes[extension] ?? "application/octet-stream",
-    size: item.size,
-    bytes: row3.bytes
-  };
+  requireCondition(row3, `Unknown evidence ${what}`);
+  return { name: fileName(item.path), mediaType: mediaTypeOf(item.path), size: item.size, bytes: row3.bytes };
+}
+function claimEvidence(store, planId, claimId, index2) {
+  const claim = planClaims(store, planId).find((item) => item.id === claimId);
+  requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`);
+  return evidenceOf2(store, claim.evidence[index2], `${index2} of claim ${claimId}`);
+}
+function entryEvidence(store, explorationId, entryId, index2) {
+  const entry = journal(store, exploration(store, explorationId).plan_id).team.find(
+    (item) => item.explorationId === explorationId && item.id === entryId && isTester(item.actor)
+  );
+  requireCondition(entry, `Unknown entry ${entryId} of exploration ${explorationId}`);
+  return evidenceOf2(store, entry.evidence?.[index2], `${index2} of entry ${entryId}`);
 }
 function claimsAcross(store) {
   const started = new Map(
@@ -16548,10 +16579,13 @@ var statusLook = {
   answered: ["\u2713", "pass"],
   requested: ["\u25CB", "acc"]
 };
+var labels = {
+  given: "given to the session"
+};
 function words(status) {
   return status.replace(/_/g, " ");
 }
-function pill(status, label = words(status)) {
+function pill(status, label = labels[status] ?? words(status)) {
   const [icon2, tone2] = statusLook[status] ?? ["\xB7", "muted"];
   return html2`<span class="st ${tone2}"><span aria-hidden="true">${icon2}</span> ${label}</span>`;
 }
@@ -16600,6 +16634,106 @@ function duration(ms2) {
   if (minutes < 60) return `${minutes} min ${seconds % 60} s`;
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
+
+// plugin/src/ui/evidence.ts
+var imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var textTypes = ["text/plain", "text/markdown", "application/json", "application/xml", "text/csv"];
+var inlineLimit = 64 * 1024;
+function size(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+function shownAsText(mediaType, bytes) {
+  return textTypes.includes(mediaType) && bytes <= inlineLimit;
+}
+function download(file) {
+  if (!file.href) return "";
+  return html2`<a class="ev-act" href="${file.href}" download="${file.name}" aria-label="Download ${file.name}"
+		>Download</a
+	>`;
+}
+function caption(file, open = "") {
+  return html2`<figcaption>
+		<span class="ev-name">${file.name}</span>
+		${file.size ? html2`<span class="muted">${size(file.size)}</span>` : ""} ${open} ${download(file)}
+	</figcaption>`;
+}
+function viewLink(opener, content, label = `View ${opener.name}`, extra = "") {
+  return html2`<a
+		class="${extra}"
+		href="${opener.page}"
+		data-view="${opener.kind}"
+		data-name="${opener.name}"
+		data-src="${opener.src}"
+		aria-label="${label}"
+		>${content}</a
+	>`;
+}
+function evidenceItem(file) {
+  if (file.href && imageTypes.includes(file.mediaType))
+    return html2`<figure class="ev ev-image">
+			<a
+				href="${file.href}"
+				data-view="image"
+				data-name="${file.name}"
+				data-src="${file.href}"
+				aria-label="View ${file.name}"
+			>
+				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" />
+			</a>
+			${caption(file)}
+		</figure>`;
+  if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
+    return html2`<figure class="ev ev-text">
+			${caption(
+      file,
+      file.href ? viewLink(
+        { name: file.name, kind: "text", page: file.href, src: file.href },
+        "View",
+        void 0,
+        "ev-act"
+      ) : ""
+    )}
+			<pre tabindex="0" data-view-source>${file.text()}</pre>
+		</figure>`;
+  return html2`<a class="chip" href="${file.href}" download="${file.name}" aria-label="Download ${file.name}"
+		>↓ ${file.name} · ${size(file.size)}</a
+	>`;
+}
+function evidenceList(files2, none4 = "") {
+  if (!files2.length) return none4 ? html2`<p class="none">${none4}</p>` : "";
+  return html2`<div class="evidence">${files2.map(evidenceItem)}</div>`;
+}
+var viewer = html2`<div
+	class="viewer"
+	data-viewer
+	hidden
+	role="dialog"
+	aria-modal="true"
+	aria-label="Evidence viewer"
+>
+	<div class="viewer-bar">
+		<span class="viewer-name" data-viewer-name></span>
+		<span class="viewer-tools" data-viewer-tools="image">
+			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
+				−
+			</button>
+			<span class="viewer-scale" data-viewer-scale aria-live="polite">Fit</span>
+			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
+			<button class="btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
+		</span>
+		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
+			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
+		>
+		<a class="btn small" data-viewer-download href="#" download>Download</a>
+		<button class="btn small" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
+	</div>
+	<div class="viewer-body" data-viewer-body>
+		<img data-viewer-image alt="" hidden />
+		<pre class="viewer-text" data-viewer-text tabindex="0" hidden></pre>
+	</div>
+</div>`;
 
 // plugin/src/ui/layout.ts
 var nextTheme = { system: "light", light: "dark", dark: "system" };
@@ -16713,18 +16847,12 @@ var shortcuts = html2`<aside class="shortcuts" data-shortcuts hidden aria-labell
 		<dd>Go to Needs you</dd>
 		<dt><kbd>Esc</kbd></dt>
 		<dd>Close the viewer or this panel</dd>
+		<dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd> <kbd>w</kbd></dt>
+		<dd>In the viewer: zoom, fit, or wrap the lines</dd>
 		<dt><kbd>?</kbd></dt>
 		<dd>Show these shortcuts</dd>
 	</dl>
 </aside>`;
-var viewer = html2`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
-	<div class="viewer-bar">
-		<span class="viewer-name" data-viewer-name></span>
-		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
-		<button class="btn" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
-	</div>
-	<div class="viewer-body"><img data-viewer-image alt="" /></div>
-</div>`;
 function layout(context, page) {
   const theme = context.theme === "system" ? "" : html2` data-theme="${context.theme}"`;
   return html2`<!doctype html>
@@ -16753,18 +16881,39 @@ function layout(context, page) {
 			</body>
 		</html>`;
 }
-function crumbBar(crumbs3) {
-  if (!crumbs3?.length) return "";
-  const parent = crumbs3.findLast(([, href]) => href)?.[1] ?? "/";
+function crumbBar(crumbs3, list2 = null) {
+  if (!crumbs3?.length) return html2``;
+  const parent = crumbs3.findLast(([, href]) => href && href !== list2)?.[1] ?? "/";
+  const link = (label, href) => href === list2 ? html2`<a href="${href}" data-queue-back>${label}</a>` : html2`<a href="${href}">${label}</a>`;
   return html2`<div class="crumbs-bar">
 		<a class="back-link" href="${parent}" data-back>← Back</a>
 		<nav aria-label="Breadcrumb">
 			<ol>
 				${crumbs3.map(
-    ([label, href]) => href ? html2`<li><a href="${href}">${label}</a></li>` : html2`<li aria-current="page">${label}</li>`
+    ([label, href]) => href ? html2`<li>${link(label, href)}</li>` : html2`<li aria-current="page">${label}</li>`
   )}
 			</ol>
 		</nav>
+	</div>`;
+}
+function listAndItem(split) {
+  return html2`<div
+		class="queue"
+		data-queue
+		data-selected="${split.selected}"
+		${split.open ? html2`data-open` : ""}
+		${split.keep ? html2`data-queue-keep` : ""}
+	>
+		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">${split.list}</section>
+		<section
+			class="q-detail"
+			aria-label="Selected ${split.label.toLowerCase()} item"
+			tabindex="-1"
+			data-region="queue-detail"
+			data-key="detail:${split.selected}"
+		>
+			${split.detail}
+		</section>
 	</div>`;
 }
 function heading(title, sub = null, extra = "") {
@@ -16991,6 +17140,605 @@ function sourceAndReason(context, state, reasonLabel) {
 			<textarea id="rationale" name="rationale" rows="2">${state.values.rationale ?? ""}</textarea>
 		</div>
 	</details>`;
+}
+
+// plugin/src/ui/exploration.ts
+function claimRow(planId, claim) {
+  const key = encodeURIComponent(`claim:${planId}:${claim.id}`);
+  return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
+		<td>
+			<a class="mono" href="/claims?plan=${planId}&amp;item=${key}">${claim.id}</a>
+		</td>
+		<td>${pill(claim.state)}</td>
+		<td>${pill(claim.severity)}</td>
+		<td>${claim.actors.join(", ")}</td>
+		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
+	</tr>`;
+}
+function claimsTable(planId, claims) {
+  if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Claim</th>
+					<th scope="col">State</th>
+					<th scope="col">Severity</th>
+					<th scope="col">Reporters</th>
+					<th scope="col">Title</th>
+				</tr>
+			</thead>
+			<tbody>
+				${claims.map((claim) => claimRow(planId, claim))}
+			</tbody>
+		</table>
+	</div>`;
+}
+function claimLinks(planId, claims) {
+  if (!claims.length) return html2`<p class="none">No claim.</p>`;
+  return html2`<ul class="items">
+		${claims.map(
+    (claim) => html2`<li data-key="claim:${claim.id}">
+					<a
+						class="item"
+						href="/claims?plan=${planId}&amp;item=${encodeURIComponent(`claim:${planId}:${claim.id}`)}"
+						><span class="id">${claim.id}</span
+						><span class="what"
+							>${claim.title}${claim.reason ? html2`<span class="help"> ${claim.reason}</span>` : ""}</span
+						><span class="end">${pill(claim.severity)} ${pill(claim.state)}</span></a
+					>
+				</li>`
+  )}
+	</ul>`;
+}
+function questionsList(planId, questions) {
+  if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
+  return html2`<ul class="items">
+		${questions.map(
+    (question) => html2`<li data-key="question:${question.id}">
+					<a
+						class="item"
+						href="${question.answer === null ? `/?plan=${planId}&item=${encodeURIComponent(`question:${planId}:${question.id}`)}` : `/explorations/${question.explorationId}/questions/${question.id}`}"
+						><span class="id">${question.id}</span><span class="what">${question.question}</span
+						><span class="end"
+							>${question.blocking ? html2`${pill("blocking")} ` : ""}${pill(
+      question.answer === null ? "open" : "answered"
+    )}</span
+						></a
+					>
+				</li>`
+  )}
+	</ul>`;
+}
+function claimEvidenceFiles(store, planId, claim) {
+  return claim.evidence.map((item, index2) => {
+    if ("text" in item)
+      return { name: "What the tester saw", mediaType: "text/plain", size: 0, href: null, text: () => item.text };
+    const href = `/explorations/${claim.explorationId}/claims/${claim.id}/evidence/${index2}`;
+    const file = claimEvidence(store, planId, claim.id, index2);
+    return { ...file, href, text: () => new TextDecoder().decode(file.bytes) };
+  });
+}
+function claimEvidenceList(store, planId, claim) {
+  return evidenceList(claimEvidenceFiles(store, planId, claim), "The tester gave no evidence.");
+}
+function dataLine(reason, data) {
+  return html2`${reason ?? "No reason is recorded."}
+	${data.length ? html2` Its data:
+				${join10(
+    data.map((path) => html2`<code>${path}</code>`),
+    ", "
+  )}.` : ""}`;
+}
+function explorationBanners(explorations) {
+  const running3 = explorations.filter((item) => item.running);
+  const last = explorations.at(-1);
+  return html2`${running3.map(
+    (item) => banner(
+      item.paused ? "warn" : "info",
+      html2`<span data-key="running:${item.explorationId}"
+				>${item.paused ? html2`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html2`Exploration ${item.explorationId} is running.`}
+				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
+				when it is completed.</span
+			>`
+    )
+  )}
+	${last && (last.state === "failed" || last.state === "stopped") ? banner(
+    "fail",
+    html2`<span data-key="failed:${last.explorationId}"
+						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
+						${dataLine(last.reason, last.data)}
+						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
+					>`
+  ) : ""}`;
+}
+function explorationsTable(explorations) {
+  if (!explorations.length)
+    return html2`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Exploration</th>
+					<th scope="col">State</th>
+					<th scope="col">Build</th>
+					<th scope="col">Instance</th>
+					<th scope="col">Level</th>
+					<th scope="col">Started</th>
+				</tr>
+			</thead>
+			<tbody>
+				${[...explorations].reverse().map(
+    (item) => html2`<tr data-key="exploration:${item.explorationId}">
+							<td>
+								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
+							</td>
+							<td>
+								${pill(item.state)}
+								${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
+								${item.follow === "failed" || item.follow === "stopped" ? html2`<p class="help">
+												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
+											</p>` : ""}
+							</td>
+							<td class="mono">${item.build}</td>
+							<td class="mono">${item.instanceId}</td>
+							<td>
+								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
+							</td>
+							<td class="nowrap">${time(item.startedAt)}</td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+var none2 = html2`<span class="muted">–</span>`;
+function explorerState(item) {
+  return item.state ? pill(item.state) : pill("pending", "not started");
+}
+function inState(item) {
+  if (item.elapsedMs === null) return "";
+  const live = item.startedAt && (item.state === "running" || item.state === "given");
+  return live ? html2`<span class="age" data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : html2`<span class="age">${duration(item.elapsedMs)}</span>`;
+}
+function explorationHref(explorationId, key) {
+  return key && key !== "summary" ? `/explorations/${explorationId}?item=${encodeURIComponent(key)}` : `/explorations/${explorationId}`;
+}
+function stateLine(live) {
+  if (live.running && live.paused)
+    return banner(
+      "warn",
+      html2`<span data-key="paused"
+				><strong>Paused: ${live.paused}</strong> It waits for you in the Claude Code session.</span
+			>`
+    );
+  if (live.running)
+    return banner(
+      "info",
+      html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
+    );
+  if (live.state === "failed" || live.state === "stopped")
+    return banner(
+      "fail",
+      html2`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
+    );
+  if (live.follow === "failed" || live.follow === "stopped")
+    return banner(
+      "fail",
+      html2`<span data-key="follow-failed"
+				><strong>The follow-up of ${live.explorationId} ${live.follow}.</strong>
+				${dataLine(live.followReason, live.data)} The claims and questions of the exploration stay valid.</span
+			>`
+    );
+  if (live.state === "open")
+    return banner(
+      "info",
+      html2`Exploration ${live.explorationId} is open. Record its sessions, then run
+				<code>checkmate explore finish ${live.explorationId}</code>.`
+    );
+  return "";
+}
+function listRow(live, key, selected, top, tags, title) {
+  return html2`<li>
+		<a
+			class="q-row"
+			href="${explorationHref(live.explorationId, key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${key}"
+			${key === selected ? html2`aria-current="true"` : ""}
+		>
+			<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
+			<span class="q-title">${title}</span>
+		</a>
+	</li>`;
+}
+function rawCount(live, explorer) {
+  const count = live.unmerged.filter((entry) => entry.explorer === explorer).length;
+  return count ? html2` ${pill("pending", `${count} not merged`)}` : "";
+}
+function explorationList(live, selected) {
+  const totals = [
+    plural(live.claims.length, "claim"),
+    plural(live.questions.length, "question"),
+    ...live.unmerged.length ? [`${live.unmerged.length} not merged yet`] : []
+  ].join(" \xB7 ");
+  const explorers = live.explorers.map(
+    (item) => listRow(
+      live,
+      `explorer:${item.explorer}`,
+      selected,
+      html2`${item.explorer}${item.turn ? ` \xB7 ${item.turn}` : ""}`,
+      html2`${explorerState(item)}${rawCount(live, item.explorer)} ${inState(item)}`,
+      item.activity ?? html2`<span class="muted"
+					>${item.state === "running" || item.state === "given" ? "No activity yet." : "No activity line in the record."}</span
+				>`
+    )
+  );
+  const phases = live.phases.map(
+    (row3) => listRow(
+      live,
+      `phase:${row3.phase}`,
+      selected,
+      row3.phase,
+      pill(row3.state),
+      row3.reason ?? html2`<span class="muted">${phaseNote(row3.state)}</span>`
+    )
+  );
+  return html2`<div class="q-head">
+			<h1>Exploration ${live.explorationId}</h1>
+			<p class="sub">${live.goal}</p>
+		</div>
+		<p class="q-facts">
+			<span data-region="exploration-state">${pill(live.state)}</span>
+			<a href="/plans/${live.planId}">${live.planId}</a> · build <code>${live.build}</code> · ${live.instanceId} ·
+			${live.level ?? "no level"} · started ${time(live.startedAt)}
+		</p>
+		${stateLine(live)}
+		<ul class="q-items">
+			${listRow(live, "summary", selected, "Overview", "", totals)}
+		</ul>
+		<section class="q-group" aria-labelledby="g-explorers">
+			<h2 class="q-group-h" id="g-explorers">Explorers <span class="n">${live.explorers.length}</span></h2>
+			${explorers.length ? html2`<ul class="q-items">
+							${explorers}
+						</ul>` : html2`<p class="none">No explorer has started yet.</p>`}
+		</section>
+		<section class="q-group" aria-labelledby="g-phases">
+			<h2 class="q-group-h" id="g-phases">Phases</h2>
+			<ul class="q-items">
+				${phases}
+			</ul>
+		</section>`;
+}
+var phaseNotes = {
+  pending: "Starts after the explorers.",
+  running: "Runs now.",
+  completed: "Done.",
+  skipped: "Skipped.",
+  not_in_level: "The level of this exploration has no verify step.",
+  not_run: "Did not run."
+};
+function phaseNote(state) {
+  return phaseNotes[state] ?? "No reason is recorded.";
+}
+function foundFiles(store, live, entry) {
+  return entry.evidence.map((file) => {
+    if (file.text !== null) return { ...file, href: null, text: () => file.text };
+    const href = `/explorations/${live.explorationId}/entries/${entry.id}/evidence/${file.index}`;
+    const text = shownAsText(file.mediaType, file.size) ? () => new TextDecoder().decode(entryEvidence(store, live.explorationId, entry.id, file.index).bytes) : null;
+    return { ...file, href, text };
+  });
+}
+function foundRow(store, live, entry) {
+  const link = entry.claimId ? html2`<a
+				class="mono"
+				href="/claims?plan=${live.planId}&amp;item=${encodeURIComponent(`claim:${live.planId}:${entry.claimId}`)}"
+				>${entry.claimId}</a
+			>` : entry.questionId ? html2`<a class="mono" href="/explorations/${live.explorationId}/questions/${entry.questionId}"
+					>${entry.questionId}</a
+				>` : "";
+  const marker = entry.merged ? html2`${pill("completed", "merged")}${link ? html2` into ${link}` : ""}` : pill("pending", `${entry.kind}, not merged`);
+  return html2`<li class="found${entry.merged ? "" : " raw"}" data-key="${entry.merged ? "found" : "raw"}:${entry.id}">
+		<div class="found-h">
+			<span class="mono">${entry.id}</span>
+			${entry.severity ? pill(entry.severity) : entry.blocking ? pill("blocking") : ""} ${marker}
+		</div>
+		<p>${entry.text}</p>
+		${evidenceList(foundFiles(store, live, entry))}
+	</li>`;
+}
+function rawSection(store, live, entries) {
+  if (!entries.length) return "";
+  return html2`<section class="raw-box" aria-labelledby="unmerged-title" data-key="unmerged">
+		<h3 class="lab" id="unmerged-title">Not merged yet <span class="n">${entries.length}</span></h3>
+		<p class="help">
+			These are the raw questions and defects of single explorers. They can change before the exploration is
+			completed. Needs you and the plan page do not show them.
+		</p>
+		<ul class="found-list">
+			${entries.map((entry) => foundRow(store, live, entry))}
+		</ul>
+	</section>`;
+}
+function fileOpeners(live, item) {
+  return item.files.map((file) => {
+    const page = `/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}`;
+    return {
+      label: `${file.name}${file.phase === "test" ? "" : ` (${file.phase})`}`,
+      opener: { name: `${item.explorer} \xB7 ${file.name}`, kind: "text", page, src: `${page}?download=1` }
+    };
+  });
+}
+function savedFiles(store, live, item) {
+  if (!item.files.length)
+    return html2`<p class="none">
+			${live.running ? "The files show when the explorer ends." : "The record keeps no file of this explorer."}
+		</p>`;
+  const texts = explorationReport(store, live.explorationId).files;
+  return evidenceList(
+    item.files.map((file) => {
+      const page = `/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}`;
+      const saved = texts.find(
+        (entry) => entry.explorer === item.explorer && entry.phase === file.phase && entry.name === file.name
+      );
+      return {
+        name: `${file.name}${file.phase === "test" ? "" : ` (${file.phase})`}`,
+        mediaType: "text/markdown",
+        size: saved?.size ?? 0,
+        href: `${page}?download=1`,
+        text: () => saved?.text ?? ""
+      };
+    })
+  );
+}
+function summaryDetail(store, live, crumbs3) {
+  const merged = live.state === "completed" || live.claims.length + live.questions.length > 0;
+  const files2 = live.explorers.flatMap(
+    (item) => fileOpeners(live, item).map((file) => html2`<li>${item.explorer}: ${viewLink(file.opener, file.label)}</li>`)
+  );
+  return html2`${crumbs3}
+		<h2 class="q-h">Overview</h2>
+		${rawSection(store, live, live.unmerged)}
+		<section aria-labelledby="claims-title">
+			<h3 class="lab" id="claims-title">Claims <span class="n">${live.claims.length}</span></h3>
+			${merged ? claimLinks(live.planId, live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
+		</section>
+		<section aria-labelledby="questions-title">
+			<h3 class="lab" id="questions-title">Questions <span class="n">${live.questions.length}</span></h3>
+			${merged ? questionsList(live.planId, live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
+		</section>
+		${files2.length ? html2`<section aria-labelledby="files-title">
+						<h3 class="lab" id="files-title">Saved files</h3>
+						<ul class="plain">
+							${files2}
+						</ul>
+					</section>` : ""}
+		<div class="actions">
+			${downloads("Download report", `/explorations/${live.explorationId}/export`, "The record of this exploration.", ["md", "json"])}
+		</div>`;
+}
+function explorerDetail(store, live, item, crumbs3) {
+  const found = live.found.filter((entry) => entry.explorer === item.explorer);
+  return html2`${crumbs3}
+		<h2 class="q-h">Explorer ${item.explorer}</h2>
+		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
+		<dl class="facts">
+			<div>
+				<dt>${live.path === "session" ? "Step" : "Turn"}</dt>
+				<dd>${item.turn ?? none2}</dd>
+			</div>
+			<div>
+				<dt>${live.path === "session" ? "Since" : "Started"}</dt>
+				<dd>${item.startedAt ? time(item.startedAt) : none2}</dd>
+			</div>
+			<div>
+				<dt>Last activity</dt>
+				<dd>${item.activity ?? none2}</dd>
+			</div>
+			<div>
+				<dt>Record</dt>
+				<dd>
+					${item.recorded ? html2`${pill(item.recorded)} ${plural(item.saved, "entry", "entries")}` : none2}
+				</dd>
+			</div>
+		</dl>
+		${rawSection(
+    store,
+    live,
+    found.filter((entry) => !entry.merged)
+  )}
+		<section aria-labelledby="found-title">
+			<h3 class="lab" id="found-title">
+				Merged <span class="n">${found.filter((entry) => entry.merged).length}</span>
+			</h3>
+			${found.some((entry) => entry.merged) ? html2`<ul class="found-list">
+							${found.filter((entry) => entry.merged).map((entry) => foundRow(store, live, entry))}
+						</ul>` : html2`<p class="none">No entry of ${item.explorer} is merged yet.</p>`}
+		</section>
+		<section aria-labelledby="saved-title">
+			<h3 class="lab" id="saved-title">Saved files</h3>
+			${savedFiles(store, live, item)}
+		</section>`;
+}
+function phaseDetail(live, row3, crumbs3) {
+  const failed = row3.state === "failed" || row3.state === "stopped";
+  return html2`${crumbs3}
+		<h2 class="q-h">Phase ${row3.phase}</h2>
+		<p class="q-meta">${pill(row3.state)}</p>
+		<p>${row3.reason ?? phaseNote(row3.state)}</p>
+		${failed ? html2`<p class="help">${dataLine(null, live.data)}</p>` : ""}`;
+}
+function explorationPage(store, explorationId, params = new URLSearchParams()) {
+  const live = explorationLive(store, explorationId);
+  const asked = params.get("item") ?? "summary";
+  const explorer = live.explorers.find((item) => `explorer:${item.explorer}` === asked);
+  const phase = live.phases.find((row3) => `phase:${row3.phase}` === asked);
+  const selected = explorer || phase ? asked : "summary";
+  const list2 = explorationHref(explorationId, null);
+  const label = explorer ? explorer.explorer : phase ? phase.phase : null;
+  const crumbs3 = crumbBar(
+    [
+      ["Plans", "/plans"],
+      [live.planId, `/plans/${live.planId}`],
+      [explorationId, label ? list2 : null],
+      ...label ? [[label, null]] : []
+    ],
+    list2
+  );
+  const detail2 = explorer ? explorerDetail(store, live, explorer, crumbs3) : phase ? phaseDetail(live, phase, crumbs3) : summaryDetail(store, live, crumbs3);
+  return {
+    title: label ? `${explorationId} \xB7 ${label}` : `Exploration ${explorationId}`,
+    section: "plans",
+    subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
+    body: listAndItem({
+      label: "Exploration",
+      list: explorationList(live, selected),
+      detail: detail2,
+      selected,
+      open: selected !== "summary",
+      keep: true
+    })
+  };
+}
+function explorerFile(store, explorationId, explorer, phase, name) {
+  const file = explorationReport(store, explorationId).files.find(
+    (item) => item.explorer === explorer && item.phase === phase && item.name === name
+  );
+  if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`);
+  return file;
+}
+function explorerFilePage(store, explorationId, explorer, phase, name) {
+  const file = explorerFile(store, explorationId, explorer, phase, name);
+  return {
+    title: `${explorationId} \xB7 ${explorer} \xB7 ${name}`,
+    section: "plans",
+    crumbs: [
+      ["Plans", "/plans"],
+      [explorationId, `/explorations/${explorationId}`],
+      [`${explorer} \xB7 ${name}`, null]
+    ],
+    subjects: [`exploration:${explorationId}`],
+    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
+			<p>
+				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, "byte")}
+			</p>
+			<section class="panel" aria-label="${name}"><pre class="report">${file.text}</pre></section>`
+  };
+}
+function questionPage(store, context, explorationId, questionId, state = null) {
+  const report = explorationReport(store, explorationId);
+  const question = report.questions.find((item) => item.id === questionId);
+  if (!question) throw new Error(`Unknown question ${questionId} in ${explorationId}`);
+  const panel = question.answer === null || state ? gapPanel(
+    context,
+    {
+      action: `/explorations/${explorationId}/questions/${question.id}`,
+      cancel: `/explorations/${explorationId}`,
+      sha256: "",
+      title: html2`${report.planId} · ${question.id}`,
+      question: question.question,
+      staleMessage: `${explorationId} changed. Review it before you answer.`
+    },
+    state ?? emptyState()
+  ) : recordPanel("Answer", html2`<blockquote>${question.answer}</blockquote>`);
+  return {
+    title: `${report.planId} \xB7 ${question.id}`,
+    section: "inbox",
+    crumbs: [
+      ["Needs you", "/"],
+      [report.planId, `/plans/${report.planId}`],
+      [explorationId, `/explorations/${explorationId}`],
+      [question.id, null]
+    ],
+    subjects: [`exploration:${explorationId}`, "inbox"],
+    body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
+			<p>
+				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
+				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
+			</p>
+			${panel}`
+  };
+}
+function claimPage(store, context, explorationId, claimId, state = null) {
+  const report = explorationReport(store, explorationId);
+  const claim = report.claims.find((item) => item.id === claimId);
+  if (!claim) throw new Error(`Unknown claim ${claimId} in ${explorationId}`);
+  const shown = state ?? emptyState();
+  const panel = claim.decision ? recordPanel(
+    "Decision",
+    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
+  ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
+				<h2 class="lab" id="decide-title">Decision</h2>
+				<p class="subj">Is ${claim.id} a defect?</p>
+				<div>${messages(shown)}</div>
+				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="decision-form">
+					${hidden(context, "")} ${actorField(context, shown)}
+					${rationaleField(shown, "Why do you decide this?")}
+					<div class="btns">
+						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
+						<button class="btn" name="verdict" value="rejected">Reject</button>
+					</div>
+				</form>
+			</section>`;
+  const steps = [claim.steps ?? []].flat();
+  return {
+    title: `${report.planId} \xB7 ${claim.id}`,
+    section: "inbox",
+    crumbs: [
+      ["Claims", "/claims"],
+      [report.planId, `/plans/${report.planId}`],
+      [explorationId, `/explorations/${explorationId}`],
+      [claim.id, null]
+    ],
+    subjects: [`exploration:${explorationId}`, "inbox"],
+    body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
+			<div class="split">
+				<section class="panel" aria-labelledby="claim-title">
+					<h2 class="lab" id="claim-title">Claim</h2>
+					<p>
+						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
+						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
+					</p>
+					<p class="lab">Expected</p>
+					<p>${claim.expected}</p>
+					<p class="lab">Actual</p>
+					<p>${claim.actual}</p>
+					${steps.length ? html2`<p class="lab">Steps</p>
+									<ol>
+										${steps.map((step) => html2`<li>${step}</li>`)}
+									</ol>` : ""}
+					<p class="lab">Evidence</p>
+					${claimEvidenceList(store, report.planId, claim)}
+					<p class="help">Reported by ${claim.actors.join(", ")}. ${claim.reason ?? ""}</p>
+				</section>
+				${panel}
+			</div>`
+  };
+}
+
+// plugin/src/actor.ts
+import { execFileSync } from "node:child_process";
+import { userInfo } from "node:os";
+function defaultActor(workspace, env) {
+  const named = env.CHECKMATE_ACTOR?.trim();
+  if (named) return named;
+  try {
+    const name = execFileSync("git", ["config", "user.name"], {
+      cwd: workspace,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (name) return name;
+  } catch {
+  }
+  try {
+    return userInfo().username;
+  } catch {
+    return void 0;
+  }
 }
 
 // plugin/src/ui/lists.ts
@@ -17546,904 +18294,6 @@ function logPage(store, params) {
   };
 }
 
-// plugin/src/ui/run.ts
-var imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-var textTypes = ["text/plain", "application/json", "text/markdown", "application/xml", "text/csv"];
-var inlineLimit = 64 * 1024;
-function size(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-function evidenceItem(store, item) {
-  const href = `/evidence/${item.id}`;
-  const caption = html2`<span class="ev-name">${item.name}</span> <span class="muted">${size(item.size)}</span>`;
-  if (imageTypes.includes(item.mediaType))
-    return html2`<figure class="ev ev-image">
-			<a href="${href}" data-view-image data-name="${item.name}">
-				<img src="${href}" alt="Evidence ${item.name}" loading="lazy" />
-			</a>
-			<figcaption>${caption}</figcaption>
-		</figure>`;
-  if (textTypes.includes(item.mediaType) && item.size <= inlineLimit) {
-    const text = new TextDecoder().decode(evidenceBytes(store, item.id).bytes);
-    return html2`<figure class="ev ev-text">
-			<figcaption>${caption} <a href="${href}" download="${item.name}">Download</a></figcaption>
-			<pre tabindex="0">${text}</pre>
-		</figure>`;
-  }
-  return html2`<a class="chip" href="${href}" download="${item.name}">↓ ${item.name} · ${size(item.size)}</a>`;
-}
-function evidenceChips(items) {
-  if (!items.length) return "";
-  return html2`<p class="evidence">
-		${items.map(
-    (item) => html2`<a
-					class="chip"
-					href="/evidence/${item.id}"
-					${imageTypes.includes(item.mediaType) ? html2`data-view-image data-name="${item.name}"` : html2`download="${item.name}"`}
-					>${item.name} · ${size(item.size)}</a
-				>`
-  )}
-	</p>`;
-}
-function evidenceList(store, items) {
-  if (!items.length) return "";
-  return html2`<div class="evidence">${items.map((item) => evidenceItem(store, item))}</div>`;
-}
-function tone(result) {
-  if (result === "failed") return "failed";
-  if (result === "inconclusive") return "unsure";
-  if (result === "not_checked") return "warn";
-  return "";
-}
-function findingRefs(detail2, reference) {
-  const findings2 = detail2.findings.filter((finding) => finding.assertionIds.includes(reference));
-  if (!findings2.length) return "";
-  return html2` ·
-	${join10(
-    findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
-    ", "
-  )}`;
-}
-function assertionRow(store, detail2, test, assertion) {
-  const reference = `${test.testId}.${assertion.assertionId}`;
-  if (!assertion.result)
-    return html2`<li class="asr waiting" id="${reference}" data-key="${reference}">
-			<div class="asr-row">
-				${icon(null)}<span class="aid">${assertion.assertionId}</span>
-				<div class="asr-text">
-					${assertion.check}
-					<div class="obs">No result yet.</div>
-				</div>
-			</div>
-		</li>`;
-  const open = assertion.result !== "passed";
-  return html2`<li
-		class="asr ${tone(assertion.result)}"
-		id="${reference}"
-		data-key="${reference}"
-		data-announce="${reference} ${words(assertion.result)}"
-	>
-		<details ${open ? html2`open` : ""} data-open-key="${reference}">
-			<summary class="asr-row">
-				${icon(assertion.result)}<span class="aid">${assertion.assertionId}</span>
-				<div class="asr-text">
-					${assertion.check}
-					${assertion.observed ? html2`<div class="obs">
-									Observed: <code>${assertion.observed}</code>${findingRefs(detail2, reference)}
-								</div>` : ""}
-				</div>
-			</summary>
-			<div class="asr-body">
-				${assertion.reason ? html2`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ""}
-				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
-				${evidenceList(store, assertion.evidence)}
-			</div>
-		</details>
-	</li>`;
-}
-function testState(test, detail2) {
-  if (test.outcome) return pill(test.outcome);
-  if (detail2.state === "finalized") return pill("not_run");
-  return test.assertions.some((assertion) => assertion.result) ? pill("started", "running") : pill("pending", "waiting");
-}
-function testCard(store, detail2, test) {
-  const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
-  const recorded = test.assertions.filter((assertion) => assertion.result).length;
-  const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
-  return html2`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
-		<header class="test-h">
-			${testState(test, detail2)}
-			<a class="id" href="#${test.testId}">${test.testId}</a>
-			<h3>${test.title}</h3>
-			<span class="count"
-				>${passed} of ${test.assertions.length}
-				passed${recorded < test.assertions.length ? ` \xB7 ${test.assertions.length - recorded} without result` : ""}</span
-			>
-		</header>
-		${hasMetadata(test.metadata) ? html2`<p class="test-note">${metadataList(test.metadata)}</p>` : ""}
-		${test.reason ? html2`<p class="test-note">${test.reason}</p>` : ""}
-		${test.evidence.length ? html2`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ""}
-		<ul class="asrs">
-			${test.assertions.map((assertion) => assertionRow(store, detail2, test, assertion))}
-		</ul>
-	</article>`;
-}
-function outcomeCounts2(detail2) {
-  const values = {};
-  for (const test of detail2.tests) if (test.outcome) values[test.outcome] = (values[test.outcome] ?? 0) + 1;
-  return values;
-}
-function strip(detail2) {
-  const result = detail2.result;
-  return html2`<div class="strip" data-region="summary">
-		<div><small>Completion</small><strong>${result ? words(result.completion) : "running"}</strong></div>
-		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : "\u2013"}</strong></div>
-		<div><small>Tests</small><strong>${counts(outcomeCounts2(detail2))}</strong></div>
-		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
-	</div>`;
-}
-function findings(store, detail2) {
-  if (!detail2.findings.length) return html2`<p class="empty-line">No findings.</p>`;
-  const evidence2 = detail2.tests.flatMap((test) => [
-    ...test.evidence,
-    ...test.assertions.flatMap((assertion) => assertion.evidence)
-  ]);
-  return html2`<div class="stack">
-		${detail2.findings.map(
-    (finding) => html2`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
-					<header class="test-h">
-						${pill(finding.type)} <span class="id">${finding.id}</span>
-						<h3>${finding.title}</h3>
-						<span class="count">${pill(finding.severity)}</span>
-					</header>
-					<div class="test-b">
-						<div class="compare">
-							<div>
-								<small>Expected</small>
-								<p>${finding.expected}</p>
-							</div>
-							<div>
-								<small>Observed</small>
-								<p>${finding.observed}</p>
-							</div>
-						</div>
-						${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
-										<ol class="steps">
-											${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
-										</ol>` : ""}
-						<p class="muted small">
-							Assertions
-							${join10(
-      finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
-      ", "
-    )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
-						</p>
-						${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
-						${evidenceChips(evidence2.filter((item) => finding.evidenceIds.includes(item.id)))}
-					</div>
-				</article>`
-  )}
-	</div>`;
-}
-function adoptForm(context, detail2, gapId, sha256) {
-  return html2`<form method="post" action="/runs/${detail2.runId}/gaps/${gapId}" class="inline-form">
-		<input type="hidden" name="csrf" value="${context.csrf}" />
-		<input type="hidden" name="sha" value="${sha256}" />
-		${context.actor ? "" : html2`<input
-						name="actor"
-						required
-						autocomplete="name"
-						placeholder="Your name"
-						aria-label="Your name"
-					/>`}
-		<button class="btn small">Bring into plan</button>
-	</form>`;
-}
-function newGaps(store, context, detail2, adoptError) {
-  if (!detail2.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
-  const revision = planRevision(store, detail2.planId);
-  const latest = `${detail2.planId}@${revision.plan.revision}`;
-  const adopted = planRunGaps(store, detail2.planId).filter((item) => item.runId === detail2.runId && item.adopted).map((item) => item.gap.id);
-  return html2`<ul class="gaps">
-		${detail2.newGaps.map(
-    (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
-					<div class="gap-h">
-						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
-						<span class="gap-refs muted"
-							>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
-						>
-					</div>
-					<p class="gap-q">${gap.question}</p>
-					<p class="muted">${gap.consequence}</p>
-					<div class="actions">
-						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
-										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
-										${adoptForm(context, detail2, gap.id, revision.sha256)}`}
-					</div>
-					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
-				</li>`
-  )}
-	</ul>`;
-}
-function coverage(store, detail2) {
-  const result = detail2.result;
-  if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
-  const plan = planDetail(store, detail2.planId, detail2.revision).plan;
-  const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">ID</th>
-					<th scope="col">Requirement</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Coverage</th>
-				</tr>
-			</thead>
-			<tbody>
-				${result.coverage.requirements.map(
-    (row3) => html2`<tr>
-							<td class="mono">${row3.requirementId}</td>
-							<td>
-								${requirements.get(row3.requirementId)?.text ?? ""}
-								${row3.reason ? html2`<div class="muted small">${row3.reason}</div>` : ""}
-								${hasMetadata(requirements.get(row3.requirementId)?.metadata) ? html2`<div class="small">
-												${metadataList(requirements.get(row3.requirementId)?.metadata)}
-											</div>` : ""}
-							</td>
-							<td class="mono">${row3.testIds.join(", ") || "\u2013"}</td>
-							<td>${pill(row3.status)}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
-}
-function cleanup(detail2) {
-  const result = detail2.result;
-  return html2`<dl class="facts">
-		<div>
-			<dt>Cleanup</dt>
-			<dd>
-				${result ? html2`${pill(result.cleanup.status)} ${result.cleanup.reason}` : html2`<span class="muted">Not finished.</span>`}
-			</dd>
-		</div>
-		<div>
-			<dt>Attempts</dt>
-			<dd>
-				<ul class="plain">
-					${detail2.attempts.map(
-    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
-  )}
-				</ul>
-			</dd>
-		</div>
-		<div>
-			<dt>Browser session</dt>
-			<dd class="mono">${detail2.browserSession}</dd>
-		</div>
-		<div>
-			<dt>Target</dt>
-			<dd class="mono">${detail2.target}</dd>
-		</div>
-		<div>
-			<dt>Instance</dt>
-			<dd>
-				<a
-					class="mono"
-					href="/settings/targets/${detail2.instance.targetId}#instance-${detail2.instance.instanceId}"
-					>${detail2.instance.instanceId}</a
-				>${detail2.instance.environment ? html2` · ${detail2.instance.environment}` : ""}${detail2.instance.retired ? html2` · ${pill("retired")}` : ""}
-			</dd>
-		</div>
-		${detail2.request.retestOf ? html2`<div>
-						<dt>Retest of</dt>
-						<dd><a class="mono" href="/runs/${detail2.request.retestOf}">${detail2.request.retestOf}</a></dd>
-					</div>` : ""}
-	</dl>`;
-}
-function inconclusiveList(detail2) {
-  const rows = detail2.tests.flatMap(
-    (test) => test.assertions.filter((assertion) => assertion.result === "inconclusive").map((assertion) => ({
-      reference: `${test.testId}.${assertion.assertionId}`,
-      reason: assertion.reason ?? ""
-    }))
-  );
-  if (!rows.length) return "";
-  return html2`<div class="field-group">
-		<p class="lab">Inconclusive · ${rows.length}</p>
-		<ul class="plist">
-			${rows.map(
-    (row3) => html2`<li>
-						<a href="#${row3.reference}"><code>${row3.reference}</code></a> ${row3.reason}
-					</li>`
-  )}
-		</ul>
-	</div>`;
-}
-function decisionPanel(store, context, detail2, state, extra = null) {
-  const result = detail2.result;
-  if (!result)
-    return recordPanel(
-      "Decision",
-      html2`<p class="subj">${detail2.runId} is in progress.</p>
-				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
-    );
-  if (result.acceptance === "not_required")
-    return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
-  const latest = result.latestDecision;
-  if (latest && !state)
-    return recordPanel(
-      "Decision",
-      html2`<p class="subj">
-					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail2.runId}
-				</p>
-				<p class="help">
-					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
-				</p>
-				<blockquote>${latest.rationale}</blockquote>`,
-      `${detail2.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
-    );
-  return verdictPanel(
-    context,
-    {
-      action: `/runs/${detail2.runId}`,
-      subject: detail2.runId,
-      question: `Accept ${detail2.runId}?`,
-      sha256: result.sha256,
-      token: decisionToken(store, "result", detail2.runId),
-      digestLabel: "Result",
-      approve: {
-        value: "accept",
-        label: `Accept ${detail2.runId}`,
-        confirm: "Confirm acceptance",
-        summary: `Accept ${detail2.runId} as the record of build ${detail2.build}.`
-      },
-      reject: {
-        value: "reject",
-        label: "Reject",
-        confirm: "Confirm rejection",
-        summary: `Reject ${detail2.runId}. Dependent plans stay blocked.`
-      },
-      staleMessage: `${detail2.runId} has a new result. Review it before you decide.`,
-      ...extra ? { extra } : {},
-      intro: inconclusiveList(detail2)
-    },
-    state ?? emptyState()
-  );
-}
-function runBadge(detail2) {
-  const acceptance = detail2.result?.acceptance;
-  if (!acceptance) return pill("started", "in progress");
-  if (acceptance === "approved") return pill("approved", "accepted");
-  if (acceptance === "pending") return pill("pending", "awaiting acceptance");
-  return pill(acceptance);
-}
-function runPage(store, context, runId, state = null, adoptError = null) {
-  const detail2 = runDetail(store, runId);
-  const sub = html2`<a class="mono" href="/plans/${detail2.planId}@${detail2.revision}"
-			>${detail2.planId}@${detail2.revision}</a
-		>
-		· build <code>${detail2.build}</code> · instance <code>${detail2.instance.instanceId}</code> · started
-		${clock(detail2.startedAt)} · ${plural(detail2.attempts.length, "attempt")}
-		${detail2.result ? html2`· finished ${time(detail2.result.finishedAt)} ago` : ""}`;
-  const badge2 = runBadge(detail2);
-  const report = detail2.result ? downloads(
-    "Download report",
-    `/runs/${runId}/report`,
-    "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
-    ["html", "md", "json", "junit"]
-  ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
-  const body = html2`${heading(
-    runId,
-    sub,
-    html2`<div class="meta" data-region="state">${badge2} <span class="head-actions">${report}</span></div>`
-  )}
-		<div class="split">
-			<div class="main-col">
-				${strip(detail2)}
-				<nav class="jump" aria-label="On this page">
-					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
-					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
-				</nav>
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Tests <span class="n">${detail2.tests.length}</span></h2>
-					<div class="stack">${detail2.tests.map((test) => testCard(store, detail2, test))}</div>
-				</section>
-				<section aria-labelledby="findings" data-region="findings">
-					<h2 id="findings">Findings <span class="n">${detail2.findings.length}</span></h2>
-					${findings(store, detail2)}
-				</section>
-				<section aria-labelledby="new-gaps" data-region="new-gaps">
-					<h2 id="new-gaps">New gaps <span class="n">${detail2.newGaps.length}</span></h2>
-					${newGaps(store, context, detail2, adoptError)}
-				</section>
-				<section aria-labelledby="coverage" data-region="coverage">
-					<h2 id="coverage">Coverage</h2>
-					${coverage(store, detail2)}
-				</section>
-				<section aria-labelledby="cleanup" data-region="cleanup">
-					<h2 id="cleanup">Cleanup and attempts</h2>
-					${cleanup(detail2)}
-				</section>
-			</div>
-			<aside class="side" aria-label="Decision">${decisionPanel(store, context, detail2, state)}</aside>
-		</div>`;
-  return {
-    title: runId,
-    section: "runs",
-    subjects: [`run:${runId}`, "inbox"],
-    body,
-    crumbs: [
-      ["Runs", "/runs"],
-      [`${detail2.planId}@${detail2.revision}`, `/plans/${detail2.planId}@${detail2.revision}`],
-      [runId, null]
-    ]
-  };
-}
-
-// plugin/src/ui/exploration.ts
-function claimRow(planId, claim) {
-  const key = encodeURIComponent(`claim:${planId}:${claim.id}`);
-  return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
-		<td>
-			<a class="mono" href="/claims?plan=${planId}&amp;item=${key}">${claim.id}</a>
-		</td>
-		<td>${pill(claim.state)}</td>
-		<td>${pill(claim.severity)}</td>
-		<td>${claim.actors.join(", ")}</td>
-		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
-	</tr>`;
-}
-function claimsTable(planId, claims) {
-  if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Claim</th>
-					<th scope="col">State</th>
-					<th scope="col">Severity</th>
-					<th scope="col">Reporters</th>
-					<th scope="col">Title</th>
-				</tr>
-			</thead>
-			<tbody>
-				${claims.map((claim) => claimRow(planId, claim))}
-			</tbody>
-		</table>
-	</div>`;
-}
-function questionsList(planId, questions) {
-  if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
-  return html2`<ul class="items">
-		${questions.map(
-    (question) => html2`<li data-key="question:${question.id}">
-					<a
-						class="item"
-						href="${question.answer === null ? `/?plan=${planId}&item=${encodeURIComponent(`question:${planId}:${question.id}`)}` : `/explorations/${question.explorationId}/questions/${question.id}`}"
-						><span class="id">${question.id}</span><span class="what">${question.question}</span
-						><span class="end"
-							>${question.blocking ? html2`${pill("blocking")} ` : ""}${pill(
-      question.answer === null ? "open" : "answered"
-    )}</span
-						></a
-					>
-				</li>`
-  )}
-	</ul>`;
-}
-var textTypes2 = ["text/plain", "text/markdown", "application/json"];
-var inlineLimit2 = 64 * 1024;
-function claimEvidenceList(store, planId, claim) {
-  if (!claim.evidence.length) return html2`<p class="none">The tester gave no evidence.</p>`;
-  return html2`<div class="evidence">
-		${claim.evidence.map((item, index2) => {
-    if ("text" in item)
-      return html2`<figure class="ev ev-text">
-					<figcaption><span class="ev-name">What the tester saw</span></figcaption>
-					<pre tabindex="0">${item.text}</pre>
-				</figure>`;
-    const href = `/explorations/${claim.explorationId}/claims/${claim.id}/evidence/${index2}`;
-    const file = claimEvidence(store, planId, claim.id, index2);
-    const caption = html2`<span class="ev-name">${file.name}</span>
-				<span class="muted">${size(file.size)}</span>`;
-    if (imageTypes.includes(file.mediaType))
-      return html2`<figure class="ev ev-image">
-					<a href="${href}" data-view-image data-name="${file.name}">
-						<img src="${href}" alt="Evidence ${file.name}" loading="lazy" />
-					</a>
-					<figcaption>${caption}</figcaption>
-				</figure>`;
-    if (textTypes2.includes(file.mediaType) && file.size <= inlineLimit2)
-      return html2`<figure class="ev ev-text">
-					<figcaption>${caption} <a href="${href}" download="${file.name}">Download</a></figcaption>
-					<pre tabindex="0">${new TextDecoder().decode(file.bytes)}</pre>
-				</figure>`;
-    return html2`<a class="chip" href="${href}" download="${file.name}">↓ ${file.name} · ${size(file.size)}</a>`;
-  })}
-	</div>`;
-}
-function dataLine(reason, data) {
-  return html2`${reason ?? "No reason is recorded."}
-	${data.length ? html2` Its data:
-				${join10(
-    data.map((path) => html2`<code>${path}</code>`),
-    ", "
-  )}.` : ""}`;
-}
-function explorationBanners(explorations) {
-  const running3 = explorations.filter((item) => item.running);
-  const last = explorations.at(-1);
-  return html2`${running3.map(
-    (item) => banner(
-      item.paused ? "warn" : "info",
-      html2`<span data-key="running:${item.explorationId}"
-				>${item.paused ? html2`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html2`Exploration ${item.explorationId} is running.`}
-				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
-				when it is completed.</span
-			>`
-    )
-  )}
-	${last && (last.state === "failed" || last.state === "stopped") ? banner(
-    "fail",
-    html2`<span data-key="failed:${last.explorationId}"
-						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
-						${dataLine(last.reason, last.data)}
-						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
-					>`
-  ) : ""}`;
-}
-function explorationsTable(explorations) {
-  if (!explorations.length)
-    return html2`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Exploration</th>
-					<th scope="col">State</th>
-					<th scope="col">Build</th>
-					<th scope="col">Instance</th>
-					<th scope="col">Level</th>
-					<th scope="col">Started</th>
-				</tr>
-			</thead>
-			<tbody>
-				${[...explorations].reverse().map(
-    (item) => html2`<tr data-key="exploration:${item.explorationId}">
-							<td>
-								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
-							</td>
-							<td>
-								${pill(item.state)}
-								${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
-								${item.follow === "failed" || item.follow === "stopped" ? html2`<p class="help">
-												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
-											</p>` : ""}
-							</td>
-							<td class="mono">${item.build}</td>
-							<td class="mono">${item.instanceId}</td>
-							<td>
-								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
-							</td>
-							<td class="nowrap">${time(item.startedAt)}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
-}
-function explorerRow(live, item) {
-  const none3 = html2`<span class="muted">–</span>`;
-  return html2`<tr data-key="explorer:${item.explorer}">
-		<td class="mono">${item.explorer}</td>
-		<td>${item.turn ?? none3}</td>
-		<td>${item.state ? pill(item.state, item.state === "given" ? "given to the session" : void 0) : none3}</td>
-		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none3}</td>
-		<td class="nowrap">
-			${item.elapsedMs === null ? none3 : item.startedAt && (item.state === "running" || item.state === "given") ? html2`<span data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : duration(item.elapsedMs)}
-		</td>
-		<td>${item.activity ?? ""}</td>
-		<td>
-			${item.recorded ? html2`${pill(item.recorded)} <span class="muted small">${plural(item.saved, "entry", "entries")}</span>` : none3}
-		</td>
-		<td>
-			${item.files.length ? join10(
-    item.files.map(
-      (file) => html2`<a
-										href="/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}"
-										>${file.name}${file.phase === "test" ? "" : ` (${file.phase})`}</a
-									>`
-    ),
-    html2`<br />`
-  ) : none3}
-		</td>
-	</tr>`;
-}
-function stateBanner(live) {
-  if (live.running && live.paused)
-    return banner(
-      "warn",
-      html2`<span data-key="paused"
-				><strong>Paused: ${live.paused}</strong> It waits on the oracle: answer the operator in the Claude Code
-				session.</span
-			>`
-    );
-  if (live.running)
-    return banner(
-      "info",
-      html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
-    );
-  if (live.state === "failed" || live.state === "stopped")
-    return banner(
-      "fail",
-      html2`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
-    );
-  if (live.follow === "failed" || live.follow === "stopped")
-    return banner(
-      "fail",
-      html2`<span data-key="follow-failed"
-				><strong>The follow-up of ${live.explorationId} ${live.follow}.</strong>
-				${dataLine(live.followReason, live.data)} The claims and questions of the exploration stay valid.</span
-			>`
-    );
-  if (live.state === "open")
-    return banner(
-      "info",
-      html2`Exploration ${live.explorationId} is open. Record its sessions, then run
-				<code>checkmate explore finish ${live.explorationId}</code>.`
-    );
-  return "";
-}
-function unmergedSection(live) {
-  if (!live.unmerged.length) return "";
-  return html2`<section class="panel" aria-labelledby="unmerged-title" data-key="unmerged">
-		<h2 class="lab" id="unmerged-title">Not merged yet <span class="n">${live.unmerged.length}</span></h2>
-		<p class="help">
-			These are the raw questions and defects of single explorers. They are not merged yet. They are not in the
-			inbox and not on the plan page. They can change before the exploration is completed.
-		</p>
-		<ul class="items">
-			${live.unmerged.map(
-    (item) => html2`<li data-key="raw:${item.id}">
-						<div class="item">
-							<span class="id">${item.id}</span>
-							<span class="what">${item.text}</span>
-							<span class="end"
-								>${pill("pending", `${item.kind}, not merged`)}
-								${item.severity ? pill(item.severity) : item.blocking ? pill("blocking") : ""}</span
-							>
-						</div>
-					</li>`
-  )}
-		</ul>
-	</section>`;
-}
-function explorationPage(store, explorationId) {
-  const live = explorationLive(store, explorationId);
-  const meta = html2`<div class="meta">
-		<span data-region="exploration-state">${pill(live.state)}</span>
-		<a class="pill" href="/plans/${live.planId}">${live.planId}</a>
-		<span class="pill">build ${live.build}</span>
-		<span class="pill">instance ${live.instanceId}</span>
-		<span class="pill"
-			>${live.level ?? "no level"} · ${plural(live.explorerCount ?? 0, "explorer")} · ${live.model ?? "-"}</span
-		>
-		<span class="pill">started ${time(live.startedAt, clock(live.startedAt))}</span>
-	</div>`;
-  const merged = live.state === "completed" || live.claims.length + live.questions.length > 0;
-  const body = html2`${heading(html2`Exploration ${explorationId}`, live.goal, meta)}
-		<div class="stack" data-region="exploration-live">
-			${stateBanner(live)}
-			<section class="panel" aria-labelledby="explorers-title">
-				<h2 class="lab" id="explorers-title">Explorers</h2>
-				${live.explorers.length ? html2`<div class="scroll">
-								<table>
-									<thead>
-										<tr>
-											<th scope="col">Explorer</th>
-											<th scope="col">${live.path === "session" ? "Step" : "Turn"}</th>
-											<th scope="col">State</th>
-											<th scope="col">${live.path === "session" ? "Since" : "Started"}</th>
-											<th scope="col">${live.path === "session" ? "In state" : "Elapsed"}</th>
-											<th scope="col">Last activity</th>
-											<th scope="col">Record</th>
-											<th scope="col">Files</th>
-										</tr>
-									</thead>
-									<tbody>
-										${live.explorers.map((item) => explorerRow(live, item))}
-									</tbody>
-								</table>
-							</div>` : html2`<p class="none">No explorer has started yet.</p>`}
-			</section>
-			<section class="panel" aria-labelledby="phases-title">
-				<h2 class="lab" id="phases-title">Phases</h2>
-				<div class="scroll">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">Phase</th>
-								<th scope="col">State</th>
-								<th scope="col">Reason</th>
-							</tr>
-						</thead>
-						<tbody>
-							${live.phases.map(
-    (row3) => html2`<tr data-key="phase:${row3.phase}">
-										<td>${row3.phase}</td>
-										<td>${pill(row3.state)}</td>
-										<td>${row3.reason ?? ""}</td>
-									</tr>`
-  )}
-						</tbody>
-					</table>
-				</div>
-			</section>
-			${unmergedSection(live)}
-			<section class="panel" aria-labelledby="claims-title">
-				<h2 class="lab" id="claims-title">Claims</h2>
-				${merged ? claimsTable(live.planId, live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
-			</section>
-			<section class="panel" aria-labelledby="questions-title">
-				<h2 class="lab" id="questions-title">Questions</h2>
-				${merged ? questionsList(live.planId, live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
-			</section>
-		</div>
-		<div class="actions">
-			${downloads("Download report", `/explorations/${explorationId}/export`, "The record of this exploration.", ["md", "json"])}
-		</div>`;
-  return {
-    title: `Exploration ${explorationId}`,
-    section: "plans",
-    crumbs: [
-      ["Plans", "/plans"],
-      [live.planId, `/plans/${live.planId}`],
-      [explorationId, null]
-    ],
-    subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
-    body
-  };
-}
-function explorerFilePage(store, explorationId, explorer, phase, name) {
-  const file = explorationReport(store, explorationId).files.find(
-    (item) => item.explorer === explorer && item.phase === phase && item.name === name
-  );
-  if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`);
-  return {
-    title: `${explorationId} \xB7 ${explorer} \xB7 ${name}`,
-    section: "plans",
-    crumbs: [
-      ["Plans", "/plans"],
-      [explorationId, `/explorations/${explorationId}`],
-      [`${explorer} \xB7 ${name}`, null]
-    ],
-    subjects: [`exploration:${explorationId}`],
-    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
-			<p>
-				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, "byte")}
-			</p>
-			<section class="panel" aria-label="${name}"><pre class="report">${file.text}</pre></section>`
-  };
-}
-function questionPage(store, context, explorationId, questionId, state = null) {
-  const report = explorationReport(store, explorationId);
-  const question = report.questions.find((item) => item.id === questionId);
-  if (!question) throw new Error(`Unknown question ${questionId} in ${explorationId}`);
-  const panel = question.answer === null || state ? gapPanel(
-    context,
-    {
-      action: `/explorations/${explorationId}/questions/${question.id}`,
-      cancel: `/explorations/${explorationId}`,
-      sha256: "",
-      title: html2`${report.planId} · ${question.id}`,
-      question: question.question,
-      staleMessage: `${explorationId} changed. Review it before you answer.`
-    },
-    state ?? emptyState()
-  ) : recordPanel("Answer", html2`<blockquote>${question.answer}</blockquote>`);
-  return {
-    title: `${report.planId} \xB7 ${question.id}`,
-    section: "inbox",
-    crumbs: [
-      ["Needs you", "/"],
-      [report.planId, `/plans/${report.planId}`],
-      [explorationId, `/explorations/${explorationId}`],
-      [question.id, null]
-    ],
-    subjects: [`exploration:${explorationId}`, "inbox"],
-    body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
-			<p>
-				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
-				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
-			</p>
-			${panel}`
-  };
-}
-function claimPage(store, context, explorationId, claimId, state = null) {
-  const report = explorationReport(store, explorationId);
-  const claim = report.claims.find((item) => item.id === claimId);
-  if (!claim) throw new Error(`Unknown claim ${claimId} in ${explorationId}`);
-  const shown = state ?? emptyState();
-  const panel = claim.decision ? recordPanel(
-    "Decision",
-    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
-  ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-				<h2 class="lab" id="decide-title">Decision</h2>
-				<p class="subj">Is ${claim.id} a defect?</p>
-				<div>${messages(shown)}</div>
-				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="decision-form">
-					${hidden(context, "")} ${actorField(context, shown)}
-					${rationaleField(shown, "Why do you decide this?")}
-					<div class="btns">
-						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
-						<button class="btn" name="verdict" value="rejected">Reject</button>
-					</div>
-				</form>
-			</section>`;
-  const steps = [claim.steps ?? []].flat();
-  return {
-    title: `${report.planId} \xB7 ${claim.id}`,
-    section: "inbox",
-    crumbs: [
-      ["Claims", "/claims"],
-      [report.planId, `/plans/${report.planId}`],
-      [explorationId, `/explorations/${explorationId}`],
-      [claim.id, null]
-    ],
-    subjects: [`exploration:${explorationId}`, "inbox"],
-    body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
-			<div class="split">
-				<section class="panel" aria-labelledby="claim-title">
-					<h2 class="lab" id="claim-title">Claim</h2>
-					<p>
-						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
-						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
-					</p>
-					<p class="lab">Expected</p>
-					<p>${claim.expected}</p>
-					<p class="lab">Actual</p>
-					<p>${claim.actual}</p>
-					${steps.length ? html2`<p class="lab">Steps</p>
-									<ol>
-										${steps.map((step) => html2`<li>${step}</li>`)}
-									</ol>` : ""}
-					<p class="lab">Evidence</p>
-					${claimEvidenceList(store, report.planId, claim)}
-					<p class="help">Reported by ${claim.actors.join(", ")}. ${claim.reason ?? ""}</p>
-				</section>
-				${panel}
-			</div>`
-  };
-}
-
-// plugin/src/actor.ts
-import { execFileSync } from "node:child_process";
-import { userInfo } from "node:os";
-function defaultActor(workspace, env) {
-  const named = env.CHECKMATE_ACTOR?.trim();
-  if (named) return named;
-  try {
-    const name = execFileSync("git", ["config", "user.name"], {
-      cwd: workspace,
-      env,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    if (name) return name;
-  } catch {
-  }
-  try {
-    return userInfo().username;
-  } catch {
-    return void 0;
-  }
-}
-
 // plugin/src/ui/claims.ts
 var states = ["suspected", "unresolved", "observed", "confirmed", "accepted", "rejected"];
 var severities = ["critical", "high", "medium", "low"];
@@ -18690,7 +18540,7 @@ function facts(rows) {
   )}
 	</dl>`;
 }
-function testCard2(detail2, test) {
+function testCard(detail2, test) {
   const { planId, revision } = detail2;
   return html2`<article class="test" id="${test.id}" data-key="test:${test.id}">
 		<header class="test-h">
@@ -19140,7 +18990,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
     html2`Tests${latest ? html2` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ""}`,
     plan.tests.length,
     approving,
-    html2`<div class="stack">${plan.tests.map((test) => testCard2(detail2, test))}</div>`,
+    html2`<div class="stack">${plan.tests.map((test) => testCard(detail2, test))}</div>`,
     "tests"
   )}
 				${fold("runs", "Runs", detail2.runs.length, accepting, runsTable(detail2), "plan-runs")}
@@ -19322,7 +19172,7 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 							</section>` : ""}
 				<section aria-labelledby="gap-tests">
 					<h2 id="gap-tests">Affected tests <span class="n">${tests.length}</span></h2>
-					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard2(detail2, test))}</div>` : html2`<p class="empty-line">No test names this gap.</p>`}
+					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard(detail2, test))}</div>` : html2`<p class="empty-line">No test names this gap.</p>`}
 				</section>
 			</div>
 			${side(panel)}
@@ -19342,6 +19192,415 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 function unadoptedRunGap(store, planId, gapId) {
   const found = planRunGaps(store, planId).filter((item) => item.gap.id === gapId && !item.adopted);
   return found.length === 1 ? found[0] : null;
+}
+
+// plugin/src/ui/run.ts
+function runFiles(store, items) {
+  return items.map((item) => ({
+    name: item.name,
+    mediaType: item.mediaType,
+    size: item.size,
+    href: `/evidence/${item.id}`,
+    text: shownAsText(item.mediaType, item.size) ? () => new TextDecoder().decode(evidenceBytes(store, item.id).bytes) : null
+  }));
+}
+function runEvidence2(store, items) {
+  return evidenceList(runFiles(store, items));
+}
+function tone(result) {
+  if (result === "failed") return "failed";
+  if (result === "inconclusive") return "unsure";
+  if (result === "not_checked") return "warn";
+  return "";
+}
+function findingRefs(detail2, reference) {
+  const findings2 = detail2.findings.filter((finding) => finding.assertionIds.includes(reference));
+  if (!findings2.length) return "";
+  return html2` ·
+	${join10(
+    findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
+    ", "
+  )}`;
+}
+function assertionRow(store, detail2, test, assertion) {
+  const reference = `${test.testId}.${assertion.assertionId}`;
+  if (!assertion.result)
+    return html2`<li class="asr waiting" id="${reference}" data-key="${reference}">
+			<div class="asr-row">
+				${icon(null)}<span class="aid">${assertion.assertionId}</span>
+				<div class="asr-text">
+					${assertion.check}
+					<div class="obs">No result yet.</div>
+				</div>
+			</div>
+		</li>`;
+  const open = assertion.result !== "passed";
+  return html2`<li
+		class="asr ${tone(assertion.result)}"
+		id="${reference}"
+		data-key="${reference}"
+		data-announce="${reference} ${words(assertion.result)}"
+	>
+		<details ${open ? html2`open` : ""} data-open-key="${reference}">
+			<summary class="asr-row">
+				${icon(assertion.result)}<span class="aid">${assertion.assertionId}</span>
+				<div class="asr-text">
+					${assertion.check}
+					${assertion.observed ? html2`<div class="obs">
+									Observed: <code>${assertion.observed}</code>${findingRefs(detail2, reference)}
+								</div>` : ""}
+				</div>
+			</summary>
+			<div class="asr-body">
+				${assertion.reason ? html2`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ""}
+				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
+				${runEvidence2(store, assertion.evidence)}
+			</div>
+		</details>
+	</li>`;
+}
+function testState(test, detail2) {
+  if (test.outcome) return pill(test.outcome);
+  if (detail2.state === "finalized") return pill("not_run");
+  return test.assertions.some((assertion) => assertion.result) ? pill("started", "running") : pill("pending", "waiting");
+}
+function testCard2(store, detail2, test) {
+  const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
+  const recorded = test.assertions.filter((assertion) => assertion.result).length;
+  const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
+  return html2`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
+		<header class="test-h">
+			${testState(test, detail2)}
+			<a class="id" href="#${test.testId}">${test.testId}</a>
+			<h3>${test.title}</h3>
+			<span class="count"
+				>${passed} of ${test.assertions.length}
+				passed${recorded < test.assertions.length ? ` \xB7 ${test.assertions.length - recorded} without result` : ""}</span
+			>
+		</header>
+		${hasMetadata(test.metadata) ? html2`<p class="test-note">${metadataList(test.metadata)}</p>` : ""}
+		${test.reason ? html2`<p class="test-note">${test.reason}</p>` : ""}
+		${test.evidence.length ? html2`<div class="test-ev">${runEvidence2(store, test.evidence)}</div>` : ""}
+		<ul class="asrs">
+			${test.assertions.map((assertion) => assertionRow(store, detail2, test, assertion))}
+		</ul>
+	</article>`;
+}
+function outcomeCounts2(detail2) {
+  const values = {};
+  for (const test of detail2.tests) if (test.outcome) values[test.outcome] = (values[test.outcome] ?? 0) + 1;
+  return values;
+}
+function strip(detail2) {
+  const result = detail2.result;
+  return html2`<div class="strip" data-region="summary">
+		<div><small>Completion</small><strong>${result ? words(result.completion) : "running"}</strong></div>
+		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : "\u2013"}</strong></div>
+		<div><small>Tests</small><strong>${counts(outcomeCounts2(detail2))}</strong></div>
+		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
+	</div>`;
+}
+function findings(store, detail2) {
+  if (!detail2.findings.length) return html2`<p class="empty-line">No findings.</p>`;
+  const evidence2 = detail2.tests.flatMap((test) => [
+    ...test.evidence,
+    ...test.assertions.flatMap((assertion) => assertion.evidence)
+  ]);
+  return html2`<div class="stack">
+		${detail2.findings.map(
+    (finding) => html2`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
+					<header class="test-h">
+						${pill(finding.type)} <span class="id">${finding.id}</span>
+						<h3>${finding.title}</h3>
+						<span class="count">${pill(finding.severity)}</span>
+					</header>
+					<div class="test-b">
+						<div class="compare">
+							<div>
+								<small>Expected</small>
+								<p>${finding.expected}</p>
+							</div>
+							<div>
+								<small>Observed</small>
+								<p>${finding.observed}</p>
+							</div>
+						</div>
+						${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
+										<ol class="steps">
+											${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
+										</ol>` : ""}
+						<p class="muted small">
+							Assertions
+							${join10(
+      finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
+      ", "
+    )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
+						</p>
+						${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
+						${runEvidence2(
+      store,
+      evidence2.filter((item) => finding.evidenceIds.includes(item.id))
+    )}
+					</div>
+				</article>`
+  )}
+	</div>`;
+}
+function adoptForm(context, detail2, gapId, sha256) {
+  return html2`<form method="post" action="/runs/${detail2.runId}/gaps/${gapId}" class="inline-form">
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="sha" value="${sha256}" />
+		${context.actor ? "" : html2`<input
+						name="actor"
+						required
+						autocomplete="name"
+						placeholder="Your name"
+						aria-label="Your name"
+					/>`}
+		<button class="btn small">Bring into plan</button>
+	</form>`;
+}
+function newGaps(store, context, detail2, adoptError) {
+  if (!detail2.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
+  const revision = planRevision(store, detail2.planId);
+  const latest = `${detail2.planId}@${revision.plan.revision}`;
+  const adopted = planRunGaps(store, detail2.planId).filter((item) => item.runId === detail2.runId && item.adopted).map((item) => item.gap.id);
+  return html2`<ul class="gaps">
+		${detail2.newGaps.map(
+    (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
+					<div class="gap-h">
+						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
+						<span class="gap-refs muted"
+							>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
+						>
+					</div>
+					<p class="gap-q">${gap.question}</p>
+					<p class="muted">${gap.consequence}</p>
+					<div class="actions">
+						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
+										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+										${adoptForm(context, detail2, gap.id, revision.sha256)}`}
+					</div>
+					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
+				</li>`
+  )}
+	</ul>`;
+}
+function coverage(store, detail2) {
+  const result = detail2.result;
+  if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
+  const plan = planDetail(store, detail2.planId, detail2.revision).plan;
+  const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">ID</th>
+					<th scope="col">Requirement</th>
+					<th scope="col">Tests</th>
+					<th scope="col">Coverage</th>
+				</tr>
+			</thead>
+			<tbody>
+				${result.coverage.requirements.map(
+    (row3) => html2`<tr>
+							<td class="mono">${row3.requirementId}</td>
+							<td>
+								${requirements.get(row3.requirementId)?.text ?? ""}
+								${row3.reason ? html2`<div class="muted small">${row3.reason}</div>` : ""}
+								${hasMetadata(requirements.get(row3.requirementId)?.metadata) ? html2`<div class="small">
+												${metadataList(requirements.get(row3.requirementId)?.metadata)}
+											</div>` : ""}
+							</td>
+							<td class="mono">${row3.testIds.join(", ") || "\u2013"}</td>
+							<td>${pill(row3.status)}</td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+function cleanup(detail2) {
+  const result = detail2.result;
+  return html2`<dl class="facts">
+		<div>
+			<dt>Cleanup</dt>
+			<dd>
+				${result ? html2`${pill(result.cleanup.status)} ${result.cleanup.reason}` : html2`<span class="muted">Not finished.</span>`}
+			</dd>
+		</div>
+		<div>
+			<dt>Attempts</dt>
+			<dd>
+				<ul class="plain">
+					${detail2.attempts.map(
+    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
+  )}
+				</ul>
+			</dd>
+		</div>
+		<div>
+			<dt>Browser session</dt>
+			<dd class="mono">${detail2.browserSession}</dd>
+		</div>
+		<div>
+			<dt>Target</dt>
+			<dd class="mono">${detail2.target}</dd>
+		</div>
+		<div>
+			<dt>Instance</dt>
+			<dd>
+				<a
+					class="mono"
+					href="/settings/targets/${detail2.instance.targetId}#instance-${detail2.instance.instanceId}"
+					>${detail2.instance.instanceId}</a
+				>${detail2.instance.environment ? html2` · ${detail2.instance.environment}` : ""}${detail2.instance.retired ? html2` · ${pill("retired")}` : ""}
+			</dd>
+		</div>
+		${detail2.request.retestOf ? html2`<div>
+						<dt>Retest of</dt>
+						<dd><a class="mono" href="/runs/${detail2.request.retestOf}">${detail2.request.retestOf}</a></dd>
+					</div>` : ""}
+	</dl>`;
+}
+function inconclusiveList(detail2) {
+  const rows = detail2.tests.flatMap(
+    (test) => test.assertions.filter((assertion) => assertion.result === "inconclusive").map((assertion) => ({
+      reference: `${test.testId}.${assertion.assertionId}`,
+      reason: assertion.reason ?? ""
+    }))
+  );
+  if (!rows.length) return "";
+  return html2`<div class="field-group">
+		<p class="lab">Inconclusive · ${rows.length}</p>
+		<ul class="plist">
+			${rows.map(
+    (row3) => html2`<li>
+						<a href="#${row3.reference}"><code>${row3.reference}</code></a> ${row3.reason}
+					</li>`
+  )}
+		</ul>
+	</div>`;
+}
+function decisionPanel(store, context, detail2, state, extra = null) {
+  const result = detail2.result;
+  if (!result)
+    return recordPanel(
+      "Decision",
+      html2`<p class="subj">${detail2.runId} is in progress.</p>
+				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
+    );
+  if (result.acceptance === "not_required")
+    return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
+  const latest = result.latestDecision;
+  if (latest && !state)
+    return recordPanel(
+      "Decision",
+      html2`<p class="subj">
+					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail2.runId}
+				</p>
+				<p class="help">
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
+				</p>
+				<blockquote>${latest.rationale}</blockquote>`,
+      `${detail2.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
+    );
+  return verdictPanel(
+    context,
+    {
+      action: `/runs/${detail2.runId}`,
+      subject: detail2.runId,
+      question: `Accept ${detail2.runId}?`,
+      sha256: result.sha256,
+      token: decisionToken(store, "result", detail2.runId),
+      digestLabel: "Result",
+      approve: {
+        value: "accept",
+        label: `Accept ${detail2.runId}`,
+        confirm: "Confirm acceptance",
+        summary: `Accept ${detail2.runId} as the record of build ${detail2.build}.`
+      },
+      reject: {
+        value: "reject",
+        label: "Reject",
+        confirm: "Confirm rejection",
+        summary: `Reject ${detail2.runId}. Dependent plans stay blocked.`
+      },
+      staleMessage: `${detail2.runId} has a new result. Review it before you decide.`,
+      ...extra ? { extra } : {},
+      intro: inconclusiveList(detail2)
+    },
+    state ?? emptyState()
+  );
+}
+function runBadge(detail2) {
+  const acceptance = detail2.result?.acceptance;
+  if (!acceptance) return pill("started", "in progress");
+  if (acceptance === "approved") return pill("approved", "accepted");
+  if (acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(acceptance);
+}
+function runPage(store, context, runId, state = null, adoptError = null) {
+  const detail2 = runDetail(store, runId);
+  const sub = html2`<a class="mono" href="/plans/${detail2.planId}@${detail2.revision}"
+			>${detail2.planId}@${detail2.revision}</a
+		>
+		· build <code>${detail2.build}</code> · instance <code>${detail2.instance.instanceId}</code> · started
+		${clock(detail2.startedAt)} · ${plural(detail2.attempts.length, "attempt")}
+		${detail2.result ? html2`· finished ${time(detail2.result.finishedAt)} ago` : ""}`;
+  const badge2 = runBadge(detail2);
+  const report = detail2.result ? downloads(
+    "Download report",
+    `/runs/${runId}/report`,
+    "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
+    ["html", "md", "json", "junit"]
+  ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
+  const body = html2`${heading(
+    runId,
+    sub,
+    html2`<div class="meta" data-region="state">${badge2} <span class="head-actions">${report}</span></div>`
+  )}
+		<div class="split">
+			<div class="main-col">
+				${strip(detail2)}
+				<nav class="jump" aria-label="On this page">
+					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
+					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
+				</nav>
+				<section aria-labelledby="tests" data-region="tests">
+					<h2 id="tests">Tests <span class="n">${detail2.tests.length}</span></h2>
+					<div class="stack">${detail2.tests.map((test) => testCard2(store, detail2, test))}</div>
+				</section>
+				<section aria-labelledby="findings" data-region="findings">
+					<h2 id="findings">Findings <span class="n">${detail2.findings.length}</span></h2>
+					${findings(store, detail2)}
+				</section>
+				<section aria-labelledby="new-gaps" data-region="new-gaps">
+					<h2 id="new-gaps">New gaps <span class="n">${detail2.newGaps.length}</span></h2>
+					${newGaps(store, context, detail2, adoptError)}
+				</section>
+				<section aria-labelledby="coverage" data-region="coverage">
+					<h2 id="coverage">Coverage</h2>
+					${coverage(store, detail2)}
+				</section>
+				<section aria-labelledby="cleanup" data-region="cleanup">
+					<h2 id="cleanup">Cleanup and attempts</h2>
+					${cleanup(detail2)}
+				</section>
+			</div>
+			<aside class="side" aria-label="Decision">${decisionPanel(store, context, detail2, state)}</aside>
+		</div>`;
+  return {
+    title: runId,
+    section: "runs",
+    subjects: [`run:${runId}`, "inbox"],
+    body,
+    crumbs: [
+      ["Runs", "/runs"],
+      [`${detail2.planId}@${detail2.revision}`, `/plans/${detail2.planId}@${detail2.revision}`],
+      [runId, null]
+    ]
+  };
 }
 
 // plugin/src/ui/queue.ts
@@ -19981,14 +20240,14 @@ function settingsPage(current, title, subjects, body, status) {
     body: html2`${settingsNav(current)} ${body}`
   };
 }
-function none2(text = "none") {
+function none3(text = "none") {
   return html2`<span class="muted">${text}</span>`;
 }
 function words3(items) {
   return items.length ? join10(
     items.map((item) => html2`<code>${item}</code>`),
     " "
-  ) : none2();
+  ) : none3();
 }
 function targetsPage(store) {
   const targets = targetList(store);
@@ -19997,7 +20256,7 @@ function targetsPage(store) {
 				<td>
 					<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
 				</td>
-				<td class="mono">${target.revision === null ? none2("no profile yet") : `@${target.revision}`}</td>
+				<td class="mono">${target.revision === null ? none3("no profile yet") : `@${target.revision}`}</td>
 				<td>${words3(target.capabilities)}</td>
 				<td>${words3(target.entryPoints)}</td>
 				<td>${target.activeInstances}</td>
@@ -20202,7 +20461,7 @@ function instancesTable(context, targetId, instances, retire) {
     (instance) => html2`<tr id="instance-${instance.instanceId}" data-key="instance:${instance.instanceId}">
 							<td class="mono">${instance.instanceId}</td>
 							<td>${entryList2(instance)}</td>
-							<td>${instance.environment ?? none2()}</td>
+							<td>${instance.environment ?? none3()}</td>
 							<td>${words3(instance.references)}</td>
 							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
 							<td>${instance.retired ? pill("retired") : pill("active")}</td>
@@ -20366,6 +20625,7 @@ var routes = {
   question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
   claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
   claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
+  entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
   font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
@@ -20551,7 +20811,9 @@ data: ${matched.join(",") || "*"}
     return () => queuePage(store, context(request, back), params, refusal);
   }
   function serveClaimEvidence(request, explorationId, claimId, index2) {
-    const evidence2 = claimEvidence(store, planOfExploration(explorationId), claimId, index2);
+    serveFile(request, claimEvidence(store, planOfExploration(explorationId), claimId, index2));
+  }
+  function serveFile(request, evidence2) {
     const inline = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
     send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
       "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
@@ -20571,7 +20833,7 @@ data: ${matched.join(",") || "*"}
       "Cache-Control": "private, max-age=31536000, immutable"
     });
   }
-  function download(request, body, format2, name) {
+  function download2(request, body, format2, name) {
     send(request.res, 200, documentTypes[format2], body, {
       "Content-Disposition": `attachment; ${attachmentName(name)}`
     });
@@ -20649,7 +20911,7 @@ data: ${matched.join(",") || "*"}
     if (planExport) {
       const [, planId, revision, format2] = planExport;
       const body = exportPlan(store, `${planId}@${revision}`, format2);
-      return download(request, body, format2, `${planId}-${revision}-plan.${format2}`);
+      return download2(request, body, format2, `${planId}-${revision}-plan.${format2}`);
     }
     const report = routes.report.exec(pathname);
     if (report) {
@@ -20662,16 +20924,21 @@ data: ${matched.join(",") || "*"}
           `${runId} is in progress. The report is ready when it finishes.`
         );
       const name = format2 === "junit" ? `${runId}-junit.xml` : `${runId}-report.${format2}`;
-      return download(request, exportRun(store, runId, format2), format2, name);
+      return download2(request, exportRun(store, runId, format2), format2, name);
     }
     const exploration2 = routes.exploration.exec(pathname);
-    if (exploration2) return render(request, explorationPage(store, exploration2[1]));
+    if (exploration2) return render(request, explorationPage(store, exploration2[1], searchParams));
     const file = routes.explorerFile.exec(pathname);
+    if (file && searchParams.has("download")) {
+      const [, explorationId, explorer, phase, name] = file;
+      const saved = explorerFile(store, explorationId, explorer, phase, name);
+      return download2(request, saved.text, "md", `${explorationId}-${explorer}-${name}`);
+    }
     if (file) return render(request, explorerFilePage(store, file[1], file[2], file[3], file[4]));
     const explorationExport = routes.explorationExport.exec(pathname);
     if (explorationExport) {
       const [, explorationId, format2] = explorationExport;
-      return download(
+      return download2(
         request,
         exportExploration(store, explorationId, format2),
         format2,
@@ -20684,6 +20951,8 @@ data: ${matched.join(",") || "*"}
     if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]));
     const claimFile = routes.claimEvidence.exec(pathname);
     if (claimFile) return serveClaimEvidence(request, claimFile[1], claimFile[2], Number(claimFile[3]));
+    const entryFile = routes.entryEvidence.exec(pathname);
+    if (entryFile) return serveFile(request, entryEvidence(store, entryFile[1], entryFile[2], Number(entryFile[3])));
     const gap = routes.gap.exec(pathname);
     if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]));
     const run2 = routes.run.exec(pathname);

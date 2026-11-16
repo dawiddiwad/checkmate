@@ -1,5 +1,6 @@
 import type { Html } from './html.ts'
 import { html } from './html.ts'
+import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
 export type Section = 'inbox' | 'claims' | 'plans' | 'runs' | 'log' | 'settings' | null
@@ -144,19 +145,12 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 		<dd>Go to Needs you</dd>
 		<dt><kbd>Esc</kbd></dt>
 		<dd>Close the viewer or this panel</dd>
+		<dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd> <kbd>w</kbd></dt>
+		<dd>In the viewer: zoom, fit, or wrap the lines</dd>
 		<dt><kbd>?</kbd></dt>
 		<dd>Show these shortcuts</dd>
 	</dl>
 </aside>`
-
-const viewer = html`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
-	<div class="viewer-bar">
-		<span class="viewer-name" data-viewer-name></span>
-		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
-		<button class="btn" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
-	</div>
-	<div class="viewer-body"><img data-viewer-image alt="" /></div>
-</div>`
 
 export function layout(context: Context, page: Page) {
 	const theme = context.theme === 'system' ? '' : html` data-theme="${context.theme}"`
@@ -187,18 +181,50 @@ export function layout(context: Context, page: Page) {
 		</html>`
 }
 
-function crumbBar(crumbs: Page['crumbs']) {
-	if (!crumbs?.length) return ''
-	const parent = crumbs.findLast(([, href]) => href)?.[1] ?? '/'
+export function crumbBar(crumbs: Page['crumbs'], list: string | null = null) {
+	if (!crumbs?.length) return html``
+	const parent = crumbs.findLast(([, href]) => href && href !== list)?.[1] ?? '/'
+	const link = (label: string, href: string) =>
+		href === list ? html`<a href="${href}" data-queue-back>${label}</a>` : html`<a href="${href}">${label}</a>`
 	return html`<div class="crumbs-bar">
 		<a class="back-link" href="${parent}" data-back>← Back</a>
 		<nav aria-label="Breadcrumb">
 			<ol>
 				${crumbs.map(([label, href]) =>
-					href ? html`<li><a href="${href}">${label}</a></li>` : html`<li aria-current="page">${label}</li>`
+					href ? html`<li>${link(label, href)}</li>` : html`<li aria-current="page">${label}</li>`
 				)}
 			</ol>
 		</nav>
+	</div>`
+}
+
+export type Split = {
+	label: string
+	list: Html
+	detail: Html
+	selected: string
+	open: boolean
+	keep?: boolean
+}
+
+export function listAndItem(split: Split) {
+	return html`<div
+		class="queue"
+		data-queue
+		data-selected="${split.selected}"
+		${split.open ? html`data-open` : ''}
+		${split.keep ? html`data-queue-keep` : ''}
+	>
+		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">${split.list}</section>
+		<section
+			class="q-detail"
+			aria-label="Selected ${split.label.toLowerCase()} item"
+			tabindex="-1"
+			data-region="queue-detail"
+			data-key="detail:${split.selected}"
+		>
+			${split.detail}
+		</section>
 	</div>`
 }
 

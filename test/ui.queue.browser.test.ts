@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { closeStore, openStore } from '../plugin/src/index.ts'
 import { mergedClaims, needsYou } from '../plugin/src/views.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
-import { focusedKey, launchWith, open, skip, stop } from './browser.ts'
+import { checkmate, focusedKey, launchWith, open, skip, stop } from './browser.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
@@ -229,3 +229,67 @@ test('old pages have a breadcrumb, and Back returns to the list where the person
 	await page.waitForURL((address) => address.searchParams.get('item') === 'claim:checkout:a1/D1')
 	assert.equal(new URL(page.url()).searchParams.get('plan'), 'checkout')
 })
+
+test(
+	'the exploration page shows explorers and phases, keeps the selection while it updates, and opens files',
+	{ skip },
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		await fits(page, url('/explorations/x-9'))
+		await fits(page, url('/explorations/x-1?item=explorer%3Aa1'))
+		await fits(page, url('/explorations/x-6?item=phase%3Arecord'))
+		let loads = 0
+		page.on('load', () => loads++)
+		await page.goto(url('/explorations/x-9'))
+		await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+		await page.locator('[data-key="raw:r1/D1"]', { hasText: 'defect, not merged' }).waitFor()
+		await page.locator('[data-key="explorer:r1"]').click()
+		await page.locator('.q-detail .q-h', { hasText: 'Explorer r1' }).waitFor()
+		assert.equal(new URL(page.url()).searchParams.get('item'), 'explorer:r1')
+		await page.keyboard.press('j')
+		await page.locator('.q-detail .q-h', { hasText: 'Explorer r2' }).waitFor()
+		assert.equal(new URL(page.url()).searchParams.get('item'), 'explorer:r2')
+		await checkmate(workspace, [
+			'explore',
+			'done',
+			'x-9',
+			'r1',
+			'test',
+			'--agent',
+			'agent-r1',
+			'--activity',
+			'Tested the coupons.',
+		])
+		await page.locator('[data-key="explorer:r1"]', { hasText: 'test: Tested the coupons.' }).waitFor()
+		assert.equal(await selected(page), 'explorer:r2')
+		assert.equal(await page.locator('.q-detail .q-h').textContent(), 'Explorer r2')
+		assert.equal(loads, 1)
+
+		await page.goto(url('/explorations/x-1?item=explorer%3Aa1'))
+		await page.getByRole('link', { name: 'View report.md' }).click()
+		const viewer = page.getByRole('dialog', { name: 'Evidence viewer' })
+		await viewer.locator('[data-viewer-text]', { hasText: '# Report of a1' }).waitFor()
+		assert.match((await viewer.locator('[data-viewer-download]').getAttribute('href'))!, /report\.md\?download=1$/)
+		await page.keyboard.press('w')
+		assert(await viewer.locator('[data-viewer-text].nowrap').isVisible())
+		await page.keyboard.press('Escape')
+		await viewer.waitFor({ state: 'hidden' })
+		await page.getByRole('link', { name: 'View a1-D1.png' }).first().click()
+		await viewer.locator('[data-viewer-image]').waitFor()
+		await page.keyboard.press('+')
+		await viewer.locator('[data-viewer-scale]', { hasText: '100 %' }).waitFor()
+		await page.getByRole('button', { name: 'Zoom in' }).click()
+		await viewer.locator('[data-viewer-scale]', { hasText: '150 %' }).waitFor()
+		await page.getByRole('button', { name: 'Fit', exact: true }).click()
+		await viewer.locator('[data-viewer-scale]', { hasText: 'Fit' }).waitFor()
+		await page.keyboard.press('Escape')
+		await viewer.waitFor({ state: 'hidden' })
+
+		await page.goto(url('/plans/checkout@2'))
+		await page.getByRole('link', { name: 'Open the live view' }).click()
+		await page.locator('[data-key="phase:merge"]').click()
+		await page.locator('.q-detail .q-h', { hasText: 'Phase merge' }).waitFor()
+		await page.getByRole('link', { name: '← Back' }).click()
+		await page.waitForURL(/\/plans\/checkout@2$/)
+	}
+)

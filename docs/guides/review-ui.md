@@ -54,18 +54,36 @@ The selected claim shows its steps and its evidence. A claim without a decision 
 
 ### Exploration
 
-`/explorations/<explorationId>` is the live view of one exploration. It updates by itself while the exploration runs. It shows:
+`/explorations/<explorationId>` is the live view of one exploration. It has the same layout as `Needs you`: a list on the left and the selected item on the right. It updates by itself while the exploration runs. The selected item, the scroll position, and your typed text stay.
 
-- The state of the exploration and, while it runs, its phase.
-- One row for each explorer: the turn (`study`, `test`, or `follow-up`), the state, the start time, the elapsed time, and the last activity line when the record has one.
-- The phases `record`, `merge`, `verify`, and `follow-up` with their states and reasons.
-- `Not merged yet`: the raw questions and defects of single explorers. They can change before the exploration is completed. The inbox and the plan page do not show them.
-- The merged claims and questions. They show when the exploration is completed.
-- After the end, a link to each file that the record keeps for an explorer: `plan.md`, `questions.md`, `report.md`, and `follow-up-report.md`. The page shows the file from the record, not from the disk. A file of a follow-up shows its phase, for example `follow-1`.
+The list shows:
 
-A verify step that ends as `skipped` shows its reason. A failed or stopped exploration shows its reason and the kept work folder `.checkmate/work/<explorationId>` and the log. A failed follow-up does not change a completed exploration. The page shows the reason of the follow-up and its kept data, and the claims and questions stay.
+- The state of the exploration, its plan, build, instance, and level. A paused exploration shows its reason. A failed or stopped exploration shows its reason, the kept work folder `.checkmate/work/<explorationId>`, and the log.
+- `Overview`: the number of claims and questions, and the number of items that are not merged yet.
+- `Explorers`: one row for each explorer, with its step or turn (`study`, `test`, or `follow-up`), its state (`given to the session`, `running`, `ended`, `completed`, `failed`, or `stopped`), the time in that state, and the last activity line.
+- `Phases`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons. A verify step that ends as `skipped` shows its reason.
 
-A claim page shows the expected result, the actual result, the steps, the evidence, and the reporters. An image shows as a thumbnail. Click it to see it larger. A small text file shows as text. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
+Select a row to show it on the right:
+
+- `Overview` shows `Not merged yet`, the merged claims and questions, the saved files, and `Download report` (Markdown or JSON). The merged claims and questions show when the exploration is completed.
+- An explorer shows its state, its record, the items that it found, and its saved files: `plan.md`, `questions.md`, `report.md`, and `follow-up-report.md`. A file of a follow-up shows its phase, for example `follow-1`. Each found item shows its evidence and says if it is merged, and into which claim or question.
+- A phase shows its state and its reason.
+
+`Not merged yet` items have a dashed border. They are the raw questions and defects of single explorers. They can change before the exploration is completed. `Needs you` and the plan page do not show them.
+
+A failed follow-up does not change a completed exploration. The overview shows the reason of the follow-up and its kept data, and the claims and questions stay.
+
+### Evidence
+
+All pages show evidence in the same way:
+
+- An image shows as a thumbnail. Click it to open the viewer. In the viewer, click the image or press `+`, `-`, `0` (fit), or `1` (actual size) to zoom.
+- A small text file shows as text, with long lines wrapped. Click `View` to open it in the viewer. Press `w` in the viewer to wrap or not wrap the lines.
+- Each file has `Download`. A large file or a file of another type shows only as a download.
+
+Press `Esc` to close the viewer. The files of an explorer open in the same viewer.
+
+A claim page shows the expected result, the actual result, the steps, the evidence, and the reporters. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
 
 ### Running explorations
 
@@ -141,19 +159,20 @@ Each page updates when another process writes to the record, for example a deleg
 
 ## Keyboard
 
-| Key            | Action                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------- |
-| `/`            | Focus the search field.                                                                                        |
-| `j` `k`        | Move down and up in a list. On `Needs you`, select the next item.                                              |
-| `Enter`        | Open the selected item. On `Needs you`, go to the form of the item.                                            |
-| `a`            | On a claim: accept it as a defect at once. On a plan or a result: approve or accept, then write the rationale. |
-| `r`            | On a claim, a plan, or a result: reject. Write the reason, then press `Ctrl` `Enter`.                          |
-| `c` `s`        | On a question: choose Clarify or Accept assumption, then write the answer.                                     |
-| `d`            | On a question: defer it at once.                                                                               |
-| `Ctrl` `Enter` | Send the form of the item.                                                                                     |
-| `g` `i`        | Go to `Needs you`.                                                                                             |
-| `Esc`          | Close the evidence viewer or menu.                                                                             |
-| `?`            | Show the shortcuts.                                                                                            |
+| Key             | Action                                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| `/`             | Focus the search field.                                                                                        |
+| `j` `k`         | Move down and up in a list. On `Needs you`, select the next item.                                              |
+| `Enter`         | Open the selected item. On `Needs you`, go to the form of the item.                                            |
+| `a`             | On a claim: accept it as a defect at once. On a plan or a result: approve or accept, then write the rationale. |
+| `r`             | On a claim, a plan, or a result: reject. Write the reason, then press `Ctrl` `Enter`.                          |
+| `c` `s`         | On a question: choose Clarify or Accept assumption, then write the answer.                                     |
+| `d`             | On a question: defer it at once.                                                                               |
+| `Ctrl` `Enter`  | Send the form of the item.                                                                                     |
+| `g` `i`         | Go to `Needs you`.                                                                                             |
+| `Esc`           | Close the evidence viewer or menu.                                                                             |
+| `+` `-` `0` `w` | In the evidence viewer: zoom in, zoom out, fit the image, or wrap the lines of a text.                         |
+| `?`             | Show the shortcuts.                                                                                            |
 
 ## Next
 

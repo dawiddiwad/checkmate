@@ -154,7 +154,7 @@ test('Bring into plan on the run page adds the run gap to the plan', { skip }, a
 test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/runs/run-7'))
-	const link = page.locator('a[data-view-image]:visible').first()
+	const link = page.locator('a[data-view]:visible').first()
 	await link.focus()
 	await page.keyboard.press('Enter')
 	const viewer = page.getByRole('dialog', { name: 'Evidence viewer' })

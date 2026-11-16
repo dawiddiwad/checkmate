@@ -225,6 +225,17 @@ test('pages that are not rebuilt have a breadcrumb and a back link', async (t) =
 	}
 })
 
+test('the evidence of a raw entry opens from the explorer of the live view', async (t) => {
+	const { call } = await start(t)
+	const page = (await call('/explorations/x-1?item=explorer%3Aa1')).body
+	assert.match(page, /href="\/explorations\/x-1\/entries\/a1\/D1\/evidence\/0"\s+data-view="image"/)
+	assert.match(page, /<pre tabindex="0" data-view-source>Both SPRING40 and WELCOME10 apply/)
+	const image = await call('/explorations/x-1/entries/a1/D1/evidence/0')
+	assert.equal(image.body.slice(1, 4), 'PNG')
+	assert.equal((await call('/explorations/x-1/entries/a1/D1/evidence/9')).status, 404)
+	assert.equal((await call('/explorations/x-1/entries/b1/D1/evidence/0')).status, 404)
+})
+
 test('the evidence of a claim opens from its own address', async (t) => {
 	const { call } = await start(t)
 	const image = await call('/explorations/x-1/claims/a1/D1/evidence/0')

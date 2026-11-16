@@ -6,7 +6,7 @@
 	"properties": {
 		"kind": {
 			"description": "The kind.",
-			"enum": ["criterion", "observation", "defect", "question", "verdict", "note", "issue"]
+			"enum": ["criterion", "observation", "defect", "question", "verdict", "note", "issue", "topic"]
 		},
 		"id": {
 			"$ref": "journal-entry.schema.json#/definitions/id"

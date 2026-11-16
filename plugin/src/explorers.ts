@@ -262,7 +262,9 @@ function costOf(calls: ClaudeCall[]) {
 function mergeReports(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
 	const opened = explorationRow(store, explorationId)
 	const items = mergeItems(journal(store, opened.plan_id), opened.build)
-	if (items.testers < 2 || items.defects.length < 2) return
+	const defects = items.testers > 1 && items.defects.length > 1
+	const questions = items.questionTesters > 1 && items.questions.length > 1
+	if (!defects && !questions) return
 	const session = randomUUID()
 	const claude = requireClaude(env)
 	const call = (args: string[], prompt: string) =>
@@ -285,7 +287,17 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 			return [`${error.message}${error.hint ? ` ${error.hint}` : ''}`]
 		}
 	}
-	const calls = [call(['--session-id', session], mergerPrompt(opened.build, items.defects, items.groups))]
+	const calls = [
+		call(
+			['--session-id', session],
+			mergerPrompt(
+				opened.build,
+				defects ? items.defects : [],
+				defects ? items.groups : [],
+				questions ? items.questions : []
+			)
+		),
+	]
 	let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result))
 	if (refusals.length) {
 		calls.push(call(['--resume', session], repairPrompt(refusals)))

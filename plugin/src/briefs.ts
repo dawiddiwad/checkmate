@@ -8,6 +8,7 @@ import questionSchema from '../contracts/journal-question.schema.json' with { ty
 import verdictSchema from '../contracts/journal-verdict.schema.json' with { type: 'json' }
 import noteSchema from '../contracts/journal-note.schema.json' with { type: 'json' }
 import issueSchema from '../contracts/journal-issue.schema.json' with { type: 'json' }
+import topicSchema from '../contracts/journal-topic.schema.json' with { type: 'json' }
 
 type Schema = {
 	$ref?: string
@@ -30,6 +31,7 @@ const files: Record<string, Schema> = {
 	'journal-verdict.schema.json': verdictSchema as Schema,
 	'journal-note.schema.json': noteSchema as Schema,
 	'journal-issue.schema.json': issueSchema as Schema,
+	'journal-topic.schema.json': topicSchema as Schema,
 }
 const commonFields = ['kind', 'id', 'build', 'supersedes']
 const teamFields = ['confirms', 'refutes']
@@ -183,28 +185,41 @@ export function explorerBrief(
 
 type MergeReport = { id: string; severity: string; title: string; expected: string; actual: string; steps: string }
 
-export function mergerPrompt(build: string, reports: MergeReport[], groups: string[][]) {
+export function mergerPrompt(
+	build: string,
+	reports: MergeReport[],
+	groups: string[][],
+	questions: Array<{ id: string; question: string }> = []
+) {
 	return [
-		`Merge the defect reports of independent testers of build ${build}. Do not test.`,
-		'Two reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.',
-		'Reply with only one JSON array of issue entries, one for each defect that two or more reports describe, and nothing else. Use no tool. Reply [] when no reports describe the same defect.',
+		`Merge the reports of independent testers of build ${build}. Do not test.`,
+		'Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.',
+		'Two questions are one topic when one answer answers both. A question that is in no topic stays its own question.',
+		'Reply with only one JSON array of issue and topic entries, one for each defect that two or more reports describe and one for each question that two or more questions ask, and nothing else. Use no tool. Reply [] when nothing is the same.',
 		'',
-		entryText(['issue'], () => true),
+		entryText(['issue', 'topic'], () => true),
 		'',
-		'Example of an entry:',
-		JSON.stringify(issueSchema.examples[0]),
-		'',
-		'The reports:',
-		...reports.map(
-			(report) =>
-				`${report.id} (${report.severity}): ${report.title} Expected: ${report.expected} Actual: ${report.actual}${report.steps ? ` Steps: ${report.steps}` : ''}`
-		),
+		'Example of entries:',
+		JSON.stringify([issueSchema.examples[0], topicSchema.examples[0]]),
+		...(reports.length
+			? [
+					'',
+					'The defect reports:',
+					...reports.map(
+						(report) =>
+							`${report.id} (${report.severity}): ${report.title} Expected: ${report.expected} Actual: ${report.actual}${report.steps ? ` Steps: ${report.steps}` : ''}`
+					),
+				]
+			: []),
 		...(groups.length
 			? [
 					'',
 					'Reports with many of the same words. These are ideas, not rules:',
 					...groups.map((group) => `- ${group.join(', ')}`),
 				]
+			: []),
+		...(questions.length
+			? ['', 'The questions:', ...questions.map((question) => `${question.id}: ${question.question}`)]
 			: []),
 	].join('\n')
 }

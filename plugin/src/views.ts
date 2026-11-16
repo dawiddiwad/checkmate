@@ -131,7 +131,7 @@ export function inbox(store: Store) {
 				revision: null as number | null,
 				gapId: question.id,
 				question: question.question,
-				severity: 'non_blocking' as 'blocking' | 'non_blocking',
+				severity: (question.blocking ? 'blocking' : 'non_blocking') as 'blocking' | 'non_blocking',
 				since: question.at,
 				runId: null as string | null,
 				explorationId: question.explorationId as string | null,
@@ -374,7 +374,8 @@ export function planStatus(store: Store, planId: string) {
 			),
 		}
 	const triage = claims.filter((claim) => oracleStates.includes(claim.state))
-	if (triage.length || questions.length)
+	const blocking = questions.filter((question) => question.blocking)
+	if (triage.length || blocking.length)
 		return {
 			...base,
 			...extra,
@@ -382,11 +383,11 @@ export function planStatus(store: Store, planId: string) {
 				'needs_triage',
 				'oracle',
 				[
-					...(questions.length ? [amount(questions.length, 'open question')] : []),
+					...blocking.map((question) => `${question.id} blocks testing: ${question.question}`),
 					...triage.map((claim) => `${claim.claimId} is ${claim.state}: ${claim.title}`),
 				],
 				[
-					...(questions.length
+					...(blocking.length
 						? [
 								`checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
 							]
@@ -396,28 +397,40 @@ export function planStatus(store: Store, planId: string) {
 			),
 		}
 	const fixes = claims.filter((claim) => factoryStates.includes(claim.state))
+	const last = explorations.at(-1)
+	const failed = last !== undefined && ['failed', 'stopped'].includes(last.state)
+	const finished = explorations.filter((item) => item.state === 'completed').at(-1)
+	const after = [
+		...(fixes.length
+			? [
+					`${amount(fixes.length, 'confirmed or observed claim')} ready for the factory: checkmate claim list ${planId}`,
+				]
+			: []),
+		...(questions.length
+			? [
+					`${amount(questions.length, 'open question')} can be answered at any time and do not block: checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
+				]
+			: []),
+		...(finished && fixes.length ? [`Store the claims as tests: checkmate harvest ${finished.explorationId}`] : []),
+		`Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
+	]
 	if (fixes.length)
-		return {
-			...base,
-			...extra,
-			...loop(
-				'defects_open',
-				'factory',
-				[amount(fixes.length, 'open claim')],
-				[`Build a fix, then checkmate test ${planId} --build <new build> --allow <rule>`]
-			),
-		}
+		return { ...base, ...extra, ...loop('defects_open', 'factory', [amount(fixes.length, 'open claim')], after) }
 	if (base.state === 'needs_plan') {
-		const last = explorations.at(-1)
 		const why = !last
 			? ['No exploration yet']
-			: ['failed', 'stopped'].includes(last.state)
+			: failed
 				? [`${last.explorationId} ${last.state} on build ${last.build}${last.reason ? `: ${last.reason}` : ''}`]
 				: [`${last.explorationId} is ${last.state} on build ${last.build}`]
 		return {
 			...base,
 			...extra,
-			...loop('ready_to_test', 'qa', why, [`checkmate test ${planId} --allow Read --allow Bash`]),
+			...loop(
+				'ready_to_test',
+				'qa',
+				why,
+				!last || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
+			),
 		}
 	}
 	return { ...base, ...extra }

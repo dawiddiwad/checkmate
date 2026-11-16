@@ -23,6 +23,7 @@ export const journalIssue: Validator
 export const journalNote: Validator
 export const journalObservation: Validator
 export const journalQuestion: Validator
+export const journalTopic: Validator
 export const journalVerdict: Validator
 export const plan: Validator
 export const planCandidate: Validator

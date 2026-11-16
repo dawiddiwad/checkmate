@@ -5,7 +5,16 @@ import { recordApproval } from './plans.ts'
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-export const entryKinds = ['criterion', 'observation', 'defect', 'question', 'verdict', 'note', 'issue'] as const
+export const entryKinds = [
+	'criterion',
+	'observation',
+	'defect',
+	'question',
+	'verdict',
+	'note',
+	'issue',
+	'topic',
+] as const
 type Kind = (typeof entryKinds)[number] | 'answer'
 type Evidence = { text: string } | { path: string; sha256: string; size: number }
 export type Entry = {
@@ -35,6 +44,8 @@ export type Entry = {
 	evidence?: Evidence[]
 	answer?: string
 	reports?: string[]
+	members?: string[]
+	blocking?: boolean
 	note?: string
 	confirms?: string
 	refutes?: string
@@ -64,6 +75,7 @@ const prefixes: Record<Kind, string> = {
 	verdict: 'V',
 	note: 'N',
 	issue: 'I',
+	topic: 'T',
 	answer: 'A',
 }
 const fieldsHint = 'Fix the named fields.'
@@ -105,6 +117,7 @@ function withRefs<T extends Entry>(entry: T, name: (word: string) => string): T 
 		}),
 		...(entry.links && { links: entry.links.map(name) }),
 		...(entry.reports && { reports: entry.reports.map(name) }),
+		...(entry.members && { members: entry.members.map(name) }),
 		...(entry.defect !== undefined && { defect: name(entry.defect) }),
 		...(entry.repeats !== undefined && { repeats: name(entry.repeats) }),
 		...(entry.confirms !== undefined && { confirms: name(entry.confirms) }),
@@ -450,7 +463,7 @@ function checkedEntry(
 		entry.refutes = refer(entry.refutes, defectOrIssue, 'refutes', idsOf(defectOrIssue))
 	if (entry.repeats !== undefined)
 		entry.repeats = refer(entry.repeats, ['observation'], 'repeats', idsOf(['observation']))
-	const listed = (field: 'links' | 'reports', kinds: Kind[]) => {
+	const listed = (field: 'links' | 'reports' | 'members', kinds: Kind[]) => {
 		const ids = entry[field]
 		if (!ids) return
 		const fix = ids.filter((item) => kinds.includes(known.get(item)?.kind as Kind))
@@ -458,6 +471,7 @@ function checkedEntry(
 	}
 	listed('links', ['observation', 'criterion', 'question'])
 	listed('reports', ['defect'])
+	listed('members', ['question'])
 	if (entry.about !== undefined)
 		entry.about = entry.about
 			.split(/([\s,;]+)/)
@@ -601,12 +615,10 @@ export function recordText(store: Store, planId: string, viewer: string, build?:
 		...ofKind(state, 'defect').map(
 			(defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}`
 		),
-		...ofKind(state, 'question').map((question) => {
-			const answer = ofKind(state, 'answer')
-				.filter((entry) => entry.question === question.id)
-				.at(-1)
-			return `question ${question.id}: ${question.question}${answer ? ` Answer: ${answer.answer}` : ''}`
-		}),
+		...planQuestions(store, planId).map(
+			(question) =>
+				`question ${question.id}: ${question.question}${question.answer ? ` Answer: ${question.answer}` : ''}`
+		),
 	]
 	return lines.length ? lines.join('\n') : 'No criterion, defect, or question yet.'
 }
@@ -746,16 +758,29 @@ export const oracleStates: ClaimState[] = ['suspected', 'unresolved']
 export function planQuestions(store: Store, planId: string) {
 	const state = journal(store, planId)
 	const answers = state.team.filter((entry) => entry.kind === 'answer')
-	return state.team
-		.filter((entry) => entry.kind === 'question')
-		.map((question) => ({
-			id: question.id,
-			explorationId: question.explorationId,
-			at: question.at,
-			question: question.question!,
-			about: question.about ?? null,
-			answer: answers.filter((entry) => entry.question === question.id).at(-1)?.answer ?? null,
-		}))
+	const questions = new Map(state.team.filter((entry) => entry.kind === 'question').map((entry) => [entry.id, entry]))
+	const topics = state.team.filter((entry) => entry.kind === 'topic')
+	const grouped = new Set(topics.flatMap((topic) => topic.members ?? []))
+	const groups = [
+		...topics.map((topic) => ({ head: topic, members: (topic.members ?? []).filter((id) => questions.has(id)) })),
+		...[...questions.values()]
+			.filter((entry) => !grouped.has(entry.id))
+			.map((entry) => ({ head: entry, members: [entry.id] })),
+	].filter((group) => group.members.length)
+	return groups.map(({ head, members }) => {
+		const names = new Set([head.id, ...members])
+		const found = members.map((id) => questions.get(id)!)
+		return {
+			id: head.id,
+			explorationId: head.explorationId,
+			at: head.at,
+			question: head.question!,
+			members,
+			blocking: found.some((entry) => entry.blocking === true),
+			about: head.about ?? null,
+			answer: answers.filter((entry) => names.has(entry.question!)).at(-1)?.answer ?? null,
+		}
+	})
 }
 
 export function planCriteria(store: Store, planId: string) {
@@ -792,8 +817,11 @@ export function mergeItems(state: Journal, build: string) {
 			const group = [...new Set([...joined.flat(), a.id, b.id])]
 			groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group)
 		}
+	const questions = state.team.filter((entry) => entry.kind === 'question' && entry.build === build)
 	return {
 		testers: testers.size,
+		questionTesters: new Set(questions.map((entry) => entry.actor)).size,
+		questions: questions.map((entry) => ({ id: entry.id, question: short(entry.question) })),
 		defects: defects.map((defect) => ({
 			id: defect.id,
 			severity: defect.severity!,
@@ -819,7 +847,9 @@ export function answerQuestion(
 	input: { planId: string; questionId: string; kind: string; value: string; source: string | null; rationale: string }
 ) {
 	const state = journal(store, input.planId)
-	const question = state.team.find((entry) => entry.kind === 'question' && entry.id === input.questionId)
+	const question = state.team.find(
+		(entry) => (entry.kind === 'question' || entry.kind === 'topic') && entry.id === input.questionId
+	)
 	requireCondition(
 		question,
 		`Unknown gap or question ${input.questionId} of plan ${input.planId}.`,

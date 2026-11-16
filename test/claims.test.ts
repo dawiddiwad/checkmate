@@ -82,7 +82,7 @@ test('explore finish merges the reports, verifies single reports, and keeps a re
 	const calls = called()
 	const merger = calls.find((call) => call.role === 'merger')
 	const verifier = calls.find((call) => call.role === 'verifier')
-	assert.match(merger.prompt, /^Merge the defect reports of independent testers of build b1\./)
+	assert.match(merger.prompt, /^Merge the reports of independent testers of build b1\./)
 	assert.match(merger.prompt, /a1\/D1 \(high\): Coupon stacks/)
 	assert(!merger.args.includes('--allowedTools'), 'the merger has no tool rules')
 	assert.equal(merger.args[merger.args.indexOf('--model') + 1], testLevels.standard.model)
@@ -230,4 +230,80 @@ test('the review UI shows the exploration, answers a question, and decides a cla
 	assert.equal(command(['inbox']).body.gaps.length, 0)
 	const report = await get(ui.url, '/explorations/x-1/export.json')
 	assert.equal(JSON.parse(report.body).explorationId, 'x-1')
+})
+
+test('the merge joins questions that ask the same thing, one answer answers each, and status does not wait on a non-blocking question', (t) => {
+	const context = setup(t)
+	context.reply({
+		recorder: {
+			[first]: [stacks, { kind: 'question', id: 'Q1', question: 'How is the discount rounded?' }],
+			[second]: [
+				{ ...stacks, title: 'Two coupons stack' },
+				{ kind: 'question', id: 'Q1', question: 'Which step rounds the discount?' },
+				{ kind: 'question', id: 'Q2', question: 'Can a zero coupon apply?' },
+			],
+		},
+		merger: [
+			{ kind: 'issue', title: 'Coupons stack', severity: 'high', reports: ['a1/D1', 'a2/D1'] },
+			{ kind: 'topic', question: 'Which step rounds the discount, and how?', members: ['a1/Q1', 'a2/Q1'] },
+		],
+	})
+	const { command } = context
+	command(['explore', 'open', 'checkout', '--build', 'b1'])
+	command(['record', 'x-1', '--explorer', 'a1', '--session', first])
+	command(['record', 'x-1', '--explorer', 'a2', '--session', second])
+	command(['explore', 'finish', 'x-1', '--level', 'smoke'])
+	assert.equal(command(['explore', 'wait', 'x-1', '--timeout', '60']).code, 0)
+	const questions = command(['explore', 'show', 'x-1']).body.questions
+	assert.deepEqual(
+		questions.map((item: { id: string; members: string[] }) => [item.id, item.members]),
+		[
+			['merge/T1', ['a1/Q1', 'a2/Q1']],
+			['a2/Q2', ['a2/Q2']],
+		]
+	)
+	assert.deepEqual(
+		command(['inbox']).body.gaps.map((gap: { gapId: string }) => gap.gapId),
+		['a2/Q2', 'merge/T1']
+	)
+	const status = command(['status', 'checkout']).body
+	assert.deepEqual([status.state, status.waitsOn], ['defects_open', 'factory'])
+	assert.deepEqual(status.next, [
+		'1 confirmed or observed claim ready for the factory: checkmate claim list checkout',
+		'2 open questions can be answered at any time and do not block: checkmate gap answer checkout <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"',
+		'Store the claims as tests: checkmate harvest x-1',
+		'Retest on the next build: checkmate test checkout --build <new build> --allow Read --allow Bash',
+	])
+	assert.equal(command(['claim', 'list', 'checkout']).body.claims[0].id, 'merge/I1')
+	const answered = command([
+		'gap',
+		'answer',
+		'checkout',
+		'merge/T1',
+		'--kind',
+		'defer',
+		'--value',
+		'Round the total once.',
+		'--rationale',
+		'Rule.',
+	])
+	assert.equal(answered.code, 0, answered.output)
+	assert.deepEqual(
+		command(['inbox']).body.gaps.map((gap: { gapId: string }) => gap.gapId),
+		['a2/Q2']
+	)
+})
+
+test('a blocking question makes the plan wait on the oracle', (t) => {
+	const context = setup(t)
+	context.reply({ recorder: { [first]: [{ kind: 'question', question: 'Which tax rate?', blocking: true }] } })
+	const { command } = context
+	command(['explore', 'open', 'checkout', '--build', 'b1'])
+	command(['record', 'x-1', '--explorer', 'a1', '--session', first])
+	const status = command(['status', 'checkout']).body
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.why],
+		['needs_triage', 'oracle', ['a1/Q1 blocks testing: Which tax rate?']]
+	)
+	assert.equal(command(['inbox']).body.gaps[0].severity, 'blocking')
 })

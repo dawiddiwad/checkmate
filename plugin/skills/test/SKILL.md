@@ -34,6 +34,8 @@ You are the operator. You do not test. Checkmate starts the testers in new sessi
 
 ## Decisions of the oracle
 
+The person in this session is the oracle, unless that person says otherwise, whatever role name they use, for example PM, product owner, or lead. When they give an answer or a decision, record it.
+
 Run a decision only when the oracle tells you the decision in this session:
 
 - Answer a question or a gap: `checkmate gap answer <planId> <id> --kind clarify|accept_assumption|defer --value "<answer>" --source "<source>" --rationale "<why>"`. A question ID has a slash, for example `a1/Q1`.

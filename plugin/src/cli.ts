@@ -41,6 +41,7 @@ import {
 	showPlanRequest,
 	decisionKinds,
 	partialModes,
+	planRequest,
 } from './plans.ts'
 import {
 	assertionResults,
@@ -76,7 +77,8 @@ import { exportExploration, exportPlan, exportRun, explorationFormats, formats, 
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { explorationModes, openExploration } from './explorations.ts'
-import { decideClaim, logEntries, readEntries } from './journal.ts'
+import type { Claim } from './journal.ts'
+import { decideClaim, logEntries, planClaims, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs } from './sessions.ts'
 import {
@@ -1071,6 +1073,32 @@ const commands: Record<string, Command> = {
 	'export plan': exportCommand('reference', formats, exportPlan),
 	'export run': exportCommand('runId', runFormats, exportRun),
 	'export exploration': exportCommand('explorationId', explorationFormats, exportExploration),
+	'claim list': {
+		positionals: ['planId'],
+		flags: { all: 'switch' },
+		readOnly: true,
+		run: (store, args) => {
+			const planId = value(args, 'planId')!
+			planRequest(store, planId)
+			const claims = planClaims(store, planId).filter((claim) => args.all === true || claim.open)
+			return completed(planId, { claims })
+		},
+		print: (reply) => {
+			const claims = reply.data.claims as Claim[]
+			return {
+				facts: { claims: claims.length },
+				lines: claims.map((claim) => [
+					claim.id,
+					claim.state,
+					claim.severity,
+					`${claim.explorationId}@${claim.build}`,
+					claim.title,
+					`expected=${claim.expected}`,
+					`actual=${claim.actual}`,
+				]),
+			}
+		},
+	},
 	'claim accept': claimCommand('approved'),
 	'claim reject': claimCommand('rejected'),
 	harvest: {
@@ -1290,6 +1318,7 @@ const commands: Record<string, Command> = {
 						'question',
 						question.answer === null ? 'open' : 'answered',
 						question.question,
+						...(question.members.length > 1 ? [`members=${question.members.join(',')}`] : []),
 					]),
 					...report.criteria.map((criterion) => [criterion.id, 'criterion', criterion.text]),
 				],

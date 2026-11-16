@@ -60,7 +60,7 @@ export type JournalDefect = {
 }
 
 export type JournalEntry = {
-	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note' | 'issue'
+	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note' | 'issue' | 'topic'
 	id?: string
 	build?: string
 	supersedes?: string
@@ -112,6 +112,16 @@ export type JournalQuestion = {
 	supersedes?: string
 	question: string
 	about?: string
+	blocking?: boolean
+}
+
+export type JournalTopic = {
+	kind: 'topic'
+	id?: string
+	build?: string
+	supersedes?: string
+	question: string
+	members: Array<string>
 }
 
 export type JournalVerdict = {

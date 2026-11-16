@@ -117,7 +117,11 @@ export function questionPage(
 		section: 'inbox',
 		subjects: [`exploration:${explorationId}`, 'inbox'],
 		body: html`${heading(html`${report.planId} · ${question.id}`, question.question)}
-			<p><a href="/explorations/${explorationId}">Exploration ${explorationId}</a></p>
+			<p>
+				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${
+					question.members.length > 1 ? html` · asked as ${question.members.join(', ')}` : ''
+				}
+			</p>
 			${panel}`,
 	}
 }

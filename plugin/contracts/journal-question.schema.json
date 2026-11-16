@@ -23,6 +23,10 @@
 		},
 		"about": {
 			"$ref": "journal-entry.schema.json#/definitions/about"
+		},
+		"blocking": {
+			"description": "true only when you could not test a part of the change without the answer.",
+			"type": "boolean"
 		}
 	},
 	"required": ["kind", "question"],

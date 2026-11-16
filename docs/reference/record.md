@@ -84,6 +84,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 - The `back` value of a form is a path on the UI only. The UI uses `/` for other values.
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
 - Pages send a Content Security Policy that allows only resources from the UI itself.
+- `/evidence?path=<path>` serves a file only when a journal entry names the path as evidence and the real path of the file is in the workspace. It reads the file from the disk. It serves PNG, JPEG, GIF, and WebP files as images, and all other files as plain text.
 - The server reads `PRAGMA data_version` every 250 ms. When another process commits, it reads the new operation rows and sends their subjects to the open pages as Server-Sent Events. A page reloads only its changed regions.
 
 ## Limits

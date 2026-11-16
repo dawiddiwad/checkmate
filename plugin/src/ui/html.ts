@@ -43,6 +43,20 @@ const statusLook: Record<string, [string, Tone]> = {
 	rejected_operation: ['✗', 'fail'],
 	needs_decision: ['?', 'warn'],
 	invalid_request: ['✗', 'fail'],
+	accepted: ['✓', 'pass'],
+	found: ['✗', 'fail'],
+	suspected: ['?', 'unsure'],
+	refuted: ['–', 'block'],
+	fixed: ['✓', 'pass'],
+	not_fixed: ['✗', 'fail'],
+	disputed: ['!', 'warn'],
+	confirmed: ['✓', 'acc'],
+	open: ['?', 'warn'],
+	answered: ['✓', 'pass'],
+	critical: ['!', 'fail'],
+	high: ['!', 'fail'],
+	medium: ['·', 'warn'],
+	low: ['·', 'muted'],
 }
 
 export function words(status: string) {

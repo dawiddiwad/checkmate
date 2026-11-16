@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
-The review UI is for a human. It shows the operation log, the targets, and their instances. The human can add and retire instances in it.
+The review UI is for a human. It shows the record of each change, the operation log, the targets, and their instances. The human can answer questions, accept or reject a build, and add and retire instances in it.
 
 1. If a UI of this workspace already runs in this session, give its URL again and go to step 3. Else start the UI from the project directory as a background command. Use the background option of the shell tool:
 

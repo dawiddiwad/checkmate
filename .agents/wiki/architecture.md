@@ -15,7 +15,7 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit. It keeps 
 - `plugin/src/recorder.ts` owns `record`: it finds the test session, takes a lock for the change, starts one `claude -p --resume <session> --fork-session` with the recorder prompt, takes the JSON array from the reply of the recorder, gives new IDs to entries whose IDs the record has, keeps missing evidence paths as text, logs the array, resumes the recorder one time to fix refused entries, and counts the entries that it added.
 - `plugin/src/views.ts` has the read model of the operation log. `plugin/src/actor.ts` finds the default actor.
 - `plugin/src/cli.ts` finds the workspace, parses arguments, and prints compact or JSON output. Only `init` and `target open` create a store. `plugin/dist/checkmate.js` is its bundle.
-- `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the log page, the Settings pages for targets and instances, and the assets. `checkmate ui` starts it. It does not show the journal yet.
+- `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the Changes and change pages (`changes.ts`), the log page, the Settings pages for targets and instances, and the assets. `checkmate ui` starts it. The change page reads `changeRecord`, `changeGaps`, and the `record` operations. Its forms call `answerQuestion` and `decideBuild`.
 - `plugin/src/types.ts` and `plugin/src/validators.js` are generated from the schemas.
 
 `cli/` is the npm package `@xoxoai/checkmate`. `cli/src/main.ts` runs the plugin CLI.

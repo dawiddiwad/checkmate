@@ -1,5 +1,7 @@
 import type { Store } from './store.ts'
-import { all } from './store.ts'
+import { all, one } from './store.ts'
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { isAbsolute, resolve, sep } from 'node:path'
 import { requireChoice, requireCondition } from './contracts.ts'
 
 type OperationRow = {
@@ -135,4 +137,80 @@ export function pagedOperations(
 		sort: options.sort,
 		direction: options.direction,
 	}
+}
+
+export function pageOf<T>(
+	items: T[],
+	query: ListQuery,
+	options: {
+		columns: Record<string, (item: T) => string | number>
+		sort: string
+		direction: 'asc' | 'desc'
+		filters: Record<string, (item: T) => string>
+		text: (item: T) => string
+	}
+): ListPage<T> {
+	const chosen = listQuery(query, Object.keys(options.columns), options)
+	const filters = filterValue(
+		query.filters,
+		Object.fromEntries(Object.keys(options.filters).map((name) => [name, null]))
+	)
+	const key = options.columns[chosen.sort]
+	const sign = chosen.direction === 'asc' ? 1 : -1
+	const rows = items
+		.map((item, index) => ({ item, index }))
+		.filter(({ item }) => Object.entries(filters).every(([name, value]) => options.filters[name](item) === value))
+		.filter(({ item }) => !chosen.q || options.text(item).toLowerCase().includes(chosen.q))
+		.sort((a, b) => {
+			const x = key(a.item)
+			const y = key(b.item)
+			return (x < y ? -sign : x > y ? sign : 0) || (a.index - b.index) * sign
+		})
+	return {
+		rows: rows.slice(chosen.offset, chosen.offset + chosen.limit).map(({ item }) => item),
+		total: rows.length,
+		limit: chosen.limit,
+		offset: chosen.offset,
+		sort: chosen.sort,
+		direction: chosen.direction,
+	}
+}
+
+export function recordRuns(store: Store, changeId: string) {
+	return all<OperationRow>(
+		store,
+		"SELECT rowid, * FROM operations WHERE command = 'record' AND arguments ->> '$.changeId' = ? ORDER BY rowid DESC",
+		changeId
+	).map((row) => {
+		const response = JSON.parse(row.response) as {
+			reasons?: string[]
+			data?: { build?: string | null; saved?: number; refused?: number; session?: string }
+		}
+		const input = JSON.parse(row.arguments) as { build?: string; session?: string }
+		return {
+			id: row.id,
+			at: row.at,
+			actor: row.actor,
+			status: row.status,
+			build: response.data?.build ?? input.build ?? null,
+			session: response.data?.session ?? input.session ?? null,
+			saved: response.data?.saved ?? null,
+			refused: response.data?.refused ?? null,
+			reasons: response.reasons ?? [],
+		}
+	})
+}
+
+export function namedEvidence(store: Store, path: string) {
+	const named = one(
+		store,
+		"SELECT 1 FROM journal_entries, json_each(body, '$.evidence') WHERE value ->> '$.path' = ?",
+		path
+	)
+	if (!named || isAbsolute(path)) return null
+	const file = resolve(store.workspace, path)
+	if (!existsSync(file)) return null
+	const real = realpathSync(file)
+	if (!real.startsWith(realpathSync(store.workspace) + sep) || !statSync(real).isFile()) return null
+	return real
 }

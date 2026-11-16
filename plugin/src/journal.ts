@@ -1392,14 +1392,49 @@ export function showChange(store: Store, changeId: string, viewer?: string) {
 	return completed(state.changeId, state)
 }
 
-export function exportChange(store: Store, changeId: string, viewer?: string) {
+export function changeRecord(store: Store, changeId: string, viewer?: string) {
 	const state = journal(store, changeId, viewer)
-	const record = {
+	return {
 		...changeState(store, changeId, viewer),
 		entries: state.entries,
 		history: state.rows,
 		gaps: Object.fromEntries(state.builds.map((build) => [build, gapList(state, build)])),
 		issues: issueList(state),
 	}
-	return JSON.stringify(record, null, '\t') + '\n'
+}
+
+export function exportChange(store: Store, changeId: string, viewer?: string) {
+	return JSON.stringify(changeRecord(store, changeId, viewer), null, '\t') + '\n'
+}
+
+const isOpen = (issue: Issue) =>
+	!issue.refuted &&
+	Object.values(issue.statuses)
+		.filter((on) => on.status !== 'no verdict')
+		.at(-1)?.status !== 'fixed'
+
+export function changeList(store: Store) {
+	return all<{ change_id: string }>(store, 'SELECT change_id FROM changes ORDER BY rowid').map((row) => {
+		const state = journal(store, row.change_id)
+		const latest = state.builds.at(-1) ?? null
+		const decision = ofKind(state, 'decision')
+			.filter((entry) => entry.build === latest)
+			.at(-1)?.decision
+		const lastAt = one<{ at: string | null }>(
+			store,
+			"SELECT max(at) AS at FROM operations WHERE EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = 'change:' || ?)",
+			row.change_id
+		)?.at
+		return {
+			changeId: state.changeId,
+			targetId: state.targetId,
+			instanceId: state.instanceId,
+			builds: state.builds,
+			latest,
+			openIssues: issueList(state).filter(isOpen).length,
+			openQuestions: questionList(state).filter((question) => question.status === 'open').length,
+			decision: decision ?? 'none',
+			lastAt: lastAt ?? null,
+		}
+	})
 }

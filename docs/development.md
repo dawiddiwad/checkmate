@@ -15,17 +15,18 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 
 ## Layout
 
-| Path                | Holds                                                                                   |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| `plugin/`           | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install. |
-| `plugin/skills/`    | The `qa` and `ui` skills.                                                               |
-| `plugin/hooks/`     | `hooks.json`: the `SessionEnd` hook that starts `record`.                               |
-| `plugin/contracts/` | The JSON Schemas. They are the authority.                                               |
-| `plugin/src/`       | The store, the targets, the journal, the guide, the recorder, the commands, and the UI. |
-| `plugin/dist/`      | `checkmate.js`, the bundle of `plugin/bin/checkmate.ts`.                                |
-| `cli/`              | The npm package `@xoxoai/checkmate`. It runs the same commands as the plugin.           |
-| `scripts/`          | Generators, build scripts, and the release script.                                      |
-| `test/`             | The tests. They are TypeScript and run directly with `node --test`.                     |
+| Path                | Holds                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `plugin/`           | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install.  |
+| `plugin/skills/`    | The `qa` and `ui` skills.                                                                |
+| `plugin/hooks/`     | `hooks.json`: the `SessionEnd` hook that starts `record`.                                |
+| `plugin/contracts/` | The JSON Schemas. They are the authority.                                                |
+| `plugin/src/`       | The store, the targets, the journal, the guide, the recorder, the commands, and the UI.  |
+| `plugin/dist/`      | `checkmate.js`, the bundle of `plugin/bin/checkmate.ts`.                                 |
+| `cli/`              | The npm package `@xoxoai/checkmate`. It runs the same commands as the plugin.            |
+| `scripts/`          | Generators, build scripts, and the release script.                                       |
+| `test/`             | The tests. They are TypeScript and run directly with `node --test`.                      |
+| `test/seed.ts`      | Fills a workspace with a sample record through the CLI: `node test/seed.ts <directory>`. |
 
 - The plugin imports only Node.js built-in modules and its own files. Do not add runtime npm dependencies.
 - The runtime uses erasable TypeScript syntax, so Node.js runs `plugin/bin/checkmate.ts` without a compiler.

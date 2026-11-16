@@ -7,11 +7,14 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
+import { answerQuestion, decideBuild } from '../journal.ts'
 import { changesAfter, operationLog } from '../views.ts'
 import { defaultActor } from '../actor.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { logPage } from './lists.ts'
+import type { ChangeForms } from './changes.ts'
+import { changePage, changesPage, evidenceBody } from './changes.ts'
 import type { InstanceForm } from './settings.ts'
 import { instanceFromForm, targetPage, targetsPage } from './settings.ts'
 
@@ -28,6 +31,9 @@ const routes = {
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
 	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
+	change: new RegExp(`^/changes/(${id})$`),
+	answer: new RegExp(`^/changes/(${id})/answer$`),
+	decide: new RegExp(`^/changes/(${id})/decide$`),
 }
 const contentSecurityPolicy =
 	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
@@ -189,8 +195,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 	}
 
-	function render(request: Request, page: Page, extraCookies: string[] = []) {
-		const shown = context(request)
+	function render(request: Request, page: Page, extraCookies: string[] = [], path?: string) {
+		const shown = context(request, path)
 		const cookies = [...extraCookies]
 		if (shown.toast) cookies.push(cookie('checkmate_toast', '', 0))
 		send(request.res, page.status ?? 200, 'text/html; charset=utf-8', layout(shown, page).html, {
@@ -207,7 +213,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status,
 			body: html`${heading(title, message)}
 				<p class="actions">
-					<a class="btn primary" href="/log">Log</a> <a class="btn" href="/settings/targets">Targets</a>
+					<a class="btn primary" href="/changes">Changes</a> <a class="btn" href="/log">Log</a>
+					<a class="btn" href="/settings/targets">Targets</a>
 				</p>`,
 		})
 	}
@@ -249,7 +256,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			})
 		if (pathname === '/events') return events(request)
 		const shown = context(request)
-		if (pathname === '/') return redirect(request.res, '/log')
+		if (pathname === '/') return redirect(request.res, '/changes')
+		if (pathname === '/changes') return render(request, changesPage(store, searchParams))
+		const change = routes.change.exec(pathname)
+		if (change) return render(request, changePage(store, shown, change[1], searchParams))
+		if (pathname === '/evidence') return evidence(request, searchParams.get('path') ?? '')
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
@@ -260,7 +271,84 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const number = revision && /^[1-9][0-9]{0,8}$/.test(revision) ? Number(revision) : null
 			return render(request, targetPage(store, shown, target[1], number))
 		}
-		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from the log.`)
+		return errorPage(
+			request,
+			404,
+			'Page not found',
+			`Checkmate has no page at ${pathname}. Start from the changes.`
+		)
+	}
+
+	function evidence(request: Request, path: string) {
+		const file = evidenceBody(store, path)
+		if (!file)
+			return send(
+				request.res,
+				404,
+				'text/plain; charset=utf-8',
+				'Not found: no journal entry names this file as evidence, or the file is not in the workspace.'
+			)
+		send(request.res, 200, file.type, file.body, { 'Content-Disposition': 'inline' })
+	}
+
+	function saveEntry(
+		request: Request,
+		form: URLSearchParams,
+		changeId: string,
+		forms: ChangeForms,
+		run: (actor: string) => void,
+		done: string,
+		anchor: string
+	) {
+		const { actor, cookies } = actorFrom(request, form)
+		const path = `/changes/${changeId}`
+		const page = () => changePage(store, context(request, path), changeId, new URLSearchParams(), forms)
+		const fail = (error: string) => {
+			if (forms.answer) forms.answer.error = error
+			if (forms.decide) forms.decide.error = error
+			refuse(request, page, cookies, path)
+		}
+		if (!actor) return fail('Enter your name. Checkmate records it with the entry.')
+		try {
+			run(actor)
+		} catch (error) {
+			return fail(plainMessage(error))
+		}
+		redirect(request.res, `/changes/${changeId}#${anchor}`, [...cookies, cookie('checkmate_toast', done, 60)])
+	}
+
+	function answer(request: Request, form: URLSearchParams, changeId: string) {
+		const questionId = form.get('question') ?? ''
+		const text = form.get('answer') ?? ''
+		const forms: ChangeForms = { answer: { question: questionId, answer: text, error: '' } }
+		saveEntry(
+			request,
+			form,
+			changeId,
+			forms,
+			(actor) => answerQuestion(store, actor, { changeId, questionId, answer: text }),
+			`Answered ${questionId} of ${changeId}`,
+			`question-${questionId}`
+		)
+	}
+
+	function decide(request: Request, form: URLSearchParams, changeId: string) {
+		const build = form.get('build') ?? ''
+		const decision = form.get('decision') ?? ''
+		const rationale = form.get('rationale') ?? ''
+		const forms: ChangeForms = { decide: { build, decision, rationale, error: '' } }
+		saveEntry(
+			request,
+			form,
+			changeId,
+			forms,
+			(actor) => {
+				if (decision !== 'accepted' && decision !== 'rejected') throw new Error('Choose Accept or Reject.')
+				decideBuild(store, actor, { changeId, build, decision, rationale })
+			},
+			`${decision === 'accepted' ? 'Accepted' : 'Rejected'} ${build} of ${changeId}`,
+			'decisions'
+		)
 	}
 
 	function actorPage(shown: Context, back: string): Page {
@@ -291,9 +379,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return Object.fromEntries(names.map((name) => [name, form.get(name) ?? '']))
 	}
 
-	function refuse(request: Request, page: () => Page, cookies: string[] = []) {
+	function refuse(request: Request, page: () => Page, cookies: string[] = [], path?: string) {
 		const shown = page()
-		render(request, { ...shown, status: shown.status ?? 422 }, cookies)
+		render(request, { ...shown, status: shown.status ?? 422 }, cookies, path)
 	}
 
 	function saveInstance(request: Request, form: URLSearchParams, targetId: string) {
@@ -380,6 +468,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				return errorPage(request, 422, 'Your name', 'Enter a name. Checkmate records it with each decision.')
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
+		const answered = routes.answer.exec(pathname)
+		if (answered) return answer(request, form, answered[1])
+		const decided = routes.decide.exec(pathname)
+		if (decided) return decide(request, form, decided[1])
 		const added = routes.addInstance.exec(pathname)
 		if (added) return saveInstance(request, form, added[1])
 		const retired = routes.retireInstance.exec(pathname)

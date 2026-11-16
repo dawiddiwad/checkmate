@@ -6,6 +6,9 @@ import { spawn } from 'node:child_process'
 import type { TestContext } from 'node:test'
 import { cli, directory, json, root } from './support.ts'
 import { journalSchema } from '../plugin/src/guide.ts'
+import { changeList, changeRecord, exportChange } from '../plugin/src/journal.ts'
+import { closeStore, openStore } from '../plugin/src/store.ts'
+import { seedRecord } from './seed.ts'
 
 function opened(t: TestContext, capabilities = 'browser,http') {
 	const workspace = directory(t)
@@ -1078,4 +1081,27 @@ test('a defect links a question, and a note has evidence, without a change to th
 	)
 	assert.deepEqual(record.matrix, [{ about: 'C1', cells: { b1: { ok: 0, wrong: 1, seen: 0 } } }])
 	assert.equal(json(workspace, ['gaps', 'cart', '--build', 'b1']).code, 0)
+})
+
+test('the change list counts the open issues and questions and names the decision of the latest build', (t) => {
+	const workspace = directory(t)
+	seedRecord(workspace)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const [change] = changeList(store)
+	assert.deepEqual(
+		{ ...change, lastAt: typeof change.lastAt },
+		{
+			changeId: 'coupon',
+			targetId: 'shop',
+			instanceId: 'local',
+			builds: ['base', 'b1', 'b2'],
+			latest: 'b2',
+			openIssues: 1,
+			openQuestions: 1,
+			decision: 'accepted',
+			lastAt: 'string',
+		}
+	)
+	assert.equal(exportChange(store, 'coupon'), JSON.stringify(changeRecord(store, 'coupon'), null, '\t') + '\n')
 })

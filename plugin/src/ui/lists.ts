@@ -14,6 +14,7 @@ export type ListSpec = {
 	path: string
 	region: string
 	noun: string
+	nouns: string
 	search: string
 	columns: Column[]
 	sort: string
@@ -67,7 +68,7 @@ export function listHref(spec: ListSpec, state: ListState, change: Partial<ListS
 	return query ? `${spec.path}?${query}` : spec.path
 }
 
-function listPage<T>(state: ListState, load: (query: ListQuery) => ListPage<T>) {
+export function listPage<T>(state: ListState, load: (query: ListQuery) => ListPage<T>) {
 	const query = (page: number) => ({
 		limit: state.size,
 		offset: (page - 1) * state.size,
@@ -93,11 +94,11 @@ function filterChoices(filter: Filter, selected: string) {
 	return [...filter.choices, [selected, selected]]
 }
 
-function filterBar(spec: ListSpec, state: ListState) {
+export function filterBar(spec: ListSpec, state: ListState) {
 	const hiddenField = (name: string, value: string, fallback: string) =>
 		html`<input type="hidden" name="${name}" value="${value}" data-default="${fallback}" />`
 	return html`<form class="filters" method="get" action="${spec.path}" role="search" data-list-form>
-		<label class="sr-only" for="q">Search ${spec.noun}s</label>
+		<label class="sr-only" for="q">Search ${spec.nouns}</label>
 		<input
 			id="q"
 			type="search"
@@ -157,11 +158,11 @@ function pager(spec: ListSpec, state: ListState, total: number) {
 	</nav>`
 }
 
-function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[], tableClass = '') {
+export function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[], tableClass = '') {
 	const first = total ? (state.page - 1) * state.size + 1 : 0
 	const last = Math.min(total, state.page * state.size)
 	const count = total
-		? `Showing ${first}–${last} of ${plural(total, spec.noun)}`
+		? `Showing ${first}–${last} of ${plural(total, spec.noun, spec.nouns)}`
 		: `No ${spec.noun} matches these filters.`
 	return html`<div data-region="${spec.region}" data-list-region>
 		<p class="list-count" data-list-count role="status">${count}</p>
@@ -185,13 +186,14 @@ function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[
 	</div>`
 }
 
-function distinct(values: string[]) {
+export function distinct(values: string[]) {
 	return [...new Set(values)].sort().map((value) => [value, value])
 }
 
 export function subjectLink(subject: string) {
 	const [kind, id] = subject.split(/:(.*)/)
 	if (kind === 'target') return html`<a class="mono" href="/settings/targets/${id}">${subject}</a>`
+	if (kind === 'change') return html`<a class="mono" href="/changes/${id}">${subject}</a>`
 	return html`<span class="mono">${subject}</span>`
 }
 
@@ -206,6 +208,7 @@ export function logSpec(store: Store): ListSpec {
 		path: '/log',
 		region: 'log',
 		noun: 'operation',
+		nouns: 'operations',
 		search: 'Search the log',
 		columns: [
 			{ label: 'Time', sort: 'time', first: 'desc' },

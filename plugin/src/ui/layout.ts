@@ -2,7 +2,7 @@ import type { Html } from './html.ts'
 import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'log' | 'settings' | null
+export type Section = 'changes' | 'log' | 'settings' | null
 
 export type Context = {
 	path: string
@@ -94,7 +94,7 @@ function header(context: Context, page: Page) {
 			<a class="brand" href="/">${mark()}<span>checkmate</span></a>
 			<nav aria-label="Main">
 				<ul class="nav">
-					${navLink(page, 'log', '/log', 'Log')}
+					${navLink(page, 'changes', '/changes', 'Changes')} ${navLink(page, 'log', '/log', 'Log')}
 				</ul>
 			</nav>
 			<div class="who">

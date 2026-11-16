@@ -5,11 +5,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { request } from 'node:http'
 import { execFileSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startUi } from '../plugin/src/ui/server.ts'
 import {
 	addInstance,
+	changeGaps,
+	changeIssues,
+	changeState,
 	closeStore,
 	createStore,
 	instanceList,
@@ -22,6 +25,7 @@ import {
 	saveTarget,
 } from '../plugin/src/index.ts'
 import { copied, directory, profile, root } from './support.ts'
+import { seedRecord } from './seed.ts'
 
 const human = 'qa-lead'
 const agent = 'checkmate-agent'
@@ -130,8 +134,10 @@ test('each page renders and escapes stored text; the pages of the old plan model
 	const { ui } = await start(t)
 	const home = await call(ui, '/')
 	assert.equal(home.status, 303)
-	assert.equal(home.headers.location, '/log')
+	assert.equal(home.headers.location, '/changes')
 	const paths = [
+		'/changes',
+		'/changes/cart',
 		'/log',
 		'/log?subject=change:cart&actor=qa:a1',
 		'/actor',
@@ -465,4 +471,175 @@ test('a form over 256 KiB gets a 413 page and nothing is recorded', async (t) =>
 		read(workspace, (store) => operationLog(store, { limit: 1000 }).length),
 		before
 	)
+})
+
+const record = directory()
+test.before(() => seedRecord(record))
+test.after(() => rmSync(record, { recursive: true, force: true }))
+
+async function startRecord(t: TestContext) {
+	const workspace = copied(t, record)
+	const ui = await startUi({ workspace, defaultActor: '' })
+	t.after(() => ui.close())
+	return { ui, workspace }
+}
+
+const rows = (body: string, prefix: string) => (body.match(new RegExp(`data-key="${prefix}`, 'g')) ?? []).length
+
+test('the Changes page is the home; it shows the state of the latest build of each change', async (t) => {
+	const { ui } = await startRecord(t)
+	const home = await call(ui, '/')
+	assert.equal(home.headers.location, '/changes')
+	const page = (await call(ui, '/changes')).body
+	assert.match(page, /<a href="\/changes"\s+aria-current="page"\s*>Changes<\/a>/)
+	assert.match(page, /href="\/changes\/coupon" data-nav-item>coupon<\/a>/)
+	const row = /<tr data-key="change:coupon"[\s\S]*?<\/tr>/.exec(page)![0]
+	for (const text of [
+		/shop/,
+		/>base<[\s\S]*>b1<[\s\S]*>b2</,
+		/✗<\/span> 1<\/span>\s*<span class="muted small"> on b2/,
+		/\?<\/span> 1</,
+		/accepted/,
+	])
+		assert.match(row, text)
+	assert.equal(rows((await call(ui, '/changes?decision=rejected')).body, 'change:'), 0)
+	assert.equal(rows((await call(ui, '/changes?target=shop&sort=issues')).body, 'change:'), 1)
+	assert.equal(rows((await call(ui, '/changes?q=nothing')).body, 'change:'), 0)
+})
+
+test('the Change page reads as a QA report from the derived views of the CLI', async (t) => {
+	const { ui, workspace } = await startRecord(t)
+	const reply = await call(ui, '/changes/coupon')
+	assert.equal(reply.status, 200)
+	const page = reply.body
+	assert.match(page, /data-subjects="change:coupon"/)
+	const issues = read(workspace, (store) => changeIssues(store, 'coupon').data.issues as Array<{ id: string }>)
+	assert.equal(rows(page, 'issue:'), issues.length)
+	const merged = /<li class="issue" id="issue-merge\/I1"[\s\S]*?<\/li>\s*<li class="issue"/.exec(page)![0]
+	for (const text of [
+		/A cart takes a second coupon/,
+		/a1, a2/,
+		/b1<\/span> <span class="st fail"><span aria-hidden="true">✗<\/span> found/,
+		/b2<\/span> <span class="st warn"><span aria-hidden="true">!<\/span> disputed/,
+		/confirmed/,
+		/href="#criterion-C1">C1</,
+		/href="#question-a2\/Q1">a2\/Q1</,
+		/<img src="\/evidence\?path=evidence%2Fcart-total.png"/,
+		/200 \{&quot;total&quot;:&quot;450.00&quot;\}/,
+		/not fixed<\/span> <strong>qa:a2<\/strong>/,
+	])
+		assert.match(merged, text)
+	assert.match(page, /id="issue-a2\/D3"[\s\S]*?refuted[\s\S]*?by verifier/)
+	assert.match(page, /id="issue-a1\/D2"[\s\S]*?not fixed/)
+	assert.match(page, /id="criterion-C2"[\s\S]*?docs\/pricing.md[\s\S]*?1 ok/)
+	assert.match(page, /id="criterion-C1"[\s\S]*?2 wrong[\s\S]*?no observation/)
+	assert.match(page, /Answer by pm-ana:<\/strong> No. A sale price takes no coupon./)
+	assert.match(page, /name="question" value="Q2"/)
+	const gaps = read(workspace, (store) => changeGaps(store, 'coupon').data.total as number)
+	assert.match(page, new RegExp(`${gaps} items on b2`))
+	assert.equal(rows(page, 'gap:'), gaps)
+	assert.match(page, /<td>I1 lets a cart take two coupons.<\/td>/)
+	assert.match(page, /The recorder exited with code 2: API error: overloaded/)
+	assert.equal(rows(page, 'record:'), 2)
+	assert.match(page, /Showing 1–25 of 31 entries/)
+	const defects = (await call(ui, '/changes/coupon?kind=defect&actor=qa:a2')).body
+	assert.equal(rows(defects, 'entry:'), 3)
+	assert.equal(rows((await call(ui, '/changes/coupon?build=b2&size=100')).body, 'entry:'), 9)
+	assert.equal((await call(ui, '/changes/nothing')).status, 404)
+})
+
+test('the evidence route serves only a workspace file that an entry names as evidence', async (t) => {
+	const { ui, workspace } = await startRecord(t)
+	const image = await call(ui, '/evidence?path=evidence%2Fcart-total.png')
+	assert.equal(image.status, 200)
+	assert.equal(image.headers['content-type'], 'image/png')
+	const text = await call(ui, '/evidence?path=evidence/api-total.txt')
+	assert.equal(text.headers['content-type'], 'text/plain; charset=utf-8')
+	assert.match(text.body, /SAVE20/)
+	writeFileSync(join(workspace, 'evidence', 'secret.txt'), 'secret')
+	const outside = join(directory(t), 'outside.txt')
+	writeFileSync(outside, 'outside')
+	rmSync(join(workspace, 'evidence', 'coupon-error.png'))
+	symlinkSync(outside, join(workspace, 'evidence', 'coupon-error.png'))
+	for (const path of [
+		'evidence/secret.txt',
+		'evidence/coupon-error.png',
+		'../outside.txt',
+		outside,
+		'.checkmate/checkmate.db',
+	]) {
+		const refused = await call(ui, `/evidence?path=${encodeURIComponent(path)}`)
+		assert.equal(refused.status, 404, path)
+		assert.doesNotMatch(refused.body, /secret|outside/, path)
+	}
+	const page = (await call(ui, '/changes/coupon')).body
+	assert.match(page, /evidence\/coupon-error.png<\/span> <span class="muted">not in the workspace now/)
+})
+
+test('a person answers a question and decides on a build through the code of the CLI', async (t) => {
+	const { ui, workspace } = await startRecord(t)
+	const page = (await call(ui, '/changes/coupon')).body
+	const csrf = field(page, 'csrf')
+	const nameless = await call(ui, '/changes/coupon/answer', { form: { csrf, question: 'Q2', answer: 'Yes.' } })
+	assert.equal(nameless.status, 422)
+	assert.match(nameless.body, /<p class="form-error" role="alert">Enter your name/)
+	const unknown = await call(ui, '/changes/coupon/answer', {
+		form: { csrf, question: 'Q9', answer: 'Yes.' },
+		headers: actorCookie,
+	})
+	assert.equal(unknown.status, 422)
+	assert.match(unknown.body, /<p class="form-error" role="alert">Unknown question: Q9./)
+	const answered = await call(ui, '/changes/coupon/answer', {
+		form: { csrf, question: 'Q2', answer: 'No. SAVE10 and save10 are the same.' },
+		headers: actorCookie,
+	})
+	assert.equal(answered.status, 303)
+	assert.equal(answered.headers.location, '/changes/coupon#question-Q2')
+	const empty = await call(ui, '/changes/coupon/decide', {
+		form: { csrf, build: 'b2', decision: 'rejected', rationale: ' ' },
+		headers: actorCookie,
+	})
+	assert.equal(empty.status, 422)
+	assert.match(empty.body, /<p class="form-error" role="alert">[^<]*rationale/)
+	assert.match(empty.body, /id="decide-rejected"[^>]*checked/)
+	const unchosen = await call(ui, '/changes/coupon/decide', {
+		form: { csrf, build: 'b2', rationale: 'Fine.' },
+		headers: actorCookie,
+	})
+	assert.match(unchosen.body, /Choose Accept or Reject/)
+	const nobuild = await call(ui, '/changes/coupon/decide', {
+		form: { csrf, build: 'b9', decision: 'accepted', rationale: 'Fine.' },
+		headers: actorCookie,
+	})
+	assert.match(nobuild.body, /Build b9 has no entry in change coupon/)
+	const rejected = await call(ui, '/changes/coupon/decide', {
+		form: { csrf, build: 'b2', decision: 'rejected', rationale: 'a1/D2 is not fixed.' },
+		headers: actorCookie,
+	})
+	assert.equal(rejected.status, 303)
+	const state = read(workspace, (store) => changeState(store, 'coupon'))
+	assert.equal(
+		state.questions.find((question) => question.id === 'Q2')?.answer,
+		'No. SAVE10 and save10 are the same.'
+	)
+	assert.deepEqual(
+		state.decisions.map((decision) => [decision.build, decision.decision]),
+		[
+			['b1', 'rejected'],
+			['b2', 'accepted'],
+			['b2', 'rejected'],
+		]
+	)
+	const log = read(workspace, (store) => operationLog(store, { subject: 'change:coupon', limit: 2 }))
+	assert.deepEqual(
+		log.map((row) => [row.command, row.actor]),
+		[
+			['reject', human],
+			['answer', human],
+		]
+	)
+	const after = (await call(ui, '/changes/coupon')).body
+	assert.match(after, /Answer by qa-lead:<\/strong> No. SAVE10 and save10 are the same./)
+	assert.match(after, /data-key="decision:b2"[\s\S]*?rejected[\s\S]*?qa-lead/)
+	assert.match((await call(ui, '/changes')).body, /data-key="change:coupon"[\s\S]*?rejected/)
 })

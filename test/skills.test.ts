@@ -36,7 +36,8 @@ test('each skill description stays short', () => {
 
 test('the test skill runs the session loop and names no removed level', () => {
 	const text = readFileSync(join(root, 'plugin/skills/test/SKILL.md'), 'utf8')
-	assert.doesNotMatch(text, /deep/i)
+	assert.doesNotMatch(text, /standard/i)
+	assert.match(text, /--level smoke\|normal\|deep/)
 	assert.match(text, /checkmate test <planId> --source <ticket or file> --session/)
 	assert.match(text, /checkmate explore next <explorationId>/)
 	assert.match(text, /checkmate explore done <explorationId> <name> <step> --agent <agent id>/)

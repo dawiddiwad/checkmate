@@ -8,7 +8,7 @@ import { run } from '../plugin/src/cli.ts'
 import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
 import { addEvent } from '../plugin/src/explorations.ts'
 import { explorerBrief } from '../plugin/src/briefs.ts'
-import { driveExploration, launchPlan } from '../plugin/src/explorers.ts'
+import { driveExploration, launchPlan, startOf } from '../plugin/src/explorers.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
 import { authenticationHint, workDenyRules } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
@@ -62,7 +62,7 @@ const nameOf = (call: { prompt: string }) => /\.checkmate\/work\/x-1\/(a\d)\//.e
 
 test('explore start launches the explorers of the level in a clean context, then records each session', (t) => {
 	const { start, wait, called, workspace, command } = setup(t)
-	const started = start()
+	const started = start(['--level', 'deep'])
 	assert.equal(started.code, 0, JSON.stringify(started.body))
 	assert.deepEqual(
 		[
@@ -72,7 +72,7 @@ test('explore start launches the explorers of the level in a clean context, then
 			started.body.verifier,
 			started.body.pluginHidden,
 		],
-		['standard', 3, testLevels.standard.model, true, true]
+		['deep', 3, testLevels.deep.model, true, true]
 	)
 	const done = wait()
 	assert.equal(done.code, 0, JSON.stringify(done.body))
@@ -94,7 +94,7 @@ test('explore start launches the explorers of the level in a clean context, then
 	const explorers = calls.filter((call) => call.role === 'explorer')
 	assert.equal(explorers.length, 3)
 	for (const call of explorers) {
-		assert.equal(after(call.args, '--model'), testLevels.standard.model)
+		assert.equal(after(call.args, '--model'), testLevels.deep.model)
 		assert.equal(after(call.args, '--settings'), explorerSettings(nameOf(call)))
 		assert.equal(call.work, join(workspace, '.checkmate', 'work', 'x-1', nameOf(call)))
 		assert.match(call.prompt, /^A change of the application is ready for test\. Study it before you test\.\n/)
@@ -121,7 +121,7 @@ test('explore start launches the explorers of the level in a clean context, then
 	for (const call of testers) {
 		const study = explorers.find((item) => after(item.args, '--session-id') === after(call.args, '--resume'))
 		assert(calls.indexOf(study) < calls.indexOf(call), 'study turn first')
-		assert.equal(after(call.args, '--model'), testLevels.standard.model)
+		assert.equal(after(call.args, '--model'), testLevels.deep.model)
 		assert.equal(after(call.args, '--settings'), explorerSettings(nameOf(call)))
 		assert.deepEqual(
 			call.args.filter((arg: string, index: number) => call.args[index - 1] === '--allowedTools'),
@@ -147,7 +147,7 @@ test('explore start launches the explorers of the level in a clean context, then
 	const recorders = calls.filter((call) => call.role === 'recorder')
 	assert.deepEqual(new Set(recorders.map((call) => after(call.args, '--resume'))), sessions)
 	for (const call of recorders) {
-		assert.equal(after(call.args, '--model'), testLevels.standard.model)
+		assert.equal(after(call.args, '--model'), testLevels.deep.model)
 		assert.equal(after(call.args, '--settings'), hidden)
 		assert(!call.args.some((arg: string) => /allowedTools|--tools|disallowed/.test(arg)), 'no tool list')
 	}
@@ -156,7 +156,7 @@ test('explore start launches the explorers of the level in a clean context, then
 		env: {},
 		stdin: () => '',
 	})
-	assert.match(status.output, /^completed x-1 state=completed plan=checkout build=b1 level=standard explorers=3/)
+	assert.match(status.output, /^completed x-1 state=completed plan=checkout build=b1 level=deep explorers=3/)
 	assert(!existsSync(join(workspace, '.checkmate', 'tmp', 'explore-x-1.log')), 'log removed')
 	assert(!existsSync(join(workspace, '.checkmate', 'work', 'x-1')), 'work folder removed')
 	assert(!existsSync(join(workspace, 'qa-evidence')), 'no folder in the project root')
@@ -181,29 +181,20 @@ test('the level sets the count and the model; --explorers, --claude-arg --model,
 	const smoke = called().filter((call) => call.role === 'explorer')
 	assert.equal(smoke.length, testLevels.smoke.explorers)
 	assert.equal(after(smoke[0].args, '--model'), testLevels.smoke.model)
-	const standard = start(['--level', 'standard'])
+	const normal = start(['--level', 'normal'])
 	assert.deepEqual(
-		[standard.body.explorers, standard.body.model],
-		[testLevels.standard.explorers, testLevels.standard.model]
+		[normal.body.explorers, normal.body.model, normal.body.verifier],
+		[testLevels.normal.explorers, testLevels.normal.model, true]
 	)
 	command(['explore', 'wait', 'x-2', '--timeout', '60'])
-	assert.equal(called().filter((call) => call.role === 'explorer').length, testLevels.standard.explorers)
-	const host = start([
-		'--level',
-		'standard',
-		'--explorers',
-		'1',
-		'--claude-arg',
-		'--model',
-		'--claude-arg',
-		'host-model',
-	])
+	assert.equal(called().filter((call) => call.role === 'explorer').length, testLevels.normal.explorers)
+	const host = start(['--level', 'deep', '--explorers', '1', '--claude-arg', '--model', '--claude-arg', 'host-model'])
 	assert.deepEqual([host.body.explorers, host.body.model], [1, 'host-model'])
 	command(['explore', 'wait', 'x-3', '--timeout', '60'])
 	const status = command(['explore', 'status', 'x-3']).body
 	assert.deepEqual(
 		[status.level, status.explorerCount, status.model, status.modelFrom],
-		['standard', 1, 'host-model', 'host']
+		['deep', 1, 'host-model', 'host']
 	)
 	const [explorer] = called().filter((call) => call.role === 'explorer')
 	assert.deepEqual(explorer.args.filter((arg: string) => arg === '--model').length, 1)
@@ -261,6 +252,30 @@ test('explore start refuses without tool rules or with a reserved Claude argumen
 test('the levels have one table, and the profile schema names the same levels', () => {
 	const schema = JSON.parse(readFileSync(join(root, 'plugin/contracts/profile.schema.json'), 'utf8'))
 	assert.deepEqual(schema.properties.explore.properties.level.enum, levelNames)
+	assert.deepEqual(levelNames, ['smoke', 'normal', 'deep'])
+	assert.deepEqual(
+		levelNames.map((name) => [testLevels[name].explorers, testLevels[name].verifier]),
+		[
+			[1, false],
+			[2, true],
+			[3, true],
+		]
+	)
+})
+
+test('without --level and a profile level, an exploration uses the level normal', () => {
+	const input = { planId: 'checkout', build: 'b1', allow: [], claudeArgs: [], session: true }
+	const launch = launchPlan({} as Profile, input, {})
+	assert.deepEqual([launch.level, launch.explorers, launch.verifier], ['normal', 2, true])
+})
+
+test('the old level name standard in a profile or a stored exploration reads as normal', () => {
+	const input = { planId: 'checkout', build: 'b1', allow: [], claudeArgs: [], session: true }
+	const old = { explore: { level: 'standard' } } as unknown as Profile
+	const launch = launchPlan(old, input, {})
+	assert.deepEqual([launch.level, launch.explorers, launch.verifier], ['normal', 2, true])
+	const event = { at: '', step: 'start', explorer: null, status: 'started', detail: { ...launch, level: 'standard' } }
+	assert.equal(startOf([event])!.level, 'normal')
 })
 
 test('a failed launch keeps the last lines of stderr, and status offers the test again', (t) => {
@@ -336,6 +351,7 @@ test('--minutes sets the seconds of the test turn only, and the safety timeout s
 		levelNames.map((name) => [testLevels[name].studySeconds, testLevels[name].testSeconds]),
 		[
 			[300, 600],
+			[600, 900],
 			[600, 900],
 		]
 	)

@@ -27,7 +27,7 @@ Run `checkmate target list`. When it shows no target:
    checkmate test <planId> --source <ticket or file> --session
    ```
 
-   - Add `--build`, `--objective`, `--target`, `--level smoke|standard`, `--since <git ref>`, or `--until <git ref>` only when the person gives them.
+   - Add `--build`, `--objective`, `--target`, `--level smoke|normal|deep`, `--since <git ref>`, or `--until <git ref>` only when the person gives them.
    - When the application needs a login, add `--instructions "<how a tester signs in>"`. Do not write a secret value.
 
 3. When the command refuses, read the `reason:` lines and the `hint:` line. Correct the command and run it again.

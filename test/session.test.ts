@@ -72,11 +72,11 @@ const clean = (text: string) => text.replaceAll('.checkmate/work/', '')
 
 test('a session run gives the actions of each step until it is finished, and the operator never writes a brief', (t) => {
 	const { workspace, command, text, start, lines, done, file, put } = setup(t)
-	const started = start()
+	const started = start(['--level', 'deep'])
 	assert.equal(started.code, 0, started.output)
 	assert.deepEqual(
 		[started.body.path, started.body.level, started.body.explorers, started.body.model, started.body.next],
-		['session', 'standard', 3, null, ['checkmate explore next x-1']]
+		['session', 'deep', 3, null, ['checkmate explore next x-1']]
 	)
 	assert.match(text(['explore', 'status', 'x-1']), /^completed x-1 state=testing .* path=session/)
 
@@ -314,7 +314,7 @@ test('a refused merge answer gets one repair round from the same clerk', (t) => 
 
 test('done refuses an agent ID of another tester, a rebind corrects it, and the reply line is checked', (t) => {
 	const { start, lines, done, command } = setup(t)
-	start()
+	start(['--level', 'deep'])
 	lines()
 	done('a1', 'study', ['--agent', 'agent-a1'])
 	done('a2', 'study', ['--agent', 'agent-a3'])
@@ -373,7 +373,7 @@ test('a later build without stored tests is a plain retest, and nothing asks for
 
 test('a printed action is given, started makes it running, and a pause names who must act', (t) => {
 	const { workspace, command, text, done } = setup(t)
-	command(['test', 'login', '--source', 'ticket.md', '--build', 'b1', '--session'])
+	command(['test', 'login', '--source', 'ticket.md', '--build', 'b1', '--level', 'deep', '--session'])
 	const next = command(['explore', 'next', 'x-1'])
 	assert.equal(next.body.hint, 'When you have sent these actions, run checkmate explore started x-1 a1 a2 a3.')
 	const rows = () => {
@@ -578,7 +578,7 @@ test('the agent files name a plain tester and a clerk, without the Skill or Agen
 		)
 		assert.equal(fields.name, name)
 		assert.equal(fields.tools, tools)
-		assert.equal(fields.model, testLevels.standard.model)
+		assert.equal(fields.model, testLevels.normal.model)
 		assert.doesNotMatch(fields.tools, /Skill|Agent|Task/)
 		assert.doesNotMatch(body, /checkmate|journal|record/i)
 		assert(body.trim().split(/(?<=\.)\s+/).length <= 3, body)

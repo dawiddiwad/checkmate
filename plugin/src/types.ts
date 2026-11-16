@@ -362,7 +362,7 @@ export type Profile = {
 	}
 	readyForLiveExecution: boolean
 	explore?: {
-		level?: 'smoke' | 'standard'
+		level?: 'smoke' | 'normal' | 'deep'
 		explorers?: number
 	}
 	approvals?: {

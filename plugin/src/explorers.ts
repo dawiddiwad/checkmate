@@ -19,7 +19,7 @@ import {
 	unplacedMatches,
 	verifyItems,
 } from './journal.ts'
-import { defaultLevel, levelNames, testLevels } from './levels.ts'
+import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
 	explorerBrief,
@@ -95,7 +95,7 @@ function hostModel(claudeArgs: string[]) {
 
 export function launchPlan(profile: Profile, input: StartInput, env: Env): Launch {
 	const level = requireChoice(
-		input.level ?? profile.explore?.level ?? defaultLevel,
+		input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
 		levelNames,
 		'test level (--level)'
 	)
@@ -297,7 +297,8 @@ function event(store: Store, actor: string, explorationId: string, item: Omit<Ex
 }
 
 export function startOf(events: ExplorationEvent[]) {
-	return events.find((item) => item.step === 'start')?.detail as Launch | undefined
+	const launch = events.find((item) => item.step === 'start')?.detail as Launch | undefined
+	return launch && { ...launch, level: storedLevel(launch.level) }
 }
 
 function failureHint(launch: Launch, call: ClaudeCall) {

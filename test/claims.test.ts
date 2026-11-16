@@ -85,7 +85,7 @@ test('explore finish merges the reports, verifies single reports, and keeps a re
 	assert.match(merger.prompt, /^Merge the reports of independent testers of build b1\./)
 	assert.match(merger.prompt, /a1\/D1 \(high\): Coupon stacks/)
 	assert(!merger.args.includes('--allowedTools'), 'the merger has no tool rules')
-	assert.equal(merger.args[merger.args.indexOf('--model') + 1], testLevels.standard.model)
+	assert.equal(merger.args[merger.args.indexOf('--model') + 1], testLevels.normal.model)
 	assert.match(verifier.prompt, /^Reproduce each problem below on the application\./)
 	assert.match(verifier.prompt, /- a2\/D1: Wrong tax on shipping Steps: Ship to PL\./)
 	assert.doesNotMatch(verifier.prompt, /checkmate/i)

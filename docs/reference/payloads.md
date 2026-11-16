@@ -53,7 +53,7 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 - `startup.command` is guidance for an authorized host. Checkmate does not start the application.
 - `reset` is optional. It tells QA how to restore a fresh state of the application, for example the seed data: `"reset": { "owner": "checkmate", "command": ["npm run db:reset"] }`. `owner` is `checkmate` when QA can run the command, or `factory` when only the factory can reset. `command` is a list of command lines, or `null`. It is guidance. Checkmate does not run it. `target show` prints it on a `reset` line, and `delegate execute` names it in the prompt.
 - `allowedOperations` can be `["any_test_operation"]`: any action that the application offers to a test user, on test data, in this instance. Checkmate refuses it for a production instance. Read [setup](commands.md#setup).
-- `explore` is optional. `level` is the default test level of an exploration of this target: `smoke` or `standard`. `explorers` is the default number of explorers, 1 to 10. `explore start --level` and `--explorers` win over these values.
+- `explore` is optional. `level` is the default test level of an exploration of this target: `smoke`, `normal`, or `deep`. A profile saved with the old name `standard` reads as `normal`. `explorers` is the default number of explorers, 1 to 10. `explore start --level` and `--explorers` win over these values.
 - `revision` is the latest revision plus 1. A save of the same revision with the same content changes nothing.
 
 ### Approvals policy

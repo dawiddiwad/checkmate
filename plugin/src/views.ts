@@ -185,7 +185,8 @@ export function inbox(store: Store) {
 				}
 			})
 	})
-	return { gaps: allGaps, plans, results, claims, requests: requestedPlans(store).sort(bySince) }
+	const requests = requestedPlans(store).filter((request) => !explored.includes(request.planId))
+	return { gaps: allGaps, plans, results, claims, requests: requests.sort(bySince) }
 }
 
 function selectedCounts(result: Result) {
@@ -241,7 +242,7 @@ export function planList(store: Store): PlanListRow[] {
 		tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
 		approval: null,
 		blocked: [],
-		loop: { state: 'needs_plan', waitsOn: 'planner' },
+		loop: loopOf(store, request.planId),
 	}))
 	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
 }
@@ -323,6 +324,7 @@ export type LoopState =
 	| 'passed'
 	| 'exploring'
 	| 'needs_triage'
+	| 'ready_to_test'
 export type Role = 'planner' | 'oracle' | 'qa' | 'factory' | 'none'
 export const roles = ['planner', 'oracle', 'qa', 'factory', 'none'] as const
 
@@ -343,7 +345,7 @@ export function planStatus(store: Store, planId: string) {
 		planId
 	).map((row) => {
 		const status = explorationStatus(store, row.exploration_id)
-		return { explorationId: status.explorationId, build: status.build, state: status.state }
+		return { explorationId: status.explorationId, build: status.build, state: status.state, reason: status.reason }
 	})
 	const claims = planClaims(store, planId)
 		.filter((claim) => claim.open)
@@ -402,11 +404,22 @@ export function planStatus(store: Store, planId: string) {
 				'defects_open',
 				'factory',
 				[amount(fixes.length, 'open claim')],
-				[
-					`Build a fix, then explore the new build: checkmate explore start ${planId} --build <new build> --allow <rule>`,
-				]
+				[`Build a fix, then checkmate test ${planId} --build <new build> --allow <rule>`]
 			),
 		}
+	if (base.state === 'needs_plan') {
+		const last = explorations.at(-1)
+		const why = !last
+			? ['No exploration yet']
+			: ['failed', 'stopped'].includes(last.state)
+				? [`${last.explorationId} ${last.state} on build ${last.build}${last.reason ? `: ${last.reason}` : ''}`]
+				: [`${last.explorationId} is ${last.state} on build ${last.build}`]
+		return {
+			...base,
+			...extra,
+			...loop('ready_to_test', 'qa', why, [`checkmate test ${planId} --allow Read --allow Bash`]),
+		}
+	}
 	return { ...base, ...extra }
 }
 

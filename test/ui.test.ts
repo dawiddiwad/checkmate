@@ -529,7 +529,7 @@ test('the inbox and the plan list show a plan request without a revision', async
 	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
 	assert.match(
 		plans,
-		/<span class="mono">draft<\/span><\/td>\s*<td><span class="loop"\s*>.*needs plan<\/span> <span class="muted small">waits on planner<\/span>/
+		/<span class="mono">draft<\/span><\/td>\s*<td><span class="loop"\s*>.*ready to test<\/span> <span class="muted small">waits on QA<\/span>/
 	)
 	assert.match(plans, /<span class="mono">draft<\/span>[\s\S]*?<td><span class="muted">no revision yet<\/span>/)
 	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])

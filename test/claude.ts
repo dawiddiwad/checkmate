@@ -29,6 +29,10 @@ if (reply === '!fail') {
 	process.stderr.write('API error: overloaded\\n')
 	process.exit(2)
 }
+if (reply === '!crash') {
+	for (let line = 1; line <= 12; line++) process.stderr.write('stack line ' + line + '\\n')
+	process.exit(1)
+}
 if (reply === '!model') {
 	process.stderr.write('Error: unknown model ' + after('--model') + '\\n')
 	process.exit(1)

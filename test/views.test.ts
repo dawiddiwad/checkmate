@@ -211,7 +211,8 @@ test('plan status follows the loop and names the role and the delegate stage', (
 		return `${status.state} ${status.waitsOn} ${status.stage}`
 	}
 	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
-	assert.equal(where(), 'needs_plan planner plan')
+	assert.equal(where(), 'ready_to_test qa none')
+	assert.deepEqual(planStatus(opened, 'checkout').next, ['checkmate test checkout --allow Read --allow Bash'])
 	savePlan(opened, actor, { planId: 'checkout', candidate: candidate() })
 	assert.equal(where(), 'needs_answers oracle none')
 	approved(opened, 'checkout', 1)

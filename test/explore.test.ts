@@ -149,7 +149,7 @@ test('a refused model fails the launch with a hint that names the override, and 
 	)
 })
 
-test('without an install record the explorers start without the override, and status says so', (t) => {
+test('without an install record the explorers start without the override, and status prints no note', (t) => {
 	const { start, wait, called, workspace } = setup(t, { installed: false })
 	assert.equal(start(['--level', 'smoke']).body.pluginHidden, false)
 	wait()
@@ -159,7 +159,7 @@ test('without an install record the explorers start without the override, and st
 		env: {},
 		stdin: () => '',
 	})
-	assert.match(status.output, /\nnote\tNo install record of the Checkmate plugin was found/)
+	assert.doesNotMatch(status.output, /note|install|plugin/i)
 })
 
 test('explore start refuses without tool rules or with a reserved Claude argument', (t) => {
@@ -175,4 +175,33 @@ test('explore start refuses without tool rules or with a reserved Claude argumen
 test('the levels have one table, and the profile schema names the same levels', () => {
 	const schema = JSON.parse(readFileSync(join(root, 'plugin/contracts/profile.schema.json'), 'utf8'))
 	assert.deepEqual(schema.properties.explore.properties.level.enum, levelNames)
+})
+
+test('a failed launch keeps the last lines of stderr, and status offers the test again', (t) => {
+	const { workspace, command } = setup(t, { replies: { explorer: '!crash' } })
+	command(['plan', 'open', 'later', '--target', 'checkout-local@1', '--objective', 'Later.', '--source', 't.md'])
+	assert.equal(command(['explore', 'start', 'later', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
+	const failed = command(['explore', 'wait', 'x-1', '--timeout', '60'])
+	assert.equal(failed.body.outcome, 'failed')
+	assert.deepEqual(
+		failed.body.explorers[0].stderr,
+		Array.from({ length: 10 }, (_, index) => `stack line ${index + 3}`)
+	)
+	const shown = run(['explore', 'show', 'x-1', '--workspace', workspace], {
+		cwd: workspace,
+		env: {},
+		stdin: () => '',
+	})
+	assert.match(shown.output, /\na1\tstderr\tstack line 3\n/)
+	assert.match(shown.output, /\na1\tstderr\tstack line 12(\n|$)/)
+	const status = command(['status', 'later']).body
+	assert.deepEqual(
+		[status.state, status.waitsOn, status.why, status.next],
+		[
+			'ready_to_test',
+			'qa',
+			['x-1 failed on build b1: No explorer session was recorded.'],
+			['checkmate test later --allow Read --allow Bash'],
+		]
+	)
 })

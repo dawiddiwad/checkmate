@@ -370,6 +370,10 @@ export function followHints(
 			assert.deepEqual(parseDelegate(args.slice(1)).allow, allow, command)
 			continue
 		}
+		if (args[0] === 'test') {
+			assert.deepEqual([args[1], args.includes('--allow')], [planId, true], command)
+			continue
+		}
 		const copy = directory(t)
 		mkdirSync(join(copy, '.checkmate'))
 		opened.db.exec(`VACUUM INTO '${join(copy, '.checkmate', 'checkmate.db')}'`)

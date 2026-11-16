@@ -8228,6 +8228,11 @@ function requireClaude(env) {
     );
   return claude;
 }
+var stderrLines = 10;
+var stderrLineLength = 300;
+function stderrTail(text) {
+  return text.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-stderrLines).map((line) => line.slice(0, stderrLineLength));
+}
 function excerpt(text) {
   const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
   return line ? `: ${line}` : "";
@@ -8243,8 +8248,10 @@ function claudeResult(output, error, status, signal) {
     "operational_error",
     `claude exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || parsed.result)}`
   ] : parsed.is_error === true ? ["operational_error", `claude ended with an error${excerpt(parsed.result)}`] : void 0;
+  const tail = failure ? stderrTail(error) : [];
   return {
     failure,
+    ...tail.length ? { stderr: tail } : {},
     result: parsed.result,
     ...typeof parsed.total_cost_usd === "number" ? { costUsd: parsed.total_cost_usd } : {},
     ...typeof parsed.duration_ms === "number" ? { durationMs: parsed.duration_ms } : {},
@@ -8315,7 +8322,7 @@ function launchClaude(claude, args, prompt, cwd, env, seconds) {
       if (output.length < maxOutputBytes) output += bytes.toString();
     });
     child.stderr.on("data", (bytes) => {
-      if (errors.length < 4096) errors += bytes.toString();
+      errors = (errors + bytes.toString()).slice(-16384);
     });
     child.stdin.on("error", () => {
     });
@@ -13000,7 +13007,7 @@ function startOf(events) {
   return events.find((item) => item.step === "start")?.detail;
 }
 function modelHint(launch, call) {
-  if (!/model/i.test(call.failure?.[1] ?? "")) return void 0;
+  if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
   return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
 }
 async function launchExplorers(store, actor, explorationId, launch, env) {
@@ -13036,6 +13043,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       detail: {
         session,
         ...call.failure ? { reason: call.failure[1] } : {},
+        ...call.stderr ? { stderr: call.stderr } : {},
         ...hint ? { hint } : {},
         ...call.costUsd === void 0 ? {} : { costUsd: call.costUsd },
         ...call.durationMs === void 0 ? {} : { durationMs: call.durationMs }
@@ -13100,6 +13108,7 @@ function mergeReports(store, actor, explorationId, launch, env) {
       reports: items.defects.length,
       refused: refusals.length,
       ...failure ? { reason: failure[1] } : {},
+      ...calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr).stderr } : {},
       ...costOf(calls)
     }
   });
@@ -13141,6 +13150,7 @@ async function verifyClaims(store, actor, explorationId, launch, env) {
       items: items.length,
       verified: observations.length,
       ...call.failure ? { reason: call.failure[1] } : observations.length ? {} : { reason: "The verifier gave no result." },
+      ...call.stderr ? { stderr: call.stderr } : {},
       ...costOf([call])
     }
   });
@@ -13233,7 +13243,8 @@ function explorationStatus(store, explorationId) {
       recorded: record?.status ?? null,
       saved: record?.detail.saved ?? 0,
       reason: end?.detail.reason ?? record?.detail.reasons ?? null,
-      hint: end?.detail.hint ?? null
+      hint: end?.detail.hint ?? null,
+      stderr: end?.detail.stderr ?? []
     };
   });
   const done = events.find((item) => item.step === "done");
@@ -13404,7 +13415,8 @@ function inbox(store) {
       };
     });
   });
-  return { gaps: allGaps, plans, results, claims, requests: requestedPlans(store).sort(bySince) };
+  const requests = requestedPlans(store).filter((request) => !explored.includes(request.planId));
+  return { gaps: allGaps, plans, results, claims, requests: requests.sort(bySince) };
 }
 function selectedCounts(result) {
   return outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
@@ -13452,7 +13464,7 @@ function planList(store) {
     tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
     approval: null,
     blocked: [],
-    loop: { state: "needs_plan", waitsOn: "planner" }
+    loop: loopOf(store, request.planId)
   }));
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
@@ -13528,7 +13540,7 @@ function planStatus(store, planId) {
     planId
   ).map((row) => {
     const status = explorationStatus(store, row.exploration_id);
-    return { explorationId: status.explorationId, build: status.build, state: status.state };
+    return { explorationId: status.explorationId, build: status.build, state: status.state, reason: status.reason };
   });
   const claims = planClaims(store, planId).filter((claim) => claim.open).map((claim) => ({
     claimId: claim.id,
@@ -13583,11 +13595,18 @@ function planStatus(store, planId) {
         "defects_open",
         "factory",
         [amount(fixes.length, "open claim")],
-        [
-          `Build a fix, then explore the new build: checkmate explore start ${planId} --build <new build> --allow <rule>`
-        ]
+        [`Build a fix, then checkmate test ${planId} --build <new build> --allow <rule>`]
       )
     };
+  if (base.state === "needs_plan") {
+    const last = explorations.at(-1);
+    const why = !last ? ["No exploration yet"] : ["failed", "stopped"].includes(last.state) ? [`${last.explorationId} ${last.state} on build ${last.build}${last.reason ? `: ${last.reason}` : ""}`] : [`${last.explorationId} is ${last.state} on build ${last.build}`];
+    return {
+      ...base,
+      ...extra,
+      ...loop("ready_to_test", "qa", why, [`checkmate test ${planId} --allow Read --allow Bash`])
+    };
+  }
   return { ...base, ...extra };
 }
 function checkStatus(store, planId) {
@@ -14988,6 +15007,9 @@ var statusLook = {
   needs_decision: ["?", "warn"],
   invalid_request: ["\u2717", "fail"],
   needs_plan: ["\u25CB", "acc"],
+  ready_to_test: ["\u25CB", "acc"],
+  exploring: ["\u25CF", "acc"],
+  needs_triage: ["?", "warn"],
   run_in_progress: ["\u25CF", "acc"],
   needs_revision: ["\u25CB", "acc"],
   plan_rejected: ["\u2717", "fail"],
@@ -18865,16 +18887,9 @@ function explorationLines(reply) {
       explorers: status.explorerCount ?? void 0,
       model: status.model ?? void 0,
       modelFrom: status.modelFrom ?? void 0,
-      verifier: status.verifier ?? void 0,
-      pluginHidden: status.pluginHidden ?? void 0
+      verifier: status.verifier ?? void 0
     },
     lines: [
-      ...status.pluginHidden === false ? [
-        [
-          "note",
-          "No install record of the Checkmate plugin was found. The explorers started without the plugin override."
-        ]
-      ] : [],
       ...status.explorers.map((item) => [
         item.explorer,
         item.session ?? "-",
@@ -18882,10 +18897,14 @@ function explorationLines(reply) {
         `recorded=${item.recorded ?? "-"}`,
         `saved=${item.saved}`
       ]),
+      ...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, "stderr", line])),
       ...(status.phases ?? []).map((item) => [
         item.step,
         item.status,
-        ...item.detail.reason ? [item.detail.reason] : []
+        ...item.detail.reason ? [item.detail.reason] : [],
+        ...(status.phases ?? []).flatMap(
+          (item2) => (item2.detail.stderr ?? []).map((line) => [item2.step, "stderr", line])
+        )
       ])
     ]
   };
@@ -19790,8 +19809,7 @@ var commands = {
         level: reply.data.level,
         explorers: reply.data.explorers,
         model: reply.data.model,
-        verifier: reply.data.verifier,
-        pluginHidden: reply.data.pluginHidden
+        verifier: reply.data.verifier
       },
       lines: reply.data.next.map((line) => ["next", line])
     })

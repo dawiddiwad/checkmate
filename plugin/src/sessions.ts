@@ -13,6 +13,7 @@ export type ClaudeCall = {
 	costUsd?: number
 	durationMs?: number
 	sessionId?: string
+	stderr?: string[]
 }
 
 export const pluginRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -125,6 +126,18 @@ export function requireClaude(env: Env) {
 	return claude
 }
 
+const stderrLines = 10
+const stderrLineLength = 300
+
+export function stderrTail(text: string) {
+	return text
+		.split('\n')
+		.map((line) => line.trimEnd())
+		.filter(Boolean)
+		.slice(-stderrLines)
+		.map((line) => line.slice(0, stderrLineLength))
+}
+
 export function excerpt(text: unknown) {
 	const line = typeof text === 'string' ? text.trim().split('\n')[0].slice(0, 200) : ''
 	return line ? `: ${line}` : ''
@@ -145,8 +158,10 @@ export function claudeResult(output: string, error: string, status: number | nul
 			: parsed.is_error === true
 				? ['operational_error', `claude ended with an error${excerpt(parsed.result)}`]
 				: undefined
+	const tail = failure ? stderrTail(error) : []
 	return {
 		failure,
+		...(tail.length ? { stderr: tail } : {}),
 		result: parsed.result,
 		...(typeof parsed.total_cost_usd === 'number' ? { costUsd: parsed.total_cost_usd } : {}),
 		...(typeof parsed.duration_ms === 'number' ? { durationMs: parsed.duration_ms } : {}),
@@ -233,7 +248,7 @@ export function launchClaude(
 			if (output.length < maxOutputBytes) output += bytes.toString()
 		})
 		child.stderr.on('data', (bytes: Buffer) => {
-			if (errors.length < 4096) errors += bytes.toString()
+			errors = (errors + bytes.toString()).slice(-16384)
 		})
 		child.stdin.on('error', () => {})
 		child.stdin.end(prompt)

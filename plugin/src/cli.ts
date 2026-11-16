@@ -245,17 +245,8 @@ function explorationLines(reply: Reply): Printed {
 			model: status.model ?? undefined,
 			modelFrom: status.modelFrom ?? undefined,
 			verifier: status.verifier ?? undefined,
-			pluginHidden: status.pluginHidden ?? undefined,
 		},
 		lines: [
-			...(status.pluginHidden === false
-				? [
-						[
-							'note',
-							'No install record of the Checkmate plugin was found. The explorers started without the plugin override.',
-						],
-					]
-				: []),
 			...status.explorers.map((item) => [
 				item.explorer,
 				item.session ?? '-',
@@ -263,10 +254,14 @@ function explorationLines(reply: Reply): Printed {
 				`recorded=${item.recorded ?? '-'}`,
 				`saved=${item.saved}`,
 			]),
+			...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, 'stderr', line])),
 			...(status.phases ?? []).map((item) => [
 				item.step,
 				item.status,
 				...(item.detail.reason ? [item.detail.reason] : []),
+				...(status.phases ?? []).flatMap((item) =>
+					((item.detail.stderr ?? []) as string[]).map((line) => [item.step, 'stderr', line])
+				),
 			]),
 		],
 	}
@@ -1236,7 +1231,6 @@ const commands: Record<string, Command> = {
 				explorers: reply.data.explorers,
 				model: reply.data.model,
 				verifier: reply.data.verifier,
-				pluginHidden: reply.data.pluginHidden,
 			},
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
 		}),

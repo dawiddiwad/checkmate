@@ -644,7 +644,7 @@ test('inbox lists gaps to answer, plans to approve, results to accept, and plan 
 	const plans = cli(workspace, ['plan', 'list'])
 	assert.equal(plans.lines[0], 'completed plans count=2')
 	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
-	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=needs_plan\twaitsOn=planner')
+	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=ready_to_test\twaitsOn=qa')
 	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 	revise(workspace)
 	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])

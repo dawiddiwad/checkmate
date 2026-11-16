@@ -183,7 +183,7 @@ export function startOf(events: ExplorationEvent[]) {
 }
 
 function modelHint(launch: Launch, call: ClaudeCall) {
-	if (!/model/i.test(call.failure?.[1] ?? '')) return undefined
+	if (!/model/i.test([call.failure?.[1] ?? '', ...(call.stderr ?? [])].join(' '))) return undefined
 	return launch.modelFrom === 'level'
 		? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.`
 		: `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`
@@ -222,6 +222,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 			detail: {
 				session,
 				...(call.failure ? { reason: call.failure[1] } : {}),
+				...(call.stderr ? { stderr: call.stderr } : {}),
 				...(hint ? { hint } : {}),
 				...(call.costUsd === undefined ? {} : { costUsd: call.costUsd }),
 				...(call.durationMs === undefined ? {} : { durationMs: call.durationMs }),
@@ -297,6 +298,7 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 			reports: items.defects.length,
 			refused: refusals.length,
 			...(failure ? { reason: failure[1] } : {}),
+			...(calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr)!.stderr } : {}),
 			...costOf(calls),
 		},
 	})
@@ -346,6 +348,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 				: observations.length
 					? {}
 					: { reason: 'The verifier gave no result.' }),
+			...(call.stderr ? { stderr: call.stderr } : {}),
 			...costOf([call]),
 		},
 	})
@@ -443,6 +446,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 			saved: (record?.detail.saved ?? 0) as number,
 			reason: (end?.detail.reason ?? record?.detail.reasons ?? null) as unknown,
 			hint: (end?.detail.hint ?? null) as string | null,
+			stderr: (end?.detail.stderr ?? []) as string[],
 		}
 	})
 	const done = events.find((item) => item.step === 'done')

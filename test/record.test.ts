@@ -132,7 +132,7 @@ function setup(t: TestContext) {
 	return { workspace, record, recordFrom, sessions, called }
 }
 
-const noTools = ['--output-format', 'json', '--permission-prompts', 'none', '--tools', '', '--strict-mcp-config']
+const noTools = ['--output-format', 'json', '--permission-prompts', 'none']
 
 test('record forks the latest test session, and Checkmate logs the reply of the recorder as the actor of the caller', (t) => {
 	const { workspace, record, called } = setup(t)

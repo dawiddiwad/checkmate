@@ -183,7 +183,7 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 
    ```sh
    claude -p --resume <sessionId> --fork-session --session-id <recorderId> --output-format json \
-     --permission-prompts none --tools "" --strict-mcp-config
+     --permission-prompts none
    ```
 
    The recorder is a new session with the history of the test session. The test session does not see what the recorder does. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, and `CHECKMATE_RECORDER=1`.
@@ -198,7 +198,7 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 
 The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
 
-`--tools ""` removes all built-in tools, and `--strict-mcp-config` without `--mcp-config` loads no MCP server. So the recorder has no tool, and needs no permission. `--permission-prompts none` refuses each tool call that would need a prompt. Evidence is a path of a file that the tester saved in the workspace, relative to the current directory or to the workspace, or the text that the tester saw. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
+Checkmate gives the recorder no permission: it passes no `--allowedTools`, and `--permission-prompts none` refuses each tool call that would need a prompt. The prompt tells the recorder to use no tool. Checkmate does not remove the tools of the host from the recorder. A copy with the same tools as the test session reads the prompt cache of that session, and this keeps the recorder cheap. Evidence is a path of a file that the tester saved in the workspace, relative to the current directory or to the workspace, or the text that the tester saw. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
 
 `--timeout` is in seconds, from 1 to 86400, for all recorder calls together. The default is 600.
 

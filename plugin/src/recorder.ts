@@ -132,18 +132,7 @@ function prepare(store: Store, actor: string | undefined, input: RecordInput, en
 }
 
 function recorderArgs(resume: string[]) {
-	return [
-		'-p',
-		'--resume',
-		...resume,
-		'--output-format',
-		'json',
-		'--permission-prompts',
-		'none',
-		'--tools',
-		'',
-		'--strict-mcp-config',
-	]
+	return ['-p', '--resume', ...resume, '--output-format', 'json', '--permission-prompts', 'none']
 }
 
 type Call = {

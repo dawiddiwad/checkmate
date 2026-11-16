@@ -4677,18 +4677,7 @@ function prepare(store, actor, input, env, cwd) {
   return { claude, session, recorder: randomUUID(), actor: writer };
 }
 function recorderArgs(resume) {
-  return [
-    "-p",
-    "--resume",
-    ...resume,
-    "--output-format",
-    "json",
-    "--permission-prompts",
-    "none",
-    "--tools",
-    "",
-    "--strict-mcp-config"
-  ];
+  return ["-p", "--resume", ...resume, "--output-format", "json", "--permission-prompts", "none"];
 }
 function callRecorder(claude, args, prompt, cwd, env, seconds) {
   const child = spawnSync(claude, args, {

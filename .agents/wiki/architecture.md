@@ -21,7 +21,7 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit. It keeps 
 
 The repository root contains tests, scripts, documentation, and development tools.
 
-The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate starts no tester. `record` starts one recorder with the `claude` command of the host. It passes no model and no credential. It gives the recorder no tool (`--tools ""` and `--strict-mcp-config`). The recorder replies with the entries in one round, and Checkmate logs them. Checkmate owns its contracts, its entry checks, and its derived views. These checks are not a sandbox.
+The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate starts no tester. `record` starts one recorder with the `claude` command of the host. It passes no model and no credential. It gives the recorder no permission (`--permission-prompts none`, no `--allowedTools`) and keeps the tool list of the host, so that the recorder reads the prompt cache of the test session. The recorder replies with the entries in one round, and Checkmate logs them. Checkmate owns its contracts, its entry checks, and its derived views. These checks are not a sandbox.
 
 Guidance stays descriptive: what the record holds and how to write an entry. It does not tell the agent how to test.
 

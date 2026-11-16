@@ -31,9 +31,12 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'blobs',
 		'decisions',
 		'evidence',
+		'exploration_events',
+		'explorations',
 		'findings',
 		'instance_retirements',
 		'instances',
+		'journal_entries',
 		'meta',
 		'operations',
 		'outcomes',
@@ -55,7 +58,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 			.map((row) => ({ ...row })),
 		[
 			{ key: 'contractVersion', value: 'toolkit-2' },
-			{ key: 'schemaVersion', value: '3' },
+			{ key: 'schemaVersion', value: '4' },
 		]
 	)
 	closeStore(opened)
@@ -69,7 +72,32 @@ test('a database with another schema version is refused', (t) => {
 	db.exec('DROP TRIGGER meta_update')
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 1\. Expected 3/)
+	assert.throws(() => openStore(workspace), /schema version 1\. Expected 4/)
+})
+
+test('a database of schema version 3 gets the exploration tables and keeps its rows', (t) => {
+	const opened = store(t)
+	ready(opened)
+	closeStore(opened)
+	const db = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
+	for (const table of ['journal_entries', 'exploration_events', 'explorations']) {
+		db.exec(`DROP TRIGGER ${table}_update`)
+		db.exec(`DROP TRIGGER ${table}_delete`)
+		db.exec(`DROP TABLE ${table}`)
+	}
+	db.exec('DROP TRIGGER meta_update')
+	db.exec("UPDATE meta SET value = '3' WHERE key = 'schemaVersion'")
+	db.exec(
+		"CREATE TRIGGER meta_update BEFORE UPDATE ON meta BEGIN SELECT RAISE(ABORT, 'Rows of meta are immutable'); END"
+	)
+	db.close()
+	const upgraded = openStore(opened.workspace)
+	t.after(() => closeStore(upgraded))
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '4')
+	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'explorations'").get())
+	assert(upgraded.db.prepare("SELECT 1 FROM plan_revisions WHERE plan_id = 'checkout'").get())
+	assert.throws(() => upgraded.db.exec("UPDATE meta SET value = '5'"), /immutable/)
+	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'journal_entries_delete'").get())
 })
 
 function finishedRun(t: Parameters<typeof store>[0]) {
@@ -102,6 +130,26 @@ function finishedRun(t: Parameters<typeof store>[0]) {
 
 test('triggers refuse updates and deletes on every table', (t) => {
 	const opened = finishedRun(t)
+	write(opened, { actor, command: 'test', subject: 'x-1', input: null }, (operationId, at) => {
+		execute(
+			opened,
+			"INSERT INTO explorations VALUES ('x-1', 'checkout', NULL, 'checkout-local', 1, 'local', 'b1', 'exploratory', '{}', ?, ?)",
+			at,
+			operationId
+		)
+		execute(
+			opened,
+			"INSERT INTO exploration_events VALUES ('x-1', ?, 'launch', 'a1', 'started', '{}', ?)",
+			at,
+			operationId
+		)
+		execute(
+			opened,
+			"INSERT INTO journal_entries VALUES ('x-1', 'D1', 'defect', 'b1', '{}', 'qa:a1', ?)",
+			operationId
+		)
+		return { reply: { status: 'completed', subject: 'x-1', reasons: [], data: {} }, subjects: [] }
+	})
 	const tables = opened.db
 		.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 		.all()

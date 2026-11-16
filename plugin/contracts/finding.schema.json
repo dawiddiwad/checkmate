@@ -19,7 +19,7 @@
 				"type": "string",
 				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 			},
-			"minItems": 1,
+			"minItems": 0,
 			"uniqueItems": true
 		},
 		"requirementIds": {
@@ -28,7 +28,7 @@
 				"type": "string",
 				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 			},
-			"minItems": 1,
+			"minItems": 0,
 			"uniqueItems": true
 		},
 		"title": {
@@ -58,7 +58,7 @@
 				"type": "string",
 				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 			},
-			"minItems": 1,
+			"minItems": 0,
 			"uniqueItems": true
 		},
 		"metadata": {

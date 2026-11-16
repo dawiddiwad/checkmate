@@ -97,7 +97,7 @@ After the planned tests, probe the rules of the selected tests for defects that 
 
 - Make up to 10 probe actions. Stop when 75% of the deadline is used.
 - Use only the `allowedOperations` and new data, for example `qa-<runId>-X1`.
-- When a probe contradicts a value that a source or a check of the plan states, record a `potential_issue` finding. Name an assertion of the closest selected test and an evidence ID of that assertion. Put the probe output in `observed` and the probe steps in `reproduction`.
+- When a probe contradicts a value that a source or a check of the plan states, record a `potential_issue` finding. Give `"assertionIds": []`, `"requirementIds": []`, and `"evidenceIds": []`. Put the probe output in `observed` and the probe steps in `reproduction`.
 - When no source gives the expected behavior, record a `non_blocking` gap with the closest test in `testIds`.
 - Record nothing for a probe that shows correct behavior.
 
@@ -123,7 +123,7 @@ Send each finding in a heredoc: `checkmate run finding <runId> --actor claude:ex
 ```
 
 - Give every field of the example. `requirementIds` are the requirements of the named tests.
-- A `defect` names only failed assertions. Use `potential_issue` for a suspicion, for example with an inconclusive assertion.
+- A `defect` names one or more failed assertions and their evidence. Use `potential_issue` for a suspicion, for example with an inconclusive assertion or a probe. A `potential_issue` can have empty `assertionIds`, `requirementIds`, and `evidenceIds`.
 - Only when the oracle or the test gives team fields, add `metadata`, for example `"metadata": { "jiraKey": "SHOP-142" }`.
 
 For new ambiguity, send a gap in a heredoc: `checkmate run gap <runId> --actor claude:execute <<'EOF'`, the JSON, then `EOF`. Use an ID that the plan does not have, for example `RG1`. Leave `requirementIds` empty to block only the tests in `testIds`:

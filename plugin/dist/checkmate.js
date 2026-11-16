@@ -11,7 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 var contractVersion = "toolkit-2";
-var schemaVersion = "3";
+var schemaVersion = "4";
 var operationReference = "REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED";
 var tables = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
@@ -179,6 +179,43 @@ CREATE TABLE results (
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
+`;
+var explorationTables = `
+CREATE TABLE explorations (
+	exploration_id TEXT PRIMARY KEY,
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	plan_revision INTEGER,
+	target_id TEXT NOT NULL,
+	target_revision INTEGER NOT NULL,
+	instance_id TEXT NOT NULL,
+	build TEXT NOT NULL,
+	mode TEXT NOT NULL,
+	charter TEXT NOT NULL,
+	started_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	FOREIGN KEY (target_id, target_revision) REFERENCES profiles(target_id, revision),
+	FOREIGN KEY (target_id, instance_id) REFERENCES instances(target_id, instance_id)
+) STRICT;
+CREATE TABLE exploration_events (
+	exploration_id TEXT NOT NULL REFERENCES explorations(exploration_id),
+	at TEXT NOT NULL,
+	step TEXT NOT NULL,
+	explorer TEXT,
+	status TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+CREATE TABLE journal_entries (
+	exploration_id TEXT NOT NULL REFERENCES explorations(exploration_id),
+	entry_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	build TEXT,
+	body TEXT NOT NULL,
+	actor TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+`;
+var views = `
 CREATE VIEW latest_plans AS
 	SELECT p.* FROM plan_revisions p
 	WHERE p.revision = (SELECT max(revision) FROM plan_revisions WHERE plan_id = p.plan_id);
@@ -190,7 +227,7 @@ CREATE VIEW plan_gaps AS
 		g.value ->> '$.status' AS status, g.value ->> '$.severity' AS severity, g.value AS gap
 	FROM plan_revisions p, json_each(p.body, '$.gaps') g;
 `;
-var tableNames = [...tables.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1]);
+var tableNamesOf = (ddl) => [...ddl.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1]);
 var decisionColumns = [
   "id",
   "plan_id",
@@ -220,11 +257,18 @@ function updateTrigger(table) {
   return `CREATE TRIGGER ${table}_update BEFORE UPDATE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`;
 }
-var triggers = tableNames.map(
+var triggersOf = (ddl) => tableNamesOf(ddl).map(
   (table) => `${updateTrigger(table)}
 CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
 ).join("\n");
+function addExplorationTables(db) {
+  db.exec(explorationTables);
+  db.exec(triggersOf(explorationTables));
+  db.exec("DROP TRIGGER meta_update");
+  db.exec("UPDATE meta SET value = '4' WHERE key = 'schemaVersion'");
+  db.exec(updateTrigger("meta"));
+}
 function completed(subject, data = {}) {
   return { status: "completed", subject, reasons: [], data };
 }
@@ -257,12 +301,14 @@ function openStore(workspace) {
     db.exec("PRAGMA foreign_keys = ON");
     db.exec("BEGIN IMMEDIATE");
     if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get()) {
-      db.exec(tables);
-      db.exec(triggers);
+      db.exec(tables + explorationTables + views);
+      db.exec(triggersOf(tables + explorationTables));
       const insert = db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)");
       insert.run("contractVersion", contractVersion);
       insert.run("schemaVersion", schemaVersion);
     }
+    const version2 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
+    if (version2?.value === "3") addExplorationTables(db);
     db.exec("COMMIT");
   } catch (error) {
     if (db.isTransaction) db.exec("ROLLBACK");
@@ -532,7 +578,7 @@ var ke = H((G) => {
   }
 });
 var ns = Ie;
-var ie = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
+var ie = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
 var F = { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 };
 var E = Object.prototype.hasOwnProperty;
 var j = pe().default;
@@ -615,8 +661,8 @@ function Ie(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
     if (u.assertionIds !== void 0) {
       let g = u.assertionIds;
       if (Array.isArray(g)) {
-        if (g.length < 1) {
-          let d = { instancePath: t + "/assertionIds", schemaPath: "#/properties/assertionIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+        if (g.length < 0) {
+          let d = { instancePath: t + "/assertionIds", schemaPath: "#/properties/assertionIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [d] : e.push(d), s++;
         }
         let o = g.length;
@@ -656,8 +702,8 @@ function Ie(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
     if (u.requirementIds !== void 0) {
       let g = u.requirementIds;
       if (Array.isArray(g)) {
-        if (g.length < 1) {
-          let d = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+        if (g.length < 0) {
+          let d = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [d] : e.push(d), s++;
         }
         let o = g.length;
@@ -774,8 +820,8 @@ function Ie(u, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
     if (u.evidenceIds !== void 0) {
       let g = u.evidenceIds;
       if (Array.isArray(g)) {
-        if (g.length < 1) {
-          let d = { instancePath: t + "/evidenceIds", schemaPath: "#/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+        if (g.length < 0) {
+          let d = { instancePath: t + "/evidenceIds", schemaPath: "#/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [d] : e.push(d), s++;
         }
         let o = g.length;
@@ -9121,6 +9167,12 @@ function recordFinding(store, actor, input) {
       `Finding ${finding.id} exists in run ${input.runId}`,
       `Use a new finding ID, for example ${unusedId("F", findingIds)}.`
     );
+    if (finding.type === "defect")
+      requireWellFormed(
+        finding.assertionIds.length && finding.evidenceIds.length,
+        `Defect ${finding.id} needs one or more failed assertions in assertionIds and their evidence in evidenceIds`,
+        'Name the failed assertions and their evidence IDs. For a suspicion beyond the plan, record the finding with "type": "potential_issue" and empty assertionIds.'
+      );
     const results = runAssertions(store, input.runId);
     const named = finding.assertionIds.map((reference) => {
       const [testId, assertionId] = reference.split(".");

@@ -178,8 +178,8 @@ A command can take one text and one or more files together.
 
 ## Findings
 
-- `defect`: a product defect. It names one or more failed assertions, and only failed assertions.
-- `potential_issue`: a suspicion. It can name any assertion of a selected test. QA also uses it for a probe beyond the plan: it names the closest assertion and its evidence, and gives the probe output and steps.
+- `defect`: a product defect. It names one or more failed assertions, and only failed assertions, and one or more evidence IDs.
+- `potential_issue`: a suspicion. It can name any assertion of a selected test. QA also uses it for a probe beyond the plan: it names no assertion, no requirement, and no evidence, and gives the probe output and steps.
 - Each failed assertion needs a defect. `run finish` refuses the run without it.
 - The requirements of a finding belong to the named tests.
 - The evidence of a finding belongs to the named assertions, or to their tests.

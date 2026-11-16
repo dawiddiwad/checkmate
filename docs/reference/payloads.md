@@ -288,7 +288,7 @@ QA sends each finding to `run finding <runId>`.
 }
 ```
 
-`evidenceIds` are the IDs that `run check` printed. A finding can have [`metadata`](#metadata). [Findings](runs.md#findings) has the rules.
+`evidenceIds` are the IDs that `run check` printed. A `potential_issue` can have empty `assertionIds`, `requirementIds`, and `evidenceIds`. A finding can have [`metadata`](#metadata). [Findings](runs.md#findings) has the rules.
 
 ## Runtime gap
 
@@ -353,20 +353,21 @@ The planner marks a regression test with `"metadata": { "type": "regression" }`.
 
 The schemas refuse a payload that breaks one of these limits:
 
-| Item                                                                        | Limit                                                                 |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| An ID                                                                       | 1 to 96 characters. Read [Identifiers](#identifiers).                 |
-| A text field, for example a `title`, `check`, or `question`                 | 1 or more characters. An empty string is refused.                     |
-| A test `title`                                                              | 200 characters or fewer                                               |
-| An instance entry value                                                     | 2000 characters or fewer                                              |
-| An instance `environment`                                                   | 500 characters or fewer                                               |
-| An instance reference                                                       | 200 characters or fewer                                               |
-| [`metadata`](#metadata)                                                     | 20 keys or fewer. A string value has 500 characters or fewer.         |
-| Finding `assertionIds`, `requirementIds`, `reproduction`, and `evidenceIds` | 1 or more items. Record evidence with `run check` before the finding. |
-| Test `requirementIds` and `operations`                                      | 1 or more items                                                       |
-| Request `requirements`, when present                                        | 1 or more items                                                       |
-| Profile `entryPoints`, `capabilities`, and `allowedOperations`              | 1 or more items                                                       |
-| Profile `startup.command` and `reset.command`, when not `null`              | 1 or more items                                                       |
+| Item                                                           | Limit                                                                 |
+| -------------------------------------------------------------- | --------------------------------------------------------------------- |
+| An ID                                                          | 1 to 96 characters. Read [Identifiers](#identifiers).                 |
+| A text field, for example a `title`, `check`, or `question`    | 1 or more characters. An empty string is refused.                     |
+| A test `title`                                                 | 200 characters or fewer                                               |
+| An instance entry value                                        | 2000 characters or fewer                                              |
+| An instance `environment`                                      | 500 characters or fewer                                               |
+| An instance reference                                          | 200 characters or fewer                                               |
+| [`metadata`](#metadata)                                        | 20 keys or fewer. A string value has 500 characters or fewer.         |
+| Finding `reproduction`                                         | 1 or more items                                                       |
+| Defect `assertionIds` and `evidenceIds`                        | 1 or more items. Record evidence with `run check` before the finding. |
+| Test `requirementIds` and `operations`                         | 1 or more items                                                       |
+| Request `requirements`, when present                           | 1 or more items                                                       |
+| Profile `entryPoints`, `capabilities`, and `allowedOperations` | 1 or more items                                                       |
+| Profile `startup.command` and `reset.command`, when not `null` | 1 or more items                                                       |
 
 ## Schemas
 

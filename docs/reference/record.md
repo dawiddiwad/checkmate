@@ -22,7 +22,7 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 - Retiring an instance adds a row to `instance_retirements`. The instance row does not change.
 - A plan revision, a profile, and a result are canonical JSON snapshots. The digest is the SHA-256 of that text. A digest detects change. It does not authenticate the actor.
 - The database uses WAL mode, a busy timeout of 30 seconds, and foreign keys. `CHECKMATE_BUSY_TIMEOUT_MS` changes the busy timeout. The CLI, a delegated worker, and the review UI can use it at the same time. One command writes at a time. Every command waits for the lock, also a read such as `log`, `status`, or `inbox`. A command that cannot get the lock in 30 seconds gives `operational_error` and changes nothing. One host writes to one database.
-- The schema version is 3. Checkmate refuses a database with another version. There is no migration from earlier databases.
+- The schema version is 4. Checkmate adds the exploration tables to a database of version 3 when it opens it. Checkmate refuses a database with another version.
 
 ## Actor
 
@@ -84,6 +84,9 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 | `findings`             | Defects and potential issues.                                                 |
 | `run_gaps`             | Gaps that a run found.                                                        |
 | `results`              | Finished runs as JSON snapshots.                                              |
+| `explorations`         | Explorations: plan, target revision, instance, build, mode, and charter.      |
+| `exploration_events`   | The steps of an exploration: launch, end, record, merge, and verify.          |
+| `journal_entries`      | The entries that the recorders, the merger, and the verifier log.             |
 
 The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan snapshots. `plan_tests` and `plan_gaps` have one row for each revision. Use them with `checkmate query`:
 

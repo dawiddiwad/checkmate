@@ -624,6 +624,12 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 			`Finding ${finding.id} exists in run ${input.runId}`,
 			`Use a new finding ID, for example ${unusedId('F', findingIds)}.`
 		)
+		if (finding.type === 'defect')
+			requireWellFormed(
+				finding.assertionIds.length && finding.evidenceIds.length,
+				`Defect ${finding.id} needs one or more failed assertions in assertionIds and their evidence in evidenceIds`,
+				'Name the failed assertions and their evidence IDs. For a suspicion beyond the plan, record the finding with "type": "potential_issue" and empty assertionIds.'
+			)
 		const results = runAssertions(store, input.runId)
 		const named = finding.assertionIds.map((reference) => {
 			const [testId, assertionId] = reference.split('.')

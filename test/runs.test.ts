@@ -684,6 +684,15 @@ test('findings name recorded assertions, matching requirements, and evidence of 
 		}).data.testIds,
 		['T1']
 	)
+	assert.throws(
+		() => finding({ id: 'F3', assertionIds: [], requirementIds: [], evidenceIds: [] }),
+		/Defect F3 needs one or more failed assertions/
+	)
+	assert.deepEqual(
+		finding({ id: 'F4', type: 'potential_issue', assertionIds: [], requirementIds: [], evidenceIds: [] }).data
+			.testIds,
+		[]
+	)
 })
 
 test('a runtime gap is new, open, and names known requirements and tests', (t) => {

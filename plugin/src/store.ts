@@ -19,7 +19,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '3'
+const schemaVersion = '4'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -188,6 +188,43 @@ CREATE TABLE results (
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
+`
+const explorationTables = `
+CREATE TABLE explorations (
+	exploration_id TEXT PRIMARY KEY,
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	plan_revision INTEGER,
+	target_id TEXT NOT NULL,
+	target_revision INTEGER NOT NULL,
+	instance_id TEXT NOT NULL,
+	build TEXT NOT NULL,
+	mode TEXT NOT NULL,
+	charter TEXT NOT NULL,
+	started_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	FOREIGN KEY (target_id, target_revision) REFERENCES profiles(target_id, revision),
+	FOREIGN KEY (target_id, instance_id) REFERENCES instances(target_id, instance_id)
+) STRICT;
+CREATE TABLE exploration_events (
+	exploration_id TEXT NOT NULL REFERENCES explorations(exploration_id),
+	at TEXT NOT NULL,
+	step TEXT NOT NULL,
+	explorer TEXT,
+	status TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+CREATE TABLE journal_entries (
+	exploration_id TEXT NOT NULL REFERENCES explorations(exploration_id),
+	entry_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	build TEXT,
+	body TEXT NOT NULL,
+	actor TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+`
+const views = `
 CREATE VIEW latest_plans AS
 	SELECT p.* FROM plan_revisions p
 	WHERE p.revision = (SELECT max(revision) FROM plan_revisions WHERE plan_id = p.plan_id);
@@ -199,7 +236,7 @@ CREATE VIEW plan_gaps AS
 		g.value ->> '$.status' AS status, g.value ->> '$.severity' AS severity, g.value AS gap
 	FROM plan_revisions p, json_each(p.body, '$.gaps') g;
 `
-const tableNames = [...tables.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1])
+const tableNamesOf = (ddl: string) => [...ddl.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1])
 const decisionColumns = [
 	'id',
 	'plan_id',
@@ -231,13 +268,22 @@ function updateTrigger(table: string) {
 	return `CREATE TRIGGER ${table}_update BEFORE UPDATE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
 }
-const triggers = tableNames
-	.map(
-		(table) => `${updateTrigger(table)}
+const triggersOf = (ddl: string) =>
+	tableNamesOf(ddl)
+		.map(
+			(table) => `${updateTrigger(table)}
 CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
-	)
-	.join('\n')
+		)
+		.join('\n')
+
+function addExplorationTables(db: DatabaseSync) {
+	db.exec(explorationTables)
+	db.exec(triggersOf(explorationTables))
+	db.exec('DROP TRIGGER meta_update')
+	db.exec("UPDATE meta SET value = '4' WHERE key = 'schemaVersion'")
+	db.exec(updateTrigger('meta'))
+}
 
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {
 	return { status: 'completed', subject, reasons: [], data }
@@ -276,12 +322,14 @@ export function openStore(workspace: string): Store {
 		db.exec('PRAGMA foreign_keys = ON')
 		db.exec('BEGIN IMMEDIATE')
 		if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get()) {
-			db.exec(tables)
-			db.exec(triggers)
+			db.exec(tables + explorationTables + views)
+			db.exec(triggersOf(tables + explorationTables))
 			const insert = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
 		}
+		const version = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()
+		if (version?.value === '3') addExplorationTables(db)
 		db.exec('COMMIT')
 	} catch (error) {
 		if (db.isTransaction) db.exec('ROLLBACK')

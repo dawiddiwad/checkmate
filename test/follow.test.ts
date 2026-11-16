@@ -156,3 +156,37 @@ test('explore follow resumes each session with the answers, records only new ent
 	assert.match(used.body.reasons[1], /has no answer that a follow-up has not used/)
 	assert(!command(['status', 'checkout']).body.next.some((line: string) => /explore follow/.test(line)))
 })
+
+test('a follow-up defect joins the claim that another explorer reported first', (t) => {
+	const { command, wait, reply, called } = setup(t)
+	reply({
+		explorer: 'Tested.',
+		recorder: [stacks, question],
+		merger: [{ kind: 'issue', title: 'Coupons stack', severity: 'high', reports: ['a1/D1', 'a2/D1'] }],
+	})
+	command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', '--explorers', '2', ...allow])
+	assert.equal(wait('x-1').body.outcome, 'done')
+	const sessions = Object.fromEntries(
+		called()
+			.filter((call) => call.role === 'explorer')
+			.map((call) => [/\.checkmate\/work\/x-1\/(a\d)\//.exec(call.prompt)![1], after(call.args, '--session-id')])
+	)
+	assert.equal(command(answer).code, 0)
+	const again = { ...stacks, title: 'Two coupons still stack on a sale item' }
+	reply({
+		follower: 'Tested the answers.',
+		recorder: { [sessions.a1]: [stacks, question], [sessions.a2]: [stacks, question, again] },
+		merger: [{ kind: 'issue', title: 'Coupons stack', severity: 'high', reports: ['a1/D1', 'a2/D2'] }],
+	})
+	command(['explore', 'follow', 'x-1'])
+	assert.equal(wait('x-1').body.outcome, 'done')
+	const merger = called().find((call) => call.role === 'merger')
+	assert.match(merger.prompt, /\nmerge\/I1 \(reports a1\/D1, a2\/D1\): Coupons stack/)
+	assert.deepEqual(
+		command(['claim', 'list', 'checkout']).body.claims.map((claim: { id: string; reports: string[] }) => [
+			claim.id,
+			claim.reports,
+		]),
+		[['merge/I1', ['a1/D1', 'a2/D1', 'a2/D2']]]
+	)
+})

@@ -10039,6 +10039,7 @@ function mergeItems(state, build, claims = [], after = 0) {
     (claim) => claim.state !== "rejected" && (claim.build !== build || after > 0 && !claim.reports.some((id2) => fresh.has(id2)))
   ).map((claim) => ({
     id: claim.id,
+    reports: claim.reports,
     title: short(claim.title),
     expected: short(claim.expected),
     actual: short(claim.actual)
@@ -10058,6 +10059,23 @@ function mergeItems(state, build, claims = [], after = 0) {
     })),
     groups
   };
+}
+function joinClaims(entries, claims) {
+  const issues = new Map(
+    claims.filter((claim) => claim.id !== claim.reports[0]).map((claim) => [claim.id, claim.reports])
+  );
+  return entries.map((raw) => {
+    const entry = raw;
+    if (!entry || entry.kind !== "issue" || entry.supersedes !== void 0 || !Array.isArray(entry.reports))
+      return raw;
+    const named = new Set(entry.reports);
+    const into = [...issues].find(([id2, reports2]) => named.has(id2) || reports2.some((report) => named.has(report)));
+    if (!into) return raw;
+    const reports = [.../* @__PURE__ */ new Set([...into[1], ...entry.reports.filter((id2) => id2 !== into[0])])];
+    issues.set(into[0], reports);
+    const { id: _, ...rest } = entry;
+    return { ...rest, supersedes: into[0], reports };
+  });
 }
 function verifyItems(claims, build, fresh) {
   return claims.filter(
@@ -12995,7 +13013,7 @@ function mergerPrompt(build, reports, groups, questions = [], earlier = []) {
       "",
       'The issues found before. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
       ...earlier.map(
-        (item) => `${item.id}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
+        (item) => `${item.id}${item.reports.length > 1 || item.reports[0] !== item.id ? ` (reports ${item.reports.join(", ")})` : ""}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
       )
     ] : []
   ].join("\n");
@@ -13579,7 +13597,8 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   const log = (reply) => {
     if (!reply?.length) return [];
     try {
-      return logEntries(store, mergerActor, { explorationId, entries: reply }).data.refused.map(
+      const entries = joinClaims(reply, planClaims(store, opened.plan_id));
+      return logEntries(store, mergerActor, { explorationId, entries }).data.refused.map(
         refusalText
       );
     } catch (error) {

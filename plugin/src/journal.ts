@@ -874,6 +874,7 @@ export function mergeItems(state: Journal, build: string, claims: Claim[] = [], 
 		)
 		.map((claim) => ({
 			id: claim.id,
+			reports: claim.reports,
 			title: short(claim.title),
 			expected: short(claim.expected),
 			actual: short(claim.actual),
@@ -893,6 +894,24 @@ export function mergeItems(state: Journal, build: string, claims: Claim[] = [], 
 		})),
 		groups,
 	}
+}
+
+export function joinClaims(entries: unknown[], claims: Claim[]) {
+	const issues = new Map(
+		claims.filter((claim) => claim.id !== claim.reports[0]).map((claim) => [claim.id, claim.reports])
+	)
+	return entries.map((raw) => {
+		const entry = raw as Partial<Entry> | null
+		if (!entry || entry.kind !== 'issue' || entry.supersedes !== undefined || !Array.isArray(entry.reports))
+			return raw
+		const named = new Set(entry.reports)
+		const into = [...issues].find(([id, reports]) => named.has(id) || reports.some((report) => named.has(report)))
+		if (!into) return raw
+		const reports = [...new Set([...into[1], ...entry.reports.filter((id) => id !== into[0])])]
+		issues.set(into[0], reports)
+		const { id: _, ...rest } = entry
+		return { ...rest, supersedes: into[0], reports }
+	})
 }
 
 export function verifyItems(claims: Claim[], build: string, fresh?: Set<string>) {

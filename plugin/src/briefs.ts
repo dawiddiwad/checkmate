@@ -254,7 +254,7 @@ export function mergerPrompt(
 	reports: MergeReport[],
 	groups: string[][],
 	questions: Array<{ id: string; question: string }> = [],
-	earlier: Array<{ id: string; title: string; expected: string; actual: string }> = []
+	earlier: Array<{ id: string; reports: string[]; title: string; expected: string; actual: string }> = []
 ) {
 	return [
 		`Merge the reports of independent testers of build ${build}. Do not test.`,
@@ -291,7 +291,8 @@ export function mergerPrompt(
 					'',
 					'The issues found before. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
 					...earlier.map(
-						(item) => `${item.id}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
+						(item) =>
+							`${item.id}${item.reports.length > 1 || item.reports[0] !== item.id ? ` (reports ${item.reports.join(', ')})` : ''}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
 					),
 				]
 			: []),

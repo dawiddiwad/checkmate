@@ -9,6 +9,7 @@ import { addEvent, exploration, explorationEvents, insertExploration, workFolder
 import type { Refused } from './journal.ts'
 import {
 	explorationRow,
+	joinClaims,
 	journal,
 	logEntries,
 	mergeItems,
@@ -352,7 +353,8 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 	const log = (reply: unknown[] | undefined) => {
 		if (!reply?.length) return []
 		try {
-			return (logEntries(store, mergerActor, { explorationId, entries: reply }).data.refused as Refused[]).map(
+			const entries = joinClaims(reply, planClaims(store, opened.plan_id))
+			return (logEntries(store, mergerActor, { explorationId, entries }).data.refused as Refused[]).map(
 				refusalText
 			)
 		} catch (error) {

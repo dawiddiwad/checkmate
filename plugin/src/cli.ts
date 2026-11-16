@@ -87,6 +87,7 @@ import {
 	waitExploration,
 } from './explorers.ts'
 import { levelNames, testLevels } from './levels.ts'
+import { runTest, testModes } from './modes.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
@@ -1075,6 +1076,68 @@ const commands: Record<string, Command> = {
 	'export exploration': exportCommand('explorationId', explorationFormats, exportExploration),
 	'claim accept': claimCommand('approved'),
 	'claim reject': claimCommand('rejected'),
+	test: {
+		positionals: ['planId'],
+		flags: {
+			build: 'value',
+			mode: testModes,
+			level: levelNames,
+			explorers: { min: 1, max: 10 },
+			instance: 'value',
+			allow: 'repeat',
+			'claude-arg': 'repeat',
+			timeout: { min: 60, max: 7200 },
+			objective: 'value',
+			target: 'value',
+			source: 'repeat',
+			since: 'value',
+			scope: 'list',
+		},
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor, env }) =>
+			runTest(
+				store,
+				actor,
+				{
+					planId: value(args, 'planId')!,
+					build: value(args, 'build')!,
+					mode: value(args, 'mode'),
+					level: value(args, 'level'),
+					explorers: integer(args, 'explorers'),
+					instance: value(args, 'instance'),
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+					objective: value(args, 'objective'),
+					target: value(args, 'target'),
+					sources: list(args, 'source'),
+					since: value(args, 'since'),
+					scope: list(args, 'scope'),
+				},
+				env
+			),
+		print: (reply) => {
+			const run = reply.data.run as { runId: string; tests: string[] } | null
+			return {
+				facts: {
+					plan: reply.data.planId,
+					build: reply.data.build,
+					mode: reply.data.mode,
+					level: reply.data.level,
+					explorers: reply.data.explorers,
+					model: reply.data.model,
+					verifier: reply.data.verifier,
+					run: run?.runId,
+					tests: run?.tests,
+				},
+				lines: [
+					...(reply.data.checkSkipped as string[]).map((line) => ['check_skipped', line]),
+					...(reply.data.next as string[]).map((line) => ['next', line]),
+				],
+			}
+		},
+	},
 	'explore open': {
 		positionals: ['planId'],
 		flags: { build: 'value', instance: 'value', mode: explorationModes },

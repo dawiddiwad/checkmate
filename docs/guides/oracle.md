@@ -92,7 +92,7 @@ checkmate plan approve checkout@2 --rationale "Tests and assertions match the br
 
 When the target requires plan approval, a run needs an approval of the exact revision. A new revision needs a new approval. `plan approve`, `plan reject`, and `run begin` refuse a revision that is not the latest revision. The target profile sets the policy. Read [Approvals policy](../reference/payloads.md#approvals-policy).
 
-You can approve a revision that still has open gaps. Then QA can run the ready tests early with `--partial ready_only`.
+You can approve a revision that still has open gaps. Then QA runs the ready tests early: the gate leaves out the tests that an open blocking gap affects. Without an approvals policy, a run needs no approval, and a result needs no acceptance.
 
 ## Accept a result
 

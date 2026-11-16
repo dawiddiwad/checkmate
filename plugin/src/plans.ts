@@ -884,7 +884,7 @@ export function gate(store: Store, input: GateInput) {
 	latestCheck(store, plan.planId, plan.revision)
 	const target = targetRevision(store, plan.target.targetId, plan.target.revision)
 	const build = requireText(input.build, 'application build (--build)')
-	const partial = requireChoice(input.partial ?? 'wait_for_resolution', partialModes, 'partial execution (--partial)')
+	const partial = requireChoice(input.partial ?? 'ready_only', partialModes, 'partial execution (--partial)')
 	const tests = index(plan.tests, 'id', 'test')
 	const ready =
 		(input.tests === undefined && partial === 'ready_only') || input.retestOf
@@ -995,7 +995,7 @@ type LeftOut = { testId: string; reason: string }
 function givenSelection(selected: string[] | undefined, tests: Map<string, Test>, subject: string) {
 	requireWellFormed(
 		Array.isArray(selected) && selected.length > 0,
-		'Select one or more tests with --tests, or add --partial ready_only'
+		'Select one or more tests with --tests, or use --partial ready_only'
 	)
 	requireWellFormed(new Set(selected).size === selected.length, 'Duplicate test in --tests')
 	references(selected, tests, `test in ${subject}`)

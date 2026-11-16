@@ -38,7 +38,7 @@ EOF
 
 Every write records an actor. Add `--actor claude:<stage>` to each write of a stage: `target save`, `target instance add` in setup, `plan save`, `plan revise`, and the `run` commands. For example: `checkmate run close <runId> T1 --actor claude:execute`.
 
-Do not run oracle decisions in a stage: `gap answer`, `plan adopt-gaps`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`.
+Do not run oracle decisions in a stage: `gap answer`, `plan adopt-gaps`, `plan approve`, `plan reject`, `plan edit`, `result accept`, `result reject`, `claim accept`, and `claim reject`.
 
 ## Return
 

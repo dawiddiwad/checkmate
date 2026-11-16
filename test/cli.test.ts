@@ -106,7 +106,17 @@ test('compact output starts with the status and subject; --json prints the same 
 		'reason: Refused: prohibited in the current state.',
 		'reason: Plan checkout has revision 1. Use plan edit, or gap answer and plan revise, to change it.',
 	])
-	const needs = json(workspace, ['run', 'gate', 'checkout@1', '--tests', 'T1', '--build', 'b'])
+	const needs = json(workspace, [
+		'run',
+		'gate',
+		'checkout@1',
+		'--tests',
+		'T1',
+		'--build',
+		'b',
+		'--partial',
+		'wait_for_resolution',
+	])
 	assert.equal(needs.code, 0)
 	assert.deepEqual(needs.body.reasons, [
 		'Plan checkout@1 is not approved',
@@ -702,8 +712,9 @@ test('run gate and run begin with ready_only and no --tests print the selection 
 	const begun = cli(workspace, ['run', 'begin', 'run-1', 'checkout@1', ...early])
 	assert.match(begun.lines[0], /^completed run-1 instance=local tests=T1 startedAt=/)
 	assert.deepEqual(begun.lines.slice(1), checked.lines.slice(1))
-	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1'])
-	assert.equal(missing.lines[2], 'reason: Select one or more tests with --tests, or add --partial ready_only')
+	assert.deepEqual(cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1']).lines, checked.lines)
+	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1', '--partial', 'wait_for_resolution'])
+	assert.equal(missing.lines[2], 'reason: Select one or more tests with --tests, or use --partial ready_only')
 })
 
 test('a run gap shows in the inbox, and plan adopt-gaps or gap answer brings it into the plan', (t) => {

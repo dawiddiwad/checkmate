@@ -27,13 +27,15 @@ You are the oracle. Install the plugin from the marketplace. You do not need npm
 /plugin install checkmate@checkmate
 ```
 
-Then set up a target, plan a ticket, and open the review UI:
+Then set up a target, test a change, and open the review UI:
 
 ```text
 /checkmate:setup shop at http://127.0.0.1:4173, browser, operations read_catalog and create_order
-/checkmate:plan checkout for shop@1: verify checkout totals from docs/checkout.md
+/checkmate:test checkout on shop, build b1: verify checkout totals from docs/checkout.md
 /checkmate:ui
 ```
+
+Checkmate starts independent testers in new sessions. They do not know Checkmate. A recorder writes the record after each tester ends. Then a merger and a verifier turn the reports into claims. To plan stored tests first, use `/checkmate:plan`.
 
 Read [Test in Claude Code](docs/guides/claude-code.md).
 

@@ -40,7 +40,7 @@ try {
 	await mkdir(workspace)
 	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
-	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui'])
+	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui', 'test'])
 		await readFile(join(source, `skills/${name}/SKILL.md`))
 	const stageWrites: Record<string, RegExp> = {
 		setup: /checkmate target (save|instance add) /,

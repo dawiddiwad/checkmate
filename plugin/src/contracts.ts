@@ -216,7 +216,7 @@ export function profileCheck(value: unknown): Profile {
 }
 
 export function approvalPolicy(profile: Profile) {
-	return profile.approvals ?? { plan: 'required', result: 'required' }
+	return profile.approvals ?? { plan: 'none', result: 'none' }
 }
 
 export function gapsAffecting(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds'>) {

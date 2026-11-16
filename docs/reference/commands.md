@@ -58,6 +58,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `run resume <runId>`                                         | Records a new attempt for a stalled run.                                                                                          |
 |           | `run show <runId>`, `run list`                               | Prints a run, or lists runs.                                                                                                      |
 |           | `finding list [--plan <planId>] [--open]`                    | Lists the findings of all runs, one line for each finding.                                                                        |
+| Test      | `test <planId> --build <build> --allow <rule>`               | Tests a change: explores the build, and in regression mode also begins a run of the stored tests. Read [test](#test).             |
 | Explore   | `explore start <planId> --build <build> --allow <rule>`      | Records an exploration and starts its explorers in the background. Read [Explore](#explore).                                      |
 |           | `explore status <explorationId>`                             | Prints the state, the level, the model, and each explorer.                                                                        |
 |           | `explore wait <explorationId> [--timeout <s>]`               | Waits until the exploration ends, and prints the status.                                                                          |
@@ -157,6 +158,21 @@ A `next` line is a hint for a person or an agent. Do not parse it. Replace each 
 **Latest outcomes.** Checkmate orders runs by the time that they began, not by the time that they finished. An outcome counts for the latest revision only when the run's revision has the same definition of the test: the same `action`, `preconditions`, `assertions`, `dependsOn`, `capability`, `operations`, and `requirementIds`, and the same text of each of these requirements. Thus a changed requirement text, or a new requirement of a test, needs a retest. Else the test has not run on the latest revision. A new revision that changes only other fields, for example a title, keeps every outcome. It needs no rerun. A later run replaces the outcome of an earlier run for a test only when it is on the same instance, on a different build, or a retest in the chain of the earlier run. Thus a build can have one latest outcome for each instance. Each one must be `passed`. On the same build, a pass on one instance does not hide a failure on another instance.
 
 **Nothing to run.** When `needs_retest` or `ready_to_run` would apply, `status` uses the selection of `run gate --partial ready_only`. Checkmate tries the build of each run that needs a rerun, then each build on which a cross-plan dependency passed, newest first. When the gate cannot select a test that needs a run on any of these builds, the state is `nothing_to_run`. The `why` lines give the reason for each test that the gate leaves out, for example a deferred prerequisite. For a cross-plan dependency that has not passed, `status` waits on `qa`, and the `next` line is `checkmate status <otherPlanId>`. Else it waits on `oracle`, and the `next` line is `plan edit --patch`.
+
+## test
+
+```sh
+checkmate test <planId> --build <build> --allow <rule> [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source>]
+```
+
+`test` does the common sequence in one command:
+
+1. When the plan has no request, it records one from `--objective`, `--target` (the latest revision), and `--source`. Without them, it refuses with the full command in the hint.
+2. It chooses the mode. `--mode auto` is the default. The rule: when the plan has no exploration and no finished run, the mode is `exploratory`. Else it is `regression`.
+3. It starts an exploration, as `explore start` does, with the mode. `--since <git ref>` gives the changed files: `git diff --name-only <ref>` in the workspace. `--scope` gives them as a list. The explorer brief lists the changed files.
+4. In `regression` mode, when the plan has a revision, it begins a run of the ready tests of the latest revision with the next free run ID, for example `run-2`. When the gate refuses, no run starts, and `check_skipped` lines give the reasons.
+
+Output: line 1 has `mode=`, `level=`, `explorers=`, `model=`, `verifier=`, and `run=` when a run began. The `next` lines name the execute stage for the run and `checkmate explore wait <explorationId>`. The JSON has `chosenBy`: `auto` or `flag`.
 
 ## Explore
 
@@ -382,15 +398,15 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 
 `run begin` takes these flags. `run gate` takes the same flags except `--instance`, `--on-new-blocker`, and `--timeout`.
 
-| Flag               | Values                                      | Default                                       |
-| ------------------ | ------------------------------------------- | --------------------------------------------- |
-| `--tests`          | A list of test IDs.                         | Required, except with `--partial ready_only`. |
-| `--build`          | The application build identity.             | Required.                                     |
-| `--instance`       | An active instance of the target.           | The only active instance of the target.       |
-| `--partial`        | `wait_for_resolution`, `ready_only`         | `wait_for_resolution`                         |
-| `--on-new-blocker` | `continue_independent`, `return_to_oracle`  | `continue_independent`                        |
-| `--timeout`        | 1 to 3600 seconds. The run deadline.        | 600                                           |
-| `--retest-of`      | A finished run of the same plan and target. | None.                                         |
+| Flag               | Values                                      | Default                                                                                       |
+| ------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `--tests`          | A list of test IDs.                         | Without it, `ready_only` selects the ready tests. With `wait_for_resolution`, it is required. |
+| `--build`          | The application build identity.             | Required.                                                                                     |
+| `--instance`       | An active instance of the target.           | The only active instance of the target.                                                       |
+| `--partial`        | `wait_for_resolution`, `ready_only`         | `ready_only`                                                                                  |
+| `--on-new-blocker` | `continue_independent`, `return_to_oracle`  | `continue_independent`                                                                        |
+| `--timeout`        | 1 to 3600 seconds. The run deadline.        | 600                                                                                           |
+| `--retest-of`      | A finished run of the same plan and target. | None.                                                                                         |
 
 - `ready_only` permits a selection of ready tests. Without `--tests`, Checkmate selects the ready tests and prints `<testId> left_out <reason>` for each other test. It leaves out a test that an open blocking gap of a run affects. When no test is ready, the gate refuses the run.
 - `--on-new-blocker` tells QA what to do after it records a new blocking gap. `continue_independent` is the default. QA closes the tests that the gap affects as `blocked` and continues the other tests. `return_to_oracle` stops all further actions and closes the remaining tests as `blocked`. Use it when one gap can make all other results wrong, for example a wrong build. Checkmate records the policy. The agent applies it.

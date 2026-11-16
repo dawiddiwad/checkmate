@@ -94,4 +94,5 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 - Checkmate records the tools and checks the profile. It does not enforce permissions. The host controls them.
 - Use `revision` 1 for a new profile. Use the latest revision plus 1 for a changed profile.
 - Add `reset` only when the oracle or the project instructions give a way to restore a fresh state, for example a seed script: `"reset": { "owner": "checkmate", "command": ["npm run db:reset"] }`. Use owner `checkmate` when QA can run the command, and `factory` when only the factory can reset. Use `"command": null` when no command is known. Checkmate does not run it.
-- Do not add `approvals` unless the oracle asked for a policy. The default requires plan approval and result acceptance.
+- Do not add `approvals` unless the oracle asked for a policy. The default needs no plan approval and no result acceptance.
+- Add `explore` only when the oracle gives a default test level or a number of explorers, for example `"explore": { "level": "smoke" }`.

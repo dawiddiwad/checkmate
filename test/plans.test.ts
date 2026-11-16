@@ -491,7 +491,12 @@ test('the gate collects every reason in order', (t) => {
 	const opened = store(t)
 	target(opened, { readyForLiveExecution: false, approvals: { plan: 'none', result: 'none' } })
 	plan(opened)
-	const checked = gate(opened, { reference: 'checkout@1', tests: ['T2', 'T3'], build: 'b' })
+	const checked = gate(opened, {
+		reference: 'checkout@1',
+		tests: ['T2', 'T3'],
+		build: 'b',
+		partial: 'wait_for_resolution',
+	})
 	assert.deepEqual(checked.reply.reasons, [
 		'Target prerequisites are not ready: checkout-local@1',
 		'Open blocking gap: G1',
@@ -562,8 +567,8 @@ test('ready_only without tests selects the ready tests and lists the tests it le
 	assert.equal(begun.status, 'completed')
 	assert.deepEqual(runState(opened, 'run-1').request.selectedTestIds, ['T1'])
 	assert.throws(
-		() => gate(opened, { reference: 'checkout@1', build: 'b' }),
-		/Select one or more tests with --tests, or add --partial ready_only/
+		() => gate(opened, { reference: 'checkout@1', build: 'b', partial: 'wait_for_resolution' }),
+		/Select one or more tests with --tests, or use --partial ready_only/
 	)
 	const chain = candidate()
 	chain.gaps[0].requirementIds = []
@@ -765,7 +770,7 @@ test('editing a rejected revision returns it to pending approval', (t) => {
 		inbox(opened).plans.map((row) => [`${row.planId}@${row.revision}`, row.approval, row.summary.split('. ')[0]]),
 		[['checkout@1', 'rejected', 'Rejected']]
 	)
-	assert.match(cli(opened.workspace, ['inbox']).output, /checkout@1\tplan\tfff1d35f\tRejected. Change the plan. /)
+	assert.match(cli(opened.workspace, ['inbox']).output, /checkout@1\tplan\t[a-f0-9]{8}\tRejected. Change the plan. /)
 	const content = planCandidate(planRevision(opened, 'checkout').plan)
 	content.tests[0].title = 'Standard order total for one item'
 	editPlan(opened, actor, { reference: 'checkout@1', candidate: content })
@@ -931,4 +936,14 @@ test('plan edit --patch changes items by ID and keeps the edit rules', (t) => {
 			),
 		/Assertion ID T1.A3 was used in an earlier revision/
 	)
+})
+
+test('without a policy a run needs no approval, and the gate selects the ready tests by default', (t) => {
+	const opened = store(t)
+	target(opened, { approvals: undefined })
+	plan(opened)
+	const checked = gate(opened, { reference: 'checkout@1', build: 'b' })
+	assert.equal(checked.reply.status, 'completed')
+	assert.deepEqual(checked.reply.data.tests, ['T1'])
+	assert.equal(planStatus(opened, 'checkout').approval, 'not_required')
 })

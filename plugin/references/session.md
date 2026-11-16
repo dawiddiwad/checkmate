@@ -14,6 +14,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 | Which plans exist, and what blocks them? | `checkmate plan list`                                       |
 | What is in a plan revision?              | `checkmate plan show <planId@rev>`                          |
 | Which runs exist?                        | `checkmate run list [--plan <planId>]`                      |
+| What did an exploration find?            | `checkmate explore show <explorationId>`                    |
 | What did a run record?                   | `checkmate run show <runId>`                                |
 | Why did the oracle reject a plan or run? | `checkmate status <planId>`, `checkmate run show <runId>`   |
 | What changed, and who changed it?        | `checkmate log [--subject plan:<planId>\|run:<runId>]`      |
@@ -28,7 +29,7 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 | Delegated session                 | `checkmate delegate <stage> <subject>` starts `claude -p` with the bundled plugin. | The plugin CLI, `CHECKMATE_ACTOR=claude:<stage>` | No. Return the response object.          |
 | External agent or script          | The agent runs the npm `checkmate` command.                                        | The npm CLI                                      | It is the oracle, or it asks the oracle. |
 
-- Oracle decisions are `gap answer`, `plan adopt-gaps`, `plan approve`, `plan reject`, `plan edit`, `result accept`, and `result reject`. Run them only when the oracle tells you the decision in this session. Keep the default actor, or give the oracle's name with `--actor`.
+- Oracle decisions are `gap answer`, `plan adopt-gaps`, `plan approve`, `plan reject`, `plan edit`, `result accept`, `result reject`, `claim accept`, and `claim reject`. Run them only when the oracle tells you the decision in this session. Keep the default actor, or give the oracle's name with `--actor`.
 - Commands use `--actor`, then `CHECKMATE_ACTOR`, then the git user name, then the login name.
 
 ## Record a request
@@ -62,9 +63,9 @@ When `target request`, `plan request`, or `run show` refuses with `Unknown ...`,
 
 ## Begin a run
 
-1. Run `checkmate run gate <planId@rev> --partial ready_only --build <build>`. Give `--tests <T1,T2>` in place of `--partial ready_only` when the oracle names tests. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
+1. Run `checkmate run gate <planId@rev> --build <build>`. Without `--tests`, it selects the ready tests. Give `--tests <T1,T2>` when the oracle names tests. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
 2. Use the oracle's run ID. When the oracle gives none, run `checkmate run list` and use the next free `run-<n>`.
-3. Run `checkmate run begin <runId> <planId@rev> --partial ready_only --build <build> --instance <instanceId> --actor claude:execute` once, with the same selection. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. A retest must select each ready test with an open defect of the earlier run and each ready regression test. `--partial ready_only` without `--tests` selects them.
+3. Run `checkmate run begin <runId> <planId@rev> --build <build> --instance <instanceId> --actor claude:execute` once, with the same selection. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. A retest must select each ready test with an open defect of the earlier run and each ready regression test. A gate without `--tests` selects them.
 4. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
 
 - After a rejected result: run `checkmate status <planId>` first. A `why` line `<runId> was rejected by <actor>: <rationale>` gives the reason of the oracle. Do the retest so that it addresses the rationale. When the rationale needs a plan change, stop and tell the oracle.
@@ -89,7 +90,7 @@ Done: Saved checkout@1 with 4 tests. T1 and T2 are ready. T3 and T4 are blocked 
 
 Next: The oracle answers G1 and G2. Use `/checkmate:ui`, or run
 `checkmate gap answer checkout G1 --kind clarify --source <source> --value "<answer>" --rationale "<why>"`.
-Then run `/checkmate:revise checkout`.
+When the oracle answers in this session, I record the answers and revise the plan in the same turn.
 ```
 
 Useful columns:
@@ -103,7 +104,8 @@ Stage reports:
 
 - Setup: a table of the tools. The next step is usually a plan: `/checkmate:plan <planId> for <targetId>@<revision>` with the objective and the sources. When `readyForLiveExecution` is `false`, name the missing tool or check.
 - Plan: the tests (Test, Readiness, Title) and the open gaps (Gap, Severity, Tests, Question). Name the gaps that the oracle must answer, or the plan approval.
-- Revise: the changed tests and the gaps that are still open. Name the plan approval.
+- Revise: the changed tests and the gaps that are still open. Name the plan approval only when the target requires it.
+- After the oracle answers a gap in this session, record the answer, then follow the revise skill at once. Do not ask the oracle to start it.
 - Execute: the tests (Test, Outcome, Reason), the findings, and the retest verdicts. Name the result decision: `checkmate result accept|reject <runId> --rationale "<why>"`, or the review UI. For a new gap of the run, name `checkmate gap answer <planId> <gapId> ...`. It adopts the gap into the plan and records the answer.
 
 ## Changes to records

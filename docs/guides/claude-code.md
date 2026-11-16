@@ -21,6 +21,16 @@ Open Claude Code in the application workspace. Checkmate keeps its record in `.c
 
 The plugin has no global `checkmate` command. Claude runs the plugin CLI for you. To type the commands yourself, also install the npm CLI: `npm i -g @xoxoai/checkmate`.
 
+## Test a change
+
+After the setup, one request tests a change:
+
+```text
+/checkmate:test checkout on shop, build b1. Objective: verify checkout totals. Source: docs/checkout.md
+```
+
+Claude runs `checkmate test`. The first test of a plan explores: Checkmate starts independent testers in new sessions without the Checkmate plugin, records each session after it ends, merges the reports, and verifies the claims with one reporter. A later test also runs the stored tests of the plan again. Claude reports the claims and the open questions. You answer the questions and decide the `suspected` and `unresolved` claims in the review UI or in the chat. A plan is not necessary before the first test. Plan stored tests with the steps below.
+
 ## Steps
 
 ### 1. Set up the target
@@ -56,11 +66,7 @@ You can also give the answer in the chat, for example: "Answer G1: the promotion
 
 ### 4. Revise and approve
 
-```text
-/checkmate:revise checkout
-```
-
-Claude writes revision 2 from your answers. Read it in the UI. To change it, click `Edit plan`. Then approve it.
+Claude writes revision 2 from your answers in the same turn. You can also ask for it: `/checkmate:revise checkout`. Read it in the UI. To change it, click `Edit plan`. Approve it when the target requires plan approval.
 
 ### 5. Execute
 

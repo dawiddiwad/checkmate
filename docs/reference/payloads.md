@@ -57,7 +57,7 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 
 ### Approvals policy
 
-`approvals` is optional. The default requires both.
+`approvals` is optional. The default is `none` for both. Set `required` when the oracle wants a gate.
 
 | Field    | `required`                                                                               | `none`                                                     |
 | -------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- |

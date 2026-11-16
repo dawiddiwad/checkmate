@@ -439,7 +439,12 @@ test('an open blocking run gap stops the gate for its tests; ready_only leaves t
 	start(opened, 'run-1', 'checkout@2', 'b1', ['T1', 'T2'])
 	recordGap(opened, actor, { runId: 'run-1', gap: gap('G9', 'blocking', ['T1']) })
 	record(opened, 'run-1', { T1: 'passed', T2: 'passed' })
-	const waiting = gate(opened, { reference: 'checkout@2', build: 'b2', tests: ['T1', 'T2'] }).reply
+	const waiting = gate(opened, {
+		reference: 'checkout@2',
+		build: 'b2',
+		tests: ['T1', 'T2'],
+		partial: 'wait_for_resolution',
+	}).reply
 	assert.deepEqual(
 		[waiting.status, waiting.reasons],
 		['needs_decision', ['Open blocking gap G9 of run-1 affects T1']]

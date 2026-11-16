@@ -72,7 +72,11 @@ test('explore follow resumes each session with the answers, records only new ent
 	reply({ follower: '!fail' })
 	assert.equal(command(['explore', 'follow', 'x-1']).code, 0)
 	const failed = wait('x-1')
-	assert.equal(failed.body.outcome, 'failed')
+	assert.deepEqual(
+		[failed.body.outcome, failed.body.state, failed.body.follow, failed.body.followReason, failed.body.workFolder],
+		['done', 'completed', 'failed', 'No explorer session of the follow-up was recorded.', '.checkmate/work/x-1']
+	)
+	assert.equal(command(['claim', 'list', 'checkout']).body.claims.length, 1)
 	const lost = failed.body.phases.find((item: { step: string }) => item.step === 'followed')
 	assert.match(lost.detail.skipped[0], /^The session of a1 could not resume: claude exited with code 2/)
 	assert.deepEqual(

@@ -268,10 +268,10 @@ When the host refuses the model, the launch of that explorer fails. `explore wai
 | `recording` | The recorders run.                                               |
 | `following` | A follow-up runs.                                                |
 | `completed` | One or more sessions were recorded.                              |
-| `failed`    | No session was recorded, a step failed, or the follow-up failed. |
+| `failed`    | No session was recorded, or a step failed.                       |
 | `stopped`   | The supervisor process stopped before the end.                   |
 
-After a follow-up, the state is the result of the follow-up. `explore status` and `explore show` print one phase line for each `follow` (with `answers=<n>`) and `followed` event, with the reason and the skipped sessions.
+A follow-up does not change the state of a completed exploration. `follow` gives its result: `running`, `completed`, `failed`, or `stopped`, and `followReason` gives the reason of a failed or stopped follow-up. While a follow-up fails or stops, `workFolder` names the folder that stays. `explore status` and `explore show` print one phase line for each `follow` (with `answers=<n>`) and `followed` event, with the reason and the skipped sessions.
 
 `explore wait <explorationId> [--timeout <seconds>]` waits until the state is `completed`, `failed`, `stopped`, or `open`, or until the timeout. The default timeout is 3600 seconds. The JSON has `outcome`:
 
@@ -320,7 +320,7 @@ It needs a completed exploration, and one or more questions of the exploration w
 2. The brief of the turn does not name Checkmate. It gives the answered questions with their answers, numbered, the same list to each explorer: `The owner of the product answered these questions:`. It asks the explorer to test the points that the answers decide, on the same build, and to add to `report.md` each new defect and one line for each earlier unclear point that an answer settles. It gives the seconds of the follow-up turn of the level: smoke 300, standard 600, deep 900.
 3. The recorder runs again on each session that ended or timed out. Its prompt lists the entries of the explorer that the record holds, and asks only for the entries that are not in that list. Checkmate also drops each reply entry with the same kind and title (or text) as an entry of the list. The record event gives the count as `repeated`.
 4. The merge and the verify run for the new defects only. The merger gets the earlier claims of the build too, so a new defect that describes an earlier claim joins it.
-5. When one or more sessions are recorded, the follow-up is `completed`, and its answers are used. When the follow-up fails, its answers stay unused, and you can run it again.
+5. When one or more sessions are recorded, the follow-up is `completed`, and its answers are used. When the follow-up fails or stops, the exploration stays `completed` with its claims, its answers stay unused, and you can run it again.
 
 After an answer to a question of a completed exploration, the first `next` line of `status` is `<n> unused answers of <explorationId>: checkmate explore follow <explorationId>`.
 

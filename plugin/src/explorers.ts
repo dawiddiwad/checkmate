@@ -744,16 +744,18 @@ function running(pid: unknown) {
 	}
 }
 
-export function explorationState(events: ExplorationEvent[]) {
+function followState(events: ExplorationEvent[]) {
 	const follow = events.findLastIndex((item) => item.step === 'follow')
-	if (follow !== -1) {
-		const later = events.slice(follow + 1)
-		const ended = later.find((item) => item.step === 'followed')
-		if (ended) return ended.status === 'completed' ? 'completed' : 'failed'
-		const supervisor = later.find((item) => item.step === 'supervisor')
-		if (supervisor && !running(supervisor.detail.pid)) return 'stopped'
-		return 'following'
-	}
+	if (follow === -1) return null
+	const later = events.slice(follow + 1)
+	const ended = later.find((item) => item.step === 'followed')
+	if (ended) return ended.status === 'completed' ? 'completed' : 'failed'
+	const supervisor = later.find((item) => item.step === 'supervisor')
+	return supervisor && !running(supervisor.detail.pid) ? 'stopped' : 'running'
+}
+
+export function explorationState(events: ExplorationEvent[]) {
+	if (followState(events) === 'running') return 'following'
 	const done = events.find((item) => item.step === 'done')
 	if (done) return done.status === 'completed' ? 'completed' : 'failed'
 	const supervisor = events.find((item) => item.step === 'supervisor')
@@ -789,7 +791,9 @@ export function explorationStatus(store: Store, explorationId: string) {
 			stderr: (end?.detail.stderr ?? []) as string[],
 		}
 	})
-	const done = events.filter((item) => item.step === 'done' || item.step === 'followed').at(-1)
+	const done = events.find((item) => item.step === 'done')
+	const followed = events.filter((item) => item.step === 'followed').at(-1)
+	const follow = followState(events)
 	return {
 		explorationId: row.exploration_id,
 		planId: row.plan_id,
@@ -807,13 +811,21 @@ export function explorationStatus(store: Store, explorationId: string) {
 		studySeconds: launch?.studySeconds ?? null,
 		testSeconds: launch?.testSeconds ?? null,
 		pluginHidden: launch?.pluginHidden ?? null,
+		follow,
+		followReason:
+			follow === 'stopped'
+				? 'The supervisor of the follow-up stopped before the end.'
+				: follow === 'failed'
+					? ((followed?.detail.reason ?? null) as string | null)
+					: null,
 		explorers,
 		phases: events
 			.filter((item) => ['merge', 'verify', 'follow', 'followed'].includes(item.step))
 			.map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
 		doneHint: (done?.detail.hint ?? null) as string | null,
 		workFolder:
-			['failed', 'stopped'].includes(state) && existsSync(join(store.workspace, workFolder(row.exploration_id)))
+			(['failed', 'stopped'].includes(state) || follow === 'failed' || follow === 'stopped') &&
+			existsSync(join(store.workspace, workFolder(row.exploration_id)))
 				? workFolder(row.exploration_id)
 				: null,
 		reason: (done?.detail.reason ?? (state === 'stopped' ? 'The supervisor stopped before the end.' : null)) as

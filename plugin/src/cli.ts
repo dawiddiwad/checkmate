@@ -254,6 +254,8 @@ function explorationLines(reply: Reply): Printed {
 			studySeconds: status.studySeconds ?? undefined,
 			testSeconds: status.testSeconds ?? undefined,
 			workFolder: status.workFolder ?? undefined,
+			follow: status.follow ?? undefined,
+			followReason: status.followReason ?? undefined,
 		},
 		lines: [
 			...status.explorers.map((item) => [

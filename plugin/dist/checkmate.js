@@ -13935,16 +13935,17 @@ function running2(pid) {
     return error.code === "EPERM";
   }
 }
-function explorationState(events) {
+function followState(events) {
   const follow = events.findLastIndex((item) => item.step === "follow");
-  if (follow !== -1) {
-    const later = events.slice(follow + 1);
-    const ended = later.find((item) => item.step === "followed");
-    if (ended) return ended.status === "completed" ? "completed" : "failed";
-    const supervisor2 = later.find((item) => item.step === "supervisor");
-    if (supervisor2 && !running2(supervisor2.detail.pid)) return "stopped";
-    return "following";
-  }
+  if (follow === -1) return null;
+  const later = events.slice(follow + 1);
+  const ended = later.find((item) => item.step === "followed");
+  if (ended) return ended.status === "completed" ? "completed" : "failed";
+  const supervisor = later.find((item) => item.step === "supervisor");
+  return supervisor && !running2(supervisor.detail.pid) ? "stopped" : "running";
+}
+function explorationState(events) {
+  if (followState(events) === "running") return "following";
   const done = events.find((item) => item.step === "done");
   if (done) return done.status === "completed" ? "completed" : "failed";
   const supervisor = events.find((item) => item.step === "supervisor");
@@ -13979,7 +13980,9 @@ function explorationStatus(store, explorationId) {
       stderr: end?.detail.stderr ?? []
     };
   });
-  const done = events.filter((item) => item.step === "done" || item.step === "followed").at(-1);
+  const done = events.find((item) => item.step === "done");
+  const followed = events.filter((item) => item.step === "followed").at(-1);
+  const follow = followState(events);
   return {
     explorationId: row.exploration_id,
     planId: row.plan_id,
@@ -13997,10 +14000,12 @@ function explorationStatus(store, explorationId) {
     studySeconds: launch?.studySeconds ?? null,
     testSeconds: launch?.testSeconds ?? null,
     pluginHidden: launch?.pluginHidden ?? null,
+    follow,
+    followReason: follow === "stopped" ? "The supervisor of the follow-up stopped before the end." : follow === "failed" ? followed?.detail.reason ?? null : null,
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: ["failed", "stopped"].includes(state) && existsSync3(join7(store.workspace, workFolder(row.exploration_id))) ? workFolder(row.exploration_id) : null,
+    workFolder: (["failed", "stopped"].includes(state) || follow === "failed" || follow === "stopped") && existsSync3(join7(store.workspace, workFolder(row.exploration_id))) ? workFolder(row.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -19658,7 +19663,9 @@ function explorationLines(reply) {
       until: status.until ?? void 0,
       studySeconds: status.studySeconds ?? void 0,
       testSeconds: status.testSeconds ?? void 0,
-      workFolder: status.workFolder ?? void 0
+      workFolder: status.workFolder ?? void 0,
+      follow: status.follow ?? void 0,
+      followReason: status.followReason ?? void 0
     },
     lines: [
       ...status.explorers.map((item) => [

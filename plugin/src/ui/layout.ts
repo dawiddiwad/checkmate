@@ -10,7 +10,7 @@ export type Context = {
 	actor: string | null
 	theme: Theme
 	toast: string | null
-	inboxCount: number
+	queueCount: number
 	cursor: number
 	workspace: string
 }
@@ -85,7 +85,7 @@ function themeForm(context: Context) {
 }
 
 function header(context: Context, page: Page) {
-	const count = html`<b class="count" data-region="nav-count">${context.inboxCount || ''}</b>`
+	const count = html`<b class="count" data-region="nav-count">${context.queueCount || ''}</b>`
 	const actor = context.actor
 		? html`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}" title="Change your name"
 				>actor: ${context.actor}</a
@@ -96,7 +96,7 @@ function header(context: Context, page: Page) {
 			<a class="brand" href="/">${mark()}<span>checkmate</span></a>
 			<nav aria-label="Main">
 				<ul class="nav">
-					${navLink(context, page, 'inbox', '/', 'Inbox', count)}
+					${navLink(context, page, 'inbox', '/', 'Needs you', count)}
 					${navLink(context, page, 'plans', '/plans', 'Plans')}
 					${navLink(context, page, 'runs', '/runs', 'Runs')} ${navLink(context, page, 'log', '/log', 'Log')}
 				</ul>
@@ -131,9 +131,15 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 		<dt><kbd>j</kbd> <kbd>k</kbd></dt>
 		<dd>Next or previous item</dd>
 		<dt><kbd>Enter</kbd></dt>
-		<dd>Open the item</dd>
+		<dd>Open the item, or go to its form</dd>
+		<dt><kbd>a</kbd> <kbd>r</kbd></dt>
+		<dd>Accept or reject the selected claim</dd>
+		<dt><kbd>c</kbd> <kbd>s</kbd> <kbd>d</kbd></dt>
+		<dd>Clarify, accept an assumption, or defer the selected question</dd>
+		<dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt>
+		<dd>Send the form</dd>
 		<dt><kbd>g</kbd> <kbd>i</kbd></dt>
-		<dd>Go to the inbox</dd>
+		<dd>Go to Needs you</dd>
 		<dt><kbd>Esc</kbd></dt>
 		<dd>Close the viewer or this panel</dd>
 		<dt><kbd>?</kbd></dt>

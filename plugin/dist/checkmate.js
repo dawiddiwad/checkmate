@@ -325,10 +325,10 @@ function openReadOnlyStore(workspace) {
   return checkedStore(db, workspace, path);
 }
 function checkedStore(db, workspace, path) {
-  const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
-  if (row?.value !== schemaVersion) {
+  const row2 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
+  if (row2?.value !== schemaVersion) {
     db.close();
-    throw new Error(`Database ${path} has schema version ${row?.value ?? "none"}. Expected ${schemaVersion}.`);
+    throw new Error(`Database ${path} has schema version ${row2?.value ?? "none"}. Expected ${schemaVersion}.`);
   }
   return { db, workspace, path };
 }
@@ -8728,9 +8728,9 @@ function toolCheck(tool) {
   };
 }
 function targetRequest(store, targetId) {
-  const row = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
-  requireCondition(row, `Unknown target: ${targetId}. Run target open first.`);
-  return JSON.parse(row.body);
+  const row2 = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
+  requireCondition(row2, `Unknown target: ${targetId}. Run target open first.`);
+  return JSON.parse(row2.body);
 }
 function showTargetRequest(store, targetId) {
   return completed(targetId, { request: targetRequest(store, targetId) });
@@ -8818,14 +8818,14 @@ function save(store, actor, input) {
   });
 }
 function targetRevision(store, targetId, revision = null) {
-  const row = one(
+  const row2 = one(
     store,
     revision === null ? "SELECT revision, sha256, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1" : "SELECT revision, sha256, body FROM profiles WHERE target_id = ? AND revision = ?",
     targetId,
     ...revision === null ? [] : [revision]
   );
-  requireCondition(row, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
-  return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 };
+  requireCondition(row2, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
+  return { profile: JSON.parse(row2.body), revision: row2.revision, sha256: row2.sha256 };
 }
 function showTarget(store, reference, instanceId) {
   const { id: id2, revision } = revisionReference(reference, "target reference");
@@ -8848,14 +8848,14 @@ function targetList(store) {
 				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
 				AS instances
 		FROM target_requests r ORDER BY r.target_id`
-  ).map((row) => {
-    const request = JSON.parse(row.body);
+  ).map((row2) => {
+    const request = JSON.parse(row2.body);
     return {
-      targetId: row.target_id,
-      revision: row.revision,
+      targetId: row2.target_id,
+      revision: row2.revision,
       capabilities: request.capabilities,
       entryPoints: request.entryPoints.map((entry) => entry.name),
-      activeInstances: row.instances
+      activeInstances: row2.instances
     };
   });
 }
@@ -8867,15 +8867,15 @@ function targetHistory(store, targetId) {
 		WHERE p.target_id = ? ORDER BY p.revision`,
     targetId
   );
-  return rows.map((row, i) => {
-    const profile = JSON.parse(row.body);
+  return rows.map((row2, i) => {
+    const profile = JSON.parse(row2.body);
     const before = i ? JSON.parse(rows[i - 1].body) : null;
     const keys = [.../* @__PURE__ */ new Set([...Object.keys(profile), ...Object.keys(before ?? {})])].sort();
     return {
-      revision: row.revision,
-      sha256: row.sha256,
-      at: row.at,
-      actor: row.actor,
+      revision: row2.revision,
+      sha256: row2.sha256,
+      at: row2.at,
+      actor: row2.actor,
       changed: before ? keys.filter((key) => key !== "revision" && canonical(profile[key]) !== canonical(before[key])) : []
     };
   });
@@ -8984,7 +8984,7 @@ function retireInstance(store, actor, input) {
       "SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid",
       input.targetId,
       input.instanceId
-    ).map((row) => row.run_id);
+    ).map((row2) => row2.run_id);
     return {
       reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
       subjects: [`target:${input.targetId}`]
@@ -9000,18 +9000,18 @@ function retirement(store, targetId, instanceId) {
     instanceId
   );
 }
-function instanceRecord(store, targetId, row) {
-  const body = JSON.parse(row.body);
+function instanceRecord(store, targetId, row2) {
+  const body = JSON.parse(row2.body);
   const order = targetRequest(store, targetId).entryPoints.map((entry) => entry.name);
-  const retired = retirement(store, targetId, row.instance_id);
+  const retired = retirement(store, targetId, row2.instance_id);
   return {
     targetId,
-    instanceId: row.instance_id,
+    instanceId: row2.instance_id,
     entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
     environment: body.environment ?? null,
     references: body.references ?? [],
-    addedAt: row.at,
-    addedBy: row.actor,
+    addedAt: row2.at,
+    addedBy: row2.actor,
     retired: retired ? { at: retired.at, actor: retired.actor } : null
   };
 }
@@ -9022,19 +9022,19 @@ function instanceList(store, targetId) {
     `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
 		WHERE i.target_id = ? ORDER BY i.rowid`,
     targetId
-  ).map((row) => instanceRecord(store, targetId, row));
+  ).map((row2) => instanceRecord(store, targetId, row2));
 }
 function findInstance(store, targetId, instanceId) {
   targetRequest(store, targetId);
-  const row = one(
+  const row2 = one(
     store,
     `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
 		WHERE i.target_id = ? AND i.instance_id = ?`,
     targetId,
     instanceId
   );
-  requireCondition(row, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
-  return instanceRecord(store, targetId, row);
+  requireCondition(row2, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
+  return instanceRecord(store, targetId, row2);
 }
 function runInstance(store, targetId, instanceId) {
   if (instanceId !== void 0) {
@@ -9514,8 +9514,8 @@ function testOutcome(results) {
   return "passed";
 }
 function resultCoverage(plan, tests, newGaps2) {
-  const outcomes = new Map(tests.map((test) => [test.testId, test.outcome]));
-  const conclusive = (test) => ["passed", "failed"].includes(outcomes.get(test.id) ?? "");
+  const outcomes2 = new Map(tests.map((test) => [test.testId, test.outcome]));
+  const conclusive = (test) => ["passed", "failed"].includes(outcomes2.get(test.id) ?? "");
   const requirements = plan.requirements.map((requirement) => {
     const planned = plan.tests.filter((test) => test.requirementIds.includes(requirement.id));
     const gaps = [...plan.gaps, ...newGaps2].filter(
@@ -9529,12 +9529,12 @@ function resultCoverage(plan, tests, newGaps2) {
       requirementId: requirement.id,
       status: tested ? "tested" : deferred ? "deferred" : "uncovered",
       testIds: planned.map((test) => test.id),
-      reason: tested ? null : deferred ? "An oracle decision deferred the missing checks." : planned.some((test) => outcomes.get(test.id) === "inconclusive") ? "An assertion is inconclusive." : "At least one required check or decision is missing."
+      reason: tested ? null : deferred ? "An oracle decision deferred the missing checks." : planned.some((test) => outcomes2.get(test.id) === "inconclusive") ? "An assertion is inconclusive." : "At least one required check or decision is missing."
     };
   });
   const executed = ["passed", "failed", "error", "inconclusive"];
   return {
-    status: requirements.every((row) => row.status === "tested") ? "complete" : tests.some((test) => executed.includes(test.outcome)) ? "partial" : "not_executed",
+    status: requirements.every((row2) => row2.status === "tested") ? "complete" : tests.some((test) => executed.includes(test.outcome)) ? "partial" : "not_executed",
     requirements
   };
 }
@@ -9573,8 +9573,8 @@ var isTester = (actor) => actor !== void 0 && actor.startsWith("qa:") && !nonTes
 var refOf = (actor, id2) => `${shortName(actor)}/${id2}`;
 var bareOf = (ref) => ref.slice(ref.lastIndexOf("/") + 1);
 function explorationRow(store, explorationId) {
-  const row = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
-  if (!row) {
+  const row2 = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
+  if (!row2) {
     const ids2 = all(
       store,
       "SELECT exploration_id FROM explorations ORDER BY rowid"
@@ -9585,7 +9585,7 @@ function explorationRow(store, explorationId) {
       "Run checkmate explore list to read the explorations. Start one with checkmate explore <planId> --build <build>."
     );
   }
-  return row;
+  return row2;
 }
 function withRefs(entry, name) {
   return {
@@ -9611,26 +9611,26 @@ function journal(store, planId, viewer2, keep = () => true) {
 		LEFT JOIN operations o ON o.id = e.operation_id
 		WHERE x.plan_id = ? ORDER BY e.rowid`,
     planId
-  ).map((row) => {
-    const body = JSON.parse(row.body);
+  ).map((row2) => {
+    const body = JSON.parse(row2.body);
     return {
       ...body,
-      seq: row.seq,
-      actor: row.actor,
-      at: row.at,
-      ref: refOf(row.actor, body.id),
-      explorationId: row.exploration_id
+      seq: row2.seq,
+      actor: row2.actor,
+      at: row2.at,
+      ref: refOf(row2.actor, body.id),
+      explorationId: row2.exploration_id
     };
   });
   const rows = listed.filter(keep);
   const latest = /* @__PURE__ */ new Map();
-  for (const row of rows) latest.set(row.ref, row);
-  const seen = (row) => !isTester(viewer2) || row.actor === viewer2 || !isTester(row.actor) || sharedKinds.includes(row.kind);
+  for (const row2 of rows) latest.set(row2.ref, row2);
+  const seen = (row2) => !isTester(viewer2) || row2.actor === viewer2 || !isTester(row2.actor) || sharedKinds.includes(row2.kind);
   const shown = [...latest.values()].filter(seen);
-  const full = (row, word) => latest.has(word) ? word : latest.has(refOf(row.actor, word)) ? refOf(row.actor, word) : word;
-  const team = shown.map((row) => ({ ...withRefs(row, (word) => full(row, word)), id: row.ref }));
+  const full = (row2, word) => latest.has(word) ? word : latest.has(refOf(row2.actor, word)) ? refOf(row2.actor, word) : word;
+  const team = shown.map((row2) => ({ ...withRefs(row2, (word) => full(row2, word)), id: row2.ref }));
   const uses = /* @__PURE__ */ new Map();
-  for (const row of shown) uses.set(row.id, (uses.get(row.id) ?? 0) + 1);
+  for (const row2 of shown) uses.set(row2.id, (uses.get(row2.id) ?? 0) + 1);
   const idOf = (ref) => {
     const target = latest.get(ref);
     return target && seen(target) && uses.get(target.id) === 1 ? target.id : ref;
@@ -9639,7 +9639,7 @@ function journal(store, planId, viewer2, keep = () => true) {
     ...withRefs(entry, (word) => latest.has(word) ? idOf(word) : word),
     id: idOf(entry.id)
   }));
-  const builds = [...new Set(rows.filter(seen).flatMap((row) => row.build ? [row.build] : []))];
+  const builds = [...new Set(rows.filter(seen).flatMap((row2) => row2.build ? [row2.build] : []))];
   return { planId, viewer: viewer2, rows: rows.filter(seen), entries, team, builds };
 }
 function lookup(state, actor) {
@@ -9689,8 +9689,8 @@ function filesEndingWith(folder, segments, above = []) {
 function onlyFileEndingWith(cwd, spec) {
   const segments = spec.split(/[/\\]/).filter((name) => name && name !== ".");
   if (isAbsolute(spec) || !segments.length || segments.includes("..")) return void 0;
-  const matches = filesEndingWith(cwd, segments);
-  return matches.length === 1 ? matches[0] : void 0;
+  const matches2 = filesEndingWith(cwd, segments);
+  return matches2.length === 1 ? matches2[0] : void 0;
 }
 function evidenceOf(store, spec, cwd, missing) {
   const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : void 0);
@@ -10035,11 +10035,11 @@ function claimDecisions(store, planId) {
     `${planId}:%`
   );
   const decided = /* @__PURE__ */ new Map();
-  for (const row of rows)
-    decided.set(row.subject_id.slice(planId.length + 1), {
-      verdict: row.verdict,
-      actor: row.actor,
-      rationale: row.rationale
+  for (const row2 of rows)
+    decided.set(row2.subject_id.slice(planId.length + 1), {
+      verdict: row2.verdict,
+      actor: row2.actor,
+      rationale: row2.rationale
     });
   return decided;
 }
@@ -10124,11 +10124,11 @@ function planQuestions(store, planId, keep) {
   const questions = new Map(state.team.filter((entry) => entry.kind === "question").map((entry) => [entry.id, entry]));
   const topics = state.team.filter((entry) => entry.kind === "topic");
   const grouped = new Set(topics.flatMap((topic) => topic.members ?? []));
-  const groups = [
+  const groups2 = [
     ...topics.map((topic) => ({ head: topic, members: (topic.members ?? []).filter((id2) => questions.has(id2)) })),
     ...[...questions.values()].filter((entry) => !grouped.has(entry.id)).map((entry) => ({ head: entry, members: [entry.id] }))
   ].filter((group2) => group2.members.length);
-  return groups.map(({ head, members }) => {
+  return groups2.map(({ head, members }) => {
     const names = /* @__PURE__ */ new Set([head.id, ...members]);
     const found = members.map((id2) => questions.get(id2));
     const answer = answers.filter((entry) => names.has(entry.question)).at(-1);
@@ -10189,13 +10189,13 @@ function mergeItems(state, build, claims = [], after = 0) {
   const defects = state.team.filter((entry) => entry.kind === "defect" && entry.build === build && entry.seq > after);
   const fresh = new Set(defects.map((defect) => defect.id));
   const testers = new Set(defects.map((defect) => defect.actor));
-  const groups = [];
+  const groups2 = [];
   for (const [index2, a] of defects.entries())
     for (const b of defects.slice(index2 + 1)) {
       if (a.actor === b.actor || overlap(wordsOf(a), wordsOf(b)) < similarWords) continue;
-      const joined = groups.filter((group3) => group3.includes(a.id) || group3.includes(b.id));
+      const joined = groups2.filter((group3) => group3.includes(a.id) || group3.includes(b.id));
       const group2 = [.../* @__PURE__ */ new Set([...joined.flat(), a.id, b.id])];
-      groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group2);
+      groups2.splice(0, groups2.length, ...groups2.filter((item) => !joined.includes(item)), group2);
     }
   const questions = state.team.filter(
     (entry) => entry.kind === "question" && entry.build === build && entry.seq > after
@@ -10222,7 +10222,7 @@ function mergeItems(state, build, claims = [], after = 0) {
       actual: short(defect.actual),
       steps: short([defect.steps ?? []].flat().join(" "))
     })),
-    groups
+    groups: groups2
   };
 }
 function joinClaims(entries, claims) {
@@ -10257,7 +10257,7 @@ function answerQuestion(store, actor, operationId, input) {
     `Unknown gap or question ${input.questionId} of plan ${input.planId}.`,
     "Run checkmate inbox to read the open gaps and questions with their IDs."
   );
-  const used = state.rows.filter((row) => row.actor === actor).map((row) => row.id);
+  const used = state.rows.filter((row2) => row2.actor === actor).map((row2) => row2.id);
   const entry = {
     kind: "answer",
     id: unusedId("A", used),
@@ -10348,10 +10348,10 @@ function openPlan(store, actor, input) {
   });
 }
 function planRequest(store, planId) {
-  const row = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
-  requireCondition(row, `Unknown plan: ${planId}. Run plan open first.`);
-  const request = JSON.parse(row.body);
-  return { request, target: targetRevision(store, row.target_id, row.target_revision) };
+  const row2 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
+  requireCondition(row2, `Unknown plan: ${planId}. Run plan open first.`);
+  const request = JSON.parse(row2.body);
+  return { request, target: targetRevision(store, row2.target_id, row2.target_revision) };
 }
 function planTools(request, profile) {
   const named = (request.tools ?? []).filter((tool) => typeof tool === "string");
@@ -10374,26 +10374,26 @@ function showPlanRequest(store, planId) {
   });
 }
 function planRevision(store, planId, revision = null) {
-  const row = one(
+  const row2 = one(
     store,
     revision === null ? "SELECT body, sha256 FROM latest_plans WHERE plan_id = ?" : "SELECT body, sha256 FROM plan_revisions WHERE plan_id = ? AND revision = ?",
     planId,
     ...revision === null ? [] : [revision]
   );
-  if (!row) {
+  if (!row2) {
     planRequest(store, planId);
     throw new Error(
       revision === null ? `Plan ${planId} has no revision. Run plan save first.` : `Plan ${planId} has no revision ${revision}`
     );
   }
-  return { plan: JSON.parse(row.body), sha256: row.sha256 };
+  return { plan: JSON.parse(row2.body), sha256: row2.sha256 };
 }
 function latestPlans(store) {
   const rows = all(
     store,
     "SELECT plan_id, body FROM latest_plans ORDER BY plan_id"
   );
-  return new Map(rows.map((row) => [row.plan_id, JSON.parse(row.body)]));
+  return new Map(rows.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
 }
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
@@ -10583,7 +10583,7 @@ function planRunGaps(store, planId) {
 		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id JOIN operations o ON o.id = g.operation_id
 		WHERE r.plan_id = ? ORDER BY g.rowid`,
     planId
-  ).map((row) => ({ runId: row.run_id, gap: JSON.parse(row.body), adopted: row.adopted === 1, at: row.at }));
+  ).map((row2) => ({ runId: row2.run_id, gap: JSON.parse(row2.body), adopted: row2.adopted === 1, at: row2.at }));
 }
 function editableRevision(store, text, expectSha256) {
   const reference = revisionReference(requireText(text, "plan reference"), "plan reference");
@@ -10868,15 +10868,15 @@ function showPending(store, planId) {
     tests: affectedTests(latest.plan, gapIds)
   });
 }
-function decisionSnapshot(row) {
+function decisionSnapshot(row2) {
   return {
-    id: row.id,
-    gapId: row.gap_id,
-    kind: row.kind,
-    actor: row.actor,
-    rationale: row.rationale,
-    value: row.value,
-    source: row.source
+    id: row2.id,
+    gapId: row2.gap_id,
+    kind: row2.kind,
+    actor: row2.actor,
+    rationale: row2.rationale,
+    value: row2.value,
+    source: row2.source
   };
 }
 function revisePlan(store, actor, input) {
@@ -10934,7 +10934,7 @@ function usedAssertionIds(store, planId, testId) {
     "SELECT DISTINCT a.value ->> '$.id' AS id FROM plan_tests t, json_each(t.test, '$.assertions') a WHERE t.plan_id = ? AND t.test_id = ?",
     planId,
     testId
-  ).map((row) => row.id);
+  ).map((row2) => row2.id);
 }
 function applyTestChange(test, change, used) {
   if (change.action !== void 0) test.action = change.action;
@@ -11260,7 +11260,7 @@ function finalizedResults(store, planId) {
     store,
     "SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid",
     planId
-  ).map((row) => JSON.parse(row.body));
+  ).map((row2) => JSON.parse(row2.body));
 }
 function rejectedRuns(store, planId) {
   const rows = all(
@@ -11269,14 +11269,14 @@ function rejectedRuns(store, planId) {
     planId
   );
   const policies = /* @__PURE__ */ new Map();
-  const policy = (row) => {
-    const key = `${row.target_id}@${row.target_revision}`;
+  const policy = (row2) => {
+    const key = `${row2.target_id}@${row2.target_revision}`;
     if (!policies.has(key))
-      policies.set(key, approvalPolicy(targetRevision(store, row.target_id, row.target_revision).profile).result);
+      policies.set(key, approvalPolicy(targetRevision(store, row2.target_id, row2.target_revision).profile).result);
     return policies.get(key);
   };
-  const rejected = rows.filter((row) => approvalState(store, "result", row.run_id, row.sha256, policy(row)).rejected);
-  return new Set(rejected.map((row) => row.run_id));
+  const rejected = rows.filter((row2) => approvalState(store, "result", row2.run_id, row2.sha256, policy(row2)).rejected);
+  return new Set(rejected.map((row2) => row2.run_id));
 }
 function selectedOutcome(result, testId) {
   if (!result.selectedTestIds.includes(testId)) return null;
@@ -11394,10 +11394,10 @@ function planChanges(before, after) {
     (item) => !before.assumptions.some((old) => old.decisionId === item.decisionId)
   ))
     lines2.push(`assumption ${assumption.decisionId}: ${JSON.stringify(assumption.text)}`);
-  for (const row of after.coverage) {
-    const old = before.coverage.find((item) => item.requirementId === row.requirementId);
-    if (old && old.status !== row.status)
-      lines2.push(`${row.requirementId} coverage: ${JSON.stringify(old.status)} \u2192 ${JSON.stringify(row.status)}`);
+  for (const row2 of after.coverage) {
+    const old = before.coverage.find((item) => item.requirementId === row2.requirementId);
+    if (old && old.status !== row2.status)
+      lines2.push(`${row2.requirementId} coverage: ${JSON.stringify(old.status)} \u2192 ${JSON.stringify(row2.status)}`);
   }
   return lines2;
 }
@@ -11484,17 +11484,17 @@ function evidenceDirectory(runId) {
   return `.checkmate/tmp/${runId}/`;
 }
 function runState(store, runId) {
-  const row = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
-  requireCondition(row, `Unknown run: ${runId}`);
+  const row2 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
+  requireCondition(row2, `Unknown run: ${runId}`);
   const plan = one(
     store,
     "SELECT body FROM plan_revisions WHERE plan_id = ? AND revision = ?",
-    row.plan_id,
-    row.plan_revision
+    row2.plan_id,
+    row2.plan_revision
   );
   return {
-    row,
-    request: JSON.parse(row.request),
+    row: row2,
+    request: JSON.parse(row2.request),
     plan: JSON.parse(plan.body),
     finished: Boolean(one(store, "SELECT 1 FROM results WHERE run_id = ?", runId))
   };
@@ -11516,24 +11516,24 @@ function selectedTest(run2, testId) {
   );
   return run2.plan.tests.find((test) => test.id === testId);
 }
-function runClock(store, row, at = (/* @__PURE__ */ new Date()).toISOString()) {
+function runClock(store, row2, at = (/* @__PURE__ */ new Date()).toISOString()) {
   const attempt = one(
     store,
     "SELECT started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1",
-    row.run_id
+    row2.run_id
   );
   const start = Date.parse(attempt.started_at);
   const elapsedSeconds = Math.max(0, Math.floor((Date.parse(at) - start) / 1e3));
   return {
     attemptStartedAt: attempt.started_at,
-    deadline: new Date(start + row.deadline_seconds * 1e3).toISOString(),
-    deadlineSeconds: row.deadline_seconds,
+    deadline: new Date(start + row2.deadline_seconds * 1e3).toISOString(),
+    deadlineSeconds: row2.deadline_seconds,
     elapsedSeconds,
-    remainingSeconds: Math.max(0, row.deadline_seconds - elapsedSeconds)
+    remainingSeconds: Math.max(0, row2.deadline_seconds - elapsedSeconds)
   };
 }
-function refuseEarlyDeadline(store, row, at) {
-  const clock2 = runClock(store, row, at);
+function refuseEarlyDeadline(store, row2, at) {
+  const clock2 = runClock(store, row2, at);
   const used = clock2.elapsedSeconds / clock2.deadlineSeconds;
   requireCondition(
     used >= deadlineShare,
@@ -11550,11 +11550,11 @@ function runOutcomes(store, runId) {
 		FROM outcomes o LEFT JOIN operations p ON p.id = o.operation_id WHERE o.run_id = ? ORDER BY o.rowid`,
     runId
   );
-  return new Map(rows.map((row) => [row.test_id, row]));
+  return new Map(rows.map((row2) => [row2.test_id, row2]));
 }
 function runAssertions(store, runId) {
   const rows = all(store, "SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid", runId);
-  return new Map(rows.map((row) => [`${row.test_id}.${row.assertion_id}`, row]));
+  return new Map(rows.map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
 }
 function runEvidence(store, runId) {
   return all(
@@ -11565,12 +11565,12 @@ function runEvidence(store, runId) {
 }
 function runFindings(store, runId) {
   return all(store, "SELECT body FROM findings WHERE run_id = ? ORDER BY rowid", runId).map(
-    (row) => JSON.parse(row.body)
+    (row2) => JSON.parse(row2.body)
   );
 }
 function runGaps(store, runId) {
   return all(store, "SELECT body FROM run_gaps WHERE run_id = ? ORDER BY rowid", runId).map(
-    (row) => JSON.parse(row.body)
+    (row2) => JSON.parse(row2.body)
   );
 }
 function beginRun(store, actor, input) {
@@ -11776,9 +11776,9 @@ function checkAssertion(store, actor, input) {
       !runAssertions(store, input.runId).has(`${test.id}.${assertion.id}`),
       `Assertion ${test.id}.${assertion.id} has a result. An assertion result is final.`
     );
-    const outcomes = runOutcomes(store, input.runId);
+    const outcomes2 = runOutcomes(store, input.runId);
     for (const dependency of test.dependsOn.filter((id2) => !id2.includes(":"))) {
-      const outcome = outcomes.get(dependency)?.outcome;
+      const outcome = outcomes2.get(dependency)?.outcome;
       requireCondition(
         outcome === "passed",
         outcome ? `Prerequisite ${dependency} is ${outcome}, not passed. Do not check ${test.id}.` : `Prerequisite ${dependency} is not closed. Check and close ${dependency} before you check ${test.id}.`,
@@ -11850,9 +11850,9 @@ function closeTest(store, actor, input) {
         `Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(", ")}`,
         `Record each one with checkmate run check ${input.runId} ${test.id} <assertionId> --result <passed|failed|inconclusive|not_checked>. Or close ${test.id} with --outcome error --reason "<why>".`
       );
-      outcome = testOutcome(recorded.map((row) => row.result));
-      const unchecked = recorded.filter((row) => row.result === "not_checked");
-      reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row) => `${test.id}.${row.assertion_id}`).join(", ")}` : null;
+      outcome = testOutcome(recorded.map((row2) => row2.result));
+      const unchecked = recorded.filter((row2) => row2.result === "not_checked");
+      reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row2) => `${test.id}.${row2.assertion_id}`).join(", ")}` : null;
     } else {
       outcome = requireChoice(input.outcome, closeOutcomes, "outcome (--outcome)");
       reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`);
@@ -11930,12 +11930,12 @@ function recordFinding(store, actor, input) {
           test.requirementIds.includes(requirementId),
           `Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
         );
-    const evidence2 = new Map(runEvidence(store, input.runId).map((row) => [row.id, row]));
+    const evidence2 = new Map(runEvidence(store, input.runId).map((row2) => [row2.id, row2]));
     for (const id2 of finding.evidenceIds) {
-      const row = evidence2.get(id2);
-      requireWellFormed(row, `Unknown evidence in finding ${finding.id}: ${id2}`);
+      const row2 = evidence2.get(id2);
+      requireWellFormed(row2, `Unknown evidence in finding ${finding.id}: ${id2}`);
       requireWellFormed(
-        testIds.includes(row.test_id) && (row.assertion_id === null || finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)),
+        testIds.includes(row2.test_id) && (row2.assertion_id === null || finding.assertionIds.includes(`${row2.test_id}.${row2.assertion_id}`)),
         `Evidence ${id2} does not belong to the assertions or tests of finding ${finding.id}`
       );
     }
@@ -12038,21 +12038,21 @@ function finish(store, actor, input) {
         at,
         operationId
       );
-    const outcomes = runOutcomes(store, input.runId);
+    const outcomes2 = runOutcomes(store, input.runId);
     const results = runAssertions(store, input.runId);
     const findings2 = runFindings(store, input.runId);
     const newGaps2 = runGaps(store, input.runId);
-    for (const row of results.values())
-      if (row.result === "failed")
+    for (const row2 of results.values())
+      if (row2.result === "failed")
         requireCondition(
           findings2.some(
-            (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row.test_id}.${row.assertion_id}`)
+            (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row2.test_id}.${row2.assertion_id}`)
           ),
-          `Failed assertion ${row.test_id}.${row.assertion_id} needs a defect finding. Record it with run finding.`,
-          defectHint(store, run2, row, findings2)
+          `Failed assertion ${row2.test_id}.${row2.assertion_id} needs a defect finding. Record it with run finding.`,
+          defectHint(store, run2, row2, findings2)
         );
     if (completion === "completed") {
-      const failures = selected.filter((id2) => outcomes.get(id2).outcome === "error");
+      const failures = selected.filter((id2) => outcomes2.get(id2).outcome === "error");
       requireCondition(
         !failures.length,
         `Operational failure cannot be completed: ${failures.join(", ")} closed as error`,
@@ -12063,17 +12063,17 @@ function finish(store, actor, input) {
         "Cleanup failed, so the run cannot be completed",
         "Finish with --completion operational_error."
       );
-      for (const verdict of retestVerdicts(run2, outcomes))
+      for (const verdict of retestVerdicts(run2, outcomes2))
         for (const testId of verdict.testIds.filter((id2) => selected.includes(id2)))
           requireCondition(
-            outcomes.get(testId).outcome !== "not_run",
+            outcomes2.get(testId).outcome !== "not_run",
             `Retest ${input.runId} did not run ${testId} of defect ${verdict.findingId} of ${verdict.runId}. Run ${testId}, or finish as interrupted with a cause and a reason.`
           );
       for (const test of run2.plan.tests.filter((test2) => selected.includes(test2.id))) {
-        const outcome = outcomes.get(test.id).outcome;
+        const outcome = outcomes2.get(test.id).outcome;
         if (outcome !== "not_run" && outcome !== "blocked") continue;
         const cause2 = test.dependsOn.some(
-          (id2) => id2.includes(":") ? dependencyBlock(store, id2, run2.row.application_build) !== null : outcomes.get(id2)?.outcome !== "passed"
+          (id2) => id2.includes(":") ? dependencyBlock(store, id2, run2.row.application_build) !== null : outcomes2.get(id2)?.outcome !== "passed"
         ) || newGaps2.some((gap) => gap.severity === "blocking");
         requireCondition(
           cause2,
@@ -12084,7 +12084,7 @@ function finish(store, actor, input) {
     }
     const evidence2 = runEvidence(store, input.runId);
     const tests = run2.plan.tests.map((test) => {
-      const closed = outcomes.get(test.id);
+      const closed = outcomes2.get(test.id);
       if (!closed)
         return { testId: test.id, outcome: "not_run", reason: "Test was not selected.", assertions: [] };
       return {
@@ -12093,15 +12093,15 @@ function finish(store, actor, input) {
         reason: closed.reason,
         ...closed.cause ? { cause: closed.cause } : {},
         assertions: test.assertions.flatMap((assertion) => {
-          const row = results.get(`${test.id}.${assertion.id}`);
-          if (!row) return [];
+          const row2 = results.get(`${test.id}.${assertion.id}`);
+          if (!row2) return [];
           return {
             assertionId: assertion.id,
             check: assertion.check,
             checkKind: assertion.checkKind,
-            result: row.result,
-            observed: row.observed,
-            reason: row.reason,
+            result: row2.result,
+            observed: row2.observed,
+            reason: row2.reason,
             evidenceIds: evidence2.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id).map((item) => item.id)
           };
         })
@@ -12126,15 +12126,15 @@ function finish(store, actor, input) {
       tests,
       findings: findings2,
       newGaps: newGaps2,
-      evidence: evidence2.map((row) => ({
-        id: row.id,
-        testId: row.test_id,
-        assertionId: row.assertion_id,
-        kind: row.kind,
-        name: row.name,
-        mediaType: row.media_type,
-        sha256: row.sha256,
-        size: row.size
+      evidence: evidence2.map((row2) => ({
+        id: row2.id,
+        testId: row2.test_id,
+        assertionId: row2.assertion_id,
+        kind: row2.kind,
+        name: row2.name,
+        mediaType: row2.media_type,
+        sha256: row2.sha256,
+        size: row2.size
       })),
       cleanup: cleanup2,
       coverage: coverage2
@@ -12169,10 +12169,10 @@ function finish(store, actor, input) {
     };
   });
 }
-function defectHint(store, run2, row, findings2) {
-  const reference = `${row.test_id}.${row.assertion_id}`;
-  const test = run2.plan.tests.find((item) => item.id === row.test_id);
-  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row.test_id && item.assertion_id === row.assertion_id).map((item) => item.id);
+function defectHint(store, run2, row2, findings2) {
+  const reference = `${row2.test_id}.${row2.assertion_id}`;
+  const test = run2.plan.tests.find((item) => item.id === row2.test_id);
+  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row2.test_id && item.assertion_id === row2.assertion_id).map((item) => item.id);
   const finding = {
     id: unusedId(
       "F",
@@ -12184,15 +12184,15 @@ function defectHint(store, run2, row, findings2) {
     requirementIds: test.requirementIds,
     title: "<short title>",
     expected: "<expected result>",
-    observed: row.observed ?? "<observed result>",
+    observed: row2.observed ?? "<observed result>",
     reproduction: ["<step>"],
     evidenceIds
   };
   return `Record the defect with checkmate run finding ${run2.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again. A recorded result is final: when you think it is wrong, still record the defect and say why in observed. The oracle can reject it.`;
 }
-function retestVerdicts(run2, outcomes) {
+function retestVerdicts(run2, outcomes2) {
   return (run2.request.retestDefects ?? []).map((defect) => {
-    const tested = defect.testIds.map((id2) => outcomes.get(id2)?.outcome);
+    const tested = defect.testIds.map((id2) => outcomes2.get(id2)?.outcome);
     const verdict = tested.includes("failed") ? "not_fixed" : tested.every((outcome) => outcome === "passed") ? "fixed" : "not_retested";
     return { ...defect, runId: defect.runId ?? run2.request.retestOf, verdict };
   });
@@ -12232,9 +12232,9 @@ function resumeRun(store, actor, input) {
         operationId
       );
     }
-    const outcomes = runOutcomes(store, input.runId);
+    const outcomes2 = runOutcomes(store, input.runId);
     const results = runAssertions(store, input.runId);
-    const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id)).map((test) => ({
+    const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id) && !outcomes2.has(test.id)).map((test) => ({
       testId: test.id,
       warning: "Actions may have occurred",
       recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
@@ -12282,8 +12282,8 @@ function decideResult(store, actor, input, verdict) {
   });
 }
 function runResult(store, runId) {
-  const row = one(store, "SELECT sha256, body FROM results WHERE run_id = ?", runId);
-  return row ? { sha256: row.sha256, result: JSON.parse(row.body) } : null;
+  const row2 = one(store, "SELECT sha256, body FROM results WHERE run_id = ?", runId);
+  return row2 ? { sha256: row2.sha256, result: JSON.parse(row2.body) } : null;
 }
 function resultAcceptance(store, run2, sha256) {
   const policy = approvalPolicy(targetRevision(store, run2.target_id, run2.target_revision).profile).result;
@@ -12295,12 +12295,12 @@ import { mkdirSync as mkdirSync3, writeFileSync } from "node:fs";
 import { join as join5 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
-  const row = one(
+  const row2 = one(
     store,
     "SELECT revision, body FROM latest_plans WHERE plan_id = ?",
     planId
   );
-  return row ? { revision: row.revision, plan: JSON.parse(row.body) } : null;
+  return row2 ? { revision: row2.revision, plan: JSON.parse(row2.body) } : null;
 }
 function charterOf(store, planId, scope, change, knownState = null) {
   const { request, target } = planRequest(store, planId);
@@ -12414,7 +12414,7 @@ function writeKnownState(store, planId, explorationId, build) {
 }
 function nextExplorationId(store) {
   const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
-    (row) => row.exploration_id
+    (row2) => row2.exploration_id
   );
   return unusedId("x-", ids2);
 }
@@ -12482,11 +12482,11 @@ function explorationEvents(store, explorationId) {
     store,
     "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
     explorationId
-  ).map((row) => ({ ...row, detail: JSON.parse(row.detail) }));
+  ).map((row2) => ({ ...row2, detail: JSON.parse(row2.detail) }));
 }
 function exploration(store, explorationId) {
-  const row = explorationRow(store, explorationId);
-  return { ...row, charter: JSON.parse(row.charter) };
+  const row2 = explorationRow(store, explorationId);
+  return { ...row2, charter: JSON.parse(row2.charter) };
 }
 
 // plugin/src/levels.ts
@@ -13067,14 +13067,14 @@ function fieldsOf(node, file, prefix) {
     const [items, itemsAt] = field2.items ? resolved(field2.items, at) : [void 0, at];
     const path = `${prefix}${name}`;
     const type = field2.enum ? field2.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field2.type ?? "value";
-    const row = {
+    const row2 = {
       path,
       type,
       required: Boolean(node.required?.includes(name)),
       description: field2.description ?? ""
     };
     const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field2.properties ? fieldsOf(field2, at, `${path}.`) : [];
-    return [row, ...nested];
+    return [row2, ...nested];
   });
 }
 function fieldText(fields, described) {
@@ -13215,7 +13215,7 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   ];
   return { study: study.join("\n"), test: test.join("\n") };
 }
-function mergerPrompt(build, reports, groups, questions = [], earlier = [], answer) {
+function mergerPrompt(build, reports, groups2, questions = [], earlier = [], answer) {
   const text = [
     `Merge the reports of independent testers of build ${build}. Do not test.`,
     "Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.",
@@ -13233,10 +13233,10 @@ function mergerPrompt(build, reports, groups, questions = [], earlier = [], answ
         (report) => `${report.id} (${report.severity}): ${report.title} Expected: ${report.expected} Actual: ${report.actual}${report.steps ? ` Steps: ${report.steps}` : ""}`
       )
     ] : [],
-    ...groups.length ? [
+    ...groups2.length ? [
       "",
       "Reports with many of the same words. These are ideas, not rules:",
-      ...groups.map((group2) => `- ${group2.join(", ")}`)
+      ...groups2.map((group2) => `- ${group2.join(", ")}`)
     ] : [],
     ...questions.length ? ["", "The questions:", ...questions.map((question) => `${question.id}: ${question.question}`)] : [],
     ...earlier.length ? [
@@ -13304,7 +13304,7 @@ function addedEntries(store, explorationId, actor, after) {
     actor,
     after
   );
-  return Object.fromEntries(rows.map((row) => [row.kind, row.count]));
+  return Object.fromEntries(rows.map((row2) => [row2.kind, row2.count]));
 }
 function launchContext(store, explorationId, explorer, session) {
   const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
@@ -13665,9 +13665,9 @@ function launchPlan(profile, input, env) {
     levelNames,
     "test level (--level)"
   );
-  const row = testLevels[level];
-  const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers;
-  const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds;
+  const row2 = testLevels[level];
+  const explorers = input.explorers ?? profile.explore?.explorers ?? row2.explorers;
+  const testSeconds = input.minutes ? input.minutes * 60 : row2.testSeconds;
   if (input.session) {
     requireWellFormed(
       !input.claudeArgs.length && input.timeoutSeconds === void 0,
@@ -13678,10 +13678,10 @@ function launchPlan(profile, input, env) {
       explorers,
       model: null,
       modelFrom: "agent",
-      verifier: row.verifier,
+      verifier: row2.verifier,
       context: { hiddenPlugin: null, claudeArgs: [] },
       allow: input.allow,
-      studySeconds: row.studySeconds,
+      studySeconds: row2.studySeconds,
       testSeconds,
       timeoutSeconds: 0,
       pluginHidden: true,
@@ -13692,21 +13692,21 @@ function launchPlan(profile, input, env) {
   const host = hostModel(claudeArgs);
   const hiddenPlugin = installedPluginId(env);
   requireWellFormed(
-    input.allow.length || explorers === 0 && !row.verifier,
+    input.allow.length || explorers === 0 && !row2.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
     "The host owns the permissions. An explorer cannot answer a permission prompt."
   );
   return {
     level,
     explorers,
-    model: host ?? row.model,
+    model: host ?? row2.model,
     modelFrom: host ? "host" : "level",
-    verifier: row.verifier,
-    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row.model] },
+    verifier: row2.verifier,
+    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row2.model] },
     allow: input.allow,
-    studySeconds: row.studySeconds,
+    studySeconds: row2.studySeconds,
     testSeconds,
-    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row.studySeconds, testSeconds) * 3),
+    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row2.studySeconds, testSeconds) * 3),
     pluginHidden: hiddenPlugin !== null
   };
 }
@@ -13788,8 +13788,8 @@ function startExploration(store, actor, given, env) {
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
     if (!input.session) requireClaude(env);
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
-    const row = explorationRow(store, opened.explorationId);
-    const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env);
+    const row2 = explorationRow(store, opened.explorationId);
+    const launch = launchPlan(targetRevision(store, row2.target_id, row2.target_revision).profile, input, env);
     addEvent(
       store,
       opened.explorationId,
@@ -13822,17 +13822,17 @@ function startExploration(store, actor, given, env) {
   return reply;
 }
 function finishable(store, explorationId) {
-  const row = explorationRow(store, explorationId);
+  const row2 = explorationRow(store, explorationId);
   requireCondition(
     !startOf(explorationEvents(store, explorationId)),
     `Exploration ${explorationId} has started already.`,
     `Run checkmate explore wait ${explorationId}.`
   );
-  return { explorationId, planId: row.plan_id, build: row.build, mode: row.mode, instanceId: row.instance_id };
+  return { explorationId, planId: row2.plan_id, build: row2.build, mode: row2.mode, instanceId: row2.instance_id };
 }
 function finishExploration(store, actor, input, env) {
-  const row = explorationRow(store, input.explorationId);
-  return startExploration(store, actor, { ...input, planId: row.plan_id, build: row.build, explorers: 0 }, env);
+  const row2 = explorationRow(store, input.explorationId);
+  return startExploration(store, actor, { ...input, planId: row2.plan_id, build: row2.build, explorers: 0 }, env);
 }
 function event(store, actor, explorationId, item) {
   write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
@@ -14140,9 +14140,9 @@ function usedAnswers(events) {
   return used;
 }
 function unusedAnswers(store, explorationId) {
-  const row = explorationRow(store, explorationId);
+  const row2 = explorationRow(store, explorationId);
   const used = usedAnswers(explorationEvents(store, explorationId));
-  return planQuestions(store, row.plan_id).filter(
+  return planQuestions(store, row2.plan_id).filter(
     (question) => question.explorationId === explorationId && question.answerId && !used.has(question.answerId)
   );
 }
@@ -14156,7 +14156,7 @@ function startFollow(store, actor, input, env) {
   const id2 = input.explorationId;
   let session = false;
   const reply = write(store, { actor, command: "explore follow", subject: id2, input }, (operationId, at) => {
-    const row = explorationRow(store, id2);
+    const row2 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
     session = startOf(events)?.path === "session";
     if (!session) requireClaude(env);
@@ -14164,13 +14164,13 @@ function startFollow(store, actor, input, env) {
     requireCondition(
       followable(events),
       `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
-      ["failed", "stopped", "open"].includes(state) ? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
+      ["failed", "stopped", "open"].includes(state) ? `Start a new test: checkmate test ${row2.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
     );
     const answered = unusedAnswers(store, id2);
     requireCondition(
       answered.length,
       `Exploration ${id2} has no answer that a follow-up has not used.`,
-      `Answer a question of the exploration first: checkmate gap answer ${row.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
+      `Answer a question of the exploration first: checkmate gap answer ${row2.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
     );
     const stored = startOf(events);
     const claudeArgs = checkClaudeArgs(input.claudeArgs);
@@ -14195,13 +14195,13 @@ function startFollow(store, actor, input, env) {
     return {
       reply: completed(id2, {
         explorationId: id2,
-        planId: row.plan_id,
-        build: row.build,
+        planId: row2.plan_id,
+        build: row2.build,
         answers: plan.answers.length,
         followSeconds: plan.seconds,
         next: [`checkmate explore ${session ? "next" : "wait"} ${id2}`]
       }),
-      subjects: [`exploration:${id2}`, `plan:${row.plan_id}`]
+      subjects: [`exploration:${id2}`, `plan:${row2.plan_id}`]
     };
   });
   if (!session) startSupervisor(store, reply.subject, actor, env, ["--follow"]);
@@ -14344,10 +14344,10 @@ function explorationState(events) {
   return "testing";
 }
 function explorationStatus(store, explorationId) {
-  const row = explorationRow(store, explorationId);
+  const row2 = explorationRow(store, explorationId);
   const events = explorationEvents(store, explorationId);
   const launch = startOf(events);
-  const charter = JSON.parse(row.charter);
+  const charter = JSON.parse(row2.charter);
   const state = explorationState(events);
   const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
   const explorers = names.map((explorer) => {
@@ -14371,11 +14371,11 @@ function explorationStatus(store, explorationId) {
   const followed = events.filter((item) => item.step === "followed").at(-1);
   const follow = followState(events);
   return {
-    explorationId: row.exploration_id,
-    planId: row.plan_id,
-    build: row.build,
-    mode: row.mode,
-    instanceId: row.instance_id,
+    explorationId: row2.exploration_id,
+    planId: row2.plan_id,
+    build: row2.build,
+    mode: row2.mode,
+    instanceId: row2.instance_id,
     state,
     path: launch ? launch.path ?? "process" : null,
     paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
@@ -14394,7 +14394,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped"].includes(state) || follow === "failed" || follow === "stopped") && existsSync3(join7(store.workspace, workFolder(row.exploration_id))) ? workFolder(row.exploration_id) : null,
+    workFolder: (["failed", "stopped"].includes(state) || follow === "failed" || follow === "stopped") && existsSync3(join7(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -14459,7 +14459,7 @@ function latestRevisions(store) {
     store,
     `SELECT p.plan_id, p.revision, p.sha256, p.body, o.at, o.actor FROM latest_plans p
 		JOIN operations o ON o.id = p.operation_id ORDER BY p.plan_id`
-  ).map((row) => ({ ...row, plan: JSON.parse(row.body) }));
+  ).map((row2) => ({ ...row2, plan: JSON.parse(row2.body) }));
 }
 function requestedPlans(store) {
   return all(
@@ -14467,11 +14467,11 @@ function requestedPlans(store) {
     `SELECT r.plan_id, r.target_id, r.target_revision, r.body, o.at FROM plan_requests r
 		JOIN operations o ON o.id = r.operation_id
 		WHERE NOT EXISTS (SELECT 1 FROM plan_revisions p WHERE p.plan_id = r.plan_id) ORDER BY r.plan_id`
-  ).map((row) => ({
-    planId: row.plan_id,
-    target: `${row.target_id}@${row.target_revision}`,
-    objective: JSON.parse(row.body).objective,
-    since: row.at
+  ).map((row2) => ({
+    planId: row2.plan_id,
+    target: `${row2.target_id}@${row2.target_revision}`,
+    objective: JSON.parse(row2.body).objective,
+    since: row2.at
   }));
 }
 function planSummary(plan) {
@@ -14484,23 +14484,23 @@ function inbox(store) {
     all(
       store,
       "SELECT plan_id, gap_id FROM decisions WHERE applied_revision IS NULL"
-    ).map((row) => `${row.plan_id}:${row.gap_id}`)
+    ).map((row2) => `${row2.plan_id}:${row2.gap_id}`)
   );
   const revisions = latestRevisions(store);
-  const gaps = revisions.flatMap((row) => [
-    ...row.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row.plan_id}:${gap.id}`)).map((gap) => ({
-      planId: row.plan_id,
-      revision: row.revision,
+  const gaps = revisions.flatMap((row2) => [
+    ...row2.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row2.plan_id}:${gap.id}`)).map((gap) => ({
+      planId: row2.plan_id,
+      revision: row2.revision,
       gapId: gap.id,
       question: gap.question,
       severity: gap.severity,
-      since: row.at,
+      since: row2.at,
       runId: null,
       explorationId: null
     })),
-    ...planRunGaps(store, row.plan_id).filter((item) => !item.adopted).map((item) => ({
-      planId: row.plan_id,
-      revision: row.revision,
+    ...planRunGaps(store, row2.plan_id).filter((item) => !item.adopted).map((item) => ({
+      planId: row2.plan_id,
+      revision: row2.revision,
       gapId: item.gap.id,
       question: item.gap.question,
       severity: item.gap.severity,
@@ -14536,17 +14536,17 @@ function inbox(store) {
       reason: claim.reason
     }))
   );
-  const plans = revisions.map((row) => ({ row, approval: approvalLabel(planApproval(store, row.plan, row.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row, approval }) => ({
-    planId: row.plan_id,
-    revision: row.revision,
-    sha256: row.sha256,
+  const plans = revisions.map((row2) => ({ row: row2, approval: approvalLabel(planApproval(store, row2.plan, row2.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row: row2, approval }) => ({
+    planId: row2.plan_id,
+    revision: row2.revision,
+    sha256: row2.sha256,
     approval,
-    since: row.at,
-    summary: `${approval === "rejected" ? "Rejected. Change the plan. " : ""}${planSummary(row.plan)}`
+    since: row2.at,
+    summary: `${approval === "rejected" ? "Rejected. Change the plan. " : ""}${planSummary(row2.plan)}`
   })).sort(bySince);
-  const results = revisions.flatMap((row) => {
-    const runs = runList(store, { planId: row.plan_id });
-    const record = planRecord(store, row.plan);
+  const results = revisions.flatMap((row2) => {
+    const runs = runList(store, { planId: row2.plan_id });
+    const record = planRecord(store, row2.plan);
     const waited = /* @__PURE__ */ new Set([...record.supplied, ...record.defects.map((item) => item.runId)]);
     return runs.filter((run2) => waited.has(run2.runId) && run2.acceptance === "pending").map((run2) => {
       const result = record.results.find((item) => item.runId === run2.runId);
@@ -14576,28 +14576,28 @@ function testCounts(plan) {
   return { total: plan.tests.length, ready: count("ready"), blocked: count("blocked"), deferred: count("deferred") };
 }
 function planList(store) {
-  const drafted = latestRevisions(store).map((row) => {
+  const drafted = latestRevisions(store).map((row2) => {
     const open = [
-      ...row.plan.gaps.filter((gap) => gap.status === "open"),
-      ...planRunGaps(store, row.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
+      ...row2.plan.gaps.filter((gap) => gap.status === "open"),
+      ...planRunGaps(store, row2.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
     ];
     return {
-      planId: row.plan_id,
+      planId: row2.plan_id,
       status: "drafted",
-      revision: row.revision,
-      sha256: row.sha256,
-      since: row.at,
+      revision: row2.revision,
+      sha256: row2.sha256,
+      since: row2.at,
       openGaps: open.map((gap) => gap.id),
       openBlockingGaps: open.filter((gap) => gap.severity === "blocking").map((gap) => gap.id),
-      tests: testCounts(row.plan),
-      approval: approvalLabel(planApproval(store, row.plan, row.sha256)),
-      blocked: row.plan.tests.flatMap(
+      tests: testCounts(row2.plan),
+      approval: approvalLabel(planApproval(store, row2.plan, row2.sha256)),
+      blocked: row2.plan.tests.flatMap(
         (test) => test.dependsOn.filter((dependency) => dependency.includes(":")).flatMap((dependency) => {
           const cause = dependencyBlock(store, dependency, null);
           return cause ? [{ testId: test.id, dependency, cause }] : [];
         })
       ),
-      loop: loopOf(store, row.plan_id)
+      loop: loopOf(store, row2.plan_id)
     };
   });
   const requested = requestedPlans(store).map((request) => ({
@@ -14623,13 +14623,13 @@ function planDetail(store, planId, revision = null) {
     store,
     "SELECT id, gap_id, kind, value, actor, rationale FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row) => ({
-    id: row.id,
-    gapId: row.gap_id,
-    kind: row.kind,
-    value: row.value,
-    actor: row.actor,
-    rationale: row.rationale
+  ).map((row2) => ({
+    id: row2.id,
+    gapId: row2.gap_id,
+    kind: row2.kind,
+    value: row2.value,
+    actor: row2.actor,
+    rationale: row2.rationale
   })) : [];
   return {
     planId,
@@ -14661,20 +14661,20 @@ function planHistory(store, planId) {
 		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision`,
     planId
   );
-  const plans = rows.map((row) => JSON.parse(row.body));
-  return rows.map((row, i) => ({
-    revision: row.revision,
-    sha256: row.sha256,
-    operationId: row.operation_id,
-    actor: row.actor,
-    at: row.at,
+  const plans = rows.map((row2) => JSON.parse(row2.body));
+  return rows.map((row2, i) => ({
+    revision: row2.revision,
+    sha256: row2.sha256,
+    operationId: row2.operation_id,
+    actor: row2.actor,
+    at: row2.at,
     changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i])
   }));
 }
 var roles = ["planner", "oracle", "qa", "factory", "none"];
 function exploredPlans(store) {
   return all(store, "SELECT DISTINCT plan_id FROM explorations ORDER BY plan_id").map(
-    (row) => row.plan_id
+    (row2) => row2.plan_id
   );
 }
 var runningExploration = ["starting", "testing", "recording", "verifying", "following"];
@@ -14685,14 +14685,14 @@ function mergedUpTo(events) {
   const ended = events.slice(follow + 1).find((item) => item.step === "followed");
   return ended?.status === "completed" ? Infinity : Number(events[follow].detail.after ?? 0);
 }
-var fromSession = (row) => row.actor.startsWith("qa:");
+var fromSession = (row2) => row2.actor.startsWith("qa:");
 function mergedEntries(store, planId) {
   const limits = new Map(
     all(store, "SELECT exploration_id FROM explorations WHERE plan_id = ?", planId).map(
-      (row) => [row.exploration_id, mergedUpTo(explorationEvents(store, row.exploration_id))]
+      (row2) => [row2.exploration_id, mergedUpTo(explorationEvents(store, row2.exploration_id))]
     )
   );
-  return (row) => !fromSession(row) || row.seq <= (limits.get(row.explorationId) ?? 0);
+  return (row2) => !fromSession(row2) || row2.seq <= (limits.get(row2.explorationId) ?? 0);
 }
 function mergedClaims(store, planId) {
   return planClaims(store, planId, mergedEntries(store, planId));
@@ -14712,8 +14712,8 @@ function planExplorations(store, planId) {
     store,
     "SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid",
     planId
-  ).map((row) => {
-    const status = explorationStatus(store, row.exploration_id);
+  ).map((row2) => {
+    const status = explorationStatus(store, row2.exploration_id);
     const ended = ["failed", "stopped"].includes(status.state);
     return {
       explorationId: status.explorationId,
@@ -14723,7 +14723,7 @@ function planExplorations(store, planId) {
       instanceId: status.instanceId,
       level: status.level,
       explorers: status.explorerCount,
-      startedAt: row.started_at,
+      startedAt: row2.started_at,
       reason: ended ? status.reason : null,
       follow: status.follow,
       followReason: status.followReason,
@@ -14894,8 +14894,8 @@ function loopStatus(store, planId) {
     store,
     "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
     planId
-  ).map((row) => {
-    const status = explorationStatus(store, row.exploration_id);
+  ).map((row2) => {
+    const status = explorationStatus(store, row2.exploration_id);
     return {
       explorationId: status.explorationId,
       build: status.build,
@@ -15018,7 +15018,7 @@ function checkStatus(store, planId) {
     store,
     "SELECT id, gap_id, kind FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row) => ({ id: row.id, gapId: row.gap_id, kind: row.kind }));
+  ).map((row2) => ({ id: row2.id, gapId: row2.gap_id, kind: row2.kind }));
   const gaps = [
     ...plan.gaps.filter((gap) => gap.status === "open" && !pendingDecisions2.some((item) => item.gapId === gap.id)).map((gap) => ({
       gapId: gap.id,
@@ -15072,7 +15072,7 @@ function checkStatus(store, planId) {
       `SELECT r.application_build AS build FROM runs r JOIN results s ON s.run_id = r.run_id
 			WHERE r.plan_id IN (SELECT value FROM json_each(?)) GROUP BY r.application_build ORDER BY max(r.rowid) DESC`,
       JSON.stringify(others)
-    ).map((row) => row.build);
+    ).map((row2) => row2.build);
   };
   const bestBuild = (count) => {
     let best;
@@ -15249,18 +15249,18 @@ function checkStatus(store, planId) {
   };
 }
 function latestRetest(store, planId, record) {
-  const row = one(
+  const row2 = one(
     store,
     "SELECT run_id FROM runs WHERE plan_id = ? AND request ->> '$.retestOf' IS NOT NULL ORDER BY rowid DESC LIMIT 1",
     planId
   );
-  if (!row) return null;
-  const run2 = runState(store, row.run_id);
-  const verdicts = retestVerdicts(run2, runOutcomes(store, row.run_id));
+  if (!row2) return null;
+  const run2 = runState(store, row2.run_id);
+  const verdicts = retestVerdicts(run2, runOutcomes(store, row2.run_id));
   const open = verdicts.some(
     (item) => record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
   );
-  return open || record.results.at(-1)?.runId === row.run_id ? { runId: row.run_id, verdicts } : null;
+  return open || record.results.at(-1)?.runId === row2.run_id ? { runId: row2.run_id, verdicts } : null;
 }
 function rejection(store, kind, subject) {
   const decision = latestApproval(store, kind, subject);
@@ -15349,49 +15349,49 @@ function runList(store, filters = {}) {
     filters.build ?? null,
     filters.build ?? null
   );
-  return rows.map((row) => ({
-    runId: row.run_id,
-    planId: row.plan_id,
-    revision: row.plan_revision,
-    build: row.application_build,
-    instanceId: row.instance_id,
-    startedAt: row.started_at,
-    state: row.sha256 ? "finalized" : "started",
-    completion: row.completion,
-    coverage: row.coverage,
-    sha256: row.sha256,
-    acceptance: row.sha256 ? approvalLabel(resultAcceptance(store, row, row.sha256)) : null,
+  return rows.map((row2) => ({
+    runId: row2.run_id,
+    planId: row2.plan_id,
+    revision: row2.plan_revision,
+    build: row2.application_build,
+    instanceId: row2.instance_id,
+    startedAt: row2.started_at,
+    state: row2.sha256 ? "finalized" : "started",
+    completion: row2.completion,
+    coverage: row2.coverage,
+    sha256: row2.sha256,
+    acceptance: row2.sha256 ? approvalLabel(resultAcceptance(store, row2, row2.sha256)) : null,
     counts: Object.fromEntries(
       all(
         store,
         "SELECT outcome, count(*) AS count FROM outcomes WHERE run_id = ? GROUP BY outcome ORDER BY outcome",
-        row.run_id
+        row2.run_id
       ).map((count) => [count.outcome, count.count])
     )
   }));
 }
 function runDetail(store, runId) {
   const run2 = runState(store, runId);
-  const outcomes = runOutcomes(store, runId);
+  const outcomes2 = runOutcomes(store, runId);
   const results = runAssertions(store, runId);
-  const evidence2 = runEvidence(store, runId).map((row) => ({
-    id: row.id,
-    testId: row.test_id,
-    assertionId: row.assertion_id,
-    kind: row.kind,
-    name: row.name,
-    mediaType: row.media_type,
-    sha256: row.sha256,
-    size: row.size
+  const evidence2 = runEvidence(store, runId).map((row2) => ({
+    id: row2.id,
+    testId: row2.test_id,
+    assertionId: row2.assertion_id,
+    kind: row2.kind,
+    name: row2.name,
+    mediaType: row2.media_type,
+    sha256: row2.sha256,
+    size: row2.size
   }));
   const finished = runResult(store, runId);
   const attempts = all(
     store,
     "SELECT attempt, started_at, actor FROM run_attempts WHERE run_id = ? ORDER BY attempt",
     runId
-  ).map((row) => ({ attempt: row.attempt, startedAt: row.started_at, actor: row.actor }));
+  ).map((row2) => ({ attempt: row2.attempt, startedAt: row2.started_at, actor: row2.actor }));
   const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id)).map((test) => {
-    const closed = outcomes.get(test.id);
+    const closed = outcomes2.get(test.id);
     return {
       testId: test.id,
       title: test.title,
@@ -15401,14 +15401,14 @@ function runDetail(store, runId) {
       reason: closed?.reason ?? null,
       evidence: evidence2.filter((item) => item.testId === test.id && item.assertionId === null),
       assertions: test.assertions.map((assertion) => {
-        const row = results.get(`${test.id}.${assertion.id}`);
+        const row2 = results.get(`${test.id}.${assertion.id}`);
         return {
           assertionId: assertion.id,
           check: assertion.check,
           checkKind: assertion.checkKind,
-          result: row?.result ?? null,
-          observed: row?.observed ?? null,
-          reason: row?.reason ?? null,
+          result: row2?.result ?? null,
+          observed: row2?.observed ?? null,
+          reason: row2?.reason ?? null,
           evidence: evidence2.filter(
             (item) => item.testId === test.id && item.assertionId === assertion.id
           )
@@ -15433,7 +15433,7 @@ function runDetail(store, runId) {
     attempts,
     tests,
     findings: runFindings(store, runId),
-    retest: retestVerdicts(run2, outcomes),
+    retest: retestVerdicts(run2, outcomes2),
     newGaps: runGaps(store, runId),
     result: finished ? {
       sha256: finished.sha256,
@@ -15458,20 +15458,20 @@ function findingList(store, filters = {}) {
     filters.planId ?? null
   );
   const open = new Set(
-    filters.open ? [...new Set(rows.map((row) => row.plan_id))].flatMap(
+    filters.open ? [...new Set(rows.map((row2) => row2.plan_id))].flatMap(
       (planId) => openDefects(finalizedResults(store, planId), rejectedRuns(store, planId)).map(
         ({ runId, finding }) => `${runId}/${finding.id}`
       )
     ) : []
   );
-  return rows.map((row) => {
-    const finding = JSON.parse(row.body);
+  return rows.map((row2) => {
+    const finding = JSON.parse(row2.body);
     return {
-      runId: row.run_id,
-      planId: row.plan_id,
-      revision: row.plan_revision,
-      build: row.application_build,
-      instanceId: row.instance_id,
+      runId: row2.run_id,
+      planId: row2.plan_id,
+      revision: row2.plan_revision,
+      build: row2.application_build,
+      instanceId: row2.instance_id,
       testIds: finding.testIds,
       findingId: finding.id,
       type: finding.type,
@@ -15485,7 +15485,7 @@ function findingList(store, filters = {}) {
       evidenceIds: finding.evidenceIds,
       metadata: finding.metadata ?? {}
     };
-  }).filter((row) => !filters.open || open.has(`${row.runId}/${row.findingId}`));
+  }).filter((row2) => !filters.open || open.has(`${row2.runId}/${row2.findingId}`));
 }
 function operationLog(store, filters = {}) {
   const limit = filters.limit ?? 50;
@@ -15501,17 +15501,17 @@ function operationLog(store, filters = {}) {
     limit
   ).map(operationRow);
 }
-function operationRow(row) {
+function operationRow(row2) {
   return {
-    rowid: row.rowid,
-    id: row.id,
-    at: row.at,
-    actor: row.actor,
-    command: row.command,
-    status: row.status,
-    subjects: JSON.parse(row.subjects),
-    arguments: JSON.parse(row.arguments),
-    response: JSON.parse(row.response)
+    rowid: row2.rowid,
+    id: row2.id,
+    at: row2.at,
+    actor: row2.actor,
+    command: row2.command,
+    status: row2.status,
+    subjects: JSON.parse(row2.subjects),
+    arguments: JSON.parse(row2.arguments),
+    response: JSON.parse(row2.response)
   };
 }
 function changesAfter(store, rowid) {
@@ -15519,26 +15519,26 @@ function changesAfter(store, rowid) {
     store,
     "SELECT rowid, id, subjects FROM operations WHERE rowid > ? ORDER BY rowid",
     rowid
-  ).map((row) => ({ rowid: row.rowid, id: row.id, subjects: JSON.parse(row.subjects) }));
+  ).map((row2) => ({ rowid: row2.rowid, id: row2.id, subjects: JSON.parse(row2.subjects) }));
 }
 function evidenceBytes(store, id2) {
-  const row = one(
+  const row2 = one(
     store,
     "SELECT e.id, e.run_id, e.test_id, e.assertion_id, e.kind, e.name, e.media_type, e.sha256, b.size, b.bytes FROM evidence e JOIN blobs b ON b.sha256 = e.sha256 WHERE e.id = ?",
     id2
   );
-  requireCondition(row, `Unknown evidence: ${id2}`);
+  requireCondition(row2, `Unknown evidence: ${id2}`);
   return {
-    id: row.id,
-    runId: row.run_id,
-    testId: row.test_id,
-    assertionId: row.assertion_id,
-    kind: row.kind,
-    name: row.name,
-    mediaType: row.media_type,
-    sha256: row.sha256,
-    size: row.size,
-    bytes: row.bytes
+    id: row2.id,
+    runId: row2.run_id,
+    testId: row2.test_id,
+    assertionId: row2.assertion_id,
+    kind: row2.kind,
+    name: row2.name,
+    mediaType: row2.media_type,
+    sha256: row2.sha256,
+    size: row2.size,
+    bytes: row2.bytes
   };
 }
 var pageSizes = [25, 50, 100];
@@ -15566,13 +15566,13 @@ function filterValue(filters, names) {
 }
 function pageOf(rows, query, columns, text) {
   const matched = query.q ? rows.filter(
-    (row) => text(row).some(
+    (row2) => text(row2).some(
       (field2) => String(field2 ?? "").toLowerCase().includes(query.q)
     )
   ) : rows;
   const key = columns[query.sort];
   const order = query.direction === "asc" ? 1 : -1;
-  const position = new Map(matched.map((row, index2) => [row, index2]));
+  const position = new Map(matched.map((row2, index2) => [row2, index2]));
   const sorted2 = [...matched].sort((a, b) => {
     const x = key(a);
     const y = key(b);
@@ -15594,61 +15594,61 @@ var planShows = ["all", "needs_decision", "awaiting_approval", "blocked"];
 var approvalLabels = ["approved", "rejected", "pending", "not_required"];
 function pagedPlans(store, query = {}) {
   const columns = {
-    plan: (row) => row.planId,
-    loop: (row) => row.loop.state,
-    tests: (row) => row.tests.total,
-    gaps: (row) => row.openGaps.length,
-    approval: (row) => row.approval ?? row.status,
-    blocked: (row) => row.blocked.length,
-    updated: (row) => row.since
+    plan: (row2) => row2.planId,
+    loop: (row2) => row2.loop.state,
+    tests: (row2) => row2.tests.total,
+    gaps: (row2) => row2.openGaps.length,
+    approval: (row2) => row2.approval ?? row2.status,
+    blocked: (row2) => row2.blocked.length,
+    updated: (row2) => row2.since
   };
   const options2 = listQuery(query, Object.keys(columns), { sort: "plan", direction: "asc" });
   const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels, waits: roles });
   const rows = planList(store).filter(
-    (row) => (filters.approval === void 0 || row.approval === filters.approval) && (filters.waits === void 0 || row.loop.waitsOn === filters.waits) && (filters.show !== "needs_decision" || row.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row.approval === "pending") && (filters.show !== "blocked" || row.blocked.length > 0 || row.openBlockingGaps.length > 0)
+    (row2) => (filters.approval === void 0 || row2.approval === filters.approval) && (filters.waits === void 0 || row2.loop.waitsOn === filters.waits) && (filters.show !== "needs_decision" || row2.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row2.approval === "pending") && (filters.show !== "blocked" || row2.blocked.length > 0 || row2.openBlockingGaps.length > 0)
   );
-  return pageOf(rows, options2, columns, (row) => [
-    row.revision === null ? row.planId : `${row.planId}@${row.revision}`,
-    row.status,
-    row.loop.state,
-    `waits on ${row.loop.waitsOn}`,
-    `${row.tests.total} tests ${row.tests.ready} ready ${row.tests.blocked} blocked ${row.tests.deferred} deferred`,
-    ...row.openGaps,
-    row.approval,
-    ...row.blocked.map((block) => `${block.testId} ${block.dependency} ${block.cause}`),
-    row.since
+  return pageOf(rows, options2, columns, (row2) => [
+    row2.revision === null ? row2.planId : `${row2.planId}@${row2.revision}`,
+    row2.status,
+    row2.loop.state,
+    `waits on ${row2.loop.waitsOn}`,
+    `${row2.tests.total} tests ${row2.tests.ready} ready ${row2.tests.blocked} blocked ${row2.tests.deferred} deferred`,
+    ...row2.openGaps,
+    row2.approval,
+    ...row2.blocked.map((block) => `${block.testId} ${block.dependency} ${block.cause}`),
+    row2.since
   ]);
 }
 var runStatuses = ["started", "pending", "approved", "rejected", "not_required"];
-function runStatus(row) {
-  return row.state === "started" ? "started" : row.acceptance ?? "finalized";
+function runStatus(row2) {
+  return row2.state === "started" ? "started" : row2.acceptance ?? "finalized";
 }
 function pagedRuns(store, query = {}) {
   const columns = {
-    run: (row) => row.runId,
-    plan: (row) => `${row.planId}@${String(row.revision).padStart(9, "0")}`,
-    build: (row) => row.build,
-    instance: (row) => row.instanceId,
-    completion: (row) => row.completion,
-    coverage: (row) => row.coverage,
-    status: (row) => runStatus(row),
-    started: (row) => row.startedAt
+    run: (row2) => row2.runId,
+    plan: (row2) => `${row2.planId}@${String(row2.revision).padStart(9, "0")}`,
+    build: (row2) => row2.build,
+    instance: (row2) => row2.instanceId,
+    completion: (row2) => row2.completion,
+    coverage: (row2) => row2.coverage,
+    status: (row2) => runStatus(row2),
+    started: (row2) => row2.startedAt
   };
   const options2 = listQuery(query, Object.keys(columns), { sort: "started", direction: "desc" });
   const filters = filterValue(query.filters, { plan: null, build: null, status: runStatuses });
   const rows = runList(store, { planId: filters.plan, build: filters.build }).filter(
-    (row) => filters.status === void 0 || runStatus(row) === filters.status
+    (row2) => filters.status === void 0 || runStatus(row2) === filters.status
   );
-  return pageOf(rows, options2, columns, (row) => [
-    row.runId,
-    `${row.planId}@${row.revision}`,
-    row.build,
-    row.instanceId,
-    ...Object.entries(row.counts).map(([outcome, count]) => `${count} ${outcome}`),
-    row.completion,
-    row.coverage,
-    runStatus(row),
-    row.startedAt
+  return pageOf(rows, options2, columns, (row2) => [
+    row2.runId,
+    `${row2.planId}@${row2.revision}`,
+    row2.build,
+    row2.instanceId,
+    ...Object.entries(row2.counts).map(([outcome, count]) => `${count} ${outcome}`),
+    row2.completion,
+    row2.coverage,
+    runStatus(row2),
+    row2.startedAt
   ]);
 }
 var logColumns = {
@@ -15684,6 +15684,112 @@ function pagedOperations(store, query = {}) {
     offset: options2.offset,
     sort: options2.sort,
     direction: options2.direction
+  };
+}
+var severityOrder = ["critical", "high", "medium", "low"];
+function needsYou(store) {
+  const waiting = inbox(store);
+  const asked = (gap) => ({
+    key: `${gap.explorationId ? "question" : "gap"}:${gap.planId}:${gap.gapId}`,
+    group: gap.severity === "blocking" ? "blocking" : "questions",
+    kind: gap.explorationId ? "question" : "gap",
+    planId: gap.planId,
+    id: gap.gapId,
+    title: gap.question,
+    since: gap.since,
+    severity: gap.severity,
+    state: "open",
+    explorationId: gap.explorationId,
+    runId: gap.runId,
+    revision: gap.revision
+  });
+  const claims = waiting.claims.map((claim) => ({
+    key: `claim:${claim.planId}:${claim.claimId}`,
+    group: "claims",
+    kind: "claim",
+    planId: claim.planId,
+    id: claim.claimId,
+    title: claim.title,
+    since: null,
+    severity: claim.severity,
+    state: claim.state,
+    explorationId: claim.explorationId,
+    runId: null,
+    revision: null
+  })).sort((a, b) => severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity));
+  const plans = waiting.plans.map((plan) => ({
+    key: `plan:${plan.planId}@${plan.revision}`,
+    group: "approvals",
+    kind: "plan",
+    planId: plan.planId,
+    id: `${plan.planId}@${plan.revision}`,
+    title: plan.summary,
+    since: plan.since,
+    severity: null,
+    state: plan.approval,
+    explorationId: null,
+    runId: null,
+    revision: plan.revision
+  }));
+  const results = waiting.results.map((result) => ({
+    key: `run:${result.runId}`,
+    group: "approvals",
+    kind: "result",
+    planId: result.planId,
+    id: result.runId,
+    title: `Result of ${result.planId}@${result.revision} on build ${result.build}`,
+    since: result.since,
+    severity: null,
+    state: "pending",
+    explorationId: null,
+    runId: result.runId,
+    revision: result.revision
+  }));
+  const gaps = waiting.gaps.map(asked);
+  const items = [
+    ...gaps.filter((item) => item.group === "blocking"),
+    ...claims,
+    ...plans,
+    ...results,
+    ...gaps.filter((item) => item.group === "questions")
+  ];
+  const explorations = exploredPlans(store).flatMap(
+    (planId) => planExplorations(store, planId).map((item) => ({ ...item, planId }))
+  );
+  return {
+    items,
+    urgent: items.filter((item) => item.group !== "questions").length,
+    running: explorations.filter((item) => item.running),
+    failed: explorations.filter(
+      (item, index2) => ["failed", "stopped"].includes(item.state) && !explorations.slice(index2 + 1).some((later) => later.planId === item.planId)
+    )
+  };
+}
+var evidenceTypes = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  txt: "text/plain",
+  log: "text/plain",
+  md: "text/markdown",
+  json: "application/json"
+};
+function claimEvidence(store, planId, claimId, index2) {
+  const claim = planClaims(store, planId).find((item2) => item2.id === claimId);
+  requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`);
+  const item = claim.evidence[index2];
+  requireCondition(item && "path" in item, `Unknown evidence ${index2} of claim ${claimId}`);
+  const row2 = one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", item.sha256);
+  requireCondition(row2, `Unknown evidence ${index2} of claim ${claimId}`);
+  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
+  const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  return {
+    name,
+    mediaType: evidenceTypes[extension] ?? "application/octet-stream",
+    size: item.size,
+    bytes: row2.bytes
   };
 }
 
@@ -15746,7 +15852,7 @@ function markdown(report) {
         [
           `| ${block.table.map(markdownText).join(" | ")} |`,
           `| ${block.table.map(() => "---").join(" | ")} |`,
-          ...block.rows.map((row) => `| ${row.map(markdownText).join(" | ")} |`)
+          ...block.rows.map((row2) => `| ${row2.map(markdownText).join(" | ")} |`)
         ].join("\n")
       );
     else if ("list" in block)
@@ -15836,7 +15942,7 @@ function html(report) {
     else if ("text" in block) parts.push(`<p>${escapeHtml(block.text)}</p>`);
     else if ("table" in block)
       parts.push(
-        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row) => `<tr>${row.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row2) => `<tr>${row2.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
       );
     else if ("list" in block) {
       const tag = block.numbered ? "ol" : "ul";
@@ -16018,14 +16124,14 @@ function runDocument(report) {
     { heading: "Coverage" },
     {
       table: ["Requirement", "Text", "Status", "Tests", "Reason", "Metadata"],
-      rows: result.coverage.requirements.map((row) => {
-        const requirement = plan.requirements.find((item) => item.id === row.requirementId);
+      rows: result.coverage.requirements.map((row2) => {
+        const requirement = plan.requirements.find((item) => item.id === row2.requirementId);
         return [
-          row.requirementId,
+          row2.requirementId,
           requirement?.text ?? none,
-          row.status,
-          join9(row.testIds),
-          row.reason ?? none,
+          row2.status,
+          join9(row2.testIds),
+          row2.reason ?? none,
           pairs(requirement?.metadata)
         ];
       })
@@ -16039,7 +16145,7 @@ function runDocument(report) {
   };
 }
 function planReport(plan, sha256) {
-  const coverage2 = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
+  const coverage2 = new Map(plan.coverage.map((row2) => [row2.requirementId, row2.status]));
   const blocks = [
     {
       table: ["Field", "Value"],
@@ -16181,7 +16287,7 @@ function junitStatus(report, test) {
 function junit(report) {
   const { result, plan } = report;
   const tests = result.tests.filter((test) => result.selectedTestIds.includes(test.testId));
-  const count = (...outcomes) => tests.filter((test) => outcomes.includes(test.outcome)).length;
+  const count = (...outcomes2) => tests.filter((test) => outcomes2.includes(test.outcome)).length;
   const totals = {
     tests: tests.length,
     failures: count("failed"),
@@ -16276,7 +16382,7 @@ function testTimes(store, runId) {
     runId
   );
   return Object.fromEntries(
-    rows.map((row) => [row.test_id, Math.max(0, Date.parse(row.closed) - Date.parse(row.first)) / 1e3])
+    rows.map((row2) => [row2.test_id, Math.max(0, Date.parse(row2.closed) - Date.parse(row2.first)) / 1e3])
   );
 }
 function exportRun(store, runId, format2) {
@@ -16537,7 +16643,7 @@ function themeForm(context) {
 	</form>`;
 }
 function header(context, page) {
-  const count = html2`<b class="count" data-region="nav-count">${context.inboxCount || ""}</b>`;
+  const count = html2`<b class="count" data-region="nav-count">${context.queueCount || ""}</b>`;
   const actor = context.actor ? html2`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}" title="Change your name"
 				>actor: ${context.actor}</a
 			>` : html2`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}">Set your name</a>`;
@@ -16546,7 +16652,7 @@ function header(context, page) {
 			<a class="brand" href="/">${mark()}<span>checkmate</span></a>
 			<nav aria-label="Main">
 				<ul class="nav">
-					${navLink(context, page, "inbox", "/", "Inbox", count)}
+					${navLink(context, page, "inbox", "/", "Needs you", count)}
 					${navLink(context, page, "plans", "/plans", "Plans")}
 					${navLink(context, page, "runs", "/runs", "Runs")} ${navLink(context, page, "log", "/log", "Log")}
 				</ul>
@@ -16580,9 +16686,15 @@ var shortcuts = html2`<aside class="shortcuts" data-shortcuts hidden aria-labell
 		<dt><kbd>j</kbd> <kbd>k</kbd></dt>
 		<dd>Next or previous item</dd>
 		<dt><kbd>Enter</kbd></dt>
-		<dd>Open the item</dd>
+		<dd>Open the item, or go to its form</dd>
+		<dt><kbd>a</kbd> <kbd>r</kbd></dt>
+		<dd>Accept or reject the selected claim</dd>
+		<dt><kbd>c</kbd> <kbd>s</kbd> <kbd>d</kbd></dt>
+		<dd>Clarify, accept an assumption, or defer the selected question</dd>
+		<dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt>
+		<dd>Send the form</dd>
 		<dt><kbd>g</kbd> <kbd>i</kbd></dt>
-		<dd>Go to the inbox</dd>
+		<dd>Go to Needs you</dd>
 		<dt><kbd>Esc</kbd></dt>
 		<dd>Close the viewer or this panel</dd>
 		<dt><kbd>?</kbd></dt>
@@ -16773,11 +16885,11 @@ function gapPanel(context, form, state) {
 		data-stale-message="${form.staleMessage}"
 	>
 		<h2 class="lab" id="answer-title">Answer gap</h2>
-		<p class="subj">${form.title}</p>
-		<p class="help">${form.question}</p>
+		${form.title ? html2`<p class="subj">${form.title}</p>` : ""}
+		${form.question ? html2`<p class="help">${form.question}</p>` : ""}
 		<div data-stale-slot>${messages(state)}</div>
 		<form method="post" action="${form.action}" class="decision-form gap-form" data-gap-form>
-			${hidden(context, form.sha256)}
+			${hidden(context, form.sha256)} ${form.extra ?? ""}
 			<fieldset class="seg-field">
 				<legend class="lab">Kind of answer</legend>
 				<div class="seg">
@@ -16828,444 +16940,9 @@ function recordPanel(title, content, decided = "") {
 	</section>`;
 }
 
-// plugin/src/ui/exploration.ts
-function claimRow(claim) {
-  return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
-		<td>
-			<a
-				class="mono"
-				href="/explorations/${claim.explorationId}/claims/${claim.id}${claim.decision ? "" : "#decide"}"
-				>${claim.id}</a
-			>
-		</td>
-		<td>${pill(claim.state)}</td>
-		<td>${pill(claim.severity)}</td>
-		<td>${claim.actors.join(", ")}</td>
-		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
-	</tr>`;
-}
-function claimsTable(claims) {
-  if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Claim</th>
-					<th scope="col">State</th>
-					<th scope="col">Severity</th>
-					<th scope="col">Reporters</th>
-					<th scope="col">Title</th>
-				</tr>
-			</thead>
-			<tbody>
-				${claims.map(claimRow)}
-			</tbody>
-		</table>
-	</div>`;
-}
-function questionsList(questions) {
-  if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
-  return html2`<ul class="items">
-		${questions.map(
-    (question) => html2`<li data-key="question:${question.id}">
-					<a
-						class="item"
-						href="/explorations/${question.explorationId}/questions/${question.id}${question.answer === null ? "#answer" : ""}"
-						><span class="id">${question.id}</span><span class="what">${question.question}</span
-						><span class="end"
-							>${question.blocking ? html2`${pill("blocking")} ` : ""}${pill(
-      question.answer === null ? "open" : "answered"
-    )}</span
-						></a
-					>
-				</li>`
-  )}
-	</ul>`;
-}
-function dataLine(reason, data) {
-  return html2`${reason ?? "No reason is recorded."}
-	${data.length ? html2` Its data:
-				${join10(
-    data.map((path) => html2`<code>${path}</code>`),
-    ", "
-  )}.` : ""}`;
-}
-function explorationBanners(explorations) {
-  const running3 = explorations.filter((item) => item.running);
-  const last = explorations.at(-1);
-  return html2`${running3.map(
-    (item) => banner(
-      item.paused ? "warn" : "info",
-      html2`<span data-key="running:${item.explorationId}"
-				>${item.paused ? html2`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html2`Exploration ${item.explorationId} is running.`}
-				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
-				when it is completed.</span
-			>`
-    )
-  )}
-	${last && (last.state === "failed" || last.state === "stopped") ? banner(
-    "fail",
-    html2`<span data-key="failed:${last.explorationId}"
-						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
-						${dataLine(last.reason, last.data)}
-						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
-					>`
-  ) : ""}`;
-}
-function explorationsTable(explorations) {
-  if (!explorations.length)
-    return html2`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Exploration</th>
-					<th scope="col">State</th>
-					<th scope="col">Build</th>
-					<th scope="col">Instance</th>
-					<th scope="col">Level</th>
-					<th scope="col">Started</th>
-				</tr>
-			</thead>
-			<tbody>
-				${[...explorations].reverse().map(
-    (item) => html2`<tr data-key="exploration:${item.explorationId}">
-							<td>
-								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
-							</td>
-							<td>
-								${pill(item.state)}
-								${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
-								${item.follow === "failed" || item.follow === "stopped" ? html2`<p class="help">
-												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
-											</p>` : ""}
-							</td>
-							<td class="mono">${item.build}</td>
-							<td class="mono">${item.instanceId}</td>
-							<td>
-								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
-							</td>
-							<td class="nowrap">${time(item.startedAt)}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
-}
-function explorationSections(store, planId) {
-  const explorations = planExplorations(store, planId);
-  const claims = mergedClaims(store, planId);
-  const questions = mergedQuestions(store, planId);
-  return html2`<section aria-labelledby="explorations" data-region="explorations">
-			<h2 id="explorations">Explorations <span class="n">${explorations.length}</span></h2>
-			${explorationsTable(explorations)}
-		</section>
-		<section aria-labelledby="claims" data-region="claims">
-			<h2 id="claims">Claims <span class="n">${claims.length}</span></h2>
-			<p class="help">The merged claims of completed explorations.</p>
-			${claimsTable(claims)}
-		</section>
-		<section aria-labelledby="questions" data-region="questions">
-			<h2 id="questions">Questions <span class="n">${questions.length}</span></h2>
-			<p class="help">The merged questions of completed explorations.</p>
-			${questionsList(questions)}
-		</section>`;
-}
-function explorerRow(live, item) {
-  const none3 = html2`<span class="muted">–</span>`;
-  return html2`<tr data-key="explorer:${item.explorer}">
-		<td class="mono">${item.explorer}</td>
-		<td>${item.turn ?? none3}</td>
-		<td>${item.state ? pill(item.state, item.state === "given" ? "given to the session" : void 0) : none3}</td>
-		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none3}</td>
-		<td class="nowrap">
-			${item.elapsedMs === null ? none3 : item.startedAt && (item.state === "running" || item.state === "given") ? html2`<span data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : duration(item.elapsedMs)}
-		</td>
-		<td>${item.activity ?? ""}</td>
-		<td>
-			${item.recorded ? html2`${pill(item.recorded)} <span class="muted small">${plural(item.saved, "entry", "entries")}</span>` : none3}
-		</td>
-		<td>
-			${item.files.length ? join10(
-    item.files.map(
-      (file) => html2`<a
-										href="/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}"
-										>${file.name}${file.phase === "test" ? "" : ` (${file.phase})`}</a
-									>`
-    ),
-    html2`<br />`
-  ) : none3}
-		</td>
-	</tr>`;
-}
-function stateBanner(live) {
-  if (live.running && live.paused)
-    return banner(
-      "warn",
-      html2`<span data-key="paused"
-				><strong>Paused: ${live.paused}</strong> It waits on the oracle: answer the operator in the Claude Code
-				session.</span
-			>`
-    );
-  if (live.running)
-    return banner(
-      "info",
-      html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
-    );
-  if (live.state === "failed" || live.state === "stopped")
-    return banner(
-      "fail",
-      html2`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
-    );
-  if (live.follow === "failed" || live.follow === "stopped")
-    return banner(
-      "fail",
-      html2`<span data-key="follow-failed"
-				><strong>The follow-up of ${live.explorationId} ${live.follow}.</strong>
-				${dataLine(live.followReason, live.data)} The claims and questions of the exploration stay valid.</span
-			>`
-    );
-  if (live.state === "open")
-    return banner(
-      "info",
-      html2`Exploration ${live.explorationId} is open. Record its sessions, then run
-				<code>checkmate explore finish ${live.explorationId}</code>.`
-    );
-  return "";
-}
-function unmergedSection(live) {
-  if (!live.unmerged.length) return "";
-  return html2`<section class="panel" aria-labelledby="unmerged-title" data-key="unmerged">
-		<h2 class="lab" id="unmerged-title">Not merged yet <span class="n">${live.unmerged.length}</span></h2>
-		<p class="help">
-			These are the raw questions and defects of single explorers. They are not merged yet. They are not in the
-			inbox and not on the plan page. They can change before the exploration is completed.
-		</p>
-		<ul class="items">
-			${live.unmerged.map(
-    (item) => html2`<li data-key="raw:${item.id}">
-						<div class="item">
-							<span class="id">${item.id}</span>
-							<span class="what">${item.text}</span>
-							<span class="end"
-								>${pill("pending", `${item.kind}, not merged`)}
-								${item.severity ? pill(item.severity) : item.blocking ? pill("blocking") : ""}</span
-							>
-						</div>
-					</li>`
-  )}
-		</ul>
-	</section>`;
-}
-function explorationPage(store, explorationId) {
-  const live = explorationLive(store, explorationId);
-  const meta = html2`<div class="meta">
-		<span data-region="exploration-state">${pill(live.state)}</span>
-		<a class="pill" href="/plans/${live.planId}">${live.planId}</a>
-		<span class="pill">build ${live.build}</span>
-		<span class="pill">instance ${live.instanceId}</span>
-		<span class="pill"
-			>${live.level ?? "no level"} · ${plural(live.explorerCount ?? 0, "explorer")} · ${live.model ?? "-"}</span
-		>
-		<span class="pill">started ${time(live.startedAt, clock(live.startedAt))}</span>
-	</div>`;
-  const merged = live.state === "completed" || live.claims.length + live.questions.length > 0;
-  const body = html2`${heading(html2`Exploration ${explorationId}`, live.goal, meta)}
-		<div class="stack" data-region="exploration-live">
-			${stateBanner(live)}
-			<section class="panel" aria-labelledby="explorers-title">
-				<h2 class="lab" id="explorers-title">Explorers</h2>
-				${live.explorers.length ? html2`<div class="scroll">
-								<table>
-									<thead>
-										<tr>
-											<th scope="col">Explorer</th>
-											<th scope="col">${live.path === "session" ? "Step" : "Turn"}</th>
-											<th scope="col">State</th>
-											<th scope="col">${live.path === "session" ? "Since" : "Started"}</th>
-											<th scope="col">${live.path === "session" ? "In state" : "Elapsed"}</th>
-											<th scope="col">Last activity</th>
-											<th scope="col">Record</th>
-											<th scope="col">Files</th>
-										</tr>
-									</thead>
-									<tbody>
-										${live.explorers.map((item) => explorerRow(live, item))}
-									</tbody>
-								</table>
-							</div>` : html2`<p class="none">No explorer has started yet.</p>`}
-			</section>
-			<section class="panel" aria-labelledby="phases-title">
-				<h2 class="lab" id="phases-title">Phases</h2>
-				<div class="scroll">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">Phase</th>
-								<th scope="col">State</th>
-								<th scope="col">Reason</th>
-							</tr>
-						</thead>
-						<tbody>
-							${live.phases.map(
-    (row) => html2`<tr data-key="phase:${row.phase}">
-										<td>${row.phase}</td>
-										<td>${pill(row.state)}</td>
-										<td>${row.reason ?? ""}</td>
-									</tr>`
-  )}
-						</tbody>
-					</table>
-				</div>
-			</section>
-			${unmergedSection(live)}
-			<section class="panel" aria-labelledby="claims-title">
-				<h2 class="lab" id="claims-title">Claims</h2>
-				${merged ? claimsTable(live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
-			</section>
-			<section class="panel" aria-labelledby="questions-title">
-				<h2 class="lab" id="questions-title">Questions</h2>
-				${merged ? questionsList(live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
-			</section>
-		</div>
-		<div class="actions">
-			${downloads("Download report", `/explorations/${explorationId}/export`, "The record of this exploration.", ["md", "json"])}
-		</div>`;
-  return {
-    title: `Exploration ${explorationId}`,
-    section: "plans",
-    subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
-    body
-  };
-}
-function explorerFilePage(store, explorationId, explorer, phase, name) {
-  const file = explorationReport(store, explorationId).files.find(
-    (item) => item.explorer === explorer && item.phase === phase && item.name === name
-  );
-  if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`);
-  return {
-    title: `${explorationId} \xB7 ${explorer} \xB7 ${name}`,
-    section: "plans",
-    subjects: [`exploration:${explorationId}`],
-    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
-			<p>
-				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, "byte")}
-			</p>
-			<section class="panel" aria-label="${name}"><pre class="report">${file.text}</pre></section>`
-  };
-}
-function questionPage(store, context, explorationId, questionId, state = null) {
-  const report = explorationReport(store, explorationId);
-  const question = report.questions.find((item) => item.id === questionId);
-  if (!question) throw new Error(`Unknown question ${questionId} in ${explorationId}`);
-  const panel = question.answer === null || state ? gapPanel(
-    context,
-    {
-      action: `/explorations/${explorationId}/questions/${question.id}`,
-      cancel: `/explorations/${explorationId}`,
-      sha256: "",
-      title: html2`${report.planId} · ${question.id}`,
-      question: question.question,
-      staleMessage: `${explorationId} changed. Review it before you answer.`
-    },
-    state ?? emptyState()
-  ) : recordPanel("Answer", html2`<blockquote>${question.answer}</blockquote>`);
-  return {
-    title: `${report.planId} \xB7 ${question.id}`,
-    section: "inbox",
-    subjects: [`exploration:${explorationId}`, "inbox"],
-    body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
-			<p>
-				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
-				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
-			</p>
-			${panel}`
-  };
-}
-function claimPage(store, context, explorationId, claimId, state = null) {
-  const report = explorationReport(store, explorationId);
-  const claim = report.claims.find((item) => item.id === claimId);
-  if (!claim) throw new Error(`Unknown claim ${claimId} in ${explorationId}`);
-  const shown = state ?? emptyState();
-  const panel = claim.decision ? recordPanel(
-    "Decision",
-    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
-					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
-  ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-				<h2 class="lab" id="decide-title">Decision</h2>
-				<p class="subj">Is ${claim.id} a defect?</p>
-				<div>${messages(shown)}</div>
-				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="decision-form">
-					${hidden(context, "")} ${actorField(context, shown)}
-					${rationaleField(shown, "Why do you decide this?")}
-					<div class="btns">
-						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
-						<button class="btn" name="verdict" value="rejected">Reject</button>
-					</div>
-				</form>
-			</section>`;
-  const steps = [claim.steps ?? []].flat();
-  return {
-    title: `${report.planId} \xB7 ${claim.id}`,
-    section: "inbox",
-    subjects: [`exploration:${explorationId}`, "inbox"],
-    body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
-			<div class="split">
-				<section class="panel" aria-labelledby="claim-title">
-					<h2 class="lab" id="claim-title">Claim</h2>
-					<p>
-						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
-						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
-					</p>
-					<p class="lab">Expected</p>
-					<p>${claim.expected}</p>
-					<p class="lab">Actual</p>
-					<p>${claim.actual}</p>
-					${steps.length ? html2`<p class="lab">Steps</p>
-									<ol>
-										${steps.map((step) => html2`<li>${step}</li>`)}
-									</ol>` : ""}
-					<p class="help">Reported by ${claim.actors.join(", ")}. ${claim.reason ?? ""}</p>
-				</section>
-				${panel}
-			</div>`
-  };
-}
-
-// plugin/src/actor.ts
-import { execFileSync } from "node:child_process";
-import { userInfo } from "node:os";
-function defaultActor(workspace, env) {
-  const named = env.CHECKMATE_ACTOR?.trim();
-  if (named) return named;
-  try {
-    const name = execFileSync("git", ["config", "user.name"], {
-      cwd: workspace,
-      env,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    if (name) return name;
-  } catch {
-  }
-  try {
-    return userInfo().username;
-  } catch {
-    return void 0;
-  }
-}
-
 // plugin/src/ui/lists.ts
 function gapLink(gap) {
   return gap.explorationId ? `/explorations/${gap.explorationId}/questions/${gap.gapId}#answer` : `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`;
-}
-function inboxItems(waiting) {
-  return [
-    ...waiting.gaps.map(gapLink),
-    ...waiting.claims.map((claim) => `/explorations/${claim.explorationId}/claims/${claim.claimId}#decide`),
-    ...waiting.plans.map((plan) => `/plans/${plan.planId}@${plan.revision}#decide`),
-    ...waiting.results.map((result) => `/runs/${result.runId}#decide`)
-  ];
 }
 function loopState(loop2) {
   const role = loop2.waitsOn === "qa" ? "QA" : loop2.waitsOn;
@@ -17600,39 +17277,39 @@ function testSummary(tests) {
 			ready${tests.blocked ? ` \xB7 ${tests.blocked} blocked` : ""}${tests.deferred ? ` \xB7 ${tests.deferred} deferred` : ""}</span
 		>`;
 }
-function requestedPlanRow(row) {
-  return html2`<tr data-key="plan:${row.planId}" data-nav-row>
-		<td><a class="mono" href="/plans/${row.planId}" data-nav-item>${row.planId}</a></td>
-		<td>${loopState(row.loop)}</td>
+function requestedPlanRow(row2) {
+  return html2`<tr data-key="plan:${row2.planId}" data-nav-row>
+		<td><a class="mono" href="/plans/${row2.planId}" data-nav-item>${row2.planId}</a></td>
+		<td>${loopState(row2.loop)}</td>
 		<td><span class="muted">no revision yet</span></td>
 		<td><span class="muted">none</span></td>
 		<td>${pill("requested")}</td>
 		<td><span class="muted">none</span></td>
-		<td class="nowrap">${time(row.since)}</td>
+		<td class="nowrap">${time(row2.since)}</td>
 	</tr>`;
 }
-function planRow(row) {
-  if (row.status === "requested") return requestedPlanRow(row);
-  return html2`<tr data-key="plan:${row.planId}" data-nav-row>
+function planRow(row2) {
+  if (row2.status === "requested") return requestedPlanRow(row2);
+  return html2`<tr data-key="plan:${row2.planId}" data-nav-row>
 		<td>
-			<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item>${row.planId}@${row.revision}</a>
+			<a class="mono" href="/plans/${row2.planId}@${row2.revision}" data-nav-item>${row2.planId}@${row2.revision}</a>
 		</td>
-		<td>${loopState(row.loop)}</td>
-		<td>${testSummary(row.tests)}</td>
+		<td>${loopState(row2.loop)}</td>
+		<td>${testSummary(row2.tests)}</td>
 		<td>
-			${row.openGaps.length ? join10(
-    row.openGaps.map(
-      (id2) => html2`<a class="mono" href="/plans/${row.planId}@${row.revision}/gaps/${id2}"
-										>${id2}${row.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
+			${row2.openGaps.length ? join10(
+    row2.openGaps.map(
+      (id2) => html2`<a class="mono" href="/plans/${row2.planId}@${row2.revision}/gaps/${id2}"
+										>${id2}${row2.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
 									>`
     ),
     ", "
   ) : html2`<span class="muted">none</span>`}
 		</td>
-		<td>${pill(row.approval ?? row.status)}</td>
+		<td>${pill(row2.approval ?? row2.status)}</td>
 		<td>
-			${row.blocked.length ? html2`<ul class="plain">
-							${row.blocked.map(
+			${row2.blocked.length ? html2`<ul class="plain">
+							${row2.blocked.map(
     (block) => html2`<li>
 										<span class="mono">${block.testId}</span> by
 										<span class="mono">${block.dependency}</span>: ${block.cause}
@@ -17640,7 +17317,7 @@ function planRow(row) {
   )}
 						</ul>` : html2`<span class="muted">none</span>`}
 		</td>
-		<td class="nowrap">${time(row.since)}</td>
+		<td class="nowrap">${time(row2.since)}</td>
 	</tr>`;
 }
 function plansPage(store, params) {
@@ -17662,11 +17339,11 @@ var runStatuses2 = [
   ["rejected", "Rejected"],
   ["not_required", "No acceptance needed"]
 ];
-function runStatus2(row) {
-  if (row.state === "started") return pill("started", "in progress");
-  if (row.acceptance === "approved") return pill("approved", "accepted");
-  if (row.acceptance === "pending") return pill("pending", "awaiting acceptance");
-  return pill(row.acceptance ?? "finalized");
+function runStatus2(row2) {
+  if (row2.state === "started") return pill("started", "in progress");
+  if (row2.acceptance === "approved") return pill("approved", "accepted");
+  if (row2.acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(row2.acceptance ?? "finalized");
 }
 function distinct(values) {
   return [...new Set(values)].sort().map((value2) => [value2, value2]);
@@ -17695,30 +17372,30 @@ function runsSpec(store) {
       {
         name: "plan",
         label: "Plan",
-        choices: [["", "All plans"], ...distinct(planList(store).map((row) => row.planId))],
+        choices: [["", "All plans"], ...distinct(planList(store).map((row2) => row2.planId))],
         strict: false
       },
       {
         name: "build",
         label: "Build",
-        choices: [["", "All builds"], ...distinct(runs.map((row) => row.build))],
+        choices: [["", "All builds"], ...distinct(runs.map((row2) => row2.build))],
         strict: false
       },
       { name: "status", label: "Status", choices: runStatuses2, strict: true }
     ]
   };
 }
-function runRow(row) {
-  return html2`<tr data-key="run:${row.runId}" data-nav-row>
-		<td><a class="mono" href="/runs/${row.runId}" data-nav-item>${row.runId}</a></td>
-		<td><a class="mono" href="/plans/${row.planId}@${row.revision}">${row.planId}@${row.revision}</a></td>
-		<td class="mono">${row.build}</td>
-		<td class="mono">${row.instanceId}</td>
-		<td>${counts(row.counts)}</td>
-		<td>${row.completion ? pill(row.completion) : html2`<span class="muted">running</span>`}</td>
-		<td>${row.coverage ? pill(row.coverage) : html2`<span class="muted">–</span>`}</td>
-		<td>${runStatus2(row)}</td>
-		<td class="nowrap">${time(row.startedAt)}</td>
+function runRow(row2) {
+  return html2`<tr data-key="run:${row2.runId}" data-nav-row>
+		<td><a class="mono" href="/runs/${row2.runId}" data-nav-item>${row2.runId}</a></td>
+		<td><a class="mono" href="/plans/${row2.planId}@${row2.revision}">${row2.planId}@${row2.revision}</a></td>
+		<td class="mono">${row2.build}</td>
+		<td class="mono">${row2.instanceId}</td>
+		<td>${counts(row2.counts)}</td>
+		<td>${row2.completion ? pill(row2.completion) : html2`<span class="muted">running</span>`}</td>
+		<td>${row2.coverage ? pill(row2.coverage) : html2`<span class="muted">–</span>`}</td>
+		<td>${runStatus2(row2)}</td>
+		<td class="nowrap">${time(row2.startedAt)}</td>
 	</tr>`;
 }
 function runsPage(store, params) {
@@ -17765,43 +17442,43 @@ function logSpec(store) {
       {
         name: "subject",
         label: "Subject",
-        choices: [["", "All subjects"], ...distinct(recent.flatMap((row) => row.subjects))],
+        choices: [["", "All subjects"], ...distinct(recent.flatMap((row2) => row2.subjects))],
         strict: false
       },
       {
         name: "actor",
         label: "Actor",
-        choices: [["", "All actors"], ...distinct(recent.map((row) => row.actor))],
+        choices: [["", "All actors"], ...distinct(recent.map((row2) => row2.actor))],
         strict: false
       },
       {
         name: "command",
         label: "Command",
-        choices: [["", "All commands"], ...distinct(recent.map((row) => row.command))],
+        choices: [["", "All commands"], ...distinct(recent.map((row2) => row2.command))],
         strict: false
       },
       {
         name: "status",
         label: "Status",
-        choices: [["", "All statuses"], ...distinct(recent.map((row) => row.status))],
+        choices: [["", "All statuses"], ...distinct(recent.map((row2) => row2.status))],
         strict: false
       }
     ]
   };
 }
-function logRow(row) {
-  return html2`<tr data-key="op:${row.rowid}">
-		<td class="nowrap">${time(row.at)}</td>
-		<td>${row.actor}</td>
+function logRow(row2) {
+  return html2`<tr data-key="op:${row2.rowid}">
+		<td class="nowrap">${time(row2.at)}</td>
+		<td>${row2.actor}</td>
 		<td>
-			<span class="mono">${row.command}</span>
-			${row.status === "rejected" ? html2`<div class="reason">${reasons(row.response).join(" ")}</div>` : ""}
+			<span class="mono">${row2.command}</span>
+			${row2.status === "rejected" ? html2`<div class="reason">${reasons(row2.response).join(" ")}</div>` : ""}
 		</td>
-		<td>${pill(row.status === "rejected" ? "rejected_operation" : row.status, words(row.status))}</td>
+		<td>${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words(row2.status))}</td>
 		<td>
-			${row.subjects.length ? join10(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
+			${row2.subjects.length ? join10(row2.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
 		</td>
-		<td class="mono muted">${row.id}</td>
+		<td class="mono muted">${row2.id}</td>
 	</tr>`;
 }
 function logPage(store, params) {
@@ -17814,6 +17491,1219 @@ function logPage(store, params) {
     body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(logRow), "log")}`
   };
+}
+
+// plugin/src/ui/run.ts
+var imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var textTypes = ["text/plain", "application/json", "text/markdown", "application/xml", "text/csv"];
+var inlineLimit = 64 * 1024;
+function size(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+function evidenceItem(store, item) {
+  const href = `/evidence/${item.id}`;
+  const caption = html2`<span class="ev-name">${item.name}</span> <span class="muted">${size(item.size)}</span>`;
+  if (imageTypes.includes(item.mediaType))
+    return html2`<figure class="ev ev-image">
+			<a href="${href}" data-view-image data-name="${item.name}">
+				<img src="${href}" alt="Evidence ${item.name}" loading="lazy" />
+			</a>
+			<figcaption>${caption}</figcaption>
+		</figure>`;
+  if (textTypes.includes(item.mediaType) && item.size <= inlineLimit) {
+    const text = new TextDecoder().decode(evidenceBytes(store, item.id).bytes);
+    return html2`<figure class="ev ev-text">
+			<figcaption>${caption} <a href="${href}" download="${item.name}">Download</a></figcaption>
+			<pre tabindex="0">${text}</pre>
+		</figure>`;
+  }
+  return html2`<a class="chip" href="${href}" download="${item.name}">↓ ${item.name} · ${size(item.size)}</a>`;
+}
+function evidenceChips(items) {
+  if (!items.length) return "";
+  return html2`<p class="evidence">
+		${items.map(
+    (item) => html2`<a
+					class="chip"
+					href="/evidence/${item.id}"
+					${imageTypes.includes(item.mediaType) ? html2`data-view-image data-name="${item.name}"` : html2`download="${item.name}"`}
+					>${item.name} · ${size(item.size)}</a
+				>`
+  )}
+	</p>`;
+}
+function evidenceList(store, items) {
+  if (!items.length) return "";
+  return html2`<div class="evidence">${items.map((item) => evidenceItem(store, item))}</div>`;
+}
+function tone(result) {
+  if (result === "failed") return "failed";
+  if (result === "inconclusive") return "unsure";
+  if (result === "not_checked") return "warn";
+  return "";
+}
+function findingRefs(detail2, reference) {
+  const findings2 = detail2.findings.filter((finding) => finding.assertionIds.includes(reference));
+  if (!findings2.length) return "";
+  return html2` ·
+	${join10(
+    findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
+    ", "
+  )}`;
+}
+function assertionRow(store, detail2, test, assertion) {
+  const reference = `${test.testId}.${assertion.assertionId}`;
+  if (!assertion.result)
+    return html2`<li class="asr waiting" id="${reference}" data-key="${reference}">
+			<div class="asr-row">
+				${icon(null)}<span class="aid">${assertion.assertionId}</span>
+				<div class="asr-text">
+					${assertion.check}
+					<div class="obs">No result yet.</div>
+				</div>
+			</div>
+		</li>`;
+  const open = assertion.result !== "passed";
+  return html2`<li
+		class="asr ${tone(assertion.result)}"
+		id="${reference}"
+		data-key="${reference}"
+		data-announce="${reference} ${words(assertion.result)}"
+	>
+		<details ${open ? html2`open` : ""} data-open-key="${reference}">
+			<summary class="asr-row">
+				${icon(assertion.result)}<span class="aid">${assertion.assertionId}</span>
+				<div class="asr-text">
+					${assertion.check}
+					${assertion.observed ? html2`<div class="obs">
+									Observed: <code>${assertion.observed}</code>${findingRefs(detail2, reference)}
+								</div>` : ""}
+				</div>
+			</summary>
+			<div class="asr-body">
+				${assertion.reason ? html2`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ""}
+				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
+				${evidenceList(store, assertion.evidence)}
+			</div>
+		</details>
+	</li>`;
+}
+function testState(test, detail2) {
+  if (test.outcome) return pill(test.outcome);
+  if (detail2.state === "finalized") return pill("not_run");
+  return test.assertions.some((assertion) => assertion.result) ? pill("started", "running") : pill("pending", "waiting");
+}
+function testCard(store, detail2, test) {
+  const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
+  const recorded = test.assertions.filter((assertion) => assertion.result).length;
+  const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
+  return html2`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
+		<header class="test-h">
+			${testState(test, detail2)}
+			<a class="id" href="#${test.testId}">${test.testId}</a>
+			<h3>${test.title}</h3>
+			<span class="count"
+				>${passed} of ${test.assertions.length}
+				passed${recorded < test.assertions.length ? ` \xB7 ${test.assertions.length - recorded} without result` : ""}</span
+			>
+		</header>
+		${hasMetadata(test.metadata) ? html2`<p class="test-note">${metadataList(test.metadata)}</p>` : ""}
+		${test.reason ? html2`<p class="test-note">${test.reason}</p>` : ""}
+		${test.evidence.length ? html2`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ""}
+		<ul class="asrs">
+			${test.assertions.map((assertion) => assertionRow(store, detail2, test, assertion))}
+		</ul>
+	</article>`;
+}
+function outcomeCounts2(detail2) {
+  const values = {};
+  for (const test of detail2.tests) if (test.outcome) values[test.outcome] = (values[test.outcome] ?? 0) + 1;
+  return values;
+}
+function strip(detail2) {
+  const result = detail2.result;
+  return html2`<div class="strip" data-region="summary">
+		<div><small>Completion</small><strong>${result ? words(result.completion) : "running"}</strong></div>
+		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : "\u2013"}</strong></div>
+		<div><small>Tests</small><strong>${counts(outcomeCounts2(detail2))}</strong></div>
+		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
+	</div>`;
+}
+function findings(store, detail2) {
+  if (!detail2.findings.length) return html2`<p class="empty-line">No findings.</p>`;
+  const evidence2 = detail2.tests.flatMap((test) => [
+    ...test.evidence,
+    ...test.assertions.flatMap((assertion) => assertion.evidence)
+  ]);
+  return html2`<div class="stack">
+		${detail2.findings.map(
+    (finding) => html2`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
+					<header class="test-h">
+						${pill(finding.type)} <span class="id">${finding.id}</span>
+						<h3>${finding.title}</h3>
+						<span class="count">${pill(finding.severity)}</span>
+					</header>
+					<div class="test-b">
+						<div class="compare">
+							<div>
+								<small>Expected</small>
+								<p>${finding.expected}</p>
+							</div>
+							<div>
+								<small>Observed</small>
+								<p>${finding.observed}</p>
+							</div>
+						</div>
+						${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
+										<ol class="steps">
+											${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
+										</ol>` : ""}
+						<p class="muted small">
+							Assertions
+							${join10(
+      finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
+      ", "
+    )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
+						</p>
+						${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
+						${evidenceChips(evidence2.filter((item) => finding.evidenceIds.includes(item.id)))}
+					</div>
+				</article>`
+  )}
+	</div>`;
+}
+function adoptForm(context, detail2, gapId, sha256) {
+  return html2`<form method="post" action="/runs/${detail2.runId}/gaps/${gapId}" class="inline-form">
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="sha" value="${sha256}" />
+		${context.actor ? "" : html2`<input
+						name="actor"
+						required
+						autocomplete="name"
+						placeholder="Your name"
+						aria-label="Your name"
+					/>`}
+		<button class="btn small">Bring into plan</button>
+	</form>`;
+}
+function newGaps(store, context, detail2, adoptError) {
+  if (!detail2.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
+  const revision = planRevision(store, detail2.planId);
+  const latest = `${detail2.planId}@${revision.plan.revision}`;
+  const adopted = planRunGaps(store, detail2.planId).filter((item) => item.runId === detail2.runId && item.adopted).map((item) => item.gap.id);
+  return html2`<ul class="gaps">
+		${detail2.newGaps.map(
+    (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
+					<div class="gap-h">
+						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
+						<span class="gap-refs muted"
+							>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
+						>
+					</div>
+					<p class="gap-q">${gap.question}</p>
+					<p class="muted">${gap.consequence}</p>
+					<div class="actions">
+						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
+										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+										${adoptForm(context, detail2, gap.id, revision.sha256)}`}
+					</div>
+					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
+				</li>`
+  )}
+	</ul>`;
+}
+function coverage(store, detail2) {
+  const result = detail2.result;
+  if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
+  const plan = planDetail(store, detail2.planId, detail2.revision).plan;
+  const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">ID</th>
+					<th scope="col">Requirement</th>
+					<th scope="col">Tests</th>
+					<th scope="col">Coverage</th>
+				</tr>
+			</thead>
+			<tbody>
+				${result.coverage.requirements.map(
+    (row2) => html2`<tr>
+							<td class="mono">${row2.requirementId}</td>
+							<td>
+								${requirements.get(row2.requirementId)?.text ?? ""}
+								${row2.reason ? html2`<div class="muted small">${row2.reason}</div>` : ""}
+								${hasMetadata(requirements.get(row2.requirementId)?.metadata) ? html2`<div class="small">
+												${metadataList(requirements.get(row2.requirementId)?.metadata)}
+											</div>` : ""}
+							</td>
+							<td class="mono">${row2.testIds.join(", ") || "\u2013"}</td>
+							<td>${pill(row2.status)}</td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+function cleanup(detail2) {
+  const result = detail2.result;
+  return html2`<dl class="facts">
+		<div>
+			<dt>Cleanup</dt>
+			<dd>
+				${result ? html2`${pill(result.cleanup.status)} ${result.cleanup.reason}` : html2`<span class="muted">Not finished.</span>`}
+			</dd>
+		</div>
+		<div>
+			<dt>Attempts</dt>
+			<dd>
+				<ul class="plain">
+					${detail2.attempts.map(
+    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
+  )}
+				</ul>
+			</dd>
+		</div>
+		<div>
+			<dt>Browser session</dt>
+			<dd class="mono">${detail2.browserSession}</dd>
+		</div>
+		<div>
+			<dt>Target</dt>
+			<dd class="mono">${detail2.target}</dd>
+		</div>
+		<div>
+			<dt>Instance</dt>
+			<dd>
+				<a
+					class="mono"
+					href="/settings/targets/${detail2.instance.targetId}#instance-${detail2.instance.instanceId}"
+					>${detail2.instance.instanceId}</a
+				>${detail2.instance.environment ? html2` · ${detail2.instance.environment}` : ""}${detail2.instance.retired ? html2` · ${pill("retired")}` : ""}
+			</dd>
+		</div>
+		${detail2.request.retestOf ? html2`<div>
+						<dt>Retest of</dt>
+						<dd><a class="mono" href="/runs/${detail2.request.retestOf}">${detail2.request.retestOf}</a></dd>
+					</div>` : ""}
+	</dl>`;
+}
+function inconclusiveList(detail2) {
+  const rows = detail2.tests.flatMap(
+    (test) => test.assertions.filter((assertion) => assertion.result === "inconclusive").map((assertion) => ({
+      reference: `${test.testId}.${assertion.assertionId}`,
+      reason: assertion.reason ?? ""
+    }))
+  );
+  if (!rows.length) return "";
+  return html2`<div class="field-group">
+		<p class="lab">Inconclusive · ${rows.length}</p>
+		<ul class="plist">
+			${rows.map(
+    (row2) => html2`<li>
+						<a href="#${row2.reference}"><code>${row2.reference}</code></a> ${row2.reason}
+					</li>`
+  )}
+		</ul>
+	</div>`;
+}
+function decisionPanel(store, context, detail2, state) {
+  const result = detail2.result;
+  if (!result)
+    return recordPanel(
+      "Decision",
+      html2`<p class="subj">${detail2.runId} is in progress.</p>
+				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
+    );
+  if (result.acceptance === "not_required")
+    return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
+  const latest = result.latestDecision;
+  if (latest && !state)
+    return recordPanel(
+      "Decision",
+      html2`<p class="subj">
+					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail2.runId}
+				</p>
+				<p class="help">
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
+				</p>
+				<blockquote>${latest.rationale}</blockquote>`,
+      `${detail2.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
+    );
+  return verdictPanel(
+    context,
+    {
+      action: `/runs/${detail2.runId}`,
+      subject: detail2.runId,
+      question: `Accept ${detail2.runId}?`,
+      sha256: result.sha256,
+      token: decisionToken(store, "result", detail2.runId),
+      digestLabel: "Result",
+      approve: {
+        value: "accept",
+        label: `Accept ${detail2.runId}`,
+        confirm: "Confirm acceptance",
+        summary: `Accept ${detail2.runId} as the record of build ${detail2.build}.`
+      },
+      reject: {
+        value: "reject",
+        label: "Reject",
+        confirm: "Confirm rejection",
+        summary: `Reject ${detail2.runId}. Dependent plans stay blocked.`
+      },
+      staleMessage: `${detail2.runId} has a new result. Review it before you decide.`,
+      intro: inconclusiveList(detail2)
+    },
+    state ?? emptyState()
+  );
+}
+function runBadge(detail2) {
+  const acceptance = detail2.result?.acceptance;
+  if (!acceptance) return pill("started", "in progress");
+  if (acceptance === "approved") return pill("approved", "accepted");
+  if (acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(acceptance);
+}
+function runPage(store, context, runId, state = null, adoptError = null) {
+  const detail2 = runDetail(store, runId);
+  const sub = html2`<a class="mono" href="/plans/${detail2.planId}@${detail2.revision}"
+			>${detail2.planId}@${detail2.revision}</a
+		>
+		· build <code>${detail2.build}</code> · instance <code>${detail2.instance.instanceId}</code> · started
+		${clock(detail2.startedAt)} · ${plural(detail2.attempts.length, "attempt")}
+		${detail2.result ? html2`· finished ${time(detail2.result.finishedAt)} ago` : ""}`;
+  const badge2 = runBadge(detail2);
+  const report = detail2.result ? downloads(
+    "Download report",
+    `/runs/${runId}/report`,
+    "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
+    ["html", "md", "json", "junit"]
+  ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
+  const body = html2`${heading(
+    runId,
+    sub,
+    html2`<div class="meta" data-region="state">${badge2} <span class="head-actions">${report}</span></div>`
+  )}
+		<div class="split">
+			<div class="main-col">
+				${strip(detail2)}
+				<nav class="jump" aria-label="On this page">
+					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
+					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
+				</nav>
+				<section aria-labelledby="tests" data-region="tests">
+					<h2 id="tests">Tests <span class="n">${detail2.tests.length}</span></h2>
+					<div class="stack">${detail2.tests.map((test) => testCard(store, detail2, test))}</div>
+				</section>
+				<section aria-labelledby="findings" data-region="findings">
+					<h2 id="findings">Findings <span class="n">${detail2.findings.length}</span></h2>
+					${findings(store, detail2)}
+				</section>
+				<section aria-labelledby="new-gaps" data-region="new-gaps">
+					<h2 id="new-gaps">New gaps <span class="n">${detail2.newGaps.length}</span></h2>
+					${newGaps(store, context, detail2, adoptError)}
+				</section>
+				<section aria-labelledby="coverage" data-region="coverage">
+					<h2 id="coverage">Coverage</h2>
+					${coverage(store, detail2)}
+				</section>
+				<section aria-labelledby="cleanup" data-region="cleanup">
+					<h2 id="cleanup">Cleanup and attempts</h2>
+					${cleanup(detail2)}
+				</section>
+			</div>
+			<aside class="side" aria-label="Decision">
+				${decisionPanel(store, context, detail2, state)}
+				<p class="back"><a href="/">← Back to inbox</a></p>
+			</aside>
+		</div>`;
+  return { title: runId, section: "runs", subjects: [`run:${runId}`, "inbox"], body };
+}
+
+// plugin/src/ui/exploration.ts
+function claimRow(claim) {
+  return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
+		<td>
+			<a
+				class="mono"
+				href="/explorations/${claim.explorationId}/claims/${claim.id}${claim.decision ? "" : "#decide"}"
+				>${claim.id}</a
+			>
+		</td>
+		<td>${pill(claim.state)}</td>
+		<td>${pill(claim.severity)}</td>
+		<td>${claim.actors.join(", ")}</td>
+		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
+	</tr>`;
+}
+function claimsTable(claims) {
+  if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Claim</th>
+					<th scope="col">State</th>
+					<th scope="col">Severity</th>
+					<th scope="col">Reporters</th>
+					<th scope="col">Title</th>
+				</tr>
+			</thead>
+			<tbody>
+				${claims.map(claimRow)}
+			</tbody>
+		</table>
+	</div>`;
+}
+function questionsList(questions) {
+  if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
+  return html2`<ul class="items">
+		${questions.map(
+    (question) => html2`<li data-key="question:${question.id}">
+					<a
+						class="item"
+						href="/explorations/${question.explorationId}/questions/${question.id}${question.answer === null ? "#answer" : ""}"
+						><span class="id">${question.id}</span><span class="what">${question.question}</span
+						><span class="end"
+							>${question.blocking ? html2`${pill("blocking")} ` : ""}${pill(
+      question.answer === null ? "open" : "answered"
+    )}</span
+						></a
+					>
+				</li>`
+  )}
+	</ul>`;
+}
+var textTypes2 = ["text/plain", "text/markdown", "application/json"];
+var inlineLimit2 = 64 * 1024;
+function claimEvidenceList(store, planId, claim) {
+  if (!claim.evidence.length) return html2`<p class="none">The tester gave no evidence.</p>`;
+  return html2`<div class="evidence">
+		${claim.evidence.map((item, index2) => {
+    if ("text" in item)
+      return html2`<figure class="ev ev-text">
+					<figcaption><span class="ev-name">What the tester saw</span></figcaption>
+					<pre tabindex="0">${item.text}</pre>
+				</figure>`;
+    const href = `/explorations/${claim.explorationId}/claims/${claim.id}/evidence/${index2}`;
+    const file = claimEvidence(store, planId, claim.id, index2);
+    const caption = html2`<span class="ev-name">${file.name}</span>
+				<span class="muted">${size(file.size)}</span>`;
+    if (imageTypes.includes(file.mediaType))
+      return html2`<figure class="ev ev-image">
+					<a href="${href}" data-view-image data-name="${file.name}">
+						<img src="${href}" alt="Evidence ${file.name}" loading="lazy" />
+					</a>
+					<figcaption>${caption}</figcaption>
+				</figure>`;
+    if (textTypes2.includes(file.mediaType) && file.size <= inlineLimit2)
+      return html2`<figure class="ev ev-text">
+					<figcaption>${caption} <a href="${href}" download="${file.name}">Download</a></figcaption>
+					<pre tabindex="0">${new TextDecoder().decode(file.bytes)}</pre>
+				</figure>`;
+    return html2`<a class="chip" href="${href}" download="${file.name}">↓ ${file.name} · ${size(file.size)}</a>`;
+  })}
+	</div>`;
+}
+function dataLine(reason, data) {
+  return html2`${reason ?? "No reason is recorded."}
+	${data.length ? html2` Its data:
+				${join10(
+    data.map((path) => html2`<code>${path}</code>`),
+    ", "
+  )}.` : ""}`;
+}
+function explorationBanners(explorations) {
+  const running3 = explorations.filter((item) => item.running);
+  const last = explorations.at(-1);
+  return html2`${running3.map(
+    (item) => banner(
+      item.paused ? "warn" : "info",
+      html2`<span data-key="running:${item.explorationId}"
+				>${item.paused ? html2`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html2`Exploration ${item.explorationId} is running.`}
+				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
+				when it is completed.</span
+			>`
+    )
+  )}
+	${last && (last.state === "failed" || last.state === "stopped") ? banner(
+    "fail",
+    html2`<span data-key="failed:${last.explorationId}"
+						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
+						${dataLine(last.reason, last.data)}
+						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
+					>`
+  ) : ""}`;
+}
+function explorationsTable(explorations) {
+  if (!explorations.length)
+    return html2`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
+  return html2`<div class="scroll">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Exploration</th>
+					<th scope="col">State</th>
+					<th scope="col">Build</th>
+					<th scope="col">Instance</th>
+					<th scope="col">Level</th>
+					<th scope="col">Started</th>
+				</tr>
+			</thead>
+			<tbody>
+				${[...explorations].reverse().map(
+    (item) => html2`<tr data-key="exploration:${item.explorationId}">
+							<td>
+								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
+							</td>
+							<td>
+								${pill(item.state)}
+								${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
+								${item.follow === "failed" || item.follow === "stopped" ? html2`<p class="help">
+												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
+											</p>` : ""}
+							</td>
+							<td class="mono">${item.build}</td>
+							<td class="mono">${item.instanceId}</td>
+							<td>
+								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
+							</td>
+							<td class="nowrap">${time(item.startedAt)}</td>
+						</tr>`
+  )}
+			</tbody>
+		</table>
+	</div>`;
+}
+function explorationSections(store, planId) {
+  const explorations = planExplorations(store, planId);
+  const claims = mergedClaims(store, planId);
+  const questions = mergedQuestions(store, planId);
+  return html2`<section aria-labelledby="explorations" data-region="explorations">
+			<h2 id="explorations">Explorations <span class="n">${explorations.length}</span></h2>
+			${explorationsTable(explorations)}
+		</section>
+		<section aria-labelledby="claims" data-region="claims">
+			<h2 id="claims">Claims <span class="n">${claims.length}</span></h2>
+			<p class="help">The merged claims of completed explorations.</p>
+			${claimsTable(claims)}
+		</section>
+		<section aria-labelledby="questions" data-region="questions">
+			<h2 id="questions">Questions <span class="n">${questions.length}</span></h2>
+			<p class="help">The merged questions of completed explorations.</p>
+			${questionsList(questions)}
+		</section>`;
+}
+function explorerRow(live, item) {
+  const none3 = html2`<span class="muted">–</span>`;
+  return html2`<tr data-key="explorer:${item.explorer}">
+		<td class="mono">${item.explorer}</td>
+		<td>${item.turn ?? none3}</td>
+		<td>${item.state ? pill(item.state, item.state === "given" ? "given to the session" : void 0) : none3}</td>
+		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none3}</td>
+		<td class="nowrap">
+			${item.elapsedMs === null ? none3 : item.startedAt && (item.state === "running" || item.state === "given") ? html2`<span data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : duration(item.elapsedMs)}
+		</td>
+		<td>${item.activity ?? ""}</td>
+		<td>
+			${item.recorded ? html2`${pill(item.recorded)} <span class="muted small">${plural(item.saved, "entry", "entries")}</span>` : none3}
+		</td>
+		<td>
+			${item.files.length ? join10(
+    item.files.map(
+      (file) => html2`<a
+										href="/explorations/${live.explorationId}/explorers/${item.explorer}/${file.phase}/${file.name}"
+										>${file.name}${file.phase === "test" ? "" : ` (${file.phase})`}</a
+									>`
+    ),
+    html2`<br />`
+  ) : none3}
+		</td>
+	</tr>`;
+}
+function stateBanner(live) {
+  if (live.running && live.paused)
+    return banner(
+      "warn",
+      html2`<span data-key="paused"
+				><strong>Paused: ${live.paused}</strong> It waits on the oracle: answer the operator in the Claude Code
+				session.</span
+			>`
+    );
+  if (live.running)
+    return banner(
+      "info",
+      html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
+    );
+  if (live.state === "failed" || live.state === "stopped")
+    return banner(
+      "fail",
+      html2`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
+    );
+  if (live.follow === "failed" || live.follow === "stopped")
+    return banner(
+      "fail",
+      html2`<span data-key="follow-failed"
+				><strong>The follow-up of ${live.explorationId} ${live.follow}.</strong>
+				${dataLine(live.followReason, live.data)} The claims and questions of the exploration stay valid.</span
+			>`
+    );
+  if (live.state === "open")
+    return banner(
+      "info",
+      html2`Exploration ${live.explorationId} is open. Record its sessions, then run
+				<code>checkmate explore finish ${live.explorationId}</code>.`
+    );
+  return "";
+}
+function unmergedSection(live) {
+  if (!live.unmerged.length) return "";
+  return html2`<section class="panel" aria-labelledby="unmerged-title" data-key="unmerged">
+		<h2 class="lab" id="unmerged-title">Not merged yet <span class="n">${live.unmerged.length}</span></h2>
+		<p class="help">
+			These are the raw questions and defects of single explorers. They are not merged yet. They are not in the
+			inbox and not on the plan page. They can change before the exploration is completed.
+		</p>
+		<ul class="items">
+			${live.unmerged.map(
+    (item) => html2`<li data-key="raw:${item.id}">
+						<div class="item">
+							<span class="id">${item.id}</span>
+							<span class="what">${item.text}</span>
+							<span class="end"
+								>${pill("pending", `${item.kind}, not merged`)}
+								${item.severity ? pill(item.severity) : item.blocking ? pill("blocking") : ""}</span
+							>
+						</div>
+					</li>`
+  )}
+		</ul>
+	</section>`;
+}
+function explorationPage(store, explorationId) {
+  const live = explorationLive(store, explorationId);
+  const meta = html2`<div class="meta">
+		<span data-region="exploration-state">${pill(live.state)}</span>
+		<a class="pill" href="/plans/${live.planId}">${live.planId}</a>
+		<span class="pill">build ${live.build}</span>
+		<span class="pill">instance ${live.instanceId}</span>
+		<span class="pill"
+			>${live.level ?? "no level"} · ${plural(live.explorerCount ?? 0, "explorer")} · ${live.model ?? "-"}</span
+		>
+		<span class="pill">started ${time(live.startedAt, clock(live.startedAt))}</span>
+	</div>`;
+  const merged = live.state === "completed" || live.claims.length + live.questions.length > 0;
+  const body = html2`${heading(html2`Exploration ${explorationId}`, live.goal, meta)}
+		<div class="stack" data-region="exploration-live">
+			${stateBanner(live)}
+			<section class="panel" aria-labelledby="explorers-title">
+				<h2 class="lab" id="explorers-title">Explorers</h2>
+				${live.explorers.length ? html2`<div class="scroll">
+								<table>
+									<thead>
+										<tr>
+											<th scope="col">Explorer</th>
+											<th scope="col">${live.path === "session" ? "Step" : "Turn"}</th>
+											<th scope="col">State</th>
+											<th scope="col">${live.path === "session" ? "Since" : "Started"}</th>
+											<th scope="col">${live.path === "session" ? "In state" : "Elapsed"}</th>
+											<th scope="col">Last activity</th>
+											<th scope="col">Record</th>
+											<th scope="col">Files</th>
+										</tr>
+									</thead>
+									<tbody>
+										${live.explorers.map((item) => explorerRow(live, item))}
+									</tbody>
+								</table>
+							</div>` : html2`<p class="none">No explorer has started yet.</p>`}
+			</section>
+			<section class="panel" aria-labelledby="phases-title">
+				<h2 class="lab" id="phases-title">Phases</h2>
+				<div class="scroll">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Phase</th>
+								<th scope="col">State</th>
+								<th scope="col">Reason</th>
+							</tr>
+						</thead>
+						<tbody>
+							${live.phases.map(
+    (row2) => html2`<tr data-key="phase:${row2.phase}">
+										<td>${row2.phase}</td>
+										<td>${pill(row2.state)}</td>
+										<td>${row2.reason ?? ""}</td>
+									</tr>`
+  )}
+						</tbody>
+					</table>
+				</div>
+			</section>
+			${unmergedSection(live)}
+			<section class="panel" aria-labelledby="claims-title">
+				<h2 class="lab" id="claims-title">Claims</h2>
+				${merged ? claimsTable(live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
+			</section>
+			<section class="panel" aria-labelledby="questions-title">
+				<h2 class="lab" id="questions-title">Questions</h2>
+				${merged ? questionsList(live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
+			</section>
+		</div>
+		<div class="actions">
+			${downloads("Download report", `/explorations/${explorationId}/export`, "The record of this exploration.", ["md", "json"])}
+		</div>`;
+  return {
+    title: `Exploration ${explorationId}`,
+    section: "plans",
+    subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
+    body
+  };
+}
+function explorerFilePage(store, explorationId, explorer, phase, name) {
+  const file = explorationReport(store, explorationId).files.find(
+    (item) => item.explorer === explorer && item.phase === phase && item.name === name
+  );
+  if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`);
+  return {
+    title: `${explorationId} \xB7 ${explorer} \xB7 ${name}`,
+    section: "plans",
+    subjects: [`exploration:${explorationId}`],
+    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
+			<p>
+				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, "byte")}
+			</p>
+			<section class="panel" aria-label="${name}"><pre class="report">${file.text}</pre></section>`
+  };
+}
+function questionPage(store, context, explorationId, questionId, state = null) {
+  const report = explorationReport(store, explorationId);
+  const question = report.questions.find((item) => item.id === questionId);
+  if (!question) throw new Error(`Unknown question ${questionId} in ${explorationId}`);
+  const panel = question.answer === null || state ? gapPanel(
+    context,
+    {
+      action: `/explorations/${explorationId}/questions/${question.id}`,
+      cancel: `/explorations/${explorationId}`,
+      sha256: "",
+      title: html2`${report.planId} · ${question.id}`,
+      question: question.question,
+      staleMessage: `${explorationId} changed. Review it before you answer.`
+    },
+    state ?? emptyState()
+  ) : recordPanel("Answer", html2`<blockquote>${question.answer}</blockquote>`);
+  return {
+    title: `${report.planId} \xB7 ${question.id}`,
+    section: "inbox",
+    subjects: [`exploration:${explorationId}`, "inbox"],
+    body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
+			<p>
+				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
+				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
+			</p>
+			${panel}`
+  };
+}
+function claimPage(store, context, explorationId, claimId, state = null) {
+  const report = explorationReport(store, explorationId);
+  const claim = report.claims.find((item) => item.id === claimId);
+  if (!claim) throw new Error(`Unknown claim ${claimId} in ${explorationId}`);
+  const shown = state ?? emptyState();
+  const panel = claim.decision ? recordPanel(
+    "Decision",
+    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
+  ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
+				<h2 class="lab" id="decide-title">Decision</h2>
+				<p class="subj">Is ${claim.id} a defect?</p>
+				<div>${messages(shown)}</div>
+				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="decision-form">
+					${hidden(context, "")} ${actorField(context, shown)}
+					${rationaleField(shown, "Why do you decide this?")}
+					<div class="btns">
+						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
+						<button class="btn" name="verdict" value="rejected">Reject</button>
+					</div>
+				</form>
+			</section>`;
+  const steps = [claim.steps ?? []].flat();
+  return {
+    title: `${report.planId} \xB7 ${claim.id}`,
+    section: "inbox",
+    subjects: [`exploration:${explorationId}`, "inbox"],
+    body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
+			<div class="split">
+				<section class="panel" aria-labelledby="claim-title">
+					<h2 class="lab" id="claim-title">Claim</h2>
+					<p>
+						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
+						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
+					</p>
+					<p class="lab">Expected</p>
+					<p>${claim.expected}</p>
+					<p class="lab">Actual</p>
+					<p>${claim.actual}</p>
+					${steps.length ? html2`<p class="lab">Steps</p>
+									<ol>
+										${steps.map((step) => html2`<li>${step}</li>`)}
+									</ol>` : ""}
+					<p class="lab">Evidence</p>
+					${claimEvidenceList(store, report.planId, claim)}
+					<p class="help">Reported by ${claim.actors.join(", ")}. ${claim.reason ?? ""}</p>
+				</section>
+				${panel}
+			</div>`
+  };
+}
+
+// plugin/src/actor.ts
+import { execFileSync } from "node:child_process";
+import { userInfo } from "node:os";
+function defaultActor(workspace, env) {
+  const named = env.CHECKMATE_ACTOR?.trim();
+  if (named) return named;
+  try {
+    const name = execFileSync("git", ["config", "user.name"], {
+      cwd: workspace,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (name) return name;
+  } catch {
+  }
+  try {
+    return userInfo().username;
+  } catch {
+    return void 0;
+  }
+}
+
+// plugin/src/ui/queue.ts
+var groups = [
+  { group: "blocking", title: "Blocks testing", help: "The testers wait for these answers." },
+  { group: "claims", title: "Claims to decide", help: "Suspected or unresolved. Accept or reject each." },
+  { group: "approvals", title: "Approvals", help: "Plans and results that wait for your decision." },
+  { group: "questions", title: "Questions that do not block", help: "Answer them when you have time." }
+];
+function queueFilters(params) {
+  return { plan: params.get("plan")?.trim() ?? "", q: params.get("q")?.trim() ?? "" };
+}
+function queueHref(filters, key = null) {
+  const params = new URLSearchParams();
+  if (filters.plan) params.set("plan", filters.plan);
+  if (filters.q) params.set("q", filters.q);
+  if (key) params.set("item", key);
+  const query = params.toString();
+  return query ? `/?${query}` : "/";
+}
+function matches(item, filters) {
+  if (filters.plan && item.planId !== filters.plan) return false;
+  if (!filters.q) return true;
+  const text = `${item.planId} ${item.id} ${item.title} ${item.state ?? ""} ${item.severity ?? ""}`.toLowerCase();
+  return filters.q.toLowerCase().split(/\s+/).every((word) => text.includes(word));
+}
+function groupTitle(group2) {
+  return groups.find((item) => item.group === group2).title;
+}
+function badge(item) {
+  if (item.kind === "claim") return html2`${pill(item.severity)} ${pill(item.state)}`;
+  if (item.kind === "plan") return pill(item.state === "rejected" ? "rejected" : "pending", "plan");
+  if (item.kind === "result") return pill("pending", "result");
+  return "";
+}
+function row(item, filters, selected) {
+  const current = item.key === selected ? html2` aria-current="true"` : "";
+  return html2`<li>
+		<a
+			class="q-row"
+			href="${queueHref(filters, item.key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${item.key}"
+			${current}
+		>
+			<span class="q-top"
+				><span class="q-id"
+					>${item.planId} · ${item.kind === "plan" ? `revision ${item.revision}` : item.id}</span
+				>
+				<span class="q-tags"
+					>${badge(item)}${item.since ? html2` <span class="age">${time(item.since)}</span>` : ""}</span
+				></span
+			>
+			<span class="q-title">${item.title}</span>
+		</a>
+	</li>`;
+}
+function groupList(group2, items, filters, selected) {
+  if (!items.length) return "";
+  const list2 = html2`<ul class="q-items">
+		${items.map((item) => row(item, filters, selected))}
+	</ul>`;
+  const head = html2`<span class="q-group-title">${group2.title}</span> <span class="n">${items.length}</span>`;
+  if (group2.group !== "questions")
+    return html2`<section class="q-group" aria-labelledby="q-${group2.group}">
+			<h2 class="q-group-h" id="q-${group2.group}">${head}</h2>
+			${list2}
+		</section>`;
+  const open = filters.q || items.some((item) => item.key === selected) ? html2` open` : "";
+  return html2`<details class="q-group q-fold" data-open-key="queue:questions" ${open}>
+		<summary class="q-group-h">${head} <span class="q-fold-note">${group2.help}</span></summary>
+		${list2}
+	</details>`;
+}
+function exploring(waiting) {
+  const running3 = waiting.running.map(
+    (item) => html2`<li data-key="running:${item.explorationId}">
+				<a href="/explorations/${item.explorationId}"
+					>${item.paused ? pill("stopped", "paused") : pill("running")}
+					<span class="mono">${item.planId} · ${item.explorationId}</span></a
+				>
+				<span class="muted"
+					>${item.paused ? html2`Waits for you in Claude Code: ${item.paused}` : html2`${item.state} on build ${item.build}`}</span
+				>
+			</li>`
+  );
+  const failed = waiting.failed.map(
+    (item) => html2`<li data-key="failed:${item.explorationId}">
+				<a href="/explorations/${item.explorationId}"
+					>${pill(item.state)} <span class="mono">${item.planId} · ${item.explorationId}</span></a
+				>
+				<span class="muted">${item.reason ?? ""}</span>
+			</li>`
+  );
+  if (!running3.length && !failed.length) return "";
+  return html2`<section class="q-now" aria-labelledby="q-now">
+		<h2 class="q-group-h" id="q-now">Explorations</h2>
+		<ul class="q-now-list">
+			${running3} ${failed}
+		</ul>
+	</section>`;
+}
+function filterForm(waiting, filters) {
+  const plans = [...new Set(waiting.items.map((item) => item.planId))].sort();
+  return html2`<form class="q-filters" method="get" action="/" role="search" data-queue-filter>
+		<label class="sr-only" for="queue-q">Search the items</label>
+		<input
+			id="queue-q"
+			type="search"
+			name="q"
+			value="${filters.q}"
+			placeholder="Search"
+			autocomplete="off"
+			data-search
+		/>
+		<label class="sr-only" for="queue-plan">Plan</label>
+		<select id="queue-plan" name="plan">
+			<option value="">All plans</option>
+			${plans.map(
+    (plan) => html2`<option value="${plan}" ${plan === filters.plan ? html2`selected` : ""}>${plan}</option>`
+  )}
+		</select>
+		<button class="btn small" data-queue-submit>Filter</button>
+	</form>`;
+}
+function crumbs(item, filters, full) {
+  return html2`<div class="q-crumbs">
+		<nav aria-label="Breadcrumb">
+			<ol>
+				<li><a href="${queueHref(filters)}" data-queue-back>Needs you</a></li>
+				<li>${groupTitle(item.group)}</li>
+				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
+				<li aria-current="page">${item.kind === "plan" ? `revision ${item.revision}` : item.id}</li>
+			</ol>
+		</nav>
+		<a class="btn small ghost" href="${full}">Open full page</a>
+	</div>`;
+}
+function returnFields(item, back) {
+  return html2`<input type="hidden" name="item" value="${item.key}" />
+		<input type="hidden" name="return" value="${back}" />`;
+}
+function questionDetail(store, context, item, filters, back, state) {
+  const question = mergedQuestions(store, item.planId).find((entry) => entry.id === item.id);
+  const action = item.explorationId ? `/explorations/${item.explorationId}/questions/${item.id}` : `/plans/${item.planId}@${planDetail(store, item.planId).latestRevision}/gaps/${item.id}`;
+  const sha256 = item.explorationId ? "" : planDetail(store, item.planId).sha256;
+  const source = item.explorationId ? html2`<a href="/explorations/${item.explorationId}">exploration ${item.explorationId}</a>` : item.runId ? html2`<a href="/runs/${item.runId}">run ${item.runId}</a>` : html2`<a href="/plans/${item.planId}">plan ${item.planId}</a>`;
+  return html2`${crumbs(item, filters, action)}
+		<h2 class="q-h">${item.title}</h2>
+		<p class="q-meta">
+			${item.group === "blocking" ? html2`${pill("blocking")} ` : ""}Asked in
+			${source}${item.since ? html2` · ${time(item.since)} ago` : ""}${question && question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
+		</p>
+		${gapPanel(
+    context,
+    {
+      action,
+      cancel: queueHref(filters),
+      sha256,
+      title: "",
+      question: "",
+      staleMessage: `${item.planId} changed. Review the question before you answer.`,
+      extra: returnFields(item, back)
+    },
+    state
+  )}`;
+}
+function claimDetail(store, context, item, filters, back, state) {
+  const claim = mergedClaims(store, item.planId).find((entry) => entry.id === item.id);
+  if (!claim) return gone(filters);
+  const action = `/explorations/${claim.explorationId}/claims/${claim.id}`;
+  const steps = [claim.steps ?? []].flat();
+  const verdict = state.values.verdict ?? "";
+  const choice = (value2, label) => html2`<input
+				type="radio"
+				id="verdict-${value2}"
+				name="verdict"
+				value="${value2}"
+				required
+				${verdict === value2 ? html2`checked` : ""}
+			/><label for="verdict-${value2}">${label}</label>`;
+  return html2`${crumbs(item, filters, action)}
+		<h2 class="q-h">${claim.title}</h2>
+		<p class="q-meta">
+			${pill(claim.severity)} ${pill(claim.state)} Build <code>${claim.build}</code> ·
+			<a href="/explorations/${claim.explorationId}">exploration ${claim.explorationId}</a> · reported by
+			${claim.actors.join(", ")}
+		</p>
+		${claim.reason ? banner("warn", claim.reason) : ""}
+		<div class="q-compare">
+			<div>
+				<p class="lab">Expected</p>
+				<p>${claim.expected}</p>
+			</div>
+			<div>
+				<p class="lab">Actual</p>
+				<p>${claim.actual}</p>
+			</div>
+		</div>
+		${steps.length ? html2`<p class="lab">Steps</p>
+						<ol class="steps">
+							${steps.map((step) => html2`<li>${step}</li>`)}
+						</ol>` : html2`<p class="help">The tester gave no steps.</p>`}
+		<p class="lab">Evidence</p>
+		${claimEvidenceList(store, item.planId, claim)}
+		<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
+			<h3 class="lab" id="decide-title">Decision</h3>
+			<div data-stale-slot>${messages(state)}</div>
+			<form method="post" action="${action}" class="decision-form" data-claim-form>
+				${hidden(context, "")} ${returnFields(item, back)}
+				<fieldset class="seg-field">
+					<legend class="lab">Is ${claim.id} a defect?</legend>
+					<div class="seg">${choice("approved", "Accept as a defect")}${choice("rejected", "Reject")}</div>
+				</fieldset>
+				${rationaleField(state, "Why do you decide this?")} ${actorField(context, state)}
+				<div class="btns">
+					<button class="btn primary" data-needs-rationale>Record decision</button>
+					<span class="help"
+						>Keys: <kbd>a</kbd> accept, <kbd>r</kbd> reject, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> send</span
+					>
+				</div>
+			</form>
+		</section>`;
+}
+function outcomes(tests) {
+  const found = {};
+  for (const test of tests) found[test.outcome ?? "not_run"] = (found[test.outcome ?? "not_run"] ?? 0) + 1;
+  return found;
+}
+function approvalDetail(store, item, filters) {
+  if (item.kind === "result") {
+    const detail2 = runDetail(store, item.runId);
+    const full2 = `/runs/${item.runId}#decide`;
+    return html2`${crumbs(item, filters, full2)}
+			<h2 class="q-h">${item.runId} waits for acceptance</h2>
+			<p class="q-meta">
+				${item.planId}@${item.revision} · build <code>${detail2.build}</code> · coverage
+				${detail2.result?.coverage ?? "none"}
+			</p>
+			<p>${counts(outcomes(detail2.tests))}</p>
+			<p><a class="btn primary" href="${full2}">Review and decide</a></p>`;
+  }
+  const full = `/plans/${item.planId}@${item.revision}#decide`;
+  return html2`${crumbs(item, filters, full)}
+		<h2 class="q-h">
+			${item.planId}@${item.revision} waits for ${item.state === "rejected" ? "a change" : "approval"}
+		</h2>
+		<p>${item.title}</p>
+		<p><a class="btn primary" href="${full}">Review and decide</a></p>`;
+}
+function gone(filters) {
+  return html2`<div class="empty">
+		<p class="empty-title">This item does not wait for you now.</p>
+		<p>Somebody decided it, or a filter hides it.</p>
+		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
+	</div>`;
+}
+function nothing(waiting, filters) {
+  const filtered = filters.plan || filters.q;
+  return html2`<div class="empty">
+		<p class="empty-title">${filtered ? "No item matches these filters." : "Nothing waits for you."}</p>
+		${filtered ? html2`<p><a href="/" data-queue-back>Clear the filters</a></p>` : html2`<p>${plural(waiting.running.length, "exploration")} running. The list updates by itself.</p>`}
+	</div>`;
+}
+function detail(store, context, waiting, item, filters, back, state) {
+  if (!item) return nothing(waiting, filters);
+  if (item.kind === "question" || item.kind === "gap")
+    return questionDetail(store, context, item, filters, back, state);
+  if (item.kind === "claim") return claimDetail(store, context, item, filters, back, state);
+  return approvalDetail(store, item, filters);
+}
+function queuePage(store, context, params, refusal = null) {
+  const waiting = needsYou(store);
+  const filters = queueFilters(params);
+  const shown = waiting.items.filter((item2) => matches(item2, filters));
+  const asked = refusal?.key ?? params.get("item");
+  const item = asked ? shown.find((entry) => entry.key === asked) ?? null : shown[0] ?? null;
+  const index2 = item ? shown.indexOf(item) : -1;
+  const next = shown[index2 + 1] ?? shown[index2 - 1] ?? null;
+  const back = queueHref(filters, next?.key ?? null);
+  const open = asked ? html2` data-open` : "";
+  const urgent = waiting.urgent;
+  const sub = urgent ? `${plural(urgent, "item")} ${urgent === 1 ? "needs" : "need"} your decision. The most urgent is first.` : "No decision waits for you.";
+  const list2 = html2`<section class="q-list" aria-labelledby="queue-title" data-region="queue-list">
+		<div class="q-head">
+			<h1 id="queue-title">Needs you</h1>
+			<p class="sub">${sub}</p>
+		</div>
+		${filterForm(waiting, filters)} ${exploring(waiting)}
+		${groups.map(
+    (group2) => groupList(
+      group2,
+      shown.filter((entry) => entry.group === group2.group),
+      filters,
+      item?.key ?? null
+    )
+  )}
+		${shown.length ? "" : html2`<p class="none">${filters.plan || filters.q ? "No item matches these filters." : "Nothing waits for you."}</p>`}
+		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>
+	</section>`;
+  const pane = asked && !item ? gone(filters) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
+  return {
+    title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
+    section: "inbox",
+    subjects: ["*"],
+    status: refusal ? 422 : void 0,
+    body: html2`<div class="queue" data-queue data-selected="${item?.key ?? ""}" ${open}>
+			${list2}
+			<section
+				class="q-detail"
+				aria-label="Selected item"
+				tabindex="-1"
+				data-region="queue-detail"
+				data-key="detail:${item?.key ?? ""}"
+			>
+				${pane}
+			</section>
+		</div>`
+  };
+}
+function queueCount(store) {
+  return needsYou(store).urgent;
 }
 
 // plugin/src/ui/plan.ts
@@ -17835,8 +18725,8 @@ function facts(rows) {
   )}
 	</dl>`;
 }
-function testCard(detail, test) {
-  const { planId, revision } = detail;
+function testCard2(detail2, test) {
+  const { planId, revision } = detail2;
   return html2`<article class="test" id="${test.id}" data-key="test:${test.id}">
 		<header class="test-h">
 			${pill(test.readiness)}
@@ -17884,10 +18774,10 @@ function testCard(detail, test) {
 function decisionFor(plan, gap) {
   return plan.decisions.find((decision) => decision.id === gap.decisionId);
 }
-function gapRow(detail, gap) {
-  const decision = decisionFor(detail.plan, gap);
-  const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id);
-  const answerable = gap.status === "open" && !pending && detail.revision === detail.latestRevision;
+function gapRow(detail2, gap) {
+  const decision = decisionFor(detail2.plan, gap);
+  const pending = detail2.pendingDecisions.find((item) => item.gapId === gap.id);
+  const answerable = gap.status === "open" && !pending && detail2.revision === detail2.latestRevision;
   const affects = [...gap.requirementIds, ...gap.testIds];
   const head = html2`<span class="id mono">${gap.id}</span>
 		${pill(gap.severity)} ${pill(gap.status)}
@@ -17903,7 +18793,7 @@ function gapRow(detail, gap) {
 						<span class="muted">· ${pending.actor} · applies in the next revision</span>
 					</p>` : ""}
 		${answerable ? html2`<p>
-						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
+						<a class="btn small" href="/plans/${detail2.planId}@${detail2.revision}/gaps/${gap.id}"
 							>Answer ${gap.id}</a
 						>
 					</p>` : ""}`;
@@ -17923,17 +18813,17 @@ function gapRow(detail, gap) {
 		</details>
 	</li>`;
 }
-function gapsList(detail) {
-  const gaps = detail.plan.gaps;
+function gapsList(detail2) {
+  const gaps = detail2.plan.gaps;
   if (!gaps.length) return html2`<p class="empty-line">No gaps.</p>`;
   const open = gaps.filter((gap) => gap.status === "open");
   const closed = gaps.filter((gap) => gap.status !== "open");
   return html2`<ul class="gaps">
-		${[...open, ...closed].map((gap) => gapRow(detail, gap))}
+		${[...open, ...closed].map((gap) => gapRow(detail2, gap))}
 	</ul>`;
 }
-function runsTable(detail) {
-  if (!detail.runs.length) return html2`<p class="empty-line">No run uses this plan yet.</p>`;
+function runsTable(detail2) {
+  if (!detail2.runs.length) return html2`<p class="empty-line">No run uses this plan yet.</p>`;
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -17949,11 +18839,11 @@ function runsTable(detail) {
 				</tr>
 			</thead>
 			<tbody>
-				${[...detail.runs].reverse().map(
+				${[...detail2.runs].reverse().map(
     (run2) => html2`<tr data-key="run:${run2.runId}">
 							<td><a class="mono" href="/runs/${run2.runId}">${run2.runId}</a></td>
 							<td>
-								<a class="mono" href="/plans/${detail.planId}@${run2.revision}">@${run2.revision}</a>
+								<a class="mono" href="/plans/${detail2.planId}@${run2.revision}">@${run2.revision}</a>
 							</td>
 							<td class="mono">${run2.build}</td>
 							<td class="mono">${run2.instanceId}</td>
@@ -17980,7 +18870,7 @@ function requirementsTable(plan) {
 			</thead>
 			<tbody>
 				${plan.requirements.map((requirement) => {
-    const coverage2 = plan.coverage.find((row) => row.requirementId === requirement.id);
+    const coverage2 = plan.coverage.find((row2) => row2.requirementId === requirement.id);
     return html2`<tr id="${requirement.id}">
 						<td class="mono">${requirement.id}</td>
 						<td>
@@ -18032,18 +18922,18 @@ function changeLine(line) {
 	</li>`;
 }
 var historyShown = 6;
-function planHistoryList(store, detail, all2) {
-  const revisions = planHistory(store, detail.planId).reverse();
+function planHistoryList(store, detail2, all2) {
+  const revisions = planHistory(store, detail2.planId).reverse();
   const shown = all2 ? revisions : revisions.slice(0, historyShown);
   const hidden3 = revisions.length - shown.length;
-  const subject = `${detail.planId}@${detail.revision}`;
+  const subject = `${detail2.planId}@${detail2.revision}`;
   return html2`<div class="history-wrap" data-history>
 		<ol class="history${hidden3 ? " clipped" : ""}">
 			${shown.map(
-    (item, index2) => html2`<li class="${item.revision === detail.revision ? "current" : ""}">
+    (item, index2) => html2`<li class="${item.revision === detail2.revision ? "current" : ""}">
 						<details ${index2 === 0 ? html2`open` : ""} data-open-key="revision:${item.revision}">
 							<summary class="record-h">
-								<span class="mono rev">${detail.planId}@${item.revision}</span>
+								<span class="mono rev">${detail2.planId}@${item.revision}</span>
 								<span class="muted">by ${item.actor} · ${time(item.at)}</span>
 								<code class="muted small" title="${item.sha256}">${short2(item.sha256)}</code>
 								<span class="muted small"
@@ -18055,8 +18945,8 @@ function planHistoryList(store, detail, all2) {
 												${item.changes.map(changeLine)}
 											</ul>` : html2`<p class="muted small">First revision.</p>`}
 								<p class="small">
-									<a href="/plans/${detail.planId}@${item.revision}"
-										>Open ${detail.planId}@${item.revision}</a
+									<a href="/plans/${detail2.planId}@${item.revision}"
+										>Open ${detail2.planId}@${item.revision}</a
 									>
 								</p>
 							</div>
@@ -18072,12 +18962,12 @@ function planHistoryList(store, detail, all2) {
 					>` : ""}
 	</div>`;
 }
-function approvalPanel(store, context, detail, state) {
-  const subject = `${detail.planId}@${detail.revision}`;
-  const latest = detail.approval.latest;
-  if (detail.approval.policy === "none")
+function approvalPanel(store, context, detail2, state) {
+  const subject = `${detail2.planId}@${detail2.revision}`;
+  const latest = detail2.approval.latest;
+  if (detail2.approval.policy === "none")
     return recordPanel("Approval", html2`<p class="help">The target policy does not require plan approval.</p>`);
-  if (latest && latest.sha256 === detail.sha256 && !state)
+  if (latest && latest.sha256 === detail2.sha256 && !state)
     return recordPanel(
       "Approval",
       html2`<p class="subj">${pill(latest.verdict)} ${subject}</p>
@@ -18085,7 +18975,7 @@ function approvalPanel(store, context, detail, state) {
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`,
+				${latest.sha256 !== detail2.sha256 ? banner("warn", "This decision was for another digest.") : ""}`,
       `${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
     );
   return verdictPanel(
@@ -18094,7 +18984,7 @@ function approvalPanel(store, context, detail, state) {
       action: `/plans/${subject}`,
       subject,
       question: `Approve ${subject}?`,
-      sha256: detail.sha256,
+      sha256: detail2.sha256,
       token: decisionToken(store, "plan", subject),
       digestLabel: "Plan",
       approve: {
@@ -18109,8 +18999,8 @@ function approvalPanel(store, context, detail, state) {
         confirm: "Confirm rejection",
         summary: `Reject ${subject}. The agent must revise the plan.`
       },
-      staleMessage: `${detail.planId} changed. Review it before you decide.`,
-      intro: html2`<p class="help">${planSummaryLine(detail.plan)}</p>`
+      staleMessage: `${detail2.planId} changed. Review it before you decide.`,
+      intro: html2`<p class="help">${planSummaryLine(detail2.plan)}</p>`
     },
     state ?? emptyState()
   );
@@ -18120,13 +19010,13 @@ function planSummaryLine(plan) {
   const open = plan.gaps.filter((gap) => gap.status === "open").length;
   return `${plural(plan.tests.length, "test")}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("deferred")} deferred. ${plural(open, "open gap")}.`;
 }
-function newerBanner(detail) {
-  if (detail.revision === detail.latestRevision) return "";
+function newerBanner(detail2) {
+  if (detail2.revision === detail2.latestRevision) return "";
   return banner(
     "info",
-    html2`Revision ${detail.latestRevision} is available.
-			<a href="/plans/${detail.planId}@${detail.latestRevision}"
-				>Review ${detail.planId}@${detail.latestRevision}</a
+    html2`Revision ${detail2.latestRevision} is available.
+			<a href="/plans/${detail2.planId}@${detail2.latestRevision}"
+				>Review ${detail2.planId}@${detail2.latestRevision}</a
 			>`
   );
 }
@@ -18137,28 +19027,28 @@ function side(content) {
 	</aside>`;
 }
 function planPage(store, context, planId, revision, state = null, allHistory = false) {
-  const detail = planDetail(store, planId, revision);
-  const { plan } = detail;
+  const detail2 = planDetail(store, planId, revision);
+  const { plan } = detail2;
   const subject = `${planId}@${revision}`;
-  const latest = detail.revision === detail.latestRevision;
+  const latest = detail2.revision === detail2.latestRevision;
   const meta = html2`<div class="meta">
-		${loopState(planStatus(store, planId))} ${pill(detail.approval.state)}
+		${loopState(planStatus(store, planId))} ${pill(detail2.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
-		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short2(detail.sha256)}</span></span>
+		<span class="pill" title="${detail2.sha256}">sha256 <span class="mono">${short2(detail2.sha256)}</span></span>
 		<span class="head-actions">
 			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
 			${downloads("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
 		</span>
 	</div>`;
-  const pending = detail.pendingDecisions.length ? banner(
+  const pending = detail2.pendingDecisions.length ? banner(
     "info",
-    html2`${plural(detail.pendingDecisions.length, "decision")}
-				${detail.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
-				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(", ")}.`
+    html2`${plural(detail2.pendingDecisions.length, "decision")}
+				${detail2.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
+				${detail2.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(", ")}.`
   ) : "";
   const explorations = planExplorations(store, planId);
   const body = html2`${heading(subject, plan.objective, meta)}
-		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(explorations)}</div>
+		<div data-region="banners">${newerBanner(detail2)} ${pending} ${explorationBanners(explorations)}</div>
 		<div class="split">
 			<div class="main-col">
 				<nav class="jump" aria-label="On this page">
@@ -18171,11 +19061,11 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 						Tests <span class="n">${plan.tests.length}</span>
 						${latest ? html2`<a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ""}
 					</h2>
-					<div class="stack">${plan.tests.map((test) => testCard(detail, test))}</div>
+					<div class="stack">${plan.tests.map((test) => testCard2(detail2, test))}</div>
 				</section>
 				<section aria-labelledby="gaps" data-region="gaps">
 					<h2 id="gaps">Gaps <span class="n">${plan.gaps.length}</span></h2>
-					${gapsList(detail)}
+					${gapsList(detail2)}
 				</section>
 				<section aria-labelledby="requirements">
 					<h2 id="requirements">
@@ -18185,8 +19075,8 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 					${requirementsTable(plan)}
 				</section>
 				<section aria-labelledby="runs" data-region="plan-runs">
-					<h2 id="runs">Runs <span class="n">${detail.runs.length}</span></h2>
-					${runsTable(detail)}
+					<h2 id="runs">Runs <span class="n">${detail2.runs.length}</span></h2>
+					${runsTable(detail2)}
 				</section>
 				${explorationSections(store, planId)}
 				<section aria-labelledby="decisions">
@@ -18195,10 +19085,10 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 				</section>
 				<section aria-labelledby="history" data-region="history">
 					<h2 id="history">History</h2>
-					${planHistoryList(store, detail, allHistory)}
+					${planHistoryList(store, detail2, allHistory)}
 				</section>
 			</div>
-			${side(approvalPanel(store, context, detail, state))}
+			${side(approvalPanel(store, context, detail2, state))}
 		</div>`;
   return {
     title: subject,
@@ -18206,7 +19096,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
     subjects: [
       `plan:${planId}`,
       "inbox",
-      ...detail.runs.map((run2) => `run:${run2.runId}`),
+      ...detail2.runs.map((run2) => `run:${run2.runId}`),
       ...explorations.map((item) => `exploration:${item.explorationId}`)
     ],
     body
@@ -18297,14 +19187,14 @@ function requestPage(store, planId) {
   };
 }
 function gapPage(store, context, planId, revision, gapId, state = null) {
-  const detail = planDetail(store, planId, revision);
-  const { plan } = detail;
-  const latest = detail.revision === detail.latestRevision;
+  const detail2 = planDetail(store, planId, revision);
+  const { plan } = detail2;
+  const latest = detail2.revision === detail2.latestRevision;
   const fromRun = plan.gaps.some((item) => item.id === gapId) || !latest ? null : unadoptedRunGap(store, planId, gapId);
   const gap = plan.gaps.find((item) => item.id === gapId) ?? fromRun?.gap;
   if (!gap) throw new Error(`Unknown gap ${gapId} in ${planId}@${revision}`);
   const subject = `${planId}@${revision}`;
-  const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id);
+  const pending = detail2.pendingDecisions.find((item) => item.gapId === gap.id);
   const decision = decisionFor(plan, gap);
   const tests = plan.tests.filter((test) => gapsAffecting([gap], test).length > 0);
   const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id));
@@ -18320,7 +19210,7 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
       {
         action: `/plans/${subject}/gaps/${gap.id}`,
         cancel: `/plans/${subject}#${gap.id}`,
-        sha256: detail.sha256,
+        sha256: detail2.sha256,
         title: html2`${planId} · ${gap.id} · ${words(gap.severity)}`,
         question: gap.question,
         staleMessage: `${planId} changed. Review it before you answer.`
@@ -18346,8 +19236,8 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
       "Answer gap",
       html2`<p class="help">Answer this gap on the latest revision.</p>
 				<p>
-					<a class="btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
-						>Open ${planId}@${detail.latestRevision}</a
+					<a class="btn" href="/plans/${planId}@${detail2.latestRevision}/gaps/${gap.id}"
+						>Open ${planId}@${detail2.latestRevision}</a
 					>
 				</p>`
     );
@@ -18355,7 +19245,7 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 		${pill(gap.severity)} ${pill(gap.status)} <a class="pill" href="/plans/${subject}">${subject}</a>
 	</div>`;
   const body = html2`${heading(html2`${planId} · ${gap.id}`, gap.question, meta)}
-		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>
+		<div data-region="banners">${newerBanner(detail2)} ${runBanner}</div>
 		<div class="split">
 			<div class="main-col">
 				<section aria-labelledby="consequence">
@@ -18376,7 +19266,7 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 							</section>` : ""}
 				<section aria-labelledby="gap-tests">
 					<h2 id="gap-tests">Affected tests <span class="n">${tests.length}</span></h2>
-					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard(detail, test))}</div>` : html2`<p class="empty-line">No test names this gap.</p>`}
+					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard2(detail2, test))}</div>` : html2`<p class="empty-line">No test names this gap.</p>`}
 				</section>
 			</div>
 			${side(panel)}
@@ -18577,26 +19467,26 @@ function actorLine(context, state, path, mode) {
 	</div>`;
 }
 function editPage(store, context, planId, revision, state = null) {
-  const detail = planDetail(store, planId, revision);
+  const detail2 = planDetail(store, planId, revision);
   const subject = `${planId}@${revision}`;
   const path = `/plans/${subject}/edit`;
   const title = `Edit ${subject}`;
-  if (detail.revision !== detail.latestRevision)
+  if (detail2.revision !== detail2.latestRevision)
     return {
       title,
       section: "plans",
       subjects: [`plan:${planId}`],
-      body: html2`${heading(title, detail.plan.objective)}
+      body: html2`${heading(title, detail2.plan.objective)}
 			${banner(
         "info",
         html2`Only the latest revision can change.
-					<a href="/plans/${planId}@${detail.latestRevision}/edit"
-						>Edit ${planId}@${detail.latestRevision}</a
+					<a href="/plans/${planId}@${detail2.latestRevision}/edit"
+						>Edit ${planId}@${detail2.latestRevision}</a
 					>`
       )}`
     };
   const frozen = frozenRevision(store, planId, revision);
-  const needsApproval = detail.approval.policy !== "none";
+  const needsApproval = detail2.approval.policy !== "none";
   const next = revision + 1;
   const save2 = frozen ? `Save as ${planId}@${next}` : "Save changes";
   const why = frozen === "run" ? `A run uses ${subject}.` : `${subject} is approved.`;
@@ -18613,13 +19503,13 @@ function editPage(store, context, planId, revision, state = null) {
   );
   const shown = state ?? {
     mode: "form",
-    candidate: planCandidate(detail.plan),
-    json: candidateJson(planCandidate(detail.plan)),
+    candidate: planCandidate(detail2.plan),
+    json: candidateJson(planCandidate(detail2.plan)),
     actor: "",
     error: null,
     stale: null,
     unsaved: null,
-    orig: JSON.stringify(planCandidate(detail.plan))
+    orig: JSON.stringify(planCandidate(detail2.plan))
   };
   const messages2 = html2`${shown.stale ? banner("warn", shown.stale) : ""}
 	${shown.error ? html2`<p class="form-error" role="alert">${shown.error}</p>` : ""}`;
@@ -18630,11 +19520,11 @@ function editPage(store, context, planId, revision, state = null) {
 			${actorLine(context, shown, path, mode)}`;
   const body = html2`${heading(
     title,
-    detail.plan.objective,
+    detail2.plan.objective,
     html2`<div class="meta">
 				<a class="pill" href="/plans/${subject}">${subject}</a>
-				<span class="pill" title="${detail.sha256}"
-					>sha256 <span class="mono">${short2(detail.sha256)}</span></span
+				<span class="pill" title="${detail2.sha256}"
+					>sha256 <span class="mono">${short2(detail2.sha256)}</span></span
 				>
 			</div>`
   )}
@@ -18642,7 +19532,7 @@ function editPage(store, context, planId, revision, state = null) {
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages2}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
-				${hidden2(context, detail.sha256, "form", shown.orig)}
+				${hidden2(context, detail2.sha256, "form", shown.orig)}
 				<section aria-labelledby="edit-requirements">
 					<h2 id="edit-requirements">
 						Requirements <span class="n">${shown.candidate.requirements.length}</span>
@@ -18663,7 +19553,7 @@ function editPage(store, context, planId, revision, state = null) {
 			<details class="edit-json" ${shown.mode === "json" ? html2`open` : ""}>
 				<summary>Edit as JSON</summary>
 				<form method="post" action="${path}" class="edit-form" data-edit-form>
-					${hidden2(context, detail.sha256, "json", shown.orig)}
+					${hidden2(context, detail2.sha256, "json", shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
 						candidate:
@@ -18676,436 +19566,6 @@ function editPage(store, context, planId, revision, state = null) {
 			</details>
 		</div>`;
   return { title, section: "plans", subjects: [`plan:${planId}`], body };
-}
-
-// plugin/src/ui/run.ts
-var imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-var textTypes = ["text/plain", "application/json", "text/markdown", "application/xml", "text/csv"];
-var inlineLimit = 64 * 1024;
-function size(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-function evidenceItem(store, item) {
-  const href = `/evidence/${item.id}`;
-  const caption = html2`<span class="ev-name">${item.name}</span> <span class="muted">${size(item.size)}</span>`;
-  if (imageTypes.includes(item.mediaType))
-    return html2`<figure class="ev ev-image">
-			<a href="${href}" data-view-image data-name="${item.name}">
-				<img src="${href}" alt="Evidence ${item.name}" loading="lazy" />
-			</a>
-			<figcaption>${caption}</figcaption>
-		</figure>`;
-  if (textTypes.includes(item.mediaType) && item.size <= inlineLimit) {
-    const text = new TextDecoder().decode(evidenceBytes(store, item.id).bytes);
-    return html2`<figure class="ev ev-text">
-			<figcaption>${caption} <a href="${href}" download="${item.name}">Download</a></figcaption>
-			<pre tabindex="0">${text}</pre>
-		</figure>`;
-  }
-  return html2`<a class="chip" href="${href}" download="${item.name}">↓ ${item.name} · ${size(item.size)}</a>`;
-}
-function evidenceChips(items) {
-  if (!items.length) return "";
-  return html2`<p class="evidence">
-		${items.map(
-    (item) => html2`<a
-					class="chip"
-					href="/evidence/${item.id}"
-					${imageTypes.includes(item.mediaType) ? html2`data-view-image data-name="${item.name}"` : html2`download="${item.name}"`}
-					>${item.name} · ${size(item.size)}</a
-				>`
-  )}
-	</p>`;
-}
-function evidenceList(store, items) {
-  if (!items.length) return "";
-  return html2`<div class="evidence">${items.map((item) => evidenceItem(store, item))}</div>`;
-}
-function tone(result) {
-  if (result === "failed") return "failed";
-  if (result === "inconclusive") return "unsure";
-  if (result === "not_checked") return "warn";
-  return "";
-}
-function findingRefs(detail, reference) {
-  const findings2 = detail.findings.filter((finding) => finding.assertionIds.includes(reference));
-  if (!findings2.length) return "";
-  return html2` ·
-	${join10(
-    findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
-    ", "
-  )}`;
-}
-function assertionRow(store, detail, test, assertion) {
-  const reference = `${test.testId}.${assertion.assertionId}`;
-  if (!assertion.result)
-    return html2`<li class="asr waiting" id="${reference}" data-key="${reference}">
-			<div class="asr-row">
-				${icon(null)}<span class="aid">${assertion.assertionId}</span>
-				<div class="asr-text">
-					${assertion.check}
-					<div class="obs">No result yet.</div>
-				</div>
-			</div>
-		</li>`;
-  const open = assertion.result !== "passed";
-  return html2`<li
-		class="asr ${tone(assertion.result)}"
-		id="${reference}"
-		data-key="${reference}"
-		data-announce="${reference} ${words(assertion.result)}"
-	>
-		<details ${open ? html2`open` : ""} data-open-key="${reference}">
-			<summary class="asr-row">
-				${icon(assertion.result)}<span class="aid">${assertion.assertionId}</span>
-				<div class="asr-text">
-					${assertion.check}
-					${assertion.observed ? html2`<div class="obs">
-									Observed: <code>${assertion.observed}</code>${findingRefs(detail, reference)}
-								</div>` : ""}
-				</div>
-			</summary>
-			<div class="asr-body">
-				${assertion.reason ? html2`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ""}
-				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
-				${evidenceList(store, assertion.evidence)}
-			</div>
-		</details>
-	</li>`;
-}
-function testState(test, detail) {
-  if (test.outcome) return pill(test.outcome);
-  if (detail.state === "finalized") return pill("not_run");
-  return test.assertions.some((assertion) => assertion.result) ? pill("started", "running") : pill("pending", "waiting");
-}
-function testCard2(store, detail, test) {
-  const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
-  const recorded = test.assertions.filter((assertion) => assertion.result).length;
-  const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
-  return html2`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
-		<header class="test-h">
-			${testState(test, detail)}
-			<a class="id" href="#${test.testId}">${test.testId}</a>
-			<h3>${test.title}</h3>
-			<span class="count"
-				>${passed} of ${test.assertions.length}
-				passed${recorded < test.assertions.length ? ` \xB7 ${test.assertions.length - recorded} without result` : ""}</span
-			>
-		</header>
-		${hasMetadata(test.metadata) ? html2`<p class="test-note">${metadataList(test.metadata)}</p>` : ""}
-		${test.reason ? html2`<p class="test-note">${test.reason}</p>` : ""}
-		${test.evidence.length ? html2`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ""}
-		<ul class="asrs">
-			${test.assertions.map((assertion) => assertionRow(store, detail, test, assertion))}
-		</ul>
-	</article>`;
-}
-function outcomeCounts2(detail) {
-  const values = {};
-  for (const test of detail.tests) if (test.outcome) values[test.outcome] = (values[test.outcome] ?? 0) + 1;
-  return values;
-}
-function strip(detail) {
-  const result = detail.result;
-  return html2`<div class="strip" data-region="summary">
-		<div><small>Completion</small><strong>${result ? words(result.completion) : "running"}</strong></div>
-		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : "\u2013"}</strong></div>
-		<div><small>Tests</small><strong>${counts(outcomeCounts2(detail))}</strong></div>
-		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
-	</div>`;
-}
-function findings(store, detail) {
-  if (!detail.findings.length) return html2`<p class="empty-line">No findings.</p>`;
-  const evidence2 = detail.tests.flatMap((test) => [
-    ...test.evidence,
-    ...test.assertions.flatMap((assertion) => assertion.evidence)
-  ]);
-  return html2`<div class="stack">
-		${detail.findings.map(
-    (finding) => html2`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
-					<header class="test-h">
-						${pill(finding.type)} <span class="id">${finding.id}</span>
-						<h3>${finding.title}</h3>
-						<span class="count">${pill(finding.severity)}</span>
-					</header>
-					<div class="test-b">
-						<div class="compare">
-							<div>
-								<small>Expected</small>
-								<p>${finding.expected}</p>
-							</div>
-							<div>
-								<small>Observed</small>
-								<p>${finding.observed}</p>
-							</div>
-						</div>
-						${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
-										<ol class="steps">
-											${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
-										</ol>` : ""}
-						<p class="muted small">
-							Assertions
-							${join10(
-      finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
-      ", "
-    )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
-						</p>
-						${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
-						${evidenceChips(evidence2.filter((item) => finding.evidenceIds.includes(item.id)))}
-					</div>
-				</article>`
-  )}
-	</div>`;
-}
-function adoptForm(context, detail, gapId, sha256) {
-  return html2`<form method="post" action="/runs/${detail.runId}/gaps/${gapId}" class="inline-form">
-		<input type="hidden" name="csrf" value="${context.csrf}" />
-		<input type="hidden" name="sha" value="${sha256}" />
-		${context.actor ? "" : html2`<input
-						name="actor"
-						required
-						autocomplete="name"
-						placeholder="Your name"
-						aria-label="Your name"
-					/>`}
-		<button class="btn small">Bring into plan</button>
-	</form>`;
-}
-function newGaps(store, context, detail, adoptError) {
-  if (!detail.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
-  const revision = planRevision(store, detail.planId);
-  const latest = `${detail.planId}@${revision.plan.revision}`;
-  const adopted = planRunGaps(store, detail.planId).filter((item) => item.runId === detail.runId && item.adopted).map((item) => item.gap.id);
-  return html2`<ul class="gaps">
-		${detail.newGaps.map(
-    (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
-					<div class="gap-h">
-						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
-						<span class="gap-refs muted"
-							>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
-						>
-					</div>
-					<p class="gap-q">${gap.question}</p>
-					<p class="muted">${gap.consequence}</p>
-					<div class="actions">
-						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
-										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
-										${adoptForm(context, detail, gap.id, revision.sha256)}`}
-					</div>
-					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
-				</li>`
-  )}
-	</ul>`;
-}
-function coverage(store, detail) {
-  const result = detail.result;
-  if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
-  const plan = planDetail(store, detail.planId, detail.revision).plan;
-  const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">ID</th>
-					<th scope="col">Requirement</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Coverage</th>
-				</tr>
-			</thead>
-			<tbody>
-				${result.coverage.requirements.map(
-    (row) => html2`<tr>
-							<td class="mono">${row.requirementId}</td>
-							<td>
-								${requirements.get(row.requirementId)?.text ?? ""}
-								${row.reason ? html2`<div class="muted small">${row.reason}</div>` : ""}
-								${hasMetadata(requirements.get(row.requirementId)?.metadata) ? html2`<div class="small">
-												${metadataList(requirements.get(row.requirementId)?.metadata)}
-											</div>` : ""}
-							</td>
-							<td class="mono">${row.testIds.join(", ") || "\u2013"}</td>
-							<td>${pill(row.status)}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
-}
-function cleanup(detail) {
-  const result = detail.result;
-  return html2`<dl class="facts">
-		<div>
-			<dt>Cleanup</dt>
-			<dd>
-				${result ? html2`${pill(result.cleanup.status)} ${result.cleanup.reason}` : html2`<span class="muted">Not finished.</span>`}
-			</dd>
-		</div>
-		<div>
-			<dt>Attempts</dt>
-			<dd>
-				<ul class="plain">
-					${detail.attempts.map(
-    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
-  )}
-				</ul>
-			</dd>
-		</div>
-		<div>
-			<dt>Browser session</dt>
-			<dd class="mono">${detail.browserSession}</dd>
-		</div>
-		<div>
-			<dt>Target</dt>
-			<dd class="mono">${detail.target}</dd>
-		</div>
-		<div>
-			<dt>Instance</dt>
-			<dd>
-				<a
-					class="mono"
-					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
-					>${detail.instance.instanceId}</a
-				>${detail.instance.environment ? html2` · ${detail.instance.environment}` : ""}${detail.instance.retired ? html2` · ${pill("retired")}` : ""}
-			</dd>
-		</div>
-		${detail.request.retestOf ? html2`<div>
-						<dt>Retest of</dt>
-						<dd><a class="mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a></dd>
-					</div>` : ""}
-	</dl>`;
-}
-function inconclusiveList(detail) {
-  const rows = detail.tests.flatMap(
-    (test) => test.assertions.filter((assertion) => assertion.result === "inconclusive").map((assertion) => ({
-      reference: `${test.testId}.${assertion.assertionId}`,
-      reason: assertion.reason ?? ""
-    }))
-  );
-  if (!rows.length) return "";
-  return html2`<div class="field-group">
-		<p class="lab">Inconclusive · ${rows.length}</p>
-		<ul class="plist">
-			${rows.map(
-    (row) => html2`<li>
-						<a href="#${row.reference}"><code>${row.reference}</code></a> ${row.reason}
-					</li>`
-  )}
-		</ul>
-	</div>`;
-}
-function decisionPanel(store, context, detail, state) {
-  const result = detail.result;
-  if (!result)
-    return recordPanel(
-      "Decision",
-      html2`<p class="subj">${detail.runId} is in progress.</p>
-				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
-    );
-  if (result.acceptance === "not_required")
-    return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
-  const latest = result.latestDecision;
-  if (latest && !state)
-    return recordPanel(
-      "Decision",
-      html2`<p class="subj">
-					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail.runId}
-				</p>
-				<p class="help">
-					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
-				</p>
-				<blockquote>${latest.rationale}</blockquote>`,
-      `${detail.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
-    );
-  return verdictPanel(
-    context,
-    {
-      action: `/runs/${detail.runId}`,
-      subject: detail.runId,
-      question: `Accept ${detail.runId}?`,
-      sha256: result.sha256,
-      token: decisionToken(store, "result", detail.runId),
-      digestLabel: "Result",
-      approve: {
-        value: "accept",
-        label: `Accept ${detail.runId}`,
-        confirm: "Confirm acceptance",
-        summary: `Accept ${detail.runId} as the record of build ${detail.build}.`
-      },
-      reject: {
-        value: "reject",
-        label: "Reject",
-        confirm: "Confirm rejection",
-        summary: `Reject ${detail.runId}. Dependent plans stay blocked.`
-      },
-      staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
-      intro: inconclusiveList(detail)
-    },
-    state ?? emptyState()
-  );
-}
-function runBadge(detail) {
-  const acceptance = detail.result?.acceptance;
-  if (!acceptance) return pill("started", "in progress");
-  if (acceptance === "approved") return pill("approved", "accepted");
-  if (acceptance === "pending") return pill("pending", "awaiting acceptance");
-  return pill(acceptance);
-}
-function runPage(store, context, runId, state = null, adoptError = null) {
-  const detail = runDetail(store, runId);
-  const sub = html2`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
-			>${detail.planId}@${detail.revision}</a
-		>
-		· build <code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code> · started
-		${clock(detail.startedAt)} · ${plural(detail.attempts.length, "attempt")}
-		${detail.result ? html2`· finished ${time(detail.result.finishedAt)} ago` : ""}`;
-  const badge = runBadge(detail);
-  const report = detail.result ? downloads(
-    "Download report",
-    `/runs/${runId}/report`,
-    "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
-    ["html", "md", "json", "junit"]
-  ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
-  const body = html2`${heading(
-    runId,
-    sub,
-    html2`<div class="meta" data-region="state">${badge} <span class="head-actions">${report}</span></div>`
-  )}
-		<div class="split">
-			<div class="main-col">
-				${strip(detail)}
-				<nav class="jump" aria-label="On this page">
-					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
-					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
-				</nav>
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Tests <span class="n">${detail.tests.length}</span></h2>
-					<div class="stack">${detail.tests.map((test) => testCard2(store, detail, test))}</div>
-				</section>
-				<section aria-labelledby="findings" data-region="findings">
-					<h2 id="findings">Findings <span class="n">${detail.findings.length}</span></h2>
-					${findings(store, detail)}
-				</section>
-				<section aria-labelledby="new-gaps" data-region="new-gaps">
-					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
-					${newGaps(store, context, detail, adoptError)}
-				</section>
-				<section aria-labelledby="coverage" data-region="coverage">
-					<h2 id="coverage">Coverage</h2>
-					${coverage(store, detail)}
-				</section>
-				<section aria-labelledby="cleanup" data-region="cleanup">
-					<h2 id="cleanup">Cleanup and attempts</h2>
-					${cleanup(detail)}
-				</section>
-			</div>
-			<aside class="side" aria-label="Decision">
-				${decisionPanel(store, context, detail, state)}
-				<p class="back"><a href="/">← Back to inbox</a></p>
-			</aside>
-		</div>`;
-  return { title: runId, section: "runs", subjects: [`run:${runId}`, "inbox"], body };
 }
 
 // plugin/src/ui/settings.ts
@@ -19516,6 +19976,7 @@ var routes = {
   explorationExport: new RegExp(`^/explorations/(${id})/export\\.(md|json)$`),
   question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
   claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
+  claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
   font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
@@ -19657,8 +20118,8 @@ data: ${matched.join(",") || "*"}
       csrf,
       actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
       theme,
-      toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" ? request.cookies.checkmate_toast || null : null,
-      inboxCount: inboxCount(inbox(store)),
+      toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request.req.headers["x-checkmate-queue"] === "1" ? request.cookies.checkmate_toast || null : null,
+      queueCount: queueCount(store),
       cursor: latestRowid(store),
       workspace: options2.workspace
     };
@@ -19685,9 +20146,26 @@ data: ${matched.join(",") || "*"}
 				</p>`
     });
   }
-  function nextItem(flash, actorCookie) {
-    const next = inboxItems(inbox(store))[0] ?? "/";
-    return { location: next, cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)] };
+  function nextItem(flash, actorCookie, form) {
+    return {
+      location: safeBack(form.get("return") ?? "/"),
+      cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)]
+    };
+  }
+  function inQueue(request, form, page, state) {
+    const key = form.get("item");
+    if (form.get("return") === null || key === null) return page;
+    const back = safeBack(form.get("return"));
+    const refusal = { key, state };
+    return () => queuePage(store, context(request, back), new URL(back, request.url).searchParams, refusal);
+  }
+  function serveClaimEvidence(request, explorationId, claimId, index2) {
+    const evidence2 = claimEvidence(store, planOfExploration(explorationId), claimId, index2);
+    const inline = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
+    send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
+      "Cache-Control": "private, max-age=31536000, immutable"
+    });
   }
   function serveEvidence(request, evidenceId) {
     let evidence2;
@@ -19742,7 +20220,8 @@ data: ${matched.join(",") || "*"}
     const evidence2 = routes.evidence.exec(pathname);
     if (evidence2) return serveEvidence(request, evidence2[1]);
     const shown = context(request);
-    if (pathname === "/") return render(request, inboxPage(store));
+    if (pathname === "/") return render(request, queuePage(store, shown, searchParams));
+    if (pathname === "/inbox") return render(request, inboxPage(store));
     if (pathname === "/plans") return render(request, plansPage(store, searchParams));
     if (pathname === "/runs") return render(request, runsPage(store, searchParams));
     if (pathname === "/log") return render(request, logPage(store, searchParams));
@@ -19758,8 +20237,8 @@ data: ${matched.join(",") || "*"}
     const latest = routes.latestPlan.exec(pathname);
     if (latest) {
       if (!planHasRevision(store, latest[1])) return render(request, requestPage(store, latest[1]));
-      const detail = planDetail(store, latest[1]);
-      return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`);
+      const detail2 = planDetail(store, latest[1]);
+      return redirect(request.res, `/plans/${latest[1]}@${detail2.latestRevision}`);
     }
     const plan = routes.plan.exec(pathname);
     if (plan)
@@ -19771,8 +20250,8 @@ data: ${matched.join(",") || "*"}
     if (edit) return render(request, editPage(store, shown, edit[1], Number(edit[2])));
     const history = routes.history.exec(pathname);
     if (history) {
-      const detail = planDetail(store, history[1], Number(history[2]));
-      return send(request.res, 200, "text/html; charset=utf-8", planHistoryList(store, detail, true).html);
+      const detail2 = planDetail(store, history[1], Number(history[2]));
+      return send(request.res, 200, "text/html; charset=utf-8", planHistoryList(store, detail2, true).html);
     }
     const planExport = routes.planExport.exec(pathname);
     if (planExport) {
@@ -19811,6 +20290,8 @@ data: ${matched.join(",") || "*"}
     if (question) return render(request, questionPage(store, shown, question[1], question[2]));
     const claim = routes.claim.exec(pathname);
     if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]));
+    const claimFile = routes.claimEvidence.exec(pathname);
+    if (claimFile) return serveClaimEvidence(request, claimFile[1], claimFile[2], Number(claimFile[3]));
     const gap = routes.gap.exec(pathname);
     if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]));
     const run2 = routes.run.exec(pathname);
@@ -19853,18 +20334,13 @@ data: ${matched.join(",") || "*"}
     };
     const { actor, cookies } = actorFrom(request, form);
     const kind = state.values.kind;
-    const page = () => gapPage(store, context(request), planId, revision, gapId, state);
-    const check = (condition, message) => {
-      if (!condition) state.error ??= message;
-    };
-    check(Boolean(actor), "Enter your name. Checkmate records it with your answer.");
-    check(["clarify", "accept_assumption", "defer"].includes(kind), "Choose Clarify, Accept assumption, or Defer.");
-    check(Boolean(state.values.value.trim()), "Write the answer.");
-    check(
-      kind !== "clarify" || Boolean(state.values.source.trim()),
-      "A clarification needs a source. Name where the answer comes from."
+    const page = inQueue(
+      request,
+      form,
+      () => gapPage(store, context(request), planId, revision, gapId, state),
+      state
     );
-    check(Boolean(state.values.rationale.trim()), "Write a rationale. Checkmate records it with your answer.");
+    state.error = answerProblem(state, actor);
     if (state.error) return refuse(request, page, cookies);
     try {
       answerGap(store, actor, {
@@ -19887,8 +20363,19 @@ data: ${matched.join(",") || "*"}
       else state.error = plainMessage(error);
       return refuse(request, page, cookies);
     }
-    const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies);
+    const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies, form);
     redirect(request.res, next.location, next.cookies);
+  }
+  function answerProblem(state, actor) {
+    const { kind, value: value2, source, rationale } = state.values;
+    if (!actor) return "Enter your name. Checkmate records it with your answer.";
+    if (!["clarify", "accept_assumption", "defer"].includes(kind))
+      return "Choose Clarify, Accept assumption, or Defer.";
+    if (!value2.trim()) return "Write the answer.";
+    if (kind === "clarify" && !source.trim())
+      return "A clarification needs a source. Name where the answer comes from.";
+    if (!rationale.trim()) return "Write a rationale. Checkmate records it with your answer.";
+    return null;
   }
   function answerExplorationQuestion(request, form, explorationId, questionId) {
     const state = {
@@ -19898,6 +20385,9 @@ data: ${matched.join(",") || "*"}
     const { actor, cookies } = actorFrom(request, form);
     const kind = state.values.kind;
     const planId = planOfExploration(explorationId);
+    const page = () => questionPage(store, context(request), explorationId, questionId, state);
+    state.error = answerProblem(state, actor);
+    if (state.error) return refuse(request, inQueue(request, form, page, state), cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -19909,27 +20399,37 @@ data: ${matched.join(",") || "*"}
       });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse(
-        request,
-        () => questionPage(store, context(request), explorationId, questionId, state),
-        cookies
-      );
+      return refuse(request, inQueue(request, form, page, state), cookies);
     }
-    const next = nextItem(`Answered ${planId} \xB7 ${questionId}`, cookies);
+    const next = nextItem(`Answered ${planId} \xB7 ${questionId}`, cookies, form);
     redirect(request.res, next.location, next.cookies);
   }
   function decideExplorationClaim(request, form, explorationId, claimId) {
     const state = { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
     const { actor, cookies } = actorFrom(request, form);
     const planId = planOfExploration(explorationId);
-    const verdict = state.values.verdict === "rejected" ? "rejected" : "approved";
+    const verdict = state.values.verdict;
+    const page = inQueue(
+      request,
+      form,
+      () => claimPage(store, context(request), explorationId, claimId, state),
+      state
+    );
+    if (verdict !== "approved" && verdict !== "rejected") {
+      state.error = "Choose Accept as a defect or Reject.";
+      return refuse(request, page, cookies);
+    }
     try {
       decideClaim(store, actor, { planId, claimId, verdict, rationale: state.values.rationale.trim() });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse(request, () => claimPage(store, context(request), explorationId, claimId, state), cookies);
+      return refuse(request, page, cookies);
     }
-    const next = nextItem(`${verdict === "approved" ? "Accepted" : "Rejected"} ${planId} \xB7 ${claimId}`, cookies);
+    const next = nextItem(
+      `${verdict === "approved" ? "Accepted" : "Rejected"} ${planId} \xB7 ${claimId}`,
+      cookies,
+      form
+    );
     redirect(request.res, next.location, next.cookies);
   }
   function planOfExploration(explorationId) {
@@ -19964,7 +20464,7 @@ data: ${matched.join(",") || "*"}
       if (!state.stale) state.error = plainMessage(error);
       return refuse(request, view, cookies);
     }
-    const next = nextItem(flash, cookies);
+    const next = nextItem(flash, cookies, form);
     redirect(request.res, next.location, next.cookies);
   }
   function decidedBanner(subject, latest, verdicts) {
@@ -19986,8 +20486,8 @@ data: ${matched.join(",") || "*"}
         return `${verdict === "approve" ? "Approved" : "Rejected"} ${subject}`;
       },
       (sha, token) => {
-        const detail = planDetail(store, planId, revision);
-        if (detail.sha256 !== sha)
+        const detail2 = planDetail(store, planId, revision);
+        if (detail2.sha256 !== sha)
           return html2`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
 						text is kept below. Review the plan, then send again.`;
         if (decisionToken(store, "plan", subject) === token) return null;
@@ -20052,8 +20552,8 @@ data: ${matched.join(",") || "*"}
   function saveEdit(request, form, planId, revision) {
     const { actor, cookies } = actorFrom(request, form);
     const subject = `${planId}@${revision}`;
-    const detail = planDetail(store, planId, revision);
-    const base = planCandidate(detail.plan);
+    const detail2 = planDetail(store, planId, revision);
+    const base = planCandidate(detail2.plan);
     const mode = form.get("mode") === "json" ? "json" : "form";
     const sha = form.get("sha") ?? "";
     const state = {
@@ -20545,7 +21045,7 @@ function finishPhase(store, actor, explorationId, phase, launch) {
   }
   const events = explorationEvents(store, explorationId);
   const reached = phase.events.filter((item) => item.step === "follow-turn" && item.status === "completed").length;
-  const row = explorationRow(store, explorationId);
+  const row2 = explorationRow(store, explorationId);
   addOutcome(store, actor, explorationId, {
     step: "followed",
     explorer: null,
@@ -20559,7 +21059,7 @@ function finishPhase(store, actor, explorationId, phase, launch) {
       ],
       ...recorded ? {} : reached ? { reason: "No explorer session of the follow-up was recorded." } : {
         reason: "No tester of the follow-up could be reached.",
-        hint: `The testers ran in a session that ended. Run checkmate test ${row.plan_id} --build ${row.build} --session again. The answers reach the new testers through the known-state file.`
+        hint: `The testers ran in a session that ended. Run checkmate test ${row2.plan_id} --build ${row2.build} --session again. The answers reach the new testers through the known-state file.`
       }
     }
   });
@@ -20677,11 +21177,11 @@ function mergeDone(store, actor, explorationId, own, base, failed, after) {
   const round = own.at(-1).detail.round;
   const answer = `${workFolder(explorationId)}/merge/answer.json`;
   const refusals = failed ? [] : logMerge(store, explorationId, replyArray(readText2(store, answer)));
-  const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
+  const outcome = (step, status, detail2) => addOutcome(store, actor, explorationId, {
     step,
     explorer: null,
     status,
-    detail: { name: "merge", ...base, ...detail }
+    detail: { name: "merge", ...base, ...detail2 }
   });
   if (!failed && round === "merge" && refusals.length)
     return outcome("merge-round", "started", { round: "repair", refusals });
@@ -20701,11 +21201,11 @@ function verifyDone(store, actor, explorationId, own, base, failed) {
   const ids2 = new Set(first.detail.ids);
   const answer = `${workFolder(explorationId)}/verify/answer.json`;
   const observations = failed ? [] : verifiedEntries(replyArray(readText2(store, answer)), ids2);
-  const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
+  const outcome = (step, status, detail2) => addOutcome(store, actor, explorationId, {
     step,
     explorer: null,
     status,
-    detail: { name: "verify", ...base, ...detail }
+    detail: { name: "verify", ...base, ...detail2 }
   });
   if (!failed && !observations.length && round === "verify")
     return outcome("verify-round", "started", { round: "repair" });
@@ -20845,7 +21345,7 @@ function autoMode(store, planId) {
 function nextRunId(store) {
   return unusedId(
     "run-",
-    all(store, "SELECT run_id FROM runs").map((row) => row.run_id)
+    all(store, "SELECT run_id FROM runs").map((row2) => row2.run_id)
   );
 }
 function gitBuild(workspace) {
@@ -20858,7 +21358,7 @@ function dateBuild(now = /* @__PURE__ */ new Date()) {
 function chosenTarget(store, actor, input, env, assumed) {
   if (input.target) return input.target;
   const targets = all(store, "SELECT target_id FROM profiles GROUP BY target_id").map(
-    (row) => row.target_id
+    (row2) => row2.target_id
   );
   if (targets.length === 1) {
     assumed.push(`target=${targets[0]} (the only target)`);
@@ -20960,12 +21460,12 @@ function linkedCriterion(entry, criteria) {
   return ids2.map((id2) => criteria.get(id2)).find(Boolean);
 }
 function drafts(store, explorationId, observations) {
-  const row = explorationRow(store, explorationId);
-  const state = journal(store, row.plan_id);
+  const row2 = explorationRow(store, explorationId);
+  const state = journal(store, row2.plan_id);
   const own = state.team.filter((entry) => entry.explorationId === explorationId);
   const byId = new Map(state.team.map((entry) => [entry.id, entry]));
   const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
-  const fromClaims = planClaims(store, row.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
+  const fromClaims = planClaims(store, row2.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
     const report = byId.get(claim.reports[0]);
     const criterion = linkedCriterion(report, criteria);
     return {
@@ -21049,35 +21549,35 @@ function harvested(base, items, explorationId, build, capabilities, operations) 
 }
 function harvestExploration(store, actor, input) {
   return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
-    const row = explorationRow(store, input.explorationId);
-    const { request, target } = planRequest(store, row.plan_id);
-    const items = drafts(store, row.exploration_id, input.observations);
+    const row2 = explorationRow(store, input.explorationId);
+    const { request, target } = planRequest(store, row2.plan_id);
+    const items = drafts(store, row2.exploration_id, input.observations);
     requireCondition(
       items.length,
-      `Exploration ${row.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
+      `Exploration ${row2.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
       input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
     );
-    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row.plan_id);
-    const latest = hasRevision ? planRevision(store, row.plan_id) : null;
+    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row2.plan_id);
+    const latest = hasRevision ? planRevision(store, row2.plan_id) : null;
     const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
     const result = harvested(
       base,
       items,
-      row.exploration_id,
-      row.build,
+      row2.exploration_id,
+      row2.build,
       target.profile.capabilities,
       target.profile.allowedOperations
     );
     requireCondition(
       result.added.length,
-      `Each item of ${row.exploration_id} is harvested already into ${row.plan_id}.`,
-      `Run checkmate plan show ${row.plan_id} to read the harvested tests.`
+      `Each item of ${row2.exploration_id} is harvested already into ${row2.plan_id}.`,
+      `Run checkmate plan show ${row2.plan_id} to read the harvested tests.`
     );
     const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
       store,
       {
         contractVersion: "toolkit-2",
-        planId: row.plan_id,
+        planId: row2.plan_id,
         revision: 1,
         previousRevision: null,
         target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
@@ -21095,12 +21595,12 @@ function harvestExploration(store, actor, input) {
         ...change.reply,
         data: {
           ...change.reply.data,
-          explorationId: row.exploration_id,
+          explorationId: row2.exploration_id,
           tests: result.added,
           skipped: result.skipped
         }
       },
-      subjects: [...change.subjects, `exploration:${row.exploration_id}`]
+      subjects: [...change.subjects, `exploration:${row2.exploration_id}`]
     };
   });
 }
@@ -21877,38 +22377,38 @@ var commands = {
     positionals: ["runId"],
     flags: { tests: "list" },
     run: (store, args) => {
-      const detail = runDetail(store, value(args, "runId"));
+      const detail2 = runDetail(store, value(args, "runId"));
       const selected = list(args, "tests");
       for (const id2 of selected ?? [])
         requireWellFormed(
-          detail.tests.some((test) => test.testId === id2),
-          `Test ${id2} is not selected in run ${detail.runId}`,
-          `Use one of: ${detail.tests.map((test) => test.testId).join(", ")}.`
+          detail2.tests.some((test) => test.testId === id2),
+          `Test ${id2} is not selected in run ${detail2.runId}`,
+          `Use one of: ${detail2.tests.map((test) => test.testId).join(", ")}.`
         );
-      const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId));
-      return completed(detail.runId, { ...detail, tests });
+      const tests = detail2.tests.filter((test) => !selected || selected.includes(test.testId));
+      return completed(detail2.runId, { ...detail2, tests });
     },
     print: (reply) => {
-      const detail = reply.data;
+      const detail2 = reply.data;
       return {
         facts: {
-          state: detail.state,
-          plan: `${detail.planId}@${detail.revision}`,
-          build: detail.build,
-          instance: detail.instance.instanceId,
-          completion: detail.result?.completion,
-          cause: detail.result?.completionCause ?? void 0,
-          coverage: detail.result?.coverage.status,
-          acceptance: detail.result?.acceptance
+          state: detail2.state,
+          plan: `${detail2.planId}@${detail2.revision}`,
+          build: detail2.build,
+          instance: detail2.instance.instanceId,
+          completion: detail2.result?.completion,
+          cause: detail2.result?.completionCause ?? void 0,
+          coverage: detail2.result?.coverage.status,
+          acceptance: detail2.result?.acceptance
         },
         lines: [
           [
             "time",
-            `deadline=${detail.clock.deadline}`,
-            `elapsed=${detail.clock.elapsedSeconds}s`,
-            `remaining=${detail.clock.remainingSeconds}s`
+            `deadline=${detail2.clock.deadline}`,
+            `elapsed=${detail2.clock.elapsedSeconds}s`,
+            `remaining=${detail2.clock.remainingSeconds}s`
           ],
-          ...detail.tests.flatMap((test) => [
+          ...detail2.tests.flatMap((test) => [
             [
               test.testId,
               test.outcome ?? "open",
@@ -21923,22 +22423,22 @@ var commands = {
               ...assertion.reason ? [assertion.reason] : []
             ])
           ]),
-          ...detail.findings.map((finding) => [
+          ...detail2.findings.map((finding) => [
             finding.id,
             finding.type,
             finding.severity,
             finding.assertionIds,
             finding.title
           ]),
-          ...detail.retest.map((item) => [
+          ...detail2.retest.map((item) => [
             `${item.runId}/${item.findingId}`,
             "retest",
             item.verdict,
             item.testIds,
             item.title
           ]),
-          ...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-          ...decisionLines(detail.result?.latestDecision)
+          ...detail2.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
+          ...decisionLines(detail2.result?.latestDecision)
         ]
       };
     }
@@ -22484,9 +22984,9 @@ var commands = {
       const statement = queryStatement(store, value(args, "sql"));
       const columns = statement.columns().map((column) => column.name);
       const rows = readOnly(() => statement.all()).map(
-        (row) => Object.fromEntries(
+        (row2) => Object.fromEntries(
           columns.map((column) => {
-            const field2 = row[column];
+            const field2 = row2[column];
             return [column, field2 instanceof Uint8Array ? `<blob ${field2.length} bytes>` : field2];
           })
         )
@@ -22498,7 +22998,7 @@ var commands = {
       const rows = reply.data.rows;
       return {
         facts: { rows: rows.length },
-        lines: [columns, ...rows.map((row) => columns.map((name) => row[name]))]
+        lines: [columns, ...rows.map((row2) => columns.map((name) => row2[name]))]
       };
     }
   }
@@ -22581,29 +23081,29 @@ function verdictCommand(positional, decide) {
 }
 function showPlan(store, args) {
   const { id: id2, revision } = revisionReference(value(args, "reference"), "plan reference");
-  const detail = planDetail(store, id2, revision);
-  const subject = `${id2}@${detail.revision}`;
+  const detail2 = planDetail(store, id2, revision);
+  const subject = `${id2}@${detail2.revision}`;
   const tests = list(args, "tests");
   const fields = list(args, "fields");
   const gaps = requireChoice(value(args, "gaps") ?? "all", ["open", "all"], "gaps filter (--gaps)");
-  const warnings = dependencyWarnings(detail.plan);
+  const warnings = dependencyWarnings(detail2.plan);
   const warned = warnings.length ? { warnings } : {};
   if (!tests && !fields) {
     const plan = {
-      ...detail.plan,
-      gaps: detail.plan.gaps.filter((gap) => gaps === "all" || gap.status === "open")
+      ...detail2.plan,
+      gaps: detail2.plan.gaps.filter((gap) => gaps === "all" || gap.status === "open")
     };
-    return completed(subject, { ...detail, plan, ...warned });
+    return completed(subject, { ...detail2, plan, ...warned });
   }
   for (const test of tests ?? [])
     requireWellFormed(
-      detail.plan.tests.some((item) => item.id === test),
+      detail2.plan.tests.some((item) => item.id === test),
       `Unknown test in ${subject}: ${test}`,
-      `Use one of: ${detail.plan.tests.map((item) => item.id).join(", ")}.`
+      `Use one of: ${detail2.plan.tests.map((item) => item.id).join(", ")}.`
     );
   for (const field2 of fields ?? [])
     requireWellFormed(testFields2.includes(field2), `Unknown field: ${field2}. Use: ${testFields2.join(", ")}`);
-  const picked = detail.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
+  const picked = detail2.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
     (test) => Object.fromEntries([
       ["id", test.id],
       ...(fields ?? ["readiness", "capability", "title"]).map((field2) => [
@@ -22614,8 +23114,8 @@ function showPlan(store, args) {
   );
   return completed(subject, {
     planId: id2,
-    revision: detail.revision,
-    sha256: detail.sha256,
+    revision: detail2.revision,
+    sha256: detail2.sha256,
     fields: fields ?? ["readiness", "capability", "title"],
     tests: picked,
     ...warned
@@ -22653,14 +23153,14 @@ function printPlan(reply) {
       ])
     };
   }
-  const detail = reply.data;
-  const { plan } = detail;
-  const coverage2 = new Map(plan.coverage.map((row) => [row.requirementId, row.status]));
+  const detail2 = reply.data;
+  const { plan } = detail2;
+  const coverage2 = new Map(plan.coverage.map((row2) => [row2.requirementId, row2.status]));
   return {
     facts: {
       ...facts2,
-      approval: detail.approval.state,
-      ...detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}
+      approval: detail2.approval.state,
+      ...detail2.latestRevision !== detail2.revision ? { latest: detail2.latestRevision } : {}
     },
     lines: [
       ...plan.requirements.map((requirement) => [requirement.id, coverage2.get(requirement.id), requirement.text]),
@@ -22673,14 +23173,14 @@ function printPlan(reply) {
         decision.value,
         decision.rationale
       ]),
-      ...detail.pendingDecisions.map((decision) => [
+      ...detail2.pendingDecisions.map((decision) => [
         decision.id,
         decision.gapId,
         `pending ${decision.kind}`,
         decision.value,
         decision.rationale
       ]),
-      ...decisionLines(detail.approval.latest)
+      ...decisionLines(detail2.approval.latest)
     ]
   };
 }
@@ -22739,11 +23239,11 @@ function commandName(argv) {
   throw unknownCommand(words4);
 }
 function unknownCommand(words4) {
-  const groups = words4.map((_, i) => {
+  const groups2 = words4.map((_, i) => {
     const prefix = words4.slice(0, words4.length - i).join(" ");
     return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `));
   });
-  const names = groups.find((group2) => group2.length) ?? [
+  const names = groups2.find((group2) => group2.length) ?? [
     .../* @__PURE__ */ new Set([...Object.keys(commands).map((name) => name.split(" ")[0]), "ui"])
   ];
   return new Refusal(

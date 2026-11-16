@@ -14,7 +14,7 @@ type Evidence = Detail['tests'][number]['evidence'][number]
 type RunTest = Detail['tests'][number]
 type Assertion = RunTest['assertions'][number]
 
-const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+export const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const textTypes = ['text/plain', 'application/json', 'text/markdown', 'application/xml', 'text/csv']
 const inlineLimit = 64 * 1024
 

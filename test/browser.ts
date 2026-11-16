@@ -16,9 +16,13 @@ const run = promisify(execFile)
 const template = directory()
 let browser: Browser | undefined
 
-export async function launch() {
+export function launch() {
+	return launchWith(seedDemo)
+}
+
+export async function launchWith(seed: (workspace: string) => void) {
 	if (!executablePath) return
-	seedDemo(template)
+	seed(template)
 	browser = await chromium.launch({ executablePath })
 }
 

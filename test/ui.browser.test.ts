@@ -9,7 +9,7 @@ test.after(stop)
 
 test('the inbox works from the keyboard and a #decide or #answer link focuses its form', { skip }, async (t) => {
 	const { page, url } = await open(t)
-	await page.goto(url('/'))
+	await page.goto(url('/inbox'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 	assert.equal(await focusedKey(page), 'gap:checkout:G2')
 	await page.keyboard.press('j')
@@ -41,9 +41,9 @@ test('the inbox works from the keyboard and a #decide or #answer link focuses it
 	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
 })
 
-test('a gap answer goes from the form to the next inbox item', { skip }, async (t) => {
+test('a gap answer goes from the form to Needs you', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t)
-	await page.goto(url('/'))
+	await page.goto(url('/inbox'))
 	await page.keyboard.press('Enter')
 	await page.waitForURL(/\/plans\/checkout@2\/gaps\/G2#answer$/)
 	const record = page.getByRole('button', { name: 'Record answer' })
@@ -57,7 +57,7 @@ test('a gap answer goes from the form to the next inbox item', { skip }, async (
 	await page.getByLabel('Rationale').fill('Product owner moved refunds to the next release.')
 	assert(await record.isEnabled())
 	await record.click()
-	await page.waitForURL(/\/plans\/checkout@2\/gaps\/G4#answer$/)
+	await page.waitForURL(url('/'))
 	await page.getByRole('status').filter({ hasText: 'Answered checkout · G2' }).waitFor()
 	const store = openStore(workspace)
 	t.after(() => closeStore(store))

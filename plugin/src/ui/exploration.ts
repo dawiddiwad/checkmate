@@ -3,10 +3,11 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { explorationReport } from '../explorers.ts'
-import { explorationLive, mergedClaims, mergedQuestions, planExplorations } from '../views.ts'
+import { claimEvidence, explorationLive, mergedClaims, mergedQuestions, planExplorations } from '../views.ts'
 import { actorField, emptyState, gapPanel, hidden, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { clock, duration, html, join, pill, plural, time } from './html.ts'
+import { imageTypes, size } from './run.ts'
 
 type Live = ReturnType<typeof explorationLive>
 type Question = Live['questions'][number]
@@ -67,6 +68,39 @@ export function questionsList(questions: Question[]) {
 				</li>`
 		)}
 	</ul>`
+}
+
+const textTypes = ['text/plain', 'text/markdown', 'application/json']
+const inlineLimit = 64 * 1024
+
+export function claimEvidenceList(store: Store, planId: string, claim: Claim) {
+	if (!claim.evidence.length) return html`<p class="none">The tester gave no evidence.</p>`
+	return html`<div class="evidence">
+		${claim.evidence.map((item, index) => {
+			if ('text' in item)
+				return html`<figure class="ev ev-text">
+					<figcaption><span class="ev-name">What the tester saw</span></figcaption>
+					<pre tabindex="0">${item.text}</pre>
+				</figure>`
+			const href = `/explorations/${claim.explorationId}/claims/${claim.id}/evidence/${index}`
+			const file = claimEvidence(store, planId, claim.id, index)
+			const caption = html`<span class="ev-name">${file.name}</span>
+				<span class="muted">${size(file.size)}</span>`
+			if (imageTypes.includes(file.mediaType))
+				return html`<figure class="ev ev-image">
+					<a href="${href}" data-view-image data-name="${file.name}">
+						<img src="${href}" alt="Evidence ${file.name}" loading="lazy" />
+					</a>
+					<figcaption>${caption}</figcaption>
+				</figure>`
+			if (textTypes.includes(file.mediaType) && file.size <= inlineLimit)
+				return html`<figure class="ev ev-text">
+					<figcaption>${caption} <a href="${href}" download="${file.name}">Download</a></figcaption>
+					<pre tabindex="0">${new TextDecoder().decode(file.bytes)}</pre>
+				</figure>`
+			return html`<a class="chip" href="${href}" download="${file.name}">↓ ${file.name} · ${size(file.size)}</a>`
+		})}
+	</div>`
 }
 
 function dataLine(reason: string | null, data: string[]) {
@@ -489,6 +523,8 @@ export function claimPage(
 									</ol>`
 							: ''
 					}
+					<p class="lab">Evidence</p>
+					${claimEvidenceList(store, report.planId, claim)}
 					<p class="help">Reported by ${claim.actors.join(', ')}. ${claim.reason ?? ''}</p>
 				</section>
 				${panel}

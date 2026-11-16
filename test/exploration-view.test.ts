@@ -263,7 +263,7 @@ test('a plan without a revision opens from the plan list and the inbox, and show
 	closeStore(opened)
 	const url = await ui(t, workspace)
 	assert.match((await call(url, '/plans')).body, /href="\/plans\/checkout" data-nav-item>checkout</)
-	assert.match((await call(url, '/')).body, /<a class="id" href="\/plans\/draft">draft<\/a>/)
+	assert.match((await call(url, '/inbox')).body, /<a class="id" href="\/plans\/draft">draft<\/a>/)
 	const page = await call(url, '/plans/checkout')
 	assert.equal(page.status, 200)
 	assert.match(page.body, /Verify checkout and identify missing acceptance decisions\./)
@@ -309,7 +309,7 @@ test('after completion the plan page answers a merged question and decides a mer
 	assert.match(page, /href="\/explorations\/x-1\/questions\/a1\/Q1#answer"/)
 	assert.match(page, /href="\/explorations\/x-1\/claims\/a1\/D1#decide"/)
 	assert.match(page, /checkmate harvest x-1/)
-	assert.match((await call(url, '/')).body, /data-region="nav-count">2</)
+	assert.match((await call(url, '/')).body, /data-region="nav-count">1</)
 	const live = (await call(url, '/explorations/x-1')).body
 	assert(!keyed(live, 'unmerged'))
 	assert.match(live, /href="\/explorations\/x-1\/explorers\/a1\/test\/report\.md"/)

@@ -189,6 +189,7 @@ document.addEventListener('keydown', (event) => {
 		pendingG = false
 		if (event.key === 'i') return void (location.href = '/')
 	}
+	if (queue && queueKey(event)) return
 	if (event.key === '/') {
 		const search = document.querySelector('[data-search]')
 		if (!search) return
@@ -277,10 +278,12 @@ function replaceRegion(region, fresh, previous) {
 		[...region.querySelectorAll('details[data-open-key]')].map((details) => [details.dataset.openKey, details.open])
 	)
 	const saved = focusKey()
+	const scrolled = region.scrollTop
 	const next = document.importNode(fresh, true)
 	for (const details of next.querySelectorAll('details[data-open-key]'))
 		if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
 	region.replaceWith(next)
+	next.scrollTop = scrolled
 	if (saved?.region === region) restoreFocus(saved)
 	const changed = [...keyed(next)]
 		.filter(
@@ -312,6 +315,7 @@ let refreshing = false
 let again = false
 
 async function refresh() {
+	if (queue) return queueRefresh()
 	if (refreshing) return void (again = true)
 	refreshing = true
 	try {
@@ -534,11 +538,248 @@ if (!CSS.supports('field-sizing', 'content')) {
 	window.addEventListener('resize', () => areas.forEach(fitHeight))
 }
 
+const queue = document.querySelector('[data-queue]')
+const narrowQueue = window.matchMedia('(max-width: 760px)')
+let queueTicket = 0
+let queueTimer = null
+let queueBusy = false
+let queuePending = false
+
+function queueRows() {
+	return [...document.querySelectorAll('[data-queue-link]')].filter((row) => row.offsetParent !== null)
+}
+
+function currentRow() {
+	return document.querySelector('[data-queue-link][aria-current="true"]')
+}
+
+function queueDetail() {
+	return queue.querySelector('[data-region="queue-detail"]')
+}
+
+function firstField() {
+	return queueDetail().querySelector('form input:not([type="hidden"]), form textarea')
+}
+
+function showToast(fresh) {
+	const toast = fresh.querySelector('[data-toast]')
+	if (!toast) return
+	document.querySelector('[data-toast]')?.remove()
+	const shown = document.importNode(toast, true)
+	body.append(shown)
+	announce(shown.textContent)
+	setTimeout(() => shown.remove(), 6000)
+}
+
+function swapQueue(fresh, keepDetail = false) {
+	const next = fresh.querySelector('[data-queue]')
+	if (!next) return false
+	const search = document.activeElement?.matches('[data-search]') ? document.activeElement : null
+	const opened = new Map(
+		[...queue.querySelectorAll('details[data-open-key]')].map((details) => [details.dataset.openKey, details.open])
+	)
+	for (const name of keepDetail ? ['queue-list'] : ['queue-list', 'queue-detail']) {
+		const region = queue.querySelector(`[data-region="${name}"]`)
+		const replacement = next.querySelector(`[data-region="${name}"]`)
+		const scrolled = region.scrollTop
+		const imported = document.importNode(replacement, true)
+		for (const details of imported.querySelectorAll('details[data-open-key]'))
+			if (opened.get(details.dataset.openKey)) details.open = true
+		region.replaceWith(imported)
+		imported.scrollTop = scrolled
+		served.set(name, replacement.cloneNode(true))
+	}
+	queue.dataset.selected = next.dataset.selected
+	queue.toggleAttribute('data-open', next.hasAttribute('data-open'))
+	document.title = fresh.title
+	const count = fresh.querySelector('[data-region="nav-count"]')
+	if (count) document.querySelector('[data-region="nav-count"]').textContent = count.textContent
+	for (const button of queue.querySelectorAll('[data-queue-submit]')) button.hidden = true
+	if (search) {
+		const field = queue.querySelector('[data-search]')
+		field.value = search.value
+		field.focus()
+		field.setSelectionRange(field.value.length, field.value.length)
+	}
+	syncRationale(queue)
+	syncSource(queue)
+	showToast(fresh)
+	return true
+}
+
+function queueFocus(focus) {
+	const row = currentRow()
+	row?.scrollIntoView({ block: 'nearest' })
+	if (focus === 'row') row?.focus({ preventScroll: true })
+	if (focus === 'detail') queueDetail().focus()
+	if (focus === 'form') (queueDetail().querySelector('.form-error') ? queueDetail() : firstField())?.focus()
+}
+
+function queueSettle() {
+	queueBusy = false
+	if (!queuePending) return
+	queuePending = false
+	queueRefresh()
+}
+
+async function queueRefresh() {
+	if (queueBusy) return void (queuePending = true)
+	const ticket = queueTicket
+	try {
+		const response = await fetch(location.pathname + location.search, { cache: 'no-store' })
+		if (!response.ok) return
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		if (ticket !== queueTicket || queueBusy) return
+		const focused = document.activeElement?.closest('[data-region="queue-list"] [data-key]')?.dataset.key
+		swapQueue(fresh, dirty(queueDetail()))
+		if (focused) document.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true })
+	} catch {}
+}
+
+async function queueGo(url, mode, focus) {
+	const ticket = ++queueTicket
+	queueBusy = true
+	try {
+		const response = await fetch(url, { cache: 'no-store', headers: { 'X-Checkmate-Queue': '1' } })
+		if (ticket !== queueTicket) return
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		if (!swapQueue(fresh)) return void location.assign(url)
+		if (mode === 'push') window.history.pushState(null, '', url)
+		if (mode === 'replace') window.history.replaceState(null, '', url)
+		queueFocus(focus)
+	} catch {
+		location.assign(url)
+	} finally {
+		if (ticket === queueTicket) queueSettle()
+	}
+}
+
+function queueStep(step) {
+	const rows = queueRows()
+	if (!rows.length) return
+	const index = rows.indexOf(currentRow())
+	const next = rows[index < 0 ? 0 : Math.min(rows.length - 1, Math.max(0, index + step))]
+	if (index >= 0 && next === rows[index]) return
+	currentRow()?.removeAttribute('aria-current')
+	next.setAttribute('aria-current', 'true')
+	next.focus({ preventScroll: true })
+	next.scrollIntoView({ block: 'nearest' })
+	queueGo(next.href, 'replace', 'row')
+}
+
+function queuePick(event, selector, field) {
+	const input = queueDetail().querySelector(selector)
+	if (!input) return false
+	event.preventDefault()
+	input.checked = true
+	input.dispatchEvent(new window.Event('change', { bubbles: true }))
+	queueDetail().querySelector(field)?.focus()
+	return true
+}
+
+function queueKey(event) {
+	const onRow = event.target.matches?.('[data-queue-link]')
+	if (event.key === 'j' || (onRow && event.key === 'ArrowDown')) {
+		event.preventDefault()
+		queueStep(1)
+		return true
+	}
+	if (event.key === 'k' || (onRow && event.key === 'ArrowUp')) {
+		event.preventDefault()
+		queueStep(-1)
+		return true
+	}
+	if (event.key === 'a') return queuePick(event, '#verdict-approved', '#rationale')
+	if (event.key === 'r') return queuePick(event, '#verdict-rejected', '#rationale')
+	if (event.key === 'c') return queuePick(event, '#kind-clarify', '#value')
+	if (event.key === 's') return queuePick(event, '#kind-accept_assumption', '#value')
+	if (event.key === 'd') return queuePick(event, '#kind-defer', '#value')
+	return false
+}
+
+function queueFilterUrl(form) {
+	const params = new URLSearchParams()
+	for (const field of form.elements) if (field.name && field.value.trim()) params.set(field.name, field.value.trim())
+	const query = params.toString()
+	return query ? `/?${query}` : '/'
+}
+
+async function queueSend(form) {
+	const button = form.querySelector('button.primary')
+	if (button) button.disabled = true
+	const ticket = ++queueTicket
+	queueBusy = true
+	try {
+		const response = await fetch(form.action, {
+			method: 'POST',
+			body: new URLSearchParams(new FormData(form)),
+			headers: { 'X-Checkmate-Queue': '1' },
+		})
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		if (!swapQueue(fresh)) return void form.submit()
+		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
+		queueFocus(response.ok ? 'row' : 'form')
+	} catch {
+		form.submit()
+	} finally {
+		if (ticket === queueTicket) queueSettle()
+	}
+}
+
+if (queue) {
+	for (const button of queue.querySelectorAll('[data-queue-submit]')) button.hidden = true
+	document.addEventListener('click', (event) => {
+		if (!plainClick(event)) return
+		const row = event.target.closest('[data-queue-link]')
+		if (row) {
+			event.preventDefault()
+			if (row.getAttribute('aria-current') === 'true' && !narrowQueue.matches) return void queueFocus('form')
+			return void queueGo(row.href, 'push', narrowQueue.matches ? 'detail' : 'row')
+		}
+		const back = event.target.closest('[data-queue-back]')
+		if (back) {
+			event.preventDefault()
+			queueGo(back.href, 'push', 'row')
+		}
+	})
+	document.addEventListener('submit', (event) => {
+		const form = event.target
+		if (form.matches('[data-queue-filter]')) {
+			event.preventDefault()
+			return void queueGo(queueFilterUrl(form), 'push', null)
+		}
+		if (!form.closest('[data-region="queue-detail"]') || form.method !== 'post') return
+		event.preventDefault()
+		queueSend(form)
+	})
+	document.addEventListener('change', (event) => {
+		const form = event.target.closest?.('[data-queue-filter]')
+		if (form && event.target.tagName === 'SELECT') queueGo(queueFilterUrl(form), 'push', null)
+	})
+	document.addEventListener('input', (event) => {
+		const form = event.target.closest?.('[data-queue-filter]')
+		if (!form || event.target.type !== 'search') return
+		clearTimeout(queueTimer)
+		queueTimer = setTimeout(() => queueGo(queueFilterUrl(form), 'replace', null), 250)
+	})
+	document.addEventListener('keydown', (event) => {
+		if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return
+		const form = event.target.closest?.('[data-region="queue-detail"] form')
+		if (!form) return
+		event.preventDefault()
+		if (form.reportValidity()) form.requestSubmit()
+	})
+	window.addEventListener('popstate', () => queueGo(location.href, null, 'row'))
+}
+
 document.querySelector('[data-shortcuts-open]').hidden = false
 syncRationale()
 syncSource()
 openTarget()
 if (location.hash === '#decide' || location.hash === '#answer')
 	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
-else if (body.dataset.subjects === 'inbox' && navItems().length) navItems()[0].focus({ preventScroll: true })
+else if (queue && currentRow()) {
+	currentRow().scrollIntoView({ block: 'nearest' })
+	currentRow().focus({ preventScroll: true })
+} else if (body.dataset.subjects === 'inbox' && navItems().length) navItems()[0].focus({ preventScroll: true })
 connect()

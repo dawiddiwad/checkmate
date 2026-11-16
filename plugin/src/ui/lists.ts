@@ -14,15 +14,6 @@ export function gapLink(gap: Waiting['gaps'][number]) {
 		: `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`
 }
 
-export function inboxItems(waiting: Waiting) {
-	return [
-		...waiting.gaps.map(gapLink),
-		...waiting.claims.map((claim) => `/explorations/${claim.explorationId}/claims/${claim.claimId}#decide`),
-		...waiting.plans.map((plan) => `/plans/${plan.planId}@${plan.revision}#decide`),
-		...waiting.results.map((result) => `/runs/${result.runId}#decide`),
-	]
-}
-
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
 	return html`<span class="loop"

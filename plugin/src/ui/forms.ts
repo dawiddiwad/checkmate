@@ -143,9 +143,10 @@ export type GapForm = {
 	action: string
 	cancel: string
 	sha256: string
-	title: Html
+	title: Html | ''
 	question: string
 	staleMessage: string
+	extra?: Html
 }
 
 export function gapPanel(context: Context, form: GapForm, state: FormState) {
@@ -158,11 +159,11 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 		data-stale-message="${form.staleMessage}"
 	>
 		<h2 class="lab" id="answer-title">Answer gap</h2>
-		<p class="subj">${form.title}</p>
-		<p class="help">${form.question}</p>
+		${form.title ? html`<p class="subj">${form.title}</p>` : ''}
+		${form.question ? html`<p class="help">${form.question}</p>` : ''}
 		<div data-stale-slot>${messages(state)}</div>
 		<form method="post" action="${form.action}" class="decision-form gap-form" data-gap-form>
-			${hidden(context, form.sha256)}
+			${hidden(context, form.sha256)} ${form.extra ?? ''}
 			<fieldset class="seg-field">
 				<legend class="lab">Kind of answer</legend>
 				<div class="seg">

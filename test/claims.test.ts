@@ -207,7 +207,7 @@ test('the review UI shows the exploration, answers a question, and decides a cla
 	const { workspace, command } = recorded(t)
 	const ui = await startUi({ workspace, defaultActor: '' })
 	t.after(() => ui.close())
-	const inbox = await get(ui.url, '/')
+	const inbox = await get(ui.url, '/inbox')
 	assert.match(inbox.body, /href="\/explorations\/x-1\/questions\/a1\/Q1#answer"/)
 	assert.match(inbox.body, /Claims to decide · 1/)
 	const page = await get(ui.url, '/explorations/x-1')

@@ -30,6 +30,7 @@ import {
 	runDetail,
 	savePlan,
 } from '../plugin/src/index.ts'
+import { needsYou } from '../plugin/src/views.ts'
 import { copied, directory, evidenceFile, root } from './support.ts'
 
 const payload = '<script>alert("gap")</script>'
@@ -185,7 +186,7 @@ test('each page renders and escapes stored text', async (t) => {
 	assert.equal((await call(ui, '/nowhere')).status, 404)
 })
 
-test('a decision needs a rationale, a confirm step, and redirects to the next inbox item', async (t) => {
+test('a decision needs a rationale, a confirm step, and redirects to Needs you', async (t) => {
 	const { ui, workspace } = await start(t)
 	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
 	const form = {
@@ -216,15 +217,15 @@ test('a decision needs a rationale, a confirm step, and redirects to the next in
 		headers: actorCookie,
 	})
 	assert.equal(done.status, 303)
-	assert.equal(done.headers.location, '/plans/checkout@2/gaps/G2#answer')
+	assert.equal(done.headers.location, '/')
 	const toast = String(done.headers['set-cookie']).match(/checkmate_toast=([^;]*)/)
 	assert(toast)
 	assert.equal(decodeURIComponent(toast[1]), 'Approved search@1')
-	const next = await call(ui, '/plans/checkout@2/gaps/G2', {
+	const next = await call(ui, '/', {
 		headers: { Cookie: `checkmate_actor=${human}; checkmate_toast=${toast[1]}` },
 	})
 	assert.match(next.body, /class="toast"[^>]*>Approved search@1</)
-	const refreshed = await call(ui, '/plans/checkout@2/gaps/G2', {
+	const refreshed = await call(ui, '/', {
 		headers: { Cookie: `checkmate_actor=${human}; checkmate_toast=${toast[1]}`, 'Sec-Fetch-Mode': 'cors' },
 	})
 	assert.doesNotMatch(refreshed.body, /class="toast"/)
@@ -518,13 +519,13 @@ test('the inbox and the plan list show a plan request without a revision', async
 		request: { objective: `Draft ${payload}`, context: { sources: ['brief://draft'] } },
 	})
 	closeStore(store)
-	const home = (await call(ui, '/')).body
+	const home = (await call(ui, '/inbox')).body
 	assert.match(home, /Plans to draft · 1/)
 	assert.match(home, /data-key="request:draft"/)
 	assert.match(home, /Draft &lt;script&gt;/)
 	assert.match(home, /<code>\/checkmate:plan draft<\/code>/)
-	const actions = [...home.matchAll(/<a\s+class="item"[^>]*data-nav-item/g)].length
-	assert.match(home, new RegExp(`data-region="nav-count">${actions}<`))
+	const urgent = read(workspace, (store) => needsYou(store).urgent)
+	assert.match(home, new RegExp(`data-region="nav-count">${urgent}<`))
 	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
 	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
 	assert.match(
@@ -537,19 +538,20 @@ test('the inbox and the plan list show a plan request without a revision', async
 
 test('the inbox says that a rejected plan was rejected and counts it in the badge', async (t) => {
 	const { ui, workspace } = await start(t)
-	const before = (await call(ui, '/')).body
+	const before = (await call(ui, '/inbox')).body
 	const reference = before.match(/data-key="plan:(search@\d+)"/)![1]
 	const store = openStore(workspace)
 	rejectPlan(store, human, { reference, rationale: 'Cover the empty query.' })
 	closeStore(store)
-	const home = (await call(ui, '/')).body
+	const home = (await call(ui, '/inbox')).body
 	const item = home.match(new RegExp(`<a[^>]*data-key="plan:${reference}"[\\s\\S]*?</a>`))![0]
 	assert.match(item, new RegExp(`data-announce="${reference} was rejected. Change the plan."`))
 	assert.match(item, /Rejected\. Change the plan\./)
 	assert.doesNotMatch(item, /waits for approval/)
 	assert.match(home, /Plans to approve or change · 2/)
-	const actions = [...home.matchAll(/<a\s+class="item"[^>]*data-nav-item/g)].length
-	assert.match(home, new RegExp(`data-region="nav-count">${actions}<`))
+	const urgent = read(workspace, (store) => needsYou(store).urgent)
+	assert.match(home, new RegExp(`data-region="nav-count">${urgent}<`))
+	assert.match((await call(ui, '/')).body, new RegExp(`data-key="plan:${reference}"`))
 })
 
 test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
@@ -580,7 +582,7 @@ test('a plan page lists its runs, folds closed gaps, and folds older history', a
 
 test('a run gap is in the inbox, and its answer adopts it into the plan', async (t) => {
 	const { ui, workspace } = await start(t)
-	const home = (await call(ui, '/')).body
+	const home = (await call(ui, '/inbox')).body
 	assert.match(home, /href="\/plans\/checkout@2\/gaps\/G4#answer"/)
 	assert.match(home, /from run run-7/)
 	assert.match((await call(ui, '/runs/run-7')).body, /href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</)

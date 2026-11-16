@@ -24,12 +24,22 @@ import { decideClaim, explorationRow } from '../journal.ts'
 import { claimPage, explorationPage, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
-import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, planHasRevision, runDetail } from '../views.ts'
+import {
+	changesAfter,
+	claimEvidence,
+	evidenceBytes,
+	operationLog,
+	planDetail,
+	planHasRevision,
+	runDetail,
+} from '../views.ts'
 import { defaultActor } from '../actor.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
-import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
+import { inboxPage, logPage, plansPage, runsPage } from './lists.ts'
+import type { QueueRefusal } from './queue.ts'
+import { queueCount, queuePage } from './queue.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, ownChanges } from './edit.ts'
 import type { AdoptError } from './run.ts'
@@ -64,6 +74,7 @@ const routes = {
 	explorationExport: new RegExp(`^/explorations/(${id})/export\\.(md|json)$`),
 	question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
+	claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
 }
 const contentSecurityPolicy =
@@ -230,10 +241,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
 			theme,
 			toast:
-				(request.req.headers['sec-fetch-mode'] ?? 'navigate') === 'navigate'
+				(request.req.headers['sec-fetch-mode'] ?? 'navigate') === 'navigate' ||
+				request.req.headers['x-checkmate-queue'] === '1'
 					? request.cookies.checkmate_toast || null
 					: null,
-			inboxCount: inboxCount(inbox(store)),
+			queueCount: queueCount(store),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
 		}
@@ -263,9 +275,28 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 	}
 
-	function nextItem(flash: string, actorCookie: string[]) {
-		const next = inboxItems(inbox(store))[0] ?? '/'
-		return { location: next, cookies: [...actorCookie, cookie('checkmate_toast', flash, 60)] }
+	function nextItem(flash: string, actorCookie: string[], form: URLSearchParams) {
+		return {
+			location: safeBack(form.get('return') ?? '/'),
+			cookies: [...actorCookie, cookie('checkmate_toast', flash, 60)],
+		}
+	}
+
+	function inQueue(request: Request, form: URLSearchParams, page: () => Page, state: FormState) {
+		const key = form.get('item')
+		if (form.get('return') === null || key === null) return page
+		const back = safeBack(form.get('return'))
+		const refusal: QueueRefusal = { key, state }
+		return () => queuePage(store, context(request, back), new URL(back, request.url).searchParams, refusal)
+	}
+
+	function serveClaimEvidence(request: Request, explorationId: string, claimId: string, index: number) {
+		const evidence = claimEvidence(store, planOfExploration(explorationId), claimId, index)
+		const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === 'text/plain'
+		send(request.res, 200, evidence.mediaType, evidence.bytes, {
+			'Content-Disposition': `${inline ? 'inline' : 'attachment'}; ${attachmentName(evidence.name)}`,
+			'Cache-Control': 'private, max-age=31536000, immutable',
+		})
 	}
 
 	function serveEvidence(request: Request, evidenceId: string) {
@@ -327,7 +358,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const evidence = routes.evidence.exec(pathname)
 		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
-		if (pathname === '/') return render(request, inboxPage(store))
+		if (pathname === '/') return render(request, queuePage(store, shown, searchParams))
+		if (pathname === '/inbox') return render(request, inboxPage(store))
 		if (pathname === '/plans') return render(request, plansPage(store, searchParams))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
@@ -396,6 +428,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (question) return render(request, questionPage(store, shown, question[1], question[2]))
 		const claim = routes.claim.exec(pathname)
 		if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]))
+		const claimFile = routes.claimEvidence.exec(pathname)
+		if (claimFile) return serveClaimEvidence(request, claimFile[1], claimFile[2], Number(claimFile[3]))
 		const gap = routes.gap.exec(pathname)
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
 		const run = routes.run.exec(pathname)
@@ -443,18 +477,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		const { actor, cookies } = actorFrom(request, form)
 		const kind = state.values.kind
-		const page = () => gapPage(store, context(request), planId, revision, gapId, state)
-		const check = (condition: boolean, message: string) => {
-			if (!condition) state.error ??= message
-		}
-		check(Boolean(actor), 'Enter your name. Checkmate records it with your answer.')
-		check(['clarify', 'accept_assumption', 'defer'].includes(kind), 'Choose Clarify, Accept assumption, or Defer.')
-		check(Boolean(state.values.value.trim()), 'Write the answer.')
-		check(
-			kind !== 'clarify' || Boolean(state.values.source.trim()),
-			'A clarification needs a source. Name where the answer comes from.'
+		const page = inQueue(
+			request,
+			form,
+			() => gapPage(store, context(request), planId, revision, gapId, state),
+			state
 		)
-		check(Boolean(state.values.rationale.trim()), 'Write a rationale. Checkmate records it with your answer.')
+		state.error = answerProblem(state, actor)
 		if (state.error) return refuse(request, page, cookies)
 		try {
 			answerGap(store, actor, {
@@ -477,8 +506,20 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			else state.error = plainMessage(error)
 			return refuse(request, page, cookies)
 		}
-		const next = nextItem(`Answered ${planId} · ${gapId}`, cookies)
+		const next = nextItem(`Answered ${planId} · ${gapId}`, cookies, form)
 		redirect(request.res, next.location, next.cookies)
+	}
+
+	function answerProblem(state: FormState, actor: string) {
+		const { kind, value, source, rationale } = state.values
+		if (!actor) return 'Enter your name. Checkmate records it with your answer.'
+		if (!['clarify', 'accept_assumption', 'defer'].includes(kind))
+			return 'Choose Clarify, Accept assumption, or Defer.'
+		if (!value.trim()) return 'Write the answer.'
+		if (kind === 'clarify' && !source.trim())
+			return 'A clarification needs a source. Name where the answer comes from.'
+		if (!rationale.trim()) return 'Write a rationale. Checkmate records it with your answer.'
+		return null
 	}
 
 	function answerExplorationQuestion(
@@ -494,6 +535,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const { actor, cookies } = actorFrom(request, form)
 		const kind = state.values.kind
 		const planId = planOfExploration(explorationId)
+		const page = () => questionPage(store, context(request), explorationId, questionId, state)
+		state.error = answerProblem(state, actor)
+		if (state.error) return refuse(request, inQueue(request, form, page, state), cookies)
 		try {
 			answerGap(store, actor, {
 				planId,
@@ -505,13 +549,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			})
 		} catch (error) {
 			state.error = plainMessage(error)
-			return refuse(
-				request,
-				() => questionPage(store, context(request), explorationId, questionId, state),
-				cookies
-			)
+			return refuse(request, inQueue(request, form, page, state), cookies)
 		}
-		const next = nextItem(`Answered ${planId} · ${questionId}`, cookies)
+		const next = nextItem(`Answered ${planId} · ${questionId}`, cookies, form)
 		redirect(request.res, next.location, next.cookies)
 	}
 
@@ -519,14 +559,28 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const state: FormState = { ...emptyState(), values: values(form, ['verdict', 'rationale', 'actor']) }
 		const { actor, cookies } = actorFrom(request, form)
 		const planId = planOfExploration(explorationId)
-		const verdict = state.values.verdict === 'rejected' ? 'rejected' : 'approved'
+		const verdict = state.values.verdict
+		const page = inQueue(
+			request,
+			form,
+			() => claimPage(store, context(request), explorationId, claimId, state),
+			state
+		)
+		if (verdict !== 'approved' && verdict !== 'rejected') {
+			state.error = 'Choose Accept as a defect or Reject.'
+			return refuse(request, page, cookies)
+		}
 		try {
 			decideClaim(store, actor, { planId, claimId, verdict, rationale: state.values.rationale.trim() })
 		} catch (error) {
 			state.error = plainMessage(error)
-			return refuse(request, () => claimPage(store, context(request), explorationId, claimId, state), cookies)
+			return refuse(request, page, cookies)
 		}
-		const next = nextItem(`${verdict === 'approved' ? 'Accepted' : 'Rejected'} ${planId} · ${claimId}`, cookies)
+		const next = nextItem(
+			`${verdict === 'approved' ? 'Accepted' : 'Rejected'} ${planId} · ${claimId}`,
+			cookies,
+			form
+		)
 		redirect(request.res, next.location, next.cookies)
 	}
 
@@ -571,7 +625,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			if (!state.stale) state.error = plainMessage(error)
 			return refuse(request, view, cookies)
 		}
-		const next = nextItem(flash, cookies)
+		const next = nextItem(flash, cookies, form)
 		redirect(request.res, next.location, next.cookies)
 	}
 

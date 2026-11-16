@@ -114,7 +114,11 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	)
 	const gapsUsage = 'Usage: checkmate gaps <changeId> [--build <value>] [--all]'
 	const cases: Array<[string[], string, RegExp]> = [
-		[['deploy'], 'Unknown command: deploy', /^Use one of: init, target, open, log, gaps, guide, show, answer,/],
+		[
+			['deploy'],
+			'Unknown command: deploy',
+			/^Use one of: init, target, open, log, gaps, guide, record, show, answer,/,
+		],
 		[['journal', 'log', 'cart'], 'Unknown command: journal log cart', /^Use one of: init, target, open, log,/],
 		[
 			['target', 'instance', 'drop', 'x', 'y'],
@@ -212,7 +216,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.deepEqual(cli(workspace, ['guide', 'cart', '--role', 'boss']).lines, [
 		'invalid_request guide refusal=malformed',
 		'reason: Refused: malformed request.',
-		'reason: Invalid --role: boss. Use one of: tester, merger, verifier.',
+		'reason: Invalid --role: boss. Use one of: tester, recorder, merger, verifier.',
 	])
 	assert.equal(json(workspace, ['operations']).body.operations.length, before)
 })

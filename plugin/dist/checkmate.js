@@ -2559,9 +2559,9 @@ function targetHistory(store, targetId) {
 }
 function instanceCheck(entryPoints, value2) {
   const instance = validate("instance", value2);
-  const names = Object.keys(instance.entries);
-  const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
-  const unknown = names.filter((name) => !entryPoints.some((entry) => entry.name === name));
+  const names2 = Object.keys(instance.entries);
+  const missing = entryPoints.filter((entry) => !names2.includes(entry.name)).map((entry) => entry.name);
+  const unknown = names2.filter((name) => !entryPoints.some((entry) => entry.name === name));
   requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
   requireCondition(
     !unknown.length,
@@ -3357,7 +3357,7 @@ function openChange(store, actor, input) {
         changeId,
         targetId: input.target,
         instanceId: input.instance ?? null,
-        next: [`Run checkmate guide ${changeId} to read how to log entries.`]
+        next: [`After a test session, run checkmate record ${changeId} from outside that session.`]
       }),
       subjects: [`change:${changeId}`]
     };
@@ -3898,18 +3898,18 @@ function issueList(state) {
   return groups.map(({ issue, reports }) => {
     const found = reports.map((id2) => defects.get(id2));
     const actors = [...new Set(found.map((defect) => defect.actor))];
-    const names = [issue.id, ...reports];
+    const names2 = [issue.id, ...reports];
     const checks = team.filter(
-      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names.some((name) => entry.confirms === name || entry.refutes === name)
+      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names2.some((name) => entry.confirms === name || entry.refutes === name)
     ).sort((a, b2) => a.seq - b2.seq);
     const checkOn = (build) => checks.filter((entry) => entry.build === build).at(-1);
-    const confirms = (check) => names.includes(check.confirms ?? "");
+    const confirms = (check) => names2.includes(check.confirms ?? "");
     const best = found.reduce((top, defect) => evidenceScore(defect) > evidenceScore(top) ? defect : top);
     const first = Math.min(...found.map((defect) => order(defect.build)));
     const firstCheck = checkOn(state.builds[first]);
     const verified = !firstCheck ? "none" : confirms(firstCheck) ? "confirmed" : "refuted";
     const confirmed = actors.length > 1 || verified === "confirmed";
-    const verdicts = team.filter((entry) => entry.kind === "verdict" && names.includes(entry.defect ?? "")).sort((a, b2) => a.seq - b2.seq);
+    const verdicts = team.filter((entry) => entry.kind === "verdict" && names2.includes(entry.defect ?? "")).sort((a, b2) => a.seq - b2.seq);
     const statusOn = (build) => {
       const results = /* @__PURE__ */ new Map();
       for (const verdict of verdicts.filter((entry) => entry.build === build))
@@ -4273,7 +4273,7 @@ function fieldsOf(node, file, prefix) {
 var commonFields = ["kind", "id", "build", "supersedes"];
 var teamKinds = ["issue"];
 var teamFields = ["confirms", "refutes"];
-var guideRoles = ["tester", "merger", "verifier"];
+var guideRoles = ["tester", "recorder", "merger", "verifier"];
 function kindSchema(kind, keep) {
   const own = `journal-${kind}.schema.json`;
   return {
@@ -4336,15 +4336,24 @@ function roleSteps(changeId, role) {
 }
 function journalSteps(changeId) {
   return [
-    "Test the way you would test without this tool. Checkmate does not limit what you test, or how.",
-    "The record does not replace a test. Do not test less, and do not stop sooner, because of the record. A log call takes a few seconds.",
-    `Log what you see as you go: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
-    'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
-    `When you think that you are done, run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`
+    `Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+    'With a repository or a merge request, log each changed area that you tested as a note with "area".',
+    `Then run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`
   ];
 }
-function guideJournal(store, changeId, role = "tester", viewer) {
+function recorderPrompt(changeId, build) {
+  return [
+    `Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ""}). Run \`checkmate guide ${changeId}\` first. \`checkmate show ${changeId}\` prints what the record already holds.`,
+    ...build ? [`Give \`--build ${build}\` to each \`checkmate log\` call.`] : [],
+    "Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project."
+  ].join("\n");
+}
+function guideJournal(store, changeId, role = "tester", viewer, build) {
   const change = changeId ?? "<changeId>";
+  if (role === "recorder") {
+    if (changeId !== void 0) changeState(store, changeId);
+    return completed(changeId ?? "guide", { format: "text", content: recorderPrompt(change, build) });
+  }
   if (role !== "tester") {
     if (changeId !== void 0) changeState(store, changeId);
     return completed(changeId ?? "guide", {
@@ -4412,12 +4421,12 @@ function listQuery(query, columns, defaults) {
   requireChoice(direction, ["asc", "desc"], "sort direction");
   return { limit, offset, sort, direction, q: query.q?.trim().toLowerCase() ?? "" };
 }
-function filterValue(filters, names) {
+function filterValue(filters, names2) {
   const values = {};
   for (const [name, value2] of Object.entries(filters ?? {})) {
     if (value2 === void 0 || value2 === "") continue;
-    requireCondition(name in names, `Unknown filter: ${name}. Use: ${Object.keys(names).join(", ")}.`);
-    const choices = names[name];
+    requireCondition(name in names2, `Unknown filter: ${name}. Use: ${Object.keys(names2).join(", ")}.`);
+    const choices = names2[name];
     if (choices) requireChoice(value2, choices, `${name} filter`);
     values[name] = value2;
   }
@@ -4457,6 +4466,186 @@ function pagedOperations(store, query = {}) {
     sort: options2.sort,
     direction: options2.direction
   };
+}
+
+// plugin/src/recorder.ts
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { accessSync, constants, readdirSync, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, join as join2 } from "node:path";
+var defaultRecorderTimeout = 600;
+var maxOutputBytes = 4 * 1024 * 1024;
+var longestProjectName = 200;
+function names(directory2) {
+  try {
+    return readdirSync(directory2);
+  } catch {
+    return [];
+  }
+}
+function executableOnPath(name, env) {
+  for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    const path = join2(directory2, name);
+    try {
+      accessSync(path, constants.X_OK);
+      if (statSync2(path).isFile()) return path;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function claudeProjectFolders(workspace, env) {
+  const projects = join2(env.CLAUDE_CONFIG_DIR?.trim() || join2(homedir(), ".claude"), "projects");
+  const name = realpathSync2(workspace).replace(/[^a-zA-Z0-9]/g, "-");
+  if (name.length <= longestProjectName) return [join2(projects, name)];
+  const prefix = `${name.slice(0, longestProjectName)}-`;
+  return names(projects).filter((folder) => folder.startsWith(prefix)).map((folder) => join2(projects, folder));
+}
+function earlierRecorders(store) {
+  return all(
+    store,
+    "SELECT json_extract(arguments, '$.recorder') AS recorder FROM operations WHERE command = 'record'"
+  ).flatMap((row) => row.recorder ? [row.recorder] : []);
+}
+function latestSession(folders, skip) {
+  return folders.flatMap(
+    (folder) => names(folder).filter((name) => /^[0-9a-f-]{36}\.jsonl$/i.test(name)).map((name) => ({ id: name.slice(0, -".jsonl".length), at: statSync2(join2(folder, name)).mtimeMs }))
+  ).filter((session) => !skip.has(session.id)).sort((a, b2) => b2.at - a.at)[0]?.id;
+}
+function lastEntry(store) {
+  return one(store, "SELECT coalesce(max(rowid), 0) AS seq FROM journal_entries").seq;
+}
+function addedEntries(store, changeId, actor, after) {
+  const rows = all(
+    store,
+    "SELECT kind, count(*) AS count FROM journal_entries WHERE change_id = ? AND actor = ? AND rowid > ? GROUP BY kind ORDER BY min(rowid)",
+    changeId,
+    actor,
+    after
+  );
+  return Object.fromEntries(rows.map((row) => [row.kind, row.count]));
+}
+function claudeResult(output) {
+  try {
+    const parsed = JSON.parse(output);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function excerpt(text) {
+  const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
+  return line ? `: ${line}` : "";
+}
+function prepare(store, actor, input, env) {
+  const writer = actor?.trim();
+  if (!writer) throw new Error("A write needs an actor. Use --actor <name> or set CHECKMATE_ACTOR.");
+  if (env.CHECKMATE_RECORDER)
+    throw new Refusal(
+      "prohibited",
+      "A recorder cannot start another recorder. CHECKMATE_RECORDER is set. Nothing changed.",
+      "Run checkmate record from outside the recorder session, after the test session."
+    );
+  changeState(store, input.changeId);
+  const claude = executableOnPath("claude", env);
+  if (!claude)
+    throw new Refusal(
+      "prohibited",
+      "No claude executable on PATH. Nothing changed.",
+      "Install Claude Code, or add the directory of claude to PATH. Then run the command again."
+    );
+  const folders = claudeProjectFolders(store.workspace, env);
+  const skip = /* @__PURE__ */ new Set([
+    ...earlierRecorders(store),
+    ...env.CLAUDE_CODE_SESSION_ID ? [env.CLAUDE_CODE_SESSION_ID] : []
+  ]);
+  const session = input.session ?? latestSession(folders, skip);
+  if (!session)
+    throw new Refusal(
+      "prohibited",
+      `No Claude Code session of ${store.workspace} in ${folders.join(", ") || "the projects folder of Claude Code"}. Nothing changed.`,
+      `Pass the ID of the test session: checkmate record ${input.changeId} --session <sessionId>. claude -p --output-format json gives it in session_id.`
+    );
+  return { claude, session, recorder: randomUUID(), actor: writer };
+}
+function recorderArgs(session, recorder, checkmate) {
+  return [
+    "-p",
+    "--resume",
+    session,
+    "--fork-session",
+    "--session-id",
+    recorder,
+    "--output-format",
+    "json",
+    "--permission-prompts",
+    "none",
+    "--allowedTools",
+    `Bash(${checkmate} *)`,
+    "Read"
+  ];
+}
+function recordSession(store, actor, input, host) {
+  const operation = { actor, command: "record", subject: input.changeId, input };
+  let plan;
+  try {
+    plan = prepare(store, actor, input, host.env);
+  } catch (error) {
+    return write(store, operation, () => {
+      throw error;
+    });
+  }
+  const checkmate = host.script ? `node ${host.script}` : "checkmate";
+  const prompt = [
+    recorderPrompt(input.changeId, input.build),
+    ...host.script ? [`\`checkmate <command>\` means \`${checkmate} <command>\`.`] : []
+  ].join("\n");
+  const after = lastEntry(store);
+  const child = spawnSync(plan.claude, recorderArgs(plan.session, plan.recorder, checkmate), {
+    cwd: store.workspace,
+    env: {
+      ...host.env,
+      CHECKMATE_WORKSPACE: store.workspace,
+      CHECKMATE_ACTOR: plan.actor,
+      CHECKMATE_RECORDER: "1"
+    },
+    input: prompt,
+    encoding: "utf8",
+    timeout: input.timeoutSeconds * 1e3,
+    killSignal: "SIGTERM",
+    maxBuffer: maxOutputBytes
+  });
+  const added = addedEntries(store, input.changeId, plan.actor, after);
+  const entries = Object.values(added).reduce((sum, count) => sum + count, 0);
+  const result = claudeResult(child.stdout ?? "");
+  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
+  const [status, reason] = code === "ETIMEDOUT" ? ["interrupted", `The recorder did not end in ${input.timeoutSeconds} seconds. Checkmate stopped it.`] : code ? ["operational_error", `The recorder failed: ${code}.`] : child.status !== 0 ? [
+    "operational_error",
+    `The recorder exited with ${child.signal ? `signal ${child.signal}` : `code ${child.status}`}${excerpt(child.stderr || result.result)}`
+  ] : result.is_error === true ? ["operational_error", `The recorder ended with an error${excerpt(result.result)}`] : !entries ? ["operational_error", `The recorder added no entry to ${input.changeId}.`] : ["completed", void 0];
+  const reply = {
+    status,
+    subject: input.changeId,
+    reasons: reason ? [reason] : [],
+    ...reason ? {
+      hint: `The entries that the recorder added stay. To read what it did, run claude --resume ${plan.recorder}. Then run checkmate record ${input.changeId} again.`
+    } : {},
+    data: {
+      changeId: input.changeId,
+      build: input.build ?? null,
+      session: plan.session,
+      recorder: typeof result.session_id === "string" ? result.session_id : plan.recorder,
+      added,
+      entries,
+      ...typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {},
+      ...typeof result.duration_ms === "number" ? { durationMs: result.duration_ms } : {}
+    }
+  };
+  return write(store, { ...operation, input: { ...input, session: plan.session, recorder: plan.recorder } }, () => ({
+    reply,
+    subjects: [`change:${input.changeId}`]
+  }));
 }
 
 // plugin/src/ui/server.ts
@@ -4507,7 +4696,7 @@ function html(strings, ...values) {
   for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
   return { html: text };
 }
-function join2(items, separator) {
+function join3(items, separator) {
   return html`${items.flatMap((item, i) => i ? [separator, item] : [item])}`;
 }
 var statusLook = {
@@ -4903,7 +5092,7 @@ function logRow(row) {
 		</td>
 		<td>${pill(row.status === "rejected" ? "rejected_operation" : row.status, words2(row.status))}</td>
 		<td>
-			${row.subjects.length ? join2(row.subjects.map(subjectLink), " ") : html`<span class="muted">none</span>`}
+			${row.subjects.length ? join3(row.subjects.map(subjectLink), " ") : html`<span class="muted">none</span>`}
 		</td>
 		<td class="mono muted">${row.id}</td>
 	</tr>`;
@@ -4948,7 +5137,7 @@ function none(text = "none") {
   return html`<span class="muted">${text}</span>`;
 }
 function words3(items) {
-  return items.length ? join2(
+  return items.length ? join3(
     items.map((item) => html`<code>${item}</code>`),
     " "
   ) : none();
@@ -5109,7 +5298,7 @@ function entryList2(instance) {
 					<dt class="mono">${name}</dt>
 					<dd>
 						<code
-							>${join2(
+							>${join3(
       value2.split(" ").map((word) => html`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -5535,8 +5724,8 @@ data: ${matched.join(",") || "*"}
     const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor;
     return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
   }
-  function values(form, names) {
-    return Object.fromEntries(names.map((name) => [name, form.get(name) ?? ""]));
+  function values(form, names2) {
+    return Object.fromEntries(names2.map((name) => [name, form.get(name) ?? ""]));
   }
   function refuse(request, page, cookies = []) {
     const shown = page();
@@ -5684,7 +5873,7 @@ data: ${matched.join(",") || "*"}
 // plugin/src/cli.ts
 import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync } from "node:fs";
 import { dirname, resolve as resolve2 } from "node:path";
-import { constants } from "node:sqlite";
+import { constants as constants2 } from "node:sqlite";
 function value(args, name) {
   const found = args[name];
   return typeof found === "string" ? found : void 0;
@@ -6002,8 +6191,18 @@ var commands = {
   },
   guide: {
     positionals: ["changeId?"],
-    flags: { role: guideRoles },
-    run: (store, args, { viewer }) => guideJournal(store, value(args, "changeId"), value(args, "role"), viewer()),
+    flags: { role: guideRoles, build: "value" },
+    check: (args) => requireWellFormed(
+      value(args, "build") === void 0 || value(args, "role") === "recorder",
+      "--build is only for --role recorder."
+    ),
+    run: (store, args, { viewer }) => guideJournal(
+      store,
+      value(args, "changeId"),
+      value(args, "role"),
+      viewer(),
+      value(args, "build")
+    ),
     print: (reply) => {
       const data = reply.data;
       const described = /* @__PURE__ */ new Set();
@@ -6030,6 +6229,36 @@ EOF` }],
         ]
       };
     }
+  },
+  record: {
+    positionals: ["changeId"],
+    flags: { build: "value", session: "value", timeout: { min: 1, max: 86400 } },
+    write: true,
+    run: (store, args, { actor, env, script }) => recordSession(
+      store,
+      actor,
+      {
+        changeId: value(args, "changeId"),
+        build: value(args, "build"),
+        session: value(args, "session"),
+        timeoutSeconds: integer(args, "timeout") ?? defaultRecorderTimeout
+      },
+      { env, script }
+    ),
+    print: (reply) => ({
+      facts: {
+        session: reply.data.session,
+        recorder: reply.data.recorder,
+        entries: reply.data.entries,
+        costUsd: reply.data.costUsd,
+        durationMs: reply.data.durationMs
+      },
+      lines: Object.entries(reply.data.added).map(([kind, count]) => [
+        "added",
+        kind,
+        count
+      ])
+    })
   },
   show: {
     positionals: ["changeId"],
@@ -6292,7 +6521,7 @@ function readOnly(read) {
 }
 function queryStatement(store, sql) {
   store.db.setAuthorizer(
-    (action, name, argument) => action === constants.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name) ? constants.SQLITE_DENY : constants.SQLITE_OK
+    (action, name, argument) => action === constants2.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name) ? constants2.SQLITE_DENY : constants2.SQLITE_OK
   );
   const statement = readOnly(() => store.db.prepare(sql));
   requireCondition(statement.columns().length > 0, readOnlyReason);
@@ -6381,13 +6610,13 @@ function unknownCommand(words4) {
     const prefix = words4.slice(0, words4.length - i).join(" ");
     return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `));
   });
-  const names = groups.find((group) => group.length) ?? [
+  const names2 = groups.find((group) => group.length) ?? [
     .../* @__PURE__ */ new Set([...Object.keys(commands).map((name) => name.split(" ")[0]), "ui"])
   ];
   return new Refusal(
     "malformed",
     `Unknown command: ${words4.join(" ") || "(none)"}`,
-    `Use one of: ${names.join(", ")}. Run checkmate --help for the usage of each command.`
+    `Use one of: ${names2.join(", ")}. Run checkmate --help for the usage of each command.`
   );
 }
 function parse(name, tokens) {
@@ -6473,8 +6702,8 @@ function commandHelp(argv) {
   for (let count = words4.length; count > 0; count--) {
     const prefix = words4.slice(0, count).join(" ");
     if (prefix === "ui") return completed("ui", { usage: [uiUsage.replace("Usage: ", "")] });
-    const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `));
-    if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace("Usage: ", "")) });
+    const names2 = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `));
+    if (names2.length) return completed(prefix, { usage: names2.map((name) => usage(name).replace("Usage: ", "")) });
   }
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
@@ -6532,7 +6761,9 @@ function run(argv, io) {
       stdin: () => readJson(io.stdin()),
       text: io.stdin,
       cwd: resolve2(io.cwd),
-      viewer: () => args.all === true ? void 0 : defaultActor(workspace, io.env)
+      viewer: () => args.all === true ? void 0 : defaultActor(workspace, io.env),
+      env: io.env,
+      script: io.script
     });
     const code = reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
     if (!json && typeof reply.data.content === "string")
@@ -6615,7 +6846,8 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync3(0, "utf8")
+    stdin: () => readFileSync3(0, "utf8"),
+    script: process.argv[1]
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

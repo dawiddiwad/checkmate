@@ -2,7 +2,7 @@
 
 > **Guide** · For people who use Claude Code with the Checkmate plugin.
 
-You give Claude a change to test. Claude tests it the way it tests without Checkmate, and logs what it sees in the journal of the change. You read the record, answer the questions, and decide on each build.
+You open a change and let Claude test it. The test session knows nothing about Checkmate. After the test, `checkmate record` starts a copy of the test session, and the copy writes the record. You read the record, answer the questions, and decide on each build.
 
 ## Before you start
 
@@ -22,15 +22,30 @@ The plugin has no global `checkmate` command. Claude runs the plugin CLI for you
 
 ## Steps
 
-### 1. Ask Claude to test a change
+### 1. Open the change
 
-```text
-/checkmate:qa test the coupon change in SHOP-12 on http://127.0.0.1:4173
+```sh
+checkmate target open shop --entry-point "web:url:Storefront and HTTP API." --capabilities browser,http --operations read_catalog
+checkmate open shop-12 --target shop
 ```
 
-The `qa` skill tells Claude how to start: it records the target if the project has none, opens the change, and reads `checkmate guide <changeId>`. The guide tells what the record holds and how to write an entry. It does not tell Claude what to test.
+Record the target only once for each project. The `qa` skill tells Claude the same steps when Claude is the orchestrator.
 
-### 2. Read the record
+### 2. Let Claude test
+
+Start Claude Code in the project directory and give it the change to test. Do not tell it about Checkmate, and do not tell it to log. It tests the way it tests without Checkmate.
+
+### 3. Record the test session
+
+After the test session, or after a turn of it, run this command in a terminal in the project directory. Do not run it in the test session.
+
+```sh
+checkmate record shop-12 --build b1
+```
+
+`record` copies the latest Claude Code session of the project with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. It reads `checkmate guide shop-12` and logs what the tester did and found, the questions for the PM, and the answers. It does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
+
+### 4. Read the record
 
 ```sh
 checkmate show shop-12
@@ -39,15 +54,15 @@ checkmate gaps shop-12 --build b1
 
 `show` prints the criteria, a matrix of the observations on each build, the defects with their verdicts, the questions with their answers, and the decisions. `gaps` prints the open items of a build: things that the record does not show yet.
 
-### 3. Answer the questions
+### 5. Answer the questions
 
 ```sh
 checkmate answer shop-12 Q1 --answer "The coupon does not stack with loyalty."
 ```
 
-The next `guide` call of a tester prints the answer.
+The next `guide` call of a recorder prints the answer.
 
-### 4. Decide on the build
+### 6. Decide on the build
 
 ```sh
 checkmate accept shop-12 --build b1 --rationale "The totals match the ticket."
@@ -55,11 +70,11 @@ checkmate accept shop-12 --build b1 --rationale "The totals match the ticket."
 
 `accept` and `reject` print the gaps of the build at the time of the decision.
 
-### 5. Test the next build
+### 7. Test the next build
 
-Tell Claude the new build. The entries name their build. `gaps` then lists the defects to retest and the baselines to measure again.
+Tell Claude the new build. After the test, run `checkmate record shop-12 --build b2`. The entries name their build. `gaps` then lists the defects to retest and the baselines to measure again.
 
-### 6. Export the record
+### 8. Export the record
 
 ```sh
 checkmate export shop-12 --out qa/shop-12.json
@@ -67,7 +82,7 @@ checkmate export shop-12 --out qa/shop-12.json
 
 ## Several testers
 
-Two or more agents can test one change. Each agent tests alone and logs into the same journal with its own actor, for example `CHECKMATE_ACTOR=qa:a1`. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found. Each role reads its text from `checkmate guide <changeId> --role <tester|merger|verifier>`. Read [Several testers](../reference/commands.md#several-testers).
+Two or more agents can test one change. Each agent tests alone. After each test session, run `record` with the actor of that tester, for example `CHECKMATE_ACTOR=qa:a1 checkmate record shop-12 --session <sessionId>`. Each recorder logs into the same journal with its own actor. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found. Each of these roles reads its text from `checkmate guide <changeId> --role <merger|verifier>`. Read [Several testers](../reference/commands.md#several-testers).
 
 ## When something goes wrong
 
@@ -76,6 +91,8 @@ Two or more agents can test one change. Each agent tests alone and logs into the
 | `No Checkmate store in <dir>`             | Run the command in the project directory, or set `CHECKMATE_WORKSPACE`, or pass `--workspace <path>`. |
 | `Unknown change: <id>. The store ... has` | Check the change ID and the store path in the reason.                                                 |
 | `refused` lines after `log`               | Send only the refused entries again, with the fixes that the lines give. The saved entries stay.      |
+| `No Claude Code session of <dir>`         | Pass `--session <sessionId>` to `record`.                                                             |
+| `The recorder added no entry`             | Read the recorder session with `claude --resume <recorderId>`. Then run `record` again.               |
 
 ## Next
 

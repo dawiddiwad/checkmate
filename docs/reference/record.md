@@ -39,7 +39,7 @@ The actor is a record. It is not a proof of identity. Checkmate has no authentic
 
 ## Operation log
 
-Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A write that cannot get the database lock records nothing. A read records nothing.
+Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A write that cannot get the database lock records nothing. A read records nothing. `record` writes its row after the recorder ends, with the session and the recorder ID. The `log` calls of the recorder have their own rows before it.
 
 Each row has a row ID. The row ID increases in the order of the writes. The last field of each line is the row ID. A decision line has its rationale before the row ID.
 

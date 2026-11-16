@@ -41,7 +41,12 @@ try {
 	assert.deepEqual((await readdir(join(source, 'skills'))).sort(), ['qa', 'ui'])
 	const qa = await readFile(join(source, 'skills/qa/SKILL.md'), 'utf8')
 	assert(qa.split('\n').length <= 20, 'The qa skill has more than 20 lines')
-	for (const command of ['checkmate open <changeId>', 'checkmate guide <changeId>', '--role'])
+	for (const command of [
+		'checkmate open <changeId>',
+		'checkmate record <changeId>',
+		'checkmate guide <changeId>',
+		'--role',
+	])
 		assert(qa.includes(command), command)
 	const ui = spawn(process.execPath, [bundle, 'ui', '--workspace', workspace], { cwd: directory })
 	try {

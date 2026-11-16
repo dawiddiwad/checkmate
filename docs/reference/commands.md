@@ -1,10 +1,10 @@
 # Commands
 
-> **Reference** · Every command, its input and output, the statuses, the journal, the gap kinds, several testers, and `ui`.
+> **Reference** · Every command, its input and output, the statuses, the journal, the gap kinds, `record`, several testers, and `ui`.
 
 Small values go in flags. Journal entries and a target profile go in JSON on standard input. Line 1 of every response is the status.
 
-**On this page:** [Command line](#command-line) · [Workspace](#workspace) · [Command list](#command-list) · [Input](#input) · [Output](#output) · [Refusals](#refusals) · [Statuses and exit codes](#statuses-and-exit-codes) · [The journal](#the-journal) · [Several testers](#several-testers) · [ui](#ui) · [Environment variables](#environment-variables)
+**On this page:** [Command line](#command-line) · [Workspace](#workspace) · [Command list](#command-list) · [Input](#input) · [Output](#output) · [Refusals](#refusals) · [Statuses and exit codes](#statuses-and-exit-codes) · [The journal](#the-journal) · [record](#record) · [Several testers](#several-testers) · [ui](#ui) · [Environment variables](#environment-variables)
 
 ## Command line
 
@@ -41,31 +41,32 @@ An agent that changes its directory, for example with `cd /tmp`, sets `CHECKMATE
 
 ## Command list
 
-| Group   | Command                                                        | Does                                                                                                                                             |
-| ------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Store   | `init`                                                         | Creates `.checkmate/checkmate.db`.                                                                                                               |
-|         | `operations [--subject <s>] [--limit <n>] [--after <rowid>]`   | Lists the operation log, newest first. The subject is `target:<targetId>` or `change:<changeId>`. The limit is 1 to 1000. The default is 50.     |
-|         | `query "<sql>"`                                                | Runs one SQL statement on a read-only connection. It refuses a second statement, a write, and a statement without result columns.                |
-| Target  | `target open <targetId>`                                       | Records a target: its entry points, capabilities, operations, and tools.                                                                         |
-|         | `target request <targetId>`                                    | Prints the recorded target request.                                                                                                              |
-|         | `target save <targetId>`                                       | Saves a profile revision from standard input.                                                                                                    |
-|         | `target list`                                                  | Lists each target with its latest revision and instances.                                                                                        |
-|         | `target show <targetId[@rev]> [--instance <id>]`               | Prints a profile, and the values of one instance.                                                                                                |
-|         | `target instance add <targetId> <instanceId>`                  | Adds an instance from `--entry` flags or standard input.                                                                                         |
-|         | `target instance retire <targetId> <instanceId>`               | Retires an instance.                                                                                                                             |
-|         | `target instance list <targetId>`                              | Lists the instances of a target, active and retired.                                                                                             |
-| Journal | `open <changeId> --target <targetId> [--instance <id>]`        | Opens a change. The target must exist.                                                                                                           |
-|         | `guide [<changeId>] [--role <tester\|merger\|verifier>]`       | Prints what the record holds and how to log an entry, from the entry schemas. With a change, it also prints the PM answers and the open defects. |
-|         | `log <changeId> [--build <build>]`                             | Saves each valid entry of standard input, and refuses each invalid entry alone.                                                                  |
-|         | `gaps <changeId> [--build <build>] [--all]`                    | Prints the open items of a build. `--all` prints all of them, for all actors.                                                                    |
-|         | `show <changeId> [--all]`                                      | Prints the record of a change. `--all` shows the entries of all actors.                                                                          |
-|         | `export <changeId> [--out <file>] [--all]`                     | Prints the record of a change as JSON, or writes it to a new file.                                                                               |
-|         | `answer <changeId> <questionId> --answer <text>`               | Records a PM answer.                                                                                                                             |
-|         | `accept\|reject <changeId> --build <build> --rationale <text>` | Records the decision of the oracle on a build, and prints the gaps of the build.                                                                 |
-| Team    | `merge <changeId> --build <build>`                             | Prints the defects of all testers on a build, and the suggested groups.                                                                          |
-|         | `issues <changeId> [--build <build>]`                          | Prints the merged result: one line for each issue.                                                                                               |
-|         | `verify <changeId> --build <build>`                            | Prints the issues to verify, with their steps.                                                                                                   |
-| UI      | `ui [--port <n>]`                                              | Starts the review UI.                                                                                                                            |
+| Group   | Command                                                                | Does                                                                                                                                                                                                             |
+| ------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Store   | `init`                                                                 | Creates `.checkmate/checkmate.db`.                                                                                                                                                                               |
+|         | `operations [--subject <s>] [--limit <n>] [--after <rowid>]`           | Lists the operation log, newest first. The subject is `target:<targetId>` or `change:<changeId>`. The limit is 1 to 1000. The default is 50.                                                                     |
+|         | `query "<sql>"`                                                        | Runs one SQL statement on a read-only connection. It refuses a second statement, a write, and a statement without result columns.                                                                                |
+| Target  | `target open <targetId>`                                               | Records a target: its entry points, capabilities, operations, and tools.                                                                                                                                         |
+|         | `target request <targetId>`                                            | Prints the recorded target request.                                                                                                                                                                              |
+|         | `target save <targetId>`                                               | Saves a profile revision from standard input.                                                                                                                                                                    |
+|         | `target list`                                                          | Lists each target with its latest revision and instances.                                                                                                                                                        |
+|         | `target show <targetId[@rev]> [--instance <id>]`                       | Prints a profile, and the values of one instance.                                                                                                                                                                |
+|         | `target instance add <targetId> <instanceId>`                          | Adds an instance from `--entry` flags or standard input.                                                                                                                                                         |
+|         | `target instance retire <targetId> <instanceId>`                       | Retires an instance.                                                                                                                                                                                             |
+|         | `target instance list <targetId>`                                      | Lists the instances of a target, active and retired.                                                                                                                                                             |
+| Journal | `open <changeId> --target <targetId> [--instance <id>]`                | Opens a change. The target must exist.                                                                                                                                                                           |
+|         | `guide [<changeId>] [--role <tester\|recorder\|merger\|verifier>]`     | Prints what the record holds and how to log an entry, from the entry schemas. With a change, it also prints the PM answers and the open defects. `--role recorder [--build <build>]` prints the recorder prompt. |
+|         | `record <changeId> [--build <build>] [--session <id>] [--timeout <s>]` | Starts a recorder: a fork of a Claude Code test session that writes the record. Read [record](#record).                                                                                                          |
+|         | `log <changeId> [--build <build>]`                                     | Saves each valid entry of standard input, and refuses each invalid entry alone.                                                                                                                                  |
+|         | `gaps <changeId> [--build <build>] [--all]`                            | Prints the open items of a build. `--all` prints all of them, for all actors.                                                                                                                                    |
+|         | `show <changeId> [--all]`                                              | Prints the record of a change. `--all` shows the entries of all actors.                                                                                                                                          |
+|         | `export <changeId> [--out <file>] [--all]`                             | Prints the record of a change as JSON, or writes it to a new file.                                                                                                                                               |
+|         | `answer <changeId> <questionId> --answer <text>`                       | Records a PM answer.                                                                                                                                                                                             |
+|         | `accept\|reject <changeId> --build <build> --rationale <text>`         | Records the decision of the oracle on a build, and prints the gaps of the build.                                                                                                                                 |
+| Team    | `merge <changeId> --build <build>`                                     | Prints the defects of all testers on a build, and the suggested groups.                                                                                                                                          |
+|         | `issues <changeId> [--build <build>]`                                  | Prints the merged result: one line for each issue.                                                                                                                                                               |
+|         | `verify <changeId> --build <build>`                                    | Prints the issues to verify, with their steps.                                                                                                                                                                   |
+| UI      | `ui [--port <n>]`                                                      | Starts the review UI.                                                                                                                                                                                            |
 
 ## Input
 
@@ -127,18 +128,19 @@ hint: Check the change ID and the directory. To use the store of another project
 | `needs_decision`    | `target save` saved a profile that is not ready. Read the `reason:` lines.     | 0    |
 | `rejected`          | Checkmate refused the command. Nothing changed. Read the hint, then try again. | 1    |
 | `invalid_request`   | The command name or the options are wrong. Read the hint for the usage.        | 1    |
-| `operational_error` | The database lock stopped the command.                                         | 1    |
+| `operational_error` | The database lock stopped the command, or the recorder of `record` failed.     | 1    |
+| `interrupted`       | The recorder of `record` did not end before `--timeout`. Checkmate stopped it. | 1    |
 
 **Lock.** One command writes at a time. Every command waits up to 30 seconds for the database lock, also a read. Set `CHECKMATE_BUSY_TIMEOUT_MS` to change the wait. When it cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again. The log has no row for that attempt.
 
 ## The journal
 
-The agent tests freely and writes down what it sees. The journal has no checklist step, no finish step, and no completeness refusal.
+The tester tests freely and does not talk to Checkmate. After the test session, the recorder writes down what the tester did and saw. Read [record](#record). The journal has no checklist step, no finish step, and no completeness refusal.
 
 1. The opener runs `open <changeId> --target <targetId>`. The target must exist. The opener can log criteria with `log`.
-2. The agent runs `guide <changeId>`. The guide comes from the `description` and `examples` of `plugin/contracts/journal-*.schema.json`. It prints each field description one time. A later field with the same description shows only its name. No output of a later command tells the agent to read the guide again.
-3. The agent runs `log` at any time, in any order. Standard input is one entry, a JSON array of entries, an object with an `entries` array, or one entry on each line. Checkmate removes a Markdown code fence around the JSON and a comma before `}` or `]`. When the array is not valid JSON, Checkmate reads each entry alone. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, a hint, and `fix`: the entry with each bad field corrected or removed. A call that saves no entry is refused. A call that saves one or more entries completes. When it refuses no entry, it prints one line: `completed <changeId> saved=<IDs>`. Else that line also has `refused=<count>`, and a `refused` line follows for each refused entry. It prints nothing else: the agent runs `gaps` to read what the record does not show yet.
-4. The agent runs `gaps` at any time. `gaps` always completes, and no command needs it to be empty.
+2. The recorder runs `guide <changeId>`. The guide comes from the `description` and `examples` of `plugin/contracts/journal-*.schema.json`. It prints each field description one time. A later field with the same description shows only its name. No output of a later command tells the recorder to read the guide again.
+3. The recorder runs `log` at any time, in any order. Standard input is one entry, a JSON array of entries, an object with an `entries` array, or one entry on each line. Checkmate removes a Markdown code fence around the JSON and a comma before `}` or `]`. When the array is not valid JSON, Checkmate reads each entry alone. The build is in the entry or in `--build`. Checkmate saves each valid entry and refuses each invalid entry alone, with its index, the field, a hint, and `fix`: the entry with each bad field corrected or removed. A call that saves no entry is refused. A call that saves one or more entries completes. When it refuses no entry, it prints one line: `completed <changeId> saved=<IDs>`. Else that line also has `refused=<count>`, and a `refused` line follows for each refused entry. It prints nothing else: the recorder runs `gaps` to read what the record does not show yet.
+4. The recorder runs `gaps` at any time. `gaps` always completes, and no command needs it to be empty.
 5. The PM runs `answer`. The oracle runs `accept` and `reject`.
 
 The entry kinds are `criterion`, `observation`, `defect`, `question`, `verdict`, and `note`. The merger also logs `issue`: read [Several testers](#several-testers). Checkmate gives an ID with the prefix `C`, `O`, `D`, `Q`, `V`, or `N` when the entry has no `id`. An entry with `supersedes` replaces the earlier entry of the same kind and keeps its ID. Nothing is deleted: `export` has each version in `history`. Evidence is a file path in the workspace or a text. Checkmate stores the bytes of each file in `blobs`. A string with a space or `://`, or a string that does not look like a path, is text. The `source` of a criterion and the `saw` of a verdict are optional.
@@ -166,11 +168,47 @@ On `base`, the lines `criteria`, `criterion`, `happy_path`, `answer`, and `area`
 
 `show` prints the criteria, a matrix of the observations for each criterion or `about` on each build, the defects with their verdicts, the questions with their answers, and the decisions. `accept` and `reject` print the gaps of the build at the time of the decision.
 
-### Several testers
+## record
 
-Two or more agents can test one change. Each agent tests alone and logs into the same journal. The merger then merges what they found. Checkmate does not limit how an agent tests.
+```sh
+checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout <seconds>] [--actor <name>]
+```
 
-- Each agent has its own actor. Set it with `CHECKMATE_ACTOR`, for example `qa:a1`. Each entry stores its actor.
+`record` writes the record of one Claude Code test session. Run it from outside the test session, after the session or after a turn of it. A person runs it in a terminal, or the orchestrator of an agent factory runs it.
+
+1. It refuses when `CHECKMATE_RECORDER` is set: a recorder cannot start another recorder. It refuses an unknown change, and a `PATH` without `claude`.
+2. It finds the session to copy. `--session` names it. Without `--session`, it uses the latest session of the workspace: the newest `<sessionId>.jsonl` file in `<config>/projects/<name>/`. `<config>` is `CLAUDE_CONFIG_DIR`, else `~/.claude`. `<name>` is the real path of the workspace with each character that is not a letter or a digit changed to `-`. A name of more than 200 characters is cut to 200 and ends with `-<hash>`. It skips the sessions of earlier recorders of the store, and the session in `CLAUDE_CODE_SESSION_ID`: the Claude Code session that runs `record`. When it finds no session, it refuses and tells you to pass `--session`.
+3. It starts one recorder in the workspace, in print mode, and waits for it to end:
+
+   ```sh
+   claude -p --resume <sessionId> --fork-session --session-id <recorderId> --output-format json \
+     --permission-prompts none --allowedTools "Bash(node <checkmate.js> *)" Read
+   ```
+
+   The recorder is a new session with the history of the test session. The test session does not see what the recorder does. The prompt on standard input is the text of `checkmate guide <changeId> --role recorder [--build <build>]`, and one line that tells how to run `checkmate`. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, and `CHECKMATE_RECORDER=1`. The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
+
+4. It counts the entries of the change that the actor added during the run, for each kind.
+
+The permissions let the recorder run the Checkmate CLI and read files without a prompt. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
+
+`--timeout` is in seconds, from 1 to 86400. The default is 600.
+
+Output: line 1 is `<status> <changeId> session=<id> recorder=<id> entries=<n>`, with `costUsd=` and `durationMs=` when the result of `claude` has them. An `added` line follows for each kind: `added<TAB><kind><TAB><count>`. `--json` prints `{ "status", "subject", "reasons", "changeId", "build", "session", "recorder", "added": { "<kind>": <count> }, "entries", "costUsd", "durationMs" }`.
+
+| Status              | When                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| `completed`         | The recorder ended without an error and added one or more entries.                           |
+| `operational_error` | The recorder exited with an error, the `claude` result has `is_error`, or it added no entry. |
+| `interrupted`       | The recorder did not end before `--timeout`. Checkmate stopped it.                           |
+| `rejected`          | A refusal before the start. No recorder started.                                             |
+
+A failure has a `hint:` line. The entries that the recorder added stay. The operation log has one `record` row for each call, with the session and the recorder ID.
+
+## Several testers
+
+Two or more agents can test one change. Each tester tests alone. Its own recorder logs into the same journal with the actor of that tester. The merger then merges what they found. Checkmate does not limit how an agent tests.
+
+- Each tester has its own actor, for example `qa:a1`. Run `record` with `--actor qa:a1` or `CHECKMATE_ACTOR=qa:a1`. Each entry stores its actor.
 - A tester is an actor whose name starts with `qa:`, except `qa:merge` and `qa:verify`. All other actors are not testers: for example the opener, the PM, `qa:merge`, and `qa:verify`. Open the change and log the shared criteria with an actor that is not a tester.
 - The short name of an actor is the part after the last colon: `qa:a1` has the short name `a1`. Use a different short name for each actor.
 - Entry IDs are unique for each actor. Two testers can both log `D1`. The full ID is `<short name>/<id>`, for example `a1/D1`. An actor can use the bare ID of its own entry in each field that names an entry. To name the entry of another actor, use the full ID. A bare ID that names the entry of another actor is saved as the full ID.
@@ -206,6 +244,9 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 | `CHECKMATE_ACTOR`           | Checkmate | The default actor of a write. `--actor` overrides it.                                                                             |
 | `CHECKMATE_WORKSPACE`       | Checkmate | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
 | `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
+| `CHECKMATE_RECORDER`        | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set.                                                        |
+| `CLAUDE_CONFIG_DIR`         | `record`  | The Claude Code configuration directory where `record` finds the sessions. The default is `~/.claude`.                            |
+| `CLAUDE_CODE_SESSION_ID`    | `record`  | The Claude Code session that runs `record`. The default session lookup skips it.                                                  |
 
 ## Next
 

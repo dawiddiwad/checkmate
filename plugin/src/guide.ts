@@ -72,7 +72,7 @@ function fieldsOf(node: Schema, file: string, prefix: string): Field[] {
 const commonFields = ['kind', 'id', 'build', 'supersedes']
 const teamKinds = ['issue']
 const teamFields = ['confirms', 'refutes']
-export const guideRoles = ['tester', 'merger', 'verifier'] as const
+export const guideRoles = ['tester', 'recorder', 'merger', 'verifier'] as const
 export type GuideRole = (typeof guideRoles)[number]
 
 function kindSchema(kind: string, keep: (field: Field) => boolean) {
@@ -143,16 +143,32 @@ function roleSteps(changeId: string, role: 'merger' | 'verifier') {
 
 export function journalSteps(changeId: string) {
 	return [
-		'Test the way you would test without this tool. Checkmate does not limit what you test, or how.',
-		'The record does not replace a test. Do not test less, and do not stop sooner, because of the record. A log call takes a few seconds.',
-		`Log what you see as you go: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
-		'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
-		`When you think that you are done, run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`,
+		`Log what you did and saw: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+		'With a repository or a merge request, log each changed area that you tested as a note with "area".',
+		`Then run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`,
 	]
 }
 
-export function guideJournal(store: Store, changeId: string | undefined, role: GuideRole = 'tester', viewer?: string) {
+export function recorderPrompt(changeId: string, build?: string) {
+	return [
+		`Now record this session in Checkmate, the QA record of the team (change ${changeId}${build ? `, build ${build}` : ''}). Run \`checkmate guide ${changeId}\` first. \`checkmate show ${changeId}\` prints what the record already holds.`,
+		...(build ? [`Give \`--build ${build}\` to each \`checkmate log\` call.`] : []),
+		'Record what you did and found, your questions for the PM, and the answers that you received. Do not test again for the record, and do not change the files of the project.',
+	].join('\n')
+}
+
+export function guideJournal(
+	store: Store,
+	changeId: string | undefined,
+	role: GuideRole = 'tester',
+	viewer?: string,
+	build?: string
+) {
 	const change = changeId ?? '<changeId>'
+	if (role === 'recorder') {
+		if (changeId !== undefined) changeState(store, changeId)
+		return completed(changeId ?? 'guide', { format: 'text', content: recorderPrompt(change, build) })
+	}
 	if (role !== 'tester') {
 		if (changeId !== undefined) changeState(store, changeId)
 		return completed(changeId ?? 'guide', {

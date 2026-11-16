@@ -42,6 +42,7 @@ import {
 	verifyBuild,
 } from './journal.ts'
 import { operationLog } from './views.ts'
+import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -56,6 +57,8 @@ type Context = {
 	text: () => string
 	cwd: string
 	viewer: () => string | undefined
+	env: Io['env']
+	script: string | undefined
 }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
@@ -70,7 +73,7 @@ type Command = {
 	run: (store: Store, args: Args, context: Context) => Reply
 	print?: (reply: Reply) => Printed
 }
-export type Io = { cwd: string; env: Record<string, string | undefined>; stdin: () => string }
+export type Io = { cwd: string; env: Record<string, string | undefined>; stdin: () => string; script?: string }
 export type Outcome = { code: number; output: string }
 
 function value(args: Args, name: string) {
@@ -448,9 +451,20 @@ const commands: Record<string, Command> = {
 	},
 	guide: {
 		positionals: ['changeId?'],
-		flags: { role: guideRoles },
+		flags: { role: guideRoles, build: 'value' },
+		check: (args) =>
+			requireWellFormed(
+				value(args, 'build') === undefined || value(args, 'role') === 'recorder',
+				'--build is only for --role recorder.'
+			),
 		run: (store, args, { viewer }) =>
-			guideJournal(store, value(args, 'changeId'), value(args, 'role') as GuideRole | undefined, viewer()),
+			guideJournal(
+				store,
+				value(args, 'changeId'),
+				value(args, 'role') as GuideRole | undefined,
+				viewer(),
+				value(args, 'build')
+			),
 		print: (reply) => {
 			const data = reply.data as {
 				steps: string[]
@@ -484,6 +498,37 @@ const commands: Record<string, Command> = {
 				],
 			}
 		},
+	},
+	record: {
+		positionals: ['changeId'],
+		flags: { build: 'value', session: 'value', timeout: { min: 1, max: 86400 } },
+		write: true,
+		run: (store, args, { actor, env, script }) =>
+			recordSession(
+				store,
+				actor,
+				{
+					changeId: value(args, 'changeId')!,
+					build: value(args, 'build'),
+					session: value(args, 'session'),
+					timeoutSeconds: integer(args, 'timeout') ?? defaultRecorderTimeout,
+				},
+				{ env, script }
+			),
+		print: (reply) => ({
+			facts: {
+				session: reply.data.session,
+				recorder: reply.data.recorder,
+				entries: reply.data.entries,
+				costUsd: reply.data.costUsd,
+				durationMs: reply.data.durationMs,
+			},
+			lines: Object.entries(reply.data.added as Record<string, number>).map(([kind, count]) => [
+				'added',
+				kind,
+				count,
+			]),
+		}),
 	},
 	show: {
 		positionals: ['changeId'],
@@ -1024,6 +1069,8 @@ export function run(argv: string[], io: Io): Outcome {
 			text: io.stdin,
 			cwd: resolve(io.cwd),
 			viewer: () => (args.all === true ? undefined : defaultActor(workspace, io.env)),
+			env: io.env,
+			script: io.script,
 		})
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		if (!json && typeof reply.data.content === 'string')
@@ -1117,6 +1164,7 @@ export async function main(argv: string[]) {
 		cwd: process.cwd(),
 		env: process.env,
 		stdin: () => readFileSync(0, 'utf8'),
+		script: process.argv[1],
 	})
 	process.stdout.write(outcome.output + '\n')
 	process.exitCode = outcome.code

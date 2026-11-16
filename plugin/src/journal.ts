@@ -261,7 +261,7 @@ export function openChange(
 				changeId,
 				targetId: input.target,
 				instanceId: input.instance ?? null,
-				next: [`Run checkmate guide ${changeId} to read how to log entries.`],
+				next: [`After a test session, run checkmate record ${changeId} from outside that session.`],
 			}),
 			subjects: [`change:${changeId}`],
 		}

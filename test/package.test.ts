@@ -78,7 +78,7 @@ test('the npm package runs from node_modules, records a change, and serves the U
 	)
 	assert.equal(
 		checkmate('open', 'cart', '--target', 'checkout-local'),
-		'completed cart target=checkout-local instance=-\nnext: Run checkmate guide cart to read how to log entries.'
+		'completed cart target=checkout-local instance=-\nnext: After a test session, run checkmate record cart from outside that session.'
 	)
 	const ui = spawn(join(project, 'node_modules/.bin/checkmate'), ['ui'], { cwd: project, env })
 	try {

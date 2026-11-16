@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/%40xoxoai%2Fcheckmate)](https://www.npmjs.com/package/@xoxoai/checkmate)
 
-Checkmate keeps the record of the test work on a change. The agent tests the way it tests without Checkmate. While it tests, it logs what it sees as journal entries. Checkmate stores the entries, shows the open items that the record does not cover yet, and exports the record. Several testers can work on one change. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found.
+Checkmate keeps the record of the test work on a change. The agent tests the way it tests without Checkmate, and does not talk to Checkmate. After the test session, `checkmate record` starts a copy of that Claude Code session, and the copy logs what the agent did and found as journal entries. Checkmate stores the entries, shows the open items that the record does not cover yet, and exports the record. Several testers can work on one change. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found.
 
 Checkmate does not tell the agent what to test or how. It keeps the record.
 
@@ -28,10 +28,11 @@ Install the plugin from the marketplace. You do not need npm.
 /plugin install checkmate@checkmate
 ```
 
-Then ask Claude to test a change, for example:
+Open the change, let Claude test it, and then record the test session from outside that session. To type the commands in a terminal, also install the npm CLI: `npm i -g @xoxoai/checkmate`.
 
-```text
-/checkmate:qa test the coupon change in SHOP-12 on http://127.0.0.1:4173
+```sh
+checkmate open shop-12 --target shop
+checkmate record shop-12 --build b1
 ```
 
 Read [Test in Claude Code](docs/guides/claude-code.md).
@@ -43,10 +44,14 @@ npm i -g @xoxoai/checkmate
 checkmate target open shop --entry-point "web:url:Storefront and HTTP API." \
   --capabilities browser,http --operations read_catalog,create_order
 checkmate open shop-12 --target shop
-checkmate guide shop-12
+checkmate record shop-12 --build b1
 ```
 
-The guide prints the entry kinds, their fields, and an example `checkmate log` call.
+Run `record` after a Claude Code test session in the project directory. `checkmate guide shop-12` prints the entry kinds, their fields, and an example `checkmate log` call: the text that the recorder reads.
+
+### Why the tester does not log
+
+An agent that must log while it tests spends its attention on the record. It tests less and finds fewer defects. A copy of the session has the full memory of the test work, so it can write the complete record after the test, and the test session stays unchanged.
 
 Checkmate needs Node.js 24.12.0 or later.
 

@@ -20,7 +20,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 | `plugin/`           | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install. |
 | `plugin/skills/`    | The `qa` and `ui` skills.                                                               |
 | `plugin/contracts/` | The JSON Schemas. They are the authority.                                               |
-| `plugin/src/`       | The store, the targets, the journal, the guide, the commands, and the review UI.        |
+| `plugin/src/`       | The store, the targets, the journal, the guide, the recorder, the commands, and the UI. |
 | `plugin/dist/`      | `checkmate.js`, the bundle of `plugin/bin/checkmate.ts`.                                |
 | `cli/`              | The npm package `@xoxoai/checkmate`. It runs the same commands as the plugin.           |
 | `scripts/`          | Generators, build scripts, and the release script.                                      |
@@ -31,7 +31,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 - Node.js does not strip types in `node_modules`, so the npm package runs the JavaScript bundle.
 - The root package is private. It holds the development dependencies and commands.
 - `cli/` runs `scripts/build-cli.ts` before it packs. The script bundles `cli/src/main.ts` and copies `plugin/`, `README.md`, and `LICENSE` into the package. In the package README, relative links and images point to the release tag on GitHub.
-- Checkmate does not start Claude. Do not add a model loop or an Agent SDK runner. Keep model selection, authentication, and permissions with the host.
+- Checkmate starts no tester. Only `record` starts Claude: one fork of a test session, with the `claude` command of the host. Do not add a model loop or an Agent SDK runner. Keep model selection, authentication, and permissions with the host.
 
 ## Checks
 
@@ -44,7 +44,7 @@ npm run phase:verify
 1. `type:check`: the generated types, validators, and plugin bundle match their sources, and TypeScript has no errors.
 2. `lint:check`: ESLint on `plugin`, `cli`, `scripts`, and `test`.
 3. `format:check`: Prettier.
-4. `npm test`: the fast suite. It uses temporary workspaces and needs no network and no Claude credential.
+4. `npm test`: the fast suite. It uses temporary workspaces and needs no network and no Claude credential. The `record` tests put a fake `claude` on `PATH`.
 5. `node test/plugin.ts`: copies `plugin/` out of the repository and runs the bundled CLI without npm install.
 
 | Test file                | Covers                                                                                            |
@@ -53,6 +53,7 @@ npm run phase:verify
 | `test/workspace.test.ts` | The workspace order, `CHECKMATE_WORKSPACE`, the refusal without a store, the unknown change.      |
 | `test/targets.test.ts`   | Targets, profile checks, revision order, and instances.                                           |
 | `test/journal.test.ts`   | Entries, the guide, gaps, several testers, merge, issues, and verify.                             |
+| `test/record.test.ts`    | `record` with a fake `claude`: the session lookup, the result, failures, and the guard.           |
 | `test/cli.test.ts`       | Output, flags, read-only `query`, actor, standard input, the operation log, and old stores.       |
 | `test/ui.test.ts`        | UI pages, escaping, forms, Host and Origin checks, live events, the log list, and Settings.       |
 | `test/package.test.ts`   | `npm pack` and install of the CLI, the package README links, and a change from the installed CLI. |

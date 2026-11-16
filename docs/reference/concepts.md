@@ -2,7 +2,7 @@
 
 > **Reference** · The terms of this manual, and who owns what. The other pages use these terms without a new explanation.
 
-Checkmate keeps one QA record for a project. The agent tests freely and logs what it sees. Checkmate stores the entries and derives the views from them.
+Checkmate keeps one QA record for a project. The tester tests freely and does not talk to Checkmate. After the test session, a recorder writes what the tester did and saw. Checkmate stores the entries and derives the views from them.
 
 ## The terms
 
@@ -15,6 +15,7 @@ Checkmate keeps one QA record for a project. The agent tests freely and logs wha
 | Journal  | The entries of one change, in the order of the writes.                                                                       |
 | Entry    | One fact in the journal. Each entry has a kind, an ID, an actor, and usually a build.                                        |
 | Actor    | The name of the writer of an entry. Each write records it.                                                                   |
+| Recorder | A fork of a Claude Code test session that writes the record of that session. `record` starts it.                             |
 | Gap      | An open item: a thing that the record does not show yet. `gaps` derives it from the entries. A gap is an idea, not a rule.   |
 | Issue    | One defect that one or more testers reported. A merger groups reports into issues.                                           |
 
@@ -36,15 +37,16 @@ Checkmate also writes two kinds for commands: `answer` (from `answer`) and `deci
 
 ## Who owns what
 
-| Owner        | Owns                                                                                                            |
-| ------------ | --------------------------------------------------------------------------------------------------------------- |
-| The tester   | What to test, how, and in which order. Checkmate does not limit it.                                             |
-| The PM       | The answers to questions.                                                                                       |
-| The oracle   | The decision on a build: `accept` or `reject`.                                                                  |
-| The merger   | The grouping of defect reports into issues. The merger does not test.                                           |
-| The verifier | The check of the items that `verify` lists. The verifier does not explore beyond the list.                      |
-| The host     | The agent loop, the model, the authentication, the tools, and the permissions. Checkmate does not start agents. |
-| Checkmate    | The store, the entry checks, the derived views, and the operation log.                                          |
+| Owner        | Owns                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
+| The tester   | What to test, how, and in which order. Checkmate does not limit it. The tester does not log.               |
+| The recorder | The entries of one test session. The recorder does not test.                                               |
+| The PM       | The answers to questions.                                                                                  |
+| The oracle   | The decision on a build: `accept` or `reject`.                                                             |
+| The merger   | The grouping of defect reports into issues. The merger does not test.                                      |
+| The verifier | The check of the items that `verify` lists. The verifier does not explore beyond the list.                 |
+| The host     | The agent loop, the model, the authentication, the tools, and the permissions. Checkmate starts no tester. |
+| Checkmate    | The store, the entry checks, the derived views, and the operation log.                                     |
 
 The checks of Checkmate show that an entry has the right shape and valid references. They do not show that an observation is true.
 

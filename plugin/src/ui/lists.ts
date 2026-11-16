@@ -278,8 +278,6 @@ function filterChoices(filter: Filter, selected: string) {
 }
 
 function filterBar(spec: ListSpec, state: ListState) {
-	const hiddenField = (name: string, value: string, fallback: string) =>
-		html`<input type="hidden" name="${name}" value="${value}" data-default="${fallback}" />`
 	return html`<form class="filters" method="get" action="${spec.path}" role="search" data-list-form>
 		<label class="sr-only" for="q">Search ${spec.noun}s</label>
 		<input
@@ -298,6 +296,23 @@ function filterBar(spec: ListSpec, state: ListState) {
 						${options(filterChoices(filter, state.filters[filter.name] ?? ''), state.filters[filter.name] ?? '')}
 					</select>`
 		)}
+		<label class="sr-only" for="sort">Sort by</label>
+		<select id="sort" name="sort" data-default="${spec.sort}">
+			${options(
+				spec.columns.filter((column) => column.sort).map((column) => [column.sort!, `Sort: ${column.label}`]),
+				state.sort
+			)}
+		</select>
+		<label class="sr-only" for="dir">Order</label>
+		<select id="dir" name="dir" data-default="${spec.direction}">
+			${options(
+				[
+					['desc', 'Descending'],
+					['asc', 'Ascending'],
+				],
+				state.direction
+			)}
+		</select>
 		<label class="sr-only" for="size">Rows per page</label>
 		<select id="size" name="size" data-default="25">
 			${options(
@@ -305,24 +320,9 @@ function filterBar(spec: ListSpec, state: ListState) {
 				String(state.size)
 			)}
 		</select>
-		${hiddenField('sort', state.sort, spec.sort)} ${hiddenField('dir', state.direction, spec.direction)}
 		<button class="btn" data-list-submit>Filter</button>
 		<a class="btn ghost" href="${spec.path}" data-list-clear>Clear</a>
 	</form>`
-}
-
-function headerCell(spec: ListSpec, state: ListState, column: Column) {
-	if (!column.sort) return html`<th scope="col">${column.label}</th>`
-	const active = state.sort === column.sort
-	const direction: Direction = active ? (state.direction === 'asc' ? 'desc' : 'asc') : (column.first ?? 'asc')
-	const href = listHref(spec, state, { sort: column.sort, direction, page: 1 })
-	const sorted = active ? html` aria-sort="${state.direction === 'asc' ? 'ascending' : 'descending'}"` : ''
-	const arrow = active ? (state.direction === 'asc' ? '↑' : '↓') : '↕'
-	return html`<th scope="col" ${sorted}>
-		<a class="sort${active ? ' on' : ''}" href="${href}" data-list-link
-			>${column.label}<span class="arrow" aria-hidden="true">${arrow}</span></a
-		>
-	</th>`
 }
 
 function pager(spec: ListSpec, state: ListState, total: number) {
@@ -341,30 +341,22 @@ function pager(spec: ListSpec, state: ListState, total: number) {
 	</nav>`
 }
 
-function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[], tableClass = '') {
+function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[]) {
 	const first = total ? (state.page - 1) * state.size + 1 : 0
 	const last = Math.min(total, state.page * state.size)
-	const count = total
-		? `Showing ${first}–${last} of ${plural(total, spec.noun)}`
-		: `No ${spec.noun} matches these filters.`
+	const count = total ? `Showing ${first}–${last} of ${plural(total, spec.noun)}` : ''
 	return html`<div data-region="${spec.region}" data-list-region>
 		<p class="list-count" data-list-count role="status">${count}</p>
 		${
 			total
-				? html`<div class="scroll">
-							<table class="${tableClass}">
-								<thead>
-									<tr>
-										${spec.columns.map((column) => headerCell(spec, state, column))}
-									</tr>
-								</thead>
-								<tbody>
-									${rows}
-								</tbody>
-							</table>
-						</div>
+				? html`<ul class="q-items l-rows">
+							${rows}
+						</ul>
 						${pager(spec, state, total)}`
-				: ''
+				: html`<div class="empty">
+						<p class="empty-title">No ${spec.noun} matches these filters.</p>
+						<p><a href="${spec.path}" data-list-clear>Clear the filters</a></p>
+					</div>`
 		}
 	</div>`
 }
@@ -428,59 +420,42 @@ function testSummary(tests: PlanRow['tests']) {
 		>`
 }
 
-function requestedPlanRow(row: PlanRow) {
-	return html`<tr data-key="plan:${row.planId}" data-nav-row>
-		<td><a class="mono" href="/plans/${row.planId}" data-nav-item>${row.planId}</a></td>
-		<td>${loopState(row.loop)}</td>
-		<td><span class="muted">no revision yet</span></td>
-		<td><span class="muted">none</span></td>
-		<td>${pill('requested')}</td>
-		<td><span class="muted">none</span></td>
-		<td class="nowrap">${time(row.since)}</td>
-	</tr>`
+function listRow(
+	key: string,
+	href: string | null,
+	top: Html | string,
+	tags: Html | string,
+	lines: Array<Html | string>
+) {
+	const inner = html`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
+		${lines.map((line, index) => html`<span class="${index ? 'q-note' : 'q-title'}">${line}</span>`)}`
+	return html`<li data-key="${key}" data-nav-row>
+		${href ? html`<a class="q-row" href="${href}" data-nav-item>${inner}</a>` : html`<div class="q-row">${inner}</div>`}
+	</li>`
 }
 
 function planRow(row: PlanRow) {
-	if (row.status === 'requested') return requestedPlanRow(row)
-	return html`<tr data-key="plan:${row.planId}" data-nav-row>
-		<td>
-			<a class="mono" href="/plans/${row.planId}@${row.revision}" data-nav-item>${row.planId}@${row.revision}</a>
-		</td>
-		<td>${loopState(row.loop)}</td>
-		<td>${testSummary(row.tests)}</td>
-		<td>
-			${
-				row.openGaps.length
-					? join(
-							row.openGaps.map(
-								(id) =>
-									html`<a class="mono" href="/plans/${row.planId}@${row.revision}/gaps/${id}"
-										>${id}${row.openBlockingGaps.includes(id) ? html`<span class="sr-only"> blocking</span>` : ''}</a
-									>`
-							),
-							', '
-						)
-					: html`<span class="muted">none</span>`
-			}
-		</td>
-		<td>${pill(row.approval ?? row.status)}</td>
-		<td>
-			${
-				row.blocked.length
-					? html`<ul class="plain">
-							${row.blocked.map(
-								(block) =>
-									html`<li>
-										<span class="mono">${block.testId}</span> by
-										<span class="mono">${block.dependency}</span>: ${block.cause}
-									</li>`
-							)}
-						</ul>`
-					: html`<span class="muted">none</span>`
-			}
-		</td>
-		<td class="nowrap">${time(row.since)}</td>
-	</tr>`
+	if (row.status === 'requested')
+		return listRow(
+			`plan:${row.planId}`,
+			`/plans/${row.planId}`,
+			row.planId,
+			html`${loopState(row.loop)} ${pill('requested')} ${time(row.since)}`,
+			[html`<span class="muted">no revision yet</span>`]
+		)
+	const gaps = row.openGaps.length
+		? `open gaps ${row.openGaps.map((id) => `${id}${row.openBlockingGaps.includes(id) ? ' (blocking)' : ''}`).join(', ')}`
+		: 'no open gap'
+	return listRow(
+		`plan:${row.planId}`,
+		`/plans/${row.planId}@${row.revision}`,
+		`${row.planId}@${row.revision}`,
+		html`${loopState(row.loop)} ${pill(row.approval ?? row.status)} ${time(row.since)}`,
+		[
+			html`${testSummary(row.tests)} <span class="muted">· ${gaps}</span>`,
+			...row.blocked.map((block) => `${block.testId} is blocked by ${block.dependency}: ${block.cause}`),
+		]
+	)
 }
 
 export function plansPage(store: Store, params: URLSearchParams): Page {
@@ -556,17 +531,19 @@ export function runsSpec(store: Store): ListSpec {
 type RunRow = ReturnType<typeof pagedRuns>['rows'][number]
 
 function runRow(row: RunRow) {
-	return html`<tr data-key="run:${row.runId}" data-nav-row>
-		<td><a class="mono" href="/runs/${row.runId}" data-nav-item>${row.runId}</a></td>
-		<td><a class="mono" href="/plans/${row.planId}@${row.revision}">${row.planId}@${row.revision}</a></td>
-		<td class="mono">${row.build}</td>
-		<td class="mono">${row.instanceId}</td>
-		<td>${counts(row.counts)}</td>
-		<td>${row.completion ? pill(row.completion) : html`<span class="muted">running</span>`}</td>
-		<td>${row.coverage ? pill(row.coverage) : html`<span class="muted">–</span>`}</td>
-		<td>${runStatus(row)}</td>
-		<td class="nowrap">${time(row.startedAt)}</td>
-	</tr>`
+	return listRow(
+		`run:${row.runId}`,
+		`/runs/${row.runId}`,
+		`${row.runId} · ${row.planId}@${row.revision}`,
+		html`${runStatus(row)} ${time(row.startedAt)}`,
+		[
+			html`${counts(row.counts)}
+				<span class="muted"
+					>· build <code>${row.build}</code> · ${row.instanceId} ·
+					${row.coverage ? `coverage ${words(row.coverage)}` : 'running'}</span
+				>`,
+		]
+	)
 }
 
 export function runsPage(store: Store, params: URLSearchParams): Page {
@@ -644,19 +621,20 @@ export function logSpec(store: Store): ListSpec {
 type LogRow = ReturnType<typeof pagedOperations>['rows'][number]
 
 function logRow(row: LogRow) {
-	return html`<tr data-key="op:${row.rowid}">
-		<td class="nowrap">${time(row.at)}</td>
-		<td>${row.actor}</td>
-		<td>
-			<span class="mono">${row.command}</span>
-			${row.status === 'rejected' ? html`<div class="reason">${reasons(row.response).join(' ')}</div>` : ''}
-		</td>
-		<td>${pill(row.status === 'rejected' ? 'rejected_operation' : row.status, words(row.status))}</td>
-		<td>
-			${row.subjects.length ? join(row.subjects.map(subjectLink), ' ') : html`<span class="muted">none</span>`}
-		</td>
-		<td class="mono muted">${row.id}</td>
-	</tr>`
+	return listRow(
+		`op:${row.rowid}`,
+		null,
+		row.command,
+		html`${pill(row.status === 'rejected' ? 'rejected_operation' : row.status, words(row.status))} ${time(row.at)}`,
+		[
+			html`${row.actor} ·
+			${row.subjects.length ? join(row.subjects.map(subjectLink), ' ') : html`<span class="muted">no subject</span>`}`,
+			...(row.status === 'rejected'
+				? [html`<span class="reason">${reasons(row.response).join(' ')}</span>`]
+				: []),
+			html`<span class="mono muted">${row.id}</span>`,
+		]
+	)
 }
 
 export function logPage(store: Store, params: URLSearchParams): Page {
@@ -667,6 +645,6 @@ export function logPage(store: Store, params: URLSearchParams): Page {
 		section: 'log',
 		subjects: ['*'],
 		body: html`${heading('Log', 'Every write to the workspace.')} ${filterBar(spec, state)}
-		${listRegion(spec, state, page.total, page.rows.map(logRow), 'log')}`,
+		${listRegion(spec, state, page.total, page.rows.map(logRow))}`,
 	}
 }

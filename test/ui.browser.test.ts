@@ -105,9 +105,16 @@ test('forms and list filters work with JavaScript disabled', { skip }, async (t)
 	await page.getByLabel('Status').selectOption('started')
 	await page.getByRole('button', { name: 'Filter' }).click()
 	await page.waitForURL(/\/runs\?.*status=started/)
-	assert.deepEqual(await page.locator('tbody tr td:first-child').allTextContents(), ['run-8'])
-	await page.getByRole('link', { name: 'Run', exact: true }).click()
-	await page.waitForURL(/\/runs\?status=started&sort=run&dir=asc$/)
+	assert.deepEqual(
+		await page
+			.locator('[data-key^="run:"]')
+			.evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.key)),
+		['run:run-8']
+	)
+	await page.getByLabel('Sort by').selectOption('run')
+	await page.getByLabel('Order').selectOption('asc')
+	await page.getByRole('button', { name: 'Filter' }).click()
+	await page.waitForURL(/\/runs\?.*status=started.*sort=run&dir=asc/)
 })
 
 test('a plan edit saves in place and records the actor', { skip }, async (t) => {

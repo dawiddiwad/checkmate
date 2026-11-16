@@ -498,3 +498,9 @@ test('x and shift x select several items, and one confirm records them all', { s
 	await page.getByRole('status').filter({ hasText: 'Rejected 3 claims' }).waitFor()
 	assert.equal(loads, 2)
 })
+
+test('Plans, Runs, and Log fit at 900 and 1440 in both themes', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const path of ['/plans', '/runs', '/log', '/log?sort=actor&dir=asc&size=100', '/plans?q=nothing'])
+		await fits(page, url(path))
+})

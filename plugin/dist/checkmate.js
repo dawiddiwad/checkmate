@@ -18182,7 +18182,6 @@ function filterChoices(filter, selected) {
   return [...filter.choices, [selected, selected]];
 }
 function filterBar(spec, state) {
-  const hiddenField = (name, value2, fallback) => html2`<input type="hidden" name="${name}" value="${value2}" data-default="${fallback}" />`;
   return html2`<form class="filters" method="get" action="${spec.path}" role="search" data-list-form>
 		<label class="sr-only" for="q">Search ${spec.noun}s</label>
 		<input
@@ -18200,6 +18199,23 @@ function filterBar(spec, state) {
 						${options(filterChoices(filter, state.filters[filter.name] ?? ""), state.filters[filter.name] ?? "")}
 					</select>`
   )}
+		<label class="sr-only" for="sort">Sort by</label>
+		<select id="sort" name="sort" data-default="${spec.sort}">
+			${options(
+    spec.columns.filter((column) => column.sort).map((column) => [column.sort, `Sort: ${column.label}`]),
+    state.sort
+  )}
+		</select>
+		<label class="sr-only" for="dir">Order</label>
+		<select id="dir" name="dir" data-default="${spec.direction}">
+			${options(
+    [
+      ["desc", "Descending"],
+      ["asc", "Ascending"]
+    ],
+    state.direction
+  )}
+		</select>
 		<label class="sr-only" for="size">Rows per page</label>
 		<select id="size" name="size" data-default="25">
 			${options(
@@ -18207,23 +18223,9 @@ function filterBar(spec, state) {
     String(state.size)
   )}
 		</select>
-		${hiddenField("sort", state.sort, spec.sort)} ${hiddenField("dir", state.direction, spec.direction)}
 		<button class="btn" data-list-submit>Filter</button>
 		<a class="btn ghost" href="${spec.path}" data-list-clear>Clear</a>
 	</form>`;
-}
-function headerCell(spec, state, column) {
-  if (!column.sort) return html2`<th scope="col">${column.label}</th>`;
-  const active = state.sort === column.sort;
-  const direction = active ? state.direction === "asc" ? "desc" : "asc" : column.first ?? "asc";
-  const href = listHref(spec, state, { sort: column.sort, direction, page: 1 });
-  const sorted2 = active ? html2` aria-sort="${state.direction === "asc" ? "ascending" : "descending"}"` : "";
-  const arrow = active ? state.direction === "asc" ? "\u2191" : "\u2193" : "\u2195";
-  return html2`<th scope="col" ${sorted2}>
-		<a class="sort${active ? " on" : ""}" href="${href}" data-list-link
-			>${column.label}<span class="arrow" aria-hidden="true">${arrow}</span></a
-		>
-	</th>`;
 }
 function pager(spec, state, total) {
   const last = Math.max(1, Math.ceil(total / state.size));
@@ -18237,25 +18239,19 @@ function pager(spec, state, total) {
 		${link(state.page + 1, "Next \u203A", "next")} ${link(last, "Last \xBB", "last")}
 	</nav>`;
 }
-function listRegion(spec, state, total, rows, tableClass = "") {
+function listRegion(spec, state, total, rows) {
   const first = total ? (state.page - 1) * state.size + 1 : 0;
   const last = Math.min(total, state.page * state.size);
-  const count = total ? `Showing ${first}\u2013${last} of ${plural(total, spec.noun)}` : `No ${spec.noun} matches these filters.`;
+  const count = total ? `Showing ${first}\u2013${last} of ${plural(total, spec.noun)}` : "";
   return html2`<div data-region="${spec.region}" data-list-region>
 		<p class="list-count" data-list-count role="status">${count}</p>
-		${total ? html2`<div class="scroll">
-							<table class="${tableClass}">
-								<thead>
-									<tr>
-										${spec.columns.map((column) => headerCell(spec, state, column))}
-									</tr>
-								</thead>
-								<tbody>
-									${rows}
-								</tbody>
-							</table>
-						</div>
-						${pager(spec, state, total)}` : ""}
+		${total ? html2`<ul class="q-items l-rows">
+							${rows}
+						</ul>
+						${pager(spec, state, total)}` : html2`<div class="empty">
+						<p class="empty-title">No ${spec.noun} matches these filters.</p>
+						<p><a href="${spec.path}" data-list-clear>Clear the filters</a></p>
+					</div>`}
 	</div>`;
 }
 var planShows2 = [
@@ -18310,48 +18306,33 @@ function testSummary(tests) {
 			ready${tests.blocked ? ` \xB7 ${tests.blocked} blocked` : ""}${tests.deferred ? ` \xB7 ${tests.deferred} deferred` : ""}</span
 		>`;
 }
-function requestedPlanRow(row3) {
-  return html2`<tr data-key="plan:${row3.planId}" data-nav-row>
-		<td><a class="mono" href="/plans/${row3.planId}" data-nav-item>${row3.planId}</a></td>
-		<td>${loopState(row3.loop)}</td>
-		<td><span class="muted">no revision yet</span></td>
-		<td><span class="muted">none</span></td>
-		<td>${pill("requested")}</td>
-		<td><span class="muted">none</span></td>
-		<td class="nowrap">${time(row3.since)}</td>
-	</tr>`;
+function listRow2(key, href, top, tags, lines2) {
+  const inner = html2`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
+		${lines2.map((line, index2) => html2`<span class="${index2 ? "q-note" : "q-title"}">${line}</span>`)}`;
+  return html2`<li data-key="${key}" data-nav-row>
+		${href ? html2`<a class="q-row" href="${href}" data-nav-item>${inner}</a>` : html2`<div class="q-row">${inner}</div>`}
+	</li>`;
 }
 function planRow(row3) {
-  if (row3.status === "requested") return requestedPlanRow(row3);
-  return html2`<tr data-key="plan:${row3.planId}" data-nav-row>
-		<td>
-			<a class="mono" href="/plans/${row3.planId}@${row3.revision}" data-nav-item>${row3.planId}@${row3.revision}</a>
-		</td>
-		<td>${loopState(row3.loop)}</td>
-		<td>${testSummary(row3.tests)}</td>
-		<td>
-			${row3.openGaps.length ? join10(
-    row3.openGaps.map(
-      (id2) => html2`<a class="mono" href="/plans/${row3.planId}@${row3.revision}/gaps/${id2}"
-										>${id2}${row3.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
-									>`
-    ),
-    ", "
-  ) : html2`<span class="muted">none</span>`}
-		</td>
-		<td>${pill(row3.approval ?? row3.status)}</td>
-		<td>
-			${row3.blocked.length ? html2`<ul class="plain">
-							${row3.blocked.map(
-    (block) => html2`<li>
-										<span class="mono">${block.testId}</span> by
-										<span class="mono">${block.dependency}</span>: ${block.cause}
-									</li>`
-  )}
-						</ul>` : html2`<span class="muted">none</span>`}
-		</td>
-		<td class="nowrap">${time(row3.since)}</td>
-	</tr>`;
+  if (row3.status === "requested")
+    return listRow2(
+      `plan:${row3.planId}`,
+      `/plans/${row3.planId}`,
+      row3.planId,
+      html2`${loopState(row3.loop)} ${pill("requested")} ${time(row3.since)}`,
+      [html2`<span class="muted">no revision yet</span>`]
+    );
+  const gaps = row3.openGaps.length ? `open gaps ${row3.openGaps.map((id2) => `${id2}${row3.openBlockingGaps.includes(id2) ? " (blocking)" : ""}`).join(", ")}` : "no open gap";
+  return listRow2(
+    `plan:${row3.planId}`,
+    `/plans/${row3.planId}@${row3.revision}`,
+    `${row3.planId}@${row3.revision}`,
+    html2`${loopState(row3.loop)} ${pill(row3.approval ?? row3.status)} ${time(row3.since)}`,
+    [
+      html2`${testSummary(row3.tests)} <span class="muted">· ${gaps}</span>`,
+      ...row3.blocked.map((block) => `${block.testId} is blocked by ${block.dependency}: ${block.cause}`)
+    ]
+  );
 }
 function plansPage(store, params) {
   const spec = plansSpec();
@@ -18419,17 +18400,19 @@ function runsSpec(store) {
   };
 }
 function runRow(row3) {
-  return html2`<tr data-key="run:${row3.runId}" data-nav-row>
-		<td><a class="mono" href="/runs/${row3.runId}" data-nav-item>${row3.runId}</a></td>
-		<td><a class="mono" href="/plans/${row3.planId}@${row3.revision}">${row3.planId}@${row3.revision}</a></td>
-		<td class="mono">${row3.build}</td>
-		<td class="mono">${row3.instanceId}</td>
-		<td>${counts(row3.counts)}</td>
-		<td>${row3.completion ? pill(row3.completion) : html2`<span class="muted">running</span>`}</td>
-		<td>${row3.coverage ? pill(row3.coverage) : html2`<span class="muted">–</span>`}</td>
-		<td>${runStatus2(row3)}</td>
-		<td class="nowrap">${time(row3.startedAt)}</td>
-	</tr>`;
+  return listRow2(
+    `run:${row3.runId}`,
+    `/runs/${row3.runId}`,
+    `${row3.runId} \xB7 ${row3.planId}@${row3.revision}`,
+    html2`${runStatus2(row3)} ${time(row3.startedAt)}`,
+    [
+      html2`${counts(row3.counts)}
+				<span class="muted"
+					>· build <code>${row3.build}</code> · ${row3.instanceId} ·
+					${row3.coverage ? `coverage ${words(row3.coverage)}` : "running"}</span
+				>`
+    ]
+  );
 }
 function runsPage(store, params) {
   const spec = runsSpec(store);
@@ -18500,19 +18483,18 @@ function logSpec(store) {
   };
 }
 function logRow(row3) {
-  return html2`<tr data-key="op:${row3.rowid}">
-		<td class="nowrap">${time(row3.at)}</td>
-		<td>${row3.actor}</td>
-		<td>
-			<span class="mono">${row3.command}</span>
-			${row3.status === "rejected" ? html2`<div class="reason">${reasons(row3.response).join(" ")}</div>` : ""}
-		</td>
-		<td>${pill(row3.status === "rejected" ? "rejected_operation" : row3.status, words(row3.status))}</td>
-		<td>
-			${row3.subjects.length ? join10(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
-		</td>
-		<td class="mono muted">${row3.id}</td>
-	</tr>`;
+  return listRow2(
+    `op:${row3.rowid}`,
+    null,
+    row3.command,
+    html2`${pill(row3.status === "rejected" ? "rejected_operation" : row3.status, words(row3.status))} ${time(row3.at)}`,
+    [
+      html2`${row3.actor} ·
+			${row3.subjects.length ? join10(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
+      ...row3.status === "rejected" ? [html2`<span class="reason">${reasons(row3.response).join(" ")}</span>`] : [],
+      html2`<span class="mono muted">${row3.id}</span>`
+    ]
+  );
 }
 function logPage(store, params) {
   const spec = logSpec(store);
@@ -18522,7 +18504,7 @@ function logPage(store, params) {
     section: "log",
     subjects: ["*"],
     body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec, state)}
-		${listRegion(spec, state, page.total, page.rows.map(logRow), "log")}`
+		${listRegion(spec, state, page.total, page.rows.map(logRow))}`
   };
 }
 

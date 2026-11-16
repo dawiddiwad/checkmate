@@ -2585,3 +2585,37 @@ body:has(.queue) .foot {
 	max-height: 260px;
 	overflow-y: auto;
 }
+.l-rows {
+	gap: 0;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--surface);
+	overflow: hidden;
+}
+.l-rows > li + li {
+	border-top: 1px solid var(--line);
+}
+.l-rows .q-row {
+	border-radius: 0;
+	border: 0;
+	padding: 10px 14px;
+}
+.l-rows a.q-row:hover {
+	background: var(--accent-soft);
+}
+.l-rows .q-title {
+	-webkit-line-clamp: unset;
+	display: block;
+}
+.q-note {
+	font-size: 13px;
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+.q-note .reason {
+	color: var(--fail);
+}
+.filters select[name='sort'],
+.filters select[name='dir'] {
+	flex: 0 1 auto;
+}

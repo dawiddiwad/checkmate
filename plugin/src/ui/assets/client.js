@@ -496,7 +496,7 @@ function listUrl(form) {
 function syncListForm(url) {
 	const params = new URL(url, location.href).searchParams
 	for (const field of listForm.elements) {
-		if (!field.name || field === document.activeElement) continue
+		if (!field.name || (field === document.activeElement && field.type === 'search')) continue
 		field.value = params.get(field.name) ?? field.dataset.default ?? ''
 	}
 }

@@ -112,7 +112,7 @@ A claim page shows the expected result, the actual result, the steps, the eviden
 
 <img src="../img/ui/plans.jpg" alt="The plan list in dark mode. Each row shows a plan, its loop state with the role it waits on, its tests, open gaps, approval, and blocks." width="100%"/>
 
-Each plan at its latest revision. A plan without a revision shows `no revision yet`, and its link opens its plan page. The `Loop` column shows the [loop state](../reference/commands.md#loop-states) and the role that it waits on. Filter with `Waits on`, sort by a column header, and type in the search field to filter. Lists show 25, 50, or 100 rows for each page. The URL keeps the list state.
+Each plan at its latest revision, one row for each plan. A plan without a revision shows `no revision yet`, and its row opens its plan page. Each row shows the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the approval, the time of the last change, the tests, the open gaps, and the blocked tests. Filter with `Waits on`, choose the order with `Sort by` and `Order`, and type in the search field to filter. Lists show 25, 50, or 100 rows for each page. The URL keeps the list state.
 
 ### Plan
 
@@ -144,7 +144,7 @@ A link to an assertion, for example `T2.A2`, selects its test. The plan and run 
 
 ### Runs and Log
 
-The run list and the operation log. They page, sort, and filter like the plan list. The run list and the run page show the instance of each run.
+The run list and the operation log, with the same rows as the plan list. They page, sort, and filter like the plan list. A run row shows the plan, the state, the outcome counts, the build, the instance, and the coverage. A log row shows the command, the status, the actor, the subjects, and the operation ID.
 
 ### Settings
 

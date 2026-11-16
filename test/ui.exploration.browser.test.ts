@@ -27,7 +27,7 @@ test(
 		ended(store, 'x-1', 'a1', [coupon, stacks])
 
 		await page.goto(url('/plans'))
-		await page.getByRole('link', { name: 'basket', exact: true }).click()
+		await page.locator('[data-key="plan:basket"] a').click()
 		await page.waitForURL(/\/plans\/basket$/)
 		await page.getByRole('heading', { name: 'basket', exact: true }).waitFor()
 		await page.getByText('No stored tests yet.').waitFor({ state: 'attached' })

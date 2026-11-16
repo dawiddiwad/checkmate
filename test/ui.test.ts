@@ -481,11 +481,11 @@ test('lists page, sort, and filter on the server with the state in the URL', asy
 	const { ui } = await start(t)
 	const plans = (await call(ui, '/plans')).body
 	assert.deepEqual(rowKeys(plans, 'plan'), ['xss', 'search', 'checkout', 'account', 'login'])
-	assert.match(plans, /aria-sort="descending">\s*<a class="sort on" href="\/plans\?dir=asc"/)
-	assert.match(plans, /href="\/plans\?sort=plan&amp;dir=asc" data-list-link/)
+	assert.match(plans, /<option value="updated" selected>Sort: Updated<\/option>/)
+	assert.match(plans, /<option value="desc" selected>Descending<\/option>/)
 	const byName = (await call(ui, '/plans?sort=plan&dir=asc')).body
 	assert.deepEqual(rowKeys(byName, 'plan'), ['account', 'checkout', 'login', 'search', 'xss'])
-	assert.match(byName, /aria-sort="ascending"/)
+	assert.match(byName, /<option value="plan" selected>Sort: Plan<\/option>/)
 	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
 	assert.deepEqual(rowKeys((await call(ui, '/plans?approval=approved&q=check')).body, 'plan'), ['checkout'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs')).body, 'run'), ['run-8', 'run-7', 'run-3'])
@@ -497,7 +497,7 @@ test('lists page, sort, and filter on the server with the state in the URL', asy
 	const log = (await call(ui, '/log')).body
 	const total = Number(/Showing 1–25 of (\d+) operations/.exec(log)?.[1])
 	assert(total > 50)
-	assert.equal((log.match(/<tr data-key="op:/g) ?? []).length, 25)
+	assert.equal((log.match(/<li data-key="op:/g) ?? []).length, 25)
 	assert.match(log, /href="\/log\?page=2" rel="next"/)
 	assert.match(log, /<option value="25" selected>25 rows<\/option>/)
 	const bigger = (await call(ui, '/log?size=50&page=2')).body
@@ -505,12 +505,12 @@ test('lists page, sort, and filter on the server with the state in the URL', asy
 	assert.match(bigger, /href="\/log\?size=50" rel="prev"/)
 	assert.match((await call(ui, '/log?page=99')).body, /Page 3 of 3/)
 	const filtered = (await call(ui, '/log?subject=run:run-7&actor=qa-lead')).body
-	assert.equal((filtered.match(/<tr data-key="op:/g) ?? []).length, 0)
+	assert.equal((filtered.match(/<li data-key="op:/g) ?? []).length, 0)
 	assert.match(filtered, /No operation matches these filters/)
 	assert.match(filtered, /href="\/log" data-list-clear>Clear</)
 	const oldest = (await call(ui, '/log?sort=time&dir=asc')).body
-	assert.match(oldest, /<span class="mono">target open<\/span>/)
-	assert.match(oldest, /name="dir" value="asc" data-default="desc"/)
+	assert.match(oldest, /<span class="q-id">target open<\/span>/)
+	assert.match(oldest, /<select id="dir" name="dir" data-default="desc">/)
 })
 
 test('the inbox and the plan list show a plan request without a revision', async (t) => {
@@ -533,9 +533,9 @@ test('the inbox and the plan list show a plan request without a revision', async
 	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
 	assert.match(
 		plans,
-		/<a class="mono" href="\/plans\/draft" data-nav-item>draft<\/a><\/td>\s*<td><span class="loop"\s*>.*ready to test<\/span> <span class="muted small">waits on QA<\/span>/
+		/href="\/plans\/draft" data-nav-item\s*><span class="q-top"\s*><span class="q-id">draft<\/span> <span class="q-tags"\s*><span class="loop"\s*>.*ready to test<\/span> <span class="muted small">waits on QA<\/span>/
 	)
-	assert.match(plans, />draft<\/a><\/td>[\s\S]*?<td><span class="muted">no revision yet<\/span>/)
+	assert.match(plans, /<span class="q-id">draft<\/span>[\s\S]*?<span class="muted">no revision yet<\/span>/)
 	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
 })
 
@@ -623,7 +623,7 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
 	const loops = [
 		...plans.matchAll(
-			/data-key="plan:([^"]+)" data-nav-row>[\s\S]*?<td><span class="loop"\s*>(.*?)<\/span\s*><\/td>/g
+			/data-key="plan:([^"]+)" data-nav-row>[\s\S]*?<span class="loop"\s*>([\s\S]*?)<\/span\s*>\s*<span class="st/g
 		),
 	].map((match) => [
 		match[1],
@@ -891,7 +891,7 @@ test('the settings button opens Targets; a target page shows its shape, history,
 	assert.match(page, /id="instance-preview"[\s\S]*?retired/)
 	assert.equal((await call(ui, '/settings/targets/nothing')).status, 404)
 	assert.match((await call(ui, '/runs/run-8')).body, /instance <code>staging<\/code>/)
-	assert.match((await call(ui, '/runs')).body, /<td class="mono">staging<\/td>/)
+	assert.match((await call(ui, '/runs')).body, /· staging ·/)
 })
 
 test('the Add instance form records the actor and the Retire button needs its confirm step', async (t) => {

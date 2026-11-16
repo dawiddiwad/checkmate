@@ -138,6 +138,7 @@ test('the plan and the gate accept any operation of the default, and the brief s
 			operations: [anyTestOperation],
 			tools: [],
 			scope: [],
+			knownState: null,
 		},
 		[],
 		'qa-',

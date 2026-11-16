@@ -413,8 +413,10 @@ function checkedEntry(
 			)
 		}
 	} else entry.id = unusedId(prefixes[entry.kind], used)
+	const everyone = () => lookup(journal(store, state.planId), actor)
 	const refer = (id: string, kinds: Kind[], field: string, fix: unknown) => {
-		const target = known.get(id)
+		const own = known.get(id)
+		const target = own && kinds.includes(own.kind) ? own : kinds.includes('defect') ? everyone().get(id) : own
 		if (target && kinds.includes(target.kind)) return storedRef(target, actor)
 		throw new EntryRefusal(
 			`${path}.${field}`,
@@ -590,9 +592,11 @@ export function freshIds(store: Store, planId: string, actor: string, entries: u
 	})
 }
 
-export function recordText(store: Store, planId: string, viewer: string) {
+export function recordText(store: Store, planId: string, viewer: string, build?: string) {
 	const state = journal(store, planId, viewer)
+	const earlier = planClaims(store, planId).filter((claim) => claim.open && claim.build !== build)
 	const lines = [
+		...earlier.map((claim) => `open defect ${claim.id} (${claim.build}, ${claim.severity}): ${claim.title}`),
 		...ofKind(state, 'criterion').map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
 		...ofKind(state, 'defect').map(
 			(defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}`

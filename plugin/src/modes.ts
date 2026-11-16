@@ -8,11 +8,13 @@ import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
 import { setupTarget, targetRevision } from './targets.ts'
 import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
 
 export const testModes = ['exploratory', 'regression', 'auto'] as const
 export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string
+	repo?: string
 	mode?: string
 	objective?: string
 	target?: string
@@ -37,7 +39,7 @@ export function changedFiles(workspace: string, since: string) {
 		throw new Refusal(
 			'malformed',
 			`git diff --name-only ${since} failed${diff.stderr ? `: ${diff.stderr.trim().split('\n')[0]}` : ''}`,
-			'Give --since a commit, a branch, or a tag of the workspace repository. Or give the changed files with --scope.'
+			'Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.'
 		)
 	return diff.stdout.split('\n').filter(Boolean)
 }
@@ -123,7 +125,8 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 	const input = { ...given, build }
 	if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed)
 	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
-	const scope = input.scope ?? (input.since ? changedFiles(store.workspace, input.since) : [])
+	const repository = resolve(store.workspace, input.repo ?? '.')
+	const scope = input.scope ?? (input.since ? changedFiles(repository, input.since) : [])
 	const explored = startExploration(store, actor, { ...input, mode, scope }, env)
 	const check = mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
 	return {

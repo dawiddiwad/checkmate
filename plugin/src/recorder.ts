@@ -195,7 +195,7 @@ function recordLocked(
 	const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: '1' })
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
-	const prompt = recorderPrompt(exploration.build, recordText(store, exploration.plan_id, actor))
+	const prompt = recorderPrompt(exploration.build, recordText(store, exploration.plan_id, actor, exploration.build))
 	const resume = ['--resume', input.session, '--fork-session', '--session-id', plan.recorder]
 	const calls = [
 		callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left())),

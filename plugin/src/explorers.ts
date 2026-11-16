@@ -5,7 +5,7 @@ import type { ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { closeStore, completed, openStore, write } from './store.ts'
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
-import { addEvent, exploration, explorationEvents, insertExploration } from './explorations.ts'
+import { addEvent, evidenceFolder, exploration, explorationEvents, insertExploration } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import {
 	explorationRow,
@@ -100,10 +100,6 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 
 export function explorerNames(count: number) {
 	return Array.from({ length: count }, (_, index) => `a${index + 1}`)
-}
-
-export function evidenceFolder(explorationId: string, explorer: string) {
-	return `qa-evidence/${explorationId}/${explorer}`
 }
 
 function startSupervisor(store: Store, explorationId: string, actor: string, env: Env) {

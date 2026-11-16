@@ -1118,6 +1118,7 @@ const commands: Record<string, Command> = {
 			since: 'value',
 			scope: 'list',
 			url: 'value',
+			repo: 'value',
 		},
 		write: true,
 		run: (store, args, { actor, env }) =>
@@ -1140,6 +1141,7 @@ const commands: Record<string, Command> = {
 					since: value(args, 'since'),
 					scope: list(args, 'scope'),
 					url: value(args, 'url'),
+					repo: value(args, 'repo'),
 				},
 				env
 			),

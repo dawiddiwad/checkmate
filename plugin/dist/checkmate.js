@@ -9540,8 +9540,10 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, missing, recor
       );
     }
   } else entry.id = unusedId(prefixes[entry.kind], used);
+  const everyone = () => lookup(journal(store, state.planId), actor);
   const refer = (id2, kinds2, field2, fix) => {
-    const target = known.get(id2);
+    const own = known.get(id2);
+    const target = own && kinds2.includes(own.kind) ? own : kinds2.includes("defect") ? everyone().get(id2) : own;
     if (target && kinds2.includes(target.kind)) return storedRef(target, actor);
     throw new EntryRefusal(
       `${path}.${field2}`,
@@ -9689,9 +9691,11 @@ function freshIds(store, planId, actor, entries) {
     };
   });
 }
-function recordText(store, planId, viewer2) {
+function recordText(store, planId, viewer2, build) {
   const state = journal(store, planId, viewer2);
+  const earlier = planClaims(store, planId).filter((claim) => claim.open && claim.build !== build);
   const lines2 = [
+    ...earlier.map((claim) => `open defect ${claim.id} (${claim.build}, ${claim.severity}): ${claim.title}`),
     ...ofKind(state, "criterion").map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
     ...ofKind(state, "defect").map(
       (defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}`
@@ -11835,6 +11839,8 @@ function resultAcceptance(store, run2, sha256) {
 }
 
 // plugin/src/explorations.ts
+import { mkdirSync as mkdirSync3, writeFileSync } from "node:fs";
+import { join as join5 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
   const row = one(
@@ -11844,7 +11850,7 @@ function latestRevision(store, planId) {
   );
   return row ? { revision: row.revision, plan: JSON.parse(row.body) } : null;
 }
-function charterOf(store, planId, scope) {
+function charterOf(store, planId, scope, knownState = null) {
   const { request, target } = planRequest(store, planId);
   const latest = latestRevision(store, planId);
   const requirements = latest?.plan.requirements ?? request.requirements ?? [];
@@ -11856,8 +11862,87 @@ function charterOf(store, planId, scope) {
     capabilities: target.profile.capabilities,
     operations: target.profile.allowedOperations,
     tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
-    scope
+    scope,
+    knownState
   };
+}
+function evidenceFolder(explorationId, name) {
+  return `qa-evidence/${explorationId}/${name}`;
+}
+var maxKnownLines = 150;
+var isEntryId = (word) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(word);
+function knownStateText(store, planId, build) {
+  const state = journal(store, planId);
+  const claims = planClaims(store, planId).filter((claim) => claim.build !== build);
+  const lastSeen = (claim) => Object.entries(claim.statuses).filter(([, on]) => on.status === "not_fixed").map(([seen]) => seen).at(-1) ?? claim.build;
+  const open = claims.filter((claim) => claim.open);
+  const fixed = claims.filter((claim) => !claim.open && claim.state !== "rejected");
+  const rejected = claims.filter((claim) => claim.state === "rejected");
+  const answers = planQuestions(store, planId).filter((question) => question.answer !== null);
+  const observed = state.team.filter((entry) => ["observation", "defect"].includes(entry.kind));
+  const mentioned = new Set(
+    observed.flatMap((entry) => [...(entry.about ?? "").split(/[\s,;]+/), ...entry.links ?? []])
+  );
+  const criteria = state.team.filter((entry) => entry.kind === "criterion");
+  const areas = [
+    ...new Set(
+      state.team.flatMap((entry) => [
+        ...entry.area ? [entry.area] : [],
+        ...entry.kind === "observation" && entry.about && !entry.about.split(/[\s,;]+/).every(isEntryId) ? [entry.about] : []
+      ])
+    )
+  ];
+  const lines2 = [
+    "# Results of earlier builds",
+    "",
+    "## Open problems",
+    "",
+    ...open.length ? [
+      "Retest each one. Say for each one if it is still there or fixed, with its ID.",
+      "",
+      ...open.flatMap((claim) => [
+        `### ${claim.id}: ${claim.title} (${claim.severity})`,
+        `- Last seen on build: ${lastSeen(claim)}`,
+        `- Steps: ${[claim.steps ?? "not given"].flat().join(" ")}`,
+        `- Expected: ${claim.expected}`,
+        `- Actual: ${claim.actual}`,
+        ""
+      ])
+    ] : ["None.", ""],
+    "## Decisions of the product owner",
+    "",
+    ...answers.length || rejected.length ? [
+      ...answers.map((question) => `- ${question.question} Answer: ${question.answer}`),
+      ...rejected.map(
+        (claim) => `- Not a defect: ${claim.title}. ${claim.decision?.rationale ?? ""}`.trim()
+      )
+    ] : ["None."],
+    "",
+    "## Problems fixed on an earlier build",
+    "",
+    ...fixed.length ? ["Check that they do not come back.", ...fixed.map((claim) => `- ${claim.id}: ${claim.title}`)] : ["None."],
+    "",
+    "## Areas tested before",
+    "",
+    ...areas.length ? areas.map((area2) => `- ${area2}`) : ["None recorded."],
+    "",
+    "## Rules not tested yet",
+    "",
+    ...(() => {
+      const untested = criteria.filter((criterion) => !mentioned.has(criterion.id));
+      return untested.length ? untested.map((criterion) => `- ${criterion.text}`) : ["None recorded."];
+    })()
+  ];
+  if (lines2.length <= maxKnownLines) return lines2.join("\n") + "\n";
+  return [...lines2.slice(0, maxKnownLines - 1), "More results are left out."].join("\n") + "\n";
+}
+function writeKnownState(store, planId, explorationId, build) {
+  if (!one(store, "SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?", planId, explorationId))
+    return null;
+  const path = `${evidenceFolder(explorationId, "known-state")}.md`;
+  mkdirSync3(join5(store.workspace, evidenceFolder(explorationId, "")), { recursive: true });
+  writeFileSync(join5(store.workspace, path), knownStateText(store, planId, build));
+  return path;
 }
 function nextExplorationId(store) {
   const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
@@ -11872,7 +11957,7 @@ function insertExploration(store, input, operationId, at) {
   const mode = requireChoice(input.mode ?? "exploratory", explorationModes, "mode (--mode)");
   const instance = runInstance(store, target.profile.targetId, input.instance);
   const explorationId = input.explorationId ?? nextExplorationId(store);
-  const charter = charterOf(store, planId, input.scope ?? []);
+  const charter = charterOf(store, planId, input.scope ?? [], writeKnownState(store, planId, explorationId, build));
   execute(
     store,
     "INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -12494,6 +12579,7 @@ function recorderPrompt(build, record) {
     "Reply with only one JSON array of the new entries, and nothing else. Use no tool.",
     "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
     "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
+    "When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.",
     "",
     "The entries:",
     entryText(),
@@ -12529,12 +12615,17 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
     ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
     ...charter.instructions ? ["", charter.instructions] : [],
     ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
+    ...charter.knownState ? [
+      "",
+      `Read ${charter.knownState}. It has the results of earlier builds. Retest each open problem in it, and say for each one if it is still there or fixed.`
+    ] : [],
     "",
     "The application:",
     ...entries.map(entryPointLine),
     "",
     `${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
     ...charter.tools.length ? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join("; ")}`] : [],
+    "Folders in the workspace whose names start with a dot belong to tools, not to the product under test.",
     `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
     `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
     "At the end, list what you tested and each problem that you found, with its steps."
@@ -12583,8 +12674,8 @@ function verifierBrief(items, entries, operations, dataPrefix) {
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync } from "node:fs";
-import { join as join5 } from "node:path";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join6 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["merge", "verify"];
 function explorerActor(explorer) {
@@ -12642,10 +12733,10 @@ function lockHolder(path) {
   }
 }
 function takeLock(path, until) {
-  mkdirSync3(join5(path, ".."), { recursive: true });
+  mkdirSync4(join6(path, ".."), { recursive: true });
   for (; ; ) {
     try {
-      writeFileSync(path, String(process.pid), { flag: "wx" });
+      writeFileSync2(path, String(process.pid), { flag: "wx" });
       return true;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
@@ -12698,7 +12789,7 @@ function recordSession(store, actor, input, env, cwd) {
     });
   }
   const started = Date.now();
-  const lock = join5(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
+  const lock = join6(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
   if (!takeLock(lock, started + input.timeoutSeconds * 1e3))
     return write(store, operation, () => ({
       reply: {
@@ -12723,7 +12814,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" });
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
-  const prompt = recorderPrompt(exploration2.build, recordText(store, exploration2.plan_id, actor));
+  const prompt = recorderPrompt(exploration2.build, recordText(store, exploration2.plan_id, actor, exploration2.build));
   const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
   const calls = [
     callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
@@ -12797,8 +12888,8 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdirSync as mkdirSync4, openSync } from "node:fs";
-import { join as join6 } from "node:path";
+import { mkdirSync as mkdirSync5, openSync } from "node:fs";
+import { join as join7 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
 var mergerActor = "qa:merge";
@@ -12841,13 +12932,10 @@ function launchPlan(profile, input, env) {
 function explorerNames(count) {
   return Array.from({ length: count }, (_, index2) => `a${index2 + 1}`);
 }
-function evidenceFolder(explorationId, explorer) {
-  return `qa-evidence/${explorationId}/${explorer}`;
-}
 function startSupervisor(store, explorationId, actor, env) {
-  const folder = join6(store.workspace, ".checkmate", "tmp");
-  mkdirSync4(folder, { recursive: true });
-  const log = openSync(join6(folder, `explore-${explorationId}.log`), "a");
+  const folder = join7(store.workspace, ".checkmate", "tmp");
+  mkdirSync5(folder, { recursive: true });
+  const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
   const child = spawn2(
     process.execPath,
     [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace],
@@ -12925,7 +13013,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   const runs = explorerNames(launch.explorers).map((explorer) => {
     const session = randomUUID3();
     const folder = evidenceFolder(explorationId, explorer);
-    mkdirSync4(join6(store.workspace, folder), { recursive: true });
+    mkdirSync5(join7(store.workspace, folder), { recursive: true });
     const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder);
     event(store, actor, explorationId, {
       step: "launch",
@@ -14225,8 +14313,8 @@ var tones = {
   not_executed: "muted"
 };
 var none = "\u2014";
-var join7 = (values) => values.length ? values.join(", ") : none;
-var pairs = (metadata = {}) => join7(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
+var join8 = (values) => values.length ? values.join(", ") : none;
+var pairs = (metadata = {}) => join8(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
 function markdownText(value2) {
   return value2.replace(/\\/g, "\\\\").replace(/([|[\]*_`])/g, "\\$1").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, " ");
 }
@@ -14370,7 +14458,7 @@ function runDocument(report) {
   const { result, sha256, acceptance, plan } = report;
   const planned = new Map(plan.tests.map((test) => [test.id, test]));
   const evidence2 = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files2 = (ids2) => join7(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
+  const files2 = (ids2) => join8(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
   const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
   const assertions = result.tests.flatMap((test) => test.assertions);
   const blocks = [
@@ -14448,8 +14536,8 @@ function runDocument(report) {
     blocks.push({
       table: ["Field", "Value"],
       rows: [
-        ["Assertions", join7(finding.assertionIds)],
-        ["Requirements", join7(finding.requirementIds)],
+        ["Assertions", join8(finding.assertionIds)],
+        ["Requirements", join8(finding.requirementIds)],
         ["Expected", finding.expected],
         ["Observed", finding.observed],
         ["Evidence", files2(finding.evidenceIds)],
@@ -14468,8 +14556,8 @@ function runDocument(report) {
         gap.severity,
         gap.question,
         gap.consequence,
-        join7(gap.requirementIds),
-        join7(gap.testIds)
+        join8(gap.requirementIds),
+        join8(gap.testIds)
       ])
     });
   blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
@@ -14530,7 +14618,7 @@ function runDocument(report) {
           row.requirementId,
           requirement?.text ?? none,
           row.status,
-          join7(row.testIds),
+          join8(row.testIds),
           row.reason ?? none,
           pairs(requirement?.metadata)
         ];
@@ -14576,9 +14664,9 @@ function planReport(plan, sha256) {
         test.id,
         test.title,
         test.readiness,
-        join7(test.requirementIds),
-        join7(test.dependsOn),
-        join7(test.preconditions),
+        join8(test.requirementIds),
+        join8(test.dependsOn),
+        join8(test.preconditions),
         test.action,
         pairs(test.metadata)
       ])
@@ -14852,7 +14940,7 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
   return { html: text };
 }
-function join8(items, separator) {
+function join9(items, separator) {
   return html2`${items.flatMap((item, i) => i ? [separator, item] : [item])}`;
 }
 var statusLook = {
@@ -15837,7 +15925,7 @@ function planRow(row) {
 		<td>${loopState(row.loop)}</td>
 		<td>${testSummary(row.tests)}</td>
 		<td>
-			${row.openGaps.length ? join8(
+			${row.openGaps.length ? join9(
     row.openGaps.map(
       (id2) => html2`<a class="mono" href="/plans/${row.planId}@${row.revision}/gaps/${id2}"
 										>${id2}${row.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
@@ -16016,7 +16104,7 @@ function logRow(row) {
 		</td>
 		<td>${pill(row.status === "rejected" ? "rejected_operation" : row.status, words(row.status))}</td>
 		<td>
-			${row.subjects.length ? join8(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
+			${row.subjects.length ? join9(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
 		</td>
 		<td class="mono muted">${row.id}</td>
 	</tr>`;
@@ -16039,7 +16127,7 @@ function testLink(planId, revision, reference) {
   return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision}#${id2}">${reference}</a>`;
 }
 function ids(values, link) {
-  return values.length ? join8(values.map(link), ", ") : html2`<span class="muted">none</span>`;
+  return values.length ? join9(values.map(link), ", ") : html2`<span class="muted">none</span>`;
 }
 function facts(rows) {
   const shown = rows.filter(([, value2]) => value2 !== false);
@@ -16858,7 +16946,7 @@ function findingRefs(detail, reference) {
   const findings2 = detail.findings.filter((finding) => finding.assertionIds.includes(reference));
   if (!findings2.length) return "";
   return html2` ·
-	${join8(
+	${join9(
     findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
     ", "
   )}`;
@@ -16972,7 +17060,7 @@ function findings(store, detail) {
 										</ol>` : ""}
 						<p class="muted small">
 							Assertions
-							${join8(
+							${join9(
       finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
       ", "
     )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
@@ -17261,7 +17349,7 @@ function none2(text = "none") {
   return html2`<span class="muted">${text}</span>`;
 }
 function words3(items) {
-  return items.length ? join8(
+  return items.length ? join9(
     items.map((item) => html2`<code>${item}</code>`),
     " "
   ) : none2();
@@ -17422,7 +17510,7 @@ function entryList2(instance) {
 					<dt class="mono">${name}</dt>
 					<dd>
 						<code
-							>${join8(
+							>${join9(
       value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -17702,7 +17790,7 @@ function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve5, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -17711,7 +17799,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve4(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve5(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -18359,9 +18447,9 @@ data: ${matched.join(",") || "*"}
   const server = createServer((req, res) => {
     void handle(req, res);
   });
-  await new Promise((resolve4, reject) => {
+  await new Promise((resolve5, reject) => {
     server.once("error", reject);
-    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve4());
+    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve5());
   });
   const address = server.address();
   port = typeof address === "object" && address ? address.port : 0;
@@ -18372,8 +18460,8 @@ data: ${matched.join(",") || "*"}
       clearInterval(heartbeat);
       for (const client of clients) client.res.end();
       clients.clear();
-      await new Promise((resolve4) => {
-        server.close(() => resolve4());
+      await new Promise((resolve5) => {
+        server.close(() => resolve5());
         server.closeAllConnections();
       });
       closeStore(watch);
@@ -18384,6 +18472,7 @@ data: ${matched.join(",") || "*"}
 
 // plugin/src/modes.ts
 import { spawnSync as spawnSync3 } from "node:child_process";
+import { resolve as resolve3 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 function hasRequest(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId));
@@ -18399,7 +18488,7 @@ function changedFiles(workspace, since) {
     throw new Refusal(
       "malformed",
       `git diff --name-only ${since} failed${diff.stderr ? `: ${diff.stderr.trim().split("\n")[0]}` : ""}`,
-      "Give --since a commit, a branch, or a tag of the workspace repository. Or give the changed files with --scope."
+      "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope."
     );
   return diff.stdout.split("\n").filter(Boolean);
 }
@@ -18478,7 +18567,8 @@ function runTest(store, actor, given, env) {
   const input = { ...given, build };
   if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed);
   const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
-  const scope = input.scope ?? (input.since ? changedFiles(store.workspace, input.since) : []);
+  const repository = resolve3(store.workspace, input.repo ?? ".");
+  const scope = input.scope ?? (input.since ? changedFiles(repository, input.since) : []);
   const explored = startExploration(store, actor, { ...input, mode, scope }, env);
   const check = mode === "regression" ? checkRun(store, actor, input) : { run: null, skipped: [] };
   return {
@@ -18502,8 +18592,8 @@ function runTest(store, actor, given, env) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname, resolve as resolve3 } from "node:path";
+import { mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname, resolve as resolve4 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -19431,7 +19521,8 @@ var commands = {
       source: "repeat",
       since: "value",
       scope: "list",
-      url: "value"
+      url: "value",
+      repo: "value"
     },
     write: true,
     run: (store, args, { actor, env }) => runTest(
@@ -19452,7 +19543,8 @@ var commands = {
         sources: list(args, "source"),
         since: value(args, "since"),
         scope: list(args, "scope"),
-        url: value(args, "url")
+        url: value(args, "url"),
+        repo: value(args, "repo")
       },
       env
     ),
@@ -19934,10 +20026,10 @@ function printPlan(reply) {
   };
 }
 function writeOutput(store, out, content) {
-  const path = resolve3(store.workspace, out);
-  mkdirSync5(dirname(path), { recursive: true });
+  const path = resolve4(store.workspace, out);
+  mkdirSync6(dirname(path), { recursive: true });
   try {
-    writeFileSync2(path, content, { flag: "wx" });
+    writeFileSync3(path, content, { flag: "wx" });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(`Output file exists: ${out}. Choose a new path.`, { cause: error });
@@ -20127,7 +20219,7 @@ function run(argv, io) {
   }
   const command = commands[name];
   const subject = command.positionals.length && name !== "query" ? String(args[command.positionals[0]]) : name;
-  const workspace = resolve3(io.cwd, value(args, "workspace") ?? ".");
+  const workspace = resolve4(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
@@ -20169,7 +20261,7 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: resolve3(cwd, values.workspace ?? "."), port };
+  return { workspace: resolve4(cwd, values.workspace ?? "."), port };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");

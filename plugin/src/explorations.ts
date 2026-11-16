@@ -4,7 +4,10 @@ import { all, canonical, completed, execute, one, write } from './store.ts'
 import { requireChoice, requireIdentifier, requireText, unusedId } from './contracts.ts'
 import { planRequest, planTools } from './plans.ts'
 import { runInstance } from './targets.ts'
-import { explorationRow } from './journal.ts'
+import type { Claim } from './journal.ts'
+import { explorationRow, journal, planClaims, planQuestions } from './journal.ts'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export const explorationModes = ['exploratory', 'regression'] as const
 export type Charter = {
@@ -16,6 +19,7 @@ export type Charter = {
 	operations: string[]
 	tools: Array<{ name: string; purpose: string }>
 	scope: string[]
+	knownState: string | null
 }
 export type ExplorationEvent = {
 	at: string
@@ -34,7 +38,7 @@ function latestRevision(store: Store, planId: string) {
 	return row ? { revision: row.revision, plan: JSON.parse(row.body) as Plan } : null
 }
 
-export function charterOf(store: Store, planId: string, scope: string[]): Charter {
+export function charterOf(store: Store, planId: string, scope: string[], knownState: string | null = null): Charter {
 	const { request, target } = planRequest(store, planId)
 	const latest = latestRevision(store, planId)
 	const requirements = latest?.plan.requirements ?? request.requirements ?? []
@@ -47,7 +51,102 @@ export function charterOf(store: Store, planId: string, scope: string[]): Charte
 		operations: target.profile.allowedOperations,
 		tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
 		scope,
+		knownState,
 	}
+}
+
+export function evidenceFolder(explorationId: string, name: string) {
+	return `qa-evidence/${explorationId}/${name}`
+}
+
+const maxKnownLines = 150
+const isEntryId = (word: string) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(word)
+
+export function knownStateText(store: Store, planId: string, build: string) {
+	const state = journal(store, planId)
+	const claims = planClaims(store, planId).filter((claim) => claim.build !== build)
+	const lastSeen = (claim: Claim) =>
+		Object.entries(claim.statuses)
+			.filter(([, on]) => on.status === 'not_fixed')
+			.map(([seen]) => seen)
+			.at(-1) ?? claim.build
+	const open = claims.filter((claim) => claim.open)
+	const fixed = claims.filter((claim) => !claim.open && claim.state !== 'rejected')
+	const rejected = claims.filter((claim) => claim.state === 'rejected')
+	const answers = planQuestions(store, planId).filter((question) => question.answer !== null)
+	const observed = state.team.filter((entry) => ['observation', 'defect'].includes(entry.kind))
+	const mentioned = new Set(
+		observed.flatMap((entry) => [...(entry.about ?? '').split(/[\s,;]+/), ...(entry.links ?? [])])
+	)
+	const criteria = state.team.filter((entry) => entry.kind === 'criterion')
+	const areas = [
+		...new Set(
+			state.team.flatMap((entry) => [
+				...(entry.area ? [entry.area] : []),
+				...(entry.kind === 'observation' && entry.about && !entry.about.split(/[\s,;]+/).every(isEntryId)
+					? [entry.about]
+					: []),
+			])
+		),
+	]
+	const lines = [
+		'# Results of earlier builds',
+		'',
+		'## Open problems',
+		'',
+		...(open.length
+			? [
+					'Retest each one. Say for each one if it is still there or fixed, with its ID.',
+					'',
+					...open.flatMap((claim) => [
+						`### ${claim.id}: ${claim.title} (${claim.severity})`,
+						`- Last seen on build: ${lastSeen(claim)}`,
+						`- Steps: ${[claim.steps ?? 'not given'].flat().join(' ')}`,
+						`- Expected: ${claim.expected}`,
+						`- Actual: ${claim.actual}`,
+						'',
+					]),
+				]
+			: ['None.', '']),
+		'## Decisions of the product owner',
+		'',
+		...(answers.length || rejected.length
+			? [
+					...answers.map((question) => `- ${question.question} Answer: ${question.answer}`),
+					...rejected.map((claim) =>
+						`- Not a defect: ${claim.title}. ${claim.decision?.rationale ?? ''}`.trim()
+					),
+				]
+			: ['None.']),
+		'',
+		'## Problems fixed on an earlier build',
+		'',
+		...(fixed.length
+			? ['Check that they do not come back.', ...fixed.map((claim) => `- ${claim.id}: ${claim.title}`)]
+			: ['None.']),
+		'',
+		'## Areas tested before',
+		'',
+		...(areas.length ? areas.map((area) => `- ${area}`) : ['None recorded.']),
+		'',
+		'## Rules not tested yet',
+		'',
+		...(() => {
+			const untested = criteria.filter((criterion) => !mentioned.has(criterion.id))
+			return untested.length ? untested.map((criterion) => `- ${criterion.text}`) : ['None recorded.']
+		})(),
+	]
+	if (lines.length <= maxKnownLines) return lines.join('\n') + '\n'
+	return [...lines.slice(0, maxKnownLines - 1), 'More results are left out.'].join('\n') + '\n'
+}
+
+function writeKnownState(store: Store, planId: string, explorationId: string, build: string) {
+	if (!one(store, 'SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?', planId, explorationId))
+		return null
+	const path = `${evidenceFolder(explorationId, 'known-state')}.md`
+	mkdirSync(join(store.workspace, evidenceFolder(explorationId, '')), { recursive: true })
+	writeFileSync(join(store.workspace, path), knownStateText(store, planId, build))
+	return path
 }
 
 export function nextExplorationId(store: Store) {
@@ -73,7 +172,7 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
 	const instance = runInstance(store, target.profile.targetId, input.instance)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
-	const charter = charterOf(store, planId, input.scope ?? [])
+	const charter = charterOf(store, planId, input.scope ?? [], writeKnownState(store, planId, explorationId, build))
 	execute(
 		store,
 		'INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',

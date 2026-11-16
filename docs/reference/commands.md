@@ -185,7 +185,7 @@ checkmate setup --url <url> [--target <targetId>] [--instance <name>] [--operati
 ## test
 
 ```sh
-checkmate test <planId> --allow <rule> [--build <build>] [--url <url>] [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source>]
+checkmate test <planId> --allow <rule> [--build <build>] [--url <url>] [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--repo <dir>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source>]
 ```
 
 `test` does the common sequence in one command:
@@ -194,7 +194,7 @@ checkmate test <planId> --allow <rule> [--build <build>] [--url <url>] [--mode e
 2. When the plan has no request, it records one from `--objective`, `--target` (the latest revision), and `--source`. It needs `--source` or `--objective`. Without `--objective`, the objective is `Test the change that <sources> describes.` Without `--target`, it uses the only target. When the store has no target, it runs `setup --url <url>` first, and needs `--url`.
 3. It prints each assumed value on an `assumed:` line, the values of `setup` too.
 4. It chooses the mode. `--mode auto` is the default. The rule: when the plan has no exploration and no finished run, the mode is `exploratory`. Else it is `regression`.
-5. It starts an exploration, as `explore start` does, with the mode. `--since <git ref>` gives the changed files: `git diff --name-only <ref>` in the workspace. `--scope` gives them as a list. The explorer brief lists the changed files.
+5. It starts an exploration, as `explore start` does, with the mode. `--since <git ref>` gives the changed files: `git diff --name-only <ref>` in the workspace, or in `--repo <dir>` when the code is in a subfolder. `--scope` gives them as a list. The explorer brief lists the changed files.
 6. In `regression` mode, when the plan has a revision, it begins a run of the ready tests of the latest revision with the next free run ID, for example `run-2`. When the gate refuses, no run starts, and `check_skipped` lines give the reasons.
 
 Output: line 1 has `mode=`, `level=`, `explorers=`, `model=`, `verifier=`, and `run=` when a run began. The `next` lines name the execute stage for the run and `checkmate explore wait <explorationId>`. The JSON has `chosenBy`: `auto` or `flag`.
@@ -221,7 +221,9 @@ The supervisor does these steps:
    claude -p <host arguments> --model <alias> --settings '{"enabledPlugins":{"<plugin id>":false}}' --session-id <id> --allowedTools <rule> ... --output-format json --permission-prompts none
    ```
 
-   The explorer gets a short brief: the goal, the requirements, the sources, the entry values of the instance, the allowed operations, the tools, a data prefix `qa-<explorationId>-<explorer>-`, and the folder `qa-evidence/<explorationId>/<explorer>/` for its evidence files. The brief does not name Checkmate. The explorer does not run a Checkmate command.
+   When the plan has an earlier exploration, Checkmate writes `qa-evidence/<explorationId>/known-state.md` before the explorers start, and the brief tells them to read it and retest each open problem. The file does not name Checkmate. It has, in this order: the open defects of earlier builds with the build where they were last seen, the steps, and the expected and actual results; the answers of the product owner and the rejected claims; the defects fixed on an earlier build; the areas tested before; and the criteria with no observation. It has at most 150 lines. The recorder gets the open defects of earlier builds of all explorers, and logs a `verdict` for each one that the session retested.
+
+   The explorer gets a short brief: the goal, the requirements, the sources, the entry values of the instance, the allowed operations, the tools, a data prefix `qa-<explorationId>-<explorer>-`, and the folder `qa-evidence/<explorationId>/<explorer>/` for its evidence files. The brief says that the folders in the workspace whose names start with a dot belong to tools, not to the product under test. The brief does not name Checkmate. The explorer does not run a Checkmate command.
 
 2. When all explorers end, it records each explorer that completed, one after the other, as `record` does. The recorder gets the same `--model` and `--settings` as its explorer, and no `--allowedTools`.
 

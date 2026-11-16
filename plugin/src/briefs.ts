@@ -111,6 +111,7 @@ export function recorderPrompt(build: string, record: string) {
 		'Reply with only one JSON array of the new entries, and nothing else. Use no tool.',
 		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
 		'Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.',
+		'When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.',
 		'',
 		'The entries:',
 		entryText(),
@@ -159,6 +160,12 @@ export function explorerBrief(
 		...(charter.sources.length ? ['', `Read: ${charter.sources.join(', ')}`] : []),
 		...(charter.instructions ? ['', charter.instructions] : []),
 		...(charter.scope.length ? ['', 'Changed files:', ...charter.scope.map((path) => `- ${path}`)] : []),
+		...(charter.knownState
+			? [
+					'',
+					`Read ${charter.knownState}. It has the results of earlier builds. Retest each open problem in it, and say for each one if it is still there or fixed.`,
+				]
+			: []),
 		'',
 		'The application:',
 		...entries.map(entryPointLine),
@@ -167,6 +174,7 @@ export function explorerBrief(
 		...(charter.tools.length
 			? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join('; ')}`]
 			: []),
+		'Folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
 		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
 		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
 		'At the end, list what you tested and each problem that you found, with its steps.',

@@ -1558,3 +1558,133 @@ export function pagedOperations(
 		direction: options.direction,
 	}
 }
+
+const severityOrder = ['critical', 'high', 'medium', 'low']
+
+export type QueueGroup = 'blocking' | 'claims' | 'approvals' | 'questions'
+export type QueueItem = {
+	key: string
+	group: QueueGroup
+	kind: 'question' | 'gap' | 'claim' | 'plan' | 'result'
+	planId: string
+	id: string
+	title: string
+	since: string | null
+	severity: string | null
+	state: string | null
+	explorationId: string | null
+	runId: string | null
+	revision: number | null
+}
+
+export function needsYou(store: Store) {
+	const waiting = inbox(store)
+	const asked = (gap: (typeof waiting.gaps)[number]): QueueItem => ({
+		key: `${gap.explorationId ? 'question' : 'gap'}:${gap.planId}:${gap.gapId}`,
+		group: gap.severity === 'blocking' ? 'blocking' : 'questions',
+		kind: gap.explorationId ? 'question' : 'gap',
+		planId: gap.planId,
+		id: gap.gapId,
+		title: gap.question,
+		since: gap.since,
+		severity: gap.severity,
+		state: 'open',
+		explorationId: gap.explorationId,
+		runId: gap.runId,
+		revision: gap.revision,
+	})
+	const claims = waiting.claims
+		.map((claim): QueueItem => ({
+			key: `claim:${claim.planId}:${claim.claimId}`,
+			group: 'claims',
+			kind: 'claim',
+			planId: claim.planId,
+			id: claim.claimId,
+			title: claim.title,
+			since: null,
+			severity: claim.severity,
+			state: claim.state,
+			explorationId: claim.explorationId,
+			runId: null,
+			revision: null,
+		}))
+		.sort((a, b) => severityOrder.indexOf(a.severity!) - severityOrder.indexOf(b.severity!))
+	const plans = waiting.plans.map((plan): QueueItem => ({
+		key: `plan:${plan.planId}@${plan.revision}`,
+		group: 'approvals',
+		kind: 'plan',
+		planId: plan.planId,
+		id: `${plan.planId}@${plan.revision}`,
+		title: plan.summary,
+		since: plan.since,
+		severity: null,
+		state: plan.approval,
+		explorationId: null,
+		runId: null,
+		revision: plan.revision,
+	}))
+	const results = waiting.results.map((result): QueueItem => ({
+		key: `run:${result.runId}`,
+		group: 'approvals',
+		kind: 'result',
+		planId: result.planId,
+		id: result.runId,
+		title: `Result of ${result.planId}@${result.revision} on build ${result.build}`,
+		since: result.since,
+		severity: null,
+		state: 'pending',
+		explorationId: null,
+		runId: result.runId,
+		revision: result.revision,
+	}))
+	const gaps = waiting.gaps.map(asked)
+	const items = [
+		...gaps.filter((item) => item.group === 'blocking'),
+		...claims,
+		...plans,
+		...results,
+		...gaps.filter((item) => item.group === 'questions'),
+	]
+	const explorations = exploredPlans(store).flatMap((planId) =>
+		planExplorations(store, planId).map((item) => ({ ...item, planId }))
+	)
+	return {
+		items,
+		urgent: items.filter((item) => item.group !== 'questions').length,
+		running: explorations.filter((item) => item.running),
+		failed: explorations.filter(
+			(item, index) =>
+				['failed', 'stopped'].includes(item.state) &&
+				!explorations.slice(index + 1).some((later) => later.planId === item.planId)
+		),
+	}
+}
+
+const evidenceTypes: Record<string, string> = {
+	png: 'image/png',
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	webp: 'image/webp',
+	gif: 'image/gif',
+	txt: 'text/plain',
+	log: 'text/plain',
+	md: 'text/markdown',
+	json: 'application/json',
+}
+
+export function claimEvidence(store: Store, planId: string, claimId: string, index: number) {
+	const claim = planClaims(store, planId).find((item) => item.id === claimId)
+	requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`)
+	const item = claim.evidence[index]
+	requireCondition(item && 'path' in item, `Unknown evidence ${index} of claim ${claimId}`)
+	const row = one<{ bytes: Uint8Array }>(store, 'SELECT bytes FROM blobs WHERE sha256 = ?', item.sha256)
+	requireCondition(row, `Unknown evidence ${index} of claim ${claimId}`)
+	const name = item.path.slice(item.path.lastIndexOf('/') + 1)
+	const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+	return {
+		name,
+		mediaType: evidenceTypes[extension] ?? 'application/octet-stream',
+		size: item.size,
+		bytes: row.bytes,
+	}
+}

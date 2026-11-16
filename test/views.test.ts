@@ -4,7 +4,10 @@ import { answerGap, openPlan, patchPlan, rejectPlan, revisePlan, savePlan } from
 import { beginRun, closeTest, finishRun, recordFinding, recordGap, rejectResult } from '../plugin/src/runs.ts'
 import {
 	changesAfter,
+	claimEvidence,
 	findingList,
+	mergedClaims,
+	needsYou,
 	inbox,
 	operationLog,
 	pagedOperations,
@@ -16,6 +19,7 @@ import {
 	runList,
 } from '../plugin/src/views.ts'
 import { addInstance } from '../plugin/src/targets.ts'
+import { seedVolume } from '../scripts/ui-volume.ts'
 import {
 	accept,
 	actor,
@@ -24,6 +28,7 @@ import {
 	candidate,
 	check,
 	cli,
+	directory,
 	failT2,
 	followHints,
 	passRun,
@@ -635,3 +640,42 @@ test('the inbox lists an earlier run of a retest chain while status waits for it
 	assert.deepEqual(inbox(opened).results, [])
 	assert.equal(planStatus(opened, 'checkout').state, 'accepted')
 })
+
+test('needs you puts blocking questions first, then claims by severity, approvals, and other questions', (t) => {
+	const workspace = directory(t)
+	seedVolume(workspace)
+	const opened = store(t, workspace)
+	const waiting = needsYou(opened)
+	const groups = waiting.items.map((item) => item.group)
+	assert.deepEqual([...new Set(groups)], ['blocking', 'claims', 'approvals', 'questions'])
+	assert.deepEqual(
+		groups,
+		[...groups].sort((a, b) => order.indexOf(a) - order.indexOf(b))
+	)
+	const severities = waiting.items.filter((item) => item.kind === 'claim').map((item) => item.severity!)
+	assert.deepEqual(
+		severities,
+		[...severities].sort((a, b) => ranks.indexOf(a) - ranks.indexOf(b))
+	)
+	assert(waiting.items.filter((item) => item.group === 'blocking').every((item) => item.severity === 'blocking'))
+	assert.equal(waiting.urgent, waiting.items.filter((item) => item.group !== 'questions').length)
+	assert.deepEqual(
+		waiting.running.map((item) => [item.explorationId, item.paused !== null]),
+		[
+			['x-10', true],
+			['x-9', false],
+		]
+	)
+	assert.deepEqual(
+		waiting.failed.map((item) => item.explorationId),
+		['x-6']
+	)
+	const claim = mergedClaims(opened, 'checkout').find((item) => item.id === 'a1/D1')!
+	const file = claimEvidence(opened, 'checkout', 'a1/D1', 0)
+	assert.equal(file.mediaType, 'image/png')
+	assert.equal(file.size, (claim.evidence[0] as { size: number }).size)
+	assert.throws(() => claimEvidence(opened, 'checkout', 'a1/D1', 9), /Unknown evidence 9/)
+})
+
+const order = ['blocking', 'claims', 'approvals', 'questions']
+const ranks = ['critical', 'high', 'medium', 'low']

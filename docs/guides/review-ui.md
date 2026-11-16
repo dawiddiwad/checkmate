@@ -35,15 +35,22 @@ Above the groups, `Explorations` names each running, paused, or failed explorati
 
 The number next to `Needs you` counts the items of the first three groups. The questions that do not block are not in the number.
 
-- On a question, choose the kind of answer, write the answer and the rationale, then click `Record answer`.
-- On a claim, read the expected and the actual result, the steps, and the evidence. Choose `Accept as a defect` or `Reject`, write the rationale, then click `Record decision`.
-- On a plan or a result, click `Review and decide`. The plan page or the run page opens.
+- On a question, write the answer, then click `Record answer` or press `Ctrl` `Enter`. The kind of answer is `Clarify` by default. Click `Accept assumption` or `Defer` to change it. `Defer` needs no answer.
+- `Add source and reason` opens two optional fields. When you leave them empty, the record names you and the review UI as the source, and states that no reason was given. Once you open the fields, they stay open until you close the browser tab.
+- On a claim, read the expected and the actual result, the steps, and the evidence. Click `Accept as a defect`, or write a short reason and click `Reject`. A reject needs a reason. An accept does not.
+- On a plan or a result, read the summary, write a rationale, choose the decision, then click `Confirm`. The plan page and the run page show the full record.
 
 After you record an answer or a decision, the list selects the next item. The page does not load again. The address of the page keeps the selected item and the filters, for example `/?plan=checkout&q=coupon&item=...`. Thus Back in the browser and a copied link show the same list and item. The breadcrumb above the item goes back to the list. `Open full page` opens the claim, question, or gap page.
 
 On a window narrower than 760 pixels, the list and the item take turns. Select an item to show it. Click `Needs you` in the breadcrumb to show the list again.
 
 `/inbox` shows all items as one list, oldest first.
+
+### Claims
+
+`/claims` lists the claims of all plans, newest first, in the same layout as `Needs you`. Filter them by state, severity, plan, build, and the time when the exploration found them, for example `Last 7 days`. The search field looks in the title, the expected and the actual result, the build, and the exploration. The filters and the selected claim are in the address, so a link shows the same list.
+
+The selected claim shows its steps and its evidence. A claim without a decision has the same decision form as in `Needs you`.
 
 ### Exploration
 
@@ -74,11 +81,13 @@ Each plan at its latest revision. A plan without a revision shows `no revision y
 
 <img src="../img/ui/plan.jpg" alt="The plan page of checkout@2 in dark mode. The header shows the loop state needs answers, waits on oracle, and the approval. Below are the tests with their assertions, and an approval panel on the right." width="100%"/>
 
-The tests, gaps, requirements and coverage, runs, decisions, and history of one revision. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. Resolved and deferred gaps are folded below the open gaps.
+The plan page is the context of everything that belongs to the plan. Its header shows the approval, the loop state, the one next step, and the number of claims, questions, explorations, tests, and runs. When items of the plan wait for you, `Decide <n> items in Needs you` opens `Needs you` with the plan as filter.
 
-The plan page also lists the explorations of the plan, and the merged claims and questions of the completed explorations. Each claim links to its decision form. Each open question links to its answer form.
+The sections fold: `Overview`, `Claims`, `Questions`, `Explorations`, `Tests`, `Runs`, and `History`. A section opens by itself when it needs you: for example `Claims` when a claim waits for a decision, `Questions` when a question blocks testing, and `Runs` when a result waits for acceptance. The other sections are folded. Click a count in the header to open its section. A link to a gap, for example `#G2`, opens the section that holds it.
 
-A plan without a revision has a plan page from its first test. Open it from the plan list, the inbox, or an exploration. It shows the objective, the target, the instance, the sources, the explorations with their state, build, level, and start time, the claims, the questions, and the stored tests. When there are no stored tests, it tells you how to make them with `checkmate harvest <explorationId>`.
+A claim in the plan opens in `Claims`. An open question opens in `Needs you`. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON.
+
+A plan without a revision has the same page with the sections `Request`, `Claims`, `Questions`, `Explorations`, and `Stored tests`. When there are no stored tests, it tells you how to make them with `checkmate harvest <explorationId>`.
 
 `Edit plan` opens the editor. It has forms for the requirements, tests, assertions, and coverage. `Edit as JSON` adds or removes items. Only the latest revision can change, and the rules of `plan edit` apply.
 
@@ -118,6 +127,10 @@ Each form sends the digest of the snapshot that you see. A decision form also se
 - When the plan changed after you opened the editor, the editor shows the latest version. `Your changes (not saved)` lists the values from your form that differ from it. Apply them again, then save.
 - A form with more than 256 KiB of text is refused with the status 413. Nothing is recorded.
 
+## Breadcrumb and Back
+
+Each page below the top level shows a breadcrumb, for example `Plans › checkout@2 › G2`, and `← Back`. `← Back` goes to the page that you came from in the UI, with its list, filters, and selected item. When you opened the page from outside the UI, it goes to the parent in the breadcrumb.
+
 ## Your name
 
 Each decision records an actor. The UI fills in the same default as the commands. The header shows `actor: <name>`. Click it to change the name. The UI keeps the new name in a cookie.
@@ -128,17 +141,19 @@ Each page updates when another process writes to the record, for example a deleg
 
 ## Keyboard
 
-| Key            | Action                                                                  |
-| -------------- | ----------------------------------------------------------------------- |
-| `/`            | Focus the search field.                                                 |
-| `j` `k`        | Move down and up in a list. On `Needs you`, select the next item.       |
-| `Enter`        | Open the selected item. On `Needs you`, go to the form of the item.     |
-| `a` `r`        | On a claim in `Needs you`: choose `Accept as a defect` or `Reject`.     |
-| `c` `s` `d`    | On a question in `Needs you`: choose Clarify, Accept assumption, Defer. |
-| `Ctrl` `Enter` | Send the form of the item.                                              |
-| `g` `i`        | Go to `Needs you`.                                                      |
-| `Esc`          | Close the evidence viewer or menu.                                      |
-| `?`            | Show the shortcuts.                                                     |
+| Key            | Action                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `/`            | Focus the search field.                                                                                        |
+| `j` `k`        | Move down and up in a list. On `Needs you`, select the next item.                                              |
+| `Enter`        | Open the selected item. On `Needs you`, go to the form of the item.                                            |
+| `a`            | On a claim: accept it as a defect at once. On a plan or a result: approve or accept, then write the rationale. |
+| `r`            | On a claim, a plan, or a result: reject. Write the reason, then press `Ctrl` `Enter`.                          |
+| `c` `s`        | On a question: choose Clarify or Accept assumption, then write the answer.                                     |
+| `d`            | On a question: defer it at once.                                                                               |
+| `Ctrl` `Enter` | Send the form of the item.                                                                                     |
+| `g` `i`        | Go to `Needs you`.                                                                                             |
+| `Esc`          | Close the evidence viewer or menu.                                                                             |
+| `?`            | Show the shortcuts.                                                                                            |
 
 ## Next
 

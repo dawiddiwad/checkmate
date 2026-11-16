@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
@@ -10,6 +10,7 @@ import { entryValues } from '../plugin/src/explorers.ts'
 import { explorerBrief, followBrief } from '../plugin/src/briefs.ts'
 import { explorationLive } from '../plugin/src/views.ts'
 import { testLevels } from '../plugin/src/levels.ts'
+import { replyLimit } from '../plugin/src/agents.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 
 const stacks = { kind: 'defect', title: 'Coupon stacks', severity: 'high', expected: '450', actual: '400' }
@@ -104,7 +105,7 @@ test('a session run gives the actions of each step until it is finished, and the
 	for (const name of ['a1', 'a2', 'a3']) {
 		assert.equal(
 			file(`${work(name)}/task-test.md`),
-			`${expectedBrief(workspace, name).test}\n\nEnd your reply with this line: tester ${name} test done\n`
+			`${expectedBrief(workspace, name).test}\n\n${replyLimit}\nEnd your reply with this line: tester ${name} test done\n`
 		)
 		put(`${work(name)}/report.md`, `report of ${name}\n`)
 		done(name, 'test')
@@ -114,7 +115,7 @@ test('a session run gives the actions of each step until it is finished, and the
 	const record = file(`${work('a1')}/task-record.md`)
 	assert.match(
 		record,
-		/\nWrite only one JSON array of the new entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\. Then reply in short\.\n/
+		/\nWrite only one JSON array of the new entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\.\n/
 	)
 	assert.doesNotMatch(record, /Use no tool/)
 	assert.doesNotMatch(clean(record), /checkmate/i)
@@ -145,7 +146,16 @@ test('a session run gives the actions of each step until it is finished, and the
 		[`${work()}/merge/task.md`, 'merge done'],
 		[`${work()}/verify/task.md`, 'verify done'],
 	])
-		assert(file(path).endsWith(`\n\nEnd your reply with this line: ${line}\n`), path)
+		assert(file(path).endsWith(`\n\n${replyLimit}\nEnd your reply with this line: ${line}\n`), path)
+	const tasks = readdirSync(join(workspace, work()), { recursive: true })
+		.map(String)
+		.filter((path) => /(^|\/)task[^/]*\.md$/.test(path))
+	assert.equal(tasks.length, 11)
+	for (const path of tasks)
+		assert.match(
+			file(`${work()}/${path}`),
+			new RegExp(`\n\n${replyLimit}\nEnd your reply with this line: [^\n]+ done\n$`)
+		)
 	const verify = file(`${work()}/verify/task.md`)
 	assert.match(verify, /^Reproduce each problem below on the application\./)
 	assert.match(verify, /\n- a3\/D1: Sale price shows twice /)
@@ -212,7 +222,7 @@ test('a refused entry gets one repair round, and the entries keep their evidence
 	assert.deepEqual(lines(), [tester('a1', 'repair').replace(' repair ', ' record ')])
 	const repair = file(`${work('a1')}/task-repair.md`)
 	assert.match(repair, /^These entries of your file were refused:\n- /)
-	assert.match(repair, /\n\nEnd your reply with this line: tester a1 record done\n$/)
+	assert(repair.endsWith(`\n\n${replyLimit}\nEnd your reply with this line: tester a1 record done\n`))
 	assert.match(
 		repair,
 		/\nWrite only one JSON array of the corrected entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\./
@@ -497,6 +507,7 @@ test('a follow-up messages each tester that can be reached, and skips the one th
 			'',
 			'At the end, write the new entries of this turn to .checkmate/work/x-1/a1/entries.json: only one JSON array, in the same form as your earlier entries file, and nothing else. Do not write an entry again that you wrote before.',
 			'',
+			replyLimit,
 			'End your reply with this line: tester a1 follow done',
 			'',
 		].join('\n')

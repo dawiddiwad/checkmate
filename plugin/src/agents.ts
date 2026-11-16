@@ -260,6 +260,9 @@ function descriptionOf(explorationId: string, action: Action) {
 	return `${explorationId} ${action.name} ${action.step}`
 }
 
+export const replyLimit =
+	'Keep all details in your files. Reply in three lines at most: what you did, the most important finding or blocker, and the number of questions or defects.'
+
 function replyLineOf(name: string, step: string) {
 	return name === 'merge' || name === 'verify' ? `${name} done` : `tester ${name} ${step} done`
 }
@@ -290,7 +293,7 @@ function answerNext(
 				writeFile(
 					store,
 					action.task,
-					`${action.text.trimEnd()}\n\nEnd your reply with this line: ${replyLineOf(action.name, action.step)}`
+					`${action.text.trimEnd()}\n\n${replyLimit}\nEnd your reply with this line: ${replyLineOf(action.name, action.step)}`
 				)
 				if (action.answer) rmSync(join(store.workspace, action.answer), { force: true })
 				addEvent(

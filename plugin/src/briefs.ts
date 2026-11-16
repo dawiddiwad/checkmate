@@ -112,7 +112,7 @@ function withoutName(text: string) {
 
 function replyText(what: string, answer?: string, which = '') {
 	return answer
-		? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else. Then reply in short.`
+		? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else.`
 		: `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`
 }
 
@@ -169,7 +169,7 @@ export function repairPrompt(refusals: string[], answer?: string) {
 		answer ? 'These entries of your file were refused:' : 'Checkmate refused these entries of your reply:',
 		...refusals.map((refusal) => `- ${refusal}`),
 		answer
-			? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again. Then reply in short.`
+			? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again.`
 			: 'Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool.',
 	].join('\n')
 	return answer ? withoutName(text) : text
@@ -339,7 +339,7 @@ const verifierObject =
 
 function verifierReplyText(answer?: string) {
 	return answer
-		? `write only one JSON array to ${answer}, ${verifierObject} Then reply in short.`
+		? `write only one JSON array to ${answer}, ${verifierObject}`
 		: `reply with only one JSON array, ${verifierObject}`
 }
 

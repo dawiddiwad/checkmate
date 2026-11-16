@@ -12889,7 +12889,7 @@ function withoutName(text) {
   return text.replace(/(^|\. )Checkmate\b/gm, "$1The record").replace(/\bCheckmate\b/g, "the record");
 }
 function replyText(what, answer, which = "") {
-  return answer ? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else. Then reply in short.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
+  return answer ? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
 }
 function recorderPrompt(build, record, saved = [], answer) {
   const text = [
@@ -12934,7 +12934,7 @@ function repairPrompt(refusals, answer) {
   const text = [
     answer ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
     ...refusals.map((refusal) => `- ${refusal}`),
-    answer ? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again. Then reply in short.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
+    answer ? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
   return answer ? withoutName(text) : text;
 }
@@ -13046,7 +13046,7 @@ function mergeAgainPrompt(unplaced, answer) {
 }
 var verifierObject = 'with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.';
 function verifierReplyText(answer) {
-  return answer ? `write only one JSON array to ${answer}, ${verifierObject} Then reply in short.` : `reply with only one JSON array, ${verifierObject}`;
+  return answer ? `write only one JSON array to ${answer}, ${verifierObject}` : `reply with only one JSON array, ${verifierObject}`;
 }
 function verifierRepairPrompt(answer) {
   return answer ? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer)}` : `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`;
@@ -20222,6 +20222,7 @@ function promptOf2(action) {
 function descriptionOf(explorationId, action) {
   return `${explorationId} ${action.name} ${action.step}`;
 }
+var replyLimit = "Keep all details in your files. Reply in three lines at most: what you did, the most important finding or blocker, and the number of questions or defects.";
 function replyLineOf(name, step) {
   return name === "merge" || name === "verify" ? `${name} done` : `tester ${name} ${step} done`;
 }
@@ -20246,6 +20247,7 @@ function answerNext(store, actor, explorationId, actions, word) {
           action.task,
           `${action.text.trimEnd()}
 
+${replyLimit}
 End your reply with this line: ${replyLineOf(action.name, action.step)}`
         );
         if (action.answer) rmSync5(join11(store.workspace, action.answer), { force: true });

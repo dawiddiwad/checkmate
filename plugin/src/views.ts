@@ -1688,3 +1688,21 @@ export function claimEvidence(store: Store, planId: string, claimId: string, ind
 		bytes: row.bytes,
 	}
 }
+
+export function claimsAcross(store: Store) {
+	const started = new Map(
+		all<{ exploration_id: string; started_at: string }>(
+			store,
+			'SELECT exploration_id, started_at FROM explorations'
+		).map((row) => [row.exploration_id, row.started_at])
+	)
+	return exploredPlans(store)
+		.flatMap((planId) =>
+			mergedClaims(store, planId).map((claim) => ({
+				...claim,
+				planId,
+				foundAt: started.get(claim.explorationId) ?? '',
+			}))
+		)
+		.sort((a, b) => b.foundAt.localeCompare(a.foundAt))
+}

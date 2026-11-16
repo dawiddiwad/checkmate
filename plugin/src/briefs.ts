@@ -151,13 +151,10 @@ export function explorerBrief(
 	entries: EntryPointValue[],
 	dataPrefix: string,
 	evidenceFolder: string,
-	minutes: number
+	seconds: { study: number; test: number }
 ) {
-	return [
-		'Test this change of the application and find its defects.',
-		'Test until you have checked each rule of the change and the existing behaviour that the change can break.',
-		`You have ${minutes} minutes at most. Write your report before the time ends.`,
-		'First read the sources and the changed files, and write down what you will check and what is unclear. Then test each item.',
+	const study = [
+		'A change of the application is ready for test. Study it before you test.',
 		'',
 		`Goal: ${charter.goal}`,
 		...(charter.requirements.length
@@ -187,10 +184,27 @@ export function explorerBrief(
 			: []),
 		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
 		'Folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
+		'',
+		'Study the sources, the changed files and the running application.',
+		`Write ${evidenceFolder}/plan.md with your test approach.`,
+		`Write ${evidenceFolder}/questions.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None.`,
+		'Do not test the change in this turn.',
+		`You have ${seconds.study} seconds for this turn. Write the two files early and update them as you go.`,
+	]
+	const test = [
+		'Now test the change and the existing behaviour that it can break.',
+		'The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.',
 		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
 		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
-		'At the end, list what you tested, each problem that you found with its steps, and each question that only the owner of the product can answer.',
-	].join('\n')
+		`Write ${evidenceFolder}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
+		...(charter.knownState
+			? [
+					`For each problem in ${charter.knownState}, write one line in the report: still present, fixed, or not retested with the reason.`,
+				]
+			: []),
+		`You have ${seconds.test} seconds for this turn. Write the report early and update it as you go.`,
+	]
+	return { study: study.join('\n'), test: test.join('\n') }
 }
 
 type MergeReport = { id: string; severity: string; title: string; expected: string; actual: string; steps: string }

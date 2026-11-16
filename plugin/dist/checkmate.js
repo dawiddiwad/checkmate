@@ -12236,9 +12236,9 @@ function exploration(store, explorationId) {
 
 // plugin/src/levels.ts
 var testLevels = {
-  smoke: { explorers: 1, model: "haiku", verifier: false, minutes: 5 },
-  standard: { explorers: 3, model: "haiku", verifier: true, minutes: 10 },
-  deep: { explorers: 2, model: "sonnet", verifier: true, minutes: 20 }
+  smoke: { explorers: 1, model: "haiku", verifier: false, studySeconds: 300, testSeconds: 600 },
+  standard: { explorers: 3, model: "haiku", verifier: true, studySeconds: 600, testSeconds: 900 },
+  deep: { explorers: 2, model: "sonnet", verifier: true, studySeconds: 600, testSeconds: 1500 }
 };
 var levelNames = Object.keys(testLevels);
 var defaultLevel = "standard";
@@ -12875,12 +12875,9 @@ function entryPointLine(entry) {
     return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
   return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
 }
-function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, minutes) {
-  return [
-    "Test this change of the application and find its defects.",
-    "Test until you have checked each rule of the change and the existing behaviour that the change can break.",
-    `You have ${minutes} minutes at most. Write your report before the time ends.`,
-    "First read the sources and the changed files, and write down what you will check and what is unclear. Then test each item.",
+function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
+  const study = [
+    "A change of the application is ready for test. Study it before you test.",
     "",
     `Goal: ${charter.goal}`,
     ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
@@ -12901,10 +12898,25 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, minutes) {
     ] : [],
     "A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.",
     "Folders in the workspace whose names start with a dot belong to tools, not to the product under test.",
+    "",
+    "Study the sources, the changed files and the running application.",
+    `Write ${evidenceFolder2}/plan.md with your test approach.`,
+    `Write ${evidenceFolder2}/questions.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None.`,
+    "Do not test the change in this turn.",
+    `You have ${seconds.study} seconds for this turn. Write the two files early and update them as you go.`
+  ];
+  const test = [
+    "Now test the change and the existing behaviour that it can break.",
+    "The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.",
     `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
     `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
-    "At the end, list what you tested, each problem that you found with its steps, and each question that only the owner of the product can answer."
-  ].join("\n");
+    `Write ${evidenceFolder2}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
+    ...charter.knownState ? [
+      `For each problem in ${charter.knownState}, write one line in the report: still present, fixed, or not retested with the reason.`
+    ] : [],
+    `You have ${seconds.test} seconds for this turn. Write the report early and update it as you go.`
+  ];
+  return { study: study.join("\n"), test: test.join("\n") };
 }
 function mergerPrompt(build, reports, groups, questions = [], earlier = []) {
   return [
@@ -13212,7 +13224,7 @@ function launchPlan(profile, input, env) {
   const host = hostModel(claudeArgs);
   const hiddenPlugin = installedPluginId(env);
   const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers;
-  const minutes = input.minutes ?? row.minutes;
+  const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds;
   requireWellFormed(
     input.allow.length || explorers === 0 && !row.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
@@ -13226,8 +13238,9 @@ function launchPlan(profile, input, env) {
     verifier: row.verifier,
     context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row.model] },
     allow: input.allow,
-    minutes,
-    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, minutes * 60 * 3),
+    studySeconds: row.studySeconds,
+    testSeconds,
+    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row.studySeconds, testSeconds) * 3),
     pluginHidden: hiddenPlugin !== null
   };
 }
@@ -13270,7 +13283,8 @@ function startExploration(store, actor, input, env) {
         explorers: launch.explorers,
         model: launch.model,
         verifier: launch.verifier,
-        minutes: launch.minutes,
+        studySeconds: launch.studySeconds,
+        testSeconds: launch.testSeconds,
         pluginHidden: launch.pluginHidden,
         next: [`checkmate explore wait ${opened.explorationId}`]
       }),
@@ -13314,36 +13328,48 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
   const claude = requireClaude(env);
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
-  const runs = explorerNames(launch.explorers).map((explorer) => {
+  const runs = explorerNames(launch.explorers).map(async (explorer) => {
     const session = randomUUID3();
     const folder = evidenceFolder(explorationId, explorer);
     mkdirSync5(join7(store.workspace, folder), { recursive: true });
-    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, launch.minutes);
+    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
+      study: launch.studySeconds,
+      test: launch.testSeconds
+    });
     event(store, actor, explorationId, {
       step: "launch",
       explorer,
       status: "started",
       detail: { session, context: launch.context, brief }
     });
-    const args = childArgs({ ...launch.context, denyStore: true }, ["--session-id", session, ...allowed]);
-    return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
-      (call) => ({ explorer, session, call })
+    const turn = (own, prompt) => launchClaude(
+      claude,
+      childArgs({ ...launch.context, denyStore: true }, [...own, ...allowed]),
+      prompt,
+      store.workspace,
+      childEnv(env),
+      launch.timeoutSeconds
     );
+    const study = await turn(["--session-id", session], brief.study);
+    const calls = study.failure ? [study] : [study, await turn(["--resume", session], brief.test)];
+    return { explorer, session, calls };
   });
   const ended = await Promise.all(runs);
-  for (const { explorer, session, call } of ended) {
+  for (const { explorer, session, calls } of ended) {
+    const call = calls.find((item) => item.failure) ?? calls.at(-1);
     const hint = failureHint(launch, call);
+    const durations = calls.flatMap((item) => item.durationMs === void 0 ? [] : [item.durationMs]);
     event(store, actor, explorationId, {
       step: "end",
       explorer,
       status: call.failure?.[0] ?? "completed",
       detail: {
         session,
-        ...call.failure ? { reason: call.failure[1] } : {},
+        ...call.failure ? { turn: calls.length === 1 ? "study" : "test", reason: call.failure[1] } : {},
         ...call.stderr ? { stderr: call.stderr } : {},
         ...hint ? { hint } : {},
-        ...call.costUsd === void 0 ? {} : { costUsd: call.costUsd },
-        ...call.durationMs === void 0 ? {} : { durationMs: call.durationMs }
+        ...costOf(calls),
+        ...durations.length ? { durationMs: durations.reduce((total, ms2) => total + ms2, 0) } : {}
       }
     });
   }
@@ -13494,7 +13520,7 @@ async function driveExploration(workspace, explorationId, env) {
         store,
         actor,
         explorationId,
-        ended.filter((item) => !item.call.failure),
+        ended.filter((item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== "operational_error"),
         env
       );
     }
@@ -13584,7 +13610,8 @@ function explorationStatus(store, explorationId) {
     model: launch?.model ?? null,
     modelFrom: launch?.modelFrom ?? null,
     verifier: launch?.verifier ?? null,
-    minutes: launch?.minutes ?? null,
+    studySeconds: launch?.studySeconds ?? null,
+    testSeconds: launch?.testSeconds ?? null,
     pluginHidden: launch?.pluginHidden ?? null,
     explorers,
     phases: events.filter((item) => item.step === "merge" || item.step === "verify").map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
@@ -19228,7 +19255,8 @@ function explorationLines(reply) {
       model: status.model ?? void 0,
       modelFrom: status.modelFrom ?? void 0,
       verifier: status.verifier ?? void 0,
-      minutes: status.minutes ?? void 0
+      studySeconds: status.studySeconds ?? void 0,
+      testSeconds: status.testSeconds ?? void 0
     },
     lines: [
       ...status.explorers.map((item) => [
@@ -20271,7 +20299,8 @@ var commands = {
         `explorers=${level.explorers}`,
         `model=${level.model}`,
         `verifier=${level.verifier}`,
-        `minutes=${level.minutes}`
+        `studySeconds=${level.studySeconds}`,
+        `testSeconds=${level.testSeconds}`
       ])
     })
   },

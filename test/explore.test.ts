@@ -5,7 +5,10 @@ import type { Profile } from '../plugin/src/types.ts'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
-import { closeStore } from '../plugin/src/store.ts'
+import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
+import { addEvent } from '../plugin/src/explorations.ts'
+import { explorerBrief } from '../plugin/src/briefs.ts'
+import { driveExploration, launchPlan } from '../plugin/src/explorers.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
 import { authenticationHint, storeDenyRules } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
@@ -89,7 +92,11 @@ test('explore start launches the explorers of the level in a clean context, then
 	for (const call of explorers) {
 		assert.equal(after(call.args, '--model'), testLevels.standard.model)
 		assert.equal(after(call.args, '--settings'), explorerSettings)
-		assert.match(call.prompt, /\nYou have 10 minutes at most\. Write your report before the time ends\.\n/)
+		assert.match(call.prompt, /^A change of the application is ready for test\. Study it before you test\.\n/)
+		assert.match(
+			call.prompt,
+			/\nStudy the sources, the changed files and the running application\.\nWrite qa-evidence\/x-1\/a[123]\/plan\.md with your test approach\.\nWrite qa-evidence\/x-1\/a[123]\/questions\.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None\.\nDo not test the change in this turn\.\nYou have 600 seconds for this turn\. Write the two files early and update them as you go\.$/
+		)
 		assert.match(
 			call.prompt,
 			/\nTools you can use: node, playwright-cli\.\nA direct HTTP call is sufficient when it proves the behaviour\. Use the browser when the page itself is what you test\.\n/
@@ -98,11 +105,40 @@ test('explore start launches the explorers of the level in a clean context, then
 		assert.deepEqual(call.env, [])
 		assert.equal(call.cwd, workspace)
 		assert.doesNotMatch(call.prompt, /checkmate|record|journal/i)
-		assert.match(call.prompt, /^Test this change of the application and find its defects\./)
+		assert.doesNotMatch(call.prompt, /minutes|Test until|First read|At the end/)
 		assert.match(call.prompt, /http:\/\/127\.0\.0\.1:4173/)
-		assert.match(call.prompt, /Start each name or value that you make with qa-x-1-a[123]-\./)
+		assert.match(call.args.join(' '), /--session-id/)
+		assert(!call.args.includes('--resume'))
 	}
 	const sessions = new Set(explorers.map((call) => after(call.args, '--session-id')))
+	const testers = calls.filter((call) => call.role === 'tester')
+	assert.deepEqual(new Set(testers.map((call) => after(call.args, '--resume'))), sessions)
+	for (const call of testers) {
+		const study = explorers.find((item) => after(item.args, '--session-id') === after(call.args, '--resume'))
+		assert(calls.indexOf(study) < calls.indexOf(call), 'study turn first')
+		assert.equal(after(call.args, '--model'), testLevels.standard.model)
+		assert.equal(after(call.args, '--settings'), explorerSettings)
+		assert.deepEqual(
+			call.args.filter((arg: string, index: number) => call.args[index - 1] === '--allowedTools'),
+			['Read', 'Bash']
+		)
+		assert(!call.args.some((arg: string) => /--tools|disallowed|--session-id|--fork-session/.test(arg)))
+		assert.doesNotMatch(call.prompt, /checkmate|record|journal/i)
+		const explorer = /qa-evidence\/x-1\/(a\d)\/plan\.md/.exec(study.prompt)![1]
+		assert.match(
+			call.prompt,
+			new RegExp(
+				[
+					'^Now test the change and the existing behaviour that it can break\\.',
+					'The owner of the product has not answered your questions yet\\. Use the sources where they decide the point, and report the rest as unclear\\.',
+					`Make your own test data\\. Start each name or value that you make with qa-x-1-${explorer}-\\.`,
+					`Save the files that show a problem, for example screenshots or responses, in qa-evidence/x-1/${explorer}/\\.`,
+					`Write qa-evidence/x-1/${explorer}/report\\.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files\\. Number the defects D1, D2, and so on\\. List also what you tested and what is still unclear\\.`,
+					'You have 900 seconds for this turn\\. Write the report early and update it as you go\\.$',
+				].join('\\n')
+			)
+		)
+	}
 	const recorders = calls.filter((call) => call.role === 'recorder')
 	assert.deepEqual(new Set(recorders.map((call) => after(call.args, '--resume'))), sessions)
 	for (const call of recorders) {
@@ -168,7 +204,10 @@ test('without an install record the explorers start without the override, and st
 		calls
 			.filter((call) => call.args.includes('--settings'))
 			.map((call) => [call.role, JSON.parse(after(call.args, '--settings'))]),
-		[['explorer', { permissions: { deny: storeDenyRules } }]]
+		[
+			['explorer', { permissions: { deny: storeDenyRules } }],
+			['tester', { permissions: { deny: storeDenyRules } }],
+		]
 	)
 	const status = run(['explore', 'status', 'x-1', '--workspace', workspace], {
 		cwd: workspace,
@@ -240,19 +279,103 @@ test('a host authentication failure fails the exploration with the plain hint, a
 	assert.equal(called().length, 1)
 })
 
-test('--minutes sets the time budget of the brief, and the safety timeout stays well above it', (t) => {
+test('--minutes sets the seconds of the test turn only, and the safety timeout stays well above it', (t) => {
 	const { start, wait, called, command } = setup(t)
 	const started = start(['--level', 'smoke', '--minutes', '25'])
-	assert.equal(started.body.minutes, 25)
+	assert.deepEqual([started.body.studySeconds, started.body.testSeconds], [300, 1500])
 	wait()
-	const [explorer] = called().filter((call) => call.role === 'explorer')
-	assert.match(explorer.prompt, /\nYou have 25 minutes at most\. Write your report before the time ends\.\n/)
-	const status = command(['explore', 'status', 'x-1']).body
-	assert.equal(status.minutes, 25)
-	const events = command(['query', "SELECT detail FROM exploration_events WHERE step = 'start'"]).body.rows
-	assert.equal(JSON.parse(events[0].detail).timeoutSeconds, 25 * 60 * 3)
-	assert.deepEqual(
-		levelNames.map((name) => testLevels[name].minutes),
-		[5, 10, 20]
+	const [explorer] = called().filter((call) => call.role === 'tester')
+	assert.match(
+		explorer.prompt,
+		/\nYou have 1500 seconds for this turn\. Write the report early and update it as you go\.$/
 	)
+	const status = command(['explore', 'status', 'x-1']).body
+	assert.deepEqual([status.studySeconds, status.testSeconds], [300, 1500])
+	const events = command(['query', "SELECT detail FROM exploration_events WHERE step = 'start'"]).body.rows
+	assert.equal(JSON.parse(events[0].detail).timeoutSeconds, 1500 * 3)
+	start(['--level', 'smoke'])
+	command(['explore', 'wait', 'x-2', '--timeout', '60'])
+	const turns = called().filter((call) => call.role === 'explorer' || call.role === 'tester')
+	assert.match(turns[0].prompt, /\nYou have 300 seconds for this turn\./)
+	assert.match(turns[1].prompt, /\nYou have 600 seconds for this turn\./)
+	assert.deepEqual(
+		levelNames.map((name) => [testLevels[name].studySeconds, testLevels[name].testSeconds]),
+		[
+			[300, 600],
+			[600, 900],
+			[600, 1500],
+		]
+	)
+})
+
+test('a failed study turn ends the explorer, and the test turn does not start', (t) => {
+	const { start, wait, called, command } = setup(t, { replies: { explorer: '!fail' } })
+	start(['--level', 'smoke'])
+	assert.equal(wait().body.explorers[0].ended, 'operational_error')
+	assert.deepEqual(
+		called().map((call) => call.role),
+		['explorer']
+	)
+	const ended = command(['query', "SELECT detail FROM exploration_events WHERE step = 'end'"]).body.rows
+	assert.equal(JSON.parse(ended[0].detail).turn, 'study')
+})
+
+test('the brief of a retest asks for one line in the report for each problem of the known state', () => {
+	const brief = explorerBrief(
+		{
+			goal: 'g',
+			requirements: [],
+			sources: [],
+			instructions: null,
+			capabilities: [],
+			operations: [],
+			tools: [],
+			scope: [],
+			knownState: 'qa-evidence/x-2/known-state.md',
+		},
+		[],
+		'qa-',
+		'qa-evidence/x-2/a1',
+		{ study: 600, test: 900 }
+	)
+	assert.match(brief.study, /\nRead qa-evidence\/x-2\/known-state\.md\. It has the results of earlier builds\./)
+	assert.match(
+		brief.test,
+		/\nFor each problem in qa-evidence\/x-2\/known-state\.md, write one line in the report: still present, fixed, or not retested with the reason\.\nYou have 900 seconds/
+	)
+})
+
+test('a test turn that times out keeps its work: the recorder forks the session', async (t) => {
+	const { workspace, command, called, env } = setup(t, { replies: { tester: '!sleep', recorder: [defect] } })
+	assert.equal(command(['explore', 'open', 'checkout', '--build', 'b1']).code, 0)
+	const full = { ...process.env, ...env }
+	const launch = launchPlan(
+		{} as Profile,
+		{ planId: 'checkout', build: 'b1', level: 'smoke', allow: ['Read'], claudeArgs: [] },
+		full
+	)
+	const opened = openStore(workspace)
+	write(opened, { actor, command: 'explore start', subject: 'x-1', input: {} }, (operationId, at) => {
+		addEvent(
+			opened,
+			'x-1',
+			{ step: 'start', explorer: null, status: 'started', detail: { ...launch, timeoutSeconds: 1 } },
+			operationId,
+			at
+		)
+		return { reply: completed('x-1'), subjects: ['exploration:x-1'] }
+	})
+	closeStore(opened)
+	await driveExploration(workspace, 'x-1', full)
+	const status = command(['explore', 'status', 'x-1']).body
+	assert.deepEqual(
+		[status.state, status.explorers[0].ended, status.explorers[0].recorded, status.explorers[0].saved],
+		['completed', 'interrupted', 'completed', 1]
+	)
+	const calls = called()
+	assert.deepEqual(
+		calls.map((call) => call.role),
+		['explorer', 'tester', 'recorder']
+	)
+	assert.equal(after(calls[2].args, '--resume'), after(calls[0].args, '--session-id'))
 })

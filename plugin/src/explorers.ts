@@ -49,7 +49,8 @@ export type StartInput = OpenInput & {
 	timeoutSeconds?: number
 }
 export type Launch = {
-	minutes: number
+	studySeconds: number
+	testSeconds: number
 	level: TestLevel
 	explorers: number
 	model: string
@@ -85,7 +86,7 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	const host = hostModel(claudeArgs)
 	const hiddenPlugin = installedPluginId(env)
 	const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers
-	const minutes = input.minutes ?? row.minutes
+	const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds
 	requireWellFormed(
 		input.allow.length || (explorers === 0 && !row.verifier),
 		'Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash',
@@ -99,8 +100,10 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 		verifier: row.verifier,
 		context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model] },
 		allow: input.allow,
-		minutes,
-		timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, minutes * 60 * 3),
+		studySeconds: row.studySeconds,
+		testSeconds,
+		timeoutSeconds:
+			input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row.studySeconds, testSeconds) * 3),
 		pluginHidden: hiddenPlugin !== null,
 	}
 }
@@ -148,7 +151,8 @@ export function startExploration(store: Store, actor: string | undefined, input:
 				explorers: launch.explorers,
 				model: launch.model,
 				verifier: launch.verifier,
-				minutes: launch.minutes,
+				studySeconds: launch.studySeconds,
+				testSeconds: launch.testSeconds,
 				pluginHidden: launch.pluginHidden,
 				next: [`checkmate explore wait ${opened.explorationId}`],
 			}),
@@ -205,36 +209,49 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? '' }))
 	const claude = requireClaude(env)
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
-	const runs = explorerNames(launch.explorers).map((explorer) => {
+	const runs = explorerNames(launch.explorers).map(async (explorer) => {
 		const session = randomUUID()
 		const folder = evidenceFolder(explorationId, explorer)
 		mkdirSync(join(store.workspace, folder), { recursive: true })
-		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, launch.minutes)
+		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
+			study: launch.studySeconds,
+			test: launch.testSeconds,
+		})
 		event(store, actor, explorationId, {
 			step: 'launch',
 			explorer,
 			status: 'started',
 			detail: { session, context: launch.context, brief },
 		})
-		const args = childArgs({ ...launch.context, denyStore: true }, ['--session-id', session, ...allowed])
-		return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
-			(call) => ({ explorer, session, call })
-		)
+		const turn = (own: string[], prompt: string) =>
+			launchClaude(
+				claude,
+				childArgs({ ...launch.context, denyStore: true }, [...own, ...allowed]),
+				prompt,
+				store.workspace,
+				childEnv(env),
+				launch.timeoutSeconds
+			)
+		const study = await turn(['--session-id', session], brief.study)
+		const calls = study.failure ? [study] : [study, await turn(['--resume', session], brief.test)]
+		return { explorer, session, calls }
 	})
 	const ended = await Promise.all(runs)
-	for (const { explorer, session, call } of ended) {
+	for (const { explorer, session, calls } of ended) {
+		const call = calls.find((item) => item.failure) ?? calls.at(-1)!
 		const hint = failureHint(launch, call)
+		const durations = calls.flatMap((item) => (item.durationMs === undefined ? [] : [item.durationMs]))
 		event(store, actor, explorationId, {
 			step: 'end',
 			explorer,
 			status: call.failure?.[0] ?? 'completed',
 			detail: {
 				session,
-				...(call.failure ? { reason: call.failure[1] } : {}),
+				...(call.failure ? { turn: calls.length === 1 ? 'study' : 'test', reason: call.failure[1] } : {}),
 				...(call.stderr ? { stderr: call.stderr } : {}),
 				...(hint ? { hint } : {}),
-				...(call.costUsd === undefined ? {} : { costUsd: call.costUsd }),
-				...(call.durationMs === undefined ? {} : { durationMs: call.durationMs }),
+				...costOf(calls),
+				...(durations.length ? { durationMs: durations.reduce((total, ms) => total + ms, 0) } : {}),
 			},
 		})
 	}
@@ -408,7 +425,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 				store,
 				actor,
 				explorationId,
-				ended.filter((item) => !item.call.failure),
+				ended.filter((item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== 'operational_error'),
 				env
 			)
 		}
@@ -505,7 +522,8 @@ export function explorationStatus(store: Store, explorationId: string) {
 		model: launch?.model ?? null,
 		modelFrom: launch?.modelFrom ?? null,
 		verifier: launch?.verifier ?? null,
-		minutes: launch?.minutes ?? null,
+		studySeconds: launch?.studySeconds ?? null,
+		testSeconds: launch?.testSeconds ?? null,
 		pluginHidden: launch?.pluginHidden ?? null,
 		explorers,
 		phases: events

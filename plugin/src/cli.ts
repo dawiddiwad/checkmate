@@ -247,7 +247,8 @@ function explorationLines(reply: Reply): Printed {
 			model: status.model ?? undefined,
 			modelFrom: status.modelFrom ?? undefined,
 			verifier: status.verifier ?? undefined,
-			minutes: status.minutes ?? undefined,
+			studySeconds: status.studySeconds ?? undefined,
+			testSeconds: status.testSeconds ?? undefined,
 		},
 		lines: [
 			...status.explorers.map((item) => [
@@ -1355,7 +1356,8 @@ const commands: Record<string, Command> = {
 				`explorers=${level.explorers}`,
 				`model=${level.model}`,
 				`verifier=${level.verifier}`,
-				`minutes=${level.minutes}`,
+				`studySeconds=${level.studySeconds}`,
+				`testSeconds=${level.testSeconds}`,
 			]),
 		}),
 	},

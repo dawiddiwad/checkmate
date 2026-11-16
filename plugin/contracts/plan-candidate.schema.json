@@ -71,6 +71,9 @@
 						},
 						"minItems": 0,
 						"uniqueItems": true
+					},
+					"metadata": {
+						"$ref": "plan.schema.json#/definitions/metadata"
 					}
 				},
 				"required": [

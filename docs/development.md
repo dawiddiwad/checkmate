@@ -4,7 +4,7 @@
 
 The plugin is plain TypeScript that Node.js runs directly, with no runtime npm dependencies. Every change goes through `npm run phase:verify`, and a merged pull request releases itself.
 
-**On this page:** [Set up](#set-up) · [Layout](#layout) · [Checks](#checks) · [Live tests](#live-tests) · [Contracts](#contracts) · [Releases](#releases) · [Media](#media)
+**On this page:** [Set up](#set-up) · [Layout](#layout) · [Checks](#checks) · [Writing tests](#writing-tests) · [Live tests](#live-tests) · [Contracts](#contracts) · [Releases](#releases) · [Media](#media)
 
 ## Set up
 
@@ -48,27 +48,41 @@ npm run phase:verify
 4. `npm test`: the fast suite. It uses temporary workspaces and needs no network and no Claude credential.
 5. `node test/plugin.ts`: copies `plugin/` out of the repository and runs the bundled CLI without npm install.
 
+The verify job in CI also runs `npm run test:tools` as a separate step after `phase:verify`. `test:tools` runs `test/tools.ts`: a real browser through Playwright CLI and the HTTP API against the checkout fixture. It is not in `npm test`, because it tests the fixture and Playwright CLI, not Checkmate. Run it when you change `test/fixture.ts`, the Playwright CLI version, or `plugin/references/browser.md`.
+
 The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is not `/usr/bin/chromium`. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable directory.
 
-| Test file                 | Covers                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`      | Schema, version check, immutability triggers, foreign keys, WAL readers, canonical JSON, ULIDs. |
-| `test/targets.test.ts`    | Setup requests, profile checks, revision order, the default approval policy.                    |
-| `test/plans.test.ts`      | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.    |
-| `test/cross-plan.test.ts` | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.      |
-| `test/runs.test.ts`       | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.       |
-| `test/evidence.test.ts`   | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.     |
-| `test/views.test.ts`      | The inbox, the approval policy, the loop state, and the plan, run, and log lists.               |
-| `test/render.test.ts`     | HTML, Markdown, and JSON exports.                                                               |
-| `test/cli.test.ts`        | Compact and JSON output, flags, read-only `query`, actor, standard input, log, export.          |
-| `test/launcher.test.ts`   | `delegate` with a fake Claude CLI: worker output, database checks, deadlines, browser cleanup.  |
-| `test/tools.test.ts`      | A real browser and HTTP API against the checkout fixture.                                       |
-| `test/package.test.ts`    | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.    |
-| `test/release.test.ts`    | Version rules and the five version files.                                                       |
-| `test/ui.test.ts`         | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.    |
-| `test/ui.browser.test.ts` | The UI in a real browser: keyboard, forms, live updates, dark mode, and no JavaScript.          |
+| Test file                       | Covers                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `test/store.test.ts`            | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs.         |
+| `test/targets.test.ts`          | Setup requests, profile checks, revision order, the default approval policy.                            |
+| `test/plans.test.ts`            | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.            |
+| `test/cross-plan.test.ts`       | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.              |
+| `test/runs.test.ts`             | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.               |
+| `test/evidence.test.ts`         | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.             |
+| `test/views.test.ts`            | The inbox, the approval policy, the loop state, and the plan, run, and log lists.                       |
+| `test/render.test.ts`           | HTML, Markdown, and JSON exports.                                                                       |
+| `test/cli.test.ts`              | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.          |
+| `test/launcher.test.ts`         | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.           |
+| `test/hook.test.ts`             | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.           |
+| `test/package.test.ts`          | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.            |
+| `test/release.test.ts`          | Version rules and the five version files.                                                               |
+| `test/ui.test.ts`               | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.            |
+| `test/ui.browser.test.ts`       | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                        |
+| `test/ui.pages.browser.test.ts` | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width. |
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
+
+## Writing tests
+
+Use these rules when you add or change a test.
+
+1. **Assert a rule once.** Assert it at the lowest layer that owns it, for example `plans`, `runs`, or `views`. A CLI, UI, or browser test checks only the wiring: one happy path and one refusal for each command or page.
+2. **Write one scenario for each feature and for each escaped bug.** At each step, check `state`, `waitsOn`, `why`, and `next`. Name the test after the behavior that broke.
+3. **Use a table for validation.** Write one test for each input surface, with a table of inputs and expected reasons. Do not add a test for each bad input.
+4. **Write one property test for each state machine.** Check invariants at each step, not only that the walk ends.
+5. **Assert behavior, not text.** The agent-facing CLI lines are a contract. Check the format of each command in one test. In other places, match the identifying tokens, for example `/Unknown test .*T9/`. Select HTML by `data-key`, role, or label, not by class names or markup.
+6. **Keep a runtime budget, not a count budget.** Do not use a fixed wait. Wait for a condition, or inject the timeout. Use a subprocess only when the proof needs a process boundary, for example standard input, an exit code, or a lock between processes. Use a browser only for client behavior. Seed a shared workspace once for each file, and copy it for each test.
 
 ## Live tests
 
@@ -78,6 +92,7 @@ npm run test:live
 
 `test:live` runs `test/live.ts` and `test/live-session.ts` with a real Claude Code CLI against the local checkout fixture.
 
+- Claude Code CLI: the tests use the `claude` command on the `PATH`. It is not a development dependency. The live job in CI installs a pinned version.
 - Authentication: set `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CHECKMATE_USE_HOST_LOGIN=1` for an existing host login. With a token, the test uses a temporary `CLAUDE_CONFIG_DIR`. Without authentication, the test fails. It does not skip.
 - Model: the test sets `ANTHROPIC_MODEL` to `claude-haiku-5-5` when it is not set. Checkmate does not select a model.
 - Permissions: the workers get `Read` and `Bash` in a temporary workspace.
@@ -158,7 +173,7 @@ node scripts/render-diagrams.ts
 
 ```sh
 CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots
-for name in inbox plans plan run-gap; do
+for name in inbox plans plan run-gap settings-target; do
   convert /tmp/shots/$name-dark.png -resize 1280x -quality 82 docs/img/ui/$name.jpg
 done
 ```

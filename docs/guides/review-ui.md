@@ -26,7 +26,7 @@ The command prints `completed ui url=<url>`. Open that URL in a browser on the s
 
 <img src="../img/ui/inbox.jpg" alt="The inbox in dark mode with four items: two gaps to answer, one of them from run-7, one plan to approve, and one result to accept." width="100%"/>
 
-The start page. It groups the gaps to answer, the plans to approve, the results to accept, and the plans to draft. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
+The start page. It groups the gaps to answer, the plans to approve or change, the results to accept, and the plans to draft. A rejected plan shows `rejected`, and its summary starts with `Rejected. Change the plan.` The number next to `Inbox` counts the oracle actions only. A rejected plan is an oracle action. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
 
 ### Plans
 
@@ -46,11 +46,24 @@ The tests, gaps, requirements and coverage, runs, decisions, and history of one 
 
 <img src="../img/ui/run-gap.jpg" alt="The run page of run-7 in dark mode. It shows defect F1 with expected and observed values and reproduction steps, the new gap G4 with the Answer and Bring into plan buttons, the coverage table, and the Accept run-7 panel on the right." width="100%"/>
 
-The outcomes, the assertions with evidence, the findings, the new gaps, the coverage, and the result decision. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`. The decision panel lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, or JSON.
+The outcomes, the assertions with evidence, the findings, the new gaps, the coverage, and the result decision. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`. The decision panel lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, JSON, or JUnit XML. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags.
 
 ### Runs and Log
 
-The run list and the operation log. They page, sort, and filter like the plan list.
+The run list and the operation log. They page, sort, and filter like the plan list. The run list and the run page show the instance of each run.
+
+### Settings
+
+<img src="../img/ui/settings-target.jpg" alt="The Settings page of target shop-local in dark mode. It shows the entry point web, the instances preview (retired), local, and staging with their entry values, and the Add instance form on the right." width="100%"/>
+
+The button with the gear icon at the right of the top bar opens Settings. The first page is `Targets`. It lists each target with its latest revision, its capabilities, its entry points, and its number of active instances.
+
+A target page shows the entry points, the instances, the tools, the profile with the authentication references, and the revision history. Open an older revision from the history.
+
+- **Add instance.** Give an instance ID and a value for each entry point. The environment and the references are optional. Write one reference on each line. Adding an instance needs no new revision and no approval.
+- **Retire.** Click `Retire` on the instance row, then `Confirm retire`. No new run can start on a retired instance. Its runs stay as they are.
+
+Each change records your name and shows in the Log, as with the command `target instance add` or `target instance retire`.
 
 ## How a decision works
 
@@ -58,7 +71,12 @@ The run list and the operation log. They page, sort, and filter like the plan li
 2. Click the action, for example `Approve checkout@2`. The panel shows a short summary and a `Confirm` button.
 3. Click `Confirm`. The UI records the decision and opens the next inbox item.
 
-Each form sends the digest of the snapshot that you see. When the record changed after the page loaded, the UI refuses the action, keeps your text, and shows a message.
+Each form sends the digest of the snapshot that you see. A decision form also sends a token of the latest decision on the subject. When the record changed after the page loaded, the UI refuses the action, keeps your text, and shows a message.
+
+- When another oracle decided after the page loaded, the message names the decision and the actor, for example `run-7 was accepted by qa-lead`. Your decision is not recorded. Read the decision, then send yours again.
+- A form that you send a second time, for example after Back in the browser, is refused in the same way. The UI records each decision once.
+- When the plan changed after you opened the editor, the editor shows the latest version. `Your changes (not saved)` lists the values from your form that differ from it. Apply them again, then save.
+- A form with more than 256 KiB of text is refused with the status 413. Nothing is recorded.
 
 ## Your name
 

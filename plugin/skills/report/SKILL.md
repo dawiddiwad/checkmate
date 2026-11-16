@@ -1,6 +1,6 @@
 ---
 name: report
-description: Export a Checkmate plan revision or run report as HTML, Markdown, or JSON.
+description: Export a Checkmate plan revision or run report as HTML, Markdown, or JSON, or a run as JUnit XML.
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules and the report format.
@@ -8,7 +8,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules an
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 1. Choose the subject: a plan revision `<planId@rev>` or a run `<runId>`. When the oracle does not name it, run `checkmate run list` or `checkmate plan list` and ask.
-2. Choose the format: `html`, `md`, or `json`. A run report needs a finished run. A run report in HTML is self-contained. It has a print stylesheet, so the browser can save it as a clean PDF.
+2. Choose the format: `html`, `md`, or `json`. For a CI system or a test management tool, use `junit` for a run. A run report needs a finished run. A run report in HTML is self-contained. It has a print stylesheet, so the browser can save it as a clean PDF.
 3. Run one command. Without `--out`, the command prints the report on standard output and writes no file:
 
 ```sh
@@ -21,7 +21,7 @@ checkmate export plan <planId@rev> --format md
 6. With `--out`, give the command response and the output path.
 7. When you add a table or a sentence of your own, copy each ID and title exactly from the report or the database. Do not rename, renumber, or translate them.
 
-A JSON run report has `result`, `sha256`, `acceptance`, and `plan`.
+A JSON run report has `result`, `sha256`, `acceptance`, `planApproval`, and `plan`. `acceptance.latest` and `planApproval.latest` name the actor and the time of the latest verdict.
 
 The review UI gives the same exports: `Download report` on the run page, and `Export` on the plan page.
 

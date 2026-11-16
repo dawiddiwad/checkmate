@@ -1,11 +1,21 @@
 import type { Reply, Store } from './store.ts'
 import type { Plan, Profile } from './types.ts'
-import type { RequestedTool, TargetRequest } from './targets.ts'
-import type { PlanTool } from './plans.ts'
+import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from './targets.ts'
+import type { Approval, PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
-import { closeStore, completed, openReadOnlyStore, openStore } from './store.ts'
+import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
-import { openTarget, saveTarget, showTarget, showTargetRequest } from './targets.ts'
+import {
+	addInstance,
+	entryPointKinds,
+	instanceList,
+	openTarget,
+	retireInstance,
+	saveTarget,
+	showTarget,
+	showTargetRequest,
+	targetList,
+} from './targets.ts'
 import {
 	adoptGaps,
 	answerGap,
@@ -20,8 +30,15 @@ import {
 	savePlan,
 	showPending,
 	showPlanRequest,
+	decisionKinds,
+	partialModes,
 } from './plans.ts'
 import {
+	assertionResults,
+	cleanupStatuses,
+	closeOutcomes,
+	completions,
+	newBlockerPolicies,
 	acceptResult,
 	beginRun,
 	checkAssertion,
@@ -34,6 +51,7 @@ import {
 } from './runs.ts'
 import {
 	evidenceBytes,
+	findingList,
 	inbox,
 	operationLog,
 	planDetail,
@@ -43,13 +61,14 @@ import {
 	runDetail,
 	runList,
 } from './views.ts'
-import { exportPlan, exportRun } from './render.ts'
+import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { constants } from 'node:sqlite'
 
-type FlagKind = 'value' | 'list' | 'repeat' | 'switch'
+type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
 type Context = { actor: string | undefined; stdin: () => unknown; text: () => string }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
@@ -60,6 +79,7 @@ type Command = {
 	write?: boolean
 	stdin?: boolean
 	readOnly?: boolean
+	check?: (args: Args) => void
 	run: (store: Store, args: Args, context: Context) => Reply
 	print?: (reply: Reply) => Printed
 }
@@ -91,9 +111,17 @@ function list(args: Args, name: string) {
 
 function integer(args: Args, name: string) {
 	const text = value(args, name)
-	if (text === undefined) return undefined
-	requireCondition(/^[0-9]+$/.test(text), `Invalid --${name}: ${text}. Use a whole number.`)
-	return Number(text)
+	return text === undefined ? undefined : Number(text)
+}
+
+function optionValue(token: string, kind: FlagKind, text: string) {
+	if (Array.isArray(kind))
+		requireCondition(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(', ')}.`)
+	else if (typeof kind === 'object' && 'min' in kind)
+		requireCondition(
+			/^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
+			`Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
+		)
 }
 
 function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
@@ -107,6 +135,49 @@ function toolSpec(spec: string): RequestedTool {
 	const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec)
 	requireCondition(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`)
 	return { name: match[1], kind: match[2] as RequestedTool['kind'], purpose: match[3] }
+}
+
+function entryPointSpec(spec: string): EntryPoint {
+	const match = /^([^:]+):([^:]+):(.+)$/.exec(spec)
+	requireCondition(
+		match && (entryPointKinds as readonly string[]).includes(match[2]),
+		`Invalid --entry-point: ${spec}. Use <name>:<url|command|value>:<purpose>.`
+	)
+	return { name: match[1], kind: match[2] as EntryPoint['kind'], purpose: match[3] }
+}
+
+function instanceInput(args: Args, stdin: () => unknown) {
+	const entries = list(args, 'entry')
+	const environment = value(args, 'environment')
+	const references = list(args, 'reference')
+	if (entries === undefined) {
+		requireCondition(
+			environment === undefined && !references,
+			'Give --entry with --environment and --reference, or send the instance on standard input'
+		)
+		return stdin()
+	}
+	const values: Record<string, string> = {}
+	for (const entry of entries) {
+		const at = entry.indexOf('=')
+		requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
+		const name = entry.slice(0, at)
+		requireCondition(!(name in values), `Entry point ${name} is given twice`)
+		values[name] = entry.slice(at + 1)
+	}
+	return {
+		entries: values,
+		...(environment === undefined ? {} : { environment }),
+		...(references ? { references } : {}),
+	}
+}
+
+function instanceLines(instance: InstanceRecord) {
+	return [
+		...Object.entries(instance.entries).map(([name, entry]) => ['entry', name, entry]),
+		...(instance.environment ? [['environment', instance.environment]] : []),
+		...instance.references.map((reference) => ['reference', reference]),
+	]
 }
 
 function planRequestInput(args: Args, stdin: () => unknown) {
@@ -203,7 +274,13 @@ const commands: Record<string, Command> = {
 				},
 				lines: [
 					...status.why.map((line) => ['why', line]),
-					...(status.next ? [['next', status.next]] : []),
+					...status.next.map((line) => ['next', line]),
+					...status.openRuns.map((run) => [
+						run.runId,
+						'started',
+						`build=${run.build}`,
+						`instance=${run.instanceId}`,
+					]),
 					...status.gaps.map((gap) =>
 						gap.runId
 							? [gap.gapId, 'run_gap', gap.severity, gap.runId, gap.question]
@@ -229,13 +306,13 @@ const commands: Record<string, Command> = {
 	},
 	'target open': {
 		positionals: ['targetId'],
-		flags: { 'base-url': 'value', capabilities: 'list', operations: 'list', tool: 'repeat' },
-		required: ['base-url', 'capabilities', 'operations'],
+		flags: { 'entry-point': 'repeat', capabilities: 'list', operations: 'list', tool: 'repeat' },
+		required: ['entry-point', 'capabilities', 'operations'],
 		write: true,
 		run: (store, args, { actor }) =>
 			openTarget(store, actor, {
 				targetId: value(args, 'targetId')!,
-				baseUrl: value(args, 'base-url')!,
+				entryPoints: (list(args, 'entry-point') ?? []).map(entryPointSpec),
 				capabilities: list(args, 'capabilities') ?? [],
 				allowedOperations: list(args, 'operations') ?? [],
 				tools: (list(args, 'tool') ?? []).map(toolSpec),
@@ -249,7 +326,7 @@ const commands: Record<string, Command> = {
 			const request = reply.data.request as TargetRequest
 			return {
 				lines: [
-					['baseUrl', request.baseUrl],
+					...request.entryPoints.map((entry) => ['entryPoint', entry.name, entry.kind, entry.purpose]),
 					['capabilities', request.capabilities],
 					['operations', request.allowedOperations],
 					...request.tools.map((tool) => ['tool', tool.name, tool.kind, tool.purpose]),
@@ -265,17 +342,36 @@ const commands: Record<string, Command> = {
 			saveTarget(store, actor, { targetId: value(args, 'targetId')!, profile: stdin() }),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), recorded: reply.data.recorded } }),
 	},
+	'target list': {
+		positionals: [],
+		run: (store) => completed('targets', { targets: targetList(store) }),
+		print: (reply) => ({
+			facts: { count: (reply.data.targets as unknown[]).length },
+			lines: (reply.data.targets as ReturnType<typeof targetList>).map((target) => [
+				target.revision === null ? target.targetId : `${target.targetId}@${target.revision}`,
+				`capabilities=${cell(target.capabilities)}`,
+				`instances=${target.activeInstances}`,
+			]),
+		}),
+	},
 	'target show': {
 		positionals: ['reference'],
-		run: (store, args) => showTarget(store, value(args, 'reference')!),
+		flags: { instance: 'value' },
+		run: (store, args) => showTarget(store, value(args, 'reference')!, value(args, 'instance')),
 		print: (reply) => {
 			const profile = reply.data.profile as Profile
 			const approvals = reply.data.approvals as { plan: string; result: string }
+			const instance = reply.data.instance as InstanceRecord | undefined
 			return {
-				facts: { sha256: short(reply.data.sha256), ready: profile.readyForLiveExecution },
+				facts: {
+					sha256: short(reply.data.sha256),
+					ready: profile.readyForLiveExecution,
+					instance: instance?.instanceId,
+					retired: instance ? Boolean(instance.retired) : undefined,
+				},
 				lines: [
-					['baseUrl', profile.baseUrl],
-					['environment', profile.environment],
+					...profile.entryPoints.map((entry) => ['entryPoint', entry.name, entry.kind, entry.purpose]),
+					['authentication', profile.authentication.kind, profile.authentication.references],
 					['capabilities', profile.capabilities],
 					['operations', profile.allowedOperations],
 					['approvals', `plan=${approvals.plan}`, `result=${approvals.result}`],
@@ -287,9 +383,73 @@ const commands: Record<string, Command> = {
 						tool.reachable ? 'reachable' : 'unreachable',
 						tool.purpose,
 					]),
+					...(reply.data.instances as InstanceRecord[]).map((item) => [
+						'instance',
+						item.instanceId,
+						item.environment ?? '-',
+					]),
+					...(instance ? instanceLines(instance) : []),
 				],
 			}
 		},
+	},
+	'target instance add': {
+		positionals: ['targetId', 'instanceId'],
+		flags: { entry: 'repeat', environment: 'value', reference: 'repeat' },
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, stdin }) =>
+			addInstance(store, actor, {
+				targetId: value(args, 'targetId')!,
+				instanceId: value(args, 'instanceId')!,
+				instance: instanceInput(args, stdin),
+			}),
+		print: (reply) => ({
+			facts: { recorded: reply.data.recorded },
+			lines: Object.entries(reply.data.entries as Record<string, string>).map(([name, entry]) => [
+				'entry',
+				name,
+				entry,
+			]),
+		}),
+	},
+	'target instance retire': {
+		positionals: ['targetId', 'instanceId'],
+		write: true,
+		run: (store, args, { actor }) =>
+			retireInstance(store, actor, {
+				targetId: value(args, 'targetId')!,
+				instanceId: value(args, 'instanceId')!,
+			}),
+		print: (reply) => {
+			const started = (reply.data.startedRuns ?? []) as string[]
+			return {
+				facts: { recorded: reply.data.recorded },
+				lines: started.length
+					? [['warning', `Started runs use this instance: ${started.join(', ')}. Its sandbox may be gone.`]]
+					: [],
+			}
+		},
+	},
+	'target instance list': {
+		positionals: ['targetId'],
+		run: (store, args) => {
+			const targetId = value(args, 'targetId')!
+			return completed(targetId, { instances: instanceList(store, targetId) })
+		},
+		print: (reply) => ({
+			facts: { count: (reply.data.instances as unknown[]).length },
+			lines: (reply.data.instances as InstanceRecord[]).map((instance) => [
+				instance.instanceId,
+				instance.retired ? 'retired' : 'active',
+				instance.environment ?? '-',
+				{
+					preformatted: Object.entries(instance.entries)
+						.map(([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`)
+						.join(','),
+				},
+			]),
+		}),
 	},
 	'plan open': {
 		positionals: ['planId'],
@@ -344,16 +504,15 @@ const commands: Record<string, Command> = {
 	},
 	'plan show': {
 		positionals: ['reference'],
-		flags: { tests: 'list', fields: 'list', gaps: 'value' },
+		flags: { tests: 'list', fields: 'list', gaps: ['open', 'all'] },
 		run: (store, args) => showPlan(store, args),
 		print: printPlan,
 	},
 	'plan list': {
 		positionals: [],
-		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': 'value' },
+		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': roles },
 		run: (store, args) => {
 			const waitsOn = value(args, 'waits-on')
-			if (waitsOn !== undefined) requireChoice(waitsOn, roles, 'role (--waits-on)')
 			const plans = planList(store).filter(
 				(plan) =>
 					(!args['needs-decision'] || plan.openBlockingGaps.length > 0) &&
@@ -400,7 +559,7 @@ const commands: Record<string, Command> = {
 	},
 	'gap answer': {
 		positionals: ['planId', 'gapId'],
-		flags: { kind: 'value', value: 'value', source: 'value', rationale: 'value', 'expect-sha': 'value' },
+		flags: { kind: decisionKinds, value: 'value', source: 'value', rationale: 'value', 'expect-sha': 'value' },
 		required: ['kind', 'value', 'rationale'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -438,7 +597,13 @@ const commands: Record<string, Command> = {
 			return {
 				facts: { sha256: short(data.sha256), decisions: data.decisions.length },
 				lines: [
-					...data.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+					...data.decisions.map((decision) => [
+						decision.id,
+						decision.gapId,
+						decision.kind,
+						decision.value,
+						decision.rationale,
+					]),
 					...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 					...data.tests.flatMap(testLines),
 				],
@@ -496,7 +661,7 @@ const commands: Record<string, Command> = {
 	),
 	'run gate': {
 		positionals: ['reference'],
-		flags: { tests: 'list', build: 'value', partial: 'value', 'retest-of': 'value' },
+		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },
 		required: ['build'],
 		run: (store, args) =>
 			gate(store, {
@@ -516,9 +681,10 @@ const commands: Record<string, Command> = {
 		flags: {
 			tests: 'list',
 			build: 'value',
-			partial: 'value',
-			'on-new-blocker': 'value',
-			timeout: 'value',
+			instance: 'value',
+			partial: partialModes,
+			'on-new-blocker': newBlockerPolicies,
+			timeout: { min: 1, max: 3600 },
 			'retest-of': 'value',
 		},
 		required: ['build'],
@@ -529,6 +695,7 @@ const commands: Record<string, Command> = {
 				reference: value(args, 'reference')!,
 				tests: list(args, 'tests'),
 				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
 				partial: value(args, 'partial'),
 				onNewBlocker: value(args, 'on-new-blocker'),
 				timeoutSeconds: integer(args, 'timeout'),
@@ -536,6 +703,7 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({
 			facts: {
+				instance: reply.data.instanceId,
 				tests: reply.data.tests,
 				startedAt: reply.data.startedAt,
 				browserSession: reply.data.browserSession,
@@ -547,7 +715,7 @@ const commands: Record<string, Command> = {
 	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: 'value', observed: 'value', reason: 'value', evidence: 'repeat' },
+		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
 		required: ['result'],
 		write: true,
 		run: (store, args, context) =>
@@ -567,7 +735,7 @@ const commands: Record<string, Command> = {
 	},
 	'run close': {
 		positionals: ['runId', 'testId'],
-		flags: { outcome: 'value', reason: 'value', evidence: 'repeat' },
+		flags: { outcome: closeOutcomes, reason: 'value', evidence: 'repeat' },
 		write: true,
 		run: (store, args, context) =>
 			closeTest(store, context.actor, {
@@ -599,7 +767,7 @@ const commands: Record<string, Command> = {
 	},
 	'run finish': {
 		positionals: ['runId'],
-		flags: { completion: 'value', cleanup: 'value', 'cleanup-reason': 'value' },
+		flags: { completion: completions, cleanup: cleanupStatuses, 'cleanup-reason': 'value' },
 		required: ['completion', 'cleanup', 'cleanup-reason'],
 		write: true,
 		run: (store, args, { actor }) =>
@@ -673,6 +841,7 @@ const commands: Record<string, Command> = {
 					state: detail.state,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
+					instance: detail.instance.instanceId,
 					completion: detail.result?.completion,
 					coverage: detail.result?.coverage.status,
 					acceptance: detail.result?.acceptance,
@@ -695,6 +864,7 @@ const commands: Record<string, Command> = {
 						finding.title,
 					]),
 					...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
+					...decisionLines(detail.result?.latestDecision),
 				],
 			}
 		},
@@ -710,10 +880,35 @@ const commands: Record<string, Command> = {
 				run.runId,
 				`${run.planId}@${run.revision}`,
 				run.build,
+				run.instanceId,
 				run.state,
 				run.completion,
 				run.coverage,
 				run.acceptance,
+			]),
+		}),
+	},
+	'finding list': {
+		positionals: [],
+		flags: { plan: 'value', open: 'switch' },
+		run: (store, args) =>
+			completed('findings', {
+				findings: findingList(store, { planId: value(args, 'plan'), open: Boolean(args.open) }),
+			}),
+		print: (reply) => ({
+			facts: { count: (reply.data.findings as unknown[]).length },
+			lines: (reply.data.findings as ReturnType<typeof findingList>).map((finding) => [
+				`${finding.runId}/${finding.findingId}`,
+				`${finding.planId}@${finding.revision}`,
+				finding.build,
+				finding.instanceId,
+				finding.type,
+				finding.severity,
+				finding.testIds,
+				Object.entries(finding.metadata)
+					.map(([key, field]) => `${key}=${field}`)
+					.join('; ') || null,
+				finding.title,
 			]),
 		}),
 	},
@@ -735,19 +930,25 @@ const commands: Record<string, Command> = {
 		},
 		print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } }),
 	},
-	'export plan': exportCommand('reference', exportPlan),
-	'export run': exportCommand('runId', exportRun),
+	'export plan': exportCommand('reference', formats, exportPlan),
+	'export run': exportCommand('runId', runFormats, exportRun),
 	log: {
 		positionals: [],
-		flags: { subject: 'value', limit: 'value' },
-		run: (store, args) => {
+		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
+		check: (args) => {
 			const subject = value(args, 'subject')
 			requireCondition(
 				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
 				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
 			)
+		},
+		run: (store, args) => {
 			return completed('log', {
-				operations: operationLog(store, { subject, limit: integer(args, 'limit') }),
+				operations: operationLog(store, {
+					subject: value(args, 'subject'),
+					limit: integer(args, 'limit'),
+					after: integer(args, 'after'),
+				}),
 			})
 		},
 		print: (reply) => ({
@@ -758,6 +959,8 @@ const commands: Record<string, Command> = {
 				operation.command,
 				operation.status,
 				operation.subjects,
+				...rationaleOf(operation.arguments),
+				operation.rowid,
 			]),
 		}),
 	},
@@ -765,9 +968,9 @@ const commands: Record<string, Command> = {
 		positionals: ['sql'],
 		readOnly: true,
 		run: (store, args) => {
-			const statement = store.db.prepare(value(args, 'sql')!)
+			const statement = queryStatement(store, value(args, 'sql')!)
 			const columns = statement.columns().map((column) => column.name)
-			const rows = statement.all().map((row) =>
+			const rows = readOnly(() => statement.all()).map((row) =>
 				Object.fromEntries(
 					columns.map((column) => {
 						const field = row[column]
@@ -788,10 +991,54 @@ const commands: Record<string, Command> = {
 	},
 }
 
-function exportCommand(positional: string, render: (store: Store, subject: string, format: string) => string): Command {
+const readOnlyReason = 'query is read-only. Use the Checkmate commands to change the record.'
+const readPragmas = [
+	'table_info',
+	'table_xinfo',
+	'table_list',
+	'index_list',
+	'index_info',
+	'index_xinfo',
+	'foreign_key_list',
+	'foreign_key_check',
+	'integrity_check',
+	'quick_check',
+]
+
+function readOnly<T>(read: () => T): T {
+	try {
+		return read()
+	} catch (error) {
+		if (error instanceof Error && 'errcode' in error && [8, 23].includes(Number(error.errcode)))
+			throw new Error(readOnlyReason, { cause: error })
+		throw error
+	}
+}
+
+function queryStatement(store: Store, sql: string) {
+	store.db.setAuthorizer((action, name, argument) =>
+		action === constants.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name!)
+			? constants.SQLITE_DENY
+			: constants.SQLITE_OK
+	)
+	const statement = readOnly(() => store.db.prepare(sql))
+	requireCondition(statement.columns().length > 0, readOnlyReason)
+	const rest = sql.slice(statement.sourceSQL.length)
+	requireCondition(
+		/^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
+		'query runs one SQL statement. Send each statement in its own query.'
+	)
+	return statement
+}
+
+function exportCommand(
+	positional: string,
+	choices: readonly string[],
+	render: (store: Store, subject: string, format: string) => string
+): Command {
 	return {
 		positionals: [positional],
-		flags: { format: 'value', out: 'value' },
+		flags: { format: choices, out: 'value' },
 		required: ['format'],
 		run: (store, args) => {
 			const subject = value(args, positional)!
@@ -867,6 +1114,15 @@ function showPlan(store: Store, args: Args) {
 	})
 }
 
+function decisionLines(decision: Approval | null | undefined) {
+	return decision ? [['decision', decision.verdict, decision.actor, decision.at, decision.rationale]] : []
+}
+
+function rationaleOf(input: unknown) {
+	const rationale = (input as { rationale?: unknown }).rationale
+	return typeof rationale === 'string' && rationale ? [rationale] : []
+}
+
 function testLines(test: Plan['tests'][number]) {
 	return [
 		[test.id, test.readiness, test.capability, test.title],
@@ -908,13 +1164,21 @@ function printPlan(reply: Reply): Printed {
 			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
 			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
 			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-			...plan.decisions.map((decision) => [decision.id, decision.gapId, decision.kind, decision.value]),
+			...plan.decisions.map((decision) => [
+				decision.id,
+				decision.gapId,
+				decision.kind,
+				decision.value,
+				decision.rationale,
+			]),
 			...detail.pendingDecisions.map((decision) => [
 				decision.id,
 				decision.gapId,
 				`pending ${decision.kind}`,
 				decision.value,
+				decision.rationale,
 			]),
+			...decisionLines(detail.approval.latest),
 		],
 	}
 }
@@ -935,6 +1199,7 @@ function writeOutput(store: Store, out: string, content: string | Uint8Array) {
 function cell(field: unknown): string {
 	if (field === null || field === undefined) return '-'
 	if (Array.isArray(field)) return field.length ? field.map(cell).join(',') : '-'
+	if (typeof field === 'object' && 'preformatted' in field) return String(field.preformatted)
 	if (typeof field === 'object') return JSON.stringify(field)
 	return String(field).replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
 }
@@ -956,12 +1221,20 @@ function format(reply: Reply, json: boolean, print?: Command['print']) {
 	return compact(reply, print ? print(reply) : {})
 }
 
+export function formatReply(name: string, reply: Reply, json: boolean) {
+	return format(reply, json, commands[name]?.print)
+}
+
 const globalFlags: Record<string, FlagKind> = { workspace: 'value', json: 'switch' }
 
 function commandName(argv: string[]) {
-	const words = argv.slice(0, 2).filter((word) => !word.startsWith('--'))
-	if (words.length === 2 && commands[words.join(' ')]) return words.join(' ')
-	if (commands[words[0]]) return words[0]
+	const words: string[] = []
+	for (const word of argv.slice(0, 3)) {
+		if (word.startsWith('--')) break
+		words.push(word)
+	}
+	for (let count = words.length; count > 0; count--)
+		if (commands[words.slice(0, count).join(' ')]) return words.slice(0, count).join(' ')
 	throw new Error(`Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`)
 }
 
@@ -989,7 +1262,8 @@ function parse(name: string, tokens: string[]) {
 		}
 		const next = tokens[++i]
 		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
-		if (kind === 'value') {
+		optionValue(token, kind, next)
+		if (kind !== 'list' && kind !== 'repeat') {
 			if (flag in args) throw new Error(`Option ${token} is given twice`)
 			args[flag] = next
 		} else if (kind === 'list') {
@@ -1003,13 +1277,20 @@ function parse(name: string, tokens: string[]) {
 	if (positionals.length !== command.positionals.length) throw new Error(usage(name))
 	for (const flag of command.required ?? []) if (!(flag in args)) throw new Error(`Missing --${flag}. ${usage(name)}`)
 	command.positionals.forEach((positional, i) => (args[positional] = positionals[i]))
+	command.check?.(args)
 	return args
+}
+
+function placeholder(kind: FlagKind) {
+	if (Array.isArray(kind)) return kind.join('|')
+	if (typeof kind === 'object') return 'n'
+	return kind === 'list' ? 'a,b' : 'value'
 }
 
 function usage(name: string) {
 	const command = commands[name]
 	const flags = Object.entries(command.flags ?? {}).map(([flag, kind]) => {
-		const text = kind === 'switch' ? `--${flag}` : `--${flag} <${kind === 'list' ? 'a,b' : 'value'}>`
+		const text = kind === 'switch' ? `--${flag}` : `--${flag} <${placeholder(kind)}>`
 		return command.required?.includes(flag) ? text : `[${text}]`
 	})
 	return [
@@ -1032,6 +1313,21 @@ function help() {
 	].join('\n')
 }
 
+function commandHelp(argv: string[]): Reply {
+	const words = argv.slice(
+		0,
+		argv.findIndex((word) => word.startsWith('--'))
+	)
+	for (let count = words.length; count > 0; count--) {
+		const prefix = words.slice(0, count).join(' ')
+		if (prefix === 'ui') return completed('ui', { usage: [uiUsage.replace('Usage: ', '')] })
+		const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `))
+		if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace('Usage: ', '')) })
+	}
+	const reason = `Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`
+	return { status: 'invalid_request', subject: 'checkmate', reasons: [reason], data: { usage: [] } }
+}
+
 function version() {
 	return JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version as string
 }
@@ -1049,6 +1345,14 @@ export function run(argv: string[], io: Io): Outcome {
 	if (argv[0] === '--version') return { code: 0, output: version() }
 	if (!argv.length || argv[0] === '--help') return { code: 0, output: help() }
 	const json = argv.includes('--json')
+	if (argv.includes('--help')) {
+		const reply = commandHelp(argv)
+		const code = reply.status === 'completed' ? 0 : 1
+		return {
+			code,
+			output: format(reply, json, (help) => ({ lines: (help.data.usage as string[]).map((line) => [line]) })),
+		}
+	}
 	let name = 'checkmate'
 	let args: Args
 	try {
@@ -1071,7 +1375,9 @@ export function run(argv: string[], io: Io): Outcome {
 			return { code, output: reply.data.content.replace(/\n$/, '') }
 		return { code, output: format(reply, json, command.print) }
 	} catch (error) {
-		const reply: Reply = { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }
+		const reply: Reply = isBusy(error)
+			? { status: 'operational_error', subject, reasons: [(error as Error).message, busyReason], data: {} }
+			: { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }
 		return { code: 1, output: format(reply, json) }
 	} finally {
 		if (store) closeStore(store)
@@ -1122,7 +1428,7 @@ export async function serveUi(tokens: string[]) {
 }
 
 export async function main(argv: string[]) {
-	if (argv[0] === 'ui') return serveUi(argv.slice(1))
+	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,

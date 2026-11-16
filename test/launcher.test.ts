@@ -1,11 +1,36 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { delegate, minimumRules, resumeReason, worker } from '../cli/src/launcher.ts'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import type { Stage } from '../cli/src/launcher.ts'
+import {
+	delegate,
+	minimumRules,
+	reservedClaudeArgs,
+	resumeReason,
+	unverifiedReason,
+	worker,
+} from '../cli/src/launcher.ts'
+import { busyReason, closeStore, openStore } from '../plugin/src/store.ts'
+import { formatReply } from '../plugin/src/cli.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
-import { actor, begin, candidate, check, directory, plan, planRequest, ready, root, store, target } from './support.ts'
+import { retireInstance } from '../plugin/src/targets.ts'
+import { rejectResult } from '../plugin/src/runs.ts'
+import {
+	actor,
+	begin,
+	candidate,
+	check,
+	directory,
+	passRun,
+	plan,
+	planRequest,
+	ready,
+	root,
+	store,
+	target,
+} from './support.ts'
 import type { TestContext } from 'node:test'
 
 const rules = ['Read', 'Bash']
@@ -164,24 +189,209 @@ reply({ status, subject, reasons })`
 	assert.deepEqual(operation, { id: saved.operation, actor: 'claude:plan' })
 })
 
-test('the delegated prompt names the plugin CLI and tells the worker not to ask or wait for the oracle', async (t) => {
+test('the delegated prompt names the plugin CLI and the commands of the stage, and tells the worker not to ask or wait for the oracle', async (t) => {
+	const workspace = requested(t)
+	const prompt = async (stage: Stage, subject: string) => {
+		const records = claude(
+			workspace,
+			`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] })`
+		)
+		await delegate(workspace, stage, subject, { allowedTools: rules, pluginRoot, claude: records })
+		return readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	}
+	const plan = await prompt('plan', 'checkout')
+	assert.match(plan, /Do not ask the oracle\. Do not wait for the oracle\./)
+	assert.doesNotMatch(plan, /person/)
+	assert(
+		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
+	)
+	assert.match(await prompt('setup', 'checkout-local'), /checkmate target instance list checkout-local/)
+})
+
+function requested(t: TestContext) {
 	const workspace = directory(t)
 	const opened = store(t, workspace)
 	target(opened)
 	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
 	closeStore(opened)
-	const records = claude(
-		workspace,
-		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+	return workspace
+}
+
+const recordsArgs = `require('node:fs').writeFileSync('args.json', JSON.stringify(process.argv.slice(2)))
 reply({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })`
+
+test('delegate puts each --claude-arg right after -p, so a dangling flag cannot take a tool rule', async (t) => {
+	const workspace = requested(t)
+	const records = claude(workspace, recordsArgs)
+	const read = () => JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	const claudeArgs = ['--model', 'claude-haiku-5-5', '--add-dir=/srv/specs', 'Write']
+	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, claudeArgs, pluginRoot, claude: records })
+	const args = read()
+	assert.deepEqual(args.slice(0, 6), ['-p', ...claudeArgs, '--plugin-dir'])
+	assert.deepEqual(args.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	await delegate(workspace, 'plan', 'checkout', {
+		allowedTools: rules,
+		claudeArgs: ['--model'],
+		pluginRoot,
+		claude: records,
+	})
+	const dangling = read()
+	assert.deepEqual(dangling.slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(dangling.slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+})
+
+test('delegate refuses a --claude-arg that changes the worker contract', async (t) => {
+	const workspace = requested(t)
+	const missing = '/does-not-exist'
+	for (const arg of [...reservedClaudeArgs, '--output-format=text', '--json-schema={}'])
+		await assert.rejects(
+			delegate(workspace, 'plan', 'checkout', {
+				allowedTools: rules,
+				claudeArgs: [arg],
+				pluginRoot,
+				claude: missing,
+			}),
+			(error: Error) => error.message.startsWith(`--claude-arg ${arg} is not permitted.`)
+		)
+	await assert.rejects(
+		delegate(workspace, 'plan', 'checkout', {
+			allowedTools: rules,
+			claudeArgs: ['--allowedTools', 'Write'],
+			pluginRoot,
+			claude: missing,
+		}),
+		/Use --allow <rule> for tools\./
 	)
-	await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, pluginRoot, claude: records })
-	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
-	assert.match(prompt, /Do not ask the oracle\. Do not wait for the oracle\./)
-	assert.doesNotMatch(prompt, /person/)
-	assert(
-		prompt.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
+})
+
+test('the npm CLI always takes the next token as the --claude-arg value, also one that starts with --, and refuses a missing one', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const run = (...flags: string[]) => {
+		try {
+			return execFileSync(
+				process.execPath,
+				[
+					join(root, 'cli/src/main.ts'),
+					'delegate',
+					'plan',
+					'checkout',
+					'--allow',
+					'Read',
+					'--allow',
+					'Bash',
+					...flags,
+				],
+				{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+			)
+		} catch (error) {
+			return (error as { stdout: string }).stdout
+		}
+	}
+	const args = () => JSON.parse(readFileSync(join(workspace, 'args.json'), 'utf8')) as string[]
+	assert.equal(
+		run('--claude-arg', '--model', '--claude-arg', 'claude-haiku-5-5', '--workspace', workspace),
+		'needs_decision checkout\nreason: Stopped.\n'
 	)
+	assert.deepEqual(args().slice(1, 3), ['--model', 'claude-haiku-5-5'])
+	assert.equal(run('--claude-arg', '--json', '--claude-arg', '--help'), 'needs_decision checkout\nreason: Stopped.\n')
+	assert.deepEqual(args().slice(0, 4), ['-p', '--json', '--help', '--plugin-dir'])
+	assert.match(run('--claude-arg', '--model', '--help'), /^completed delegate\ncheckmate delegate <setup\|plan/)
+	assert.equal(run('--claude-arg'), 'invalid_request delegate\nreason: Missing value for --claude-arg\n')
+	assert.equal(run('--claude-arg', '--model'), 'needs_decision checkout\nreason: Stopped.\n')
+	assert.deepEqual(args().slice(0, 3), ['-p', '--model', '--plugin-dir'])
+	assert.deepEqual(args().slice(-4), ['--allowedTools', 'Read', '--allowedTools', 'Bash'])
+	for (const timeout of ['0', 'abc', '3601'])
+		assert.equal(
+			run('--timeout', timeout),
+			`invalid_request delegate\nreason: Invalid --timeout: ${timeout}. Use a whole number from 1 to 3600.\n`
+		)
+})
+
+test('the npm CLI prints the facts of the recorded command with the operation', (t) => {
+	const workspace = requested(t)
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	claude(
+		bin,
+		`const out = checkmate(['plan', 'save', 'checkout', '--json'], ${JSON.stringify(JSON.stringify(candidate()))})
+const { status, subject, reasons } = JSON.parse(out)
+reply({ status, subject, reasons })`
+	)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const output = execFileSync(
+		process.execPath,
+		[join(root, 'cli/src/main.ts'), 'delegate', 'plan', 'checkout', '--allow', 'Read', '--allow', 'Bash'],
+		{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
+	)
+	const lines = output.trim().split('\n')
+	const [operation] = query<{ id: string; response: string }>(
+		workspace,
+		"SELECT id, response FROM operations WHERE command = 'plan save' AND status != 'rejected'"
+	)
+	const sha256 = JSON.parse(operation.response).data.sha256 as string
+	assert.deepEqual(lines, [
+		`needs_decision checkout@1 sha256=${sha256.slice(0, 8)} operation=${operation.id}`,
+		'reason: G1: Does the promotion stack with loyalty?',
+		'reason: G2: Which orders qualify for refunds?',
+	])
+})
+
+function hold(workspace: string) {
+	const holder = openStore(workspace)
+	holder.db.exec('BEGIN IMMEDIATE')
+	return () => {
+		holder.db.exec('ROLLBACK')
+		closeStore(holder)
+	}
+}
+
+test('a lock gives operational_error: retry before the worker, read the record after it', async (t) => {
+	process.env.CHECKMATE_BUSY_TIMEOUT_MS = '1000'
+	t.after(() => delete process.env.CHECKMATE_BUSY_TIMEOUT_MS)
+	const early = requested(t)
+	const bin = join(early, 'bin')
+	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
+	const releaseEarly = hold(early)
+	const refused = new Promise<string>((resolve) =>
+		execFile(
+			process.execPath,
+			[join(root, 'cli/src/main.ts'), 'delegate', 'plan', 'checkout', '--allow', 'Read', '--allow', 'Bash'],
+			{ cwd: early, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' },
+			(_, stdout) => resolve(stdout)
+		)
+	)
+	const { workspace, session } = started(t)
+	const quits = claude(workspace, `reply({ status: 'completed', subject: 'run-1', reasons: [] })`)
+	const pending = delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: '/missing-playwright',
+	})
+	const releaseLate = hold(workspace)
+	const late = await pending
+	releaseLate()
+	assert.deepEqual(late, {
+		status: 'operational_error',
+		subject: 'run-1',
+		reasons: [
+			'database is locked',
+			unverifiedReason,
+			`Browser session ${session} was not closed: the command is unavailable.`,
+			resumeReason('run-1'),
+		],
+		operation: null,
+	})
+	assert.equal(await refused, `operational_error checkout\nreason: database is locked\nreason: ${busyReason}\n`)
+	releaseEarly()
+	assert.equal(existsSync(join(early, 'args.json')), false)
 })
 
 test('delegate revise needs every pending decision applied', async (t) => {
@@ -282,14 +492,21 @@ reply({ status, subject, reasons })`
 		playwright: playwright(workspace),
 	})
 	assert.deepEqual(
-		{ ...result, operation: undefined },
+		{ ...result, operation: undefined, data: undefined },
 		{
 			status: 'completed',
 			subject: 'run-1',
 			reasons: [],
 			operation: undefined,
+			command: 'run finish',
+			data: undefined,
 		}
 	)
+	assert.equal(typeof result.data!.coverage, 'string')
+	assert.match(String(result.data!.sha256), /^[a-f0-9]{64}$/)
+	const printed = formatReply('run finish', { ...result, data: result.data! }, false).split('\n')
+	assert.match(printed[0], /^completed run-1 coverage=\S+ sha256=[a-f0-9]{8}$/)
+	assert.deepEqual(printed.slice(1), ['passed\t1'])
 	assert.deepEqual(
 		query<{ actor: string }>(workspace, "SELECT actor FROM operations WHERE command = 'run finish'").map(
 			(row) => row.actor
@@ -298,4 +515,70 @@ reply({ status, subject, reasons })`
 	)
 	assert.equal(readFileSync(join(workspace, 'closed.log'), 'utf8'), `-s=${session} close\n`)
 	assert.equal(readFileSync(join(workspace, 'output-dir.txt'), 'utf8'), join(workspace, '.checkmate', 'tmp', 'run-1'))
+})
+
+test('the execute prompt names the instance; the browser closes only for a target with playwright-cli', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened, {
+		tools: [{ name: 'node', kind: 'cli', purpose: 'Send HTTP requests.', version: '24.12.0', reachable: true }],
+	})
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	const retired = retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	assert.deepEqual([retired.status, retired.data.startedRuns], ['completed', ['run-1']])
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-1', reasons: [] })`
+	)
+	const result = await delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: playwright(workspace),
+	})
+	assert.deepEqual(result.reasons, [
+		'Worker returned completed, but run run-1 is not finished',
+		resumeReason('run-1'),
+	])
+	assert.equal(existsSync(join(workspace, 'closed.log')), false)
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(
+		prompt.includes(
+			'Instance: local. Read its entry values with `checkmate target show checkout-local --instance local`.'
+		),
+		prompt
+	)
+	assert.match(prompt, /Run a command entry at test time\./)
+	assert(
+		prompt.includes(
+			'Instance local is retired; its sandbox may be gone. Stop with a blocked gap if it does not respond.'
+		),
+		prompt
+	)
+})
+
+test('the execute prompt gives the rationale of a rejected run that the run tests again', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	passRun(opened, 'run-1', 'b1', ['T1'])
+	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'Wrong account.' })
+	passRun(opened, 'run-2', 'b2', ['T1'])
+	rejectResult(opened, 'Dawid', { runId: 'run-2', rationale: 'I need fullsize screenshots for evidence' })
+	begin(opened, 'run-3', ['T1'], 'b2')
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-3', reasons: [] })`
+	)
+	await delegate(workspace, 'execute', 'run-3', { allowedTools: rules, pluginRoot, claude: quits })
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(
+		prompt.includes('The oracle rejected run-2: I need fullsize screenshots for evidence. Address it.\n'),
+		prompt
+	)
+	assert.doesNotMatch(prompt, /run-1|Wrong account/)
 })

@@ -10,12 +10,23 @@ import {
 	requireIdentifier,
 	requireText,
 	resultCoverage,
+	revisionReference,
 	testOutcome,
 	testReference,
 	validate,
+	withoutEmptyMetadata,
 } from './contracts.ts'
-import { approvalState, dependencyBlock, gate, latestPlans, recordApproval } from './plans.ts'
-import { targetRevision } from './targets.ts'
+import {
+	approvalState,
+	dependencyBlock,
+	expectDecision,
+	gate,
+	latestPlans,
+	planRevision,
+	planRunGaps,
+	recordApproval,
+} from './plans.ts'
+import { runInstance, targetRevision } from './targets.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -27,6 +38,7 @@ export type RunRow = {
 	plan_sha256: string
 	target_id: string
 	target_revision: number
+	instance_id: string
 	application_build: string
 	request: string
 	started_at: string
@@ -65,6 +77,7 @@ export type BeginInput = {
 	reference: string
 	tests?: string[]
 	build: string
+	instance?: string
 	partial?: string
 	onNewBlocker?: string
 	timeoutSeconds?: number
@@ -89,16 +102,20 @@ export type CloseInput = {
 }
 export type FinishInput = { runId: string; completion: string; cleanup: string; cleanupReason: string }
 export type ResumeInput = { runId: string; error?: string[]; reason?: string }
-export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string }
+export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string; expectDecision?: string }
 
 export const maxEvidenceBytes = 32 * 1024 * 1024
+export const assertionResults = ['passed', 'failed', 'inconclusive', 'not_checked'] as const
+export const closeOutcomes = ['blocked', 'not_run', 'error'] as const
+export const completions = ['completed', 'interrupted', 'operational_error'] as const
+export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
+export const newBlockerPolicies = ['return_to_oracle', 'continue_independent'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
 const kindByExtension: Record<string, EvidenceRow['kind']> = {
 	'.png': 'screenshot',
 	'.jpg': 'screenshot',
 	'.jpeg': 'screenshot',
 	'.webp': 'screenshot',
-	'.json': 'http_exchange',
 	'.zip': 'trace',
 	'.trace': 'trace',
 }
@@ -109,6 +126,8 @@ const mediaTypes: Record<string, string> = {
 	'.webp': 'image/webp',
 	'.gif': 'image/gif',
 	'.json': 'application/json',
+	'.xml': 'application/xml',
+	'.csv': 'text/csv',
 	'.txt': 'text/plain',
 	'.log': 'text/plain',
 	'.md': 'text/markdown',
@@ -206,7 +225,8 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 3600,
 				`Invalid timeout: ${timeoutSeconds}. Use 1 to 3600 seconds.`
 			)
-			const checked = gate(store, input)
+			const instance = runInstance(store, plannedTarget(store, input.reference), input.instance)
+			const checked = gate(store, { ...input, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed')
 				return { reply: { ...checked.reply, subject: runId }, subjects: [] }
 			const { plan, sha256 } = checked.revision
@@ -220,13 +240,14 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 			const browserSession = `cm-${randomUUID()}`
 			execute(
 				store,
-				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, application_build, request, started_at, browser_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, instance_id, application_build, request, started_at, browser_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 				runId,
 				plan.planId,
 				plan.revision,
 				sha256,
 				plan.target.targetId,
 				plan.target.revision,
+				instance.instanceId,
 				checked.build,
 				canonical(request),
 				at,
@@ -245,6 +266,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				reply: completed(runId, {
 					runId,
 					plan: `${plan.planId}@${plan.revision}`,
+					instanceId: instance.instanceId,
 					tests: checked.tests,
 					leftOut: checked.reply.data.leftOut,
 					startedAt: at,
@@ -259,6 +281,11 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 	if (reply.status === 'completed')
 		mkdirSync(join(store.workspace, evidenceDirectory(input.runId)), { recursive: true })
 	return reply
+}
+
+function plannedTarget(store: Store, text: string) {
+	const reference = revisionReference(requireText(text, 'plan reference'), 'plan reference')
+	return planRevision(store, reference.id, reference.revision).plan.target.targetId
 }
 
 type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
@@ -395,11 +422,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 				outcomes.get(dependency)?.outcome === 'passed',
 				`Prerequisite ${dependency} has not passed. Close ${dependency} as passed before you check ${test.id}.`
 			)
-		const result = requireChoice(
-			input.result,
-			['passed', 'failed', 'inconclusive', 'not_checked'] as const,
-			'result (--result)'
-		)
+		const result = requireChoice(input.result, assertionResults, 'result (--result)')
 		const observed = optionalText(input.observed, 'observation (--observed)')
 		const reason = optionalText(input.reason, 'reason (--reason)')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
@@ -469,7 +492,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 					? `Assertions not checked: ${unchecked.map((row) => `${test.id}.${row.assertion_id}`).join(', ')}`
 					: null
 		} else {
-			outcome = requireChoice(input.outcome, ['blocked', 'not_run', 'error'] as const, 'outcome (--outcome)')
+			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
 			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
 			requireCondition(
 				outcome === 'error' || !recorded.length,
@@ -549,7 +572,7 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 			'INSERT INTO findings (id, run_id, body, operation_id) VALUES (?, ?, ?, ?)',
 			finding.id,
 			input.runId,
-			canonical({ ...finding, testIds }),
+			canonical({ ...withoutEmptyMetadata(finding), testIds }),
 			operationId
 		)
 		return {
@@ -567,13 +590,11 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 			gap.status === 'open' && gap.decisionId === null,
 			`Runtime gap ${gap.id} must be open and have no decision`
 		)
+		const planId = run.plan.planId
 		requireCondition(
-			!run.plan.gaps.some((old) => old.id === gap.id),
-			`Gap ${gap.id} exists in ${run.plan.planId}@${run.plan.revision}. Use a new gap ID.`
-		)
-		requireCondition(
-			!one(store, 'SELECT 1 FROM run_gaps WHERE run_id = ? AND id = ?', input.runId, gap.id),
-			`Gap ${gap.id} exists in run ${input.runId}. Use a new gap ID.`
+			!one(store, 'SELECT 1 FROM plan_gaps WHERE plan_id = ? AND gap_id = ?', planId, gap.id) &&
+				!planRunGaps(store, planId).some((item) => item.gap.id === gap.id),
+			`Gap ID ${gap.id} is in use. Use a new ID.`
 		)
 		for (const id of gap.requirementIds)
 			requireCondition(
@@ -613,17 +634,9 @@ export function finishRun(store: Store, actor: string | undefined, input: Finish
 function finish(store: Store, actor: string | undefined, input: FinishInput) {
 	return write(store, { actor, command: 'run finish', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
-		const completion = requireChoice(
-			input.completion,
-			['completed', 'interrupted', 'operational_error'] as const,
-			'completion (--completion)'
-		)
+		const completion = requireChoice(input.completion, completions, 'completion (--completion)')
 		const cleanup = {
-			status: requireChoice(
-				input.cleanup,
-				['completed', 'failed', 'not_applicable'] as const,
-				'cleanup (--cleanup)'
-			),
+			status: requireChoice(input.cleanup, cleanupStatuses, 'cleanup (--cleanup)'),
 			reason: requireText(input.cleanupReason, 'cleanup reason (--cleanup-reason)'),
 		}
 		const selected = run.request.selectedTestIds
@@ -714,6 +727,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 			runId: input.runId,
 			plan: { planId: run.plan.planId, revision: run.plan.revision, sha256: run.row.plan_sha256 },
 			target: run.plan.target,
+			instanceId: run.row.instance_id,
 			applicationBuild: run.row.application_build,
 			selectedTestIds: selected,
 			retestOf: run.request.retestOf,
@@ -844,6 +858,7 @@ function decideResult(store: Store, actor: string | undefined, input: ResultVerd
 		const result = runResult(store, input.runId)
 		requireCondition(result, `Run ${input.runId} is not finished. Finish it before you decide on its result.`)
 		expectDigest(result.sha256, input.expectSha256, input.runId)
+		expectDecision(store, 'result', input.runId, input.expectDecision)
 		return {
 			reply: recordApproval(store, actor, operationId, {
 				kind: 'result',

@@ -356,6 +356,8 @@ main {
 	margin: 0 auto;
 	padding: 28px 24px 64px;
 	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 main:focus {
 	outline: none;
@@ -450,6 +452,16 @@ a.pill:hover {
 	gap: 4px;
 	flex-wrap: wrap;
 	vertical-align: middle;
+}
+.kv {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	max-width: 100%;
+	vertical-align: middle;
+}
+.kv .tag {
+	white-space: normal;
 }
 .tag {
 	font-family: var(--font-mono);
@@ -729,6 +741,7 @@ textarea[readonly] {
 }
 
 .scroll {
+	position: relative;
 	overflow-x: auto;
 	border: 1px solid var(--line);
 	border-radius: 9px;
@@ -738,6 +751,7 @@ table {
 	border-collapse: collapse;
 	width: 100%;
 	font-size: 14px;
+	overflow-wrap: normal;
 }
 th,
 td {
@@ -819,6 +833,7 @@ table.log td.mono {
 .test-b {
 	padding: 0 16px 14px;
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 10px;
 }
 .test-note {
@@ -964,6 +979,7 @@ summary.asr-row:focus-visible {
 .asr-body {
 	padding: 0 16px 12px 86px;
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 8px;
 	font-size: 13.5px;
 }
@@ -1712,6 +1728,7 @@ th a.sort:hover .arrow {
 
 .edit-form {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 8px;
 	max-width: 980px;
 }
@@ -1923,4 +1940,64 @@ textarea.code {
 		animation: none;
 		box-shadow: inset 3px 0 0 var(--accent);
 	}
+}
+a.icon-btn {
+	text-decoration: none;
+}
+a.icon-btn[aria-current='page'] {
+	background: var(--accent-soft);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.gear {
+	width: 15px;
+	height: 15px;
+	display: block;
+}
+.settings-nav {
+	margin: -8px 0 18px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--line);
+}
+.entries {
+	margin: 0;
+	display: grid;
+	gap: 2px;
+	font-size: 13px;
+}
+.entries > div {
+	display: flex;
+	gap: 6px;
+	align-items: baseline;
+	flex-wrap: wrap;
+}
+.entries dt {
+	color: var(--muted);
+}
+.entries dt::after {
+	content: ':';
+}
+.entries dd {
+	margin: 0;
+}
+.entries code {
+	overflow-wrap: normal;
+}
+.entries .word {
+	white-space: nowrap;
+}
+.main-col > section {
+	min-width: 0;
+}
+.retire > summary {
+	list-style: none;
+}
+.retire > summary::-webkit-details-marker {
+	display: none;
+}
+.retire[open] > summary {
+	margin-bottom: 8px;
+}
+.retire .confirm-box {
+	min-width: 220px;
 }

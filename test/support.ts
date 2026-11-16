@@ -2,15 +2,26 @@ import type { TestContext } from 'node:test'
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
 import type { Store } from '../plugin/src/store.ts'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { openTarget, saveTarget } from '../plugin/src/targets.ts'
-import { answerGap, approvePlan, openPlan, revisePlan, savePlan } from '../plugin/src/plans.ts'
-import { beginRun, checkAssertion, closeTest, finishRun, acceptResult, recordFinding } from '../plugin/src/runs.ts'
+import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
+import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
+import {
+	beginRun,
+	checkAssertion,
+	closeTest,
+	finishRun,
+	acceptResult,
+	recordFinding,
+	runState,
+} from '../plugin/src/runs.ts'
 import { run } from '../plugin/src/cli.ts'
+import { planStatus } from '../plugin/src/views.ts'
+import { minimumRules, stages } from '../cli/src/launcher.ts'
+import { parseDelegate } from '../cli/src/main.ts'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
 export const actor = 'tester'
@@ -23,6 +34,12 @@ export function directory(t?: TestContext) {
 	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
 	t?.after(() => rmSync(path, { recursive: true, force: true }))
 	return path
+}
+
+export function copied(t: TestContext, template: string) {
+	const workspace = directory(t)
+	cpSync(template, workspace, { recursive: true })
+	return workspace
 }
 
 export function store(t: TestContext, workspace = directory(t)): Store {
@@ -52,8 +69,7 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 		contractVersion: 'toolkit-2',
 		targetId: 'checkout-local',
 		revision: 1,
-		baseUrl: 'http://127.0.0.1:4173',
-		environment: 'local_fixture',
+		entryPoints: [{ name: 'web', kind: 'url', purpose: 'Checkout web application and HTTP API.' }],
 		capabilities: ['browser', 'http'],
 		tools: [
 			{
@@ -74,15 +90,23 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 	}
 }
 
-export function target(store: Store, overrides: Partial<Profile> = {}) {
+export const webUrl = 'http://127.0.0.1:4173'
+
+export function target(store: Store, overrides: Partial<Profile> = {}, web = webUrl) {
 	const value = profile(overrides)
 	openTarget(store, actor, {
 		targetId: value.targetId,
-		baseUrl: value.baseUrl,
+		entryPoints: value.entryPoints,
 		capabilities: value.capabilities,
 		allowedOperations: value.allowedOperations,
 	})
-	return saveTarget(store, actor, { targetId: value.targetId, profile: value })
+	const saved = saveTarget(store, actor, { targetId: value.targetId, profile: value })
+	addInstance(store, actor, {
+		targetId: value.targetId,
+		instanceId: 'local',
+		instance: { entries: { web }, environment: 'local fixture' },
+	})
+	return saved
 }
 
 export function planRequest(): PlanRequest {
@@ -276,4 +300,88 @@ export function failT2(store: Store, runId: string) {
 
 export function accept(store: Store, runId: string) {
 	return acceptResult(store, actor, { runId, rationale: 'Looks right.' })
+}
+
+export function followHints(
+	t: TestContext,
+	opened: Store,
+	planId = 'checkout',
+	fill: Record<string, string> = {},
+	seen: string[] = [],
+	depth = 2
+) {
+	const status = planStatus(opened, planId)
+	const shape = (value: typeof status) =>
+		JSON.stringify([value.state, value.why, value.openRuns.map((run) => run.runId)])
+	assert(!seen.includes(shape(status)), `The hints of ${planId} go in a cycle: ${shape(status)}`)
+	const plan = status.revision === null ? null : planRevision(opened, planId).plan
+	const values: Record<string, string> = {
+		'<runId>': `hint-run-${depth}`,
+		'<new build>': `hint-build-${depth}`,
+		'<build>': `hint-build-${depth}`,
+		'<gapId>': status.gaps[0]?.gapId ?? 'none',
+		'<kind>': 'defer',
+		'<answer>': 'Hint answer.',
+		'<source>': 'hints#1',
+		'<why>': 'Hint rationale.',
+		'<instanceId>': plan
+			? instanceList(opened, plan.target.targetId).find((instance) => !instance.retired)!.instanceId
+			: 'none',
+		...fill,
+	}
+	for (const hint of status.next) {
+		let command = hint.replace(/^Build a fix, then /, '')
+		for (const [placeholder, value] of Object.entries(values)) command = command.split(placeholder).join(value)
+		assert.doesNotMatch(command, /<[a-zA-Z ]+>/, command)
+		const args = (command.match(/"[^"]*"|\S+/g) ?? []).map((token) => token.replace(/^"|"$/g, ''))
+		assert.equal(args.shift(), 'checkmate', command)
+		if (args[0] === 'delegate') {
+			assert(stages.includes(args[1] as (typeof stages)[number]), command)
+			const allow = args.slice(3).filter((_, i) => i % 2 === 1)
+			assert.deepEqual(
+				args.slice(3).filter((_, i) => i % 2 === 0),
+				allow.map(() => '--allow'),
+				command
+			)
+			assert(
+				minimumRules.every((rule) => allow.includes(rule)),
+				command
+			)
+			assert.deepEqual(parseDelegate(args.slice(1)).allow, allow, command)
+			continue
+		}
+		const copy = directory(t)
+		mkdirSync(join(copy, '.checkmate'))
+		opened.db.exec(`VACUUM INTO '${join(copy, '.checkmate', 'checkmate.db')}'`)
+		const stdin =
+			args[0] === 'plan' && args[1] === 'edit'
+				? { tests: { [plan!.tests[0].id]: { title: 'Hint title.' } } }
+				: undefined
+		const outcome = cli(copy, args, stdin)
+		assert.equal(outcome.code, 0, `${command}\n${outcome.output}`)
+		if (args[0] === 'run') assert.match(outcome.lines[0], /^completed /, `${command}\n${outcome.output}`)
+		const copied = openStore(copy)
+		try {
+			if (args[0] === 'status') {
+				assert(planStatus(copied, args[1]).next.length, `${command} leads to a plan with no next step`)
+				continue
+			}
+			if (args[0] === 'run') passAll(copied, args[2])
+			const after = shape(planStatus(copied, planId))
+			assert.notEqual(after, shape(status), `${command} changes nothing`)
+			if (depth > 1) followHints(t, copied, planId, fill, [...seen, shape(status)], depth - 1)
+		} finally {
+			closeStore(copied)
+		}
+	}
+	return status
+}
+
+function passAll(opened: Store, runId: string) {
+	const run = runState(opened, runId)
+	for (const test of run.plan.tests.filter((item) => run.request.selectedTestIds.includes(item.id))) {
+		for (const assertion of test.assertions) check(opened, runId, `${test.id}.${assertion.id}`, 'passed')
+		closeTest(opened, actor, { runId, testId: test.id })
+	}
+	finishRun(opened, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
 }

@@ -6,19 +6,55 @@ QA records one result for each assertion, and Checkmate derives each test outcom
 
 <img src="../img/run.png" alt="Diagram: the record of run-1 on plan checkout@2, build b1, with tests T1 and T2. T1, Standard total, passed: its assertion T1.A1, Total is 400 PLN, passed with evidence T1-A1.json and its sha256. T2, Promotion, failed: its assertion T2.A1, totalPLN equals 240, failed with the observation totalPLN 220 and evidence T2-A1.json. Defect F1 names T2.A1 and its evidence. The run can also record new gaps for the oracle. On the right, four separate answers: completion is completed, outcome is passed 1 and failed 1, coverage is complete, and the oracle's acceptance is accepted. Each assertion result is final, and Checkmate derives the test outcome from the assertion results." width="100%"/>
 
-**On this page:** [Run commands](#run-commands) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
+**On this page:** [Run commands](#run-commands) · [Instances and matrix runs](#instances-and-matrix-runs) · [Assertion results](#assertion-results) · [Test outcomes](#test-outcomes) · [Evidence input](#evidence-input) · [Findings](#findings) · [Completion and coverage](#completion-and-coverage) · [Resume](#resume) · [Export](#export) · [Retention](#retention)
 
 ## Run commands
 
 A run goes through these commands in order:
 
-1. `run begin <runId> <planId@rev> --build <build>` checks the gate and starts the run. It prints the browser session and the evidence directory `.checkmate/tmp/<runId>/`.
+1. `run begin <runId> <planId@rev> --build <build> --instance <instanceId>` checks the gate and starts the run on one instance. It prints the instance, the browser session, and the evidence directory `.checkmate/tmp/<runId>/`. You can leave out `--instance` only when the target has one active instance.
 2. `run check <runId> <testId> <assertionId> --result <result>` records one assertion result with its evidence.
 3. `run close <runId> <testId>` closes a test. Checkmate derives the outcome.
 4. `run finding <runId>` and `run gap <runId>` record findings and new gaps from standard input.
 5. `run finish <runId> --completion <completion> --cleanup <completed|failed|not_applicable> --cleanup-reason <text>` checks the run and stores the result.
 
 A run is `started` until `run finish`. After `run finish`, the run does not change. The flags of `run begin` are in [Commands](commands.md#run-gate-and-policy).
+
+## Instances and matrix runs
+
+A run uses one instance of the target. `run show`, `run list`, `status`, the review UI, and the exports show it. The result records `instanceId`.
+
+- QA reads the entry values with `checkmate target show <targetId> --instance <instanceId>`.
+- QA uses a `url` entry and a `value` entry as they are.
+- QA runs a `command` entry at test time, for example to get a one-time login URL. Checkmate stores the command, not its output.
+- A retired instance cannot start a run.
+- A retest needs the same plan and target and a new build. It can run on another instance. It can keep the build only on a new instance after the instance of the earlier run is retired.
+- A cross-plan dependency needs a passed result on the same build. A run on any instance counts.
+- A matrix is one run of the same plan revision for each instance. `checkmate status <planId>` prints a `started` line for each open run, with its instance. On one build, each instance has its own latest outcome. A pass on one instance does not hide a failure on another instance.
+- A refreshed sandbox is a new instance. Retire the old instance, add the new one, and retest on it. The retest can use the same build. The plan and the retest chain stay the same.
+
+This example uses a Salesforce sandbox. The `web` entry is a command that prints a one-time login URL. The `org` entry is the org alias.
+
+```sh
+checkmate target open crm --entry-point "web:command:One-time login URL of the org." \
+  --entry-point "org:value:Org alias for sf commands." --capabilities browser \
+  --operations read_account,create_case --tool "playwright-cli:cli:Drive the browser." --tool "sf:cli:Open the org."
+checkmate target instance add crm uat --entry "web=sf org open --target-org crm-uat --url-only --json" \
+  --entry org=crm-uat --environment "UAT sandbox" --reference "sf alias crm-uat"
+checkmate target instance add crm qa --entry "web=sf org open --target-org crm-qa --url-only --json" \
+  --entry org=crm-qa --environment "QA sandbox"
+checkmate run begin run-uat cases@1 --build 2026.11.14 --instance uat --partial ready_only
+checkmate run begin run-qa cases@1 --build 2026.11.14 --instance qa --partial ready_only
+```
+
+After a sandbox refresh:
+
+```sh
+checkmate target instance retire crm uat
+checkmate target instance add crm uat-2 --entry "web=sf org open --target-org crm-uat --url-only --json" \
+  --entry org=crm-uat --environment "UAT sandbox, refreshed"
+checkmate run begin run-uat-2 cases@1 --build 2026.11.15 --instance uat-2 --tests T1,T2 --retest-of run-uat
+```
 
 ## Assertion results
 
@@ -99,13 +135,30 @@ Use a file only for binary evidence, for example a screenshot.
 
 Checkmate refuses a path that is absolute, is outside `.checkmate/tmp/<runId>/` after symbolic links are resolved, is not a regular file, or is larger than 32 MiB. The same limit applies to a text.
 
-The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.json` is `http_exchange`, `.zip` and `.trace` are `trace`, and other files are `observation`. An unknown extension gives the media type `application/octet-stream`.
+The kind is `observation`, `http_exchange`, `screenshot`, or `trace`. Without `:kind`, the extension sets it: `.png`, `.jpg`, `.jpeg`, and `.webp` are `screenshot`, `.zip` and `.trace` are `trace`, and other files are `observation`. A `.json` file is an `observation`. Add `:http_exchange` for an HTTP exchange.
+
+The extension sets the media type:
+
+| Extension               | Media type                 |
+| ----------------------- | -------------------------- |
+| `.png`                  | `image/png`                |
+| `.jpg`, `.jpeg`         | `image/jpeg`               |
+| `.webp`                 | `image/webp`               |
+| `.gif`                  | `image/gif`                |
+| `.json`                 | `application/json`         |
+| `.xml`                  | `application/xml`          |
+| `.csv`                  | `text/csv`                 |
+| `.txt`, `.log`          | `text/plain`               |
+| `.md`                   | `text/markdown`            |
+| `.html`                 | `text/html`                |
+| `.zip`                  | `application/zip`          |
+| Another or no extension | `application/octet-stream` |
 
 A command can take one text and one or more files together.
 
 ### Read evidence back
 
-`checkmate evidence get <evidenceId> --out <file>` writes the stored bytes to a new file. The review UI shows images and plain text inline, and sends other types as a download.
+`checkmate evidence get <evidenceId> --out <file>` writes the stored bytes to a new file. The run page of the review UI shows images inline, and shows plain text, JSON, Markdown, XML, and CSV up to 64 KiB as text. A direct evidence link opens only images and plain text in the browser. It sends other types as a download.
 
 ## Findings
 
@@ -116,6 +169,20 @@ A command can take one text and one or more files together.
 - The evidence of a finding belongs to the named assertions, or to their tests.
 
 A tool or access failure is an `error` outcome, not a defect. New ambiguity is a gap: record it with `run gap`. The payloads are in [Payloads](payloads.md#finding).
+
+### Open defects
+
+A defect stays open until one of these occurs:
+
+1. A later finished run of the same plan selects each test of the defect, and each of these tests passes.
+2. A later finished run in the retest chain of the defect's run fails a test of the defect and records its own defect for it. The new defect replaces the old defect. The retest chain is the runs that name the run with `--retest-of`, directly or through other retests.
+3. The oracle rejects the result of the defect's run. A rejected result means that the record is wrong. Its tests need a retest.
+
+"Later" means that the run began after the defect's run. The order in which the runs finished does not matter. A later run counts only when it is on the same instance, on a different build, or in the retest chain of the defect's run. On the same build, a pass on one instance does not close a defect that a run on another instance found. A refreshed sandbox is a new instance, and its retest is in the retest chain.
+
+A started run closes no defect. A rejected run closes no defect and replaces no defect. A run outside the retest chain that finds the same failure does not replace the defect, so both defects stay open. The cross-plan dependency rule is different: it accepts a pass on any instance of the build.
+
+`checkmate finding list --open` lists each open defect. `checkmate status` uses only the open defects of tests that are `ready` in the latest revision. It ignores a defect when each of its tests is deferred or removed. A test whose local prerequisite is deferred also counts as deferred. The defect is still real, so `finding list --open` still lists it.
 
 ## Completion and coverage
 
@@ -163,17 +230,34 @@ A crash or a deadline does not finish a run. The run stays `started`, and the re
 checkmate export run run-1 --format md
 checkmate export run run-1 --format html --out reports/run-1.html
 checkmate export plan checkout@2 --format json
+checkmate export run run-1 --format junit --out reports/run-1.xml
 ```
 
-- `--format` is `md`, `html`, or `json`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
+- `--format` is `md`, `html`, or `json`. `export run` also takes `junit`. Without `--out`, the report goes to standard output. `--out` refuses an existing file.
 - `export run` needs a finished run. `export plan` takes a revision reference, or a plan ID for the latest revision.
-- A run report shows the summary, the acceptance, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- A run report shows the summary with the instance, the acceptance, the plan approval, each outcome, each assertion with its check, observation, and evidence, the findings, the new gaps, coverage, and cleanup. The full JSON record follows in a folded section.
+- The Markdown and HTML exports show the [metadata](payloads.md#metadata) of the requirements, the tests, and the findings as `key=value` lists.
+- The Markdown and HTML exports replace control characters with U+FFFD, as the JUnit export does.
 - The HTML report is one self-contained file. It shows small images and text evidence inline. It has a print stylesheet, so a browser can save it as a PDF.
-- The JSON run report is `{ "result", "sha256", "acceptance", "plan" }`. A JSON plan export is the stored plan revision.
+- The JSON run report is `{ "result", "sha256", "acceptance", "planApproval", "plan" }`. `acceptance` and `planApproval` each have `state` and `latest`. `latest` is the latest verdict with its `verdict`, `actor`, `at`, `rationale`, and `sha256`, or `null`. `plan` has the requirements and the tests of the plan revision, with their metadata. A JSON plan export is the stored plan revision.
+
+### JUnit XML
+
+`export run <runId> --format junit` writes JUnit XML for a CI system or a test management tool.
+
+- The root `<testsuites>` has one `<testsuite>`. Its name is `<planId>@<revision>`. Its properties are `runId`, `build`, `instance`, `target`, `completion`, and `coverage`.
+- Each selected test is one `<testcase>`. `classname` is the plan ID. `name` is the test ID, for example `T1`. `time` is the seconds from the first assertion result of the test to its close. A test without an assertion result has `time="0"`.
+- `<testsuites>` and `<testsuite>` have `time`: the seconds from the run start to the run finish.
+- Each test case has properties. `title` is the test title. `requirements` is the list of requirement IDs, separated by commas. Each metadata key gives one more property. Its name is `metadata.<key>`, for example `metadata.xrayKey`. Thus a metadata key cannot replace a built-in property.
+- The JUnit format does not define properties in a test case. Jenkins, GitLab, and Xray read them.
+- `timestamp` is the start time in UTC, to the second, without a time zone, for example `2026-11-14T18:53:46`.
+- `failed` gives `<failure>`. Its `type` is `defect`. Its `message` is the title of the first defect of the test in finding ID order, so `F2` comes before `F10`. Its text has the expected value, the observed value, and the reproduction steps of each finding of the test, in the same order.
+- `blocked` and `not_run` give `<skipped>`. `error` and `inconclusive` give `<error>` with the outcome as `type`. `passed` gives no element.
+- Checkmate escapes the text and replaces characters that XML does not permit with U+FFFD.
 - The renderer escapes untrusted text. The HTML has a Content Security Policy that blocks scripts and remote resources.
 - An export is a view. The database is the authority. Do not edit an export to change a verdict.
 
-The review UI offers the same exports. [Examples](../examples/README.md) has exports from a live run.
+The review UI offers the same exports. The run page also offers JUnit XML. [Examples](../examples/README.md) has exports from a live run.
 
 ## Retention
 

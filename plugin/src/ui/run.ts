@@ -3,8 +3,8 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
-import { planRevision, planRunGaps } from '../plans.ts'
-import { clock, html, icon, join, pill, plural, short, time, words } from './html.ts'
+import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
+import { clock, hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { downloads, heading } from './layout.ts'
 import { emptyState, recordPanel, verdictPanel } from './forms.ts'
 import { counts } from './lists.ts'
@@ -15,7 +15,7 @@ type RunTest = Detail['tests'][number]
 type Assertion = RunTest['assertions'][number]
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const textTypes = ['text/plain', 'application/json', 'text/markdown']
+const textTypes = ['text/plain', 'application/json', 'text/markdown', 'application/xml', 'text/csv']
 const inlineLimit = 64 * 1024
 
 export function size(bytes: number) {
@@ -147,6 +147,7 @@ function testCard(store: Store, detail: Detail, test: RunTest) {
 				}</span
 			>
 		</header>
+		${hasMetadata(test.metadata) ? html`<p class="test-note">${metadataList(test.metadata)}</p>` : ''}
 		${test.reason ? html`<p class="test-note">${test.reason}</p>` : ''}
 		${test.evidence.length ? html`<div class="test-ev">${evidenceList(store, test.evidence)}</div>` : ''}
 		<ul class="asrs">
@@ -212,6 +213,7 @@ function findings(store: Store, detail: Detail) {
 								', '
 							)}${finding.requirementIds.length ? ` · requirements ${finding.requirementIds.join(', ')}` : ''}
 						</p>
+						${hasMetadata(finding.metadata) ? html`<p>${metadataList(finding.metadata)}</p>` : ''}
 						${evidenceChips(evidence.filter((item) => finding.evidenceIds.includes(item.id)))}
 					</div>
 				</article>`
@@ -278,6 +280,7 @@ function coverage(store: Store, detail: Detail) {
 	const result = detail.result
 	if (!result) return html`<p class="empty-line">Coverage is known when the run finishes.</p>`
 	const plan = planDetail(store, detail.planId, detail.revision).plan
+	const requirements = new Map(plan.requirements.map((item) => [item.id, item]))
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -294,8 +297,15 @@ function coverage(store: Store, detail: Detail) {
 						html`<tr>
 							<td class="mono">${row.requirementId}</td>
 							<td>
-								${plan.requirements.find((item) => item.id === row.requirementId)?.text ?? ''}
+								${requirements.get(row.requirementId)?.text ?? ''}
 								${row.reason ? html`<div class="muted small">${row.reason}</div>` : ''}
+								${
+									hasMetadata(requirements.get(row.requirementId)?.metadata)
+										? html`<div class="small">
+												${metadataList(requirements.get(row.requirementId)?.metadata)}
+											</div>`
+										: ''
+								}
 							</td>
 							<td class="mono">${row.testIds.join(', ') || '–'}</td>
 							<td>${pill(row.status)}</td>
@@ -334,6 +344,16 @@ function cleanup(detail: Detail) {
 			<dt>Target</dt>
 			<dd class="mono">${detail.target}</dd>
 		</div>
+		<div>
+			<dt>Instance</dt>
+			<dd>
+				<a
+					class="mono"
+					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
+					>${detail.instance.instanceId}</a
+				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${pill('retired')}` : ''}
+			</dd>
+		</div>
 		${
 			detail.request.retestOf
 				? html`<div>
@@ -368,7 +388,7 @@ function inconclusiveList(detail: Detail) {
 	</div>`
 }
 
-function decisionPanel(context: Context, detail: Detail, state: FormState | null) {
+function decisionPanel(store: Store, context: Context, detail: Detail, state: FormState | null) {
 	const result = detail.result
 	if (!result)
 		return recordPanel(
@@ -388,7 +408,8 @@ function decisionPanel(context: Context, detail: Detail, state: FormState | null
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
-				<blockquote>${latest.rationale}</blockquote>`
+				<blockquote>${latest.rationale}</blockquote>`,
+			`${detail.runId} was ${latest.verdict === 'approved' ? 'accepted' : 'rejected'} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
 		context,
@@ -397,6 +418,7 @@ function decisionPanel(context: Context, detail: Detail, state: FormState | null
 			subject: detail.runId,
 			question: `Accept ${detail.runId}?`,
 			sha256: result.sha256,
+			token: decisionToken(store, 'result', detail.runId),
 			digestLabel: 'Result',
 			approve: {
 				value: 'accept',
@@ -436,15 +458,16 @@ export function runPage(
 	const sub = html`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
 			>${detail.planId}@${detail.revision}</a
 		>
-		· build <code>${detail.build}</code> · started ${clock(detail.startedAt)} ·
-		${plural(detail.attempts.length, 'attempt')}
+		· build <code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code> · started
+		${clock(detail.startedAt)} · ${plural(detail.attempts.length, 'attempt')}
 		${detail.result ? html`· finished ${time(detail.result.finishedAt)} ago` : ''}`
 	const badge = runBadge(detail)
 	const report = detail.result
 		? downloads(
 				'Download report',
 				`/runs/${runId}/report`,
-				'The HTML report is self-contained and print-ready. Open it and print to PDF.'
+				'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
+				['html', 'md', 'json', 'junit']
 			)
 		: html`<span class="muted small">The report is ready when the run finishes.</span>`
 	const body: Html = html`${heading(
@@ -481,7 +504,7 @@ export function runPage(
 				</section>
 			</div>
 			<aside class="side" aria-label="Decision">
-				${decisionPanel(context, detail, state)}
+				${decisionPanel(store, context, detail, state)}
 				<p class="back"><a href="/">← Back to inbox</a></p>
 			</aside>
 		</div>`

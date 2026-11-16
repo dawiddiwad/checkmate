@@ -3,7 +3,7 @@
 Use this recipe when the plan lists the `node` tool for HTTP. For another HTTP tool, use the same rules for evidence.
 
 Use Node.js `fetch` with an explicit timeout.
-Resolve credentials from the profile's environment references. Do not save their values.
+Resolve credentials from the authentication references of the profile and the instance. Do not save their values.
 Run the script from the workspace. It prints the exchange. It writes no file:
 
 ```sh
@@ -19,7 +19,7 @@ console.log(JSON.stringify(exchange))
 Record the assertion with the printed exchange as evidence. Copy the printed line exactly:
 
 ```sh
-checkmate run check <runId> T2 A1 --result passed --observed "totalPLN is 240" --evidence -:http_exchange <<'EOF'
+checkmate run check <runId> T2 A1 --actor claude:execute --result passed --observed "totalPLN is 240" --evidence -:http_exchange <<'EOF'
 {"method":"GET","path":"/quote","status":200,"totalPLN":240}
 EOF
 ```

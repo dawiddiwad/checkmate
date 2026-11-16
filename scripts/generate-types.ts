@@ -6,7 +6,7 @@ type Schema = {
 	const?: string
 	enum?: string[]
 	anyOf?: Schema[]
-	type?: string
+	type?: string | string[]
 	items?: Schema
 	properties?: Record<string, Schema>
 	additionalProperties?: Schema | boolean
@@ -32,6 +32,7 @@ function type(schema: Schema, file: string): string {
 	if (schema.const !== undefined) return JSON.stringify(schema.const)
 	if (schema.enum) return schema.enum.map((value) => JSON.stringify(value)).join(' | ')
 	if (schema.anyOf) return schema.anyOf.map((item) => type(item, file)).join(' | ')
+	if (Array.isArray(schema.type)) return schema.type.join(' | ')
 	if (schema.type === 'array') return `Array<${type(schema.items!, file)}>`
 	if (schema.type === 'object' && !schema.properties)
 		return `Record<string, ${type(schema.additionalProperties as Schema, file)}>`

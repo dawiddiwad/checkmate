@@ -5,12 +5,14 @@ import type { PlanTool } from '../plugin/src/plans.ts'
 import {
 	answerGap,
 	approvePlan,
+	decisionToken,
 	diffPlan,
 	editPlan,
 	gate,
 	openPlan,
 	patchPlan,
 	planCandidate,
+	planChanges,
 	planRevision,
 	rejectPlan,
 	revisePlan,
@@ -20,8 +22,19 @@ import {
 } from '../plugin/src/plans.ts'
 import { beginRun, runState } from '../plugin/src/runs.ts'
 import { resultCoverage } from '../plugin/src/contracts.ts'
-import { inbox, planDetail, planHistory } from '../plugin/src/views.ts'
-import { actor, approved, candidate, plan, planRequest, promotionDelta, revised, store, target } from './support.ts'
+import { inbox, planDetail, planHistory, planStatus } from '../plugin/src/views.ts'
+import {
+	actor,
+	approved,
+	candidate,
+	cli,
+	plan,
+	planRequest,
+	promotionDelta,
+	revised,
+	store,
+	target,
+} from './support.ts'
 
 function withG3(): PlanCandidate {
 	const value = candidate()
@@ -341,11 +354,20 @@ test('a concurrent revise from a second connection is refused', (t) => {
 	)
 })
 
-test('the gate needs an approval of the exact revision, and a new revision needs a new approval', (t) => {
+test('the gate needs an approval of the exact latest revision, and a new revision needs a new approval', (t) => {
 	const opened = store(t)
 	target(opened)
 	plan(opened, 'checkout', withG3())
 	revised(opened)
+	for (const decide of [approvePlan, rejectPlan])
+		assert.throws(
+			() => decide(opened, actor, { reference: 'checkout@1', rationale: 'Old.' }),
+			/checkout@1 is not the latest revision. Use checkout@2/
+		)
+	assert.throws(
+		() => beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', partial: 'ready_only' }),
+		/checkout@1 is not the latest revision. Use checkout@2/
+	)
 	assert.deepEqual(gate(opened, gateInput).reply.reasons, ['Plan checkout@2 is not approved'])
 	rejectPlan(opened, actor, { reference: 'checkout@2', rationale: 'Not yet.' })
 	assert.equal(planDetail(opened, 'checkout').approval.state, 'rejected')
@@ -419,6 +441,16 @@ test('only a deferred blocking gap defers its tests and their requirements', (t)
 			['R3', 'deferred'],
 		]
 	)
+})
+
+test('the gate gives a missing prerequisite of two selected tests once', (t) => {
+	const opened = store(t)
+	target(opened, { approvals: { plan: 'none', result: 'none' } })
+	const value = candidate()
+	value.tests.push({ ...value.tests[0], id: 'T4', dependsOn: ['T1'] })
+	plan(opened, 'checkout', value)
+	const checked = gate(opened, { reference: 'checkout@1', tests: ['T2', 'T4'], build: 'b', partial: 'ready_only' })
+	assert.deepEqual(checked.reply.reasons, ['Test is not ready: T2', 'Missing prerequisite: T1'])
 })
 
 test('the gate collects every reason in order', (t) => {
@@ -559,6 +591,32 @@ test('a request needs known tool names and refuses drafted requirements when it 
 	)
 })
 
+test('plan diff lists requirement changes, removed items, and absent values', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const before = planRevision(opened, 'checkout').plan
+	const after = structuredClone(before)
+	after.requirements[0].text = 'A standard order totals 400 PLN.'
+	after.requirements[0].metadata = { priority: 'high' }
+	after.requirements.pop()
+	after.requirements.push({ id: 'R4', text: 'Receipts show the currency.', source: 'brief#receipt' })
+	after.tests[0].assertions = []
+	after.tests.pop()
+	after.gaps.pop()
+	const changes = planChanges(before, after)
+	assert.deepEqual(changes.slice(0, 5), [
+		'R3 removed: "Refund eligibility is unspecified."',
+		'R1 metadata: (none) → {"priority":"high"}',
+		'R1 text: "A standard order for a 400 PLN item has a total of 400 PLN." → "A standard order totals 400 PLN."',
+		'R4 added: "Receipts show the currency."',
+		`${before.tests.at(-1)!.id} removed: ${JSON.stringify(before.tests.at(-1)!.title)}`,
+	])
+	assert(changes.includes('T1.A1 removed: "The confirmation shows 400 PLN."'))
+	assert(changes.includes(`${before.gaps.at(-1)!.id} removed: ${JSON.stringify(before.gaps.at(-1)!.question)}`))
+	assert(changes.every((line) => !line.includes('undefined')))
+})
+
 test('plan edit changes an unapproved latest revision in place and records the operation', (t) => {
 	const opened = store(t)
 	target(opened)
@@ -610,13 +668,43 @@ test('plan edit changes an unapproved latest revision in place and records the o
 	)
 })
 
+test('a plan decision with a stale decision token throws and records no approval', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened, 'checkout', withG3())
+	revised(opened)
+	const approvals = () =>
+		opened.db.prepare("SELECT count(*) AS n FROM approvals WHERE subject_id = 'checkout@2'").get()?.n
+	assert.equal(decisionToken(opened, 'plan', 'checkout@2'), 'none')
+	rejectPlan(opened, 'other', { reference: 'checkout@2', rationale: 'Not yet.', expectDecision: 'none' })
+	const token = decisionToken(opened, 'plan', 'checkout@2')
+	assert.notEqual(token, 'none')
+	for (const decide of [approvePlan, rejectPlan])
+		assert.throws(
+			() => decide(opened, actor, { reference: 'checkout@2', rationale: 'Ok.', expectDecision: 'none' }),
+			/checkout@2 has a newer decision/
+		)
+	assert.equal(approvals(), 1)
+	const log = opened.db
+		.prepare("SELECT status FROM operations WHERE command = 'plan approve' ORDER BY rowid DESC LIMIT 1")
+		.get()
+	assert.equal(log?.status, 'rejected')
+	approvePlan(opened, actor, { reference: 'checkout@2', rationale: 'Ok.', expectDecision: token })
+	assert.equal(approvals(), 2)
+})
+
 test('editing a rejected revision returns it to pending approval', (t) => {
 	const opened = store(t)
 	target(opened)
 	plan(opened)
 	rejectPlan(opened, actor, { reference: 'checkout@1', rationale: 'T1 title is vague.' })
 	assert.equal(planDetail(opened, 'checkout').approval.state, 'rejected')
-	assert.deepEqual(inbox(opened).plans, [])
+	assert.equal(planStatus(opened, 'checkout').waitsOn, 'oracle')
+	assert.deepEqual(
+		inbox(opened).plans.map((row) => [`${row.planId}@${row.revision}`, row.approval, row.summary.split('. ')[0]]),
+		[['checkout@1', 'rejected', 'Rejected']]
+	)
+	assert.match(cli(opened.workspace, ['inbox']).output, /checkout@1\tplan\tfff1d35f\tRejected. Change the plan. /)
 	const content = planCandidate(planRevision(opened, 'checkout').plan)
 	content.tests[0].title = 'Standard order total for one item'
 	editPlan(opened, actor, { reference: 'checkout@1', candidate: content })
@@ -676,7 +764,17 @@ test('plan edit keeps gaps with pending decisions open and refuses reused assert
 	answerGap(opened, actor, { planId: 'checkout', gapId: 'G3', kind: 'defer', value: 'Later.', rationale: 'Scope.' })
 	assert.throws(
 		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: reused }),
-		/Gap G3 has a pending decision [0-9A-Z]{26}. Keep the gap open/
+		/Gap G3 has a decision. Only an open gap without a decision can change/
+	)
+	const reworded = structuredClone(open)
+	reworded.gaps.find((gap) => gap.id === 'G3')!.question = 'Is the label blue?'
+	assert.throws(
+		() => editPlan(opened, actor, { reference: 'checkout@2', candidate: reworded }),
+		/Gap G3 has a decision. Only an open gap without a decision can change/
+	)
+	assert.throws(
+		() => patchPlan(opened, actor, { reference: 'checkout@2', patch: { gaps: { G1: { question: 'Other?' } } } }),
+		/Gap G1 has a decision. Only an open gap without a decision can change/
 	)
 	const renamed = structuredClone(open)
 	renamed.tests[0].assertions[0].id = 'A1x'

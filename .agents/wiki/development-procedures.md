@@ -9,6 +9,8 @@ Read the implementation before changing its contract or documentation.
 5. Run `npm run phase:verify`.
 6. Run `npm run test:live` for changes to Claude integration or workflow behavior when authentication is available.
 
+Follow the rules in [Writing tests](../../docs/development.md#writing-tests) when you add or change a test.
+
 Use ASD-STE100 style for documentation, instructions, and skills. Use short sentences and consistent terms. Give one action per instruction.
 
 Report passed, failed, and unrun checks separately. Do not claim that mocked output proves live Claude behavior.

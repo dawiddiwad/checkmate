@@ -128,3 +128,24 @@ test('text evidence must be present, given once, and have a known kind', (t) => 
 	assert.equal((reply.data.evidenceIds as string[]).length, 2)
 	assert.equal(existsSync(join(opened.workspace, screenshot)), false)
 })
+
+test('evidence files get a media type from the extension; a .json file is an observation by default', (t) => {
+	const opened = started(t)
+	const files = [
+		evidenceFile(opened, 'run-1', 'response.xml', '<ok/>'),
+		evidenceFile(opened, 'run-1', 'rows.csv', 'id,total\n1,400\n'),
+		evidenceFile(opened, 'run-1', 'quote.json', '{"totalPLN":400}'),
+		`${evidenceFile(opened, 'run-1', 'exchange.json', '{"status":200}')}:http_exchange`,
+	]
+	const reply = checkAssertion(opened, actor, { ...passed(files), assertionId: 'A1' })
+	const stored = (reply.data.evidenceIds as string[]).map((id) => evidenceBytes(opened, id))
+	assert.deepEqual(
+		stored.map((item) => [item.name, item.kind, item.mediaType]),
+		[
+			['response.xml', 'observation', 'application/xml'],
+			['rows.csv', 'observation', 'text/csv'],
+			['quote.json', 'observation', 'application/json'],
+			['exchange.json', 'http_exchange', 'application/json'],
+		]
+	)
+})

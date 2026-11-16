@@ -48,8 +48,9 @@ npm i -g @xoxoai/checkmate
 Then set up a target, open a plan for a ticket, and let a planner write it:
 
 ```sh
-checkmate target open shop --base-url http://127.0.0.1:4173 \
+checkmate target open shop --entry-point "web:url:Storefront and HTTP API." \
   --capabilities browser,http --operations read_catalog,create_order
+checkmate target instance add shop local --entry web=http://127.0.0.1:4173
 checkmate delegate setup shop --allow Read --allow Bash
 checkmate plan open checkout --target shop@1 \
   --objective "Verify checkout totals." --source docs/checkout.md

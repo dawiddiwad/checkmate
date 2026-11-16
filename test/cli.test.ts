@@ -1,10 +1,28 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
-import { candidate, cli, directory, json, planRequest, profile, promotionDelta, root } from './support.ts'
+import { closeStore } from '../plugin/src/store.ts'
+import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
+import { rejectResult } from '../plugin/src/runs.ts'
+import {
+	begin,
+	candidate,
+	cli,
+	directory,
+	json,
+	passRun,
+	plan,
+	planRequest,
+	profile,
+	promotionDelta,
+	ready,
+	root,
+	store,
+	target,
+} from './support.ts'
 import type { TestContext } from 'node:test'
 
 function setup(t: TestContext) {
@@ -16,8 +34,8 @@ function setup(t: TestContext) {
 				'target',
 				'open',
 				'checkout-local',
-				'--base-url',
-				value.baseUrl,
+				'--entry-point',
+				'web:url:Checkout web application and HTTP API.',
 				'--capabilities',
 				value.capabilities.join(','),
 				'--operations',
@@ -25,6 +43,7 @@ function setup(t: TestContext) {
 			],
 		],
 		[['target', 'save', 'checkout-local'], value],
+		[['target', 'instance', 'add', 'checkout-local', 'local', '--entry', 'web=http://127.0.0.1:4173']],
 		[['plan', 'open', 'checkout', '--target', 'checkout-local@1'], planRequest()],
 		[['plan', 'save', 'checkout'], candidate()],
 	]
@@ -151,12 +170,34 @@ test('query is read-only and prints TSV with a header or JSON rows', (t) => {
 	const rows = cli(workspace, ['query', 'SELECT plan_id, revision FROM plan_revisions'])
 	assert.deepEqual(rows.lines, ['completed query rows=1', 'plan_id\trevision', 'checkout\t1'])
 	assert.deepEqual(json(workspace, ['query', 'SELECT plan_id FROM plan_revisions WHERE 0']).body.columns, ['plan_id'])
-	for (const sql of ['DELETE FROM operations', "INSERT INTO meta VALUES ('a', 'b')", 'DROP TABLE meta']) {
+	for (const sql of [
+		'DELETE FROM operations',
+		"INSERT INTO meta VALUES ('a', 'b')",
+		'DROP TABLE meta',
+		'PRAGMA user_version = 5',
+		'pragma main.journal_mode=delete',
+		'PRAGMA journal_mode(DELETE)',
+		'/* note */ PRAGMA user_version = 1',
+		' -- note\nPRAGMA locking_mode = exclusive',
+		"VACUUM INTO '/tmp/checkmate-vacuum.db'",
+		'BEGIN',
+		'VACUUM',
+	]) {
 		const refused = cli(workspace, ['query', sql])
 		assert.equal(refused.code, 1, sql)
-		assert.deepEqual(refused.lines, ['rejected query', 'reason: attempt to write a readonly database'])
+		assert.deepEqual(refused.lines, [
+			'rejected query',
+			'reason: query is read-only. Use the Checkmate commands to change the record.',
+		])
 	}
-	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 4)
+	assert.deepEqual(cli(workspace, ['query', 'SELECT 1; DELETE FROM operations']).lines, [
+		'rejected query',
+		'reason: query runs one SQL statement. Send each statement in its own query.',
+	])
+	assert.equal(cli(workspace, ['query', "SELECT ';' AS x; -- end"]).lines[2], ';')
+	assert.equal(cli(workspace, ['query', 'PRAGMA table_info(meta)']).code, 0)
+	assert.equal(cli(workspace, ['query', 'PRAGMA journal_mode']).lines[2], 'wal')
+	assert.equal(json(workspace, ['query', 'SELECT count(*) AS n FROM operations']).body.rows[0].n, 5)
 	const fresh = directory(t)
 	assert.deepEqual(cli(fresh, ['query', 'SELECT count(*) AS n FROM plan_revisions']).lines, [
 		'completed query rows=1',
@@ -185,15 +226,20 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	assert.equal(json(workspace, ['plan', 'show', 'checkout']).body.pendingDecisions[0].actor, 'reviewer')
 	const cases: Array<[string[], string]> = [
 		[['deploy'], 'Unknown command: deploy. Run checkmate --help.'],
+		[['target', 'instance', 'drop', 'x', 'y'], 'Unknown command: target instance drop. Run checkmate --help.'],
+		[['target', 'instance', '--json'], 'Unknown command: target instance. Run checkmate --help.'],
 		[
 			['plan', 'show', 'checkout', '--verbose'],
-			'Unknown option --verbose for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]',
+			'Unknown option --verbose for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <open|all>]',
 		],
 		[
 			['plan', 'show', 'checkout', '--actor', 'x'],
-			'Unknown option --actor for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]',
+			'Unknown option --actor for plan show. Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <open|all>]',
 		],
-		[['plan', 'show'], 'Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <value>]'],
+		[
+			['plan', 'show'],
+			'Usage: checkmate plan show <reference> [--tests <a,b>] [--fields <a,b>] [--gaps <open|all>]',
+		],
 		[['plan', 'show', 'checkout', '--tests'], 'Missing value for --tests'],
 		[['run', 'gate', 'checkout@1', '--build', 'a', '--build', 'b'], 'Option --build is given twice'],
 	]
@@ -215,12 +261,73 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	)
 })
 
+test('compact output gives the actor and rationale of a rejected result', (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	passRun(opened, 'run-1', 'b1', ['T1', 'T2'])
+	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'I need fullsize screenshots for evidence' })
+	closeStore(opened)
+	const status = cli(workspace, ['status', 'checkout'])
+	assert.match(status.lines[0], /^completed checkout state=needs_retest waitsOn=qa /)
+	assert.equal(status.lines[1], 'why\trun-1 was rejected by Dawid: I need fullsize screenshots for evidence')
+	const shown = cli(workspace, ['run', 'show', 'run-1'])
+	assert.match(shown.lines[0], / acceptance=rejected$/)
+	assert.match(shown.lines.at(-1)!, /^decision\trejected\tDawid\t\S+Z\tI need fullsize screenshots for evidence$/)
+	assert.match(
+		cli(workspace, ['log', '--limit', '1']).lines[1],
+		/\tDawid\tresult reject\tcompleted\trun:run-1,plan:checkout,inbox\tI need fullsize screenshots for evidence\t\d+$/
+	)
+})
+
+test('compact output gives the rationale of a rejected plan and of gap answers', (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	target(opened)
+	plan(opened)
+	rejectPlan(opened, 'Dawid', { reference: 'checkout@1', rationale: 'Add a refund test.' })
+	closeStore(opened)
+	assert.equal(
+		cli(workspace, ['status', 'checkout']).lines[1],
+		'why\tcheckout@1 was rejected by Dawid: Add a refund test.'
+	)
+	assert.equal(
+		cli(workspace, ['plan', 'show', 'checkout'])
+			.lines.at(-1)!
+			.replace(/\t\S+Z\t/, '\t<at>\t'),
+		'decision\trejected\tDawid\t<at>\tAdd a refund test.'
+	)
+	const reopened = store(t, workspace)
+	answerGap(reopened, 'tester', {
+		planId: 'checkout',
+		gapId: 'G2',
+		kind: 'defer',
+		value: 'Do not check refunds.',
+		rationale: 'Refunds ship next quarter.',
+	})
+	closeStore(reopened)
+	assert.match(
+		cli(workspace, ['plan', 'pending', 'checkout']).lines[1],
+		/^[0-9A-Z]{26}\tG2\tdefer\tDo not check refunds\.\tRefunds ship next quarter\.$/
+	)
+	assert(
+		cli(workspace, ['plan', 'show', 'checkout']).lines.some((line) =>
+			/\tG2\tpending defer\tDo not check refunds\.\tRefunds ship next quarter\.$/.test(line)
+		)
+	)
+	assert.match(
+		cli(workspace, ['log', '--limit', '1']).lines[1],
+		/\tgap answer\t.*\tRefunds ship next quarter\.\t\d+$/
+	)
+})
+
 test('the operation log has one row per write, records refusals, and lists subjects', (t) => {
 	const workspace = setup(t)
 	cli(workspace, ['plan', 'show', 'checkout'])
 	cli(workspace, ['plan', 'approve', 'checkout@1', '--rationale', ''])
 	cli(workspace, ['plan', 'approve', 'checkout@1', '--rationale', 'Ok.'])
 	const log = json(workspace, ['log']).body.operations as Array<{
+		rowid: number
 		command: string
 		status: string
 		subjects: string[]
@@ -235,6 +342,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 			['plan approve', 'rejected', []],
 			['plan save', 'needs_decision', ['plan:checkout', 'inbox']],
 			['plan open', 'completed', ['plan:checkout', 'inbox']],
+			['target instance add', 'completed', ['target:checkout-local']],
 			['target save', 'completed', ['target:checkout-local']],
 			['target open', 'completed', ['target:checkout-local']],
 		]
@@ -244,12 +352,43 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.deepEqual((log[2].arguments.candidate as { tests: unknown[] }).tests.length, 3)
 	const compact = cli(workspace, ['log', '--subject', 'target:checkout-local', '--limit', '1'])
 	assert.equal(compact.lines.length, 2)
-	assert.match(compact.lines[1], /^[0-9A-Z]{26}\t\S+\ttester\ttarget save\tcompleted\ttarget:checkout-local$/)
-	assert.match(cli(workspace, ['log', '--limit', 'ten']).lines[1], /Invalid --limit: ten/)
+	assert.match(
+		compact.lines[1],
+		/^[0-9A-Z]{26}\t\S+\ttester\ttarget instance add\tcompleted\ttarget:checkout-local\t3$/
+	)
+	const after = json(workspace, ['log', '--after', '4', '--limit', '2']).body.operations as typeof log
+	assert.deepEqual(
+		after.map((row) => [row.rowid, row.command]),
+		[
+			[5, 'plan save'],
+			[6, 'plan approve'],
+		]
+	)
+	assert.deepEqual(json(workspace, ['log', '--after', '7']).body.operations, [])
 	assert.deepEqual(cli(workspace, ['log', '--subject', 'checkout-local']).lines, [
-		'rejected log',
+		'invalid_request log',
 		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.',
 	])
+	for (const [flag, text, reason] of [
+		['--after', 'x', 'Invalid --after: x. Use a whole number from 0'],
+		['--limit', 'ten', 'Invalid --limit: ten. Use a whole number from 1 to 1000.'],
+		['--limit', '0', 'Invalid --limit: 0. Use a whole number from 1 to 1000.'],
+		['--limit', '1001', 'Invalid --limit: 1001. Use a whole number from 1 to 1000.'],
+	]) {
+		const refused = cli(workspace, ['log', flag, text])
+		assert.equal(refused.lines[0], 'invalid_request log')
+		assert(refused.lines[1].startsWith(`reason: ${reason}`), refused.output)
+	}
+	const before = json(workspace, ['log']).body.operations.length
+	assert.deepEqual(cli(workspace, ['run', 'check', 'run-9', 'T1', 'A1', '--result', 'maybe']).lines, [
+		'invalid_request run check',
+		'reason: Invalid --result: maybe. Use one of: passed, failed, inconclusive, not_checked.',
+	])
+	assert.equal(
+		cli(workspace, ['run', 'begin', 'run-9', 'checkout@1', '--build', 'b', '--timeout', '0']).lines[0],
+		'invalid_request run begin'
+	)
+	assert.equal(json(workspace, ['log']).body.operations.length, before)
 })
 
 test('a finished run exits 1 when it was interrupted, and export writes each format', (t) => {
@@ -270,7 +409,7 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	])
 	assert.match(
 		begun.lines[0],
-		/^completed run-1 tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
+		/^completed run-1 instance=local tests=T1 startedAt=\S+ browserSession=cm-\S+ deadlineSeconds=120 evidenceDirectory=\.checkmate\/tmp\/run-1\/$/
 	)
 	const finished = cli(workspace, [
 		'run',
@@ -307,18 +446,25 @@ test('a finished run exits 1 when it was interrupted, and export writes each for
 	)
 	assert.equal(json(workspace, ['export', 'run', 'run-1', '--format', 'json']).body.format, 'json')
 	assert.match(
-		cli(workspace, ['export', 'run', 'run-1', '--format', 'pdf', '--out', 'x.pdf']).lines[1],
-		/Invalid format/
+		cli(workspace, ['export', 'run', 'run-1', '--format', 'pdf', '--out', 'x.pdf']).output,
+		/^invalid_request export run\nreason: Invalid --format: pdf\. Use one of: md, html, json, junit\.$/
+	)
+	assert.match(
+		cli(workspace, ['export', 'plan', 'checkout@2', '--format', 'junit']).output,
+		/^invalid_request export plan\nreason: Invalid --format: junit\. Use one of: md, html, json\.$/
 	)
 	const shown = cli(workspace, ['run', 'show', 'run-1'])
-	assert.match(shown.lines[0], /^completed run-1 state=finalized plan=checkout@2 build=b1 completion=interrupted/)
+	assert.match(
+		shown.lines[0],
+		/^completed run-1 state=finalized plan=checkout@2 build=b1 instance=local completion=interrupted/
+	)
 	assert.equal(
 		shown.lines[1],
 		'T1\terror\tStandard order total\tRun stopped before the test closed. Actions may have occurred.'
 	)
 	assert.equal(
 		cli(workspace, ['run', 'list']).lines[1],
-		'run-1\tcheckout@2\tb1\tfinalized\tinterrupted\tpartial\tpending'
+		'run-1\tcheckout@2\tb1\tlocal\tfinalized\tinterrupted\tpartial\tpending'
 	)
 })
 
@@ -327,7 +473,27 @@ test('--version and --help need no workspace', () => {
 	assert.equal(cli('/nonexistent', ['--version']).output, manifest.version)
 	const help = cli('/nonexistent', ['--help']).output
 	assert.match(help, /^checkmate init$/m)
-	assert.match(help, /checkmate run check <runId> <testId> <assertionId> --result <value> \[--observed <value>\]/)
+	assert.match(
+		help,
+		/checkmate run check <runId> <testId> <assertionId> --result <passed\|failed\|inconclusive\|not_checked> \[--observed <value>\]/
+	)
+	const group = cli('/nonexistent', ['plan', '--help'])
+	assert.equal(group.code, 0)
+	assert.equal(group.lines[0], 'completed plan')
+	assert(
+		group.lines.slice(1).every((line) => line.startsWith('checkmate plan ')),
+		group.output
+	)
+	assert(group.lines.includes('checkmate plan diff <planId> <from> <to>'), group.output)
+	assert.deepEqual(cli('/nonexistent', ['plan', 'open', '--help']).lines, [
+		'completed plan open',
+		'checkmate plan open <planId> --target <value> [--objective <value>] [--source <value>] [--instructions <value>] [--actor <name>] < payload.json',
+	])
+	assert.deepEqual(json('/nonexistent', ['target', 'instance', 'retire', '--help']).body.usage, [
+		'checkmate target instance retire <targetId> <instanceId> [--actor <name>]',
+	])
+	assert.deepEqual(cli('/nonexistent', ['ui', '--help']).lines, ['completed ui', 'checkmate ui [--port <value>]'])
+	assert.equal(cli('/nonexistent', ['nope', '--help']).lines[0], 'invalid_request checkmate')
 })
 
 test('without --actor and CHECKMATE_ACTOR, a write records the git user name, else the login name', (t) => {
@@ -358,12 +524,49 @@ test('without --actor and CHECKMATE_ACTOR, a write records the git user name, el
 	])
 })
 
+function child(workspace: string, args: string[], input: string) {
+	return new Promise<{ status: string; reasons: string[] }>((resolve, reject) => {
+		const process_ = spawn(process.execPath, [join(root, 'plugin/bin/checkmate.ts'), ...args, '--json'], {
+			cwd: workspace,
+			env: { ...process.env, CHECKMATE_ACTOR: 'tester' },
+		})
+		let output = ''
+		process_.stdout.on('data', (bytes: Buffer) => (output += bytes))
+		process_.on('error', reject)
+		process_.on('close', () => resolve(JSON.parse(output)))
+		process_.stdin.end(input)
+	})
+}
+
+test('parallel writers under lock contention all commit, and none is rejected', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	const runs = Array.from({ length: 8 }, (_, i) => `run-${i + 1}`)
+	runs.forEach((runId, i) => begin(opened, runId, ['T1'], `build-${i}`))
+	closeStore(opened)
+	const evidence = 'x'.repeat(4 * 1024 * 1024)
+	const writes = runs.flatMap((runId) =>
+		['A1', 'A2'].map((assertionId) => {
+			const args = ['run', 'check', runId, 'T1', assertionId, '--result', 'passed', '--observed', 'ok']
+			return child(workspace, [...args, '--evidence', '-'], `${runId} ${assertionId} ${evidence}`)
+		})
+	)
+	const replies = await Promise.all(writes)
+	for (const reply of replies) assert.equal(reply.status, 'completed', reply.reasons.join('; '))
+	const committed = json(workspace, ['query', 'SELECT count(*) AS n FROM assertion_results']).body.rows[0].n
+	assert.equal(committed, writes.length)
+	const logged = json(workspace, ['query', "SELECT status FROM operations WHERE command = 'run check'"]).body.rows
+	assert.equal(logged.length, committed)
+	assert(logged.every((row: { status: string }) => row.status === 'completed'))
+})
+
 test('payload commands read a shell heredoc on standard input', (t) => {
 	const workspace = directory(t)
 	const value = profile()
 	const checkmate = `node ${JSON.stringify(join(root, 'plugin/bin/checkmate.ts'))}`
 	const script = [
-		`${checkmate} target open checkout-local --base-url ${value.baseUrl} --capabilities ${value.capabilities.join(',')} --operations ${value.allowedOperations.join(',')}`,
+		`${checkmate} target open checkout-local --entry-point "web:url:Checkout web application and HTTP API." --capabilities ${value.capabilities.join(',')} --operations ${value.allowedOperations.join(',')}`,
 		`${checkmate} target save checkout-local <<'EOF'\n${JSON.stringify(value, null, 2)}\nEOF`,
 	].join('\n')
 	const output = execFileSync('sh', ['-c', script], {
@@ -374,7 +577,7 @@ test('payload commands read a shell heredoc on standard input', (t) => {
 	assert.match(output, /^completed checkout-local@1 sha256=[a-f0-9]{8} recorded=true$/m)
 })
 
-test('inbox lists gaps to answer, plans to approve, and results to accept', (t) => {
+test('inbox lists gaps to answer, plans to approve, results to accept, and plan requests', (t) => {
 	const workspace = setup(t)
 	const first = cli(workspace, ['inbox'])
 	assert.equal(first.code, 0)
@@ -387,6 +590,16 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 		first.lines[3],
 		/^checkout@1\tplan\t[a-f0-9]{8}\t3 tests: 1 ready, 2 blocked, 0 deferred; 2 open gaps$/
 	)
+	const request = { objective: 'Draft later.', requirements: [{ id: 'R1', text: 'Later.', source: 'brief#1' }] }
+	cli(workspace, ['plan', 'open', 'later', '--target', 'checkout-local@1'], request)
+	const waiting = cli(workspace, ['inbox'])
+	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=1')
+	assert.equal(waiting.lines.at(-1), 'later\trequested\tcheckout-local@1\tDraft later.')
+	const plans = cli(workspace, ['plan', 'list'])
+	assert.equal(plans.lines[0], 'completed plans count=2')
+	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
+	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=needs_plan\twaitsOn=planner')
+	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 	revise(workspace)
 	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])
 	cli(workspace, ['run', 'begin', 'run-1', 'checkout@2', '--tests', 'T1', '--build', 'b1'])
@@ -403,28 +616,15 @@ test('inbox lists gaps to answer, plans to approve, and results to accept', (t) 
 	])
 	const later = cli(workspace, ['inbox'])
 	assert.deepEqual(later.lines, [
-		'completed inbox gaps=0 plans=0 results=1 requests=0',
+		'completed inbox gaps=0 plans=0 results=1 requests=1',
 		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1',
+		'later\trequested\tcheckout-local@1\tDraft later.',
 	])
 	const body = json(workspace, ['inbox']).body
 	assert.deepEqual(
 		[body.gaps, body.plans, body.results.map((row: { runId: string }) => row.runId)],
 		[[], [], ['run-1']]
 	)
-})
-
-test('inbox and plan list show a plan request without a revision', (t) => {
-	const workspace = setup(t)
-	const request = { objective: 'Draft later.', requirements: [{ id: 'R1', text: 'Later.', source: 'brief#1' }] }
-	cli(workspace, ['plan', 'open', 'later', '--target', 'checkout-local@1'], request)
-	const waiting = cli(workspace, ['inbox'])
-	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=1')
-	assert.equal(waiting.lines.at(-1), 'later\trequested\tcheckout-local@1\tDraft later.')
-	const plans = cli(workspace, ['plan', 'list'])
-	assert.equal(plans.lines[0], 'completed plans count=2')
-	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
-	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=needs_plan\twaitsOn=planner')
-	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
 })
 
 test('plan open takes the objective, sources, and instructions as flags', (t) => {
@@ -459,7 +659,7 @@ test('run gate and run begin with ready_only and no --tests print the selection 
 	assert.match(checked.lines[0], /^completed checkout@1 sha256=[a-f0-9]{8} tests=T1$/)
 	assert.deepEqual(checked.lines.slice(1), ['T2\tleft_out\tblocked by G1', 'T3\tleft_out\tblocked by G2'])
 	const begun = cli(workspace, ['run', 'begin', 'run-1', 'checkout@1', ...early])
-	assert.match(begun.lines[0], /^completed run-1 tests=T1 startedAt=/)
+	assert.match(begun.lines[0], /^completed run-1 instance=local tests=T1 startedAt=/)
 	assert.deepEqual(begun.lines.slice(1), checked.lines.slice(1))
 	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1'])
 	assert.equal(missing.lines[1], 'reason: Select one or more tests with --tests, or add --partial ready_only')
@@ -520,11 +720,12 @@ test('status prints the loop state, who it waits on, and the open items', (t) =>
 		'completed checkout state=needs_answers waitsOn=oracle revision=1 approval=pending',
 		'why\t2 open gaps',
 		'why\tcheckout@1 waits for approval',
-		'next\tcheckmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --rationale "<why>"',
+		'next\tcheckmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"',
 		'G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
 		'G2\tgap\tblocking\tWhich orders qualify for refunds?',
 	])
-	assert.equal(json(workspace, ['status', 'checkout']).body.waitsOn, 'oracle')
+	const body = json(workspace, ['status', 'checkout']).body
+	assert.deepEqual([body.waitsOn, body.stage], ['oracle', 'none'])
 	assert.deepEqual(cli(workspace, ['status', 'nothing']).lines, [
 		'rejected nothing',
 		'reason: Unknown plan: nothing. Run plan open first.',
@@ -532,8 +733,8 @@ test('status prints the loop state, who it waits on, and the open items', (t) =>
 	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'oracle']).lines[0], 'completed plans count=1')
 	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'qa']).lines[0], 'completed plans count=0')
 	assert.match(
-		cli(workspace, ['plan', 'list', '--waits-on', 'boss']).lines[1],
-		/^reason: Invalid role \(--waits-on\): boss/
+		cli(workspace, ['plan', 'list', '--waits-on', 'boss']).output,
+		/^invalid_request plan list\nreason: Invalid --waits-on: boss\. Use one of: planner, oracle/
 	)
 })
 

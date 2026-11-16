@@ -71,18 +71,27 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 
 	assert.equal(checkmate('--version'), version)
 	assert.match(checkmate('--help'), /checkmate delegate <setup\|plan\|revise\|execute>/)
+	assert.match(
+		checkmate('delegate', '--help'),
+		/^completed delegate\ncheckmate delegate <setup\|plan\|revise\|execute>/
+	)
+	assert.match(checkmate('plan', 'open', '--help'), /^completed plan open\ncheckmate plan open <planId>/)
 	assert.equal(checkmate('init'), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate('plan', 'list'), 'completed plans count=0')
 	checkmate(
 		'target',
 		'open',
 		'checkout-local',
-		'--base-url',
-		'http://127.0.0.1:9',
+		'--entry-point',
+		'web:url:Checkout API.',
 		'--capabilities',
 		'http',
 		'--operations',
 		'read_catalog'
+	)
+	assert.equal(
+		checkmate('target', 'instance', 'add', 'checkout-local', 'local', '--entry', 'web=http://127.0.0.1:9'),
+		'completed checkout-local/local recorded=true\nentry\tweb\thttp://127.0.0.1:9'
 	)
 	assert.equal(
 		checkmate('delegate', 'setup', 'checkout-local', '--allow', 'Read', '--timeout', '30'),

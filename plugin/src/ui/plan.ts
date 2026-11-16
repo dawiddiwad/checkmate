@@ -4,9 +4,9 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { planDetail, planHistory, planStatus } from '../views.ts'
-import { planRunGaps } from '../plans.ts'
+import { decisionToken, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
-import { html, join, pill, plural, short, time, words } from './html.ts'
+import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
@@ -71,6 +71,7 @@ export function testCard(detail: Detail, test: Test) {
 						</ul>`,
 				],
 				['Action', test.action],
+				['Metadata', hasMetadata(test.metadata) && metadataList(test.metadata)],
 			])}
 		</div>
 		${
@@ -166,6 +167,7 @@ function runsTable(detail: Detail) {
 					<th scope="col">Run</th>
 					<th scope="col">Revision</th>
 					<th scope="col">Build</th>
+					<th scope="col">Instance</th>
 					<th scope="col">Tests</th>
 					<th scope="col">Completion</th>
 					<th scope="col">Acceptance</th>
@@ -181,6 +183,7 @@ function runsTable(detail: Detail) {
 								<a class="mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>
 							</td>
 							<td class="mono">${run.build}</td>
+							<td class="mono">${run.instanceId}</td>
 							<td>${counts(run.counts)}</td>
 							<td>${run.completion ? pill(run.completion) : html`<span class="muted">running</span>`}</td>
 							<td>${runStatus(run)}</td>
@@ -211,6 +214,7 @@ function requirementsTable(plan: Plan) {
 						<td>
 							${requirement.text}
 							<div class="muted small">Source <code>${requirement.source}</code></div>
+							${hasMetadata(requirement.metadata) ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}
 						</td>
 						<td>${ids(coverage?.testIds ?? [], (id) => html`<a class="mono" href="#${id}">${id}</a>`)}</td>
 						<td>${coverage ? pill(coverage.status) : ''}</td>
@@ -315,7 +319,7 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 	</div>`
 }
 
-function approvalPanel(context: Context, detail: Detail, state: FormState | null) {
+function approvalPanel(store: Store, context: Context, detail: Detail, state: FormState | null) {
 	const subject = `${detail.planId}@${detail.revision}`
 	const latest = detail.approval.latest
 	if (detail.approval.policy === 'none')
@@ -328,7 +332,8 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner('warn', 'This decision was for another digest.') : ''}`
+				${latest.sha256 !== detail.sha256 ? banner('warn', 'This decision was for another digest.') : ''}`,
+			`${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
 		context,
@@ -337,6 +342,7 @@ function approvalPanel(context: Context, detail: Detail, state: FormState | null
 			subject,
 			question: `Approve ${subject}?`,
 			sha256: detail.sha256,
+			token: decisionToken(store, 'plan', subject),
 			digestLabel: 'Plan',
 			approve: {
 				value: 'approve',
@@ -449,7 +455,7 @@ export function planPage(
 					${planHistoryList(store, detail, allHistory)}
 				</section>
 			</div>
-			${side(approvalPanel(context, detail, state))}
+			${side(approvalPanel(store, context, detail, state))}
 		</div>`
 	return {
 		title: subject,

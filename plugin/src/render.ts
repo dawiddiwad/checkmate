@@ -1,9 +1,10 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
+import { all } from './store.ts'
 import type { Approval } from './plans.ts'
 import type { ApprovalLabel } from './views.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
-import { planRevision } from './plans.ts'
+import { planApproval, planRevision } from './plans.ts'
 import { outcomeCounts, resultAcceptance, runResult, runState } from './runs.ts'
 import { approvalLabel, evidenceBytes } from './views.ts'
 
@@ -18,19 +19,26 @@ type Block =
 type Report = { title: string; note: string; blocks: Block[] }
 type EvidenceItem = { label: string; name: string; mediaType: string; size: number; image?: string; text?: string }
 export type Format = 'md' | 'html' | 'json'
+export type RunFormat = Format | 'junit'
 export type RunReport = {
 	result: Result
 	sha256: string
 	acceptance: { state: ApprovalLabel; latest: Approval | null }
-	plan: Pick<Plan, 'planId' | 'revision' | 'objective' | 'requirements' | 'gaps' | 'decisions' | 'assumptions'>
+	planApproval: { state: ApprovalLabel; latest: Approval | null }
+	plan: Pick<
+		Plan,
+		'planId' | 'revision' | 'objective' | 'requirements' | 'tests' | 'gaps' | 'decisions' | 'assumptions'
+	>
 	inline: Record<string, { image?: string; text?: string }>
+	times: Record<string, number>
 }
 
-const formats = ['md', 'html', 'json'] as const
+export const formats = ['md', 'html', 'json'] as const
+export const runFormats = [...formats, 'junit'] as const
 const maxInlineImage = 512 * 1024
 const maxInlineText = 16 * 1024
 const inlineImages = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const inlineTexts = ['text/plain', 'application/json', 'text/markdown']
+const inlineTexts = ['text/plain', 'application/json', 'text/markdown', 'application/xml', 'text/csv']
 const tones: Record<string, string> = {
 	passed: 'pass',
 	approved: 'pass',
@@ -57,6 +65,8 @@ const tones: Record<string, string> = {
 }
 const none = '—'
 const join = (values: string[]) => (values.length ? values.join(', ') : none)
+const pairs = (metadata: Record<string, string | number | boolean> = {}) =>
+	join(Object.entries(metadata).map(([key, value]) => `${key}=${value}`))
 
 function markdownText(value: string) {
 	return value
@@ -223,8 +233,15 @@ function html(report: Report) {
 	)
 }
 
+function approvalBlock(approval: RunReport['acceptance'], notRequired: string): Block {
+	if (!approval.latest) return { text: approval.state === 'not_required' ? notRequired : 'No decision yet.' }
+	const { verdict, actor, at, rationale, sha256 } = approval.latest
+	return { table: ['Verdict', 'Actor', 'At', 'Rationale', 'Digest'], rows: [[verdict, actor, at, rationale, sha256]] }
+}
+
 function runDocument(report: RunReport): Report {
 	const { result, sha256, acceptance, plan } = report
+	const planned = new Map(plan.tests.map((test) => [test.id, test]))
 	const evidence = new Map(result.evidence.map((entry) => [entry.id, entry]))
 	const files = (ids: string[]) => join(ids.map((id) => `${evidence.get(id)?.name ?? id} (${id})`))
 	const counts = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)))
@@ -254,6 +271,7 @@ function runDocument(report: RunReport): Report {
 				['Application build', result.applicationBuild],
 				['Plan', `${result.plan.planId}@${result.plan.revision}`],
 				['Target profile', `${result.target.targetId}@${result.target.revision}`],
+				['Instance', result.instanceId],
 				['Started', result.startedAt],
 				['Finished', result.finishedAt],
 				['Attempts', String(result.attempts)],
@@ -263,35 +281,21 @@ function runDocument(report: RunReport): Report {
 			],
 		},
 		{ heading: 'Acceptance' },
-		acceptance.latest
-			? {
-					table: ['Verdict', 'Actor', 'At', 'Rationale', 'Digest'],
-					rows: [
-						[
-							acceptance.latest.verdict,
-							acceptance.latest.actor,
-							acceptance.latest.at,
-							acceptance.latest.rationale,
-							acceptance.latest.sha256,
-						],
-					],
-				}
-			: {
-					text:
-						acceptance.state === 'not_required'
-							? 'The target policy does not require acceptance.'
-							: 'No decision yet.',
-				},
+		approvalBlock(acceptance, 'The target policy does not require acceptance.'),
+		{ heading: `Plan approval (${plan.planId}@${plan.revision})` },
+		approvalBlock(report.planApproval, 'The target policy does not require plan approval.'),
 		{ heading: 'Tests' },
 		{
-			table: ['Test', 'Outcome', 'Assertions', 'Reason'],
+			table: ['Test', 'Title', 'Outcome', 'Assertions', 'Reason', 'Metadata'],
 			rows: result.tests
 				.filter((test) => result.selectedTestIds.includes(test.testId))
 				.map((test) => [
 					test.testId,
+					planned.get(test.testId)?.title ?? none,
 					test.outcome,
 					`${test.assertions.filter((assertion) => assertion.result === 'passed').length} of ${test.assertions.length} passed`,
 					test.reason ?? none,
+					pairs(planned.get(test.testId)?.metadata),
 				]),
 		},
 		{ heading: 'Assertions' },
@@ -322,6 +326,7 @@ function runDocument(report: RunReport): Report {
 				['Expected', finding.expected],
 				['Observed', finding.observed],
 				['Evidence', files(finding.evidenceIds)],
+				['Metadata', pairs(finding.metadata)],
 			],
 		})
 		blocks.push({ list: finding.reproduction, numbered: true })
@@ -391,14 +396,18 @@ function runDocument(report: RunReport): Report {
 	blocks.push(
 		{ heading: 'Coverage' },
 		{
-			table: ['Requirement', 'Text', 'Status', 'Tests', 'Reason'],
-			rows: result.coverage.requirements.map((row) => [
-				row.requirementId,
-				plan.requirements.find((requirement) => requirement.id === row.requirementId)?.text ?? none,
-				row.status,
-				join(row.testIds),
-				row.reason ?? none,
-			]),
+			table: ['Requirement', 'Text', 'Status', 'Tests', 'Reason', 'Metadata'],
+			rows: result.coverage.requirements.map((row) => {
+				const requirement = plan.requirements.find((item) => item.id === row.requirementId)
+				return [
+					row.requirementId,
+					requirement?.text ?? none,
+					row.status,
+					join(row.testIds),
+					row.reason ?? none,
+					pairs(requirement?.metadata),
+				]
+			}),
 		},
 		{ record: result }
 	)
@@ -425,17 +434,18 @@ function planReport(plan: Plan, sha256: string): Report {
 		},
 		{ heading: 'Requirements' },
 		{
-			table: ['Requirement', 'Text', 'Source', 'Coverage'],
+			table: ['Requirement', 'Text', 'Source', 'Coverage', 'Metadata'],
 			rows: plan.requirements.map((requirement) => [
 				requirement.id,
 				requirement.text,
 				requirement.source,
 				coverage.get(requirement.id) ?? none,
+				pairs(requirement.metadata),
 			]),
 		},
 		{ heading: 'Tests' },
 		{
-			table: ['Test', 'Title', 'Readiness', 'Requirements', 'Depends on', 'Preconditions', 'Action'],
+			table: ['Test', 'Title', 'Readiness', 'Requirements', 'Depends on', 'Preconditions', 'Action', 'Metadata'],
 			rows: plan.tests.map((test) => [
 				test.id,
 				test.title,
@@ -444,6 +454,7 @@ function planReport(plan: Plan, sha256: string): Report {
 				join(test.dependsOn),
 				join(test.preconditions),
 				test.action,
+				pairs(test.metadata),
 			]),
 		},
 		{ heading: 'Assertions' },
@@ -494,17 +505,133 @@ function planReport(plan: Plan, sha256: string): Report {
 	}
 }
 
+const xmlEntities: Record<string, string> = {
+	'&': '&amp;',
+	'<': '&lt;',
+	'>': '&gt;',
+	'"': '&quot;',
+	"'": '&apos;',
+	'\n': '&#10;',
+	'\r': '&#13;',
+	'\t': '&#9;',
+}
+
+function validText(value: string) {
+	return value.replace(/[^\t\n\r\u{20}-\u{D7FF}\u{E000}-\u{FFFD}\u{10000}-\u{10FFFF}]/gu, '\uFFFD')
+}
+
+function xml(value: string, pattern: RegExp) {
+	return validText(value).replace(pattern, (character) => xmlEntities[character])
+}
+
+function xmlText(value: string) {
+	return xml(value, /[&<>\r]/g)
+}
+
+function xmlAttribute(value: string) {
+	return xml(value, /[&<>"'\n\r\t]/g)
+}
+
+function xmlTag(name: string, attributes: Record<string, string | number>, content: string | null = null) {
+	const fields = Object.entries(attributes)
+		.map(([key, value]) => ` ${key}="${xmlAttribute(String(value))}"`)
+		.join('')
+	return content === null ? `<${name}${fields}/>` : `<${name}${fields}>${content}</${name}>`
+}
+
+function xmlProperties(values: Array<[string, string | number | boolean]>) {
+	if (!values.length) return ''
+	return `<properties>${values.map(([name, value]) => xmlTag('property', { name, value: String(value) })).join('')}</properties>`
+}
+
+function junitStatus(report: RunReport, test: Result['tests'][number]) {
+	const unpassed = test.assertions.find((assertion) => assertion.result !== 'passed')
+	const reason = test.reason ?? unpassed?.reason ?? unpassed?.observed ?? test.outcome
+	if (test.outcome === 'passed') return ''
+	if (test.outcome === 'blocked' || test.outcome === 'not_run')
+		return xmlTag('skipped', { message: `${test.outcome}: ${reason}` })
+	if (test.outcome !== 'failed') return xmlTag('error', { type: test.outcome, message: reason })
+	const findings = report.result.findings
+		.filter((finding) => finding.testIds.includes(test.testId))
+		.sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }))
+	const defect = findings.find((finding) => finding.type === 'defect')
+	const text = findings.map((finding) =>
+		[
+			`${finding.id} ${finding.type} ${finding.severity}: ${finding.title}`,
+			`Expected: ${finding.expected}`,
+			`Observed: ${finding.observed}`,
+			'Reproduction:',
+			...finding.reproduction.map((step, i) => `${i + 1}. ${step}`),
+		].join('\n')
+	)
+	return xmlTag(
+		'failure',
+		{ type: defect?.type ?? 'failed', message: defect?.title ?? reason },
+		xmlText(text.join('\n\n') || reason)
+	)
+}
+
+function junit(report: RunReport) {
+	const { result, plan } = report
+	const tests = result.tests.filter((test) => result.selectedTestIds.includes(test.testId))
+	const count = (...outcomes: string[]) => tests.filter((test) => outcomes.includes(test.outcome)).length
+	const totals = {
+		tests: tests.length,
+		failures: count('failed'),
+		errors: count('error', 'inconclusive'),
+		skipped: count('blocked', 'not_run'),
+		time: (Date.parse(result.finishedAt) - Date.parse(result.startedAt)) / 1000,
+	}
+	const cases = tests.map((test) => {
+		const planned = plan.tests.find((item) => item.id === test.testId)!
+		const properties = xmlProperties([
+			['title', planned.title],
+			['requirements', planned.requirementIds.join(',')],
+			...Object.entries(planned.metadata ?? {}).map(([key, value]): [string, string | number | boolean] => [
+				`metadata.${key}`,
+				value,
+			]),
+		])
+		return xmlTag(
+			'testcase',
+			{ classname: plan.planId, name: planned.id, time: report.times[test.testId] ?? 0 },
+			properties + junitStatus(report, test)
+		)
+	})
+	const suite = xmlTag(
+		'testsuite',
+		{
+			name: `${result.plan.planId}@${result.plan.revision}`,
+			...totals,
+			timestamp: result.startedAt.slice(0, 19),
+		},
+		xmlProperties([
+			['runId', result.runId],
+			['build', result.applicationBuild],
+			['instance', result.instanceId],
+			['target', `${result.target.targetId}@${result.target.revision}`],
+			['completion', result.completion],
+			['coverage', result.coverage.status],
+		]) +
+			'\n' +
+			cases.join('\n') +
+			'\n'
+	)
+	return `<?xml version="1.0" encoding="UTF-8"?>\n${xmlTag('testsuites', { name: result.runId, ...totals }, suite)}\n`
+}
+
 function rendered(report: Report, record: unknown, format: Format) {
 	if (format === 'json') return JSON.stringify(record, null, 2) + '\n'
-	return format === 'md' ? markdown(report) : html(report)
+	return validText(format === 'md' ? markdown(report) : html(report))
 }
 
 export function renderPlan(plan: Plan, sha256: string, format: Format) {
 	return rendered(planReport(plan, sha256), plan, format)
 }
 
-export function renderRun(report: RunReport, format: Format) {
-	const { inline, ...record } = report
+export function renderRun(report: RunReport, format: RunFormat) {
+	if (format === 'junit') return junit(report)
+	const { inline, times, ...record } = report
 	return rendered(runDocument(report), record, format)
 }
 
@@ -519,7 +646,8 @@ export function runReport(store: Store, runId: string): RunReport {
 	const finished = runResult(store, runId)
 	requireCondition(finished, `Run ${runId} has no result. Finish it before you export it.`)
 	const state = resultAcceptance(store, run.row, finished.sha256)
-	const { planId, revision, objective, requirements, gaps, decisions, assumptions } = run.plan
+	const approval = planApproval(store, run.plan, run.row.plan_sha256)
+	const { planId, revision, objective, requirements, tests, gaps, decisions, assumptions } = run.plan
 	const inline: RunReport['inline'] = {}
 	for (const entry of finished.result.evidence) {
 		const image = inlineImages.includes(entry.mediaType) && entry.size <= maxInlineImage
@@ -534,11 +662,26 @@ export function runReport(store: Store, runId: string): RunReport {
 		result: finished.result,
 		sha256: finished.sha256,
 		acceptance: { state: approvalLabel(state), latest: state.latest },
-		plan: { planId, revision, objective, requirements, gaps, decisions, assumptions },
+		planApproval: { state: approvalLabel(approval), latest: approval.latest },
+		plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
 		inline,
+		times: testTimes(store, runId),
 	}
 }
 
+function testTimes(store: Store, runId: string) {
+	const rows = all<{ test_id: string; first: string; closed: string }>(
+		store,
+		`SELECT o.test_id, coalesce(min(a.recorded_at), o.recorded_at) AS first, o.recorded_at AS closed
+		FROM outcomes o LEFT JOIN assertion_results a ON a.run_id = o.run_id AND a.test_id = o.test_id
+		WHERE o.run_id = ? GROUP BY o.test_id`,
+		runId
+	)
+	return Object.fromEntries(
+		rows.map((row) => [row.test_id, Math.max(0, Date.parse(row.closed) - Date.parse(row.first)) / 1000])
+	)
+}
+
 export function exportRun(store: Store, runId: string, format: string) {
-	return renderRun(runReport(store, runId), requireChoice(format, formats, 'format (--format)'))
+	return renderRun(runReport(store, runId), requireChoice(format, runFormats, 'format (--format)'))
 }

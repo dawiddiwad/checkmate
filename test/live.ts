@@ -94,16 +94,33 @@ try {
 		'target',
 		'open',
 		'checkout-local',
-		'--base-url',
-		app.baseUrl,
+		'--entry-point',
+		'web:url:Checkout web application and HTTP API.',
 		'--capabilities',
 		'browser,http',
 		'--operations',
 		'read_catalog,create_fixture_order,apply_fixture_discount',
 	])
+	checkmate(workspace, [
+		'target',
+		'instance',
+		'add',
+		'checkout-local',
+		'local',
+		'--entry',
+		`web=${app.baseUrl}`,
+		'--environment',
+		'local fixture',
+	])
+	const instancesBefore = checkmate(workspace, ['target', 'instance', 'list', 'checkout-local']).instances
 	assert.equal((await stage('setup', 'setup', 'checkout-local')).status, 'completed')
 	const target = checkmate(workspace, ['target', 'show', 'checkout-local'])
 	assert.equal(target.profile.readyForLiveExecution, true)
+	assert.deepEqual(
+		checkmate(workspace, ['target', 'instance', 'list', 'checkout-local']).instances,
+		instancesBefore,
+		'Setup changed the instances of the target'
+	)
 
 	checkmate(workspace, ['plan', 'open', 'checkout', '--target', `checkout-local@${target.revision}`], request)
 	expectStatus('checkout', 'needs_plan', 'planner')
@@ -154,7 +171,7 @@ try {
 	const reference = `checkout@${revised.revision}`
 	assert.equal(status('checkout').waitsOn, 'oracle')
 	checkmate(workspace, ['plan', 'approve', reference, '--rationale', 'Reviewed the revision.'])
-	assert.match(expectStatus('checkout', 'ready_to_run', 'qa').next, /--partial ready_only/)
+	assert.match(expectStatus('checkout', 'ready_to_run', 'qa').next.join('\n'), /--partial ready_only/)
 
 	const ready = revised.tests.filter((test) => test.readiness === 'ready').map((test) => test.id)
 	const gate = checkmate(workspace, [
@@ -174,12 +191,15 @@ try {
 		reference,
 		'--build',
 		'fixture-build-1',
+		'--instance',
+		'local',
 		'--partial',
 		'ready_only',
 	])
 	await stage('execute', 'execute', 'live-run')
 	const failed = checkmate(workspace, ['run', 'show', 'live-run'])
 	assert.equal(failed.state, 'finalized')
+	assert.equal(failed.instance.instanceId, 'local')
 	assert(
 		failed.findings.some(
 			(finding: { type: string; requirementIds: string[] }) =>
@@ -197,6 +217,8 @@ try {
 	)
 
 	app.fix()
+	checkmate(workspace, ['target', 'instance', 'add', 'checkout-local', 'local-2', '--entry', `web=${app.baseUrl}`])
+	checkmate(workspace, ['target', 'instance', 'retire', 'checkout-local', 'local'])
 	const retested = testsOf(revised, 'R2')
 		.filter((test) => test.readiness === 'ready')
 		.map((test) => test.id)
@@ -218,6 +240,7 @@ try {
 	await stage('retest', 'execute', 'live-retest')
 	const retest = checkmate(workspace, ['run', 'show', 'live-retest'])
 	assert.equal(retest.state, 'finalized')
+	assert.equal(retest.instance.instanceId, 'local-2')
 	assert(
 		retest.tests.every((test: { outcome: string }) => test.outcome === 'passed'),
 		JSON.stringify(retest.tests)
@@ -225,7 +248,12 @@ try {
 	assert.equal(retest.result.coverage.status, 'partial')
 	assert.equal(checkmate(workspace, ['run', 'show', 'live-run']).result.completion, 'completed')
 	const inbox = checkmate(workspace, ['inbox'])
-	assert(!inbox.results.some((result: { runId: string }) => result.runId === 'live-run'), JSON.stringify(inbox))
+	const listed = inbox.results.map((result: { runId: string }) => result.runId)
+	assert(listed.includes('live-retest'), JSON.stringify(inbox))
+	const supplies = revised.tests.some(
+		(test) => test.readiness === 'ready' && !retested.includes(test.id) && !prerequisites.includes(test.id)
+	)
+	assert.equal(listed.includes('live-run'), supplies, JSON.stringify(inbox))
 	checkmate(workspace, ['result', 'accept', 'live-run', '--rationale', 'The defect is real.'])
 	checkmate(workspace, ['result', 'accept', 'live-retest', '--rationale', 'The fix passed the retest.'])
 	const final = status('checkout')

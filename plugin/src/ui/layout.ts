@@ -2,7 +2,7 @@ import type { Html } from './html.ts'
 import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'inbox' | 'plans' | 'runs' | 'log' | null
+export type Section = 'inbox' | 'plans' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {
 	path: string
@@ -40,6 +40,22 @@ const themeIcons = html`<svg class="ti ti-system" viewBox="0 0 16 16" aria-hidde
 	<svg class="ti ti-dark" viewBox="0 0 16 16" aria-hidden="true">
 		<path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z" fill="currentColor" />
 	</svg>`
+
+const gear = html`<svg class="gear" viewBox="0 0 16 16" aria-hidden="true">
+	<path
+		d="M5.86 3.2 6.21 1.34h3.58l.35 1.86.95.55 1.79-.63 1.78 3.09-1.44 1.24v1.1l1.44 1.24-1.78 3.09-1.79-.63-.95.55-.35 1.86H6.21l-.35-1.86-.95-.55-1.79.63-1.78-3.09 1.44-1.24v-1.1L1.34 6.21l1.78-3.09 1.79.63z"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linejoin="round"
+	/>
+	<circle cx="8" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5" />
+</svg>`
+
+function settingsLink(page: Page) {
+	const current = page.section === 'settings' ? html` aria-current="page"` : ''
+	return html`<a class="icon-btn" href="/settings" title="Settings" aria-label="Settings" ${current}>${gear}</a>`
+}
 
 export function mark() {
 	return html`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`
@@ -98,6 +114,7 @@ function header(context: Context, page: Page) {
 				>
 					?
 				</button>
+				${settingsLink(page)}
 			</div>
 		</div>
 	</header>`
@@ -124,14 +141,7 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 	</dl>
 </aside>`
 
-const viewer = html`<div
-	class="viewer"
-	data-viewer
-	hidden
-	role="dialog"
-	aria-modal="false"
-	aria-label="Evidence viewer"
->
+const viewer = html`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
 	<div class="viewer-bar">
 		<span class="viewer-name" data-viewer-name></span>
 		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
@@ -183,15 +193,22 @@ export function banner(tone: 'warn' | 'info' | 'fail', content: Html | string) {
 	return html`<div class="banner ${tone}" role="${tone === 'info' ? 'status' : 'alert'}">${content}</div>`
 }
 
-export function downloads(label: string, base: string, note: string) {
-	const item = (format: string, name: string, hint: string) =>
+const downloadNames: Record<string, [string, string]> = {
+	html: ['HTML', 'print-ready'],
+	md: ['Markdown', '.md'],
+	json: ['JSON', 'data'],
+	junit: ['JUnit XML', 'for CI'],
+}
+
+export function downloads(label: string, base: string, note: string, formats = ['html', 'md', 'json']) {
+	const item = (format: string) =>
 		html`<a href="${base}.${format}" download data-download="${format}"
-			>${name} <span class="muted small">${hint}</span></a
+			>${downloadNames[format][0]} <span class="muted small">${downloadNames[format][1]}</span></a
 		>`
 	return html`<details class="menu" data-menu>
 		<summary class="btn small" title="${note}">${label}</summary>
 		<div class="menu-list">
-			${item('html', 'HTML', 'print-ready')} ${item('md', 'Markdown', '.md')} ${item('json', 'JSON', 'data')}
+			${formats.map(item)}
 			<p class="menu-note">${note}</p>
 		</div>
 	</details>`

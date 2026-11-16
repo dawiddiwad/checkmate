@@ -1,6 +1,7 @@
 import type {
 	Finding,
 	Gap,
+	Instance,
 	Plan,
 	PlanCandidate,
 	PlanDelta,
@@ -25,6 +26,7 @@ export type Documents = {
 	'plan-patch': PlanPatch
 	plan: Plan
 	gap: Gap
+	instance: Instance
 	finding: Finding
 	result: Result
 	response: Response
@@ -43,9 +45,49 @@ export function same(a: unknown, b: unknown) {
 
 export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
-	const errors = () => (check.errors ?? []).map((error) => `${name}${error.instancePath} ${error.message}`).join(', ')
+	const errors = () =>
+		unionErrors(check.errors ?? [])
+			.filter((error) => error.keyword !== 'propertyNames')
+			.map((error) => schemaError(`${name}${error.instancePath}`, error))
+			.join(', ')
 	requireCondition(check(value), `Invalid ${name}: ${errors()}`)
 	return value as Documents[K]
+}
+
+type SchemaError = NonNullable<validators.Validator['errors']>[number]
+
+function unionErrors(errors: SchemaError[]): SchemaError[] {
+	let kept = errors
+	for (const union of errors.filter((error) => ['anyOf', 'oneOf'].includes(error.keyword))) {
+		const misses = kept.filter(
+			(error) =>
+				error.keyword === 'type' &&
+				error.instancePath === union.instancePath &&
+				error.schemaPath.startsWith(union.schemaPath) &&
+				/^\/[0-9]+\/type$/.test(error.schemaPath.slice(union.schemaPath.length))
+		)
+		const under = (error: SchemaError) =>
+			error.instancePath === union.instancePath || error.instancePath.startsWith(`${union.instancePath}/`)
+		const matched = kept.some((error) => error !== union && !misses.includes(error) && under(error))
+		const merged = { ...misses[0], params: { type: misses.flatMap((error) => error.params.type ?? []) } }
+		const replacement = matched ? [] : misses.length ? [merged] : [union]
+		kept = kept.flatMap((error) => (error === union ? replacement : misses.includes(error) ? [] : [error]))
+	}
+	return kept
+}
+
+function typeList(types: string[]) {
+	if (types.length < 3) return types.join(' or ')
+	return `${types.slice(0, -1).join(', ')}, or ${types.at(-1)}`
+}
+
+function schemaError(path: string, error: SchemaError) {
+	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
+	if (error.keyword === 'additionalProperties')
+		return `${path} has unknown field "${error.params.additionalProperty}"`
+	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`
+	if (error.propertyName !== undefined) return `${path} field name "${error.propertyName}" ${error.message}`
+	return `${path} ${error.message}`
 }
 
 export function requireIdentifier(value: unknown, name: string): string {
@@ -109,9 +151,7 @@ export function references(ids: string[], map: ReadonlyMap<string, unknown>, nam
 export function profileCheck(value: unknown): Profile {
 	const profile = validate('profile', value)
 	index(profile.tools, 'name', 'tool')
-	const url = new URL(profile.baseUrl)
-	requireCondition(['http:', 'https:'].includes(url.protocol), 'Target must use HTTP or HTTPS')
-	requireCondition(!url.username && !url.password, 'Use credential references, not URL credentials')
+	index(profile.entryPoints, 'name', 'entry point')
 	for (const tool of profile.tools)
 		requireCondition(
 			tool.version === undefined || !/resolve-and-pin|unknown/i.test(tool.version),
@@ -159,13 +199,20 @@ export function planCoverage(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>
 	})
 }
 
+export function withoutEmptyMetadata<T extends { metadata?: object }>(item: T): T {
+	if (!item.metadata || Object.keys(item.metadata).length) return item
+	const { metadata, ...rest } = item
+	return rest as T
+}
+
 export function derivePlan(draft: PlanDraft): Plan {
 	const tests = draft.tests.map((test) => ({
-		...test,
+		...withoutEmptyMetadata(test),
 		gapIds: gapsAffecting(draft.gaps, test).map((gap) => gap.id),
 		readiness: testReadiness(draft.gaps, test),
 	}))
-	return { ...draft, tests, coverage: planCoverage({ ...draft, tests }) }
+	const requirements = draft.requirements.map(withoutEmptyMetadata)
+	return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) }
 }
 
 export function planCheck(value: unknown): Plan {

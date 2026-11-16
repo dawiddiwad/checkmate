@@ -27,7 +27,7 @@ const env = { ...process.env, CHECKMATE_ACTOR: 'claude:same-session' }
 let passed = false
 try {
 	const store = openStore(workspace)
-	target(store, { baseUrl: app.baseUrl })
+	target(store, {}, app.baseUrl)
 	const checkout = candidate()
 	checkout.tests[0].assertions[1].check = 'The page lists one item before checkout.'
 	plan(store, 'checkout', checkout)
@@ -58,6 +58,7 @@ try {
 	assert.equal(executed.status, 'completed', JSON.stringify(executed))
 	const run = checkmate(workspace, ['run', 'show', 'live-session'])
 	assert.equal(run.state, 'finalized')
+	assert.equal(run.instance.instanceId, 'local')
 	assert(
 		run.findings.some(
 			(finding: { type: string; requirementIds: string[] }) =>

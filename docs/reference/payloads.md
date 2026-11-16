@@ -4,27 +4,27 @@
 
 The JSON Schemas in `plugin/contracts/` are the authority, and this page explains them with examples. Each example passes its schema and the rules of its command. The contract version is `toolkit-2`.
 
-**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Schemas](#schemas)
+**On this page:** [Identifiers](#identifiers) · [Target profile](#target-profile) · [Instance](#instance) · [Plan request](#plan-request) · [Plan candidate](#plan-candidate) · [Plan delta](#plan-delta) · [Plan edit](#plan-edit) · [Finding](#finding) · [Runtime gap](#runtime-gap) · [Metadata](#metadata) · [Limits](#limits) · [Schemas](#schemas)
 
 ## Identifiers
 
-- A target, plan, run, test, gap, or requirement ID has 1 to 96 letters, digits, `_`, or `-`. It starts with a letter or a digit.
+- A target, instance, entry point, plan, run, test, gap, or requirement ID has 1 to 96 letters, digits, `_`, or `-`. It starts with a letter or a digit.
 - A revision reference is `<id>@<revision>`, for example `checkout@2`.
 - An assertion reference is `<testId>.<assertionId>`, for example `T2.A1`.
+- An instance reference is `<targetId>/<instanceId>`, for example `shop/uat`.
 - A cross-plan test reference is `<planId>:<testId>`, for example `login:T3`. A test ID without a prefix is in the same plan.
 - Each plan revision, profile, and result has a SHA-256 digest of its canonical JSON. `--expect-sha <digest>` uses it.
 
 ## Target profile
 
-`target open` records the setup request from flags. The setup stage checks each tool and the target, then sends the profile to `target save <targetId>`.
+`target open` records the setup request from flags. The setup stage checks each tool and the target through an instance, then sends the profile to `target save <targetId>`.
 
 ```json
 {
 	"contractVersion": "toolkit-2",
 	"targetId": "shop",
 	"revision": 1,
-	"baseUrl": "http://127.0.0.1:4173",
-	"environment": "local_fixture",
+	"entryPoints": [{ "name": "web", "kind": "url", "purpose": "Storefront and HTTP API." }],
 	"capabilities": ["browser", "http"],
 	"tools": [
 		{
@@ -45,10 +45,10 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 }
 ```
 
-- `targetId`, `baseUrl`, `capabilities`, and `allowedOperations` are equal to the setup request.
+- `targetId`, `entryPoints`, `capabilities`, and `allowedOperations` are equal to the setup request. So every revision of a target has the same entry points.
+- `entryPoints` has one or more entries with a unique `name`. `kind` is `url`, `command`, or `value`. The profile has no entry values. An instance gives them.
 - `tools` has one entry for each requested tool, with the same name and kind. The setup stage can add `playwright-cli` for `browser` and `node` for `http`. `version` is optional.
 - `reachable` is the result of the setup check. `readyForLiveExecution` cannot be `true` when a requested tool is not reachable. When it is `false`, `target save` gives `needs_decision`, and the gate refuses every run.
-- `baseUrl` uses HTTP or HTTPS, with no user name and no password.
 - `authentication.references` holds environment variable names or browser-state references, never credential values. The host resolves them.
 - `startup.command` is guidance for an authorized host. Checkmate does not start the application.
 - `revision` is the latest revision plus 1. A save of the same revision with the same content changes nothing.
@@ -63,6 +63,33 @@ The JSON Schemas in `plugin/contracts/` are the authority, and this page explain
 | `result` | A cross-plan dependency needs an accepted result. The inbox lists the result.            | A passed result satisfies a dependency without acceptance. |
 
 Change the policy only with a new profile revision. A plan uses the profile revision that it names.
+
+## Instance
+
+`target instance add <targetId> <instanceId>` records an instance. Give the values with `--entry <entryPoint>=<value>` flags, or send this JSON on standard input:
+
+```json
+{
+	"entries": {
+		"web": "sf org open --target-org shop-uat --url-only --json",
+		"org": "shop-uat"
+	},
+	"environment": "UAT sandbox",
+	"references": ["sf alias shop-uat"]
+}
+```
+
+- Checkmate trims spaces and line breaks at the start and end of each entry value, `environment`, and each reference. This is the same for flags and for JSON. It refuses a value that is empty after the trim.
+- `entries` has exactly one value for each entry point of the target. Checkmate refuses a missing name and an unknown name. It checks against the entry points of the setup request, which are equal to the entry points of every revision.
+- A `url` value is a valid URI of any scheme, for example `https:`, `sftp:`, or `salesforce:`. It has no user name and no password.
+- A `command` value is a command line. QA runs it at test time, for example to get a one-time login URL. Checkmate stores the command, never its output.
+- A `value` value is an opaque string, for example an org alias.
+- `environment` is optional free text.
+- `references` is optional. It names authentication aliases or environment variables, never credential values.
+- An instance does not change. A second add with the same values changes nothing. A second add with other values is refused.
+- `target instance retire <targetId> <instanceId>` writes a retirement row. No new run can start on a retired instance. Its runs stay as they are. When started runs use the instance, the reply has a `warning` line that names them. The status stays `completed`.
+- `delegate execute` tells the worker when the instance of the run is retired. The worker stops with a blocking gap when the instance does not respond.
+- An instance ID is not used again in the same target, also after it is retired. For a refreshed sandbox, retire the old instance and add a new one, for example `uat-2`. The plan and the retest chain stay the same. A retest on the new instance can keep the build.
 
 ## Plan request
 
@@ -79,9 +106,10 @@ For requirements or plan tools, send JSON on standard input:
 {
 	"objective": "Verify checkout totals.",
 	"requirements": [
-		{ "id": "R1", "text": "A standard order for one 400 PLN item has a total of 400 PLN.", "source": "brief#standard" }
+		{ "id": "R1", "text": "A standard order for one 400 PLN item has a total of 400 PLN.", "source": "brief#standard" },
+		{ "id": "R2", "text": "A 40 percent promotion applies with the loyalty discount.", "source": "brief#promotion" }
 	],
-	"sourceContext": [{ "uri": "brief", "content": "The shop sells one item at 400 PLN." }],
+	"sourceContext": [{ "uri": "brief", "content": "The shop sells one item at 400 PLN. A promotion is 40 percent." }],
 	"tools": ["playwright-cli", { "name": "confluence", "kind": "mcp", "purpose": "Read the pricing page." }]
 }
 ```
@@ -94,6 +122,8 @@ For requirements or plan tools, send JSON on standard input:
 | `context`       | No       | `sources`: where the requirements come from. `instructions`: how to read them.               |
 | `tools`         | No       | A string selects a profile tool. An object `{ "name", "kind", "purpose" }` adds a plan tool. |
 
+A requirement can have [`metadata`](#metadata).
+
 - A request needs `requirements` or one or more `context.sources`.
 - Without requirements, the plan stage writes them. The `source` of each starts with a context source, for example `jira:SHOP-12#ac-2`.
 - When `tools` names profile tools, the plan keeps only those. Without names, the plan keeps all profile tools. An object must not use the name of a profile tool.
@@ -103,7 +133,12 @@ For requirements or plan tools, send JSON on standard input:
 
 ## Plan candidate
 
-The plan stage sends a candidate to `plan save <planId>`. Checkmate builds revision 1 from the request and the candidate.
+The plan stage sends a candidate to `plan save <planId>`. Checkmate builds revision 1 from the request and the candidate. The example passes with the [plan request](#plan-request) example.
+
+A candidate has `requirements` only when the request has no requirements:
+
+- When the request has `requirements`, the candidate does not contain `requirements`. Checkmate copies them from the request.
+- When the request has only `context.sources`, the candidate must contain `requirements`. The `source` of each starts with a context source, for example `{ "id": "R1", "text": "…", "source": "jira:SHOP-12#ac-1" }`.
 
 ```json
 {
@@ -160,6 +195,7 @@ Rules:
 - Do not write an assertion with an unknown expected value. Write an open blocking gap. In the example, T2 is `blocked`.
 - `dependsOn` names local tests or cross-plan tests. The named plan and test exist. Checkmate refuses a dependency cycle across all plans.
 - Revision 1 has no decisions and no assumptions.
+- A test and a requirement of the candidate can have [`metadata`](#metadata).
 
 `plan save` gives `needs_decision` with one reason for each open blocking gap.
 
@@ -197,6 +233,8 @@ Checkmate builds the next revision:
 - `plan edit` names the latest revision.
 - A revision with no approval and no run changes in place. Else Checkmate saves the next revision.
 - A gap with a pending decision stays open.
+- Only an open gap without a decision can change. An answered or deferred gap stays the same. An edit that removes a test can remove that test from such a gap.
+- A new gap cannot use the ID of an open gap of a run of the plan.
 - An assertion ID that an earlier revision used cannot come back with a new meaning.
 - The reply prints `edit=in_place` or `edit=new_revision`.
 
@@ -224,6 +262,7 @@ Checkmate builds the next revision:
 - A new ID adds the item. A new requirement needs `text` and `source`. A new test needs `title`, `requirementIds`, `capability`, `operations`, and `action`. A new gap needs `severity`, `requirementIds`, `testIds`, `question`, and `consequence`, and it is `open`.
 - `null` removes the item. `assertions` works as in the [plan delta](#plan-delta).
 - A patch cannot set gap `status` or `decisionId`. Use `gap answer`.
+- `metadata` of a requirement or a test is replaced as a whole. Send `{}` to remove it. A plan delta cannot change metadata.
 
 `plan adopt-gaps` builds a candidate from the gaps of a run, and the same rules apply.
 
@@ -246,7 +285,7 @@ QA sends each finding to `run finding <runId>`.
 }
 ```
 
-`evidenceIds` are the IDs that `run check` printed. [Findings](runs.md#findings) has the rules.
+`evidenceIds` are the IDs that `run check` printed. A finding can have [`metadata`](#metadata). [Findings](runs.md#findings) has the rules.
 
 ## Runtime gap
 
@@ -265,16 +304,71 @@ QA sends new ambiguity to `run gap <runId>`.
 }
 ```
 
-- A runtime gap is open, has no decision, and has an ID that is new in the plan and the run.
+- A runtime gap is open and has no decision. Its ID is new in each revision of the plan and in each gap of each run of the plan. Else `run gap` gives `Gap ID <id> is in use. Use a new ID.`
+- An open blocking runtime gap stops the gate for the tests that it affects. `--partial ready_only` leaves them out.
 - Its requirements and tests exist.
 - A blocking runtime gap keeps the requirements that it names uncovered in the result. A gap with two empty lists keeps every requirement uncovered.
 - It does not change the plan. The oracle answers or adopts it. Read [Answer a gap from a run](../guides/oracle.md#answer-a-gap-from-a-run).
+
+## Metadata
+
+`metadata` holds team fields, for example a priority, a component, labels, or a Jira or Xray key. It is optional on a requirement, a test, and a finding. Put team fields in `metadata`. Do not put them in a title or a check.
+
+```json
+{
+	"id": "F1",
+	"type": "defect",
+	"severity": "high",
+	"assertionIds": ["T2.A1"],
+	"requirementIds": ["R2"],
+	"title": "Promotion stacks with the loyalty discount",
+	"expected": "totalPLN equals 240.",
+	"observed": "GET /quote?promotion=true&loyalty=true returned totalPLN 220.",
+	"reproduction": ["Request GET /quote?promotion=true&loyalty=true.", "Read totalPLN."],
+	"evidenceIds": ["01M75A0ZVZC156GNSTPZ9G4MYX"],
+	"metadata": {
+		"jiraKey": "SHOP-142",
+		"component": "pricing",
+		"labels": "checkout,regression",
+		"storyPoints": 3,
+		"blocker": true
+	}
+}
+```
+
+A test in a candidate can carry its Xray key the same way: `"metadata": { "priority": "high", "component": "pricing", "xrayKey": "SHOP-T7" }`.
+
+- `metadata` is an object with 0 to 20 keys.
+- A key has 1 to 64 letters, digits, `_`, `.`, or `-`. It starts with a letter.
+- A value is a string of 0 to 500 characters, a number, or a boolean. A list or an object is refused. Give a list as one string, for example `"checkout,regression"`.
+- Checkmate copies `metadata` into the plan revision or the result. The stored JSON sorts the keys. Checkmate does not store an empty `metadata` object, so `{}` gives the same digest as no `metadata`. No rule reads `metadata`, so it does not change readiness, the gate, outcomes, or coverage.
+- The Markdown and HTML exports, `plan show --json`, `run show --json`, `finding list`, and the review UI show it. The JUnit export gives test metadata as `metadata.<key>` properties.
+
+## Limits
+
+The schemas refuse a payload that breaks one of these limits:
+
+| Item                                                                        | Limit                                                                 |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| An ID                                                                       | 1 to 96 characters. Read [Identifiers](#identifiers).                 |
+| A text field, for example a `title`, `check`, or `question`                 | 1 or more characters. An empty string is refused.                     |
+| A test `title`                                                              | 200 characters or fewer                                               |
+| An instance entry value                                                     | 2000 characters or fewer                                              |
+| An instance `environment`                                                   | 500 characters or fewer                                               |
+| An instance reference                                                       | 200 characters or fewer                                               |
+| [`metadata`](#metadata)                                                     | 20 keys or fewer. A string value has 500 characters or fewer.         |
+| Finding `assertionIds`, `requirementIds`, `reproduction`, and `evidenceIds` | 1 or more items. Record evidence with `run check` before the finding. |
+| Test `requirementIds` and `operations`                                      | 1 or more items                                                       |
+| Request `requirements`, when present                                        | 1 or more items                                                       |
+| Profile `entryPoints`, `capabilities`, and `allowedOperations`              | 1 or more items                                                       |
+| Profile `startup.command`, when not `null`                                  | 1 or more items                                                       |
 
 ## Schemas
 
 | Schema                       | Checked by                        |
 | ---------------------------- | --------------------------------- |
 | `profile.schema.json`        | `target save`                     |
+| `instance.schema.json`       | `target instance add`             |
 | `plan-request.schema.json`   | `plan open`                       |
 | `plan-candidate.schema.json` | `plan save`, `plan edit`          |
 | `plan-delta.schema.json`     | `plan revise`                     |
@@ -285,7 +379,11 @@ QA sends new ambiguity to `run gap <runId>`.
 | `result.schema.json`         | each stored result                |
 | `response.schema.json`       | the output of a delegated worker  |
 
-A payload with an unknown field, a missing field, or a wrong type is refused before any rule check.
+A payload with an unknown field, a missing field, or a wrong type is refused before any rule check. The reason names the field, for example:
+
+```text
+reason: Invalid finding: finding has unknown field "priority", finding/severity must be one of: low, medium, high, critical
+```
 
 ## Next
 

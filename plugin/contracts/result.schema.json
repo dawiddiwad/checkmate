@@ -48,6 +48,10 @@
 			"required": ["targetId", "revision", "sha256"],
 			"additionalProperties": false
 		},
+		"instanceId": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
 		"applicationBuild": {
 			"type": "string",
 			"minLength": 1
@@ -245,6 +249,9 @@
 						},
 						"minItems": 1,
 						"uniqueItems": true
+					},
+					"metadata": {
+						"$ref": "plan.schema.json#/definitions/metadata"
 					}
 				},
 				"required": [
@@ -392,6 +399,7 @@
 		"runId",
 		"plan",
 		"target",
+		"instanceId",
 		"applicationBuild",
 		"selectedTestIds",
 		"retestOf",

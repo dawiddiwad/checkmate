@@ -116,12 +116,27 @@ function openViewer(link) {
 	viewer.querySelector('[data-viewer-name]').textContent = link.dataset.name ?? ''
 	viewer.querySelector('[data-viewer-open]').href = link.href
 	viewer.hidden = false
+	document.querySelector('main').inert = true
 	viewer.querySelector('[data-viewer-close]').focus()
+}
+
+function trapViewer(event) {
+	if (viewer.hidden || event.key !== 'Tab') return false
+	const stops = [...viewer.querySelectorAll('a[href], button')]
+	const first = stops[0]
+	const last = stops[stops.length - 1]
+	if (event.shiftKey && document.activeElement === first) last.focus()
+	else if (!event.shiftKey && document.activeElement === last) first.focus()
+	else if (!viewer.contains(document.activeElement)) first.focus()
+	else return false
+	event.preventDefault()
+	return true
 }
 
 function closeViewer() {
 	if (viewer.hidden) return false
 	viewer.hidden = true
+	document.querySelector('main').inert = false
 	viewer.querySelector('[data-viewer-image]').removeAttribute('src')
 	viewerOpener?.focus()
 	return true
@@ -155,6 +170,7 @@ function move(step) {
 let pendingG = false
 
 document.addEventListener('keydown', (event) => {
+	if (trapViewer(event)) return
 	if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
 	const target = event.target
 	const typing = target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
@@ -202,16 +218,24 @@ function dirty(region) {
 	return false
 }
 
-function staleNotice(region) {
+function staleNotice(region, replacement) {
 	const slot = region.querySelector('[data-stale-slot]')
-	if (!slot || slot.querySelector('[data-live-stale]')) return
-	const notice = document.createElement('div')
-	notice.className = 'banner warn'
-	notice.setAttribute('role', 'status')
-	notice.dataset.liveStale = ''
-	notice.textContent = region.dataset.staleMessage || 'This item changed. Review it before you decide.'
-	slot.prepend(notice)
-	announce(notice.textContent)
+	if (!slot) return
+	const text =
+		replacement.dataset.decidedMessage ||
+		region.dataset.staleMessage ||
+		'This item changed. Review it before you decide.'
+	let notice = slot.querySelector('[data-live-stale]')
+	if (notice?.textContent === text) return
+	if (!notice) {
+		notice = document.createElement('div')
+		notice.className = 'banner warn'
+		notice.setAttribute('role', 'status')
+		notice.dataset.liveStale = ''
+		slot.prepend(notice)
+	}
+	notice.textContent = text
+	announce(text)
 }
 
 function keyed(root) {
@@ -302,7 +326,7 @@ async function refresh() {
 			if (!replacement || (previous && normalize(previous.outerHTML) === normalize(replacement.outerHTML)))
 				continue
 			if (dirty(region)) {
-				staleNotice(region)
+				staleNotice(region, replacement)
 				continue
 			}
 			messages.push(...replaceRegion(region, replacement, previous))
@@ -466,7 +490,15 @@ function openTarget() {
 	if (details && !details.open) details.open = true
 }
 
-window.addEventListener('hashchange', openTarget)
+function focusDecision() {
+	if (location.hash !== '#decide' && location.hash !== '#answer') return
+	document.querySelector(`${location.hash} textarea, ${location.hash} input:not([type="hidden"])`)?.focus()
+}
+
+window.addEventListener('hashchange', () => {
+	openTarget()
+	focusDecision()
+})
 
 const toast = document.querySelector('[data-toast]')
 if (toast)
@@ -494,8 +526,6 @@ syncRationale()
 syncSource()
 openTarget()
 if (location.hash === '#decide' || location.hash === '#answer')
-	document.querySelector(`${location.hash} textarea, ${location.hash} input:not([type="hidden"])`)?.focus({
-		preventScroll: false,
-	})
+	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
 else if (body.dataset.subjects === 'inbox' && navItems().length) navItems()[0].focus({ preventScroll: true })
 connect()

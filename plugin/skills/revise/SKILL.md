@@ -7,11 +7,11 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, t
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
-1. Run `checkmate plan pending <planId>`. It prints each pending decision, then the affected gaps and tests with their assertions.
+1. Run `checkmate plan pending <planId>`. It prints each pending decision with its ID, gap, kind, value, and rationale, then the affected gaps and tests with their assertions.
 2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
-3. For each decision, find the change in the affected tests that the decision value requires.
+3. For each decision, find the change in the affected tests that the decision value requires. Read the rationale too. It can limit or explain the value.
 4. Write the delta. Use the shape below.
-5. Send the delta in a heredoc: `checkmate plan revise <planId> <<'EOF'`, the JSON, then `EOF`.
+5. Send the delta in a heredoc: `checkmate plan revise <planId> --actor claude:revise <<'EOF'`, the JSON, then `EOF`.
 6. If the command refuses the delta, correct it and run step 5 again.
 7. Return the response of `plan revise`.
 8. In the same session, report to the oracle in the format of `workflow.md`. Show the changed tests (Test, Readiness, Title) and the gaps that are still open. In `Next:`, name the plan approval: `checkmate plan approve <planId@rev> --rationale "<why>"`, or the review UI.
@@ -34,6 +34,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 Rules:
 
 - Change only tests that `plan pending` prints. Change only `action`, `preconditions`, and `assertions`.
+- A delta does not change `metadata`. The team fields of each test stay in the next revision. Do not put team fields in a check. To change `metadata`, the oracle uses `plan edit --patch`.
 - In `assertions`, a known ID changes that assertion. A new ID adds an assertion. `null` removes an assertion. Do not reuse a removed ID.
 - A new assertion needs both `check` and `checkKind`. A change can give only the changed field.
 - `clarify`: write the assertions that the decision value makes known. Use the exact value from the decision.

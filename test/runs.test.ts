@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { Store } from '../plugin/src/store.ts'
 import { testOutcome } from '../plugin/src/contracts.ts'
 import {
+	acceptResult,
 	beginRun,
 	checkAssertion,
 	closeTest,
@@ -16,9 +17,23 @@ import {
 	runResult,
 	stoppedReason,
 } from '../plugin/src/runs.ts'
-import { adoptGaps, answerGap, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
+import { adoptGaps, answerGap, patchPlan, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
 import { inbox, runDetail } from '../plugin/src/views.ts'
-import { accept, actor, approved, begin, check, evidenceFile, failT2, plan, ready, store } from './support.ts'
+import { addInstance, retireInstance } from '../plugin/src/targets.ts'
+import {
+	accept,
+	actor,
+	approved,
+	begin,
+	check,
+	evidenceFile,
+	failT2,
+	plan,
+	ready,
+	revised,
+	store,
+	target,
+} from './support.ts'
 
 const finish = (opened: Store, runId = 'run-1', completion = 'completed', cleanup = 'completed') =>
 	finishRun(opened, actor, { runId, completion, cleanup, cleanupReason: 'Closed the browser.' })
@@ -488,11 +503,11 @@ test('a runtime gap is new, open, and names known requirements and tests', (t) =
 			},
 		})
 	assert.throws(() => gap({ status: 'resolved' }), /must be open and have no decision/)
-	assert.throws(() => gap({ id: 'G1' }), /Gap G1 exists in checkout@2/)
+	assert.throws(() => gap({ id: 'G1' }), /Gap ID G1 is in use. Use a new ID/)
 	assert.throws(() => gap({ requirementIds: ['R9'] }), /Unknown requirement in gap G7: R9/)
 	assert.throws(() => gap({ testIds: ['login:T1'] }), /Unknown test in gap G7: login:T1/)
 	assert.equal(gap({}).status, 'completed')
-	assert.throws(() => gap({}), /Gap G7 exists in run run-1/)
+	assert.throws(() => gap({}), /Gap ID G7 is in use. Use a new ID/)
 })
 
 function runGap(opened: Store, id: string, severity: 'blocking' | 'non_blocking', runId = 'run-1') {
@@ -574,12 +589,13 @@ test('gap answer adopts a run gap into the plan and records the decision on that
 	const revised = revisePlan(opened, actor, { planId: 'checkout', delta: { tests: {} } })
 	assert.equal(revised.subject, 'checkout@4')
 	assert.equal(planRevision(opened, 'checkout', 4).plan.gaps.at(-1)!.status, 'deferred')
-	begin(opened, 'run-2', ['T1'], 'build-2')
 	runGap(opened, 'G5', 'non_blocking', 'run-1')
-	runGap(opened, 'G5', 'non_blocking', 'run-2')
+	assert.throws(() => runGap(opened, 'G5', 'non_blocking', 'run-1'), /Gap ID G5 is in use. Use a new ID/)
+	assert.throws(() => runGap(opened, 'G3', 'non_blocking', 'run-1'), /Gap ID G3 is in use. Use a new ID/)
+	const added = { severity: 'non_blocking', requirementIds: [], testIds: ['T1'], question: 'Q?', consequence: 'C.' }
 	assert.throws(
-		() => answer('G5'),
-		/Gap G5 is in runs run-1, run-2. Run plan adopt-gaps checkout@4 --run <runId> --gaps G5 first/
+		() => patchPlan(opened, actor, { reference: 'checkout@4', patch: { gaps: { G5: added } } }),
+		/Gap ID G5 is in use. Use a new ID/
 	)
 })
 
@@ -604,6 +620,23 @@ test('result accept and reject need a finished run and record the result digest'
 	assert.equal(runDetail(opened, 'run-1').result!.acceptance, 'approved')
 })
 
+test('a result decision with a stale decision token throws and records no approval', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'])
+	passT1(opened)
+	finish(opened)
+	const approvals = () => opened.db.prepare("SELECT count(*) AS n FROM approvals WHERE subject_id = 'run-1'").get()?.n
+	acceptResult(opened, 'other', { runId: 'run-1', rationale: 'Fine.', expectDecision: 'none' })
+	for (const decide of [acceptResult, rejectResult])
+		assert.throws(
+			() => decide(opened, actor, { runId: 'run-1', rationale: 'No.', expectDecision: 'none' }),
+			/run-1 has a newer decision/
+		)
+	assert.equal(approvals(), 1)
+	assert.equal(runDetail(opened, 'run-1').result!.latestDecision?.actor, 'other')
+})
+
 test('run finish removes the evidence directory of the run with its files', (t) => {
 	const opened = started(t, ['T1'])
 	begin(opened, 'run-2', ['T1'], 'build-2')
@@ -619,9 +652,71 @@ test('run finish removes the evidence directory of the run with its files', (t) 
 	assert.equal(existsSync(tmp), false)
 })
 
-test('run finish removes .checkmate/tmp when no run directory is left', (t) => {
-	const opened = started(t, ['T1'])
+test('run begin checks the instance before the gate, uses the only active instance or a named one, and never a retired one', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	assert.throws(
+		() => beginRun(opened, actor, { runId: 'run-1', reference: 'checkout@1', build: 'b1', instance: 'nope' }),
+		/Unknown instance: checkout-local\/nope/
+	)
+	revised(opened)
+	approved(opened)
+	assert.equal(begin(opened, 'run-1', ['T1']).data.instanceId, 'local')
+	const staging = { entries: { web: 'https://staging.example.com' }, environment: 'Staging' }
+	addInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'staging', instance: staging })
+	const start = (runId: string, instance?: string) =>
+		beginRun(opened, actor, { runId, reference: 'checkout@2', tests: ['T1'], build: 'b', instance })
+	assert.throws(
+		() => start('run-2'),
+		/Target checkout-local has 2 active instances: local, staging\. Name one with --instance/
+	)
+	assert.throws(() => start('run-2', 'prod'), /Unknown instance: checkout-local\/prod/)
+	assert.equal(start('run-2', 'staging').data.instanceId, 'staging')
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'staging' })
+	assert.throws(() => start('run-3', 'staging'), /Instance checkout-local\/staging is retired\. A retired instance/)
+	assert.equal(start('run-3').data.instanceId, 'local')
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	assert.throws(() => start('run-4'), /Target checkout-local has no active instance/)
+	assert.deepEqual(
+		opened.db
+			.prepare('SELECT run_id, instance_id FROM runs ORDER BY rowid')
+			.all()
+			.map((row) => [row.run_id, row.instance_id]),
+		[
+			['run-1', 'local'],
+			['run-2', 'staging'],
+			['run-3', 'local'],
+		]
+	)
+	assert.equal(runDetail(opened, 'run-2').instance.environment, 'Staging')
+	assert(runDetail(opened, 'run-2').instance.retired)
+})
+
+test('a retest of a refreshed sandbox runs on the new instance with the same plan and chain', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
 	passT1(opened)
 	finish(opened)
-	assert.equal(existsSync(join(opened.workspace, '.checkmate/tmp')), false)
+	assert.equal(runResult(opened, 'run-1')!.result.instanceId, 'local')
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	addInstance(opened, actor, {
+		targetId: 'checkout-local',
+		instanceId: 'local-2',
+		instance: { entries: { web: 'http://127.0.0.1:4174' } },
+	})
+	const retest = beginRun(opened, actor, {
+		runId: 'run-2',
+		reference: 'checkout@2',
+		tests: ['T1'],
+		build: 'build-2',
+		retestOf: 'run-1',
+	})
+	assert.equal(retest.status, 'completed', retest.reasons.join('; '))
+	assert.equal(retest.data.instanceId, 'local-2')
+	passT1(opened, 'run-2')
+	finish(opened, 'run-2')
+	const result = runResult(opened, 'run-2')!.result
+	assert.deepEqual([result.retestOf, result.instanceId, result.plan.planId], ['run-1', 'local-2', 'checkout'])
 })

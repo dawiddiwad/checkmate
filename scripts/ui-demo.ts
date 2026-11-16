@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import {
 	acceptResult,
+	addInstance,
 	answerGap,
 	approvePlan,
 	beginRun,
@@ -20,6 +21,7 @@ import {
 	planDetail,
 	recordFinding,
 	recordGap,
+	retireInstance,
 	revisePlan,
 	savePlan,
 	saveTarget,
@@ -50,8 +52,7 @@ export function profile(): Profile {
 		contractVersion: 'toolkit-2',
 		targetId: 'shop-local',
 		revision: 1,
-		baseUrl: 'http://127.0.0.1:4173',
-		environment: 'local_fixture',
+		entryPoints: [{ name: 'web', kind: 'url', purpose: 'Shop web application and HTTP API.' }],
 		capabilities: ['browser', 'http'],
 		tools: [
 			{
@@ -126,6 +127,7 @@ const checkoutRequest: PlanRequest = {
 			id: 'R2',
 			text: 'The 40 percent spring promotion applies to the cart total.',
 			source: 'brief://checkout#spring',
+			metadata: { jira: 'SHOP-41' },
 		},
 		{ id: 'R3', text: 'Customers can refund eligible orders.', source: 'brief://checkout#refunds' },
 		{ id: 'R4', text: 'The checkout page announces the promotion.', source: 'brief://checkout#banner' },
@@ -158,6 +160,7 @@ const checkoutCandidate: PlanCandidate = {
 			dependsOn: ['T1'],
 			preconditions: ['Cart with one 400 PLN item and a 20 PLN loyalty credit.'],
 			action: 'Apply the code SPRING40 and read the quote.',
+			metadata: { priority: 'high', component: 'pricing', xrayKey: 'SHOP-T7' },
 			assertions: [
 				{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' },
 				{ id: 'A2', check: 'totalPLN equals 220.', checkKind: 'deterministic' },
@@ -368,7 +371,13 @@ function seedLogin(store: Store) {
 
 function seedLoginRun(store: Store) {
 	minutesAgo(190)
-	beginRun(store, agent, { runId: 'run-3', reference: 'login@1', tests: ['T1', 'T2'], build: 'fixture-build-2' })
+	beginRun(store, agent, {
+		runId: 'run-3',
+		reference: 'login@1',
+		tests: ['T1', 'T2'],
+		build: 'fixture-build-2',
+		instance: 'local',
+	})
 	check(store, 'run-3', 'T1.A1', 'passed', 'Account page shows "Anna Nowak".', [
 		'T1-account.png',
 		pageShot('account'),
@@ -440,6 +449,7 @@ function seedCheckoutRun(store: Store) {
 		reference: 'checkout@2',
 		tests: ['T1', 'T2', 'T4'],
 		build: 'fixture-build-2',
+		instance: 'local',
 		partial: 'ready_only',
 	})
 	check(store, 'run-7', 'T1.A1', 'passed', 'Confirmation shows "Total: 400.00 PLN".', [
@@ -488,6 +498,7 @@ function seedCheckoutRun(store: Store) {
 				'Read totalPLN in the quote response.',
 			],
 			evidenceIds: failed.data.evidenceIds as string[],
+			metadata: { jiraKey: 'SHOP-142', component: 'pricing', regression: true },
 		},
 	})
 	closeTest(store, agent, { runId: 'run-7', testId: 'T2' })
@@ -581,7 +592,13 @@ function seedSearch(store: Store) {
 
 function seedStartedRun(store: Store) {
 	minutesAgo(5)
-	beginRun(store, agent, { runId: 'run-8', reference: 'login@1', tests: ['T1', 'T2'], build: 'fixture-build-3' })
+	beginRun(store, agent, {
+		runId: 'run-8',
+		reference: 'login@1',
+		tests: ['T1', 'T2'],
+		build: 'fixture-build-3',
+		instance: 'staging',
+	})
 	minutesAgo(3)
 	check(store, 'run-8', 'T1.A1', 'passed', 'Account page shows "Anna Nowak".', [
 		'T1-account.png',
@@ -597,11 +614,31 @@ export function seedDemo(workspace: string) {
 		const value = profile()
 		openTarget(store, agent, {
 			targetId: value.targetId,
-			baseUrl: value.baseUrl,
+			entryPoints: value.entryPoints,
 			capabilities: value.capabilities,
 			allowedOperations: value.allowedOperations,
 		})
 		saveTarget(store, agent, { targetId: value.targetId, profile: value })
+		addInstance(store, agent, {
+			targetId: value.targetId,
+			instanceId: 'preview',
+			instance: { entries: { web: 'http://127.0.0.1:4100' }, environment: 'Old preview build' },
+		})
+		addInstance(store, agent, {
+			targetId: value.targetId,
+			instanceId: 'local',
+			instance: { entries: { web: 'http://127.0.0.1:4173' }, environment: 'Local fixture' },
+		})
+		addInstance(store, agent, {
+			targetId: value.targetId,
+			instanceId: 'staging',
+			instance: {
+				entries: { web: 'https://staging.shop.example' },
+				environment: 'Shared staging',
+				references: ['STAGING_LOGIN'],
+			},
+		})
+		retireInstance(store, agent, { targetId: value.targetId, instanceId: 'preview' })
 		seedLogin(store)
 		seedAccount(store)
 		seedCheckout(store)

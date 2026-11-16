@@ -20,6 +20,7 @@ import {
 	entryValues,
 	explorerNames,
 	keepWorkFiles,
+	keepBrowserFolder,
 	logMerge,
 	mergeInput,
 	pauseOf,
@@ -371,6 +372,7 @@ function addOutcome(
 function finishPhase(store: Store, actor: string, explorationId: string, phase: Phase, launch: Launch) {
 	const recorded = phase.events.filter((item) => item.step === 'record' && item.status === 'completed').length
 	if (recorded) removeWork(store, explorationId)
+	else keepBrowserFolder(store, explorationId)
 	if (!phase.follow) {
 		addOutcome(store, actor, explorationId, {
 			step: 'done',

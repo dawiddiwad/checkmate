@@ -427,3 +427,34 @@ test('the recorder stores each evidence file of the work folder as a blob before
 	assert.deepEqual(blob, [{ size: evidence.size }])
 	assert(!existsSync(join(workspace, '.checkmate', 'work', 'x-1')))
 })
+
+test('on the process path a browser folder that a tester made goes with the work folder, and an older one stays', async (t) => {
+	for (const before of [false, true]) {
+		const { workspace, command, env } = setup(t)
+		assert.equal(command(['explore', 'open', 'checkout', '--build', 'b1']).code, 0)
+		const full = { ...process.env, ...env }
+		const launch = launchPlan(
+			{} as Profile,
+			{ planId: 'checkout', build: 'b1', level: 'smoke', allow: ['Read'], claudeArgs: [] },
+			full
+		)
+		const opened = openStore(workspace)
+		write(opened, { actor, command: 'explore start', subject: 'x-1', input: {} }, (operationId, at) => {
+			addEvent(
+				opened,
+				'x-1',
+				{ step: 'start', explorer: null, status: 'started', detail: { ...launch, browserFolder: before } },
+				operationId,
+				at
+			)
+			return { reply: completed('x-1'), subjects: ['exploration:x-1'] }
+		})
+		closeStore(opened)
+		mkdirSync(join(workspace, '.playwright-cli'))
+		writeFileSync(join(workspace, '.playwright-cli', 'page.yml'), 'snapshot')
+		await driveExploration(workspace, 'x-1', full)
+		assert.equal(command(['explore', 'status', 'x-1']).body.state, 'completed')
+		assert.equal(existsSync(join(workspace, '.playwright-cli', 'page.yml')), before)
+		assert(!existsSync(join(workspace, '.checkmate', 'work', 'x-1')))
+	}
+})

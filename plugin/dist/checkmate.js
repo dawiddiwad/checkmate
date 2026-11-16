@@ -13432,7 +13432,7 @@ function upstreamBase(repository) {
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readdirSync as readdirSync2, readFileSync as readFileSync5, rmdirSync as rmdirSync2, rmSync as rmSync4 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync, rmdirSync as rmdirSync2, rmSync as rmSync4 } from "node:fs";
 import { join as join7 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
@@ -13536,7 +13536,17 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
 function removeIfEmpty(folder) {
   if (existsSync3(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
 }
+var browserFolder = ".playwright-cli";
+function keepBrowserFolder(store, explorationId) {
+  const from = join7(store.workspace, browserFolder);
+  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync3(from)) return;
+  const to = join7(store.workspace, workFolder(explorationId), browserFolder);
+  mkdirSync5(join7(to, ".."), { recursive: true });
+  rmSync4(to, { recursive: true, force: true });
+  renameSync(from, to);
+}
 function removeWork(store, explorationId) {
+  keepBrowserFolder(store, explorationId);
   rmSync4(join7(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
   rmSync4(join7(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
   removeIfEmpty(join7(store.workspace, ".checkmate", "work"));
@@ -13569,7 +13579,12 @@ function startExploration(store, actor, given, env) {
     addEvent(
       store,
       opened.explorationId,
-      { step: "start", explorer: null, status: "started", detail: launch },
+      {
+        step: "start",
+        explorer: null,
+        status: "started",
+        detail: { ...launch, browserFolder: existsSync3(join7(store.workspace, browserFolder)) }
+      },
       operationId,
       at
     );
@@ -13875,7 +13890,7 @@ async function driveExploration(workspace, explorationId, env) {
       mergeReports(store, actor, explorationId, launch, env);
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env);
       removeWork(store, explorationId);
-    }
+    } else keepBrowserFolder(store, explorationId);
     event(store, actor, explorationId, {
       step: "done",
       explorer: null,
@@ -13889,6 +13904,7 @@ async function driveExploration(workspace, explorationId, env) {
       }
     });
   } catch (error) {
+    keepBrowserFolder(store, explorationId);
     event(store, actor, explorationId, {
       step: "done",
       explorer: null,
@@ -14047,7 +14063,7 @@ async function driveFollow(workspace, explorationId, env) {
       mergeReports(store, actor, explorationId, launch, env, plan.after);
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after);
       removeWork(store, explorationId);
-    }
+    } else keepBrowserFolder(store, explorationId);
     const skipped = [
       ...sessions.flatMap((item) => item.skipped ? [item.skipped] : []),
       ...ended.flatMap(
@@ -14067,6 +14083,7 @@ async function driveFollow(workspace, explorationId, env) {
       }
     });
   } catch (error) {
+    keepBrowserFolder(store, explorationId);
     event(store, actor, explorationId, {
       step: "followed",
       explorer: null,
@@ -20298,6 +20315,7 @@ function addOutcome(store, actor, explorationId, item) {
 function finishPhase(store, actor, explorationId, phase, launch) {
   const recorded = phase.events.filter((item) => item.step === "record" && item.status === "completed").length;
   if (recorded) removeWork(store, explorationId);
+  else keepBrowserFolder(store, explorationId);
   if (!phase.follow) {
     addOutcome(store, actor, explorationId, {
       step: "done",

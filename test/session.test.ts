@@ -413,6 +413,35 @@ test('a printed action is given, started makes it running, and a pause names who
 	assert.equal(command(['status', 'login']).body.waitsOn, 'qa')
 })
 
+test('a browser folder that a tester made in the workspace goes with the work folder, and an older one stays', (t) => {
+	for (const before of [false, true]) {
+		const { workspace, command, lines, done, put } = setup(t)
+		const folder = join(workspace, '.playwright-cli')
+		if (before) put('.playwright-cli/old.yml', 'old')
+		command(['test', 'login', '--source', 'ticket.md', '--build', 'b1', '--level', 'smoke', '--session'])
+		lines()
+		put('.playwright-cli/page.yml', 'snapshot')
+		done('a1', 'study', ['--failed', 'The agent stopped.'])
+		assert.deepEqual(lines(), ['finished'])
+		assert.equal(existsSync(join(folder, 'page.yml')), before)
+		assert.equal(existsSync(join(workspace, work(), '.playwright-cli', 'page.yml')), !before)
+		if (before) assert(existsSync(join(folder, 'old.yml')))
+	}
+	const { workspace, command, lines, done, put } = setup(t)
+	command(['test', 'login', '--source', 'ticket.md', '--build', 'b1', '--level', 'smoke', '--session'])
+	lines()
+	done('a1', 'study', ['--agent', 'agent-a1'])
+	lines()
+	put('.playwright-cli/page.yml', 'snapshot')
+	done('a1', 'test')
+	lines()
+	put(`${work('a1')}/entries.json`, [{ ...stacks, steps: 'Add two coupons.' }])
+	done('a1', 'record')
+	assert.deepEqual(lines(), ['finished'])
+	assert(!existsSync(join(workspace, '.playwright-cli')))
+	assert(!existsSync(join(workspace, '.checkmate', 'work')))
+})
+
 test('--instructions of a new plan reach the study task, for example the way to sign in', (t) => {
 	const { command, file } = setup(t)
 	const started = command([

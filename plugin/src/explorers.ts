@@ -49,7 +49,7 @@ import {
 } from './sessions.ts'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type StartInput = OpenInput & {
@@ -77,6 +77,7 @@ export type Launch = {
 	timeoutSeconds: number
 	pluginHidden: boolean
 	path?: 'session'
+	browserFolder?: boolean
 }
 
 export const defaultExplorerTimeout = 1800
@@ -190,7 +191,19 @@ function removeIfEmpty(folder: string) {
 	if (existsSync(folder) && !readdirSync(folder).length) rmdirSync(folder)
 }
 
+const browserFolder = '.playwright-cli'
+
+export function keepBrowserFolder(store: Store, explorationId: string) {
+	const from = join(store.workspace, browserFolder)
+	if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync(from)) return
+	const to = join(store.workspace, workFolder(explorationId), browserFolder)
+	mkdirSync(join(to, '..'), { recursive: true })
+	rmSync(to, { recursive: true, force: true })
+	renameSync(from, to)
+}
+
 export function removeWork(store: Store, explorationId: string) {
+	keepBrowserFolder(store, explorationId)
 	rmSync(join(store.workspace, workFolder(explorationId)), { recursive: true, force: true })
 	rmSync(join(store.workspace, '.checkmate', 'tmp', `explore-${explorationId}.log`), { force: true })
 	removeIfEmpty(join(store.workspace, '.checkmate', 'work'))
@@ -227,7 +240,12 @@ export function startExploration(store: Store, actor: string | undefined, given:
 		addEvent(
 			store,
 			opened.explorationId,
-			{ step: 'start', explorer: null, status: 'started', detail: launch },
+			{
+				step: 'start',
+				explorer: null,
+				status: 'started',
+				detail: { ...launch, browserFolder: existsSync(join(store.workspace, browserFolder)) },
+			},
 			operationId,
 			at
 		)
@@ -575,7 +593,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			mergeReports(store, actor, explorationId, launch, env)
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
 			removeWork(store, explorationId)
-		}
+		} else keepBrowserFolder(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
@@ -593,6 +611,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			},
 		})
 	} catch (error) {
+		keepBrowserFolder(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
@@ -784,7 +803,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			mergeReports(store, actor, explorationId, launch, env, plan.after)
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after)
 			removeWork(store, explorationId)
-		}
+		} else keepBrowserFolder(store, explorationId)
 		const skipped = [
 			...sessions.flatMap((item) => (item.skipped ? [item.skipped] : [])),
 			...ended.flatMap((item) =>
@@ -806,6 +825,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			},
 		})
 	} catch (error) {
+		keepBrowserFolder(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'followed',
 			explorer: null,

@@ -14095,6 +14095,10 @@ function followState(events) {
   const supervisor = later.find((item) => item.step === "supervisor");
   return supervisor && !running2(supervisor.detail.pid) ? "stopped" : "running";
 }
+function pauseOf(events) {
+  const last = events.findLast((item) => item.step === "pause" || item.step === "resume");
+  return last?.step === "pause" ? last.detail.reason : null;
+}
 function explorationState(events) {
   if (followState(events) === "running") return "following";
   const done = events.find((item) => item.step === "done");
@@ -14142,6 +14146,7 @@ function explorationStatus(store, explorationId) {
     instanceId: row.instance_id,
     state,
     path: launch ? launch.path ?? "process" : null,
+    paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
     level: launch?.level ?? null,
     explorerCount: launch?.explorers ?? null,
     model: launch?.model ?? null,
@@ -14490,11 +14495,41 @@ function planExplorations(store, planId) {
       reason: ended ? status.reason : null,
       follow: status.follow,
       followReason: status.followReason,
+      paused: status.paused,
       data: explorationData(store, status)
     };
   });
 }
+var outcomeSteps = ["turn", "end", "follow-turn", "record", "repair"];
+function sessionExplorerLive(events, item, now) {
+  const own = events.filter(
+    (event2) => event2.explorer === item.explorer && ["action", "started", ...outcomeSteps].includes(event2.step)
+  );
+  const last = own.at(-1);
+  const action = own.findLast((event2) => event2.step === "action");
+  const outcome = own.findLast((event2) => outcomeSteps.includes(event2.step));
+  const outcomeAction = outcome && own.slice(0, own.indexOf(outcome)).findLast((event2) => event2.step === "action");
+  const state = !last ? null : last.step === "action" ? "given" : last.step === "started" ? "running" : last.status === "operational_error" ? "failed" : "ended";
+  const files2 = events.filter((event2) => event2.explorer === item.explorer && event2.step === "files").flatMap(
+    (event2) => event2.detail.files.map((file) => ({
+      phase: String(event2.detail.phase),
+      name: file.name
+    }))
+  );
+  return {
+    explorer: item.explorer,
+    turn: action?.detail.step ?? null,
+    state,
+    startedAt: last?.at ?? null,
+    elapsedMs: last ? Math.max(0, now - Date.parse(last.at)) : null,
+    activity: typeof outcome?.detail.activity === "string" && outcomeAction ? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}` : null,
+    recorded: item.recorded,
+    saved: item.saved,
+    files: state === "given" || state === "running" ? [] : files2
+  };
+}
 function explorerLive(store, explorationId, events, item, running3, now) {
+  if (startOf(events)?.path === "session") return sessionExplorerLive(events, item, now);
   const own = events.filter((event2) => event2.explorer === item.explorer);
   const launch = own.find((event2) => event2.step === "launch" || event2.step === "action");
   const end = own.findLast((event2) => event2.step === "end");
@@ -14591,6 +14626,8 @@ function explorationLive(store, explorationId, now = Date.now()) {
     reason: ended ? status.reason : null,
     follow: status.follow,
     followReason: status.followReason,
+    path: status.path,
+    paused: status.paused,
     data: explorationData(store, status),
     explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running3, now)),
     phases: phaseRows(events, status, startOf(events)?.verifier ?? null),
@@ -14627,7 +14664,13 @@ function loopStatus(store, planId) {
     planId
   ).map((row) => {
     const status = explorationStatus(store, row.exploration_id);
-    return { explorationId: status.explorationId, build: status.build, state: status.state, reason: status.reason };
+    return {
+      explorationId: status.explorationId,
+      build: status.build,
+      state: status.state,
+      reason: status.reason,
+      ...status.paused ? { paused: status.paused } : {}
+    };
   });
   const claims = mergedClaims(store, planId).filter((claim) => claim.open).map((claim) => ({
     claimId: claim.id,
@@ -14642,6 +14685,20 @@ function loopStatus(store, planId) {
   const extra = { explorations, claims, questions };
   if (!overlaid.includes(base.state)) return { ...base, ...extra };
   const running3 = explorations.filter((item) => runningExploration.includes(item.state));
+  const paused = running3.filter((item) => item.paused);
+  if (paused.length)
+    return {
+      ...base,
+      ...extra,
+      ...loop(
+        "exploring",
+        "oracle",
+        paused.map((item) => `${item.explorationId} is paused: ${item.paused}`),
+        paused.map(
+          (item) => `Answer the operator in the Claude Code session. Then the operator runs checkmate explore next ${item.explorationId}`
+        )
+      )
+    };
   if (running3.length)
     return {
       ...base,
@@ -16085,6 +16142,8 @@ var statusLook = {
   pending: ["\u25CB", "acc"],
   not_required: ["\u2013", "block"],
   started: ["\u25CF", "acc"],
+  given: ["\u25CB", "acc"],
+  ended: ["\u2713", "pass"],
   active: ["\u25CF", "pass"],
   retired: ["\u2013", "block"],
   finalized: ["\u2713", "pass"],
@@ -16603,9 +16662,9 @@ function explorationBanners(explorations) {
   const last = explorations.at(-1);
   return html2`${running3.map(
     (item) => banner(
-      "info",
+      item.paused ? "warn" : "info",
       html2`<span data-key="running:${item.explorationId}"
-				>Exploration ${item.explorationId} is running.
+				>${item.paused ? html2`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html2`Exploration ${item.explorationId} is running.`}
 				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
 				when it is completed.</span
 			>`
@@ -16684,9 +16743,11 @@ function explorerRow(live, item) {
   return html2`<tr data-key="explorer:${item.explorer}">
 		<td class="mono">${item.explorer}</td>
 		<td>${item.turn ?? none3}</td>
-		<td>${item.state ? pill(item.state) : none3}</td>
+		<td>${item.state ? pill(item.state, item.state === "given" ? "given to the session" : void 0) : none3}</td>
 		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none3}</td>
-		<td class="nowrap">${item.elapsedMs === null ? none3 : duration(item.elapsedMs)}</td>
+		<td class="nowrap">
+			${item.elapsedMs === null ? none3 : item.startedAt && (item.state === "running" || item.state === "given") ? html2`<span data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : duration(item.elapsedMs)}
+		</td>
 		<td>${item.activity ?? ""}</td>
 		<td>
 			${item.recorded ? html2`${pill(item.recorded)} <span class="muted small">${plural(item.saved, "entry", "entries")}</span>` : none3}
@@ -16705,6 +16766,14 @@ function explorerRow(live, item) {
 	</tr>`;
 }
 function stateBanner(live) {
+  if (live.running && live.paused)
+    return banner(
+      "warn",
+      html2`<span data-key="paused"
+				><strong>Paused: ${live.paused}</strong> It waits on the oracle: answer the operator in the Claude Code
+				session.</span
+			>`
+    );
   if (live.running)
     return banner(
       "info",
@@ -16778,10 +16847,10 @@ function explorationPage(store, explorationId) {
 									<thead>
 										<tr>
 											<th scope="col">Explorer</th>
-											<th scope="col">Turn</th>
+											<th scope="col">${live.path === "session" ? "Step" : "Turn"}</th>
 											<th scope="col">State</th>
-											<th scope="col">Started</th>
-											<th scope="col">Elapsed</th>
+											<th scope="col">${live.path === "session" ? "Since" : "Started"}</th>
+											<th scope="col">${live.path === "session" ? "In state" : "Elapsed"}</th>
 											<th scope="col">Last activity</th>
 											<th scope="col">Record</th>
 											<th scope="col">Files</th>
@@ -19965,6 +20034,7 @@ import { dirname, join as join11 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "merge", "verify"];
+var isStep = (item) => item.step !== "bind" && item.step !== "started";
 var ownerOf = (item) => item.explorer ?? item.detail.name;
 function agentOf(events, name) {
   return events.findLast((item) => ownerOf(item) === name && typeof item.detail.agent === "string")?.detail.agent;
@@ -19998,7 +20068,7 @@ function followTesters(events, launch) {
   });
 }
 function testerDue(own, first) {
-  const last = own.filter((item) => item.step !== "bind").at(-1);
+  const last = own.filter(isStep).at(-1);
   if (!last) return first;
   if (last.step === "action") return "running";
   if (last.step === "turn") return "test";
@@ -20007,7 +20077,7 @@ function testerDue(own, first) {
   return "settled";
 }
 function stageDue(own, round, needed) {
-  const last = own.at(-1);
+  const last = own.filter(isStep).at(-1);
   if (!last) return needed() ? round : "settled";
   if (last.step === "action") return "running";
   if (last.step.endsWith("-round")) return last.detail.round;
@@ -20199,7 +20269,9 @@ End your reply with this line: ${replyLineOf(action.name, action.step)}`
           status: failed ? "operational_error" : "completed",
           subject: explorationId,
           reasons: failed ? [String(ended?.detail.reason ?? `Exploration ${explorationId} failed.`)] : [],
-          ...failed && ended?.detail.hint ? { hint: String(ended.detail.hint) } : {},
+          ...failed && ended?.detail.hint ? { hint: String(ended.detail.hint) } : actions.length ? {
+            hint: `When you have sent these actions, run checkmate explore started ${explorationId} ${actions.map((action) => action.name).join(" ")}.`
+          } : {},
           data: { explorationId, actions: lines2 }
         },
         subjects: [`exploration:${explorationId}`]
@@ -20256,9 +20328,71 @@ function finishPhase(store, actor, explorationId, phase, launch) {
     }
   });
 }
+function clearPause(store, actor, explorationId, events) {
+  if (pauseOf(events))
+    addOutcome(store, actor, explorationId, { step: "resume", explorer: null, status: "completed", detail: {} });
+}
+function pauseRun(store, actor, explorationId, reason) {
+  const events = explorationEvents(store, explorationId);
+  sessionLaunch(events, explorationId);
+  requireCondition(
+    phaseOf2(events),
+    `Exploration ${explorationId} has ended. There is nothing to pause.`,
+    `Run checkmate explore show ${explorationId}.`
+  );
+  requireWellFormed(reason.trim(), "Give the reason of the pause with --reason, in one line.");
+  return addOutcome(store, actor, explorationId, {
+    step: "pause",
+    explorer: null,
+    status: "started",
+    detail: { reason: reason.trim(), waitsOn: "oracle" }
+  });
+}
+function stepsStarted(store, actor, explorationId, names) {
+  const events = explorationEvents(store, explorationId);
+  sessionLaunch(events, explorationId);
+  clearPause(store, actor, explorationId, events);
+  const phase = phaseOf2(events);
+  const given = (name) => {
+    const last = (phase?.events ?? []).filter((item) => ownerOf(item) === name && item.step !== "bind").at(-1);
+    return last?.step === "action" ? last : void 0;
+  };
+  const wrong = names.filter((name) => !given(name));
+  requireCondition(
+    !wrong.length,
+    `No given step waits to start for ${wrong.join(", ")} in exploration ${explorationId}.`,
+    runningSteps(phase?.events ?? []).length ? `The steps that run: ${runningSteps(phase.events).join(", ")}. Give only the names of the actions that you sent.` : `Run checkmate explore next ${explorationId}.`
+  );
+  return write(
+    store,
+    { actor, command: "explore started", subject: explorationId, input: { explorationId, names } },
+    (operationId, at) => {
+      for (const name of names) {
+        const action = given(name);
+        addEvent(
+          store,
+          explorationId,
+          {
+            step: "started",
+            explorer: action.explorer,
+            status: "started",
+            detail: { name, step: action.detail.step }
+          },
+          operationId,
+          at
+        );
+      }
+      return {
+        reply: completed(explorationId, { explorationId, started: names }),
+        subjects: [`exploration:${explorationId}`]
+      };
+    }
+  );
+}
 function nextActions(store, actor, explorationId) {
   const events = explorationEvents(store, explorationId);
   const launch = sessionLaunch(events, explorationId);
+  clearPause(store, actor, explorationId, events);
   const phase = phaseOf2(events);
   if (!phase) return answerNext(store, actor, explorationId, [], "finished");
   const testers = phase.follow ? followTesters(events, launch).flatMap((item) => item.skipped ? [] : [item.explorer]) : explorerNames(launch.explorers);
@@ -20405,7 +20539,7 @@ function checkBinding(events, explorationId, name, agent) {
 function runningSteps(events) {
   const owners = [...new Set(events.flatMap((item) => ownerOf(item) ? [ownerOf(item)] : []))];
   return owners.flatMap((owner) => {
-    const last = events.filter((item) => ownerOf(item) === owner && item.step !== "bind").at(-1);
+    const last = events.filter((item) => ownerOf(item) === owner && isStep(item)).at(-1);
     return last?.step === "action" ? [`${owner} ${String(last.detail.step)}`] : [];
   });
 }
@@ -20413,8 +20547,9 @@ function stepDone(store, actor, input) {
   const { explorationId, name, step, failed } = input;
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
+  clearPause(store, actor, explorationId, events);
   const phase = phaseOf2(events);
-  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name && item2.step !== "bind");
+  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name && isStep(item2));
   const last = own.at(-1);
   checkReplyLine(explorationId, name, step, input.replyLine);
   if (input.agent) checkBinding(events, explorationId, name, input.agent);
@@ -20870,6 +21005,7 @@ function explorationLines(reply) {
         `recorded=${item.recorded ?? "-"}`,
         `saved=${item.saved}`
       ]),
+      ...status.paused ? [["paused", status.paused, "waits_on=oracle"]] : [],
       ...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, "stderr", line])),
       ...(status.phases ?? []).map((item) => [
         item.step,
@@ -21919,6 +22055,20 @@ var commands = {
       lines: reply.data.next.map((line) => ["next", line])
     })
   },
+  "explore started": {
+    positionals: ["explorationId", "names..."],
+    write: true,
+    run: (store, args, { actor }) => stepsStarted(store, actor, value(args, "explorationId"), args.names),
+    print: (reply) => ({ facts: { started: reply.data.started } })
+  },
+  "explore pause": {
+    positionals: ["explorationId"],
+    flags: { reason: "value" },
+    required: ["reason"],
+    write: true,
+    run: (store, args, { actor }) => pauseRun(store, actor, value(args, "explorationId"), value(args, "reason")),
+    print: (reply) => ({ facts: { reason: reply.data.reason, waitsOn: reply.data.waitsOn } })
+  },
   "explore show": {
     positionals: ["explorationId"],
     readOnly: true,
@@ -22398,12 +22548,19 @@ function parse(name, tokens) {
       args[flag] = next.split(",").map((item) => item.trim()).filter(Boolean);
     } else args[flag] = [...args[flag] ?? [], next];
   }
+  const rest = command.positionals.at(-1)?.endsWith("...") ? command.positionals.at(-1) : void 0;
+  if (rest && positionals.length >= command.positionals.length) {
+    args[rest.slice(0, -3)] = positionals.splice(command.positionals.length - 1);
+    positionals.push("");
+  }
   if (positionals.length !== command.positionals.length)
     throw wrong(
       `${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(" ") || "none"}`
     );
   for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`);
-  command.positionals.forEach((positional, i) => args[positional] = positionals[i]);
+  command.positionals.forEach((positional, i) => {
+    if (positional !== rest) args[positional] = positionals[i];
+  });
   command.check?.(args);
   return args;
 }

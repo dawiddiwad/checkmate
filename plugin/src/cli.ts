@@ -91,7 +91,7 @@ import {
 	startFollow,
 	waitExploration,
 } from './explorers.ts'
-import { doneSteps, nextActions, stepDone } from './agents.ts'
+import { doneSteps, nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
 import { levelNames, testLevels } from './levels.ts'
 import { runTest, testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
@@ -267,6 +267,7 @@ function explorationLines(reply: Reply): Printed {
 				`recorded=${item.recorded ?? '-'}`,
 				`saved=${item.saved}`,
 			]),
+			...(status.paused ? [['paused', status.paused, 'waits_on=oracle']] : []),
 			...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, 'stderr', line])),
 			...(status.phases ?? []).map((item) => [
 				item.step,
@@ -1383,6 +1384,21 @@ const commands: Record<string, Command> = {
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
 		}),
 	},
+	'explore started': {
+		positionals: ['explorationId', 'names...'],
+		write: true,
+		run: (store, args, { actor }) =>
+			stepsStarted(store, actor, value(args, 'explorationId')!, args.names as string[]),
+		print: (reply) => ({ facts: { started: reply.data.started } }),
+	},
+	'explore pause': {
+		positionals: ['explorationId'],
+		flags: { reason: 'value' },
+		required: ['reason'],
+		write: true,
+		run: (store, args, { actor }) => pauseRun(store, actor, value(args, 'explorationId')!, value(args, 'reason')!),
+		print: (reply) => ({ facts: { reason: reply.data.reason, waitsOn: reply.data.waitsOn } }),
+	},
 	'explore show': {
 		positionals: ['explorationId'],
 		readOnly: true,
@@ -1913,12 +1929,19 @@ function parse(name: string, tokens: string[]) {
 				.filter(Boolean)
 		} else args[flag] = [...((args[flag] as string[] | undefined) ?? []), next]
 	}
+	const rest = command.positionals.at(-1)?.endsWith('...') ? command.positionals.at(-1)! : undefined
+	if (rest && positionals.length >= command.positionals.length) {
+		args[rest.slice(0, -3)] = positionals.splice(command.positionals.length - 1)
+		positionals.push('')
+	}
 	if (positionals.length !== command.positionals.length)
 		throw wrong(
 			`${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(' ') || 'none'}`
 		)
 	for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`)
-	command.positionals.forEach((positional, i) => (args[positional] = positionals[i]))
+	command.positionals.forEach((positional, i) => {
+		if (positional !== rest) args[positional] = positionals[i]
+	})
 	command.check?.(args)
 	return args
 }

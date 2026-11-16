@@ -39,12 +39,14 @@ Run `checkmate target list`. When it shows no target:
    - `message <name> <step> agent=<agent id> prompt="<prompt>"`: send the prompt exactly to that agent with the SendMessage tool. When you do not have SendMessage, load it with ToolSearch.
    - `wait`: an agent runs. Wait until it ends.
    - `finished`: go to Report.
-2. Carry out all the actions of one `next` in one message, so that the agents run at the same time.
+2. Carry out all the actions of one `next` in one message, so that the agents run at the same time. In the same message, run the command of the `hint:` line once: `checkmate explore started <explorationId> <names>`. It records that the agents run.
 3. Tell the person in one line what runs, for example `3 testers study the change.`
 4. When an agent ends, find its tester and step. The description of the agent and the last line of its reply, for example `tester a2 study done`, name them. Use them, not the order of the results.
 5. Run `checkmate explore done <explorationId> <name> <step> --agent <agent id> --reply-line "<last line of the reply>" --activity "<what the agent did, in one line>"`. When the agent failed, or you cannot reach it, add `--failed "<reason>"`.
 6. When two or more agents end, run their `done` commands and `next` in one shell command, joined with `&&`.
 7. Run `next` again. Do this until it prints `finished`.
+
+Before you ask the person anything in the middle of a run, record the pause: `checkmate explore pause <explorationId> --reason "<one line>"`. The next `next` or `done` clears it.
 
 When `done` refuses, read the `reason:` and `hint:` lines. Correct the command as the hint says, and continue. Do not stop to ask the person about a mistake in the agent IDs. `checkmate explore status <explorationId>` shows the agent ID of each tester.
 

@@ -46,5 +46,10 @@ test('the test skill runs the session loop and names no removed level', () => {
 	assert.match(text, /--reply-line "<last line of the reply>"/)
 	assert.match(text, /Do not stop to ask the person about a mistake in the agent IDs\./)
 	assert.match(text, /A later build never needs a decision before the test\./)
+	assert.match(text, /checkmate explore started <explorationId> <names>/)
+	assert.match(
+		text,
+		/Before you ask the person anything in the middle of a run, record the pause: `checkmate explore pause/
+	)
 	assert.match(text, /Offer `harvest` only in the final report, as an option\./)
 })

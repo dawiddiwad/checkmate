@@ -22,6 +22,7 @@ import {
 	keepWorkFiles,
 	logMerge,
 	mergeInput,
+	pauseOf,
 	removeWork,
 	startOf,
 	unplacedReports,
@@ -66,6 +67,7 @@ export type DoneInput = {
 	replyLine?: string
 }
 
+const isStep = (item: ExplorationEvent) => item.step !== 'bind' && item.step !== 'started'
 const ownerOf = (item: ExplorationEvent) => item.explorer ?? (item.detail.name as string | undefined)
 
 function agentOf(events: ExplorationEvent[], name: string) {
@@ -109,7 +111,7 @@ function followTesters(events: ExplorationEvent[], launch: Launch) {
 }
 
 function testerDue(own: ExplorationEvent[], first: 'study' | 'follow') {
-	const last = own.filter((item) => item.step !== 'bind').at(-1)
+	const last = own.filter(isStep).at(-1)
 	if (!last) return first
 	if (last.step === 'action') return 'running'
 	if (last.step === 'turn') return 'test'
@@ -119,7 +121,7 @@ function testerDue(own: ExplorationEvent[], first: 'study' | 'follow') {
 }
 
 function stageDue(own: ExplorationEvent[], round: string, needed: () => boolean) {
-	const last = own.at(-1)
+	const last = own.filter(isStep).at(-1)
 	if (!last) return needed() ? round : 'settled'
 	if (last.step === 'action') return 'running'
 	if (last.step.endsWith('-round')) return last.detail.round as string
@@ -329,7 +331,13 @@ function answerNext(
 					status: failed ? 'operational_error' : 'completed',
 					subject: explorationId,
 					reasons: failed ? [String(ended?.detail.reason ?? `Exploration ${explorationId} failed.`)] : [],
-					...(failed && ended?.detail.hint ? { hint: String(ended.detail.hint) } : {}),
+					...(failed && ended?.detail.hint
+						? { hint: String(ended.detail.hint) }
+						: actions.length
+							? {
+									hint: `When you have sent these actions, run checkmate explore started ${explorationId} ${actions.map((action) => action.name).join(' ')}.`,
+								}
+							: {}),
 					data: { explorationId, actions: lines },
 				},
 				subjects: [`exploration:${explorationId}`],
@@ -400,9 +408,76 @@ function finishPhase(store: Store, actor: string, explorationId: string, phase: 
 	})
 }
 
+function clearPause(store: Store, actor: string | undefined, explorationId: string, events: ExplorationEvent[]) {
+	if (pauseOf(events))
+		addOutcome(store, actor, explorationId, { step: 'resume', explorer: null, status: 'completed', detail: {} })
+}
+
+export function pauseRun(store: Store, actor: string | undefined, explorationId: string, reason: string): Reply {
+	const events = explorationEvents(store, explorationId)
+	sessionLaunch(events, explorationId)
+	requireCondition(
+		phaseOf(events),
+		`Exploration ${explorationId} has ended. There is nothing to pause.`,
+		`Run checkmate explore show ${explorationId}.`
+	)
+	requireWellFormed(reason.trim(), 'Give the reason of the pause with --reason, in one line.')
+	return addOutcome(store, actor, explorationId, {
+		step: 'pause',
+		explorer: null,
+		status: 'started',
+		detail: { reason: reason.trim(), waitsOn: 'oracle' },
+	})
+}
+
+export function stepsStarted(store: Store, actor: string | undefined, explorationId: string, names: string[]): Reply {
+	const events = explorationEvents(store, explorationId)
+	sessionLaunch(events, explorationId)
+	clearPause(store, actor, explorationId, events)
+	const phase = phaseOf(events)
+	const given = (name: string) => {
+		const last = (phase?.events ?? []).filter((item) => ownerOf(item) === name && item.step !== 'bind').at(-1)
+		return last?.step === 'action' ? last : undefined
+	}
+	const wrong = names.filter((name) => !given(name))
+	requireCondition(
+		!wrong.length,
+		`No given step waits to start for ${wrong.join(', ')} in exploration ${explorationId}.`,
+		runningSteps(phase?.events ?? []).length
+			? `The steps that run: ${runningSteps(phase!.events).join(', ')}. Give only the names of the actions that you sent.`
+			: `Run checkmate explore next ${explorationId}.`
+	)
+	return write(
+		store,
+		{ actor, command: 'explore started', subject: explorationId, input: { explorationId, names } },
+		(operationId, at) => {
+			for (const name of names) {
+				const action = given(name)!
+				addEvent(
+					store,
+					explorationId,
+					{
+						step: 'started',
+						explorer: action.explorer,
+						status: 'started',
+						detail: { name, step: action.detail.step },
+					},
+					operationId,
+					at
+				)
+			}
+			return {
+				reply: completed(explorationId, { explorationId, started: names }),
+				subjects: [`exploration:${explorationId}`],
+			}
+		}
+	)
+}
+
 export function nextActions(store: Store, actor: string | undefined, explorationId: string): Reply {
 	const events = explorationEvents(store, explorationId)
 	const launch = sessionLaunch(events, explorationId)
+	clearPause(store, actor, explorationId, events)
 	const phase = phaseOf(events)
 	if (!phase) return answerNext(store, actor, explorationId, [], 'finished')
 	const testers = phase.follow
@@ -593,7 +668,7 @@ function checkBinding(events: ExplorationEvent[], explorationId: string, name: s
 function runningSteps(events: ExplorationEvent[]) {
 	const owners = [...new Set(events.flatMap((item) => (ownerOf(item) ? [ownerOf(item)!] : [])))]
 	return owners.flatMap((owner) => {
-		const last = events.filter((item) => ownerOf(item) === owner && item.step !== 'bind').at(-1)
+		const last = events.filter((item) => ownerOf(item) === owner && isStep(item)).at(-1)
 		return last?.step === 'action' ? [`${owner} ${String(last.detail.step)}`] : []
 	})
 }
@@ -602,8 +677,9 @@ export function stepDone(store: Store, actor: string | undefined, input: DoneInp
 	const { explorationId, name, step, failed } = input
 	const events = explorationEvents(store, explorationId)
 	sessionLaunch(events, explorationId)
+	clearPause(store, actor, explorationId, events)
 	const phase = phaseOf(events)
-	const own = (phase?.events ?? []).filter((item) => ownerOf(item) === name && item.step !== 'bind')
+	const own = (phase?.events ?? []).filter((item) => ownerOf(item) === name && isStep(item))
 	const last = own.at(-1)
 	checkReplyLine(explorationId, name, step, input.replyLine)
 	if (input.agent) checkBinding(events, explorationId, name, input.agent)

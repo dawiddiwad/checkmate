@@ -97,7 +97,7 @@ test('a session run gives the actions of each step until it is finished, and the
 		done(name, 'study', ['--agent', `agent-${name}`, '--activity', `Read the cart of ${name}.`])
 	}
 	const opened = openStore(workspace)
-	assert.equal(explorationLive(opened, 'x-1').explorers[0].activity, 'Read the cart of a1.')
+	assert.equal(explorationLive(opened, 'x-1').explorers[0].activity, 'study: Read the cart of a1.')
 	closeStore(opened)
 
 	assert.deepEqual(lines(), [tester('a1', 'test'), tester('a2', 'test'), tester('a3', 'test')])
@@ -359,6 +359,58 @@ test('a later build without stored tests is a plain retest, and nothing asks for
 	const status = command(['status', 'login']).body
 	assert.deepEqual(status.next, ['checkmate explore next x-2'])
 	assert.doesNotMatch(JSON.stringify(status.why), /harvest|stored tests/i)
+})
+
+test('a printed action is given, started makes it running, and a pause names who must act', (t) => {
+	const { workspace, command, text, done } = setup(t)
+	command(['test', 'login', '--source', 'ticket.md', '--build', 'b1', '--session'])
+	const next = command(['explore', 'next', 'x-1'])
+	assert.equal(next.body.hint, 'When you have sent these actions, run checkmate explore started x-1 a1 a2 a3.')
+	const rows = () => {
+		const opened = openStore(workspace)
+		try {
+			return explorationLive(opened, 'x-1').explorers.map((item) => [
+				item.explorer,
+				item.turn,
+				item.state,
+				item.activity,
+			])
+		} finally {
+			closeStore(opened)
+		}
+	}
+	assert.deepEqual(rows(), [
+		['a1', 'study', 'given', null],
+		['a2', 'study', 'given', null],
+		['a3', 'study', 'given', null],
+	])
+	assert.equal(command(['explore', 'started', 'x-1', 'a1', 'a2']).code, 0)
+	const twice = command(['explore', 'started', 'x-1', 'a1'])
+	assert.equal(twice.body.reasons[1], 'No given step waits to start for a1 in exploration x-1.')
+	done('a1', 'study', ['--agent', 'agent-a1', '--activity', 'Studied the change.'])
+	assert.deepEqual(rows(), [
+		['a1', 'study', 'ended', 'study: Studied the change.'],
+		['a2', 'study', 'running', null],
+		['a3', 'study', 'given', null],
+	])
+	command(['explore', 'next', 'x-1'])
+	assert.deepEqual(rows()[0], ['a1', 'test', 'given', 'study: Studied the change.'])
+
+	const paused = command(['explore', 'pause', 'x-1', '--reason', 'Asked the person about the environment.'])
+	assert.equal(paused.code, 0, paused.output)
+	assert.equal(command(['explore', 'status', 'x-1']).body.paused, 'Asked the person about the environment.')
+	assert.match(
+		text(['explore', 'status', 'x-1']),
+		/\npaused\tAsked the person about the environment\.\twaits_on=oracle/
+	)
+	const status = command(['status', 'login']).body
+	assert.deepEqual(
+		[status.waitsOn, status.why],
+		['oracle', ['x-1 is paused: Asked the person about the environment.']]
+	)
+	command(['explore', 'next', 'x-1'])
+	assert.equal(command(['explore', 'status', 'x-1']).body.paused, null)
+	assert.equal(command(['status', 'login']).body.waitsOn, 'qa')
 })
 
 test('--instructions of a new plan reach the study task, for example the way to sign in', (t) => {

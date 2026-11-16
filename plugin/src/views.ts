@@ -397,12 +397,56 @@ export function planExplorations(store: Store, planId: string) {
 			reason: ended ? status.reason : null,
 			follow: status.follow,
 			followReason: status.followReason,
+			paused: status.paused,
 			data: explorationData(store, status),
 		}
 	})
 }
 
 type Explorer = ReturnType<typeof explorationStatus>['explorers'][number]
+
+const outcomeSteps = ['turn', 'end', 'follow-turn', 'record', 'repair']
+
+function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: number) {
+	const own = events.filter(
+		(event) => event.explorer === item.explorer && ['action', 'started', ...outcomeSteps].includes(event.step)
+	)
+	const last = own.at(-1)
+	const action = own.findLast((event) => event.step === 'action')
+	const outcome = own.findLast((event) => outcomeSteps.includes(event.step))
+	const outcomeAction = outcome && own.slice(0, own.indexOf(outcome)).findLast((event) => event.step === 'action')
+	const state = !last
+		? null
+		: last.step === 'action'
+			? 'given'
+			: last.step === 'started'
+				? 'running'
+				: last.status === 'operational_error'
+					? 'failed'
+					: 'ended'
+	const files = events
+		.filter((event) => event.explorer === item.explorer && event.step === 'files')
+		.flatMap((event) =>
+			(event.detail.files as Array<{ name: string }>).map((file) => ({
+				phase: String(event.detail.phase),
+				name: file.name,
+			}))
+		)
+	return {
+		explorer: item.explorer,
+		turn: (action?.detail.step as string | undefined) ?? null,
+		state,
+		startedAt: last?.at ?? null,
+		elapsedMs: last ? Math.max(0, now - Date.parse(last.at)) : null,
+		activity:
+			typeof outcome?.detail.activity === 'string' && outcomeAction
+				? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}`
+				: null,
+		recorded: item.recorded,
+		saved: item.saved,
+		files: state === 'given' || state === 'running' ? [] : files,
+	}
+}
 
 function explorerLive(
 	store: Store,
@@ -412,6 +456,7 @@ function explorerLive(
 	running: boolean,
 	now: number
 ) {
+	if (startOf(events)?.path === 'session') return sessionExplorerLive(events, item, now)
 	const own = events.filter((event) => event.explorer === item.explorer)
 	const launch = own.find((event) => event.step === 'launch' || event.step === 'action')
 	const end = own.findLast((event) => event.step === 'end')
@@ -532,6 +577,8 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 		reason: ended ? status.reason : null,
 		follow: status.follow,
 		followReason: status.followReason,
+		path: status.path,
+		paused: status.paused,
 		data: explorationData(store, status),
 		explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running, now)),
 		phases: phaseRows(events, status, startOf(events)?.verifier ?? null),
@@ -578,7 +625,13 @@ function loopStatus(store: Store, planId: string) {
 		planId
 	).map((row) => {
 		const status = explorationStatus(store, row.exploration_id)
-		return { explorationId: status.explorationId, build: status.build, state: status.state, reason: status.reason }
+		return {
+			explorationId: status.explorationId,
+			build: status.build,
+			state: status.state,
+			reason: status.reason,
+			...(status.paused ? { paused: status.paused } : {}),
+		}
 	})
 	const claims = mergedClaims(store, planId)
 		.filter((claim) => claim.open)
@@ -595,6 +648,21 @@ function loopStatus(store: Store, planId: string) {
 	const extra = { explorations, claims, questions }
 	if (!overlaid.includes(base.state)) return { ...base, ...extra }
 	const running = explorations.filter((item) => runningExploration.includes(item.state))
+	const paused = running.filter((item) => item.paused)
+	if (paused.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'exploring',
+				'oracle',
+				paused.map((item) => `${item.explorationId} is paused: ${item.paused}`),
+				paused.map(
+					(item) =>
+						`Answer the operator in the Claude Code session. Then the operator runs checkmate explore next ${item.explorationId}`
+				)
+			),
+		}
 	if (running.length)
 		return {
 			...base,

@@ -87,9 +87,9 @@ export function explorationBanners(explorations: Listed[]) {
 	const last = explorations.at(-1)
 	return html`${running.map((item) =>
 		banner(
-			'info',
+			item.paused ? 'warn' : 'info',
 			html`<span data-key="running:${item.explorationId}"
-				>Exploration ${item.explorationId} is running.
+				>${item.paused ? html`<strong>Exploration ${item.explorationId} is paused: ${item.paused}</strong> It waits on the oracle in the Claude Code session.` : html`Exploration ${item.explorationId} is running.`}
 				<a href="/explorations/${item.explorationId}">Open the live view</a>. Its claims and questions show here
 				when it is completed.</span
 			>`
@@ -184,9 +184,17 @@ function explorerRow(live: Live, item: Live['explorers'][number]) {
 	return html`<tr data-key="explorer:${item.explorer}">
 		<td class="mono">${item.explorer}</td>
 		<td>${item.turn ?? none}</td>
-		<td>${item.state ? pill(item.state) : none}</td>
+		<td>${item.state ? pill(item.state, item.state === 'given' ? 'given to the session' : undefined) : none}</td>
 		<td class="nowrap">${item.startedAt ? time(item.startedAt, clock(item.startedAt)) : none}</td>
-		<td class="nowrap">${item.elapsedMs === null ? none : duration(item.elapsedMs)}</td>
+		<td class="nowrap">
+			${
+				item.elapsedMs === null
+					? none
+					: item.startedAt && (item.state === 'running' || item.state === 'given')
+						? html`<span data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>`
+						: duration(item.elapsedMs)
+			}
+		</td>
 		<td>${item.activity ?? ''}</td>
 		<td>
 			${item.recorded ? html`${pill(item.recorded)} <span class="muted small">${plural(item.saved, 'entry', 'entries')}</span>` : none}
@@ -211,6 +219,14 @@ function explorerRow(live: Live, item: Live['explorers'][number]) {
 }
 
 function stateBanner(live: Live) {
+	if (live.running && live.paused)
+		return banner(
+			'warn',
+			html`<span data-key="paused"
+				><strong>Paused: ${live.paused}</strong> It waits on the oracle: answer the operator in the Claude Code
+				session.</span
+			>`
+		)
 	if (live.running)
 		return banner(
 			'info',
@@ -289,10 +305,10 @@ export function explorationPage(store: Store, explorationId: string): Page {
 									<thead>
 										<tr>
 											<th scope="col">Explorer</th>
-											<th scope="col">Turn</th>
+											<th scope="col">${live.path === 'session' ? 'Step' : 'Turn'}</th>
 											<th scope="col">State</th>
-											<th scope="col">Started</th>
-											<th scope="col">Elapsed</th>
+											<th scope="col">${live.path === 'session' ? 'Since' : 'Started'}</th>
+											<th scope="col">${live.path === 'session' ? 'In state' : 'Elapsed'}</th>
 											<th scope="col">Last activity</th>
 											<th scope="col">Record</th>
 											<th scope="col">Files</th>

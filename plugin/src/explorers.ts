@@ -837,6 +837,11 @@ function followState(events: ExplorationEvent[]) {
 	return supervisor && !running(supervisor.detail.pid) ? 'stopped' : 'running'
 }
 
+export function pauseOf(events: ExplorationEvent[]) {
+	const last = events.findLast((item) => item.step === 'pause' || item.step === 'resume')
+	return last?.step === 'pause' ? (last.detail.reason as string) : null
+}
+
 export function explorationState(events: ExplorationEvent[]) {
 	if (followState(events) === 'running') return 'following'
 	const done = events.find((item) => item.step === 'done')
@@ -888,6 +893,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 		instanceId: row.instance_id,
 		state,
 		path: launch ? (launch.path ?? 'process') : null,
+		paused: ['completed', 'failed'].includes(state) ? null : pauseOf(events),
 		level: launch?.level ?? null,
 		explorerCount: launch?.explorers ?? null,
 		model: launch?.model ?? null,

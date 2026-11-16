@@ -8482,7 +8482,6 @@ function launchClaude(claude, args, prompt, cwd, env, seconds) {
 
 // plugin/src/targets.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { basename } from "node:path";
 var anyTestOperation = "any_test_operation";
 var anyTestOperationText = "You can do any action that the application offers to a test user, on test data, in this instance.";
 function operationAllowed(profile, operation) {
@@ -8903,8 +8902,14 @@ function runInstance(store, targetId, instanceId) {
   );
   return active[0];
 }
-function folderTargetId(workspace) {
-  const name = basename(workspace).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 96);
+function urlTargetId(url) {
+  let host = "";
+  try {
+    const parsed = new URL(url);
+    host = [parsed.hostname, parsed.port].filter(Boolean).join("-");
+  } catch {
+  }
+  const name = host.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 96);
   return name || "app";
 }
 function toolVersion(path) {
@@ -8928,8 +8933,8 @@ function urlAnswers(url) {
 function setupTarget(store, actor, input) {
   const assumed = [];
   const url = requireText(input.url, "application URL (--url)");
-  const targetId = input.targetId ?? folderTargetId(store.workspace);
-  if (!input.targetId) assumed.push(`target=${targetId} (the workspace folder name)`);
+  const targetId = input.targetId ?? urlTargetId(url);
+  if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`);
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
   requireCondition(
@@ -11229,7 +11234,7 @@ function diffPlan(store, input) {
 
 // plugin/src/runs.ts
 import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, realpathSync as realpathSync3, rmSync as rmSync2, statSync as statSync3 } from "node:fs";
-import { basename as basename2, extname, isAbsolute as isAbsolute2, join as join4, resolve as resolve2, sep as sep2 } from "node:path";
+import { basename, extname, isAbsolute as isAbsolute2, join as join4, resolve as resolve2, sep as sep2 } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes2 = 32 * 1024 * 1024;
 var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
@@ -11492,7 +11497,7 @@ function readEvidence(store, runId, spec) {
   const extension = extname(name).toLowerCase();
   return {
     path,
-    name: basename2(name),
+    name: basename(name),
     kind: match ? match[2] : kindByExtension[extension] ?? "observation",
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
     bytes: readFileSync3(real)

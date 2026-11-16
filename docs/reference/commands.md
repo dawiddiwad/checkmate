@@ -171,15 +171,15 @@ checkmate setup --url <url> [--target <targetId>] [--instance <name>] [--operati
 
 `setup` records the setup request, saves profile revision 1, and adds the instance in one step. It prints each value that it assumed on an `assumed:` line:
 
-| Value              | Default                                                                                              |
-| ------------------ | ---------------------------------------------------------------------------------------------------- |
-| Target ID          | The workspace folder name, in lower case, with each other character changed to `-`.                  |
-| Instance           | `local`                                                                                              |
-| Entry point        | `web`, kind `url`, with the URL as its value.                                                        |
-| Capabilities       | `http`, and `browser` when `playwright-cli` is on `PATH`. The tools are `node` and `playwright-cli`. |
-| Allowed operations | `any_test_operation`                                                                                 |
-| Reset              | None.                                                                                                |
-| Authentication     | None.                                                                                                |
+| Value              | Default                                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target ID          | The host and the port of the URL, in lower case, with each other character changed to `-`, for example `localhost-3000`. `--target` overrides it. |
+| Instance           | `local`                                                                                                                                           |
+| Entry point        | `web`, kind `url`, with the URL as its value.                                                                                                     |
+| Capabilities       | `http`, and `browser` when `playwright-cli` is on `PATH`. The tools are `node` and `playwright-cli`.                                              |
+| Allowed operations | `any_test_operation`                                                                                                                              |
+| Reset              | None.                                                                                                                                             |
+| Authentication     | None.                                                                                                                                             |
 
 `setup` sends one `GET` to an `http` or `https` URL. When the application does not answer, the profile has `readyForLiveExecution: false`. When the target exists, `setup` changes no profile and adds the instance only when it is new.
 

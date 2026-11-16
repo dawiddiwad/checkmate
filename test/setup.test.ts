@@ -8,7 +8,13 @@ import { once } from 'node:events'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorerBrief } from '../plugin/src/briefs.ts'
-import { addInstance, anyTestOperation, anyTestOperationText, targetRevision } from '../plugin/src/targets.ts'
+import {
+	addInstance,
+	anyTestOperation,
+	anyTestOperationText,
+	targetRevision,
+	urlTargetId,
+} from '../plugin/src/targets.ts'
 import { gate } from '../plugin/src/plans.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -43,9 +49,10 @@ test('setup saves a target from a URL with defaults and prints each assumed valu
 	const url = await server(t)
 	const reply = command(folder, ['setup', '--url', url], { PATH: directory(t) })
 	assert.equal(reply.code, 0, reply.output)
+	const targetId = `127-0-0-1-${new URL(url).port}`
 	assert.deepEqual(reply.lines, [
-		'completed my-shop revision=1 instance=local capabilities=http operations=any_test_operation ready=true',
-		'assumed: target=my-shop (the workspace folder name)',
+		`completed ${targetId} revision=1 instance=local capabilities=http operations=any_test_operation ready=true`,
+		`assumed: target=${targetId} (the host of the URL)`,
 		'assumed: instance=local',
 		'assumed: entry point=web (url)',
 		'assumed: capabilities=http (no browser tool on PATH)',
@@ -56,7 +63,7 @@ test('setup saves a target from a URL with defaults and prints each assumed valu
 	assert.equal(command(folder, ['setup', '--url', url]).lines.length, 1)
 	const store = openStore(folder)
 	t.after(() => closeStore(store))
-	assert.equal(targetRevision(store, 'my-shop').profile.readyForLiveExecution, true)
+	assert.equal(targetRevision(store, targetId).profile.readyForLiveExecution, true)
 })
 
 test('setup finds a browser tool, takes explicit values, and marks a silent URL as not ready', (t) => {
@@ -104,7 +111,7 @@ test('a production instance needs an explicit list of operations', (t) => {
 	assert.throws(
 		() =>
 			addInstance(store, actor, {
-				targetId: 'other',
+				targetId: '127-0-0-1-1',
 				instanceId: 'production',
 				instance: { entries: { web: 'http://x' } },
 			}),
@@ -113,7 +120,7 @@ test('a production instance needs an explicit list of operations', (t) => {
 	assert.throws(
 		() =>
 			addInstance(store, actor, {
-				targetId: 'other',
+				targetId: '127-0-0-1-1',
 				instanceId: 'uat',
 				instance: { entries: { web: 'http://x' }, environment: 'prod mirror' },
 			}),
@@ -164,7 +171,7 @@ test('test with no build, no git, and no target sets up the target from --url an
 	)
 	assert.equal(reply.code, 0, reply.output)
 	assert.match(reply.output, /\nassumed: build=local-[0-9]{8}-[0-9]{4}\n/)
-	assert.match(reply.output, /\nassumed: target=cart-app \(the workspace folder name\)\n/)
+	assert.match(reply.output, /\nassumed: target=127-0-0-1-1 \(the host of the URL\)\n/)
 	assert.match(reply.output, /\nassumed: objective=Test the change that ticket\.md describes\.$/m)
 	assert.match(
 		reply.output,
@@ -177,7 +184,15 @@ test('test with no build, no git, and no target sets up the target from --url an
 		env
 	)
 	assert.equal(again.code, 0, again.output)
-	assert.match(again.output, /\nassumed: target=cart-app \(the only target\)\n/)
+	assert.match(again.output, /\nassumed: target=127-0-0-1-1 \(the only target\)\n/)
 	assert.doesNotMatch(again.output, /assumed: build=/)
 	assert.equal(command(folder, ['explore', 'wait', 'x-2', '--timeout', '60'], env).code, 0)
+})
+
+test('the default target ID is the host and port of the URL', () => {
+	assert.deepEqual(['http://localhost:3000/app', 'https://Shop.Example.com/', 'not a url'].map(urlTargetId), [
+		'localhost-3000',
+		'shop-example-com',
+		'app',
+	])
 })

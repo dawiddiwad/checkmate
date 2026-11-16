@@ -14,7 +14,6 @@ import {
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
 import { spawnSync } from 'node:child_process'
-import { basename } from 'node:path'
 
 export type ToolKind = Profile['tools'][number]['kind']
 export type RequestedTool = { name: string; kind: ToolKind; purpose: string }
@@ -519,11 +518,17 @@ export type SetupInput = {
 	env: Record<string, string | undefined>
 }
 
-export function folderTargetId(workspace: string) {
-	const name = basename(workspace)
+export function urlTargetId(url: string) {
+	let host = ''
+	try {
+		const parsed = new URL(url)
+		host = [parsed.hostname, parsed.port].filter(Boolean).join('-')
+	} catch {}
+	const name = host
 		.toLowerCase()
 		.replace(/[^a-z0-9_-]+/g, '-')
 		.replace(/^[^a-z0-9]+/, '')
+		.replace(/-+$/, '')
 		.slice(0, 96)
 	return name || 'app'
 }
@@ -551,8 +556,8 @@ function urlAnswers(url: string) {
 export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
 	const assumed: string[] = []
 	const url = requireText(input.url, 'application URL (--url)')
-	const targetId = input.targetId ?? folderTargetId(store.workspace)
-	if (!input.targetId) assumed.push(`target=${targetId} (the workspace folder name)`)
+	const targetId = input.targetId ?? urlTargetId(url)
+	if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`)
 	const instanceId = input.instanceId ?? 'local'
 	if (!input.instanceId) assumed.push('instance=local')
 	requireCondition(

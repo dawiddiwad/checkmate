@@ -19,9 +19,7 @@ try {
 		'bin',
 		'contracts',
 		'dist',
-		'evals',
 		'package.json',
-		'references',
 		'skills',
 		'src',
 	])
@@ -39,28 +37,12 @@ try {
 	const workspace = join(directory, 'workspace')
 	await mkdir(workspace)
 	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
-	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
-	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui'])
-		await readFile(join(source, `skills/${name}/SKILL.md`))
-	const stageWrites: Record<string, RegExp> = {
-		setup: /checkmate target (save|instance add) /,
-		plan: /checkmate plan save /,
-		revise: /checkmate plan revise /,
-		execute: /checkmate run (begin|check|close|finding|gap|finish|resume) /,
-	}
-	const documents = [
-		...Object.keys(stageWrites).map((stage) => [stage, `skills/${stage}/SKILL.md`]),
-		['plan', 'references/workflow.md'],
-		['execute', 'references/session.md'],
-		['execute', 'references/http.md'],
-		['execute', 'references/browser.md'],
-	]
-	for (const [stage, path] of documents) {
-		const lines = (await readFile(join(source, path), 'utf8')).split('\n')
-		const writes = lines.filter((line) => stageWrites[stage].test(line))
-		if (path.startsWith('skills/')) assert(writes.length, path)
-		for (const line of writes) assert.match(line, new RegExp(`--actor claude:${stage}\\b`), `${path}: ${line}`)
-	}
+	assert.equal(checkmate(['target', 'list'], workspace), 'completed targets count=0')
+	assert.deepEqual((await readdir(join(source, 'skills'))).sort(), ['qa', 'ui'])
+	const qa = await readFile(join(source, 'skills/qa/SKILL.md'), 'utf8')
+	assert(qa.split('\n').length <= 20, 'The qa skill has more than 20 lines')
+	for (const command of ['checkmate open <changeId>', 'checkmate guide <changeId>', '--role'])
+		assert(qa.includes(command), command)
 	const ui = spawn(process.execPath, [bundle, 'ui', '--workspace', workspace], { cwd: directory })
 	try {
 		const [first] = (await once(ui.stdout, 'data')) as [Buffer]

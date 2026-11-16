@@ -1,8 +1,6 @@
 import type { Profile } from '../plugin/src/types.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import {
 	addInstance,
 	findInstance,
@@ -17,7 +15,7 @@ import {
 	targetRevision,
 } from '../plugin/src/targets.ts'
 import { operationLog } from '../plugin/src/views.ts'
-import { actor, begin, cli, json, profile, ready, store, target } from './support.ts'
+import { actor, cli, json, profile, store, target } from './support.ts'
 
 const request = {
 	targetId: 'checkout-local',
@@ -98,16 +96,6 @@ test('target save checks the profile against the setup request and the revision 
 	assert.equal(second.subject, 'checkout-local@2')
 	assert.equal(targetRevision(opened, 'checkout-local').revision, 2)
 	assert.equal(targetRevision(opened, 'checkout-local', 1).profile.readyForLiveExecution, false)
-})
-
-test('target save removes the setup output directory of the target', (t) => {
-	const opened = store(t)
-	const tmp = join(opened.workspace, '.checkmate', 'tmp')
-	mkdirSync(join(tmp, 'setup-checkout-local'), { recursive: true })
-	writeFileSync(join(tmp, 'setup-checkout-local', 'page.yml'), 'snapshot')
-	mkdirSync(join(tmp, 'run-1'))
-	target(opened)
-	assert.deepEqual(readdirSync(tmp), ['run-1'])
 })
 
 test('target show prints a revision with the default approval policy', (t) => {
@@ -396,14 +384,4 @@ test('target list, show, and instance commands print entry points, authenticatio
 		cli(workspace, ['target', 'instance', 'drop', 'checkout-local']).output,
 		/Unknown command: target instance drop\nhint: Use one of: target instance add,/
 	)
-})
-
-test('target instance retire warns when started runs use the instance', (t) => {
-	const opened = store(t)
-	ready(opened)
-	begin(opened, 'run-1', ['T1'], 'build-1')
-	assert.deepEqual(cli(opened.workspace, ['target', 'instance', 'retire', 'checkout-local', 'local']).lines, [
-		'completed checkout-local/local recorded=true',
-		'warning\tStarted runs use this instance: run-1. Its sandbox may be gone.',
-	])
 })

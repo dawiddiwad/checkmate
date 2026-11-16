@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { releaseVersion, prepareVersion } from '../scripts/release-version.ts'
-import { sandbox, root } from './support.ts'
+import { directory, root } from './support.ts'
 
 test('first plugin release keeps 0.7.0; later merges get one patch', () => {
 	assert.equal(releaseVersion('0.7.0', ['v0.6.6']), '0.7.0')
@@ -23,7 +23,7 @@ test('the plugin, marketplace, root package, and CLI package have one version', 
 })
 
 test('release preparation updates all version files without touching npm', async (t) => {
-	const workspace = await sandbox(t)
+	const workspace = directory(t)
 	execFileSync('git', ['init', '-q', workspace])
 	await mkdir(join(workspace, 'plugin/.claude-plugin'), { recursive: true })
 	await mkdir(join(workspace, '.claude-plugin'))

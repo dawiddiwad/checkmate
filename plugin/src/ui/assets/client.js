@@ -4,71 +4,8 @@ const served = new Map(
 	[...document.querySelectorAll('[data-region]')].map((region) => [region.dataset.region, region.cloneNode(true)])
 )
 
-function syncRationale(root = document) {
-	for (const form of root.querySelectorAll('form')) {
-		const rationale = form.querySelector('[data-rationale]')
-		if (!rationale) continue
-		const empty = !rationale.value.trim()
-		for (const button of form.querySelectorAll('[data-needs-rationale]')) button.disabled = empty
-	}
-}
-
-function syncSource(root = document) {
-	for (const form of root.querySelectorAll('[data-gap-form]')) {
-		const kind = form.querySelector('input[name="kind"]:checked')
-		const source = form.querySelector('[data-source]')
-		if (source) source.required = kind?.value === 'clarify'
-	}
-}
-
-function confirmStart(form, button) {
-	let verdict = form.querySelector('[data-verdict-input]')
-	if (!verdict) {
-		verdict = document.createElement('input')
-		verdict.type = 'hidden'
-		verdict.name = 'verdict'
-		verdict.dataset.verdictInput = ''
-		form.append(verdict)
-	}
-	verdict.value = button.value
-	form.dataset.confirming = '1'
-	form.querySelector('[data-confirm-summary]').textContent = button.dataset.summary
-	form.querySelector('[data-confirm-submit]').textContent = button.dataset.confirmLabel
-	form.querySelector('[data-confirm]').hidden = false
-	form.querySelector('[data-confirm-buttons]').hidden = false
-	form.querySelector('[data-choose]').hidden = true
-	form.querySelector('[data-rationale]').readOnly = true
-	form.querySelector('[data-confirm-submit]').focus()
-}
-
-function confirmStop(form) {
-	form.querySelector('[data-verdict-input]')?.remove()
-	delete form.dataset.confirming
-	form.querySelector('[data-confirm]').hidden = true
-	form.querySelector('[data-confirm-buttons]').hidden = true
-	form.querySelector('[data-choose]').hidden = false
-	const rationale = form.querySelector('[data-rationale]')
-	rationale.readOnly = false
-	rationale.focus()
-}
-
-document.addEventListener('input', (event) => {
-	const form = event.target.closest?.('form')
-	if (form) syncRationale(form.parentElement ?? document)
-})
-
-document.addEventListener('change', (event) => {
-	if (event.target.name === 'kind') syncSource()
-})
-
 document.addEventListener('submit', (event) => {
 	const form = event.target
-	if (form.matches('[data-verdict-form]') && !form.dataset.confirming) {
-		const button = event.submitter
-		if (!button || button.name !== 'verdict') return
-		event.preventDefault()
-		confirmStart(form, button)
-	}
 	if (form.matches('[data-theme-form]')) {
 		event.preventDefault()
 		const button = form.querySelector('button[name="theme"]')
@@ -93,54 +30,9 @@ function applyTheme(form, theme) {
 }
 
 document.addEventListener('click', (event) => {
-	const back = event.target.closest('[data-confirm-back]')
-	if (back) return confirmStop(back.closest('form'))
-	const image = event.target.closest('a[data-view-image]')
-	if (image && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
-		event.preventDefault()
-		openViewer(image)
-	}
-	if (event.target.closest('[data-viewer-close]')) closeViewer()
-	if (event.target.matches('[data-viewer]')) closeViewer()
 	if (event.target.closest('[data-shortcuts-open]')) toggleShortcuts()
 	if (event.target.closest('[data-shortcuts-close]')) toggleShortcuts(false)
 })
-
-const viewer = document.querySelector('[data-viewer]')
-let viewerOpener = null
-
-function openViewer(link) {
-	viewerOpener = link
-	viewer.querySelector('[data-viewer-image]').src = link.href
-	viewer.querySelector('[data-viewer-image]').alt = link.querySelector('img')?.alt ?? ''
-	viewer.querySelector('[data-viewer-name]').textContent = link.dataset.name ?? ''
-	viewer.querySelector('[data-viewer-open]').href = link.href
-	viewer.hidden = false
-	document.querySelector('main').inert = true
-	viewer.querySelector('[data-viewer-close]').focus()
-}
-
-function trapViewer(event) {
-	if (viewer.hidden || event.key !== 'Tab') return false
-	const stops = [...viewer.querySelectorAll('a[href], button')]
-	const first = stops[0]
-	const last = stops[stops.length - 1]
-	if (event.shiftKey && document.activeElement === first) last.focus()
-	else if (!event.shiftKey && document.activeElement === last) first.focus()
-	else if (!viewer.contains(document.activeElement)) first.focus()
-	else return false
-	event.preventDefault()
-	return true
-}
-
-function closeViewer() {
-	if (viewer.hidden) return false
-	viewer.hidden = true
-	document.querySelector('main').inert = false
-	viewer.querySelector('[data-viewer-image]').removeAttribute('src')
-	viewerOpener?.focus()
-	return true
-}
 
 const shortcuts = document.querySelector('[data-shortcuts]')
 
@@ -167,10 +59,7 @@ function move(step) {
 	items[next].scrollIntoView({ block: 'nearest' })
 }
 
-let pendingG = false
-
 document.addEventListener('keydown', (event) => {
-	if (trapViewer(event)) return
 	if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
 	const target = event.target
 	const typing = target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
@@ -180,15 +69,11 @@ document.addEventListener('keydown', (event) => {
 			menu.open = false
 			menu.querySelector('summary').focus()
 			event.preventDefault()
-		} else if (closeViewer() || (!shortcuts.hidden && toggleShortcuts(false))) event.preventDefault()
+		} else if (!shortcuts.hidden && toggleShortcuts(false)) event.preventDefault()
 		else if (typing) target.blur()
 		return
 	}
 	if (typing) return
-	if (pendingG) {
-		pendingG = false
-		if (event.key === 'i') return void (location.href = '/')
-	}
 	if (event.key === '/') {
 		const search = document.querySelector('[data-search]')
 		if (!search) return
@@ -198,7 +83,6 @@ document.addEventListener('keydown', (event) => {
 	} else if (event.key === 'j') move(1)
 	else if (event.key === 'k') move(-1)
 	else if (event.key === '?') toggleShortcuts()
-	else if (event.key === 'g') pendingG = true
 })
 
 function normalize(text) {
@@ -295,8 +179,6 @@ function replaceRegion(region, fresh, previous) {
 		element.classList.add('changed')
 		if (!reducedMotion.matches) setTimeout(() => element.classList.remove('changed'), 2000)
 	}
-	syncRationale(next)
-	syncSource(next)
 	return innermost.map((element) => element.dataset.announce).filter(Boolean)
 }
 
@@ -457,31 +339,9 @@ document.addEventListener('click', (event) => {
 		for (const field of listForm.elements) if (field.name) field.value = field.dataset.default ?? ''
 		return void showList(clear.href, 'push')
 	}
-	const more = event.target.closest('[data-history-more]')
-	if (more) {
-		event.preventDefault()
-		return void showHistory(more)
-	}
 	for (const menu of document.querySelectorAll('details[data-menu][open]'))
 		if (!menu.contains(event.target)) menu.open = false
 })
-
-async function showHistory(link) {
-	link.setAttribute('aria-busy', 'true')
-	try {
-		const response = await fetch(link.dataset.historyMore, { cache: 'no-store' })
-		if (!response.ok) return void location.assign(link.href)
-		const fragment = document.createRange().createContextualFragment(await response.text())
-		const list = link.closest('[data-history]')
-		const shown = list.querySelectorAll('ol.history > li').length
-		list.replaceWith(fragment)
-		const entries = document.querySelectorAll('[data-history] ol.history > li')
-		entries[shown]?.querySelector('summary')?.focus()
-		announce(`Showing ${entries.length} revisions`)
-	} catch {
-		location.assign(link.href)
-	}
-}
 
 function openTarget() {
 	if (!location.hash) return
@@ -490,15 +350,7 @@ function openTarget() {
 	if (details && !details.open) details.open = true
 }
 
-function focusDecision() {
-	if (location.hash !== '#decide' && location.hash !== '#answer') return
-	document.querySelector(`${location.hash} textarea, ${location.hash} input:not([type="hidden"])`)?.focus()
-}
-
-window.addEventListener('hashchange', () => {
-	openTarget()
-	focusDecision()
-})
+window.addEventListener('hashchange', openTarget)
 
 const toast = document.querySelector('[data-toast]')
 if (toast)
@@ -507,25 +359,6 @@ if (toast)
 		setTimeout(() => toast.remove(), reducedMotion.matches ? 0 : 320)
 	}, 6000)
 
-function fitHeight(area) {
-	area.style.height = 'auto'
-	area.style.height = `${area.scrollHeight + area.offsetHeight - area.clientHeight}px`
-}
-
-if (!CSS.supports('field-sizing', 'content')) {
-	const areas = [...document.querySelectorAll('.edit-card textarea')]
-	for (const area of areas) {
-		fitHeight(area)
-		area.addEventListener('input', () => fitHeight(area))
-	}
-	window.addEventListener('resize', () => areas.forEach(fitHeight))
-}
-
 document.querySelector('[data-shortcuts-open]').hidden = false
-syncRationale()
-syncSource()
 openTarget()
-if (location.hash === '#decide' || location.hash === '#answer')
-	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
-else if (body.dataset.subjects === 'inbox' && navItems().length) navItems()[0].focus({ preventScroll: true })
 connect()

@@ -22,7 +22,7 @@ function opened(t: TestContext, capabilities = 'browser,http') {
 			'read_data',
 		],
 		['target', 'instance', 'add', 'shop', 'local', '--entry', 'web=http://127.0.0.1:4173'],
-		['journal', 'open', 'cart', '--target', 'shop', '--instance', 'local'],
+		['open', 'cart', '--target', 'shop', '--instance', 'local'],
 	]
 	for (const args of steps) assert.equal(cli(workspace, args).code, 0, args.join(' '))
 	mkdirSync(join(workspace, 'evidence'))
@@ -31,11 +31,11 @@ function opened(t: TestContext, capabilities = 'browser,http') {
 }
 
 function log(workspace: string, build: string, entries: unknown) {
-	return json(workspace, ['journal', 'log', 'cart', '--build', build], entries)
+	return json(workspace, ['log', 'cart', '--build', build], entries)
 }
 
 function gaps(workspace: string, build: string) {
-	const reply = json(workspace, ['journal', 'gaps', 'cart', '--build', build])
+	const reply = json(workspace, ['gaps', 'cart', '--build', build])
 	assert.equal(reply.code, 0)
 	return reply.body.gaps as Array<{ kind: string; subject: string; idea: string }>
 }
@@ -58,8 +58,8 @@ test('a change goes from base over b1 to b2 with answers, verdicts, and a decisi
 		]).code,
 		0
 	)
-	assert.equal(json(workspace, ['journal', 'answer', 'cart', 'Q1', '--answer', 'No. Use the larger one.']).code, 0)
-	const guide = cli(workspace, ['journal', 'guide', 'cart'])
+	assert.equal(json(workspace, ['answer', 'cart', 'Q1', '--answer', 'No. Use the larger one.']).code, 0)
+	const guide = cli(workspace, ['guide', 'cart'])
 	assert(guide.lines.includes('answer\tQ1\tDoes the discount stack with a coupon?\tNo. Use the larger one.'))
 	const b1 = log(workspace, 'b1', [
 		{ kind: 'observation', id: 'O2', repeats: 'O1', about: 'C1 Q1', saw: '50.00', value: '50.00', via: 'api' },
@@ -84,9 +84,7 @@ test('a change goes from base over b1 to b2 with answers, verdicts, and a decisi
 	])
 	assert.equal(b1.code, 0)
 	assert.deepEqual(gaps(workspace, 'b1'), [])
-	assert(
-		cli(workspace, ['journal', 'guide', 'cart']).lines.includes('open_defect\tD1\tb1\thigh\tNo discount at 5 items')
-	)
+	assert(cli(workspace, ['guide', 'cart']).lines.includes('open_defect\tD1\tb1\thigh\tNo discount at 5 items'))
 	assert.deepEqual(kinds(gaps(workspace, 'b2')), [
 		'baseline',
 		'retest',
@@ -114,11 +112,11 @@ test('a change goes from base over b1 to b2 with answers, verdicts, and a decisi
 		0
 	)
 	assert.deepEqual(kinds(gaps(workspace, 'b2')), ['happy_path'])
-	const accept = cli(workspace, ['journal', 'accept', 'cart', '--build', 'b2', '--rationale', 'The discount works.'])
+	const accept = cli(workspace, ['accept', 'cart', '--build', 'b2', '--rationale', 'The discount works.'])
 	assert.equal(accept.code, 0)
 	assert.equal(accept.lines[0], 'completed cart decision=accepted build=b2')
 	assert.equal(accept.lines.at(-1)?.split('\t').slice(0, 2).join('\t'), 'count\t1')
-	const show = cli(workspace, ['journal', 'show', 'cart'])
+	const show = cli(workspace, ['show', 'cart'])
 	assert.deepEqual(show.lines, [
 		'completed cart target=shop instance=local builds=base,b1,b2',
 		'criterion\tC1\tFive items get 10% off.\tticket.md#AC1',
@@ -128,7 +126,7 @@ test('a change goes from base over b1 to b2 with answers, verdicts, and a decisi
 		'question\tQ1\tanswered\tDoes the discount stack with a coupon?\tNo. Use the larger one.',
 		'decision\tR1\tb2\taccepted\tThe discount works.\tgaps=1',
 	])
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart']).output)
 	assert.deepEqual(record.openDefects, [])
 	assert.equal(
 		record.entries.find((entry: { id: string }) => entry.id === 'D1').evidence[0].path,
@@ -179,7 +177,7 @@ test('a batch saves each valid entry and refuses each malformed entry with its i
 			index: 3,
 			field: '[3].defect',
 			reason: '[3].defect names no defect or issue: D9.',
-			hint: 'Use the ID of an earlier defect or issue. Run checkmate journal show to read the IDs.',
+			hint: 'Use the ID of an earlier defect or issue. Run checkmate show to read the IDs.',
 			fix: { kind: 'verdict', defect: '<defect ID>', result: 'fixed', saw: 'ok' },
 		},
 		{
@@ -190,7 +188,7 @@ test('a batch saves each valid entry and refuses each malformed entry with its i
 			fix: { kind: 'criterion|observation|defect|question|verdict|note|issue' },
 		},
 	])
-	const text = cli(workspace, ['journal', 'log', 'cart'], { kind: 'observation', saw: 'No build.' })
+	const text = cli(workspace, ['log', 'cart'], { kind: 'observation', saw: 'No build.' })
 	assert.equal(text.code, 1)
 	assert(
 		text.lines.includes(
@@ -199,7 +197,7 @@ test('a batch saves each valid entry and refuses each malformed entry with its i
 		text.output
 	)
 	assert(text.lines.includes('hint: Give the build in the entry, or with --build on the call.'), text.output)
-	assert.equal(JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output).entries.length, 1)
+	assert.equal(JSON.parse(cli(workspace, ['export', 'cart']).output).entries.length, 1)
 })
 
 test('gaps lists each kind of uncovered work as an idea', (t) => {
@@ -218,7 +216,7 @@ test('gaps lists each kind of uncovered work as an idea', (t) => {
 		{ kind: 'observation', id: 'B1', saw: 'Tax of 100.00 is 23.00', value: '23.00', steps: 'GET /api/tax?net=100' },
 		{ kind: 'question', id: 'Q1', question: 'Does the discount stack?' },
 	])
-	json(workspace, ['journal', 'answer', 'cart', 'Q1', '--answer', 'No.'])
+	json(workspace, ['answer', 'cart', 'Q1', '--answer', 'No.'])
 	assert.deepEqual(kinds(gaps(workspace, 'base')), [
 		'baselines',
 		'baseline_area',
@@ -274,7 +272,7 @@ test('gaps lists each kind of uncovered work as an idea', (t) => {
 		later[2].idea,
 		'One observation, only through the UI. Try a boundary value, invalid input, the API, or the state after a change.'
 	)
-	const printed = cli(workspace, ['journal', 'gaps', 'cart'])
+	const printed = cli(workspace, ['gaps', 'cart'])
 	assert.equal(printed.lines[0], 'completed cart build=b2')
 	assert.equal(printed.lines.at(-1), 'count\t8\topen items on b2: things your record does not show yet.')
 })
@@ -342,9 +340,9 @@ test('an entry supersedes an earlier entry of the same kind and keeps its ID', (
 		reply.body.refused[0].hint,
 		'To replace that entry, give "supersedes": "D1". Or use a new ID, for example D2.'
 	)
-	const show = cli(workspace, ['journal', 'show', 'cart'])
+	const show = cli(workspace, ['show', 'cart'])
 	assert(show.lines.includes('defect\tD1\tb1\thigh\tNo discount at 5 items\t-'), show.output)
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart']).output)
 	assert.equal(record.entries.length, 1)
 	assert.deepEqual(
 		record.history.map((entry: { title: string }) => entry.title),
@@ -355,13 +353,13 @@ test('an entry supersedes an earlier entry of the same kind and keeps its ID', (
 
 test('a change needs a known target, and a question ID for an answer', (t) => {
 	const workspace = opened(t)
-	const again = cli(workspace, ['journal', 'open', 'cart', '--target', 'shop'])
+	const again = cli(workspace, ['open', 'cart', '--target', 'shop'])
 	assert.equal(again.code, 1)
 	assert(again.lines.includes('reason: Change cart is open.'), again.output)
-	assert.equal(cli(workspace, ['journal', 'open', 'other', '--target', 'nope']).code, 1)
-	const answer = cli(workspace, ['journal', 'answer', 'cart', 'Q9', '--answer', 'Yes.'])
+	assert.equal(cli(workspace, ['open', 'other', '--target', 'nope']).code, 1)
+	const answer = cli(workspace, ['answer', 'cart', 'Q9', '--answer', 'Yes.'])
 	assert(answer.lines.includes('reason: Unknown question: Q9.'), answer.output)
-	const unknown = cli(workspace, ['journal', 'gaps', 'none'])
+	const unknown = cli(workspace, ['gaps', 'none'])
 	const path = join(workspace, '.checkmate', 'checkmate.db')
 	assert.deepEqual(unknown.lines, [
 		'rejected none refusal=prohibited',
@@ -369,12 +367,12 @@ test('a change needs a known target, and a question ID for an answer', (t) => {
 		`reason: Unknown change: none. The store ${path} has the changes cart.`,
 		'hint: Check the change ID and the directory. To use the store of another project, run the command in that project directory, or set CHECKMATE_WORKSPACE to it, or pass --workspace <path>.',
 	])
-	assert.doesNotMatch(unknown.output, /journal open/)
+	assert.doesNotMatch(unknown.output, /checkmate open/)
 })
 
 test('the journal guide comes from the entry schemas and stays short', (t) => {
 	const workspace = opened(t)
-	const guide = cli(workspace, ['journal', 'guide', 'cart']).output
+	const guide = cli(workspace, ['guide', 'cart']).output
 	const schema = journalSchema()
 	for (const kind of schema.kinds) {
 		assert(guide.includes(`kind\t${kind.kind}\t${kind.about}`), kind.kind)
@@ -394,7 +392,7 @@ test('a log call prints only the saved IDs and the refused entries', (t) => {
 	const workspace = opened(t)
 	const text = cli(
 		workspace,
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		[
 			{ kind: 'note', text: 'The coupon page is not tested.' },
 			{ kind: 'observation', saw: 'Fee 2.00', value: '2.00', repeats: 'nothing' },
@@ -409,9 +407,9 @@ test('a log call prints only the saved IDs and the refused entries', (t) => {
 	assert.equal(text.lines.filter((line) => line.startsWith('refused\t')).length, 1)
 	const reply = log(workspace, 'b1', { kind: 'note', text: 'Explored.' })
 	assert.equal('open' in reply.body, false)
-	const quiet = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Again.' })
+	const quiet = cli(workspace, ['log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Again.' })
 	assert.deepEqual(quiet.output.trim().split('\n'), ['completed cart saved=N3'])
-	assert.doesNotMatch(text.output + quiet.output, /journal guide/)
+	assert.doesNotMatch(text.output + quiet.output, /checkmate guide/)
 })
 
 test('on the first build, few baselines give one suggestion and each area without a baseline is named', (t) => {
@@ -453,7 +451,7 @@ test('an observation with a value links itself to one earlier baseline, and gaps
 		{ kind: 'observation', about: 'tax', steps: 'GET /api/tax', saw: '23', value: '23' },
 		{ kind: 'observation', about: 'C1', steps: 'GET /api/cart', saw: '45.00', value: '45.00', repeats: 'none' },
 	])
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart']).output)
 	const entry = (id: string) => record.entries.find((item: { id: string }) => item.id === id)
 	assert.equal(entry('O1').repeats, 'B1')
 	assert.equal(entry('O1').linked, 'the same about and steps')
@@ -468,7 +466,7 @@ test('an observation with a value links itself to one earlier baseline, and gaps
 		['O1 repeats B1: base "50.00", b1 "45.00"']
 	)
 	log(workspace, 'b2', { kind: 'observation', id: 'fee-b2', saw: 'Fee', value: '2.00' })
-	assert.equal(JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output).entries.at(-1).repeats, 'fee-b1')
+	assert.equal(JSON.parse(cli(workspace, ['export', 'cart']).output).entries.at(-1).repeats, 'fee-b1')
 })
 
 test('a PM answer without a decision gives no open item', (t) => {
@@ -479,10 +477,10 @@ test('a PM answer without a decision gives no open item', (t) => {
 		{ kind: 'question', id: 'Q3', question: 'Round up?' },
 		{ kind: 'question', id: 'Q4', question: 'Coupon first?' },
 	])
-	json(workspace, ['journal', 'answer', 'cart', 'Q1', '--answer', 'No decision; use the ticket and existing docs.'])
-	json(workspace, ['journal', 'answer', 'cart', 'Q2', '--answer', 'Yes.'])
-	json(workspace, ['journal', 'answer', 'cart', 'Q3', '--answer', 'See the docs.'])
-	json(workspace, ['journal', 'answer', 'cart', 'Q4', '--answer', 'No, see the docs.'])
+	json(workspace, ['answer', 'cart', 'Q1', '--answer', 'No decision; use the ticket and existing docs.'])
+	json(workspace, ['answer', 'cart', 'Q2', '--answer', 'Yes.'])
+	json(workspace, ['answer', 'cart', 'Q3', '--answer', 'See the docs.'])
+	json(workspace, ['answer', 'cart', 'Q4', '--answer', 'No, see the docs.'])
 	assert.deepEqual(
 		gaps(workspace, 'b1')
 			.filter((gap) => gap.kind === 'answer')
@@ -518,7 +516,7 @@ test('notes and observations that say something is open are open ends until an e
 test('the log input can be one object, an array, a wrapper, JSON lines, a code fence, or have trailing commas', (t) => {
 	const workspace = opened(t, 'http')
 	const ids = (stdin: string) => {
-		const reply = json(workspace, ['journal', 'log', 'cart', '--build', 'b1'], stdin)
+		const reply = json(workspace, ['log', 'cart', '--build', 'b1'], stdin)
 		return [reply.body.saved?.map((entry: { id: string }) => entry.id), reply.body.refused]
 	}
 	assert.deepEqual(ids('{"kind":"note","text":"One."}'), [['N1'], []])
@@ -532,10 +530,10 @@ test('the log input can be one object, an array, a wrapper, JSON lines, a code f
 	assert.equal(refused[0].index, 1)
 	assert.equal(refused[0].field, '[1]')
 	assert.match(refused[0].reason, /^\[1\] is not valid JSON \(.+\): \{"kind":"note","text":"a "quote""\}$/)
-	const broken = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], '{"kind": "note", "text": oops}')
+	const broken = cli(workspace, ['log', 'cart', '--build', 'b1'], '{"kind": "note", "text": oops}')
 	assert.equal(broken.code, 1)
 	assert.match(broken.output, /reason: Standard input is not valid JSON/)
-	const empty = cli(workspace, ['journal', 'log', 'cart', '--build', 'b1'], ' ')
+	const empty = cli(workspace, ['log', 'cart', '--build', 'b1'], ' ')
 	assert(empty.lines.includes('reason: Missing JSON payload on standard input'), empty.output)
 	assert.deepEqual(ids('{"kind":"observation","saw":"x","evidence":"http://127.0.0.1:4173/api/cart"}'), [['O1'], []])
 })
@@ -552,16 +550,16 @@ test('gaps prints at most 8 lines of a kind and about 40 lines, with the count o
 		'b1',
 		Array.from({ length: 40 }, (_, i) => ({ kind: 'criterion', text: `Rule ${i}`, source: 'ticket.md' }))
 	)
-	const short = cli(workspace, ['journal', 'gaps', 'cart', '--build', 'b1'])
+	const short = cli(workspace, ['gaps', 'cart', '--build', 'b1'])
 	const lines = short.lines.filter((line) => line.startsWith('gap\t'))
 	assert.equal(lines.length, 18)
 	assert.equal(new Set(lines).size, lines.length)
 	assert.equal(short.lines.at(-2), 'count\t54\topen items on b1: things your record does not show yet.')
 	assert.equal(
 		short.lines.at(-1),
-		'not_shown\t36\tbaseline 4, criterion 32\tRun checkmate journal gaps cart --build b1 --all to see all of them.'
+		'not_shown\t36\tbaseline 4, criterion 32\tRun checkmate gaps cart --build b1 --all to see all of them.'
 	)
-	const every = cli(workspace, ['journal', 'gaps', 'cart', '--build', 'b1', '--all'])
+	const every = cli(workspace, ['gaps', 'cart', '--build', 'b1', '--all'])
 	assert.equal(every.lines.filter((line) => line.startsWith('gap\t')).length, 54)
 	assert.equal(every.lines.at(-1), 'count\t54\topen items on b1: things your record does not show yet.')
 })
@@ -581,7 +579,7 @@ function team(t: TestContext) {
 	as(
 		'qa:a1',
 		workspace,
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		[
 			{ kind: 'observation', about: 'C1', saw: 'Total 50.00 for 5 pens', verdict: 'wrong', via: 'api' },
 			defect('No discount at 5 items', 'Total is 50.00', {
@@ -595,7 +593,7 @@ function team(t: TestContext) {
 	as(
 		'qa:a2',
 		workspace,
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		[
 			{ kind: 'observation', about: 'C1', saw: 'No discount', verdict: 'wrong', via: 'api' },
 			defect('Five items get no discount', 'Cart total is 50.00', { links: ['O1'] }),
@@ -604,7 +602,7 @@ function team(t: TestContext) {
 	as(
 		'qa:a3',
 		workspace,
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		[defect('Tax rounds down', 'Tax on 10.05 is 2.31', { steps: 'GET /api/tax?net=10.05' })]
 	)
 	return workspace
@@ -615,33 +613,30 @@ const ids = (reply: { body: { saved: Array<{ id: string }> } }) => reply.body.sa
 test('each actor has its own IDs, and a tester sees only its own entries and the shared ones', (t) => {
 	const workspace = team(t)
 	const a2 = (args: string[], stdin?: unknown) => as('qa:a2', workspace, args, stdin)
-	assert.deepEqual(
-		ids(a2(['journal', 'log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Explored the cart.' })),
-		['N1']
-	)
-	const show = cli(workspace, ['journal', 'show', 'cart'], undefined, { CHECKMATE_ACTOR: 'qa:a2' })
+	assert.deepEqual(ids(a2(['log', 'cart', '--build', 'b1'], { kind: 'note', text: 'Explored the cart.' })), ['N1'])
+	const show = cli(workspace, ['show', 'cart'], undefined, { CHECKMATE_ACTOR: 'qa:a2' })
 	assert(show.lines.includes('criterion\tC1\tFive items get 10% off.\tticket.md#AC1'), show.output)
 	assert(show.lines.includes('defect\tD1\tb1\thigh\tFive items get no discount\t-'), show.output)
 	assert(!show.output.includes('No discount at 5 items'), show.output)
 	assert(show.lines.includes('matrix\tC1\tb1=wrong1'), show.output)
-	const guide = cli(workspace, ['journal', 'guide', 'cart'], undefined, { CHECKMATE_ACTOR: 'qa:a2' }).output
+	const guide = cli(workspace, ['guide', 'cart'], undefined, { CHECKMATE_ACTOR: 'qa:a2' }).output
 	assert(!guide.includes('Coupon field accepts letters'))
 	assert(guide.includes('open_defect\tD1\tb1\thigh\tFive items get no discount'))
-	const own = a2(['journal', 'gaps', 'cart', '--build', 'b1']).body.gaps as Array<{ subject: string }>
+	const own = a2(['gaps', 'cart', '--build', 'b1']).body.gaps as Array<{ subject: string }>
 	assert(!own.some((gap) => gap.subject.includes('Coupon')), JSON.stringify(own))
-	const every = cli(workspace, ['journal', 'show', 'cart', '--all'], undefined, { CHECKMATE_ACTOR: 'qa:a2' })
+	const every = cli(workspace, ['show', 'cart', '--all'], undefined, { CHECKMATE_ACTOR: 'qa:a2' })
 	assert(every.lines.includes('defect\ta1/D1\tb1\thigh\tNo discount at 5 items\t-'), every.output)
 	assert(every.lines.includes('defect\ta2/D1\tb1\thigh\tFive items get no discount\t-'), every.output)
 	assert(every.lines.includes('defect\tD2\tb1\thigh\tCoupon field accepts letters\t-'), every.output)
 	assert(every.lines.includes('matrix\tC1\tb1=wrong2'), every.output)
 	const replaced = a2(
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		defect('No 10% off at 5 items', 'Total 50.00', { supersedes: 'D1', links: ['O1'] })
 	)
 	assert.deepEqual(ids(replaced), ['D1'])
-	const other = a2(['journal', 'log', 'cart', '--build', 'b1'], defect('x', 'y', { supersedes: 'a1/D1' }))
+	const other = a2(['log', 'cart', '--build', 'b1'], defect('x', 'y', { supersedes: 'a1/D1' }))
 	assert.equal(other.code, 1)
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart', '--all']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart', '--all']).output)
 	const entry = (ref: string) => record.entries.find((item: { ref: string }) => item.ref === ref)
 	assert.equal(entry('a1/D1').title, 'No discount at 5 items')
 	assert.equal(entry('a2/D1').title, 'No 10% off at 5 items')
@@ -656,7 +651,7 @@ test('testers in subfolders find the store in a parent folder, and parallel writ
 		mkdirSync(join(workspace, name, 'evidence'), { recursive: true })
 		writeFileSync(join(workspace, name, 'evidence', 'total.txt'), `${name} total`)
 		return [1, 2, 3, 4].map((index) =>
-			writer(join(workspace, name), `qa:${name}`, ['journal', 'log', 'cart', '--build', 'b2'], {
+			writer(join(workspace, name), `qa:${name}`, ['log', 'cart', '--build', 'b2'], {
 				kind: 'observation',
 				id: `P${index}`,
 				saw: `Call ${index}`,
@@ -666,7 +661,7 @@ test('testers in subfolders find the store in a parent folder, and parallel writ
 	})
 	const replies = await Promise.all(writes)
 	for (const reply of replies) assert.equal(reply.status, 'completed', JSON.stringify(reply))
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart', '--all']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart', '--all']).output)
 	const parallel = record.entries.filter((entry: { id: string }) => entry.id.includes('P'))
 	assert.equal(parallel.length, 12)
 	const a3 = parallel.find((entry: { ref: string }) => entry.ref === 'a3/P1')
@@ -693,10 +688,10 @@ test('merge prints all defects of a build and suggests groups from the same crit
 	as(
 		'qa:a3',
 		workspace,
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		defect('The coupon field accepts letters', 'Coupon ABC is saved')
 	)
-	const merge = cli(workspace, ['journal', 'merge', 'cart', '--build', 'b1'], undefined, {
+	const merge = cli(workspace, ['merge', 'cart', '--build', 'b1'], undefined, {
 		CHECKMATE_ACTOR: 'qa:merge',
 	})
 	assert.equal(merge.code, 0, merge.output)
@@ -715,20 +710,20 @@ test('merge prints all defects of a build and suggests groups from the same crit
 		]
 	)
 	assert(merge.output.includes(`<<'EOF'\n{"kind":"issue"`), merge.output)
-	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'merger']).output
-	assert(guide.includes('checkmate journal merge cart --build <build>'))
+	const guide = cli(workspace, ['guide', 'cart', '--role', 'merger']).output
+	assert(guide.includes('checkmate merge cart --build <build>'))
 	assert(
 		guide.includes(
 			JSON.parse(readFileSync(join(root, 'plugin/contracts/journal-issue.schema.json'), 'utf8')).properties
 				.reports.description
 		)
 	)
-	assert(!cli(workspace, ['journal', 'guide', 'cart']).output.includes('issue\t'))
+	assert(!cli(workspace, ['guide', 'cart']).output.includes('issue\t'))
 })
 
 test('issues merge reports, can be superseded, and are confirmed by two testers or by a confirming observation', (t) => {
 	const workspace = team(t)
-	const merger = (stdin: unknown) => as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], stdin)
+	const merger = (stdin: unknown) => as('qa:merge', workspace, ['log', 'cart', '--build', 'b1'], stdin)
 	assert.deepEqual(ids(merger({ kind: 'issue', title: 'No discount', severity: 'high', reports: ['a1/D1'] })), ['I1'])
 	const wrong = merger({ kind: 'issue', title: 'x', severity: 'low', reports: ['a1/D9'] })
 	assert.equal(wrong.code, 1)
@@ -744,7 +739,7 @@ test('issues merge reports, can be superseded, and are confirmed by two testers 
 		),
 		['I1']
 	)
-	const issues = () => as('qa:merge', workspace, ['journal', 'issues', 'cart']).body.issues
+	const issues = () => as('qa:merge', workspace, ['issues', 'cart']).body.issues
 	const byId = (id: string) => issues().find((issue: { id: string }) => issue.id === id)
 	assert.deepEqual(
 		issues().map((issue: { id: string; reporters: number; confirmed: boolean }) => [
@@ -761,7 +756,7 @@ test('issues merge reports, can be superseded, and are confirmed by two testers 
 	assert.equal(byId('merge/I1').steps, 'Add 5 pens')
 	assert.deepEqual(byId('merge/I1').evidence, [{ text: 'Total 50.00' }])
 	assert.deepEqual(byId('merge/I1').reports, ['a1/D1', 'a2/D1'])
-	const verify = cli(workspace, ['journal', 'verify', 'cart', '--build', 'b1'])
+	const verify = cli(workspace, ['verify', 'cart', '--build', 'b1'])
 	assert.deepEqual(
 		verify.lines.filter((line) => line.startsWith('verify')),
 		[
@@ -770,12 +765,12 @@ test('issues merge reports, can be superseded, and are confirmed by two testers 
 		]
 	)
 	assert(verify.lines.includes('steps\tGET /api/tax?net=10.05'), verify.output)
-	const verifier = (stdin: unknown) => as('qa:verify', workspace, ['journal', 'log', 'cart', '--build', 'b1'], stdin)
+	const verifier = (stdin: unknown) => as('qa:verify', workspace, ['log', 'cart', '--build', 'b1'], stdin)
 	verifier([
 		{ kind: 'observation', confirms: 'a1/D2', saw: 'The coupon ABC is saved', via: 'api' },
 		{ kind: 'observation', refutes: 'a3/D1', saw: 'Tax on 10.05 is 2.32', via: 'api' },
 	])
-	as('qa:a3', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+	as('qa:a3', workspace, ['log', 'cart', '--build', 'b1'], {
 		kind: 'observation',
 		confirms: 'D1',
 		saw: 'Again 2.31',
@@ -783,33 +778,32 @@ test('issues merge reports, can be superseded, and are confirmed by two testers 
 	assert.equal(byId('a1/D2').confirmed, true)
 	assert.equal(byId('a3/D1').confirmed, false)
 	assert.equal(byId('a3/D1').refuted, true)
-	const printed = cli(workspace, ['journal', 'issues', 'cart'])
+	const printed = cli(workspace, ['issues', 'cart'])
 	assert(printed.lines.includes('issue\ta3/D1\thigh\tTax rounds down\treporters=1\ta3\trefuted'), printed.output)
 	assert.equal(
-		cli(workspace, ['journal', 'verify', 'cart', '--build', 'b1']).lines.filter((line) => line.startsWith('verify'))
-			.length,
+		cli(workspace, ['verify', 'cart', '--build', 'b1']).lines.filter((line) => line.startsWith('verify')).length,
 		0
 	)
-	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'verifier']).output
-	assert(guide.includes('checkmate journal verify cart --build <build>'))
+	const guide = cli(workspace, ['guide', 'cart', '--role', 'verifier']).output
+	assert(guide.includes('checkmate verify cart --build <build>'))
 	assert(guide.includes('confirms'))
 })
 
 test('the status of an issue on a later build comes from the verdicts on its reports or on the issue', (t) => {
 	const workspace = team(t)
-	as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+	as('qa:merge', workspace, ['log', 'cart', '--build', 'b1'], {
 		kind: 'issue',
 		title: 'No discount at 5 items',
 		severity: 'high',
 		reports: ['a1/D1', 'a2/D1'],
 	})
 	const verdict = (actor: string, defect: string, result: string) =>
-		as(actor, workspace, ['journal', 'log', 'cart', '--build', 'b2'], { kind: 'verdict', defect, result, saw: 'x' })
+		as(actor, workspace, ['log', 'cart', '--build', 'b2'], { kind: 'verdict', defect, result, saw: 'x' })
 	assert.equal(verdict('qa:a1', 'D1', 'fixed').code, 0)
 	assert.equal(verdict('qa:a3', 'D1', 'fixed').code, 0)
-	as('qa:a1', workspace, ['journal', 'log', 'cart', '--build', 'b3'], { kind: 'note', text: 'Explored.' })
+	as('qa:a1', workspace, ['log', 'cart', '--build', 'b3'], { kind: 'note', text: 'Explored.' })
 	assert.equal(verdict('qa:a2', 'merge/I1', 'not_fixed').code, 0)
-	const issues = as('qa:merge', workspace, ['journal', 'issues', 'cart']).body.issues
+	const issues = as('qa:merge', workspace, ['issues', 'cart']).body.issues
 	const statuses = Object.fromEntries(
 		issues.map((issue: { id: string; statuses: unknown }) => [issue.id, issue.statuses])
 	)
@@ -819,9 +813,9 @@ test('the status of an issue on a later build comes from the verdicts on its rep
 	assert.deepEqual(statuses['merge/I1'], { b2: tie, b3: none })
 	assert.deepEqual(statuses['a3/D1'], { b2: single, b3: none })
 	assert.deepEqual(statuses['a1/D2'], { b2: none, b3: none })
-	const b2 = as('qa:merge', workspace, ['journal', 'issues', 'cart', '--build', 'b1']).body.issues
+	const b2 = as('qa:merge', workspace, ['issues', 'cart', '--build', 'b1']).body.issues
 	assert.equal(b2.length, 3)
-	const gaps = as('qa:merge', workspace, ['journal', 'gaps', 'cart', '--build', 'b3', '--all']).body.gaps as Array<{
+	const gaps = as('qa:merge', workspace, ['gaps', 'cart', '--build', 'b3', '--all']).body.gaps as Array<{
 		kind: string
 		subject: string
 	}>
@@ -835,13 +829,13 @@ test('the status of an issue on a later build comes from the verdicts on its rep
 			'unconfirmed a3/D1 Tax rounds down',
 		]
 	)
-	const tester = as('qa:a1', workspace, ['journal', 'gaps', 'cart', '--build', 'b3']).body.gaps as Array<{
+	const tester = as('qa:a1', workspace, ['gaps', 'cart', '--build', 'b3']).body.gaps as Array<{
 		kind: string
 	}>
 	assert(!tester.some((gap) => ['unconfirmed', 'no_verdict'].includes(gap.kind)))
-	const accept = as('lead', workspace, ['journal', 'accept', 'cart', '--build', 'b3', '--rationale', 'Done.'])
+	const accept = as('lead', workspace, ['accept', 'cart', '--build', 'b3', '--rationale', 'Done.'])
 	assert(accept.body.gaps.some((gap: { kind: string }) => gap.kind === 'unconfirmed'))
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart', '--all']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart', '--all']).output)
 	assert.deepEqual(record.issues[0].reports, ['a1/D1', 'a2/D1'])
 	assert.deepEqual(record.issues[0].statuses, { b2: tie, b3: none })
 	assert.equal(record.issues.length, 3)
@@ -849,7 +843,7 @@ test('the status of an issue on a later build comes from the verdicts on its rep
 
 test('the status on a later build is the majority of the verdicts, and a verifier observation settles it', (t) => {
 	const workspace = team(t)
-	as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+	as('qa:merge', workspace, ['log', 'cart', '--build', 'b1'], {
 		kind: 'issue',
 		title: 'No discount at 5 items',
 		severity: 'high',
@@ -857,7 +851,7 @@ test('the status on a later build is the majority of the verdicts, and a verifie
 	})
 	const verdict = (actor: string, defect: string, result: string) =>
 		assert.equal(
-			as(actor, workspace, ['journal', 'log', 'cart', '--build', 'b2'], { kind: 'verdict', defect, result }).code,
+			as(actor, workspace, ['log', 'cart', '--build', 'b2'], { kind: 'verdict', defect, result }).code,
 			0
 		)
 	verdict('qa:a1', 'merge/I1', 'fixed')
@@ -866,22 +860,20 @@ test('the status on a later build is the majority of the verdicts, and a verifie
 	verdict('qa:a1', 'D2', 'not_fixed')
 	verdict('qa:a3', 'D1', 'fixed')
 	verdict('lead', 'a3/D1', 'not_fixed')
-	const issues = () => cli(workspace, ['journal', 'issues', 'cart']).lines.filter((line) => line.startsWith('issue'))
+	const issues = () => cli(workspace, ['issues', 'cart']).lines.filter((line) => line.startsWith('issue'))
 	assert.deepEqual(issues(), [
 		'issue\tmerge/I1\thigh\tNo discount at 5 items\treporters=2\ta1,a2\tb2=fixed (2 of 3)\tconfirmed',
 		'issue\ta1/D2\thigh\tCoupon field accepts letters\treporters=1\ta1\tb2=not_fixed (1 of 1, single)\tunconfirmed',
 		'issue\ta3/D1\thigh\tTax rounds down\treporters=1\ta3\tb2=fixed (1 of 2, disputed)\tunconfirmed',
 	])
 	const queue = (build: string) =>
-		cli(workspace, ['journal', 'verify', 'cart', '--build', build]).lines.filter((line) =>
-			line.startsWith('verify')
-		)
+		cli(workspace, ['verify', 'cart', '--build', build]).lines.filter((line) => line.startsWith('verify'))
 	assert.deepEqual(queue('b2'), [
 		'verify\ta1/D2\thigh\tCoupon field accepts letters\tsingle verdict',
 		'verify\ta3/D1\thigh\tTax rounds down\tdisputed verdict',
 	])
 	const verifier = (build: string, stdin: unknown) =>
-		assert.equal(as('qa:verify', workspace, ['journal', 'log', 'cart', '--build', build], stdin).code, 0)
+		assert.equal(as('qa:verify', workspace, ['log', 'cart', '--build', build], stdin).code, 0)
 	verifier('b2', [
 		{ kind: 'observation', refutes: 'a1/D2', saw: 'The coupon ABC is refused', via: 'api' },
 		{ kind: 'observation', confirms: 'a3/D1', saw: 'Tax on 10.05 is 2.31', via: 'api' },
@@ -899,7 +891,7 @@ test('the status on a later build is the majority of the verdicts, and a verifie
 		{ kind: 'observation', confirms: 'a1/D2', saw: 'The coupon ABC is saved', via: 'api' },
 		{ kind: 'observation', refutes: 'a3/D1', saw: 'Tax on 10.05 is 2.32', via: 'api' },
 	])
-	const record = as('lead', workspace, ['journal', 'issues', 'cart']).body.issues as Array<{
+	const record = as('lead', workspace, ['issues', 'cart']).body.issues as Array<{
 		id: string
 		verified: string
 		confirmed: boolean
@@ -920,14 +912,14 @@ test('the status on a later build is the majority of the verdicts, and a verifie
 		]
 	)
 	assert.deepEqual(queue('b1'), [])
-	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'verifier']).output
+	const guide = cli(workspace, ['guide', 'cart', '--role', 'verifier']).output
 	assert(guide.includes('Reproduce each item on the running application.'))
 	assert(guide.includes('Do not explore beyond the list.'))
 })
 
 test('merge lists singles that may belong to a larger issue, ends with a check list, and shows only what remains', (t) => {
 	const workspace = team(t)
-	as('qa:a1', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+	as('qa:a1', workspace, ['log', 'cart', '--build', 'b1'], {
 		...defect('No discount at 5 items', 'Total is 50.00', { links: ['O1'], evidence: 'Total 50.00' }),
 		supersedes: 'D1',
 		steps: ['Open /cart', 'POST /api/cart with 5 pens'],
@@ -935,13 +927,13 @@ test('merge lists singles that may belong to a larger issue, ends with a check l
 	as(
 		'qa:a3',
 		workspace,
-		['journal', 'log', 'cart', '--build', 'b1'],
+		['log', 'cart', '--build', 'b1'],
 		defect('Discount missing for five pens', 'Total 50.00 with no discount', {
 			steps: 'GET http://127.0.0.1:4173/api/cart?items=5',
 		})
 	)
 	const merge = () =>
-		cli(workspace, ['journal', 'merge', 'cart', '--build', 'b1'], undefined, { CHECKMATE_ACTOR: 'qa:merge' }).lines
+		cli(workspace, ['merge', 'cart', '--build', 'b1'], undefined, { CHECKMATE_ACTOR: 'qa:merge' }).lines
 	const first = merge()
 	const at = first.indexOf('singles that may belong to a larger issue')
 	assert(at > 0, first.join('\n'))
@@ -954,7 +946,7 @@ test('merge lists singles that may belong to a larger issue, ends with a check l
 		'check\t1 singles may belong to a larger issue',
 	])
 	const issue = (reports: string[], extra = {}) =>
-		as('qa:merge', workspace, ['journal', 'log', 'cart', '--build', 'b1'], {
+		as('qa:merge', workspace, ['log', 'cart', '--build', 'b1'], {
 			kind: 'issue',
 			title: 'No discount at 5 items',
 			severity: 'high',
@@ -975,7 +967,7 @@ test('merge lists singles that may belong to a larger issue, ends with a check l
 		'check\t0 suggest lines are not logged as issues',
 		'check\t0 singles may belong to a larger issue',
 	])
-	const guide = cli(workspace, ['journal', 'guide', 'cart', '--role', 'merger']).output
+	const guide = cli(workspace, ['guide', 'cart', '--role', 'merger']).output
 	assert(
 		guide.includes(
 			'Check each defect that only one tester reported against the larger issues before you leave it alone.'
@@ -1012,11 +1004,11 @@ test('a defect with saw, value, or via is also an observation for coverage and g
 	})
 	assert.deepEqual(reply.body.refused, [])
 	assert.deepEqual(kinds(gaps(workspace, 'b1')), ['happy_path'])
-	const record = JSON.parse(cli(workspace, ['journal', 'export', 'cart']).output)
+	const record = JSON.parse(cli(workspace, ['export', 'cart']).output)
 	const entry = record.entries.find((item: { id: string }) => item.id === 'D1')
 	assert.equal(entry.repeats, 'total')
 	assert.equal(entry.linked, 'the same about and steps')
-	const show = cli(workspace, ['journal', 'show', 'cart'])
+	const show = cli(workspace, ['show', 'cart'])
 	assert(show.lines.includes('criterion\tC1\tFive items get 10% off.\t-'), show.output)
 	assert(show.lines.includes('matrix\tC1\tbase=seen1\tb1=wrong1'), show.output)
 	log(workspace, 'b2', { kind: 'defect', title: 'Slow cart', expected: 'Fast', actual: 'Slow', severity: 'low' })

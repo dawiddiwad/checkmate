@@ -255,7 +255,7 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 		>
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="confirmed" value="1" />
-			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
+			<p>Retire <code>${instance.instanceId}</code>? No new change can name it. Its changes stay as they are.</p>
 			${failed ? html`<p class="form-error" role="alert">${failed}</p>` : ''}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
 			<div class="btns"><button class="btn primary">Confirm retire</button></div>
@@ -264,7 +264,7 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 }
 
 function instancesTable(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
-	if (!instances.length) return html`<p class="empty-line">No instance yet. Add one to start runs.</p>`
+	if (!instances.length) return html`<p class="empty-line">No instance yet.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -305,9 +305,7 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 		data-stale-message="${targetId} changed. Review it before you add the instance."
 	>
 		<h2 class="lab" id="add-instance">Add instance</h2>
-		<p class="help">
-			An instance is one place where the target runs. Adding one needs no new revision and no approval.
-		</p>
+		<p class="help">An instance is one place where the target runs. Adding one needs no new revision.</p>
 		<div data-stale-slot>${form?.error ? html`<p class="form-error" role="alert">${form.error}</p>` : ''}</div>
 		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
@@ -373,7 +371,7 @@ export function targetPage(
 	const revisionText = shown ? `Revision ${shown.revision}` : ''
 	const sub = shown
 		? html`${revisionText}${shown.revision === latest ? ' (latest)' : older} · ${instancesText}`
-		: html`No profile yet. Run <code>checkmate delegate setup ${targetId}</code>. ${instancesText}.`
+		: html`No profile yet. Save one with <code>checkmate target save ${targetId}</code>. ${instancesText}.`
 	const shape = shown
 		? html`<section aria-labelledby="tools">
 					<h2 id="tools">Tools <span class="n">${shown.profile.tools.length}</span></h2>

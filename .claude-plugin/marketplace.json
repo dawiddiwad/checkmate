@@ -7,7 +7,7 @@
 		{
 			"name": "checkmate",
 			"source": "./plugin",
-			"description": "Plan tests, resolve gaps, and collect evidence.",
+			"description": "Keep the QA record of free exploration: a journal of entries, gaps, and team merges.",
 			"version": "0.7.2"
 		}
 	]

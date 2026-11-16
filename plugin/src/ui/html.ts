@@ -32,59 +32,17 @@ export type Tone = 'pass' | 'fail' | 'block' | 'warn' | 'unsure' | 'acc' | 'mute
 const statusLook: Record<string, [string, Tone]> = {
 	passed: ['✓', 'pass'],
 	failed: ['✗', 'fail'],
-	inconclusive: ['?', 'unsure'],
-	not_checked: ['!', 'warn'],
 	blocked: ['–', 'block'],
-	not_run: ['–', 'block'],
-	error: ['!', 'warn'],
 	ready: ['✓', 'pass'],
-	deferred: ['–', 'block'],
-	planned: ['✓', 'pass'],
-	tested: ['✓', 'pass'],
-	uncovered: ['–', 'block'],
-	complete: ['✓', 'pass'],
-	partial: ['◐', 'warn'],
-	not_executed: ['–', 'block'],
 	completed: ['✓', 'pass'],
 	interrupted: ['!', 'warn'],
 	operational_error: ['!', 'fail'],
-	not_applicable: ['–', 'block'],
-	approved: ['✓', 'pass'],
 	rejected: ['✗', 'fail'],
-	pending: ['○', 'acc'],
-	not_required: ['–', 'block'],
-	started: ['●', 'acc'],
 	active: ['●', 'pass'],
 	retired: ['–', 'block'],
-	finalized: ['✓', 'pass'],
-	open: ['○', 'warn'],
-	resolved: ['✓', 'pass'],
-	blocking: ['●', 'fail'],
-	non_blocking: ['○', 'warn'],
-	clarify: ['✓', 'acc'],
-	accept_assumption: ['≈', 'acc'],
-	defer: ['–', 'block'],
-	defect: ['✗', 'fail'],
-	potential_issue: ['?', 'warn'],
-	low: ['·', 'block'],
-	medium: ['!', 'warn'],
-	high: ['!', 'fail'],
-	critical: ['!!', 'fail'],
 	rejected_operation: ['✗', 'fail'],
 	needs_decision: ['?', 'warn'],
 	invalid_request: ['✗', 'fail'],
-	needs_plan: ['○', 'acc'],
-	run_in_progress: ['●', 'acc'],
-	needs_revision: ['○', 'acc'],
-	plan_rejected: ['✗', 'fail'],
-	needs_answers: ['?', 'warn'],
-	needs_approval: ['○', 'acc'],
-	ready_to_run: ['○', 'acc'],
-	nothing_to_run: ['–', 'block'],
-	defects_open: ['✗', 'fail'],
-	needs_retest: ['!', 'warn'],
-	awaits_acceptance: ['○', 'acc'],
-	accepted: ['✓', 'pass'],
 }
 
 export function words(status: string) {
@@ -94,13 +52,6 @@ export function words(status: string) {
 export function pill(status: string, label: string = words(status)) {
 	const [icon, tone] = statusLook[status] ?? ['·', 'muted']
 	return html`<span class="st ${tone}"><span aria-hidden="true">${icon}</span> ${label}</span>`
-}
-
-export function icon(status: string | null) {
-	const [symbol, tone] = status ? (statusLook[status] ?? ['·', 'muted']) : ['·', 'muted']
-	return html`<span class="ic ${tone}" role="img" aria-label="${status ? words(status) : 'no result yet'}"
-		>${symbol}</span
-	>`
 }
 
 export function short(sha256: string) {
@@ -125,17 +76,6 @@ export function clock(iso: string) {
 
 export function time(iso: string, text = age(iso)) {
 	return html`<time datetime="${iso}" title="${clock(iso)}">${text}</time>`
-}
-
-export function hasMetadata(values: Record<string, unknown> | undefined) {
-	return Object.keys(values ?? {}).length > 0
-}
-
-export function metadataList(values: Record<string, string | number | boolean> = {}) {
-	const entries = Object.entries(values)
-	return html`<span class="kv" aria-label="Metadata"
-		>${entries.map(([key, value]) => html`<span class="tag">${key}=${String(value)}</span>`)}</span
-	>`
 }
 
 export function plural(count: number, one: string, many = `${one}s`) {

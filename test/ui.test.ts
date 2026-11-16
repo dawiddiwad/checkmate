@@ -8,83 +8,62 @@ import { execFileSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { startUi } from '../plugin/src/ui/server.ts'
-import { agent, human, seedDemo } from '../scripts/ui-demo.ts'
 import {
-	answerGap,
-	approvePlan,
-	beginRun,
-	checkAssertion,
-	closeStore,
-	openPlan,
-	createStore,
-	openStore,
 	addInstance,
+	closeStore,
+	createStore,
 	instanceList,
+	logEntries,
+	openChange,
+	openStore,
+	openTarget,
 	operationLog,
-	planCandidate,
-	jsonPatch,
-	patchPlan,
-	planDetail,
-	rejectPlan,
-	acceptResult,
-	revisePlan,
-	runDetail,
-	savePlan,
+	retireInstance,
+	saveTarget,
 } from '../plugin/src/index.ts'
-import { copied, directory, evidenceFile, root } from './support.ts'
+import { copied, directory, profile, root } from './support.ts'
 
-const payload = '<script>alert("gap")</script>'
+const human = 'qa-lead'
+const agent = 'checkmate-agent'
+const payload = '<script>alert("note")</script>'
 
-function seedPayload(workspace: string) {
+function seed(workspace: string) {
 	const store = createStore(workspace)
-	openPlan(store, agent, {
-		planId: 'xss',
-		target: 'shop-local@1',
-		request: {
-			objective: 'Escape stored text.',
-			requirements: [
-				{ id: 'X1', text: 'Stored text is data.', source: 'brief://xss', metadata: { 'x.note': payload } },
-			],
-			sourceContext: [],
-		},
+	const value = profile({
+		targetId: 'shop-local',
+		entryPoints: [{ name: 'web', kind: 'url', purpose: 'Shop web application and HTTP API.' }],
 	})
-	savePlan(store, agent, {
-		planId: 'xss',
-		candidate: {
-			tests: [
-				{
-					id: 'T1',
-					title: 'Payload test',
-					requirementIds: ['X1'],
-					capability: 'browser',
-					operations: ['read_catalog'],
-					dependsOn: [],
-					preconditions: [],
-					action: 'Read the page.',
-					metadata: { 'x-key_1': `"><img src=x onerror=alert(1)>${payload}` },
-					assertions: [{ id: 'A1', check: 'Nothing runs.', checkKind: 'deterministic' }],
-				},
-			],
-			gaps: ['G1', 'G2'].map((id) => ({
-				id,
-				severity: 'blocking' as const,
-				status: 'open' as const,
-				requirementIds: ['X1'],
-				testIds: ['T1'],
-				question: `${id} ${payload}`,
-				consequence: 'Unknown.',
-				decisionId: null,
-			})),
-		},
+	openTarget(store, agent, {
+		targetId: value.targetId,
+		entryPoints: value.entryPoints,
+		capabilities: value.capabilities,
+		allowedOperations: value.allowedOperations,
 	})
+	saveTarget(store, agent, { targetId: value.targetId, profile: value })
+	const instances = [
+		['preview', 'http://127.0.0.1:4100', 'Old preview build', []],
+		['local', 'http://127.0.0.1:4173', 'Local fixture', []],
+		['staging', 'https://staging.shop.example', 'Shared staging', ['STAGING_LOGIN']],
+	] as const
+	for (const [instanceId, web, environment, references] of instances)
+		addInstance(store, agent, {
+			targetId: value.targetId,
+			instanceId,
+			instance: { entries: { web }, environment, references: [...references] },
+		})
+	retireInstance(store, agent, { targetId: value.targetId, instanceId: 'preview' })
+	openChange(store, agent, { changeId: 'cart', target: 'shop-local', instance: 'local' })
+	for (let i = 1; i <= 50; i++)
+		logEntries(store, i % 2 ? agent : 'qa:a1', {
+			changeId: 'cart',
+			build: 'b1',
+			entries: { kind: 'note', text: i === 1 ? payload : `Note ${i}.` },
+		})
 	closeStore(store)
 }
 
 const template = directory()
-test.before(() => {
-	seedDemo(template)
-	seedPayload(template)
-})
+test.before(() => seed(template))
 test.after(() => rmSync(template, { recursive: true, force: true }))
 
 async function start(t: TestContext) {
@@ -147,23 +126,17 @@ function read<T>(workspace: string, view: (store: ReturnType<typeof openStore>) 
 	}
 }
 
-test('each page renders and escapes stored text', async (t) => {
+test('each page renders and escapes stored text; the pages of the old plan model are gone', async (t) => {
 	const { ui } = await start(t)
+	const home = await call(ui, '/')
+	assert.equal(home.status, 303)
+	assert.equal(home.headers.location, '/log')
 	const paths = [
-		'/',
-		'/plans',
-		'/plans?q=check&show=awaiting_approval',
-		'/plans/checkout@2',
-		'/plans/checkout@1',
-		'/plans/xss@1',
-		'/plans/xss@1/gaps/G1',
-		'/runs',
-		'/runs?plan=login&status=started',
-		'/runs/run-7',
-		'/runs/run-8',
 		'/log',
-		'/log?subject=run:run-7&actor=qa-lead',
+		'/log?subject=change:cart&actor=qa:a1',
 		'/actor',
+		'/settings/targets',
+		'/settings/targets/shop-local',
 	]
 	for (const path of paths) {
 		const reply = await call(ui, path)
@@ -171,203 +144,114 @@ test('each page renders and escapes stored text', async (t) => {
 		assert(!reply.body.includes('<script>alert'), path)
 		assert.match(String(reply.headers['content-security-policy']), /script-src 'self'/)
 		assert.equal(reply.headers['x-content-type-options'], 'nosniff')
+		assert.doesNotMatch(reply.body, /Inbox|href="\/plans"|href="\/runs"/, path)
 	}
-	for (const path of ['/', '/plans/xss@1', '/plans/xss@1/gaps/G1'])
-		assert.match((await call(ui, path)).body, /&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;/, path)
-	const metadata = (await call(ui, '/plans/xss@1')).body
-	assert.match(metadata, /<span class="tag">x\.note=&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;<\/span>/)
-	assert.match(metadata, /<span class="tag">x-key_1=&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;&lt;script&gt;/)
-	assert.doesNotMatch(metadata, /<img src=x/)
-	assert.equal((await call(ui, '/plans/checkout')).headers.location, '/plans/checkout@2')
-	const missing = await call(ui, '/plans/nothing@1')
-	assert.equal(missing.status, 404)
-	assert.match(missing.body, /Unknown plan: nothing/)
-	assert.doesNotMatch(missing.body, /at .*\.ts:\d+/)
-	assert.equal((await call(ui, '/nowhere')).status, 404)
-})
-
-test('a decision needs a rationale, a confirm step, and redirects to the next inbox item', async (t) => {
-	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
-	const form = {
-		csrf: field(page, 'csrf'),
-		sha: field(page, 'sha'),
-		decision: field(page, 'decision'),
-		verdict: 'approve',
+	for (const path of ['/plans', '/runs', '/plans/checkout@1', '/runs/run-1', '/nowhere']) {
+		const missing = await call(ui, path)
+		assert.equal(missing.status, 404, path)
+		assert.doesNotMatch(missing.body, /at .*\.ts:\d+/)
 	}
-	const empty = await call(ui, '/plans/search@1', {
-		form: { ...form, rationale: '  ', confirmed: '1' },
-		headers: actorCookie,
-	})
-	assert.equal(empty.status, 422)
-	assert.match(empty.body, /Write a rationale/)
-	const confirm = await call(ui, '/plans/search@1', {
-		form: { ...form, rationale: 'Clear scope.' },
-		headers: actorCookie,
-	})
-	assert.equal(confirm.status, 200)
-	assert.match(confirm.body, /Confirm approval/)
-	assert.match(confirm.body, /name="rationale" value="Clear scope."/)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').approval.state),
-		'pending'
-	)
-	const done = await call(ui, '/plans/search@1', {
-		form: { ...form, rationale: 'Clear scope.', confirmed: '1' },
-		headers: actorCookie,
-	})
-	assert.equal(done.status, 303)
-	assert.equal(done.headers.location, '/plans/checkout@2/gaps/G2#answer')
-	const toast = String(done.headers['set-cookie']).match(/checkmate_toast=([^;]*)/)
-	assert(toast)
-	assert.equal(decodeURIComponent(toast[1]), 'Approved search@1')
-	const next = await call(ui, '/plans/checkout@2/gaps/G2', {
-		headers: { Cookie: `checkmate_actor=${human}; checkmate_toast=${toast[1]}` },
-	})
-	assert.match(next.body, /class="toast"[^>]*>Approved search@1</)
-	const refreshed = await call(ui, '/plans/checkout@2/gaps/G2', {
-		headers: { Cookie: `checkmate_actor=${human}; checkmate_toast=${toast[1]}`, 'Sec-Fetch-Mode': 'cors' },
-	})
-	assert.doesNotMatch(refreshed.body, /class="toast"/)
-	assert.doesNotMatch(String(refreshed.headers['set-cookie']), /checkmate_toast/)
-	const approval = read(workspace, (store) => planDetail(store, 'search').approval)
-	assert.equal(approval.state, 'approved')
-	assert.equal(approval.latest?.actor, human)
-})
-
-test('a gap answer asks for a name once and refuses a stale digest with the typed text kept', async (t) => {
-	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/plans/xss@1/gaps/G1')).body
-	assert.match(page, /name="actor"/)
-	const form = {
-		csrf: field(page, 'csrf'),
-		sha: field(page, 'sha'),
-		kind: 'clarify',
-		value: 'Typed answer that must survive.',
-		source: '',
-		rationale: 'Because.',
-		actor: 'reviewer',
-	}
-	const noSource = await call(ui, '/plans/xss@1/gaps/G1', { form })
-	assert.equal(noSource.status, 422)
-	assert.match(noSource.body, /A clarification needs a source/)
-	assert.match(noSource.body, /Typed answer that must survive\.<\/textarea/)
-	read(workspace, (store) => {
-		answerGap(store, agent, { planId: 'xss', gapId: 'G2', kind: 'defer', value: 'Later.', rationale: 'Scope.' })
-		revisePlan(store, agent, { planId: 'xss', delta: { tests: {} } })
-	})
-	const stale = await call(ui, '/plans/xss@1/gaps/G1', { form: { ...form, source: 'oracle://answers' } })
-	assert.equal(stale.status, 422)
-	assert.match(stale.body, /xss has a newer revision \(2\)/)
-	assert.match(stale.body, /Typed answer that must survive\.<\/textarea/)
-	assert.match(stale.body, /Revision 2 is available/)
-	assert.match(String(stale.headers['set-cookie']), /checkmate_actor=reviewer/)
-	const current = (await call(ui, '/plans/xss@2/gaps/G1')).body
-	const done = await call(ui, '/plans/xss@2/gaps/G1', {
-		form: { ...form, sha: field(current, 'sha'), source: 'oracle://answers' },
-	})
-	assert.equal(done.status, 303)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'xss').pendingDecisions[0].actor),
-		'reviewer'
-	)
-	const recorded = (await call(ui, '/plans/xss@2/gaps/G1')).body
-	assert.match(recorded, /Answer recorded/)
-	assert.match(recorded, /By reviewer\. The agent applies it in the next revision of xss\./)
-})
-
-test('the UI prefills the default actor and records it without a name cookie', async (t) => {
-	const workspace = copied(t, template)
-	const ui = await startUi({ workspace, defaultActor: 'git-user' })
-	t.after(() => ui.close())
-	const page = (await call(ui, '/plans/xss@1/gaps/G1')).body
-	assert.doesNotMatch(page, /name="actor" required/)
-	assert.match(page, /actor: git-user/)
-	assert.match((await call(ui, '/actor')).body, /value="git-user"/)
-	const done = await call(ui, '/plans/xss@1/gaps/G1', {
-		form: {
-			csrf: field(page, 'csrf'),
-			sha: field(page, 'sha'),
-			kind: 'defer',
-			value: 'Later.',
-			rationale: 'Scope.',
-		},
-	})
-	assert.equal(done.status, 303)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'xss').pendingDecisions[0].actor),
-		'git-user'
-	)
-	const named = await call(ui, '/plans/xss@1', { headers: { Cookie: 'checkmate_actor=reviewer' } })
-	assert.match(named.body, /actor: reviewer/)
 })
 
 test('the server refuses another host, another origin, and a missing form token', async (t) => {
 	const { ui, workspace, port } = await start(t)
-	const page = (await call(ui, '/plans/search@1')).body
-	const form = {
-		csrf: field(page, 'csrf'),
-		sha: field(page, 'sha'),
-		decision: field(page, 'decision'),
-		verdict: 'approve',
-		rationale: 'Yes.',
-		confirmed: '1',
-	}
-	assert.equal((await call(ui, '/', { headers: { Host: `evil.test:${port}` } })).status, 421)
-	assert.equal((await call(ui, '/', { headers: { Host: `localhost:${port}` } })).status, 200)
-	const origin = await call(ui, '/plans/search@1', { form, headers: { ...actorCookie, Origin: 'http://evil.test' } })
+	const page = (await call(ui, '/settings/targets/shop-local')).body
+	const form = { csrf: field(page, 'csrf'), instanceId: 'uat', 'entry.web': 'https://uat.shop.example' }
+	const path = '/settings/targets/shop-local/instances'
+	assert.equal((await call(ui, '/log', { headers: { Host: `evil.test:${port}` } })).status, 421)
+	assert.equal((await call(ui, '/log', { headers: { Host: `localhost:${port}` } })).status, 200)
+	const origin = await call(ui, path, { form, headers: { ...actorCookie, Origin: 'http://evil.test' } })
 	assert.equal(origin.status, 403)
-	const token = await call(ui, '/plans/search@1', { form: { ...form, csrf: 'wrong' }, headers: actorCookie })
+	const token = await call(ui, path, { form: { ...form, csrf: 'wrong' }, headers: actorCookie })
 	assert.equal(token.status, 403)
 	assert.match(token.body, /Load the page again/)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').approval.state),
-		'pending'
-	)
-	const allowed = await call(ui, '/plans/search@1', {
-		form,
-		headers: { ...actorCookie, Origin: `http://127.0.0.1:${port}` },
-	})
+	const uat = () =>
+		read(workspace, (store) => instanceList(store, 'shop-local')).some((item) => item.instanceId === 'uat')
+	assert(!uat())
+	const allowed = await call(ui, path, { form, headers: { ...actorCookie, Origin: `http://127.0.0.1:${port}` } })
 	assert.equal(allowed.status, 303)
+	assert(uat())
 })
 
-test('evidence keeps its media type; images show inline, and plain text, XML, and CSV show inline as text', async (t) => {
+test('live events reach subscribed streams only and replay after Last-Event-ID', async (t) => {
 	const { ui, workspace } = await start(t)
-	const evidence = read(workspace, (store) =>
-		runDetail(store, 'run-7').tests.flatMap((test) => test.assertions.flatMap((assertion) => assertion.evidence))
-	)
-	const png = evidence.find((item) => item.mediaType === 'image/png')!
-	const json = evidence.find((item) => item.mediaType === 'application/json')!
-	const image = await call(ui, `/evidence/${png.id}`)
-	assert.equal(image.headers['content-type'], 'image/png')
-	assert.match(String(image.headers['content-disposition']), /^inline; filename="T1-confirmation.png"/)
-	assert.equal(image.headers['x-content-type-options'], 'nosniff')
-	const data = await call(ui, `/evidence/${json.id}`)
-	assert.equal(data.headers['content-type'], 'application/json')
-	assert.match(String(data.headers['content-disposition']), /^attachment; /)
-	assert.equal((await call(ui, '/evidence/01ARZ3NDEKTSV4RRFFQ69G5FAV')).status, 404)
-	const run = (await call(ui, '/runs/run-7')).body
-	assert.match(run, /<img src="\/evidence\//)
-	assert.match(run, /&quot;totalPLN&quot;: 220/)
-	read(workspace, (store) => {
-		const open = runDetail(store, 'run-8')
-			.tests.flatMap((test) => test.assertions.map((assertion) => ({ test, assertion })))
-			.find((item) => item.assertion.result === null)!
-		checkAssertion(store, agent, {
-			runId: 'run-8',
-			testId: open.test.testId,
-			assertionId: open.assertion.assertionId,
-			result: 'passed',
-			observed: 'The feed lists one item.',
-			evidence: [
-				evidenceFile(store, 'run-8', 'feed.xml', '<feed><item>Lamp</item></feed>'),
-				evidenceFile(store, 'run-8', 'rows.csv', 'sku,total\nLAMP-01,400\n'),
-			],
-		})
+	const change = stream(ui, 'change:cart')
+	const other = stream(ui, 'target:shop-local')
+	t.after(() => {
+		change.close()
+		other.close()
 	})
-	const feed = (await call(ui, '/runs/run-8')).body
-	assert.match(feed, /<pre tabindex="0">&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/)
-	assert.match(feed, /<pre tabindex="0">sku,total\nLAMP-01,400\n<\/pre>/)
+	await Promise.all([change.ready, other.ready])
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const before = Date.now()
+	logEntries(store, agent, { changeId: 'cart', build: 'b1', entries: { kind: 'note', text: 'Live.' } })
+	const [first] = await change.next(1)
+	assert(Date.now() - before < 1000)
+	assert.equal(first.data, 'change:cart')
+	const started = Date.now()
+	execFileSync(
+		process.execPath,
+		[
+			join(root, 'plugin/dist/checkmate.js'),
+			'log',
+			'cart',
+			'--build',
+			'b1',
+			'--workspace',
+			workspace,
+			'--actor',
+			'worker',
+		],
+		{ input: JSON.stringify({ kind: 'note', text: 'From the CLI.' }) }
+	)
+	const exited = Date.now()
+	const events = await change.next(2)
+	assert(Date.now() - exited < 1000, `event took ${Date.now() - started} ms`)
+	assert.equal(events[1].data, 'change:cart')
+	assert(Number(events[1].id) > Number(events[0].id))
+	addInstance(store, agent, {
+		targetId: 'shop-local',
+		instanceId: 'uat',
+		instance: { entries: { web: 'https://uat.shop.example' } },
+	})
+	const [later] = await other.next(1)
+	assert.deepEqual(
+		other.events.map((event) => event.data),
+		['target:shop-local'],
+		'the other stream gets only the later change'
+	)
+	assert(Number(later.id) > Number(events[1].id))
+	const replay = stream(ui, 'change:cart', { 'Last-Event-ID': String(Number(first.id) - 1) })
+	t.after(() => replay.close())
+	const replayed = await replay.next(2)
+	assert.deepEqual(
+		replayed.map((event) => event.id),
+		events.slice(0, 2).map((event) => event.id)
+	)
+})
+
+test('the log pages, sorts, and filters on the server with the state in the URL', async (t) => {
+	const { ui } = await start(t)
+	const log = (await call(ui, '/log')).body
+	const total = Number(/Showing 1–25 of (\d+) operations/.exec(log)?.[1])
+	assert(total > 50)
+	assert.equal((log.match(/<tr data-key="op:/g) ?? []).length, 25)
+	assert.match(log, /href="\/log\?page=2" rel="next"/)
+	assert.match(log, /<option value="25" selected>25 rows<\/option>/)
+	const bigger = (await call(ui, '/log?size=50&page=2')).body
+	assert.match(bigger, new RegExp(`Showing 51–${total} of ${total} operations`))
+	assert.match(bigger, /href="\/log\?size=50" rel="prev"/)
+	assert.match((await call(ui, '/log?page=99')).body, /Page 3 of 3/)
+	const filtered = (await call(ui, '/log?subject=target:shop-local&actor=qa:a1')).body
+	assert.equal((filtered.match(/<tr data-key="op:/g) ?? []).length, 0)
+	assert.match(filtered, /No operation matches these filters/)
+	assert.match(filtered, /href="\/log" data-list-clear>Clear</)
+	const tester = (await call(ui, '/log?subject=change:cart&actor=qa:a1&size=100')).body
+	assert.equal((tester.match(/<tr data-key="op:/g) ?? []).length, 25)
+	const oldest = (await call(ui, '/log?sort=time&dir=asc')).body
+	assert.match(oldest, /<span class="mono">target open<\/span>/)
+	assert.match(oldest, /name="dir" value="asc" data-default="desc"/)
 })
 
 type Event = { id: string; data: string }
@@ -413,455 +297,10 @@ function stream(ui: Ui, subjects: string, headers: Record<string, string> = {}) 
 	}
 }
 
-test('live events reach subscribed streams only and replay after Last-Event-ID', async (t) => {
-	const { ui, workspace } = await start(t)
-	const run = stream(ui, 'run:run-8,inbox')
-	const other = stream(ui, 'plan:search')
-	t.after(() => {
-		run.close()
-		other.close()
-	})
-	await Promise.all([run.ready, other.ready])
-	const store = openStore(workspace)
-	t.after(() => closeStore(store))
-	const before = Date.now()
-	checkAssertion(store, agent, {
-		runId: 'run-8',
-		testId: 'T1',
-		assertionId: 'A2',
-		result: 'passed',
-		observed: 'HttpOnly is set.',
-		evidence: [evidenceFile(store, 'run-8', 'cookie.txt', 'Set-Cookie: sid=x; HttpOnly')],
-	})
-	const [first] = await run.next(1)
-	assert(Date.now() - before < 1000)
-	assert.equal(first.data, 'run:run-8')
-	const started = Date.now()
-	execFileSync(process.execPath, [
-		join(root, 'plugin/dist/checkmate.js'),
-		'run',
-		'close',
-		'run-8',
-		'T1',
-		'--workspace',
-		workspace,
-		'--actor',
-		'worker',
-	])
-	const exited = Date.now()
-	const events = await run.next(2)
-	assert(Date.now() - exited < 1000, `event took ${Date.now() - started} ms`)
-	assert.equal(events[1].data, 'run:run-8')
-	assert(Number(events[1].id) > Number(events[0].id))
-	approvePlan(store, agent, { reference: 'search@1', rationale: 'Clear scope.' })
-	const [later] = await other.next(1)
-	assert.deepEqual(
-		other.events.map((event) => event.data),
-		['plan:search'],
-		'the other stream gets only the later change'
-	)
-	assert(Number(later.id) > Number(events[1].id))
-	const replay = stream(ui, 'run:run-8', { 'Last-Event-ID': String(Number(first.id) - 1) })
-	t.after(() => replay.close())
-	const replayed = await replay.next(2)
-	assert.deepEqual(
-		replayed.map((event) => event.id),
-		events.slice(0, 2).map((event) => event.id)
-	)
-})
-
-function rowKeys(body: string, prefix: string) {
-	return [...body.matchAll(new RegExp(`data-key="${prefix}:([^"]+)" data-nav-row`, 'g'))].map((match) => match[1])
-}
-
-test('lists page, sort, and filter on the server with the state in the URL', async (t) => {
-	const { ui } = await start(t)
-	const plans = (await call(ui, '/plans')).body
-	assert.deepEqual(rowKeys(plans, 'plan'), ['xss', 'search', 'checkout', 'account', 'login'])
-	assert.match(plans, /aria-sort="descending">\s*<a class="sort on" href="\/plans\?dir=asc"/)
-	assert.match(plans, /href="\/plans\?sort=plan&amp;dir=asc" data-list-link/)
-	const byName = (await call(ui, '/plans?sort=plan&dir=asc')).body
-	assert.deepEqual(rowKeys(byName, 'plan'), ['account', 'checkout', 'login', 'search', 'xss'])
-	assert.match(byName, /aria-sort="ascending"/)
-	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
-	assert.deepEqual(rowKeys((await call(ui, '/plans?approval=approved&q=check')).body, 'plan'), ['checkout'])
-	assert.deepEqual(rowKeys((await call(ui, '/runs')).body, 'run'), ['run-8', 'run-7', 'run-3'])
-	assert.deepEqual(rowKeys((await call(ui, '/runs?q=fixture-build-3')).body, 'run'), ['run-8'])
-	assert.deepEqual(rowKeys((await call(ui, '/runs?plan=login&status=started')).body, 'run'), ['run-8'])
-	const ignored = await call(ui, '/runs?status=bogus&size=7&sort=nothing&page=-2')
-	assert.equal(ignored.status, 200)
-	assert.equal(rowKeys(ignored.body, 'run').length, 3)
-	const log = (await call(ui, '/log')).body
-	const total = Number(/Showing 1–25 of (\d+) operations/.exec(log)?.[1])
-	assert(total > 50)
-	assert.equal((log.match(/<tr data-key="op:/g) ?? []).length, 25)
-	assert.match(log, /href="\/log\?page=2" rel="next"/)
-	assert.match(log, /<option value="25" selected>25 rows<\/option>/)
-	const bigger = (await call(ui, '/log?size=50&page=2')).body
-	assert.match(bigger, new RegExp(`Showing 51–${total} of ${total} operations`))
-	assert.match(bigger, /href="\/log\?size=50" rel="prev"/)
-	assert.match((await call(ui, '/log?page=99')).body, /Page 3 of 3/)
-	const filtered = (await call(ui, '/log?subject=run:run-7&actor=qa-lead')).body
-	assert.equal((filtered.match(/<tr data-key="op:/g) ?? []).length, 0)
-	assert.match(filtered, /No operation matches these filters/)
-	assert.match(filtered, /href="\/log" data-list-clear>Clear</)
-	const oldest = (await call(ui, '/log?sort=time&dir=asc')).body
-	assert.match(oldest, /<span class="mono">target open<\/span>/)
-	assert.match(oldest, /name="dir" value="asc" data-default="desc"/)
-})
-
-test('the inbox and the plan list show a plan request without a revision', async (t) => {
-	const { ui, workspace } = await start(t)
-	const store = openStore(workspace)
-	openPlan(store, agent, {
-		planId: 'draft',
-		target: 'shop-local@1',
-		request: { objective: `Draft ${payload}`, context: { sources: ['brief://draft'] } },
-	})
-	closeStore(store)
-	const home = (await call(ui, '/')).body
-	assert.match(home, /Plans to draft · 1/)
-	assert.match(home, /data-key="request:draft"/)
-	assert.match(home, /Draft &lt;script&gt;/)
-	assert.match(home, /<code>\/checkmate:plan draft<\/code>/)
-	const actions = [...home.matchAll(/<a\s+class="item"[^>]*data-nav-item/g)].length
-	assert.match(home, new RegExp(`data-region="nav-count">${actions}<`))
-	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
-	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
-	assert.match(
-		plans,
-		/<span class="mono">draft<\/span><\/td>\s*<td><span class="loop"\s*>.*needs plan<\/span> <span class="muted small">waits on planner<\/span>/
-	)
-	assert.match(plans, /<span class="mono">draft<\/span>[\s\S]*?<td><span class="muted">no revision yet<\/span>/)
-	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
-})
-
-test('the inbox says that a rejected plan was rejected and counts it in the badge', async (t) => {
-	const { ui, workspace } = await start(t)
-	const before = (await call(ui, '/')).body
-	const reference = before.match(/data-key="plan:(search@\d+)"/)![1]
-	const store = openStore(workspace)
-	rejectPlan(store, human, { reference, rationale: 'Cover the empty query.' })
-	closeStore(store)
-	const home = (await call(ui, '/')).body
-	const item = home.match(new RegExp(`<a[^>]*data-key="plan:${reference}"[\\s\\S]*?</a>`))![0]
-	assert.match(item, new RegExp(`data-announce="${reference} was rejected. Change the plan."`))
-	assert.match(item, /Rejected\. Change the plan\./)
-	assert.doesNotMatch(item, /waits for approval/)
-	assert.match(home, /Plans to approve or change · 2/)
-	const actions = [...home.matchAll(/<a\s+class="item"[^>]*data-nav-item/g)].length
-	assert.match(home, new RegExp(`data-region="nav-count">${actions}<`))
-})
-
-test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
-	const { ui } = await start(t)
-	const checkout = (await call(ui, '/plans/checkout@2')).body
-	assert.match(checkout, /<h2 id="runs">Runs <span class="n">1<\/span><\/h2>/)
-	assert.match(checkout, /<a class="mono" href="\/runs\/run-7">run-7<\/a>/)
-	assert.match(checkout, /awaiting acceptance/)
-	assert.match(checkout, /<li class="gap" id="G2"/)
-	assert.match(checkout, /<li class="gap closed" id="G1"[^>]*>\s*<details data-open-key="gap:G1">/)
-	assert.match(checkout, /<li class="gap closed" id="G3"/)
-	assert(checkout.indexOf('id="G2"') < checkout.indexOf('id="G1"'))
-	const account = (await call(ui, '/plans/account@7')).body
-	const entries = (body: string) => (body.match(/data-open-key="revision:/g) ?? []).length
-	assert.equal(entries(account), 6)
-	assert.match(account, /<details open data-open-key="revision:7">/)
-	assert.match(account, /<details\s+data-open-key="revision:6">/)
-	assert.match(account, /data-history-more="\/plans\/account@7\/history"/)
-	assert.match(account, /Show full history · 1 earlier revision/)
-	const fragment = await call(ui, '/plans/account@7/history')
-	assert.equal(fragment.headers['content-type'], 'text/html; charset=utf-8')
-	assert.doesNotMatch(fragment.body, /<html/)
-	assert.equal(entries(fragment.body), 7)
-	assert.doesNotMatch(fragment.body, /data-history-more/)
-	assert.equal(entries((await call(ui, '/plans/account@7?history=all')).body), 7)
-	assert.doesNotMatch((await call(ui, '/plans/login@1')).body, /data-history-more/)
-})
-
-test('a run gap is in the inbox, and its answer adopts it into the plan', async (t) => {
-	const { ui, workspace } = await start(t)
-	const home = (await call(ui, '/')).body
-	assert.match(home, /href="\/plans\/checkout@2\/gaps\/G4#answer"/)
-	assert.match(home, /from run run-7/)
-	assert.match((await call(ui, '/runs/run-7')).body, /href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</)
-	const page = (await call(ui, '/plans/checkout@2/gaps/G4')).body
-	assert.match(page, /This gap comes from run <a class="mono" href="\/runs\/run-7">run-7<\/a>/)
-	const done = await call(ui, '/plans/checkout@2/gaps/G4', {
-		form: {
-			csrf: field(page, 'csrf'),
-			sha: field(page, 'sha'),
-			kind: 'defer',
-			value: 'Wrap the banner in a later release.',
-			source: '',
-			rationale: 'Scope.',
-			actor: 'reviewer',
-		},
-	})
-	assert.equal(done.status, 303)
-	const latest = read(workspace, (store) => planDetail(store, 'checkout'))
-	assert.equal(latest.revision, 3)
-	assert.deepEqual(
-		latest.pendingDecisions.map((item) => item.gapId),
-		['G4']
-	)
-	assert.match(
-		(await call(ui, '/runs/run-7')).body,
-		/in plan<\/span>\s*<a href="\/plans\/checkout@3#G4">checkout@3<\/a>/
-	)
-})
-
-test('the plan list and the plan page show the loop state and who it waits on', async (t) => {
-	const { ui } = await start(t)
-	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
-	const loops = [
-		...plans.matchAll(
-			/data-key="plan:([^"]+)" data-nav-row>[\s\S]*?<td><span class="loop"\s*>(.*?)<\/span\s*><\/td>/g
-		),
-	].map((match) => [
-		match[1],
-		match[2]
-			.replace(/<[^>]+>/g, '')
-			.replace(/\s+/g, ' ')
-			.trim(),
-	])
-	assert.deepEqual(loops, [
-		['account', '○ ready to run waits on QA'],
-		['checkout', '? needs answers waits on oracle'],
-		['login', '● run in progress waits on QA'],
-		['search', '○ needs approval waits on oracle'],
-		['xss', '? needs answers waits on oracle'],
-	])
-	assert.deepEqual(rowKeys((await call(ui, '/plans?waits=qa')).body, 'plan'), ['account', 'login'])
-	assert.deepEqual(rowKeys((await call(ui, '/plans?sort=loop&dir=asc')).body, 'plan').slice(0, 2), [
-		'checkout',
-		'xss',
-	])
-	assert.equal(rowKeys((await call(ui, '/plans?waits=nobody')).body, 'plan').length, 5)
-	const checkout = (await call(ui, '/plans/checkout@2')).body
-	assert.match(
-		checkout,
-		/<div class="meta">\s*<span class="loop"\s*><span class="st warn"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
-	)
-})
-
-test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {
-	const { ui, workspace } = await start(t)
-	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
-	read(workspace, (store) =>
-		beginRun(store, agent, {
-			runId: 'run-9',
-			reference: 'checkout@2',
-			build: 'fixture-build-9',
-			instance: 'staging',
-			partial: 'ready_only',
-			retestOf: 'run-7',
-		})
-	)
-	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
-	assert.match((await call(ui, '/runs/run-7')).body, /name="verdict"\s*value="accept"/)
-})
-
-test('Bring into plan adopts one run gap with the digest guard and the actor', async (t) => {
-	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/runs/run-7')).body
-	assert.match(page, /<form method="post" action="\/runs\/run-7\/gaps\/G4" class="inline-form">/)
-	assert.match(page, /Bring into plan<\/button>/)
-	assert.match(page, /<div class="actions">\s*<a class="btn small" href="[^"]+\/gaps\/G4#answer">Answer<\/a>/)
-	const form = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), actor: '' }
-	const nameless = await call(ui, '/runs/run-7/gaps/G4', { form })
-	assert.equal(nameless.status, 422)
-	assert.match(nameless.body, /<p class="form-error" role="alert">Enter your name/)
-	const done = await call(ui, '/runs/run-7/gaps/G4', { form: { ...form, actor: 'reviewer' } })
-	assert.equal(done.status, 303)
-	assert.equal(done.headers.location, '/runs/run-7#G4')
-	const latest = read(workspace, (store) => planDetail(store, 'checkout'))
-	assert.equal(latest.revision, 3)
-	assert(latest.plan.gaps.some((gap) => gap.id === 'G4'))
-	const log = read(workspace, (store) => operationLog(store, { limit: 1 })[0])
-	assert.deepEqual([log.command, log.actor], ['plan adopt-gaps', 'reviewer'])
-	const after = (await call(ui, '/runs/run-7')).body
-	assert.doesNotMatch(after, /Bring into plan/)
-	const stale = await call(ui, '/runs/run-7/gaps/G4', { form: { ...form, actor: 'reviewer' } })
-	assert.equal(stale.status, 422)
-	assert.match(stale.body, /checkout changed after you opened this page/)
-})
-
-test('a finished run downloads its report as HTML, Markdown, JSON, or JUnit XML', async (t) => {
-	const { ui } = await start(t)
-	const page = (await call(ui, '/runs/run-7')).body
-	for (const format of ['html', 'md', 'json', 'junit'])
-		assert.match(page, new RegExp(`href="/runs/run-7/report.${format}" download`))
-	assert.match(page, /print to PDF/)
-	const html = await call(ui, '/runs/run-7/report.html')
-	assert.equal(html.status, 200)
-	assert.equal(html.headers['content-type'], 'text/html; charset=utf-8')
-	assert.match(String(html.headers['content-disposition']), /^attachment; filename="run-7-report.html"/)
-	assert.match(html.body, /^<!doctype html>/i)
-	assert.match(html.body, /@media print/)
-	assert.match(html.body, /The promotion stacks with the loyalty credit/)
-	const markdown = await call(ui, '/runs/run-7/report.md')
-	assert.equal(markdown.headers['content-type'], 'text/markdown; charset=utf-8')
-	assert.match(String(markdown.headers['content-disposition']), /filename="run-7-report.md"/)
-	assert.match(markdown.body, /^# /)
-	const json = await call(ui, '/runs/run-7/report.json')
-	assert.equal(json.headers['content-type'], 'application/json; charset=utf-8')
-	assert.equal(JSON.parse(json.body).result.runId, 'run-7')
-	const junit = await call(ui, '/runs/run-7/report.junit')
-	assert.equal(junit.headers['content-type'], 'application/xml; charset=utf-8')
-	assert.match(String(junit.headers['content-disposition']), /filename="run-7-junit.xml"/)
-	assert.match(junit.body, /^<\?xml version="1.0" encoding="UTF-8"\?>\n<testsuites name="run-7"/)
-	assert.doesNotMatch((await call(ui, '/plans/checkout@2')).body, /export\.junit/)
-	assert.equal((await call(ui, '/plans/checkout@2/export.junit')).status, 404)
-	assert.doesNotMatch((await call(ui, '/runs/run-8')).body, /report\.html/)
-	assert.equal((await call(ui, '/runs/run-8/report.html')).status, 409)
-	assert.equal((await call(ui, '/runs/nothing/report.html')).status, 404)
-	const plan = await call(ui, '/plans/checkout@2/export.json')
-	assert.match(String(plan.headers['content-disposition']), /^attachment; filename="checkout-2-plan.json"/)
-	assert.equal(JSON.parse(plan.body).planId, 'checkout')
-})
-
-function unescape(text: string) {
-	return text
-		.replaceAll('&quot;', '"')
-		.replaceAll('&#39;', "'")
-		.replaceAll('&lt;', '<')
-		.replaceAll('&gt;', '>')
-		.replaceAll('&amp;', '&')
-}
-
-function editForm(page: string, changes: Record<string, string>) {
-	const form: Record<string, string> = {}
-	const editor = page.slice(page.indexOf('data-edit-form'), page.indexOf('class="edit-json"'))
-	for (const match of editor.matchAll(/<input[^>]*name="([^"]+)" value="([^"]*)"/g)) form[match[1]] = match[2]
-	for (const match of editor.matchAll(/<textarea[^>]*name="([^"]+)"[^>]*>\n?([^<]*)<\/textarea/g))
-		form[match[1]] = match[2]
-	for (const match of editor.matchAll(/<select[^>]*name="([^"]+)"[\s\S]*?<option\s+value="([^"]+)"\s+selected/g))
-		form[match[1]] = match[2]
-	for (const name of Object.keys(form)) form[name] = unescape(form[name])
-	return { ...form, ...changes }
-}
-
-function formBody(form: Record<string, string>, covers: string[]) {
-	const body = new URLSearchParams(form)
-	for (const cover of covers) body.append('cover', cover)
-	return body
-}
-
-test('an unapproved plan changes in place and an approved plan gets a new revision', async (t) => {
-	const { ui, workspace } = await start(t)
-	const search = (await call(ui, '/plans/search@1/edit', { headers: actorCookie })).body
-	assert.match(search, /Edits change this revision in place/)
-	assert.match(search, /Saving as <strong>qa-lead<\/strong>/)
-	assert.match(search, /name="cover"\s+value="T1 S1"[^>]*checked/)
-	const form = editForm(search, {
-		'r0.text': 'Search returns matching products first.',
-		't0.operations': 'read_catalog',
-	})
-	const saved = await call(ui, '/plans/search@1/edit', {
-		form: formBody(form, ['T1 S1', 'T2 S2']),
-		headers: actorCookie,
-	})
-	assert.equal(saved.status, 303)
-	assert.equal(saved.headers.location, '/plans/search@1')
-	assert.match(decodeURIComponent(String(saved.headers['set-cookie'])), /Saved search@1 in place/)
-	const after = read(workspace, (store) => planDetail(store, 'search'))
-	assert.equal(after.latestRevision, 1)
-	assert.equal(after.plan.requirements[0].text, 'Search returns matching products first.')
-	assert.notEqual(after.sha256, form.sha)
-	const stale = await call(ui, '/plans/search@1/edit', {
-		form: formBody({ ...form, 't0.title': 'Lost update' }, ['T1 S1', 'T2 S2']),
-		headers: actorCookie,
-	})
-	assert.equal(stale.status, 422)
-	assert.match(stale.body, /search changed after you opened the editor/)
-	assert.match(stale.body, /Your changes \(not saved\)[\s\S]*T1\.title: &quot;Lost update&quot;<\/pre>/)
-	assert.doesNotMatch(stale.body, /value="Lost update"/)
-	assert.equal(field(stale.body, 'sha'), after.sha256)
-	assert.notEqual(
-		read(workspace, (store) => planDetail(store, 'search').plan.tests[0].title),
-		'Lost update'
-	)
-	const resent = await call(ui, '/plans/search@1/edit', {
-		form: formBody(editForm(stale.body, {}), ['T1 S1', 'T2 S2']),
-		headers: actorCookie,
-	})
-	assert.equal(resent.status, 303)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').plan.requirements[0].text),
-		'Search returns matching products first.'
-	)
-
-	const checkout = (await call(ui, '/plans/checkout@2/edit', { headers: actorCookie })).body
-	assert.match(checkout, /A run uses checkout@2\. Saving creates revision 3, which needs approval/)
-	assert.match(checkout, />Save as checkout@3</)
-	const fields = editForm(checkout, { 't3.title': 'Promotion banner on every width', 't3.a1.kind': 'deterministic' })
-	const covers = ['T1 R1', 'T2 R2', 'T3 R3', 'T4 R4', 'T4 R2']
-	const uncovered = await call(ui, '/plans/checkout@2/edit', {
-		form: formBody(fields, ['T1 R1', 'T2 R2', 'T3 R3']),
-		headers: actorCookie,
-	})
-	assert.equal(uncovered.status, 422)
-	assert.match(uncovered.body, /class="form-error"/)
-	assert.match(uncovered.body, /value="Promotion banner on every width"/)
-	const next = await call(ui, '/plans/checkout@2/edit', {
-		form: formBody(fields, covers),
-		headers: actorCookie,
-	})
-	assert.equal(next.status, 303)
-	assert.equal(next.headers.location, '/plans/checkout@3')
-	assert.match(decodeURIComponent(String(next.headers['set-cookie'])), /Saved checkout@3\. It needs approval\./)
-	const revised = read(workspace, (store) => planDetail(store, 'checkout'))
-	assert.equal(revised.latestRevision, 3)
-	assert.equal(revised.approval.state, 'pending')
-	assert.deepEqual(revised.plan.tests[3].requirementIds, ['R2', 'R4'])
-	assert.equal(revised.plan.tests[3].assertions[1].checkKind, 'deterministic')
-	const log = read(workspace, (store) => operationLog(store, { limit: 1 })[0])
-	assert.equal(log.command, 'plan edit')
-	assert.equal(log.actor, human)
-	const old = (await call(ui, '/plans/checkout@2/edit')).body
-	assert.match(old, /Only the latest revision can change/)
-	assert.doesNotMatch((await call(ui, '/plans/checkout@2')).body, /\/edit"/)
-})
-
-test('the JSON editor reports errors, keeps the text, and records the typed name over a saved one', async (t) => {
-	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/plans/search@1/edit')).body
-	const base = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), mode: 'json' }
-	const broken = await call(ui, '/plans/search@1/edit', {
-		form: { ...base, json: '{"tests": [', actor: 'reviewer' },
-	})
-	assert.equal(broken.status, 422)
-	assert.match(broken.body, /The JSON is not valid/)
-	assert.match(broken.body, /<details class="edit-json" open>/)
-	assert.match(broken.body, /\{&quot;tests&quot;: \[<\/textarea/)
-	const invalid = await call(ui, '/plans/search@1/edit', {
-		form: { ...base, json: '{"tests": [], "gaps": [], "extra": 1}', actor: 'reviewer' },
-	})
-	assert.equal(invalid.status, 422)
-	assert.match(invalid.body, /class="form-error"/)
-	const candidate = read(workspace, (store) => planCandidate(planDetail(store, 'search').plan))
-	candidate.tests[1].assertions.push({ id: 'A2', check: 'Popular items show.', checkKind: 'agent_observation' })
-	const done = await call(ui, '/plans/search@1/edit', {
-		form: { ...base, json: JSON.stringify(candidate), actor: 'reviewer' },
-		headers: { Cookie: 'checkmate_actor=saved-name' },
-	})
-	assert.equal(done.status, 303)
-	assert.match(String(done.headers['set-cookie']), /checkmate_actor=reviewer/)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').plan.tests[1].assertions.length),
-		2
-	)
-	assert.equal(
-		read(workspace, (store) => operationLog(store, { limit: 1 })[0].actor),
-		'reviewer'
-	)
-})
-
 test('the settings button opens Targets; a target page shows its shape, history, and instances', async (t) => {
 	const { ui } = await start(t)
-	const inbox = (await call(ui, '/')).body
-	assert.match(inbox, /<a class="icon-btn" href="\/settings" title="Settings" aria-label="Settings"\s*>/)
+	const log = (await call(ui, '/log')).body
+	assert.match(log, /<a class="icon-btn" href="\/settings" title="Settings" aria-label="Settings"\s*>/)
 	assert.equal((await call(ui, '/settings')).headers.location, '/settings/targets')
 	const list = await call(ui, '/settings/targets')
 	assert.equal(list.status, 200)
@@ -883,8 +322,6 @@ test('the settings button opens Targets; a target page shows its shape, history,
 		assert.match(page, text)
 	assert.match(page, /id="instance-preview"[\s\S]*?retired/)
 	assert.equal((await call(ui, '/settings/targets/nothing')).status, 404)
-	assert.match((await call(ui, '/runs/run-8')).body, /instance <code>staging<\/code>/)
-	assert.match((await call(ui, '/runs')).body, /<td class="mono">staging<\/td>/)
 })
 
 test('the Add instance form records the actor and the Retire button needs its confirm step', async (t) => {
@@ -977,122 +414,9 @@ test('a retire of an unknown instance shows a visible error; each Retire control
 	assert.match(unknown.body, /<p class="form-error" role="alert">Unknown instance: shop-local\/nope\./)
 })
 
-test('the plan and run pages show team metadata as key and value tags', async (t) => {
-	const { ui } = await start(t)
-	const plan = (await call(ui, '/plans/checkout@2')).body
-	assert.match(
-		plan,
-		/<dt>Metadata<\/dt>\s*<dd>\s*<span class="kv" aria-label="Metadata"\s*><span class="tag">component=pricing<\/span><span class="tag">priority=high<\/span>/
-	)
-	assert.match(plan, /<span class="tag">xrayKey=SHOP-T7<\/span>/)
-	assert.match(plan, /<span class="tag">jira=SHOP-41<\/span>/)
-	const run = (await call(ui, '/runs/run-7')).body
-	assert.match(run, /<span class="tag">component=pricing<\/span>/)
-	assert.match(run, /<span class="tag">jiraKey=SHOP-142<\/span>/)
-	assert.match(run, /<span class="tag">regression=true<\/span>/)
-	assert.match(
-		run,
-		/The 40 percent spring promotion applies to the cart total\.(?:(?!<\/td>)[\s\S])*<span class="tag">jira=SHOP-41<\/span>/
-	)
-	for (const page of [plan, run]) assert.doesNotMatch(page, /<(div|p) class="(small|test-note)">\s*<\/(div|p)>/)
-})
-
-test('a form edit keeps every field that the form does not show', async (t) => {
-	const { ui, workspace } = await start(t)
-	const before = read(workspace, (store) => planCandidate(planDetail(store, 'xss').plan))
-	const page = (await call(ui, '/plans/xss@1/edit', { headers: actorCookie })).body
-	const form = editForm(page, { 't0.title': 'Renamed payload test' })
-	delete form['t0.a0.kind']
-	const saved = await call(ui, '/plans/xss@1/edit', { form: formBody(form, ['T1 X1']), headers: actorCookie })
-	assert.equal(saved.status, 303)
-	const after = read(workspace, (store) => planCandidate(planDetail(store, 'xss').plan))
-	assert.deepEqual(jsonPatch(before, after), [
-		{ op: 'replace', path: '/tests/0/title', value: 'Renamed payload test' },
-	])
-})
-
-function approvals(workspace: string, subject: string) {
-	return read(
-		workspace,
-		(store) =>
-			store.db.prepare('SELECT count(*) AS n FROM approvals WHERE subject_id = ?').get(subject)?.n as number
-	)
-}
-
-test('a decision is refused when another oracle decided after the page loaded', async (t) => {
-	const { ui, workspace } = await start(t)
-	const run = (await call(ui, '/runs/run-7', { headers: actorCookie })).body.split('data-verdict-form')[1]
-	const runForm = {
-		csrf: field(run, 'csrf'),
-		sha: field(run, 'sha'),
-		decision: field(run, 'decision'),
-		verdict: 'reject',
-		rationale: 'Evidence is weak.',
-	}
-	read(workspace, (store) => acceptResult(store, 'other-oracle', { runId: 'run-7', rationale: 'Looks fine.' }))
-	const choose = await call(ui, '/runs/run-7', { form: runForm, headers: actorCookie })
-	assert.equal(choose.status, 422)
-	assert.match(choose.body, /run-7 was accepted by other-oracle after you opened this page/)
-	assert.match(choose.body, /Evidence is weak\.<\/textarea/)
-	const confirmed = await call(ui, '/runs/run-7', { form: { ...runForm, confirmed: '1' }, headers: actorCookie })
-	assert.equal(confirmed.status, 422)
-	assert.equal(approvals(workspace, 'run-7'), 1)
-	assert.equal(
-		read(workspace, (store) => runDetail(store, 'run-7').result?.latestDecision?.actor),
-		'other-oracle'
-	)
-
-	const plan = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
-	const planForm = {
-		csrf: field(plan, 'csrf'),
-		sha: field(plan, 'sha'),
-		decision: field(plan, 'decision'),
-		verdict: 'approve',
-		rationale: 'Approve it.',
-		confirmed: '1',
-	}
-	read(workspace, (store) => rejectPlan(store, 'other-oracle', { reference: 'search@1', rationale: 'No.' }))
-	const refused = await call(ui, '/plans/search@1', { form: planForm, headers: actorCookie })
-	assert.equal(refused.status, 422)
-	assert.match(refused.body, /search@1 was rejected by other-oracle after you opened this page/)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').approval.state),
-		'rejected'
-	)
-	const fresh = await call(ui, '/plans/search@1', {
-		form: { ...planForm, decision: field(refused.body, 'decision') },
-		headers: actorCookie,
-	})
-	assert.equal(fresh.status, 303)
-	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').approval.state),
-		'approved'
-	)
-})
-
-test('a replayed decision is refused and records nothing', async (t) => {
-	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
-	const form = {
-		csrf: field(page, 'csrf'),
-		sha: field(page, 'sha'),
-		decision: field(page, 'decision'),
-		verdict: 'approve',
-		rationale: 'Clear scope.',
-		confirmed: '1',
-	}
-	assert.equal((await call(ui, '/plans/search@1', { form, headers: actorCookie })).status, 303)
-	const replay = await call(ui, '/plans/search@1', { form, headers: actorCookie })
-	assert.equal(replay.status, 422)
-	assert.match(replay.body, /search@1 was approved by qa-lead after you opened this page/)
-	const missing = await call(ui, '/plans/search@1', { form: { ...form, decision: '' }, headers: actorCookie })
-	assert.equal(missing.status, 422)
-	assert.equal(approvals(workspace, 'search@1'), 1)
-})
-
 test('the back link accepts only a path on this server in printable ASCII', async (t) => {
 	const { ui } = await start(t)
-	const page = (await call(ui, '/')).body
+	const page = (await call(ui, '/log')).body
 	const csrf = field(page, 'csrf')
 	const refused = [
 		'//evil.test',
@@ -1117,62 +441,28 @@ test('the back link accepts only a path on this server in printable ASCII', asyn
 		assert.equal(shown.status, 200, back)
 		assert.match(shown.body, /<a class="btn" href="\/">Cancel<\/a>/, back)
 	}
-	const kept = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back: '/plans?q=search' } })
-	assert.equal(kept.headers.location, '/plans?q=search')
+	const kept = await call(ui, '/actor', { form: { csrf, actor: 'reviewer', back: '/log?q=open' } })
+	assert.equal(kept.headers.location, '/log?q=open')
 })
 
 test('a form over 256 KiB gets a 413 page and nothing is recorded', async (t) => {
 	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/plans/search@1', { headers: actorCookie })).body
-	const reply = await call(ui, '/plans/search@1', {
+	const page = (await call(ui, '/settings/targets/shop-local', { headers: actorCookie })).body
+	const before = read(workspace, (store) => operationLog(store, { limit: 1000 }).length)
+	const reply = await call(ui, '/settings/targets/shop-local/instances', {
 		form: {
 			csrf: field(page, 'csrf'),
-			sha: field(page, 'sha'),
-			decision: field(page, 'decision'),
-			verdict: 'approve',
-			rationale: 'x'.repeat(300 * 1024),
-			confirmed: '1',
+			instanceId: 'big',
+			'entry.web': 'https://big.example',
+			environment: 'x'.repeat(300 * 1024),
 		},
 		headers: actorCookie,
 	})
 	assert.equal(reply.status, 413)
 	assert.match(reply.body, /Form too large/)
 	assert.match(reply.body, /more than 256 KiB/)
-	assert.equal(approvals(workspace, 'search@1'), 0)
-})
-
-test('a stale edit lists only the values that this user changed', async (t) => {
-	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/plans/search@1/edit', { headers: actorCookie })).body
-	read(workspace, (store) =>
-		patchPlan(store, 'cli', {
-			reference: 'search@1',
-			patch: { tests: { T1: { title: 'CLI renamed T1', action: 'CLI action.' } } },
-		})
-	)
-	const posted = editForm(page, { 't1.title': 'UI renamed T2' })
-	for (const mode of ['form', 'json']) {
-		const form =
-			mode === 'form'
-				? formBody(posted, ['T1 S1', 'T2 S2'])
-				: new URLSearchParams({
-						...posted,
-						mode,
-						json: JSON.stringify({
-							...JSON.parse(posted.orig),
-							tests: JSON.parse(posted.orig).tests.map((test: { id: string; title: string }) =>
-								test.id === 'T2' ? { ...test, title: 'UI renamed T2' } : test
-							),
-						}),
-					})
-		const stale = await call(ui, '/plans/search@1/edit', { form, headers: actorCookie })
-		assert.equal(stale.status, 422, mode)
-		const unsaved = /<pre class="code">([^<]*)<\/pre>/.exec(stale.body)?.[1]
-		assert.equal(unsaved, 'T2.title: &quot;UI renamed T2&quot;', mode)
-		assert.match(stale.body, /value="CLI renamed T1"/, mode)
-	}
 	assert.equal(
-		read(workspace, (store) => planDetail(store, 'search').plan.tests[1].title),
-		'Empty state for an unknown term'
+		read(workspace, (store) => operationLog(store, { limit: 1000 }).length),
+		before
 	)
 })

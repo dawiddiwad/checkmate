@@ -2,7 +2,7 @@ import type { Html } from './html.ts'
 import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'inbox' | 'plans' | 'runs' | 'log' | 'settings' | null
+export type Section = 'log' | 'settings' | null
 
 export type Context = {
 	path: string
@@ -10,7 +10,6 @@ export type Context = {
 	actor: string | null
 	theme: Theme
 	toast: string | null
-	inboxCount: number
 	cursor: number
 	workspace: string
 }
@@ -61,9 +60,9 @@ export function mark() {
 	return html`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`
 }
 
-function navLink(context: Context, page: Page, section: Section, href: string, label: string, extra: Html | '' = '') {
+function navLink(page: Page, section: Section, href: string, label: string) {
 	const current = page.section === section ? html` aria-current="page"` : ''
-	return html`<li><a href="${href}" ${current}>${label}${extra}</a></li>`
+	return html`<li><a href="${href}" ${current}>${label}</a></li>`
 }
 
 function themeForm(context: Context) {
@@ -85,7 +84,6 @@ function themeForm(context: Context) {
 }
 
 function header(context: Context, page: Page) {
-	const count = html`<b class="count" data-region="nav-count">${context.inboxCount || ''}</b>`
 	const actor = context.actor
 		? html`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}" title="Change your name"
 				>actor: ${context.actor}</a
@@ -96,9 +94,7 @@ function header(context: Context, page: Page) {
 			<a class="brand" href="/">${mark()}<span>checkmate</span></a>
 			<nav aria-label="Main">
 				<ul class="nav">
-					${navLink(context, page, 'inbox', '/', 'Inbox', count)}
-					${navLink(context, page, 'plans', '/plans', 'Plans')}
-					${navLink(context, page, 'runs', '/runs', 'Runs')} ${navLink(context, page, 'log', '/log', 'Log')}
+					${navLink(page, 'log', '/log', 'Log')}
 				</ul>
 			</nav>
 			<div class="who">
@@ -132,23 +128,12 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 		<dd>Next or previous item</dd>
 		<dt><kbd>Enter</kbd></dt>
 		<dd>Open the item</dd>
-		<dt><kbd>g</kbd> <kbd>i</kbd></dt>
-		<dd>Go to the inbox</dd>
 		<dt><kbd>Esc</kbd></dt>
-		<dd>Close the viewer or this panel</dd>
+		<dd>Close this panel</dd>
 		<dt><kbd>?</kbd></dt>
 		<dd>Show these shortcuts</dd>
 	</dl>
 </aside>`
-
-const viewer = html`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
-	<div class="viewer-bar">
-		<span class="viewer-name" data-viewer-name></span>
-		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
-		<button class="btn" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
-	</div>
-	<div class="viewer-body"><img data-viewer-image alt="" /></div>
-</div>`
 
 export function layout(context: Context, page: Page) {
 	const theme = context.theme === 'system' ? '' : html` data-theme="${context.theme}"`
@@ -174,7 +159,7 @@ export function layout(context: Context, page: Page) {
 				</footer>
 				${context.toast ? html`<div class="toast" role="status" data-toast>${context.toast}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${shortcuts} ${viewer}
+				${shortcuts}
 			</body>
 		</html>`
 }
@@ -191,25 +176,4 @@ export function heading(title: Html | string, sub: Html | string | null = null, 
 
 export function banner(tone: 'warn' | 'info' | 'fail', content: Html | string) {
 	return html`<div class="banner ${tone}" role="${tone === 'info' ? 'status' : 'alert'}">${content}</div>`
-}
-
-const downloadNames: Record<string, [string, string]> = {
-	html: ['HTML', 'print-ready'],
-	md: ['Markdown', '.md'],
-	json: ['JSON', 'data'],
-	junit: ['JUnit XML', 'for CI'],
-}
-
-export function downloads(label: string, base: string, note: string, formats = ['html', 'md', 'json']) {
-	const item = (format: string) =>
-		html`<a href="${base}.${format}" download data-download="${format}"
-			>${downloadNames[format][0]} <span class="muted small">${downloadNames[format][1]}</span></a
-		>`
-	return html`<details class="menu" data-menu>
-		<summary class="btn small" title="${note}">${label}</summary>
-		<div class="menu-list">
-			${formats.map(item)}
-			<p class="menu-note">${note}</p>
-		</div>
-	</details>`
 }

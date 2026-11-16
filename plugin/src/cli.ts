@@ -1,8 +1,8 @@
 import type { Reply, Store } from './store.ts'
-import type { Plan, Profile } from './types.ts'
-import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from './targets.ts'
-import type { Approval, PlanTool } from './plans.ts'
-import type { EvidenceInput } from './runs.ts'
+import type { InstanceRecord, EntryPoint, RequestedTool, TargetRequest } from './targets.ts'
+import type { Profile } from './types.ts'
+import type { Field, GuideRole } from './guide.ts'
+import type { BuildStatus, Gap, Issue } from './journal.ts'
 import {
 	busyReason,
 	closeStore,
@@ -13,15 +13,7 @@ import {
 	openReadOnlyStore,
 	openStore,
 } from './store.ts'
-import {
-	Refusal,
-	dependencyWarnings,
-	refused,
-	requireChoice,
-	requireCondition,
-	requireWellFormed,
-	revisionReference,
-} from './contracts.ts'
+import { Refusal, refused, requireCondition, requireWellFormed } from './contracts.ts'
 import {
 	addInstance,
 	entryPointKinds,
@@ -33,58 +25,7 @@ import {
 	showTargetRequest,
 	targetList,
 } from './targets.ts'
-import {
-	adoptGaps,
-	answerGap,
-	approvePlan,
-	diffPlan,
-	editPlan,
-	gate,
-	openPlan,
-	patchPlan,
-	rejectPlan,
-	revisePlan,
-	savePlan,
-	showPending,
-	showPlanRequest,
-	decisionKinds,
-	partialModes,
-} from './plans.ts'
-import {
-	assertionResults,
-	cleanupStatuses,
-	closeCauses,
-	closeOutcomes,
-	completions,
-	interruptCauses,
-	newBlockerPolicies,
-	acceptResult,
-	beginRun,
-	checkAssertion,
-	closeTest,
-	finishRun,
-	recordFinding,
-	recordGap,
-	rejectResult,
-	resumeRun,
-} from './runs.ts'
-import {
-	evidenceBytes,
-	findingList,
-	inbox,
-	operationLog,
-	planDetail,
-	planList,
-	planStatus,
-	roles,
-	runDetail,
-	runList,
-} from './views.ts'
-import { recordBuild, recordChecklist, showLite } from './lite.ts'
-import type { Field } from './guide.ts'
-import type { GuideRole } from './guide.ts'
-import { guideJournal, guideLite, guideRoles } from './guide.ts'
-import type { BuildStatus, Gap, Issue } from './journal.ts'
+import { guideJournal, guideRoles } from './guide.ts'
 import {
 	answerQuestion,
 	changeGaps,
@@ -100,7 +41,7 @@ import {
 	showChange,
 	verifyBuild,
 } from './journal.ts'
-import { exportPlan, exportRun, formats, runFormats } from './render.ts'
+import { operationLog } from './views.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -132,19 +73,6 @@ type Command = {
 export type Io = { cwd: string; env: Record<string, string | undefined>; stdin: () => string }
 export type Outcome = { code: number; output: string }
 
-const testFields = [
-	'title',
-	'readiness',
-	'capability',
-	'operations',
-	'requirementIds',
-	'gapIds',
-	'dependsOn',
-	'preconditions',
-	'action',
-	'assertions',
-]
-
 function value(args: Args, name: string) {
 	const found = args[name]
 	return typeof found === 'string' ? found : undefined
@@ -168,13 +96,6 @@ function optionValue(token: string, kind: FlagKind, text: string) {
 			/^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
 			`Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
 		)
-}
-
-function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
-	return list(args, 'evidence')?.map((spec) => {
-		const match = /^-(?::(.+))?$/.exec(spec)
-		return match ? { text: context.text(), kind: match[1] } : spec
-	})
 }
 
 function toolSpec(spec: string): RequestedTool {
@@ -226,72 +147,8 @@ function instanceLines(instance: InstanceRecord) {
 	]
 }
 
-function planRequestInput(args: Args, stdin: () => unknown) {
-	const objective = value(args, 'objective')
-	const sources = list(args, 'source')
-	const instructions = value(args, 'instructions')
-	if (objective === undefined) {
-		requireWellFormed(
-			!sources && instructions === undefined,
-			'Give --objective with --source and --instructions, or send the request on standard input'
-		)
-		return stdin()
-	}
-	return { objective, context: { sources: sources ?? [], ...(instructions === undefined ? {} : { instructions }) } }
-}
-
-function leftOutLines(reply: Reply) {
-	const leftOut = (reply.data.leftOut ?? []) as Array<{ testId: string; reason: string }>
-	return leftOut.map((item) => [item.testId, 'left_out', item.reason])
-}
-
 function short(sha256: unknown) {
 	return typeof sha256 === 'string' ? sha256.slice(0, 8) : sha256
-}
-
-type LiteState = {
-	sha256?: string
-	items: Plan['requirements']
-	repeat: Array<{ item: string; steps: string; value: string; from: string }>
-	uncovered: Array<{ area: string; source: string }>
-	questions: Array<{ id: string; status: string; question: string; kind: string | null; answer: string | null }>
-	runs: Array<{ runId: string; build: string; coverage: string | null; acceptance: string | null }>
-	defects: Array<{ runId: string; id: string; severity: string; title: string; items: string[] }>
-	next: string[]
-}
-
-function liteLines(data: LiteState, sources = true) {
-	return [
-		...data.items.map((item) => ['item', item.id, item.text, ...(sources ? [item.source] : [])]),
-		...data.repeat.map((line) => [
-			'repeat',
-			line.item,
-			`steps=${line.steps}`,
-			`reference=${line.value} (${line.from})`,
-		]),
-		...data.uncovered.map((change) => [
-			'suggest',
-			change.area,
-			change.source,
-			'No item covers this changed area. You can add an item or a baseline.',
-		]),
-		...data.questions.map((question) => [
-			'question',
-			question.id,
-			question.status,
-			question.question,
-			...(question.answer ? [question.kind, question.answer] : []),
-		]),
-		...data.runs.map((run) => ['run', run.runId, run.build, run.coverage, run.acceptance]),
-		...data.defects.map((defect) => [
-			'open_defect',
-			defect.id,
-			defect.runId,
-			defect.severity,
-			defect.items,
-			defect.title,
-		]),
-	]
 }
 
 type ChangeState = ReturnType<typeof changeState>
@@ -341,8 +198,8 @@ function notShownLines(changeId: string, open: OpenItems) {
 			count,
 			kindCounts(cut),
 			open.tester
-				? 'Run checkmate journal gaps again after you log entries.'
-				: `Run checkmate journal gaps ${changeId} --build ${open.build} --all to see all of them.`,
+				? 'Run checkmate gaps again after you log entries.'
+				: `Run checkmate gaps ${changeId} --build ${open.build} --all to see all of them.`,
 		],
 	]
 }
@@ -380,109 +237,6 @@ const commands: Record<string, Command> = {
 		positionals: [],
 		creates: true,
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
-	},
-	inbox: {
-		positionals: [],
-		run: (store) => completed('inbox', inbox(store)),
-		print: (reply) => {
-			const waiting = reply.data as ReturnType<typeof inbox>
-			return {
-				facts: {
-					gaps: waiting.gaps.length,
-					plans: waiting.plans.length,
-					results: waiting.results.length,
-					requests: waiting.requests.length,
-				},
-				lines: [
-					...waiting.gaps.map((gap) =>
-						gap.runId
-							? [
-									`${gap.planId}@${gap.revision}/${gap.gapId}`,
-									'run_gap',
-									gap.severity,
-									gap.runId,
-									gap.question,
-								]
-							: [`${gap.planId}@${gap.revision}/${gap.gapId}`, 'gap', gap.severity, gap.question]
-					),
-					...waiting.plans.map((plan) => [
-						`${plan.planId}@${plan.revision}`,
-						'plan',
-						short(plan.sha256),
-						plan.summary,
-					]),
-					...waiting.results.map((result) => [
-						result.runId,
-						'result',
-						`${result.planId}@${result.revision}`,
-						result.build,
-						result.coverage,
-						Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`),
-					]),
-					...waiting.requests.map((request) => [
-						request.planId,
-						'requested',
-						request.target,
-						request.objective,
-					]),
-				],
-			}
-		},
-	},
-	status: {
-		positionals: ['planId'],
-		run: (store, args) => {
-			const planId = value(args, 'planId')!
-			return completed(planId, planStatus(store, planId))
-		},
-		print: (reply) => {
-			const status = reply.data as ReturnType<typeof planStatus>
-			return {
-				facts: {
-					state: status.state,
-					waitsOn: status.waitsOn,
-					revision: status.revision ?? undefined,
-					approval: status.approval ?? undefined,
-					run: status.latestRun?.runId,
-				},
-				lines: [
-					...status.why.map((line) => ['why', line]),
-					...status.next.map((line) => ['next', line]),
-					...status.openRuns.map((run) => [
-						run.runId,
-						'started',
-						`build=${run.build}`,
-						`instance=${run.instanceId}`,
-					]),
-					...status.gaps.map((gap) =>
-						gap.runId
-							? [gap.gapId, 'run_gap', gap.severity, gap.runId, gap.question]
-							: [gap.gapId, 'gap', gap.severity, gap.question]
-					),
-					...status.pendingDecisions.map((decision) => [
-						decision.id,
-						'pending',
-						decision.gapId,
-						decision.kind,
-					]),
-					...status.defects.map((defect) => [
-						defect.findingId,
-						'defect',
-						defect.runId,
-						defect.severity,
-						defect.assertionIds,
-						defect.title,
-					]),
-					...(status.retest?.verdicts ?? []).map((item) => [
-						`${item.runId}/${item.findingId}`,
-						'retest',
-						status.retest!.runId,
-						item.verdict,
-						item.title,
-					]),
-				],
-			}
-		},
 	},
 	'target open': {
 		positionals: ['targetId'],
@@ -605,15 +359,7 @@ const commands: Record<string, Command> = {
 				targetId: value(args, 'targetId')!,
 				instanceId: value(args, 'instanceId')!,
 			}),
-		print: (reply) => {
-			const started = (reply.data.startedRuns ?? []) as string[]
-			return {
-				facts: { recorded: reply.data.recorded },
-				lines: started.length
-					? [['warning', `Started runs use this instance: ${started.join(', ')}. Its sandbox may be gone.`]]
-					: [],
-			}
-		},
+		print: (reply) => ({ facts: { recorded: reply.data.recorded } }),
 	},
 	'target instance list': {
 		positionals: ['targetId'],
@@ -635,314 +381,7 @@ const commands: Record<string, Command> = {
 			]),
 		}),
 	},
-	'plan open': {
-		positionals: ['planId'],
-		flags: { target: 'value', objective: 'value', source: 'repeat', instructions: 'value' },
-		required: ['target'],
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			openPlan(store, actor, {
-				planId: value(args, 'planId')!,
-				target: value(args, 'target')!,
-				request: planRequestInput(args, stdin),
-			}),
-		print: (reply) => ({ facts: { target: reply.data.target, recorded: reply.data.recorded } }),
-	},
-	'plan request': {
-		positionals: ['planId'],
-		run: (store, args) => showPlanRequest(store, value(args, 'planId')!),
-		print: (reply) => {
-			const data = reply.data as ReturnType<typeof showPlanRequest>['data'] & {
-				target: string
-				objective: string
-				requirements: Plan['requirements']
-				sourceContext: Array<{ uri: string; content: string }>
-				context: { sources: string[]; instructions?: string }
-				tools: PlanTool[]
-				capabilities: string[]
-				allowedOperations: string[]
-			}
-			return {
-				facts: { target: data.target },
-				lines: [
-					['objective', data.objective],
-					...data.requirements.map((requirement) => [requirement.id, requirement.text, requirement.source]),
-					...data.context.sources.map((source) => ['source', source]),
-					...(data.context.instructions ? [['instructions', data.context.instructions]] : []),
-					...data.sourceContext.map((context) => ['context', context.uri, context.content]),
-					...data.tools.map((tool) => ['tool', tool.name, tool.kind, tool.purpose]),
-					['capabilities', data.capabilities],
-					['operations', data.allowedOperations],
-				],
-			}
-		},
-	},
-	'plan save': {
-		positionals: ['planId'],
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			savePlan(store, actor, { planId: value(args, 'planId')!, candidate: stdin() }),
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
-	},
-	'plan show': {
-		positionals: ['reference'],
-		flags: { tests: 'list', fields: 'list', gaps: ['open', 'all'] },
-		run: (store, args) => showPlan(store, args),
-		print: printPlan,
-	},
-	'plan list': {
-		positionals: [],
-		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': roles },
-		run: (store, args) => {
-			const waitsOn = value(args, 'waits-on')
-			const plans = planList(store).filter(
-				(plan) =>
-					(!args['needs-decision'] || plan.openBlockingGaps.length > 0) &&
-					(!args['awaiting-approval'] || plan.approval === 'pending') &&
-					(!args.blocked || plan.blocked.length > 0) &&
-					(waitsOn === undefined || plan.loop.waitsOn === waitsOn)
-			)
-			return completed('plans', { plans })
-		},
-		print: (reply) => ({
-			facts: { count: (reply.data.plans as unknown[]).length },
-			lines: (reply.data.plans as ReturnType<typeof planList>).map((plan) =>
-				plan.status === 'requested'
-					? [plan.planId, 'status=requested', `state=${plan.loop.state}`, `waitsOn=${plan.loop.waitsOn}`]
-					: [
-							`${plan.planId}@${plan.revision}`,
-							`gaps=${cell(plan.openBlockingGaps)}`,
-							`approval=${plan.approval}`,
-							`blocked=${cell(plan.blocked.map((block) => `${block.testId}<-${block.dependency}: ${block.cause}`))}`,
-							`state=${plan.loop.state}`,
-							`waitsOn=${plan.loop.waitsOn}`,
-						]
-			),
-		}),
-	},
-	'plan diff': {
-		positionals: ['planId', 'from', 'to'],
-		run: (store, args) =>
-			diffPlan(store, { planId: value(args, 'planId')!, from: value(args, 'from')!, to: value(args, 'to')! }),
-		print: (reply) => {
-			const patch = reply.data.patch as Array<{ op: string; path: string; value?: unknown }>
-			return {
-				facts: { operations: patch.length },
-				lines: [
-					...(reply.data.changes as string[]).map((change) => ['change', change]),
-					...patch.map((operation) =>
-						operation.op === 'remove'
-							? [operation.op, operation.path]
-							: [operation.op, operation.path, JSON.stringify(operation.value)]
-					),
-				],
-			}
-		},
-	},
-	'gap answer': {
-		positionals: ['planId', 'gapId'],
-		flags: { kind: decisionKinds, value: 'value', source: 'value', rationale: 'value', 'expect-sha': 'value' },
-		required: ['kind', 'value', 'rationale'],
-		write: true,
-		run: (store, args, { actor }) =>
-			answerGap(store, actor, {
-				planId: value(args, 'planId')!,
-				gapId: value(args, 'gapId')!,
-				kind: value(args, 'kind')!,
-				value: value(args, 'value')!,
-				source: value(args, 'source') ?? null,
-				rationale: value(args, 'rationale')!,
-				expectSha256: value(args, 'expect-sha'),
-			}),
-		print: (reply) => {
-			const adopted = reply.data.adopted as { runId: string; revision: number; edit: string } | undefined
-			return {
-				facts: {
-					decision: reply.data.decisionId,
-					gap: reply.data.gapId,
-					from: adopted?.runId,
-					revision: adopted?.revision,
-					edit: adopted?.edit,
-				},
-			}
-		},
-	},
-	'plan pending': {
-		positionals: ['planId'],
-		run: (store, args) => showPending(store, value(args, 'planId')!),
-		print: (reply) => {
-			const data = reply.data as ReturnType<typeof showPending>['data'] & {
-				decisions: Plan['decisions']
-				gaps: Plan['gaps']
-				tests: Plan['tests']
-			}
-			return {
-				facts: { sha256: short(data.sha256), decisions: data.decisions.length },
-				lines: [
-					...data.decisions.map((decision) => [
-						decision.id,
-						decision.gapId,
-						decision.kind,
-						decision.value,
-						decision.rationale,
-					]),
-					...data.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-					...data.tests.flatMap(testLines),
-				],
-			}
-		},
-	},
-	'plan revise': {
-		positionals: ['planId'],
-		flags: { 'expect-sha': 'value' },
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			revisePlan(store, actor, {
-				planId: value(args, 'planId')!,
-				delta: stdin(),
-				expectSha256: value(args, 'expect-sha'),
-			}),
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
-	},
-	'plan edit': {
-		positionals: ['reference'],
-		flags: { patch: 'switch', 'expect-sha': 'value' },
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) => {
-			const reference = value(args, 'reference')!
-			const expectSha256 = value(args, 'expect-sha')
-			return args.patch
-				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256 })
-				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256 })
-		},
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), edit: reply.data.edit } }),
-	},
-	'plan adopt-gaps': {
-		positionals: ['reference'],
-		flags: { run: 'value', gaps: 'list', 'expect-sha': 'value' },
-		required: ['run'],
-		write: true,
-		run: (store, args, { actor }) =>
-			adoptGaps(store, actor, {
-				reference: value(args, 'reference')!,
-				runId: value(args, 'run')!,
-				gapIds: list(args, 'gaps'),
-				expectSha256: value(args, 'expect-sha'),
-			}),
-		print: (reply) => ({
-			facts: { sha256: short(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted },
-		}),
-	},
-	'plan approve': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>
-		approvePlan(store, actor, { reference, rationale, expectSha256 })
-	),
-	'plan reject': verdictCommand('reference', (store, actor, reference, rationale, expectSha256) =>
-		rejectPlan(store, actor, { reference, rationale, expectSha256 })
-	),
-	'lite checklist': {
-		positionals: ['planId'],
-		flags: { target: 'value' },
-		required: ['target'],
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			recordChecklist(store, actor, {
-				planId: value(args, 'planId')!,
-				target: value(args, 'target')!,
-				checklist: stdin(),
-			}),
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), questions: reply.data.questions } }),
-	},
-	'lite guide': {
-		positionals: ['planId?'],
-		run: (store, args) => guideLite(store, value(args, 'planId')),
-		print: (reply) => {
-			const data = reply.data as LiteState & {
-				step: string
-				steps?: string[]
-				command: string
-				about: string
-				fields: Field[]
-				example?: unknown
-				need?: Array<[string, string[], string]>
-			}
-			return {
-				facts: { step: data.step, ...(data.sha256 ? { sha256: short(data.sha256) } : {}) },
-				lines: [
-					...(data.steps ?? []).map((step) => ['step', step]),
-					['about', data.about],
-					...data.fields.map((field) => [
-						'field',
-						field.path,
-						...(field.required ? ['required'] : []),
-						field.description,
-					]),
-					data.example === undefined
-						? ['command', `${data.command} <<'EOF'`, 'the JSON payload, then EOF']
-						: [
-								'example',
-								{ preformatted: `${data.command} <<'EOF'\n${JSON.stringify(data.example)}\nEOF` },
-							],
-					...(data.items ? liteLines(data, false) : []),
-					...(data.need ?? []).map((need) => ['need', ...need]),
-					...nextLines(data.next),
-				],
-			}
-		},
-	},
-	'lite show': {
-		positionals: ['planId'],
-		run: (store, args) => showLite(store, value(args, 'planId')!),
-		print: (reply) => {
-			const data = reply.data as LiteState
-			return { facts: { sha256: short(data.sha256) }, lines: [...liteLines(data), ...nextLines(data.next)] }
-		},
-	},
-	'lite record': {
-		positionals: ['planId'],
-		flags: { build: 'value', instance: 'value', draft: 'switch' },
-		required: ['build'],
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			recordBuild(store, actor, {
-				planId: value(args, 'planId')!,
-				build: value(args, 'build')!,
-				instance: value(args, 'instance'),
-				...(args.draft ? { draft: true } : {}),
-				record: stdin(),
-			}),
-		print: (reply) =>
-			reply.data.draft
-				? {
-						facts: { draft: reply.data.build, parts: reply.data.parts },
-						lines: [
-							...Object.entries(reply.data.counts as Record<string, number>).filter(([, count]) => count),
-							...(reply.data.missing as string[]).map((reason) => ['missing', reason]),
-							['next', 'Add parts with --draft. Complete the build with a last call without --draft.'],
-						],
-					}
-				: {
-						facts: {
-							plan: reply.data.plan,
-							coverage: reply.data.coverage,
-							sha256: short(reply.data.sha256),
-						},
-						lines: [
-							...Object.entries(reply.data.counts as Record<string, number>),
-							...(reply.data.defects as string[]).map((id) => ['defect', id]),
-							...(reply.data.retest as Array<{ runId: string; findingId: string; verdict: string }>).map(
-								(item) => ['retest', `${item.runId}/${item.findingId}`, item.verdict]
-							),
-							...(reply.data.questions as string[]).map((id) => ['question', id]),
-						],
-					},
-	},
-	'journal open': {
+	open: {
 		positionals: ['changeId'],
 		flags: { target: 'value', instance: 'value' },
 		required: ['target'],
@@ -958,7 +397,7 @@ const commands: Record<string, Command> = {
 			lines: nextLines(reply.data.next as string[]),
 		}),
 	},
-	'journal log': {
+	log: {
 		positionals: ['changeId'],
 		flags: { build: 'value' },
 		write: true,
@@ -995,7 +434,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal gaps': {
+	gaps: {
 		positionals: ['changeId'],
 		flags: { build: 'value', all: 'switch' },
 		run: (store, args, { viewer }) => changeGaps(store, value(args, 'changeId')!, value(args, 'build'), viewer()),
@@ -1007,7 +446,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal guide': {
+	guide: {
 		positionals: ['changeId?'],
 		flags: { role: guideRoles },
 		run: (store, args, { viewer }) =>
@@ -1046,7 +485,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal show': {
+	show: {
 		positionals: ['changeId'],
 		flags: { all: 'switch' },
 		run: (store, args, { viewer }) => showChange(store, value(args, 'changeId')!, viewer()),
@@ -1093,7 +532,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal answer': {
+	answer: {
 		positionals: ['changeId', 'questionId'],
 		flags: { answer: 'value' },
 		required: ['answer'],
@@ -1106,9 +545,9 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({ facts: { id: reply.data.id, question: reply.data.question } }),
 	},
-	'journal accept': decisionCommand('accepted'),
-	'journal reject': decisionCommand('rejected'),
-	'journal merge': {
+	accept: decisionCommand('accepted'),
+	reject: decisionCommand('rejected'),
+	merge: {
 		positionals: ['changeId'],
 		flags: { build: 'value' },
 		required: ['build'],
@@ -1145,13 +584,7 @@ const commands: Record<string, Command> = {
 						`criteria: ${defect.criteria.join(',') || '-'}`,
 					]),
 					...(hidden > 0
-						? [
-								[
-									'not_shown',
-									hidden,
-									`Run checkmate journal export ${reply.subject} --all to read all defects.`,
-								],
-							]
+						? [['not_shown', hidden, `Run checkmate export ${reply.subject} --all to read all defects.`]]
 						: []),
 					...suggestions,
 					...nextLines([
@@ -1165,7 +598,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal issues': {
+	issues: {
 		positionals: ['changeId'],
 		flags: { build: 'value' },
 		run: (store, args) => changeIssues(store, value(args, 'changeId')!, value(args, 'build')),
@@ -1186,7 +619,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal verify': {
+	verify: {
 		positionals: ['changeId'],
 		flags: { build: 'value' },
 		required: ['build'],
@@ -1218,7 +651,7 @@ const commands: Record<string, Command> = {
 			}
 		},
 	},
-	'journal export': {
+	export: {
 		positionals: ['changeId'],
 		flags: { out: 'value', all: 'switch' },
 		run: (store, args, { viewer }) => {
@@ -1230,324 +663,18 @@ const commands: Record<string, Command> = {
 		},
 		print: (reply) => ({ facts: { out: reply.data.out } }),
 	},
-	'run gate': {
-		positionals: ['reference'],
-		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },
-		required: ['build'],
-		run: (store, args) =>
-			gate(store, {
-				reference: value(args, 'reference')!,
-				tests: list(args, 'tests'),
-				build: value(args, 'build')!,
-				partial: value(args, 'partial'),
-				retestOf: value(args, 'retest-of') ?? null,
-			}).reply,
-		print: (reply) => ({
-			facts: { sha256: short(reply.data.sha256), tests: reply.data.tests },
-			lines: leftOutLines(reply),
-		}),
-	},
-	'run begin': {
-		positionals: ['runId', 'reference'],
-		flags: {
-			tests: 'list',
-			build: 'value',
-			instance: 'value',
-			partial: partialModes,
-			'on-new-blocker': newBlockerPolicies,
-			timeout: { min: 1, max: 3600 },
-			'retest-of': 'value',
-		},
-		required: ['build'],
-		write: true,
-		run: (store, args, { actor }) =>
-			beginRun(store, actor, {
-				runId: value(args, 'runId')!,
-				reference: value(args, 'reference')!,
-				tests: list(args, 'tests'),
-				build: value(args, 'build')!,
-				instance: value(args, 'instance'),
-				partial: value(args, 'partial'),
-				onNewBlocker: value(args, 'on-new-blocker'),
-				timeoutSeconds: integer(args, 'timeout'),
-				retestOf: value(args, 'retest-of') ?? null,
-			}),
-		print: (reply) => ({
-			facts: {
-				instance: reply.data.instanceId,
-				tests: reply.data.tests,
-				startedAt: reply.data.startedAt,
-				browserSession: reply.data.browserSession,
-				deadlineSeconds: reply.data.deadlineSeconds,
-				deadline: reply.data.deadline,
-				evidenceDirectory: reply.data.evidenceDirectory,
-			},
-			lines: leftOutLines(reply),
-		}),
-	},
-	'run check': {
-		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
-		required: ['result'],
-		write: true,
-		run: (store, args, context) =>
-			checkAssertion(store, context.actor, {
-				runId: value(args, 'runId')!,
-				testId: value(args, 'testId')!,
-				assertionId: value(args, 'assertionId')!,
-				result: value(args, 'result')!,
-				observed: value(args, 'observed'),
-				reason: value(args, 'reason'),
-				evidence: evidence(args, context),
-			}),
-		print: (reply) => ({
-			facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
-			lines: (reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
-		}),
-	},
-	'run close': {
-		positionals: ['runId', 'testId'],
-		flags: { outcome: closeOutcomes, cause: closeCauses, reason: 'value', evidence: 'repeat' },
-		write: true,
-		run: (store, args, context) =>
-			closeTest(store, context.actor, {
-				runId: value(args, 'runId')!,
-				testId: value(args, 'testId')!,
-				outcome: value(args, 'outcome'),
-				cause: value(args, 'cause'),
-				reason: value(args, 'reason'),
-				evidence: evidence(args, context),
-			}),
-		print: (reply) => ({
-			facts: { [String(reply.data.testId)]: reply.data.outcome },
-			lines: reply.data.reason ? [['reason', reply.data.reason]] : [],
-		}),
-	},
-	'run finding': {
-		positionals: ['runId'],
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			recordFinding(store, actor, { runId: value(args, 'runId')!, finding: stdin() }),
-		print: (reply) => ({ facts: { finding: reply.data.findingId, tests: reply.data.testIds } }),
-	},
-	'run gap': {
-		positionals: ['runId'],
-		write: true,
-		stdin: true,
-		run: (store, args, { actor, stdin }) => recordGap(store, actor, { runId: value(args, 'runId')!, gap: stdin() }),
-		print: (reply) => ({ facts: { gap: reply.data.gapId } }),
-	},
-	'run finish': {
-		positionals: ['runId'],
-		flags: {
-			completion: completions,
-			cause: interruptCauses,
-			reason: 'value',
-			cleanup: cleanupStatuses,
-			'cleanup-reason': 'value',
-		},
-		required: ['completion', 'cleanup', 'cleanup-reason'],
-		write: true,
-		run: (store, args, { actor }) =>
-			finishRun(store, actor, {
-				runId: value(args, 'runId')!,
-				completion: value(args, 'completion')!,
-				cause: value(args, 'cause'),
-				reason: value(args, 'reason'),
-				cleanup: value(args, 'cleanup')!,
-				cleanupReason: value(args, 'cleanup-reason')!,
-			}),
-		print: (reply) => ({
-			facts: { coverage: reply.data.coverage, sha256: short(reply.data.sha256) },
-			lines: Object.entries(reply.data.counts as Record<string, number>),
-		}),
-	},
-	'run resume': {
-		positionals: ['runId'],
-		flags: { error: 'list', reason: 'value' },
-		write: true,
-		run: (store, args, { actor }) =>
-			resumeRun(store, actor, {
-				runId: value(args, 'runId')!,
-				error: list(args, 'error'),
-				reason: value(args, 'reason'),
-			}),
-		print: (reply) => {
-			const data = reply.data as {
-				attempt: number
-				browserSession: string
-				deadline: string
-				evidenceDirectory: string
-				closed: string[]
-				tests: Array<{ testId: string; warning: string; assertions: Plan['tests'][number]['assertions'] }>
-			}
-			return {
-				facts: {
-					attempt: data.attempt,
-					browserSession: data.browserSession,
-					deadline: data.deadline,
-					evidenceDirectory: data.evidenceDirectory,
-				},
-				lines: [
-					...data.closed.map((id) => [id, 'error']),
-					...data.tests.flatMap((test) => [
-						[test.testId, 'unclosed', test.warning],
-						...test.assertions.map((assertion) => [
-							`${test.testId}.${assertion.id}`,
-							assertion.checkKind,
-							assertion.check,
-						]),
-					]),
-				],
-			}
-		},
-	},
-	'run show': {
-		positionals: ['runId'],
-		flags: { tests: 'list' },
-		run: (store, args) => {
-			const detail = runDetail(store, value(args, 'runId')!)
-			const selected = list(args, 'tests')
-			for (const id of selected ?? [])
-				requireWellFormed(
-					detail.tests.some((test) => test.testId === id),
-					`Test ${id} is not selected in run ${detail.runId}`,
-					`Use one of: ${detail.tests.map((test) => test.testId).join(', ')}.`
-				)
-			const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId))
-			return completed(detail.runId, { ...detail, tests })
-		},
-		print: (reply) => {
-			const detail = reply.data as ReturnType<typeof runDetail>
-			return {
-				facts: {
-					state: detail.state,
-					plan: `${detail.planId}@${detail.revision}`,
-					build: detail.build,
-					instance: detail.instance.instanceId,
-					completion: detail.result?.completion,
-					cause: detail.result?.completionCause ?? undefined,
-					coverage: detail.result?.coverage.status,
-					acceptance: detail.result?.acceptance,
-				},
-				lines: [
-					[
-						'time',
-						`deadline=${detail.clock.deadline}`,
-						`elapsed=${detail.clock.elapsedSeconds}s`,
-						`remaining=${detail.clock.remainingSeconds}s`,
-					],
-					...detail.tests.flatMap((test) => [
-						[
-							test.testId,
-							test.outcome ?? 'open',
-							test.title,
-							...(test.cause ? [`cause=${test.cause}`] : []),
-							...(test.reason ? [test.reason] : []),
-						],
-						...test.assertions.map((assertion) => [
-							`${test.testId}.${assertion.assertionId}`,
-							assertion.result ?? 'unchecked',
-							assertion.observed ?? assertion.check,
-							...(assertion.reason ? [assertion.reason] : []),
-						]),
-					]),
-					...detail.findings.map((finding) => [
-						finding.id,
-						finding.type,
-						finding.severity,
-						finding.assertionIds,
-						finding.title,
-					]),
-					...detail.retest.map((item) => [
-						`${item.runId}/${item.findingId}`,
-						'retest',
-						item.verdict,
-						item.testIds,
-						item.title,
-					]),
-					...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-					...decisionLines(detail.result?.latestDecision),
-				],
-			}
-		},
-	},
-	'run list': {
-		positionals: [],
-		flags: { plan: 'value', build: 'value' },
-		run: (store, args) =>
-			completed('runs', { runs: runList(store, { planId: value(args, 'plan'), build: value(args, 'build') }) }),
-		print: (reply) => ({
-			facts: { count: (reply.data.runs as unknown[]).length },
-			lines: (reply.data.runs as ReturnType<typeof runList>).map((run) => [
-				run.runId,
-				`${run.planId}@${run.revision}`,
-				run.build,
-				run.instanceId,
-				run.state,
-				run.completion,
-				run.coverage,
-				run.acceptance,
-			]),
-		}),
-	},
-	'finding list': {
-		positionals: [],
-		flags: { plan: 'value', open: 'switch' },
-		run: (store, args) =>
-			completed('findings', {
-				findings: findingList(store, { planId: value(args, 'plan'), open: Boolean(args.open) }),
-			}),
-		print: (reply) => ({
-			facts: { count: (reply.data.findings as unknown[]).length },
-			lines: (reply.data.findings as ReturnType<typeof findingList>).map((finding) => [
-				`${finding.runId}/${finding.findingId}`,
-				`${finding.planId}@${finding.revision}`,
-				finding.build,
-				finding.instanceId,
-				finding.type,
-				finding.severity,
-				finding.testIds,
-				Object.entries(finding.metadata)
-					.map(([key, field]) => `${key}=${field}`)
-					.join('; ') || null,
-				finding.title,
-			]),
-		}),
-	},
-	'result accept': verdictCommand('runId', (store, actor, runId, rationale, expectSha256) =>
-		acceptResult(store, actor, { runId, rationale, expectSha256 })
-	),
-	'result reject': verdictCommand('runId', (store, actor, runId, rationale, expectSha256) =>
-		rejectResult(store, actor, { runId, rationale, expectSha256 })
-	),
-	'evidence get': {
-		positionals: ['evidenceId'],
-		flags: { out: 'value' },
-		required: ['out'],
-		run: (store, args) => {
-			const evidence = evidenceBytes(store, value(args, 'evidenceId')!)
-			const out = writeOutput(store, value(args, 'out')!, evidence.bytes)
-			const { bytes, ...data } = evidence
-			return completed(evidence.id, { ...data, out })
-		},
-		print: (reply) => ({ facts: { out: reply.data.out, size: reply.data.size, mediaType: reply.data.mediaType } }),
-	},
-	'export plan': exportCommand('reference', formats, exportPlan),
-	'export run': exportCommand('runId', runFormats, exportRun),
-	log: {
+	operations: {
 		positionals: [],
 		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
 		check: (args) => {
 			const subject = value(args, 'subject')
 			requireWellFormed(
-				subject === undefined || subject === 'inbox' || /^(target|plan|run|change):./.test(subject),
-				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, change:<changeId>, or inbox.`
+				subject === undefined || /^(target|change):./.test(subject),
+				`Invalid --subject: ${subject}. Use target:<targetId> or change:<changeId>.`
 			)
 		},
 		run: (store, args) => {
-			return completed('log', {
+			return completed('operations', {
 				operations: operationLog(store, {
 					subject: value(args, 'subject'),
 					limit: integer(args, 'limit'),
@@ -1635,27 +762,6 @@ function queryStatement(store: Store, sql: string) {
 	return statement
 }
 
-function exportCommand(
-	positional: string,
-	choices: readonly string[],
-	render: (store: Store, subject: string, format: string) => string
-): Command {
-	return {
-		positionals: [positional],
-		flags: { format: choices, out: 'value' },
-		required: ['format'],
-		run: (store, args) => {
-			const subject = value(args, positional)!
-			const format = value(args, 'format')!
-			const content = render(store, subject, format)
-			const out = value(args, 'out')
-			if (out === undefined) return completed(subject, { format, content })
-			return completed(subject, { format, out: writeOutput(store, out, content) })
-		},
-		print: (reply) => ({ facts: { out: reply.data.out } }),
-	}
-}
-
 function decisionCommand(decision: 'accepted' | 'rejected'): Command {
 	return {
 		positionals: ['changeId'],
@@ -1676,139 +782,9 @@ function decisionCommand(decision: 'accepted' | 'rejected'): Command {
 	}
 }
 
-function verdictCommand(
-	positional: string,
-	decide: (
-		store: Store,
-		actor: string | undefined,
-		subject: string,
-		rationale: string,
-		expectSha256: string | undefined
-	) => Reply
-): Command {
-	return {
-		positionals: [positional],
-		flags: { rationale: 'value', 'expect-sha': 'value' },
-		required: ['rationale'],
-		write: true,
-		run: (store, args, { actor }) =>
-			decide(store, actor, value(args, positional)!, value(args, 'rationale')!, value(args, 'expect-sha')),
-		print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short(reply.data.sha256) } }),
-	}
-}
-
-function showPlan(store: Store, args: Args) {
-	const { id, revision } = revisionReference(value(args, 'reference')!, 'plan reference')
-	const detail = planDetail(store, id, revision)
-	const subject = `${id}@${detail.revision}`
-	const tests = list(args, 'tests')
-	const fields = list(args, 'fields')
-	const gaps = requireChoice(value(args, 'gaps') ?? 'all', ['open', 'all'] as const, 'gaps filter (--gaps)')
-	const warnings = dependencyWarnings(detail.plan)
-	const warned = warnings.length ? { warnings } : {}
-	if (!tests && !fields) {
-		const plan = {
-			...detail.plan,
-			gaps: detail.plan.gaps.filter((gap) => gaps === 'all' || gap.status === 'open'),
-		}
-		return completed(subject, { ...detail, plan, ...warned })
-	}
-	for (const test of tests ?? [])
-		requireWellFormed(
-			detail.plan.tests.some((item) => item.id === test),
-			`Unknown test in ${subject}: ${test}`,
-			`Use one of: ${detail.plan.tests.map((item) => item.id).join(', ')}.`
-		)
-	for (const field of fields ?? [])
-		requireWellFormed(testFields.includes(field), `Unknown field: ${field}. Use: ${testFields.join(', ')}`)
-	const picked = detail.plan.tests
-		.filter((test) => !tests || tests.includes(test.id))
-		.map((test) =>
-			Object.fromEntries([
-				['id', test.id],
-				...(fields ?? ['readiness', 'capability', 'title']).map((field) => [
-					field,
-					test[field as keyof typeof test],
-				]),
-			])
-		)
-	return completed(subject, {
-		planId: id,
-		revision: detail.revision,
-		sha256: detail.sha256,
-		fields: fields ?? ['readiness', 'capability', 'title'],
-		tests: picked,
-		...warned,
-	})
-}
-
-function decisionLines(decision: Approval | null | undefined) {
-	return decision ? [['decision', decision.verdict, decision.actor, decision.at, decision.rationale]] : []
-}
-
 function rationaleOf(input: unknown) {
 	const rationale = (input as { rationale?: unknown }).rationale
 	return typeof rationale === 'string' && rationale ? [rationale] : []
-}
-
-function testLines(test: Plan['tests'][number]) {
-	return [
-		[test.id, test.readiness, test.capability, test.title],
-		[test.id, 'action', test.action],
-		...test.preconditions.map((precondition) => [test.id, 'precondition', precondition]),
-		...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.checkKind, assertion.check]),
-	]
-}
-
-function printPlan(reply: Reply): Printed {
-	const facts = { sha256: short(reply.data.sha256) }
-	if (reply.data.fields) {
-		const fields = reply.data.fields as string[]
-		const tests = reply.data.tests as Array<Record<string, unknown>>
-		return {
-			facts,
-			lines: tests.flatMap((test) => [
-				[test.id, ...fields.filter((field) => field !== 'assertions').map((field) => test[field])],
-				...(fields.includes('assertions')
-					? (test.assertions as Plan['tests'][number]['assertions']).map((assertion) => [
-							`${test.id}.${assertion.id}`,
-							assertion.checkKind,
-							assertion.check,
-						])
-					: []),
-			]),
-		}
-	}
-	const detail = reply.data as ReturnType<typeof planDetail>
-	const { plan } = detail
-	const coverage = new Map(plan.coverage.map((row) => [row.requirementId, row.status]))
-	return {
-		facts: {
-			...facts,
-			approval: detail.approval.state,
-			...(detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}),
-		},
-		lines: [
-			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
-			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
-			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
-			...plan.decisions.map((decision) => [
-				decision.id,
-				decision.gapId,
-				decision.kind,
-				decision.value,
-				decision.rationale,
-			]),
-			...detail.pendingDecisions.map((decision) => [
-				decision.id,
-				decision.gapId,
-				`pending ${decision.kind}`,
-				decision.value,
-				decision.rationale,
-			]),
-			...decisionLines(detail.approval.latest),
-		],
-	}
 }
 
 function writeOutput(store: Store, out: string, content: string | Uint8Array) {
@@ -1836,11 +812,9 @@ function compact(reply: Reply, printed: Printed) {
 	const facts = Object.entries(printed.facts ?? {})
 		.filter(([, field]) => field !== undefined)
 		.map(([key, field]) => `${key}=${cell(field)}`)
-	const warnings = (reply.data.warnings ?? []) as string[]
 	return [
 		[reply.status, reply.subject, ...(reply.refusal ? [`refusal=${reply.refusal}`] : []), ...facts].join(' '),
 		...(printed.lines ?? []).map((line) => line.map(cell).join('\t')),
-		...warnings.map((warning) => `warning\t${cell(warning)}`),
 		...reply.reasons.map((reason) => `reason: ${cell(reason)}`),
 		...(reply.hint ? [`hint: ${cell(reply.hint)}`] : []),
 	].join('\n')

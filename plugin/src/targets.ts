@@ -1,6 +1,6 @@
 import type { Instance, Profile } from './types.ts'
 import type { Store } from './store.ts'
-import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, write } from './store.ts'
+import { all, canonical, completed, digest, execute, one, write } from './store.ts'
 import {
 	profileCheck,
 	requireChoice,
@@ -138,12 +138,6 @@ export function showTargetRequest(store: Store, targetId: string) {
 }
 
 export function saveTarget(store: Store, actor: string | undefined, input: { targetId: string; profile: unknown }) {
-	const reply = save(store, actor, input)
-	removeTemporaryDirectory(store, `setup-${input.targetId}`)
-	return reply
-}
-
-function save(store: Store, actor: string | undefined, input: { targetId: string; profile: unknown }) {
 	return write(store, { actor, command: 'target save', subject: input.targetId, input }, (operationId) => {
 		const request = targetRequest(store, input.targetId)
 		const profile = profileCheck(input.profile)
@@ -390,14 +384,8 @@ export function retireInstance(
 			input.instanceId,
 			operationId
 		)
-		const startedRuns = all<{ run_id: string }>(
-			store,
-			'SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid',
-			input.targetId,
-			input.instanceId
-		).map((row) => row.run_id)
 		return {
-			reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
+			reply: completed(subject, { instanceId: input.instanceId, recorded: true }),
 			subjects: [`target:${input.targetId}`],
 		}
 	})
@@ -452,25 +440,4 @@ export function findInstance(store: Store, targetId: string, instanceId: string)
 	)
 	requireCondition(row, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`)
 	return instanceRecord(store, targetId, row)
-}
-
-export function runInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {
-	if (instanceId !== undefined) {
-		const instance = findInstance(store, targetId, instanceId)
-		requireCondition(
-			!instance.retired,
-			`Instance ${targetId}/${instanceId} is retired. A retired instance cannot start a run.`
-		)
-		return instance
-	}
-	const active = instanceList(store, targetId).filter((instance) => !instance.retired)
-	requireCondition(
-		active.length,
-		`Target ${targetId} has no active instance. Add one with target instance add ${targetId} <instanceId>.`
-	)
-	requireCondition(
-		active.length === 1,
-		`Target ${targetId} has ${active.length} active instances: ${active.map((instance) => instance.instanceId).join(', ')}. Name one with --instance.`
-	)
-	return active[0]
 }

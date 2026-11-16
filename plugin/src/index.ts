@@ -11,16 +11,7 @@ export {
 	isBusy,
 	busyReason,
 } from './store.ts'
-export {
-	Refusal,
-	refused,
-	validate,
-	profileCheck,
-	planCheck,
-	planCoverage,
-	resultCoverage,
-	testOutcome,
-} from './contracts.ts'
+export { Refusal, refused, validate, profileCheck } from './contracts.ts'
 export {
 	openTarget,
 	saveTarget,
@@ -32,52 +23,18 @@ export {
 	instanceList,
 } from './targets.ts'
 export {
-	openPlan,
-	savePlan,
-	editPlan,
-	patchPlan,
-	adoptGaps,
-	planCandidate,
-	frozenRevision,
-	answerGap,
-	revisePlan,
-	approvePlan,
-	rejectPlan,
-	gate,
-	planRevision,
-	diffPlan,
-	jsonPatch,
-	planChanges,
-} from './plans.ts'
-export {
-	beginRun,
-	checkAssertion,
-	closeTest,
-	recordFinding,
-	recordGap,
-	finishRun,
-	resumeRun,
-	acceptResult,
-	rejectResult,
-	runResult,
-	runClock,
-} from './runs.ts'
-export {
-	inbox,
-	planList,
-	planDetail,
-	planStatus,
-	planHistory,
-	runList,
-	runDetail,
-	openRejections,
-	operationLog,
-	changesAfter,
-	evidenceBytes,
-	approvalLabel,
-	pagedPlans,
-	pagedRuns,
-	pagedOperations,
-} from './views.ts'
-export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
+	openChange,
+	logEntries,
+	changeGaps,
+	changeState,
+	showChange,
+	answerQuestion,
+	decideBuild,
+	exportChange,
+	mergeBuild,
+	changeIssues,
+	verifyBuild,
+} from './journal.ts'
+export { guideJournal } from './guide.ts'
+export { operationLog, changesAfter, pagedOperations } from './views.ts'
 export { run, main, formatReply } from './cli.ts'

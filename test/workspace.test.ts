@@ -29,7 +29,7 @@ function project(t: TestContext) {
 			'--operations',
 			'read',
 		],
-		['journal', 'open', 'cart', '--target', 'shop'],
+		['open', 'cart', '--target', 'shop'],
 	]
 	for (const step of steps) assert.equal(checkmate(workspace, step).code, 0, step.join(' '))
 	return workspace
@@ -40,8 +40,8 @@ const entry = JSON.stringify({ kind: 'note', text: 'The cart page loads.' })
 test('a write or a read outside the project is refused, names the searched directory, and creates no store', (t) => {
 	const elsewhere = directory(t)
 	for (const args of [
-		['journal', 'log', 'cart', '--build', 'b1'],
-		['journal', 'show', 'cart'],
+		['log', 'cart', '--build', 'b1'],
+		['show', 'cart'],
 		['query', 'SELECT 1'],
 		['target', 'list'],
 	]) {
@@ -60,17 +60,17 @@ test('a command in a subdirectory uses the store of the nearest ancestor', (t) =
 	const workspace = project(t)
 	const nested = join(workspace, 'src', 'cart')
 	mkdirSync(nested, { recursive: true })
-	assert.equal(checkmate(nested, ['journal', 'log', 'cart', '--build', 'b1'], {}, entry).code, 0)
+	assert.equal(checkmate(nested, ['log', 'cart', '--build', 'b1'], {}, entry).code, 0)
 	assert(!existsSync(join(nested, '.checkmate')))
-	assert.match(checkmate(workspace, ['journal', 'show', 'cart']).output, /^completed cart /)
+	assert.match(checkmate(workspace, ['show', 'cart']).output, /^completed cart /)
 })
 
 test('CHECKMATE_WORKSPACE names the store, and --workspace comes before it', (t) => {
 	const workspace = project(t)
 	const elsewhere = directory(t)
 	const env = { CHECKMATE_WORKSPACE: workspace }
-	assert.equal(checkmate(elsewhere, ['journal', 'log', 'cart', '--build', 'b1'], env, entry).code, 0)
-	const flagged = checkmate(elsewhere, ['journal', 'show', 'cart', '--workspace', elsewhere], env)
+	assert.equal(checkmate(elsewhere, ['log', 'cart', '--build', 'b1'], env, entry).code, 0)
+	const flagged = checkmate(elsewhere, ['show', 'cart', '--workspace', elsewhere], env)
 	assert.equal(flagged.code, 1)
 	assert(
 		flagged.lines.includes(
@@ -78,7 +78,7 @@ test('CHECKMATE_WORKSPACE names the store, and --workspace comes before it', (t)
 		),
 		flagged.output
 	)
-	const named = checkmate(workspace, ['journal', 'show', 'cart'], { CHECKMATE_WORKSPACE: elsewhere })
+	const named = checkmate(workspace, ['show', 'cart'], { CHECKMATE_WORKSPACE: elsewhere })
 	assert(
 		named.lines.includes(
 			`reason: No Checkmate store in ${elsewhere}, the directory that CHECKMATE_WORKSPACE names. Nothing changed.`
@@ -90,7 +90,7 @@ test('CHECKMATE_WORKSPACE names the store, and --workspace comes before it', (t)
 
 test('only init and target open create a store', (t) => {
 	const empty = directory(t)
-	const opened = checkmate(empty, ['journal', 'open', 'cart', '--target', 'shop'])
+	const opened = checkmate(empty, ['open', 'cart', '--target', 'shop'])
 	assert.equal(opened.code, 1)
 	assert(!existsSync(join(empty, '.checkmate')))
 	assert.equal(checkmate(empty, ['init']).code, 0)
@@ -104,13 +104,13 @@ test('only init and target open create a store', (t) => {
 test('an unknown change names the store in use and its changes', (t) => {
 	const workspace = project(t)
 	const path = join(workspace, '.checkmate', 'checkmate.db')
-	const unknown = checkmate(workspace, ['journal', 'log', 'kart', '--build', 'b1'], {}, entry)
+	const unknown = checkmate(workspace, ['log', 'kart', '--build', 'b1'], {}, entry)
 	assert.equal(unknown.code, 1)
 	assert(unknown.lines.includes(`reason: Unknown change: kart. The store ${path} has the changes cart.`))
 	assert.doesNotMatch(unknown.output, /open/)
 	const empty = directory(t)
 	assert.equal(checkmate(empty, ['init']).code, 0)
-	const none = checkmate(empty, ['journal', 'show', 'cart'])
+	const none = checkmate(empty, ['show', 'cart'])
 	const emptyPath = join(empty, '.checkmate', 'checkmate.db')
 	assert(none.lines.includes(`reason: Unknown change: cart. The store ${emptyPath} has no change.`), none.output)
 })

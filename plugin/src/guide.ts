@@ -1,9 +1,5 @@
 import type { Store } from './store.ts'
-import { completed, one } from './store.ts'
-import { targetList } from './targets.ts'
-import { checklistNext, showLite } from './lite.ts'
-import checklistSchema from '../contracts/lite-checklist.schema.json' with { type: 'json' }
-import recordSchema from '../contracts/lite-record.schema.json' with { type: 'json' }
+import { completed } from './store.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -27,8 +23,6 @@ type Schema = {
 export type Field = { path: string; type: string; required: boolean; description: string }
 
 const files: Record<string, Schema> = {
-	'lite-checklist.schema.json': checklistSchema as Schema,
-	'lite-record.schema.json': recordSchema as Schema,
 	'journal-entry.schema.json': entrySchema as Schema,
 	'journal-criterion.schema.json': criterionSchema as Schema,
 	'journal-observation.schema.json': observationSchema as Schema,
@@ -38,13 +32,6 @@ const files: Record<string, Schema> = {
 	'journal-note.schema.json': noteSchema as Schema,
 	'journal-issue.schema.json': issueSchema as Schema,
 }
-
-export const liteSteps = [
-	'1. Before the build, while the base app runs: lite checklist records the items, the baselines, and the questions.',
-	'2. On the first build: lite show, then free testing. Save a first lite record with --draft early, and add parts with --draft while you test. A last lite record without --draft completes the build.',
-	'3. On each later build: the same, with retest verdicts.',
-	'Use only the lite commands. Send each JSON payload on standard input in a quoted heredoc.',
-]
 
 function resolved(node: Schema, file: string): [Schema, string] {
 	if (!node.$ref) return [node, file]
@@ -79,100 +66,6 @@ function fieldsOf(node: Schema, file: string, prefix: string): Field[] {
 				? fieldsOf(field, at, `${path}.`)
 				: []
 		return [row, ...nested]
-	})
-}
-
-function brief(fields: Field[], names: string[]) {
-	const parent = (field: Field) =>
-		names.find((name) => field.path.startsWith(`${name}[].`) || field.path.startsWith(`${name}.`))
-	const list = (name: string, required: boolean) =>
-		fields
-			.filter((field) => parent(field) === name && field.required === required)
-			.map((field) => ({ field, own: field.path.slice(field.path.indexOf('.', name.length) + 1) }))
-			.filter(({ own }) => !own.includes('.'))
-			.map(({ field, own }) => (field.type.includes('|') ? `${own} (${field.type})` : own))
-			.join(', ')
-	const summary = (name: string) =>
-		[
-			list(name, true) && `Required fields: ${list(name, true)}.`,
-			list(name, false) && `Optional fields: ${list(name, false)}.`,
-		]
-			.filter(Boolean)
-			.join(' ')
-	return fields
-		.filter((field) => !parent(field))
-		.map((field) =>
-			names.includes(field.path)
-				? { ...field, description: `${field.description} ${summary(field.path)}` }
-				: field
-		)
-}
-
-export function liteSchema(name: 'lite-checklist' | 'lite-record') {
-	const file = `${name}.schema.json`
-	const schema = files[file]
-	return { about: schema.description!, fields: fieldsOf(schema, file, ''), example: schema.examples![0] }
-}
-
-function targetOf(store: Store, planId: string | undefined) {
-	const opened =
-		planId &&
-		one<{ target_id: string; target_revision: number }>(
-			store,
-			'SELECT target_id, target_revision FROM plan_requests WHERE plan_id = ?',
-			planId
-		)
-	if (opened) return `${opened.target_id}@${opened.target_revision}`
-	const saved = targetList(store).filter((target) => target.revision !== null)
-	return saved.length === 1 ? `${saved[0].targetId}@${saved[0].revision}` : '<targetId@revision>'
-}
-
-export function guideLite(store: Store, planId: string | undefined) {
-	const plan = planId ?? '<planId>'
-	const recorded = planId !== undefined && one(store, 'SELECT 1 FROM latest_plans WHERE plan_id = ?', planId)
-	if (!recorded) {
-		const target = targetOf(store, planId)
-		return completed(planId ?? 'lite guide', {
-			step: 'checklist',
-			steps: liteSteps,
-			command: `checkmate lite checklist ${plan} --target ${target}`,
-			...liteSchema('lite-checklist'),
-			next: checklistNext(plan, target),
-		})
-	}
-	const state = showLite(store, planId).data
-	const record = liteSchema('lite-record')
-	const items = state.items as Array<{ id: string; metadata?: Record<string, unknown> }>
-	const open = (state.defects as Array<{ id: string }>).map((defect) => defect.id)
-	const need = [
-		[
-			'checks[].result',
-			items.filter((item) => item.metadata?.criterion !== undefined).map((item) => item.id),
-			'passed, failed, or blocked',
-		],
-		['retests[].defect', open, 'a verdict with evidence'],
-	].filter(([, list]) => list.length)
-	const later = (state.runs as unknown[]).length > 0
-	const fields = record.fields
-		.filter((field) => open.length || !field.path.startsWith('retests'))
-		.filter((field) => !later || /^(checks|retests)\b/.test(field.path))
-	return completed(planId, {
-		...state,
-		...(later
-			? {
-					items: [],
-					questions: (state.questions as Array<{ status: string }>).filter(
-						(question) => question.status !== 'resolved'
-					),
-				}
-			: {}),
-		step: 'record',
-		command: `checkmate lite record ${planId} --build <build>`,
-		about: record.about,
-		fields: brief(fields, ['items', 'defects', 'retests', 'questions', 'changes', ...(later ? ['checks'] : [])]),
-		...(later ? {} : { example: record.example }),
-		need,
-		next: [],
 	})
 }
 
@@ -232,16 +125,16 @@ function roleSteps(changeId: string, role: 'merger' | 'verifier') {
 	if (role === 'merger')
 		return [
 			'Do not test. Merge what the testers found.',
-			`Run checkmate journal merge ${changeId} --build <build> to read the defects of all testers.`,
+			`Run checkmate merge ${changeId} --build <build> to read the defects of all testers.`,
 			'Find the defects that two or more reports describe. The suggest lines are ideas, not rules.',
 			'Check each defect that only one tester reported against the larger issues before you leave it alone.',
 			'Do not combine two defects that have different expected results or different triggers.',
-			`Log one issue for each of them: checkmate journal log ${changeId} --build <build>, with the JSON on standard input in a quoted heredoc.`,
+			`Log one issue for each of them: checkmate log ${changeId} --build <build>, with the JSON on standard input in a quoted heredoc.`,
 			'A defect that is in no issue is its own issue. To change an issue, log it again with "supersedes".',
-			`Run checkmate journal merge ${changeId} --build <build> again to read the suggestions that remain.`,
+			`Run checkmate merge ${changeId} --build <build> again to read the suggestions that remain.`,
 		]
 	return [
-		`Run checkmate journal verify ${changeId} --build <build> to read the items to verify.`,
+		`Run checkmate verify ${changeId} --build <build> to read the items to verify.`,
 		'Reproduce each item on the running application.',
 		'Log one observation for each item, with "confirms" or "refutes" and "saw": what you saw.',
 		'Do not explore beyond the list.',
@@ -251,9 +144,9 @@ function roleSteps(changeId: string, role: 'merger' | 'verifier') {
 export function journalSteps(changeId: string) {
 	return [
 		'Test the way you would test without this tool. Checkmate does not limit what you test, or how.',
-		`Log what you see as you go, and at the latest before your turn ends: checkmate journal log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
+		`Log what you see as you go, and at the latest before your turn ends: checkmate log ${changeId} --build <build>, with one entry or a JSON array on standard input in a quoted heredoc.`,
 		'With a repository or a merge request, read the diff and follow its leads. Log each changed area as a note with "area".',
-		`When you think that you are done, run checkmate journal gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate journal show ${changeId} prints the record.`,
+		`When you think that you are done, run checkmate gaps ${changeId} --build <build>. Its lines are ideas, not rules. checkmate show ${changeId} prints the record.`,
 	]
 }
 
@@ -261,19 +154,19 @@ export function guideJournal(store: Store, changeId: string | undefined, role: G
 	const change = changeId ?? '<changeId>'
 	if (role !== 'tester') {
 		if (changeId !== undefined) changeState(store, changeId)
-		return completed(changeId ?? 'journal guide', {
+		return completed(changeId ?? 'guide', {
 			steps: roleSteps(change, role),
 			...(role === 'merger' ? mergerSchema() : verifierSchema()),
-			command: `checkmate journal log ${change} --build b1`,
+			command: `checkmate log ${change} --build b1`,
 			answers: [],
 			openDefects: [],
 		})
 	}
 	const state = changeId === undefined ? undefined : changeState(store, changeId, viewer)
-	return completed(changeId ?? 'journal guide', {
+	return completed(changeId ?? 'guide', {
 		steps: journalSteps(change),
 		...journalSchema(),
-		command: `checkmate journal log ${change} --build b1`,
+		command: `checkmate log ${change} --build b1`,
 		answers: (state?.questions ?? []).filter((question) => question.answer !== null),
 		openDefects: (state?.defects ?? []).filter((defect) => state!.openDefects.includes(defect.id)),
 	})

@@ -1,102 +1,54 @@
 # Concepts
 
-> **Reference** · The terms of this manual, the stages, and who owns what. Read this page once. The other pages use these terms without a new explanation.
+> **Reference** · The terms of this manual, and who owns what. The other pages use these terms without a new explanation.
 
-Checkmate keeps one QA record for a workspace. Agents and people change the record only through commands, and each change has a name and a reason.
+Checkmate keeps one QA record for a project. The agent tests freely and logs what it sees. Checkmate stores the entries and derives the views from them.
 
-<img src="../img/roles.png" alt="Diagram: four roles share one record. In the centre, the Checkmate record, .checkmate/checkmate.db, with targets, plans and gaps, decisions, runs and evidence, findings, and the operation log. The planner turns a ticket into tests and writes a gap for each unclear requirement. The oracle answers gaps, approves plans, and accepts results, and is an agent or a person. QA runs the tests, early and again on each new build. Planner, oracle, and QA write to the record. The factory runs the agents and their sandboxes and builds and fixes the code. It reads the record, and it writes only through the commands that it runs, such as run begin. Below the record, a human can make the oracle's decisions in the review UI. Checkmate keeps the record. It does not start, schedule, or message agents, and it does not change code." width="100%"/>
+## The terms
 
-## The roles
+| Term     | Meaning                                                                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Target   | The application under test: its entry points, capabilities, and allowed operations. `target open` records it.                |
+| Instance | One place where the target runs, with a value for each entry point. A change can name one instance.                          |
+| Change   | The work under test, for example a ticket, a merge request, or a feature. `open` starts its journal.                         |
+| Build    | One version of the application that the agent tests. `base` is the version before the change. Each entry can name its build. |
+| Journal  | The entries of one change, in the order of the writes.                                                                       |
+| Entry    | One fact in the journal. Each entry has a kind, an ID, an actor, and usually a build.                                        |
+| Actor    | The name of the writer of an entry. Each write records it.                                                                   |
+| Gap      | An open item: a thing that the record does not show yet. `gaps` derives it from the entries. A gap is an idea, not a rule.   |
+| Issue    | One defect that one or more testers reported. A merger groups reports into issues.                                           |
 
-| Role    | Job                                                                                 |
-| ------- | ----------------------------------------------------------------------------------- |
-| Planner | Runs the plan and revise stages. Turns a ticket into tests and records gaps.        |
-| Oracle  | Answers gaps, approves plans, and accepts results. An agent or a person.            |
-| QA      | Runs the execute stage. Records results, evidence, defects, and new gaps.           |
-| Factory | Runs the agents, their sandboxes, and the builds. Fixes the code. Reads the record. |
+## Entry kinds
 
-A **human** is a person who uses the review UI. A human makes the oracle's decisions there.
+| Kind          | Holds                                                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `criterion`   | A rule or an acceptance criterion that the change must meet.                                                     |
+| `observation` | What the agent did and saw. A value on an earlier build makes a baseline.                                        |
+| `defect`      | A thing that is wrong on a build: the title, the severity, the expected and the actual result, and the evidence. |
+| `question`    | A question for the PM.                                                                                           |
+| `verdict`     | The result of a retest of a defect on a later build: `fixed` or `not_fixed`.                                     |
+| `note`        | Anything else, for example where the agent explored, or a changed area.                                          |
+| `issue`       | The merger's group of defect reports that describe one defect.                                                   |
 
-In solo mode, you are the oracle, and Claude Code does the work of the planner and QA. In team mode, the factory gives each stage to an agent.
+Checkmate also writes two kinds for commands: `answer` (from `answer`) and `decision` (from `accept` and `reject`).
 
-## The stages
-
-Checkmate has five stages. Between the stages, the oracle decides.
-
-| Stage   | Does                                                                        | Skill                | Next decision                |
-| ------- | --------------------------------------------------------------------------- | -------------------- | ---------------------------- |
-| Setup   | Checks the tools and the target. Saves a target profile.                    | `/checkmate:setup`   | None.                        |
-| Plan    | Writes revision 1 of a plan: requirements, tests, and gaps.                 | `/checkmate:plan`    | Answer the gaps.             |
-| Revise  | Applies the answers. Writes the next revision.                              | `/checkmate:revise`  | Approve the revision.        |
-| Execute | Runs the tests. Records results, evidence, and findings.                    | `/checkmate:execute` | Accept or reject the result. |
-| Report  | Exports a plan or a run as HTML, Markdown, or JSON, and a run as JUnit XML. | `/checkmate:report`  | None.                        |
-
-The plugin has two more skills. `/checkmate:status` tells where a plan is in the loop. `/checkmate:ui` starts the review UI.
-
-## The records
-
-**Target.** The shape of the application under test. A target profile has entry points, capabilities, allowed operations, tools, authentication, startup, cleanup, an optional reset, and approvals. Its reference is `<targetId>@<revision>`, for example `shop@1`. A plan is approved against one revision.
-
-**Entry point.** A named way into the target, for example `web` or `org`. Its kind is `url`, `command`, or `value`. The target names its entry points. An instance gives their values.
-
-**Instance.** One place where the target runs, for example `local`, `uat`, or a Salesforce sandbox. It belongs to one target, not to one revision. It gives a value for each entry point, and it can have an environment and references. Adding or retiring an instance needs no new revision and no approval. Its reference is `<targetId>/<instanceId>`, for example `shop/uat`.
-
-**Capability.** A label for how a test drives the target, for example `browser` or `http`. A capability does not name a fixed tool.
-
-**Operation.** An action that a test can do on the target, for example `create_order`. A test can use only the allowed operations of the target.
-
-**Tool.** A command line tool, an MCP server, or a Claude Code skill that a stage can use. Checkmate records the tools. The host gives the permission to use them.
-
-**Plan.** The tests for one objective, for example one ticket. A plan has revisions. Its reference is `<planId>@<revision>`, for example `checkout@2`.
-
-**Requirement.** One statement to verify, with its source.
-
-**Test.** One action and a list of assertions. A test is `ready`, `blocked`, or `deferred`.
-
-**Assertion.** One check with a known expected value, for example `totalPLN equals 240.` Its reference is `<testId>.<assertionId>`, for example `T2.A1`.
-
-**Gap.** A question that the sources do not answer. An open blocking gap blocks the tests that it affects.
-
-**Decision.** The oracle's answer to a gap: `clarify`, `accept_assumption`, or `defer`. The revise stage applies it.
-
-**Approval.** The oracle's verdict on a plan revision or on a result: approved or rejected.
-
-**Run.** One execution of selected tests of a plan revision on one build and one instance. A retest is a new run on a new build. It can use another instance. A matrix is a set of runs of one plan revision, one run for each instance.
-
-**Finding.** A defect or a potential issue that a run found. A defect stays open until a later run passes its tests or a retest finds it again. Read [Open defects](runs.md#open-defects).
-
-**Evidence.** The bytes that show an observation, for example a page excerpt, an HTTP exchange, or a screenshot.
-
-**Result.** The final record of a run: completion, test outcomes, and coverage.
-
-## The loop
-
-One ticket goes around the loop until its tests pass:
-
-1. The planner writes a plan. Unclear requirements become gaps.
-2. The oracle answers the gaps. The planner writes a new revision. The oracle approves it.
-3. QA runs the tests. Unclear behavior in a run becomes a new gap.
-4. The factory fixes the code and makes a new build. QA retests.
-5. When the tests pass, the oracle accepts the result.
-
-QA can run the ready tests early, before the feature exists. Then most tests fail, and this is correct. `checkmate status <planId>` names the loop state and the role that acts next. [Commands](commands.md#loop-states) lists the states.
+`checkmate guide` prints the fields of each kind from the schemas in `plugin/contracts/journal-*.schema.json`.
 
 ## Who owns what
 
-| Checkmate owns                                                  | The host (Claude Code) owns               |
-| --------------------------------------------------------------- | ----------------------------------------- |
-| The contracts and the rule checks                               | The agent loop, the model, and context    |
-| The record of target and plan tools                             | Tool installation and tool access         |
-| The database, the digests, and the operation log                | Authentication                            |
-| The gates: approval, readiness, prerequisites, and dependencies | Tool permissions and the `--allow` rules  |
-| Outcomes, coverage, and exports                                 | Browser sessions and access to the target |
-| The review UI on `127.0.0.1`                                    |                                           |
+| Owner        | Owns                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------- |
+| The tester   | What to test, how, and in which order. Checkmate does not limit it.                                             |
+| The PM       | The answers to questions.                                                                                       |
+| The oracle   | The decision on a build: `accept` or `reject`.                                                                  |
+| The merger   | The grouping of defect reports into issues. The merger does not test.                                           |
+| The verifier | The check of the items that `verify` lists. The verifier does not explore beyond the list.                      |
+| The host     | The agent loop, the model, the authentication, the tools, and the permissions. Checkmate does not start agents. |
+| Checkmate    | The store, the entry checks, the derived views, and the operation log.                                          |
 
-The oracle owns the scope, the decisions, and release decisions. The factory owns application startup and fixes. The workspace owner owns the evidence and how long it stays.
-
-Content of the target cannot authorize a change to a request or a plan. [Limits](record.md#limits) lists what the checks show and what they do not show.
+The checks of Checkmate show that an entry has the right shape and valid references. They do not show that an observation is true.
 
 ## Next
 
-- [Test in Claude Code](../guides/claude-code.md): the loop in solo mode.
-- [Run Checkmate from a factory](../guides/factory.md): the loop in team mode.
+- [Commands](commands.md): every command, the gap kinds, and several testers.
+- [The record](record.md): the database and its limits.

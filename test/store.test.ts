@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
 	busyTimeout,
@@ -15,11 +16,9 @@ import {
 	ulid,
 	write,
 } from '../plugin/src/store.ts'
-import { closeTest, finishRun, recordGap } from '../plugin/src/runs.ts'
-import { approvePlan, editPlan, planCandidate, planRevision } from '../plugin/src/plans.ts'
 import { retireInstance } from '../plugin/src/targets.ts'
 import { logEntries, openChange } from '../plugin/src/journal.ts'
-import { actor, begin, check, directory, failT2, plan, ready, revised, store, target } from './support.ts'
+import { actor, directory, store, target } from './support.ts'
 
 test('opening a workspace creates the schema, WAL mode, and the version rows', (t) => {
 	const opened = store(t)
@@ -28,26 +27,14 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		.all()
 		.map((row) => row.name)
 	assert.deepEqual(tables, [
-		'approvals',
-		'assertion_results',
 		'blobs',
 		'changes',
-		'decisions',
-		'evidence',
-		'findings',
 		'instance_retirements',
 		'instances',
 		'journal_entries',
 		'meta',
 		'operations',
-		'outcomes',
-		'plan_requests',
-		'plan_revisions',
 		'profiles',
-		'results',
-		'run_attempts',
-		'run_gaps',
-		'runs',
 		'target_requests',
 	])
 	assert.equal(opened.db.prepare('PRAGMA journal_mode').get()!.journal_mode, 'wal')
@@ -59,7 +46,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 			.map((row) => ({ ...row })),
 		[
 			{ key: 'contractVersion', value: 'toolkit-2' },
-			{ key: 'schemaVersion', value: '4' },
+			{ key: 'schemaVersion', value: '5' },
 		]
 	)
 	closeStore(opened)
@@ -71,81 +58,35 @@ test('a database with another schema version is refused', (t) => {
 	closeStore(createStore(workspace))
 	const db = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
 	db.exec('DROP TRIGGER meta_update')
-	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
+	db.exec("UPDATE meta SET value = '4' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 1\. Expected 4/)
+	assert.throws(() => openStore(workspace), /checkmate\.db has schema version 4\. Expected 5\./)
 })
 
-function finishedRun(t: Parameters<typeof store>[0]) {
+function journalStore(t: Parameters<typeof store>[0]) {
 	const opened = store(t)
-	ready(opened)
-	begin(opened)
-	check(opened, 'run-1', 'T1.A1', 'passed')
-	check(opened, 'run-1', 'T1.A2', 'passed')
-	closeTest(opened, actor, { runId: 'run-1', testId: 'T1' })
-	check(opened, 'run-1', 'T2.A1', 'passed')
-	failT2(opened, 'run-1')
-	closeTest(opened, actor, { runId: 'run-1', testId: 'T2' })
-	recordGap(opened, actor, {
-		runId: 'run-1',
-		gap: {
-			id: 'G9',
-			severity: 'non_blocking',
-			status: 'open',
-			requirementIds: ['R2'],
-			testIds: ['T2'],
-			question: 'Is the loyalty label right?',
-			consequence: 'The label is unchecked.',
-			decisionId: null,
-		},
-	})
-	finishRun(opened, actor, { runId: 'run-1', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	target(opened)
 	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
 	openChange(opened, actor, { changeId: 'checkout', target: 'checkout-local', instance: 'local' })
+	writeFileSync(join(opened.workspace, 'cart.txt'), 'Total 400 PLN')
 	logEntries(opened, actor, {
 		changeId: 'checkout',
 		build: 'b1',
-		entries: { kind: 'note', text: 'Explored the cart.' },
+		entries: { kind: 'observation', saw: 'The cart total is 400 PLN.', evidence: 'cart.txt' },
 	})
 	return opened
 }
 
 test('triggers refuse updates and deletes on every table', (t) => {
-	const opened = finishedRun(t)
+	const opened = journalStore(t)
 	const tables = opened.db
 		.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 		.all()
 		.map((row) => String(row.name))
 	for (const table of tables) {
 		assert.throws(() => opened.db.exec(`DELETE FROM ${table}`), /immutable/, table)
-		if (table !== 'decisions')
-			assert.throws(() => opened.db.exec(`UPDATE ${table} SET rowid = rowid`), /immutable/, table)
+		assert.throws(() => opened.db.exec(`UPDATE ${table} SET rowid = rowid`), /immutable/, table)
 	}
-	assert.throws(() => opened.db.exec("UPDATE plan_revisions SET body = '{}'"), /Rows of plan_revisions are immutable/)
-})
-
-test('a decision changes only applied_revision, only once, and only from NULL', (t) => {
-	const opened = store(t)
-	ready(opened)
-	assert.throws(() => opened.db.exec('UPDATE decisions SET applied_revision = 3'), /Decisions are immutable/)
-	assert.throws(() => opened.db.exec('UPDATE decisions SET applied_revision = NULL'), /Decisions are immutable/)
-	write(opened, { actor, command: 'test', subject: 'checkout', input: null }, (operationId) => {
-		execute(
-			opened,
-			"INSERT INTO decisions (id, plan_id, base_revision, gap_id, kind, value, source, rationale, actor, operation_id) VALUES ('D9', 'checkout', 2, 'G9', 'defer', 'v', NULL, 'r', 'a', ?)",
-			operationId
-		)
-		return { reply: { status: 'completed', subject: 'checkout', reasons: [], data: {} }, subjects: [] }
-	})
-	assert.throws(
-		() => opened.db.exec("UPDATE decisions SET applied_revision = 3, value = 'other' WHERE id = 'D9'"),
-		/Decisions are immutable/
-	)
-	opened.db.exec("UPDATE decisions SET applied_revision = 3 WHERE id = 'D9'")
-	assert.throws(
-		() => opened.db.exec("UPDATE decisions SET applied_revision = 4 WHERE id = 'D9'"),
-		/Decisions are immutable/
-	)
 })
 
 test('a command waits CHECKMATE_BUSY_TIMEOUT_MS for the lock, else 30 seconds', (t) => {
@@ -190,14 +131,14 @@ test('foreign keys refuse rows that name missing parents', (t) => {
 	assert.throws(
 		() =>
 			attempt(
-				"INSERT INTO plan_requests (plan_id, target_id, target_revision, body, operation_id) VALUES ('p', 'missing', 1, '{}', ?)"
+				"INSERT INTO changes (change_id, target_id, instance_id, operation_id) VALUES ('c', 'missing', NULL, ?)"
 			),
 		/FOREIGN KEY constraint failed/
 	)
 	assert.throws(
 		() =>
 			attempt(
-				"INSERT INTO evidence (id, run_id, test_id, assertion_id, kind, name, media_type, sha256, operation_id) VALUES ('e', 'run-x', 'T1', NULL, 'observation', 'n', 'text/plain', 'abc', ?)"
+				"INSERT INTO journal_entries (change_id, entry_id, kind, build, body, actor, operation_id) VALUES ('none', 'N1', 'note', NULL, '{}', 'a', ?)"
 			),
 		/FOREIGN KEY constraint failed/
 	)
@@ -247,34 +188,4 @@ test('ULIDs encode the time in Crockford base32 and never decrease in one proces
 	)
 	assert(time >= before && time <= Date.now())
 	assert(ulid(before - 60000) > ids[ids.length - 1])
-})
-
-test('a plan revision row changes only while it is the latest, unapproved, and not run', (t) => {
-	const opened = store(t)
-	target(opened, { approvals: { plan: 'none', result: 'none' } })
-	plan(opened)
-	opened.db.exec("UPDATE plan_revisions SET operation_id = operation_id WHERE plan_id = 'checkout'")
-	assert.throws(
-		() => opened.db.exec("UPDATE plan_revisions SET revision = 5 WHERE plan_id = 'checkout'"),
-		/immutable once approved, run, or revised/
-	)
-	revised(opened)
-	assert.throws(
-		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 1"),
-		/immutable once approved, run, or revised/
-	)
-	opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 2")
-	begin(opened, 'run-1', ['T1'])
-	assert.throws(
-		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 2"),
-		/immutable once approved, run, or revised/
-	)
-	const content = planCandidate(planRevision(opened, 'checkout').plan)
-	const edited = editPlan(opened, actor, { reference: 'checkout@2', candidate: content })
-	assert.deepEqual([edited.subject, edited.data.edit, edited.data.reason], ['checkout@3', 'new_revision', 'run'])
-	approvePlan(opened, actor, { reference: 'checkout@3', rationale: 'Ok.' })
-	assert.throws(
-		() => opened.db.exec("UPDATE plan_revisions SET body = body WHERE plan_id = 'checkout' AND revision = 3"),
-		/immutable once approved, run, or revised/
-	)
 })

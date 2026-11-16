@@ -1,37 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Store } from '../store.ts'
 import type { Context, Page, Theme } from './layout.ts'
-import type { FormState } from './forms.ts'
-import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
-import type { Approval } from '../plans.ts'
-import {
-	adoptGaps,
-	answerGap,
-	approvePlan,
-	decisionToken,
-	editPlan,
-	latestApproval,
-	planCandidate,
-	rejectPlan,
-} from '../plans.ts'
-import { exportPlan, exportRun } from '../render.ts'
-import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
-import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
+import { changesAfter, operationLog } from '../views.ts'
 import { defaultActor } from '../actor.ts'
 import { html } from './html.ts'
 import { heading, layout } from './layout.ts'
-import { emptyState } from './forms.ts'
-import { inboxCount, inboxItems, inboxPage, logPage, plansPage, runsPage } from './lists.ts'
-import { gapPage, planHistoryList, planPage } from './plan.ts'
-import { candidateFromForm, candidateJson, editPage, ownChanges } from './edit.ts'
-import type { AdoptError } from './run.ts'
-import { runPage } from './run.ts'
+import { logPage } from './lists.ts'
 import type { InstanceForm } from './settings.ts'
 import { instanceFromForm, targetPage, targetsPage } from './settings.ts'
 
@@ -44,16 +24,6 @@ type Change = ReturnType<typeof changesAfter>[number]
 
 const id = '[A-Za-z0-9][A-Za-z0-9_-]{0,95}'
 const routes = {
-	plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
-	latestPlan: new RegExp(`^/plans/(${id})$`),
-	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
-	edit: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/edit$`),
-	history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
-	planExport: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/export\\.(html|md|json)$`),
-	run: new RegExp(`^/runs/(${id})$`),
-	runGap: new RegExp(`^/runs/(${id})/gaps/(${id})$`),
-	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json|junit)$`),
-	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
 	target: new RegExp(`^/settings/targets/(${id})$`),
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
 	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
@@ -61,13 +31,6 @@ const routes = {
 }
 const contentSecurityPolicy =
 	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
-const inlineImages = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const documentTypes: Record<string, string> = {
-	html: 'text/html; charset=utf-8',
-	md: 'text/markdown; charset=utf-8',
-	json: 'application/json; charset=utf-8',
-	junit: 'application/xml; charset=utf-8',
-}
 const themes: Theme[] = ['system', 'light', 'dark']
 const maxForm = 256 * 1024
 
@@ -163,11 +126,6 @@ function safeBack(value: string | null) {
 	}
 }
 
-function attachmentName(name: string) {
-	const plain = name.replace(/[^A-Za-z0-9._-]/g, '_')
-	return `filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`
-}
-
 function notFoundError(message: string) {
 	return /^Unknown|has no revision|not found/i.test(message)
 }
@@ -226,7 +184,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				(request.req.headers['sec-fetch-mode'] ?? 'navigate') === 'navigate'
 					? request.cookies.checkmate_toast || null
 					: null,
-			inboxCount: inboxCount(inbox(store)),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
 		}
@@ -246,38 +203,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		render(request, {
 			title,
 			section: null,
-			subjects: ['inbox'],
+			subjects: [],
 			status,
 			body: html`${heading(title, message)}
 				<p class="actions">
-					<a class="btn primary" href="/">Back to inbox</a> <a class="btn" href="/plans">Plans</a>
-					<a class="btn" href="/runs">Runs</a>
+					<a class="btn primary" href="/log">Log</a> <a class="btn" href="/settings/targets">Targets</a>
 				</p>`,
-		})
-	}
-
-	function nextItem(flash: string, actorCookie: string[]) {
-		const next = inboxItems(inbox(store))[0] ?? '/'
-		return { location: next, cookies: [...actorCookie, cookie('checkmate_toast', flash, 60)] }
-	}
-
-	function serveEvidence(request: Request, evidenceId: string) {
-		let evidence
-		try {
-			evidence = evidenceBytes(store, evidenceId)
-		} catch {
-			return errorPage(request, 404, 'Evidence not found', `Checkmate has no evidence ${evidenceId}.`)
-		}
-		const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === 'text/plain'
-		send(request.res, 200, evidence.mediaType, evidence.bytes, {
-			'Content-Disposition': `${inline ? 'inline' : 'attachment'}; ${attachmentName(evidence.name)}`,
-			'Cache-Control': 'private, max-age=31536000, immutable',
-		})
-	}
-
-	function download(request: Request, body: string, format: string, name: string) {
-		send(request.res, 200, documentTypes[format], body, {
-			'Content-Disposition': `attachment; ${attachmentName(name)}`,
 		})
 	}
 
@@ -317,12 +248,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				'Cache-Control': 'public, max-age=31536000, immutable',
 			})
 		if (pathname === '/events') return events(request)
-		const evidence = routes.evidence.exec(pathname)
-		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
-		if (pathname === '/') return render(request, inboxPage(store))
-		if (pathname === '/plans') return render(request, plansPage(store, searchParams))
-		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
+		if (pathname === '/') return redirect(request.res, '/log')
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
@@ -333,55 +260,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const number = revision && /^[1-9][0-9]{0,8}$/.test(revision) ? Number(revision) : null
 			return render(request, targetPage(store, shown, target[1], number))
 		}
-		const latest = routes.latestPlan.exec(pathname)
-		if (latest) {
-			const detail = planDetail(store, latest[1])
-			return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`)
-		}
-		const plan = routes.plan.exec(pathname)
-		if (plan)
-			return render(
-				request,
-				planPage(store, shown, plan[1], Number(plan[2]), null, searchParams.get('history') === 'all')
-			)
-		const edit = routes.edit.exec(pathname)
-		if (edit) return render(request, editPage(store, shown, edit[1], Number(edit[2])))
-		const history = routes.history.exec(pathname)
-		if (history) {
-			const detail = planDetail(store, history[1], Number(history[2]))
-			return send(request.res, 200, 'text/html; charset=utf-8', planHistoryList(store, detail, true).html)
-		}
-		const planExport = routes.planExport.exec(pathname)
-		if (planExport) {
-			const [, planId, revision, format] = planExport
-			const body = exportPlan(store, `${planId}@${revision}`, format)
-			return download(request, body, format, `${planId}-${revision}-plan.${format}`)
-		}
-		const report = routes.report.exec(pathname)
-		if (report) {
-			const [, runId, format] = report
-			if (!runDetail(store, runId).result)
-				return errorPage(
-					request,
-					409,
-					'Report not ready',
-					`${runId} is in progress. The report is ready when it finishes.`
-				)
-			const name = format === 'junit' ? `${runId}-junit.xml` : `${runId}-report.${format}`
-			return download(request, exportRun(store, runId, format), format, name)
-		}
-		const gap = routes.gap.exec(pathname)
-		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
-		const run = routes.run.exec(pathname)
-		if (run) return render(request, runPage(store, shown, run[1]))
-		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from the inbox.`)
+		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from the log.`)
 	}
 
 	function actorPage(shown: Context, back: string): Page {
 		return {
 			title: 'Your name',
 			section: null,
-			subjects: ['inbox'],
+			subjects: [],
 			body: html`${heading('Your name', 'Checkmate records this name with each decision you make in this browser.')}
 				<form method="post" action="/actor" class="panel narrow">
 					<input type="hidden" name="csrf" value="${csrf}" />
@@ -408,247 +294,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	function refuse(request: Request, page: () => Page, cookies: string[] = []) {
 		const shown = page()
 		render(request, { ...shown, status: shown.status ?? 422 }, cookies)
-	}
-
-	function answer(request: Request, form: URLSearchParams, planId: string, revision: number, gapId: string) {
-		const state: FormState = {
-			...emptyState(),
-			values: values(form, ['kind', 'value', 'source', 'rationale', 'actor']),
-		}
-		const { actor, cookies } = actorFrom(request, form)
-		const kind = state.values.kind
-		const page = () => gapPage(store, context(request), planId, revision, gapId, state)
-		const check = (condition: boolean, message: string) => {
-			if (!condition) state.error ??= message
-		}
-		check(Boolean(actor), 'Enter your name. Checkmate records it with your answer.')
-		check(['clarify', 'accept_assumption', 'defer'].includes(kind), 'Choose Clarify, Accept assumption, or Defer.')
-		check(Boolean(state.values.value.trim()), 'Write the answer.')
-		check(
-			kind !== 'clarify' || Boolean(state.values.source.trim()),
-			'A clarification needs a source. Name where the answer comes from.'
-		)
-		check(Boolean(state.values.rationale.trim()), 'Write a rationale. Checkmate records it with your answer.')
-		if (state.error) return refuse(request, page, cookies)
-		try {
-			answerGap(store, actor, {
-				planId,
-				gapId,
-				kind,
-				value: state.values.value.trim(),
-				source: kind === 'clarify' ? state.values.source.trim() : null,
-				rationale: state.values.rationale.trim(),
-				expectSha256: form.get('sha') ?? '',
-			})
-		} catch (error) {
-			const latest = planDetail(store, planId)
-			if (latest.sha256 !== form.get('sha'))
-				state.stale = html`<strong>${planId} has a newer revision (${latest.latestRevision}).</strong> Your
-					answer was not recorded. Your text is kept below.
-					<a href="/plans/${planId}@${latest.latestRevision}/gaps/${gapId}"
-						>Review revision ${latest.latestRevision}</a
-					>, then send again.`
-			else state.error = plainMessage(error)
-			return refuse(request, page, cookies)
-		}
-		const next = nextItem(`Answered ${planId} · ${gapId}`, cookies)
-		redirect(request.res, next.location, next.cookies)
-	}
-
-	function verdictState(form: URLSearchParams) {
-		return { ...emptyState(), values: values(form, ['verdict', 'rationale', 'actor']) }
-	}
-
-	function decide(
-		request: Request,
-		form: URLSearchParams,
-		choices: string[],
-		page: (state: FormState) => Page,
-		record: (actor: string, verdict: string, rationale: string, sha: string, token: string) => string,
-		staleCheck: (sha: string, token: string) => FormState['stale']
-	) {
-		const state = verdictState(form)
-		const { actor, cookies } = actorFrom(request, form)
-		const view = () => page(state)
-		const sha = form.get('sha') ?? ''
-		const token = form.get('decision') ?? ''
-		state.stale = staleCheck(sha, token)
-		if (state.stale) return refuse(request, view, cookies)
-		if (form.get('back')) return refuse(request, () => ({ ...view(), status: 200 }), cookies)
-		if (!choices.includes(state.values.verdict)) state.error = 'Choose a decision.'
-		else if (!actor) state.error = 'Enter your name. Checkmate records it with your decision.'
-		else if (!state.values.rationale.trim())
-			state.error = 'Write a rationale. Checkmate records it with your decision.'
-		if (state.error) return refuse(request, view, cookies)
-		if (form.get('confirmed') !== '1') {
-			state.confirm = true
-			return refuse(request, () => ({ ...view(), status: 200 }), cookies)
-		}
-		let flash: string
-		try {
-			flash = record(actor, state.values.verdict, state.values.rationale.trim(), sha, token)
-		} catch (error) {
-			state.stale = staleCheck(sha, token)
-			if (!state.stale) state.error = plainMessage(error)
-			return refuse(request, view, cookies)
-		}
-		const next = nextItem(flash, cookies)
-		redirect(request.res, next.location, next.cookies)
-	}
-
-	function decidedBanner(subject: string, latest: Approval | undefined, verdicts: Record<string, string>) {
-		const what = latest
-			? html`${subject} was ${verdicts[latest.verdict]} by ${latest.actor} after you opened this page.`
-			: html`${subject} has another decision now.`
-		return html`<strong>${what}</strong> Your decision was not recorded. Your text is kept below. Review the
-			decision, then send again.`
-	}
-
-	function decidePlan(request: Request, form: URLSearchParams, planId: string, revision: number) {
-		const subject = `${planId}@${revision}`
-		decide(
-			request,
-			form,
-			['approve', 'reject'],
-			(state) => planPage(store, context(request), planId, revision, state),
-			(actor, verdict, rationale, sha, token) => {
-				const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token }
-				if (verdict === 'approve') approvePlan(store, actor, input)
-				else rejectPlan(store, actor, input)
-				return `${verdict === 'approve' ? 'Approved' : 'Rejected'} ${subject}`
-			},
-			(sha, token) => {
-				const detail = planDetail(store, planId, revision)
-				if (detail.sha256 !== sha)
-					return html`<strong>${subject} has another digest now.</strong> Your decision was not recorded. Your
-						text is kept below. Review the plan, then send again.`
-				if (decisionToken(store, 'plan', subject) === token) return null
-				return decidedBanner(subject, latestApproval(store, 'plan', subject), {
-					approved: 'approved',
-					rejected: 'rejected',
-				})
-			}
-		)
-	}
-
-	function decideRun(request: Request, form: URLSearchParams, runId: string) {
-		decide(
-			request,
-			form,
-			['accept', 'reject'],
-			(state) => runPage(store, context(request), runId, state),
-			(actor, verdict, rationale, sha, token) => {
-				const input = { runId, rationale, expectSha256: sha, expectDecision: token }
-				if (verdict === 'accept') acceptResult(store, actor, input)
-				else rejectResult(store, actor, input)
-				return `${verdict === 'accept' ? 'Accepted' : 'Rejected'} ${runId}`
-			},
-			(sha, token) => {
-				const result = runDetail(store, runId).result
-				if (!result) return null
-				if (result.sha256 !== sha)
-					return html`<strong>${runId} has a new result.</strong> Your decision was not recorded. Your text is
-						kept below. Review the result, then send again.`
-				if (decisionToken(store, 'result', runId) === token) return null
-				return decidedBanner(runId, latestApproval(store, 'result', runId), {
-					approved: 'accepted',
-					rejected: 'rejected',
-				})
-			}
-		)
-	}
-
-	function adopt(request: Request, form: URLSearchParams, runId: string, gapId: string) {
-		const { actor, cookies } = actorFrom(request, form)
-		const planId = runDetail(store, runId).planId
-		const sha = form.get('sha') ?? ''
-		const page = (message: AdoptError['message']) => () =>
-			runPage(store, context(request), runId, null, { gapId, message })
-		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the change.'), cookies)
-		const latest = planDetail(store, planId)
-		let adopted
-		try {
-			adopted = adoptGaps(store, actor, {
-				reference: `${planId}@${latest.latestRevision}`,
-				runId,
-				gapIds: [gapId],
-				expectSha256: sha,
-			})
-		} catch (error) {
-			const message =
-				latest.sha256 === sha
-					? plainMessage(error)
-					: html`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
-							the plan. Review the plan, then send again.`
-			return refuse(request, page(message), cookies)
-		}
-		redirect(request.res, `/runs/${runId}#${gapId}`, [
-			...cookies,
-			cookie('checkmate_toast', `Brought ${gapId} into ${adopted.subject}`, 60),
-		])
-	}
-
-	function saveEdit(request: Request, form: URLSearchParams, planId: string, revision: number) {
-		const { actor, cookies } = actorFrom(request, form)
-		const subject = `${planId}@${revision}`
-		const detail = planDetail(store, planId, revision)
-		const base = planCandidate(detail.plan)
-		const mode = form.get('mode') === 'json' ? 'json' : 'form'
-		const sha = form.get('sha') ?? ''
-		const state: EditState = {
-			mode,
-			candidate: base,
-			json: form.get('json') ?? '',
-			actor: form.get('actor') ?? '',
-			error: null,
-			stale: null,
-			unsaved: null,
-			orig: form.get('orig') ?? JSON.stringify(base),
-		}
-		const page = () => editPage(store, context(request), planId, revision, state)
-		let candidate: unknown
-		if (mode === 'json') {
-			try {
-				candidate = JSON.parse(state.json)
-			} catch (error) {
-				state.error = `The JSON is not valid: ${plainMessage(error)}`
-			}
-		} else {
-			state.candidate = candidateFromForm(base, form)
-			state.json = candidateJson(state.candidate)
-			candidate = state.candidate
-		}
-		if (!actor) state.error ??= 'Enter your name. Checkmate records it with the edit.'
-		if (state.error) return refuse(request, page, cookies)
-		let saved
-		try {
-			saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data
-		} catch (error) {
-			const latest = planDetail(store, planId)
-			if (latest.latestRevision === revision && latest.sha256 === sha) {
-				state.error = plainMessage(error)
-				return refuse(request, page, cookies)
-			}
-			const fresh = planCandidate(latest.plan)
-			state.unsaved = ownChanges(form, fresh)
-			state.orig = JSON.stringify(fresh)
-			state.candidate = fresh
-			state.json = candidateJson(fresh)
-			state.stale = html`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
-				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
-				it.`
-			return refuse(
-				request,
-				() => editPage(store, context(request), planId, latest.latestRevision, state),
-				cookies
-			)
-		}
-		const saving = `${planId}@${saved.revision}`
-		const flash =
-			saved.edit === 'in_place'
-				? `Saved ${saving} in place`
-				: `Saved ${saving}${planDetail(store, planId).approval.policy === 'none' ? '' : '. It needs approval.'}`
-		redirect(request.res, `/plans/${saving}`, [...cookies, cookie('checkmate_toast', flash, 60)])
 	}
 
 	function saveInstance(request: Request, form: URLSearchParams, targetId: string) {
@@ -735,16 +380,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				return errorPage(request, 422, 'Your name', 'Enter a name. Checkmate records it with each decision.')
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
-		const edit = routes.edit.exec(pathname)
-		if (edit) return saveEdit(request, form, edit[1], Number(edit[2]))
-		const gap = routes.gap.exec(pathname)
-		if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3])
-		const plan = routes.plan.exec(pathname)
-		if (plan) return decidePlan(request, form, plan[1], Number(plan[2]))
-		const run = routes.run.exec(pathname)
-		if (run) return decideRun(request, form, run[1])
-		const runGap = routes.runGap.exec(pathname)
-		if (runGap) return adopt(request, form, runGap[1], runGap[2])
 		const added = routes.addInstance.exec(pathname)
 		if (added) return saveInstance(request, form, added[1])
 		const retired = routes.retireInstance.exec(pathname)

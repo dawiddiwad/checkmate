@@ -1,8 +1,8 @@
 # Test in Claude Code
 
-> **Guide** · For people who use Claude Code with the Checkmate plugin. This is solo mode: you are the oracle.
+> **Guide** · For people who use Claude Code with the Checkmate plugin.
 
-You give Claude a target and a ticket. Claude writes the tests and runs them, and you make each decision in the review UI or in the chat.
+You give Claude a change to test. Claude tests it the way it tests without Checkmate, and logs what it sees in the journal of the change. You read the record, answer the questions, and decide on each build.
 
 ## Before you start
 
@@ -14,108 +14,70 @@ You give Claude a target and a ticket. Claude writes the tests and runs them, an
   ```
 
 - Node.js 24.12.0 or later.
-- For browser tests, Playwright CLI: `npm i -g @playwright/cli`.
 - The application runs and you know its URL. Checkmate does not start it.
 
-Open Claude Code in the application workspace. Checkmate keeps its record in `.checkmate/checkmate.db` there. Add `.checkmate/` to `.gitignore`.
+Open Claude Code in the project directory. Checkmate keeps its record in `.checkmate/checkmate.db` there. Add `.checkmate/` to `.gitignore`.
 
 The plugin has no global `checkmate` command. Claude runs the plugin CLI for you. To type the commands yourself, also install the npm CLI: `npm i -g @xoxoai/checkmate`.
 
 ## Steps
 
-### 1. Set up the target
-
-Give the entry points, the capabilities, and the operations that tests can do. An entry point is a named way into the application, for example the `web` URL. Give the first instance too: the place where the application runs, with a value for each entry point. You can also name tools, for example an MCP server.
+### 1. Ask Claude to test a change
 
 ```text
-/checkmate:setup shop with entry point web (url), capabilities browser and http,
-operations read_catalog and create_order. First instance: local, web at http://127.0.0.1:4173
+/checkmate:qa test the coupon change in SHOP-12 on http://127.0.0.1:4173
 ```
 
-Claude checks each tool and the target, saves the profile `shop@1`, and adds the instance `local`. To add another instance later, for example a staging server, open Settings in the review UI, or ask Claude.
+The `qa` skill tells Claude how to start: it records the target if the project has none, opens the change, and reads `checkmate guide <changeId>`. The guide tells what the record holds and how to write an entry. It does not tell Claude what to test.
 
-### 2. Plan
+### 2. Read the record
 
-Give the objective and the requirements, or the sources to read.
-
-```text
-/checkmate:plan checkout for shop@1. Objective: verify checkout totals. Source: docs/checkout.md
+```sh
+checkmate show shop-12
+checkmate gaps shop-12 --build b1
 ```
 
-Claude writes revision 1. Claude adds edge-case tests for each rule, for example a value exactly at a threshold. Each point that the sources do not settle and that changes an expected value becomes an open gap, for example `G1: Does the promotion stack with the loyalty discount?` Give the existing product documentation as a source too. Claude plans regression tests for the existing rules near the change that the documentation states and marks them with `"type": "regression"` in the test metadata.
+`show` prints the criteria, a matrix of the observations on each build, the defects with their verdicts, the questions with their answers, and the decisions. `gaps` prints the open items of a build: things that the record does not show yet.
 
-### 3. Answer the gaps
+### 3. Answer the questions
 
-Open the review UI and answer each gap there.
-
-```text
-/checkmate:ui
+```sh
+checkmate answer shop-12 Q1 --answer "The coupon does not stack with loyalty."
 ```
 
-You can also give the answer in the chat, for example: "Answer G1: the promotion replaces the loyalty discount. The total is 240 PLN. Source: product decision."
+The next `guide` call of a tester prints the answer.
 
-### 4. Revise and approve
+### 4. Decide on the build
 
-```text
-/checkmate:revise checkout
+```sh
+checkmate accept shop-12 --build b1 --rationale "The totals match the ticket."
 ```
 
-Claude writes revision 2 from your answers. Read it in the UI. To change it, click `Edit plan`. Then approve it.
+`accept` and `reject` print the gaps of the build at the time of the decision.
 
-### 5. Execute
+### 5. Test the next build
 
-```text
-/checkmate:execute checkout@2, tests T1,T2,T3, build b1, run ID run-1
+Tell Claude the new build. The entries name their build. `gaps` then lists the defects to retest and the baselines to measure again.
+
+### 6. Export the record
+
+```sh
+checkmate export shop-12 --out qa/shop-12.json
 ```
 
-Claude checks the gate, records each assertion with evidence, and closes each test. Then it makes up to 10 probes of edge cases near the tested rules, records the findings, and finishes the run.
+## Several testers
 
-When the target has two or more active instances, name the instance, for example `/checkmate:execute checkout@2, tests T1,T2, build b1, instance staging`. QA reads the entry values of that instance.
+Two or more agents can test one change. Each agent tests alone and logs into the same journal with its own actor, for example `CHECKMATE_ACTOR=qa:a1`. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found. Each role reads its text from `checkmate guide <changeId> --role <tester|merger|verifier>`. Read [Several testers](../reference/commands.md#several-testers).
 
-To run before the gaps are answered, ask for the ready tests only, for example `/checkmate:execute checkout@1, ready tests only, build b1`.
+## When something goes wrong
 
-### 6. Accept the result
-
-Accept or reject the result on the run page of the UI. When the run found new gaps, click `Answer` to answer a gap, or `Bring into plan` to add it to the plan without an answer.
-
-### 7. Get the report
-
-On the run page, click `Download report`. Or ask Claude:
-
-```text
-/checkmate:report run-1 as html in reports/run-1.html
-```
-
-## Ask where you are
-
-```text
-/checkmate:status checkout
-```
-
-Claude reads the record and tells you the loop state, who acts next, and the next command. You can also ask in your own words, for example "Where is the checkout plan in the loop?"
-
-## How Claude reports
-
-After each stage, Claude shows a table of the items that matter, a `Done:` line, and a `Next:` line with the decision and who makes it. Claude reads the database before it answers a question about the state, because another session or the UI can change it.
-
-## Example
-
-A report after a plan with gaps:
-
-```md
-| Gap | Severity | Tests | Question                                            |
-| --- | -------- | ----- | --------------------------------------------------- |
-| G1  | blocking | T3    | Does the promotion stack with the loyalty discount? |
-
-Done: Saved checkout@1 with 4 tests. T1 and T2 are ready. T3 is blocked by G1.
-
-Next: The oracle answers G1. Use `/checkmate:ui`, or run
-`checkmate gap answer checkout G1 --kind clarify --source <source> --value "<answer>" --rationale "<why>"`.
-Then run `/checkmate:revise checkout`.
-```
+| You see                                   | Do this                                                                                               |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `No Checkmate store in <dir>`             | Run the command in the project directory, or set `CHECKMATE_WORKSPACE`, or pass `--workspace <path>`. |
+| `Unknown change: <id>. The store ... has` | Check the change ID and the store path in the reason.                                                 |
+| `refused` lines after `log`               | Send only the refused entries again, with the fixes that the lines give. The saved entries stay.      |
 
 ## Next
 
-- [Decide as the oracle](oracle.md): the three kinds of answers, plan edits, and approvals.
-- [Review in the browser](review-ui.md): the pages of the UI.
-- [Runs and evidence](../reference/runs.md): what a result means.
+- [Concepts](../reference/concepts.md): the terms and who owns what.
+- [Commands](../reference/commands.md): every command and the gap kinds.

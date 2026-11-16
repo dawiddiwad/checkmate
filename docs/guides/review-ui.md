@@ -1,103 +1,31 @@
 # Review in the browser
 
-> **Guide** · For a human who makes the oracle's decisions in the review UI.
+> **Guide** · For people who read the record in a browser.
 
-The review UI is a local web page on top of the same record. It shows what waits for you, and it lets you decide with the full context in front of you.
+The review UI shows the operation log, the targets, and their instances. It runs on your computer and listens on `127.0.0.1` only.
+
+The UI does not show the journal yet. Read a change with `checkmate show <changeId>` and `checkmate export <changeId>`.
 
 ## Start the UI
-
-In Claude Code:
-
-```text
-/checkmate:ui
-```
-
-With the npm CLI:
 
 ```sh
 checkmate ui [--workspace <path>] [--port <n>]
 ```
 
-The command prints `completed ui url=<url>`. Open that URL in a browser on the same computer. The UI listens on `127.0.0.1` only. It runs until you stop it with Ctrl+C. The plugin contains the UI, so you do not need npm.
+In Claude Code, run `/checkmate:ui`. The first output line is `completed ui url=<url>`. Open the URL in a browser on the same computer. The workspace must have a store.
 
 ## Pages
 
-### Inbox
+| Page               | Shows                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| Log                | Every write: the time, the actor, the command, the status, and the subjects. Filter, sort, and page it. |
+| Settings, Targets  | Each target with its latest revision and its active instances.                                          |
+| Settings, a target | The entry points, the tools, the profile, the revision history, and the instances.                      |
 
-<img src="../img/ui/inbox.jpg" alt="The inbox in dark mode with four items: two gaps to answer, one of them from run-7, one plan to approve, and one result to accept." width="100%"/>
+On a target page, you can add an instance and retire an instance. Each form records your name as the actor. The UI fills in the same default actor as the commands. Change it with `actor: <name>` in the header.
 
-The start page. It groups the gaps to answer, the plans to approve or change, the results to accept, and the plans to draft. A rejected plan shows `rejected`, and its summary starts with `Rejected. Change the plan.` The number next to `Inbox` counts the oracle actions only. A rejected plan is an oracle action. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
-
-### Plans
-
-<img src="../img/ui/plans.jpg" alt="The plan list in dark mode. Each row shows a plan, its loop state with the role it waits on, its tests, open gaps, approval, and blocks." width="100%"/>
-
-Each plan at its latest revision. The `Loop` column shows the [loop state](../reference/commands.md#loop-states) and the role that it waits on. Filter with `Waits on`, sort by a column header, and type in the search field to filter. Lists show 25, 50, or 100 rows for each page. The URL keeps the list state.
-
-### Plan
-
-<img src="../img/ui/plan.jpg" alt="The plan page of checkout@2 in dark mode. The header shows the loop state needs answers, waits on oracle, and the approval. Below are the tests with their assertions, and an approval panel on the right." width="100%"/>
-
-The tests, gaps, requirements and coverage, runs, decisions, and history of one revision. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. Resolved and deferred gaps are folded below the open gaps.
-
-`Edit plan` opens the editor. It has forms for the requirements, tests, assertions, and coverage. `Edit as JSON` adds or removes items. Only the latest revision can change, and the rules of `plan edit` apply.
-
-### Run
-
-<img src="../img/ui/run-gap.jpg" alt="The run page of run-7 in dark mode. It shows defect F1 with expected and observed values and reproduction steps, the new gap G4 with the Answer and Bring into plan buttons, the coverage table, and the Accept run-7 panel on the right." width="100%"/>
-
-The outcomes, the assertions with evidence, the findings, the new gaps, the coverage, and the result decision. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`. The decision panel lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, JSON, or JUnit XML. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags.
-
-### Runs and Log
-
-The run list and the operation log. They page, sort, and filter like the plan list. The run list and the run page show the instance of each run.
-
-### Settings
-
-<img src="../img/ui/settings-target.jpg" alt="The Settings page of target shop-local in dark mode. It shows the entry point web, the instances preview (retired), local, and staging with their entry values, and the Add instance form on the right." width="100%"/>
-
-The button with the gear icon at the right of the top bar opens Settings. The first page is `Targets`. It lists each target with its latest revision, its capabilities, its entry points, and its number of active instances.
-
-A target page shows the entry points, the instances, the tools, the profile with the authentication references, and the revision history. Open an older revision from the history.
-
-- **Add instance.** Give an instance ID and a value for each entry point. The environment and the references are optional. Write one reference on each line. Adding an instance needs no new revision and no approval.
-- **Retire.** Click `Retire` on the instance row, then `Confirm retire`. No new run can start on a retired instance. Its runs stay as they are.
-
-Each change records your name and shows in the Log, as with the command `target instance add` or `target instance retire`.
-
-## How a decision works
-
-1. Type a rationale. The action button stays disabled until the rationale has text.
-2. Click the action, for example `Approve checkout@2`. The panel shows a short summary and a `Confirm` button.
-3. Click `Confirm`. The UI records the decision and opens the next inbox item.
-
-Each form sends the digest of the snapshot that you see. A decision form also sends a token of the latest decision on the subject. When the record changed after the page loaded, the UI refuses the action, keeps your text, and shows a message.
-
-- When another oracle decided after the page loaded, the message names the decision and the actor, for example `run-7 was accepted by qa-lead`. Your decision is not recorded. Read the decision, then send yours again.
-- A form that you send a second time, for example after Back in the browser, is refused in the same way. The UI records each decision once.
-- When the plan changed after you opened the editor, the editor shows the latest version. `Your changes (not saved)` lists the values from your form that differ from it. Apply them again, then save.
-- A form with more than 256 KiB of text is refused with the status 413. Nothing is recorded.
-
-## Your name
-
-Each decision records an actor. The UI fills in the same default as the commands. The header shows `actor: <name>`. Click it to change the name. The UI keeps the new name in a cookie.
-
-## Live updates
-
-Each page updates when another process writes to the record, for example a delegated worker. The header shows `Live` while the connection is open. A form with your typed text is never replaced. Without JavaScript, the pages still work, and a reload shows the current state.
-
-## Keyboard
-
-| Key     | Action                             |
-| ------- | ---------------------------------- |
-| `/`     | Focus the search field.            |
-| `j` `k` | Move down and up in a list.        |
-| `Enter` | Open the selected item.            |
-| `g` `i` | Go to the inbox.                   |
-| `Esc`   | Close the evidence viewer or menu. |
-| `?`     | Show the shortcuts.                |
+The pages update when another process writes to the record.
 
 ## Next
 
-- [Decide as the oracle](oracle.md): what each decision does.
-- [The record](../reference/record.md#review-ui): how the UI reads and protects the record.
+- [The record](../reference/record.md#review-ui): the safety rules of the UI.

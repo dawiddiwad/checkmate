@@ -13,17 +13,11 @@ on:
         description: Create or resume the npm and GitHub release
         type: boolean
         default: false
-      live:
-        description: Run authenticated Claude acceptance
-        type: boolean
-        default: false
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -32,25 +26,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run phase:verify
-      - run: npm run test:tools
-  live:
-    if: github.event_name == 'workflow_dispatch' && inputs.live
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    env:
-      CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: npm
-      - run: npm ci
-      - run: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@2.1.319
-      - run: npm run test:live
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
   release-source:
     if: >-
@@ -102,11 +77,10 @@ jobs:
             core.setOutput('source', `pull-request-${pull.number}`)
 
   release:
-    needs: [verify, release-source, live]
+    needs: [verify, release-source]
     if: >-
       always() && needs.verify.result == 'success' &&
-      needs.release-source.outputs.source != '' &&
-      (needs.live.result == 'success' || needs.live.result == 'skipped')
+      needs.release-source.outputs.source != ''
     concurrency:
       group: release
       cancel-in-progress: false
@@ -119,7 +93,6 @@ jobs:
     env:
       RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
       RELEASE_SOURCE: ${{ needs.release-source.outputs.source }}
-      CHECKMATE_BROWSER_EXECUTABLE: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v6
         with:

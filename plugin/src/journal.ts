@@ -9,13 +9,11 @@ import {
 	schemaProblems,
 	unusedId,
 } from './contracts.ts'
-import { readEvidence } from './runs.ts'
 import { findInstance, targetRequest } from './targets.ts'
-import { normalised } from './lite.ts'
 import issueSchema from '../contracts/journal-issue.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
-import { existsSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 export const entryKinds = ['criterion', 'observation', 'defect', 'question', 'verdict', 'note', 'issue'] as const
 type Kind = (typeof entryKinds)[number] | 'answer' | 'decision'
@@ -98,11 +96,22 @@ const sourceMarkers = [
 	'unknown',
 	'none',
 ]
+const maxEvidenceBytes = 32 * 1024 * 1024
 const viaNames: Record<string, string> = { ui: 'the UI', api: 'the API', code: 'the code', other: 'other means' }
 const fewBaselines = 3
 const nonTesters = ['merge', 'verify']
 const sharedKinds: Kind[] = ['answer', 'decision']
 
+const normalised = (text: string) =>
+	text
+		.trim()
+		.replace(/\s+/g, ' ')
+		.replace(/\d+(\.\d+)?/g, (number) =>
+			number
+				.replace(/^0+(?=\d)/, '')
+				.replace(/(\.\d*?)0+$/, '$1')
+				.replace(/\.$/, '')
+		)
 const shortName = (actor: string) => actor.slice(actor.lastIndexOf(':') + 1)
 const isTester = (actor: string | undefined) =>
 	actor !== undefined && actor.startsWith('qa:') && !nonTesters.includes(shortName(actor))
@@ -228,14 +237,14 @@ export function openChange(
 	actor: string | undefined,
 	input: { changeId: string; target: string; instance?: string }
 ) {
-	return write(store, { actor, command: 'journal open', subject: input.changeId, input }, (operationId) => {
+	return write(store, { actor, command: 'open', subject: input.changeId, input }, (operationId) => {
 		const changeId = requireIdentifier(input.changeId, 'change ID')
 		targetRequest(store, input.target)
 		if (input.instance !== undefined) findInstance(store, input.target, input.instance)
 		requireCondition(
 			!one(store, 'SELECT 1 FROM changes WHERE change_id = ?', changeId),
 			`Change ${changeId} is open.`,
-			`Run checkmate journal show ${changeId} to read it. Use a new change ID for another change.`
+			`Run checkmate show ${changeId} to read it. Use a new change ID for another change.`
 		)
 		execute(
 			store,
@@ -250,27 +259,40 @@ export function openChange(
 				changeId,
 				targetId: input.target,
 				instanceId: input.instance ?? null,
-				next: [`Run checkmate journal guide ${changeId} to read how to log entries.`],
+				next: [`Run checkmate guide ${changeId} to read how to log entries.`],
 			}),
 			subjects: [`change:${changeId}`],
 		}
 	})
 }
 
+function evidenceFile(store: Store, name: string) {
+	requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
+	const real = realpathSync(resolve(store.workspace, name))
+	requireWellFormed(
+		real.startsWith(realpathSync(store.workspace) + sep),
+		`Evidence file must be inside the workspace: ${name}`
+	)
+	const stats = statSync(real)
+	requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`)
+	requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`)
+	return readFileSync(real)
+}
+
 function evidenceOf(store: Store, spec: string, cwd: string): Evidence {
 	const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path))
 	if (found) {
 		const name = relative(store.workspace, found)
-		const file = readEvidence(store, './', name)
-		const sha256 = digest(file.bytes)
+		const bytes = evidenceFile(store, name)
+		const sha256 = digest(bytes)
 		execute(
 			store,
 			'INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)',
 			sha256,
-			file.bytes.length,
-			file.bytes
+			bytes.length,
+			bytes
 		)
-		return { path: name, sha256, size: file.bytes.length }
+		return { path: name, sha256, size: bytes.length }
 	}
 	if (/\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec)) return { text: spec }
 	throw new Refusal(
@@ -353,7 +375,7 @@ export function readEntries(text: string): unknown {
 	requireWellFormed(
 		text.trim().length > 0,
 		'Missing JSON payload on standard input',
-		"Send the entries on standard input, in a quoted heredoc: checkmate journal log <changeId> --build <build> <<'EOF', the JSON, then EOF"
+		"Send the entries on standard input, in a quoted heredoc: checkmate log <changeId> --build <build> <<'EOF', the JSON, then EOF"
 	)
 	const body = withoutTrailingCommas(unfenced(text)).trim()
 	try {
@@ -433,7 +455,7 @@ function checkedEntry(
 			throw new EntryRefusal(
 				`${path}.supersedes`,
 				`${path}.supersedes names no earlier ${kind}: ${entry.supersedes}.`,
-				`Use the ID of an earlier ${kind}, and leave out "id". Run checkmate journal show to read the IDs.`,
+				`Use the ID of an earlier ${kind}, and leave out "id". Run checkmate show to read the IDs.`,
 				fix
 			)
 		}
@@ -456,7 +478,7 @@ function checkedEntry(
 		throw new EntryRefusal(
 			`${path}.${field}`,
 			`${path}.${field} names no ${kinds.join(' or ')}: ${id}.`,
-			`Use the ID of an earlier ${kinds.join(' or ')}. Run checkmate journal show to read the IDs.`,
+			`Use the ID of an earlier ${kinds.join(' or ')}. Run checkmate show to read the IDs.`,
 			{ ...given, [field]: fix }
 		)
 	}
@@ -556,7 +578,7 @@ export function logEntries(
 	input: { changeId: string; build?: string; entries: unknown; cwd?: string }
 ) {
 	const { cwd, ...logged } = input
-	const operation = { actor, command: 'journal log', subject: input.changeId, input: logged }
+	const operation = { actor, command: 'log', subject: input.changeId, input: logged }
 	return write(store, operation, (operationId, _, actor) => {
 		const { changeId } = changeRow(store, input.changeId)
 		const list = entryList(input.entries)
@@ -826,7 +848,7 @@ function gapList(state: Journal, build: string): Gap[] {
 				`unconfirmed ${issue.id}`,
 				'unconfirmed',
 				subject,
-				`One tester reported it, and no other actor confirmed it. Run checkmate journal verify ${state.changeId} --build ${issue.build}.`
+				`One tester reported it, and no other actor confirmed it. Run checkmate verify ${state.changeId} --build ${issue.build}.`
 			)
 		const statuses = Object.entries(issue.statuses)
 		const fixedBefore = statuses.some(([at, on]) => on.status === 'fixed' && state.builds.indexOf(at) < position)
@@ -1046,7 +1068,7 @@ export function mergeBuild(store: Store, changeId: string, build: string) {
 		candidates: candidates.slice(0, mergeLimit),
 		issues: issues.map(({ id, title, reports }) => ({ id, title: short(title), reports })),
 		ungrouped: defects.filter((defect) => !grouped.has(defect.id)).map((defect) => defect.id),
-		command: `checkmate journal log ${state.changeId} --build ${build}`,
+		command: `checkmate log ${state.changeId} --build ${build}`,
 		example,
 	})
 }
@@ -1068,7 +1090,7 @@ export function verifyBuild(store: Store, changeId: string, build: string) {
 	return completed(state.changeId, {
 		build,
 		items,
-		command: `checkmate journal log ${state.changeId} --build ${build}`,
+		command: `checkmate log ${state.changeId} --build ${build}`,
 		example: observationSchema.examples[0],
 	})
 }
@@ -1104,35 +1126,31 @@ export function answerQuestion(
 	actor: string | undefined,
 	input: { changeId: string; questionId: string; answer: string }
 ) {
-	return write(
-		store,
-		{ actor, command: 'journal answer', subject: input.changeId, input },
-		(operationId, _, actor) => {
-			const state = journal(store, input.changeId, actor)
-			const known = lookup(state, actor)
-			const question = known.get(input.questionId)
-			requireCondition(
-				question?.kind === 'question',
-				`Unknown question: ${input.questionId}.`,
-				`Use one of: ${
-					ofKind(state, 'question')
-						.map((entry) => entry.id)
-						.join(', ') || 'no question yet'
-				}.`
-			)
-			const entry: Entry = {
-				kind: 'answer',
-				id: unusedId('A', [...known.keys()]),
-				question: storedRef(question!, actor),
-				answer: requireText(input.answer, 'answer (--answer)'),
-			}
-			insert(store, state.changeId, entry, actor, operationId)
-			return {
-				reply: completed(state.changeId, { id: entry.id, question: input.questionId }),
-				subjects: [`change:${state.changeId}`],
-			}
+	return write(store, { actor, command: 'answer', subject: input.changeId, input }, (operationId, _, actor) => {
+		const state = journal(store, input.changeId, actor)
+		const known = lookup(state, actor)
+		const question = known.get(input.questionId)
+		requireCondition(
+			question?.kind === 'question',
+			`Unknown question: ${input.questionId}.`,
+			`Use one of: ${
+				ofKind(state, 'question')
+					.map((entry) => entry.id)
+					.join(', ') || 'no question yet'
+			}.`
+		)
+		const entry: Entry = {
+			kind: 'answer',
+			id: unusedId('A', [...known.keys()]),
+			question: storedRef(question!, actor),
+			answer: requireText(input.answer, 'answer (--answer)'),
 		}
-	)
+		insert(store, state.changeId, entry, actor, operationId)
+		return {
+			reply: completed(state.changeId, { id: entry.id, question: input.questionId }),
+			subjects: [`change:${state.changeId}`],
+		}
+	})
 }
 
 export function decideBuild(
@@ -1140,7 +1158,7 @@ export function decideBuild(
 	actor: string | undefined,
 	input: { changeId: string; build: string; decision: 'accepted' | 'rejected'; rationale: string }
 ) {
-	const command = input.decision === 'accepted' ? 'journal accept' : 'journal reject'
+	const command = input.decision === 'accepted' ? 'accept' : 'reject'
 	return write(store, { actor, command, subject: input.changeId, input }, (operationId, _, actor) => {
 		const state = journal(store, input.changeId)
 		requireCondition(

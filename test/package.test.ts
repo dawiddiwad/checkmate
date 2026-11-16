@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { directory, root } from './support.ts'
 import { packageReadme } from '../scripts/build-cli.ts'
@@ -11,7 +11,7 @@ function json(path: string) {
 	return JSON.parse(readFileSync(path, 'utf8'))
 }
 
-test('the npm package runs from node_modules, serves the UI, and delegate loads the bundled plugin', async (t) => {
+test('the npm package runs from node_modules, records a change, and serves the UI', async (t) => {
 	t.after(() => {
 		rmSync(join(root, 'cli/dist'), { recursive: true, force: true })
 		rmSync(join(root, 'cli/plugin'), { recursive: true, force: true })
@@ -33,8 +33,7 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 	const version = json(join(root, 'cli/package.json')).version
 	assert.equal(json(join(installed, 'package.json')).version, version)
 	assert.equal(json(join(installed, 'plugin/.claude-plugin/plugin.json')).version, version)
-	assert(existsSync(join(root, 'plugin/evals')))
-	assert.equal(existsSync(join(installed, 'plugin/evals')), false, 'The npm package ships plugin/evals')
+	assert(existsSync(join(installed, 'plugin/skills/qa/SKILL.md')))
 	assert.equal(readFileSync(join(installed, 'LICENSE'), 'utf8'), readFileSync(join(root, 'LICENSE'), 'utf8'))
 	const metadata = json(join(installed, 'package.json'))
 	assert.equal(metadata.description, 'The QA system of record for an agent software factory')
@@ -55,31 +54,13 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 		if (file) assert.ok(existsSync(join(root, file[1])), `missing file for ${target}`)
 	}
 
-	const fakes = join(project, 'fakes')
-	mkdirSync(fakes)
-	writeFileSync(
-		join(fakes, 'claude'),
-		`#!/usr/bin/env node
-const plugin = process.argv[process.argv.indexOf('--plugin-dir') + 1]
-require('node:fs').writeFileSync('plugin-dir.txt', plugin)
-const output = { status: 'needs_decision', subject: 'checkout-local', reasons: ['No browser.'] }
-console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_output: output }))
-`
-	)
-	chmodSync(join(fakes, 'claude'), 0o700)
-	const env = { ...process.env, PATH: `${fakes}:${process.env.PATH}`, CHECKMATE_ACTOR: 'tester' }
+	const env = { ...process.env, CHECKMATE_ACTOR: 'tester' }
 	const checkmate = (...args: string[]) =>
 		execFileSync(join(project, 'node_modules/.bin/checkmate'), args, { cwd: project, env, encoding: 'utf8' }).trim()
 
 	assert.equal(checkmate('--version'), version)
-	assert.match(checkmate('--help'), /checkmate delegate <setup\|plan\|revise\|execute>/)
-	assert.match(
-		checkmate('delegate', '--help'),
-		/^completed delegate\ncheckmate delegate <setup\|plan\|revise\|execute>/
-	)
-	assert.match(checkmate('plan', 'open', '--help'), /^completed plan open\ncheckmate plan open <planId>/)
+	assert.match(checkmate('--help'), /^checkmate open <changeId> --target <value>/m)
 	assert.equal(checkmate('init'), 'completed .checkmate/checkmate.db')
-	assert.equal(checkmate('plan', 'list'), 'completed plans count=0')
 	checkmate(
 		'target',
 		'open',
@@ -96,10 +77,9 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		'completed checkout-local/local recorded=true\nentry\tweb\thttp://127.0.0.1:9'
 	)
 	assert.equal(
-		checkmate('delegate', 'setup', 'checkout-local', '--allow', 'Read', '--timeout', '30'),
-		'needs_decision checkout-local\nreason: No browser.'
+		checkmate('open', 'cart', '--target', 'checkout-local'),
+		'completed cart target=checkout-local instance=-\nnext: Run checkmate guide cart to read how to log entries.'
 	)
-	assert.equal(readFileSync(join(project, 'plugin-dir.txt'), 'utf8'), realpathSync(join(installed, 'plugin')))
 	const ui = spawn(join(project, 'node_modules/.bin/checkmate'), ['ui'], { cwd: project, env })
 	try {
 		const [first] = (await once(ui.stdout, 'data')) as [Buffer]

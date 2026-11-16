@@ -167,7 +167,7 @@
 			"type": "object",
 			"properties": {
 				"level": {
-					"enum": ["smoke", "standard", "deep"]
+					"enum": ["smoke", "standard"]
 				},
 				"explorers": {
 					"type": "integer",

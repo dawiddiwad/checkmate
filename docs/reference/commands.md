@@ -211,7 +211,7 @@ An exploration is free testing of one build of a plan. The plan needs a request.
 ### explore start
 
 ```sh
-checkmate explore start <planId> --build <build> --allow <rule> [--allow <rule>] [--level smoke|standard|deep] [--explorers <n>] [--minutes <n>] [--instance <id>] [--mode exploratory|regression] [--since <git ref> [--until <git ref>] [--repo <dir>]] [--claude-arg <arg>] [--timeout <seconds>]
+checkmate explore start <planId> --build <build> --allow <rule> [--allow <rule>] [--level smoke|standard] [--explorers <n>] [--minutes <n>] [--instance <id>] [--mode exploratory|regression] [--since <git ref> [--until <git ref>] [--repo <dir>]] [--claude-arg <arg>] [--timeout <seconds>]
 ```
 
 `explore start` records the exploration and starts a supervisor in the background. It returns at once with the exploration ID. Then run `explore wait <explorationId>`.
@@ -317,7 +317,7 @@ checkmate explore follow <explorationId> [--allow <rule>] [--claude-arg <arg>] [
 It needs a completed exploration, and one or more questions of the exploration with an answer that no completed follow-up used. Else it refuses with the reason and a hint. It returns at once. Then run `explore wait <explorationId>`.
 
 1. It resumes each explorer session of the exploration for one more turn, with `--resume <session>`, the model, the `--settings` argument, and the `--allowedTools` rules of the earlier turns, and no tool list argument. Without `--allow`, `--claude-arg`, or `--timeout`, it uses the values of `explore start`. It skips a session that ended in its study turn, and a session that it cannot resume, and gives the reason of each.
-2. The brief of the turn does not name Checkmate. It gives the answered questions with their answers, numbered, the same list to each explorer: `The owner of the product answered these questions:`. It asks the explorer to test the points that the answers decide, on the same build, and to add to `report.md` each new defect and one line for each earlier unclear point that an answer settles. It gives the seconds of the follow-up turn of the level: smoke 300, standard 600, deep 900.
+2. The brief of the turn does not name Checkmate. It gives the answered questions with their answers, numbered, the same list to each explorer: `The owner of the product answered these questions:`. It asks the explorer to test the points that the answers decide, on the same build, and to add to `report.md` each new defect and one line for each earlier unclear point that an answer settles. It gives the seconds of the follow-up turn of the level: smoke 300, standard 600.
 3. The recorder runs again on each session that ended or timed out. Its prompt lists the entries of the explorer that the record holds, and asks only for the entries that are not in that list. Checkmate also drops each reply entry with the same kind and title (or text) as an entry of the list. The record event gives the count as `repeated`.
 4. The merge and the verify run for the new defects only. The merger gets the earlier claims of the build too, so a new defect that describes an earlier claim joins it.
 5. When one or more sessions are recorded, the follow-up is `completed`, and its answers are used. When the follow-up fails or stops, the exploration stays `completed` with its claims, its answers stay unused, and you can run it again.

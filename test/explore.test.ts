@@ -181,17 +181,29 @@ test('the level sets the count and the model; --explorers, --claude-arg --model,
 	const smoke = called().filter((call) => call.role === 'explorer')
 	assert.equal(smoke.length, testLevels.smoke.explorers)
 	assert.equal(after(smoke[0].args, '--model'), testLevels.smoke.model)
-	const deep = start(['--level', 'deep'])
-	assert.deepEqual([deep.body.explorers, deep.body.model], [testLevels.deep.explorers, testLevels.deep.model])
+	const standard = start(['--level', 'standard'])
+	assert.deepEqual(
+		[standard.body.explorers, standard.body.model],
+		[testLevels.standard.explorers, testLevels.standard.model]
+	)
 	command(['explore', 'wait', 'x-2', '--timeout', '60'])
-	assert.equal(called().filter((call) => call.role === 'explorer').length, testLevels.deep.explorers)
-	const host = start(['--level', 'deep', '--explorers', '1', '--claude-arg', '--model', '--claude-arg', 'host-model'])
+	assert.equal(called().filter((call) => call.role === 'explorer').length, testLevels.standard.explorers)
+	const host = start([
+		'--level',
+		'standard',
+		'--explorers',
+		'1',
+		'--claude-arg',
+		'--model',
+		'--claude-arg',
+		'host-model',
+	])
 	assert.deepEqual([host.body.explorers, host.body.model], [1, 'host-model'])
 	command(['explore', 'wait', 'x-3', '--timeout', '60'])
 	const status = command(['explore', 'status', 'x-3']).body
 	assert.deepEqual(
 		[status.level, status.explorerCount, status.model, status.modelFrom],
-		['deep', 1, 'host-model', 'host']
+		['standard', 1, 'host-model', 'host']
 	)
 	const [explorer] = called().filter((call) => call.role === 'explorer')
 	assert.deepEqual(explorer.args.filter((arg: string) => arg === '--model').length, 1)
@@ -325,7 +337,6 @@ test('--minutes sets the seconds of the test turn only, and the safety timeout s
 		[
 			[300, 600],
 			[600, 900],
-			[600, 1500],
 		]
 	)
 })

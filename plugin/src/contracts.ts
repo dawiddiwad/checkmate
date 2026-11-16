@@ -78,16 +78,31 @@ export function same(a: unknown, b: unknown) {
 	return canonical(a) === canonical(b)
 }
 
-export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
+export type SchemaProblem = { field: string; text: string; unknown: boolean; choices?: string[] }
+
+export function schemaProblems(name: string, value: unknown, prefix = name): SchemaProblem[] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
-	const errors = () =>
-		unionErrors(check.errors ?? [])
-			.filter((error) => error.keyword !== 'propertyNames')
-			.map((error) => schemaError(`${name}${error.instancePath}`, error))
-			.join(', ')
+	if (check(value)) return []
+	return unionErrors(check.errors ?? [])
+		.filter((error) => error.keyword !== 'propertyNames')
+		.map((error) => ({
+			field: String(
+				error.instancePath.split('/')[1] ??
+					error.params.missingProperty ??
+					error.params.additionalProperty ??
+					''
+			),
+			text: schemaError(`${prefix}${error.instancePath}`, error),
+			unknown: error.keyword === 'additionalProperties',
+			...(error.keyword === 'enum' ? { choices: (error.params.allowedValues ?? []).map(String) } : {}),
+		}))
+}
+
+export function validate<K extends keyof Documents>(name: K, value: unknown): Documents[K] {
+	const errors = schemaProblems(name, value).map((problem) => problem.text)
 	requireWellFormed(
-		check(value),
-		`Invalid ${name}: ${errors()}`,
+		!errors.length,
+		`Invalid ${name}: ${errors.join(', ')}`,
 		`Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
 	)
 	return value as Documents[K]

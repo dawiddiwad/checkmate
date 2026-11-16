@@ -1,0 +1,30 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-question.schema.json",
+	"description": "A question for the product owner. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "question"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"question": {
+			"description": "The question.",
+			"type": "string",
+			"minLength": 1
+		},
+		"about": {
+			"$ref": "journal-entry.schema.json#/definitions/about"
+		}
+	},
+	"required": ["kind", "question"],
+	"additionalProperties": false
+}

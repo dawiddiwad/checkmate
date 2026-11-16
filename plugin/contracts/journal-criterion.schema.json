@@ -1,0 +1,35 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-criterion.schema.json",
+	"description": "A rule or an acceptance criterion that the change must meet.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "criterion"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"text": {
+			"description": "The rule.",
+			"type": "string",
+			"minLength": 1
+		},
+		"source": {
+			"description": "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
+			"type": "string",
+			"minLength": 1
+		},
+		"area": {
+			"$ref": "journal-entry.schema.json#/definitions/area"
+		}
+	},
+	"required": ["kind", "text"],
+	"additionalProperties": false
+}

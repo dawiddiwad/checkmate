@@ -1,0 +1,77 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-defect.schema.json",
+	"description": "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "defect"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"title": {
+			"description": "What is wrong.",
+			"type": "string",
+			"minLength": 1
+		},
+		"expected": {
+			"description": "The correct result and its source.",
+			"type": "string",
+			"minLength": 1
+		},
+		"actual": {
+			"description": "What you saw.",
+			"type": "string",
+			"minLength": 1
+		},
+		"severity": {
+			"description": "The severity.",
+			"enum": ["critical", "high", "medium", "low"]
+		},
+		"about": {
+			"$ref": "journal-entry.schema.json#/definitions/about"
+		},
+		"steps": {
+			"$ref": "journal-entry.schema.json#/definitions/steps"
+		},
+		"saw": {
+			"$ref": "journal-entry.schema.json#/definitions/saw"
+		},
+		"value": {
+			"$ref": "journal-entry.schema.json#/definitions/value"
+		},
+		"via": {
+			"$ref": "journal-entry.schema.json#/definitions/via"
+		},
+		"evidence": {
+			"description": "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.",
+			"$ref": "journal-entry.schema.json#/definitions/evidence"
+		},
+		"links": {
+			"description": "The IDs of the observations, criteria, or questions that show it.",
+			"type": "array",
+			"items": {
+				"type": "string",
+				"minLength": 1
+			}
+		},
+		"suspected": {
+			"description": "true when you are not sure.",
+			"type": "boolean"
+		},
+		"question": {
+			"description": "The question that settles a suspected defect.",
+			"type": "string",
+			"minLength": 1
+		}
+	},
+	"required": ["kind", "build", "title", "expected", "actual", "severity"],
+	"additionalProperties": false
+}

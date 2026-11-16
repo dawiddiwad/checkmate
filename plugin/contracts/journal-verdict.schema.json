@@ -1,0 +1,39 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-verdict.schema.json",
+	"description": "The retest of an earlier defect on this build.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "verdict"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"defect": {
+			"description": "The ID of the earlier defect or issue.",
+			"type": "string",
+			"minLength": 1
+		},
+		"result": {
+			"description": "The result of the retest.",
+			"enum": ["fixed", "not_fixed"]
+		},
+		"saw": {
+			"description": "What you saw.",
+			"type": "string",
+			"minLength": 1
+		},
+		"evidence": {
+			"$ref": "journal-entry.schema.json#/definitions/evidence"
+		}
+	},
+	"required": ["kind", "build", "defect", "result"],
+	"additionalProperties": false
+}

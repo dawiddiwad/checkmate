@@ -74,13 +74,23 @@ import {
 import { exportPlan, exportRun, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
+import { explorationModes, openExploration } from './explorations.ts'
+import { logEntries, readEntries } from './journal.ts'
+import { defaultRecorderTimeout, recordSession } from './recorder.ts'
+import { checkClaudeArgs } from './sessions.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
-type Context = { actor: string | undefined; stdin: () => unknown; text: () => string }
+type Context = {
+	actor: string | undefined
+	stdin: () => unknown
+	text: () => string
+	cwd: string
+	env: Record<string, string | undefined>
+}
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
 	positionals: string[]
@@ -985,6 +995,95 @@ const commands: Record<string, Command> = {
 	},
 	'export plan': exportCommand('reference', formats, exportPlan),
 	'export run': exportCommand('runId', runFormats, exportRun),
+	'explore open': {
+		positionals: ['planId'],
+		flags: { build: 'value', instance: 'value', mode: explorationModes },
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor }) =>
+			openExploration(store, actor, {
+				planId: value(args, 'planId')!,
+				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
+				mode: value(args, 'mode'),
+			}),
+		print: (reply) => ({
+			facts: { plan: reply.data.planId, build: reply.data.build, instance: reply.data.instanceId },
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore log': {
+		positionals: ['explorationId'],
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, text, cwd }) =>
+			logEntries(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				entries: readEntries(text()),
+				cwd,
+			}),
+		print: (reply) => ({
+			facts: {
+				saved: (reply.data.saved as unknown[]).length,
+				refused: (reply.data.refused as unknown[]).length,
+			},
+			lines: [
+				...(reply.data.saved as Array<{ id: string; kind: string }>).map((item) => [
+					item.id,
+					'saved',
+					item.kind,
+				]),
+				...(reply.data.refused as Array<{ index: number; reason: string }>).map((item) => [
+					`[${item.index}]`,
+					'refused',
+					item.reason,
+				]),
+			],
+		}),
+	},
+	record: {
+		positionals: ['explorationId'],
+		flags: {
+			explorer: 'value',
+			session: 'value',
+			timeout: { min: 1, max: 86400 },
+			'claude-arg': 'repeat',
+		},
+		required: ['explorer', 'session'],
+		write: true,
+		run: (store, args, { actor, cwd, env }) =>
+			recordSession(
+				store,
+				actor,
+				{
+					explorationId: value(args, 'explorationId')!,
+					explorer: value(args, 'explorer')!,
+					session: value(args, 'session')!,
+					timeoutSeconds: integer(args, 'timeout') ?? defaultRecorderTimeout,
+					claudeArgs: checkClaudeArgs(list(args, 'claude-arg') ?? []),
+				},
+				env,
+				cwd
+			),
+		print: (reply) => ({
+			facts: {
+				explorer: reply.data.explorer,
+				session: reply.data.session,
+				recorder: reply.data.recorder,
+				saved: reply.data.saved,
+				refused: reply.data.refused,
+				evidenceMissing: reply.data.evidenceMissing || undefined,
+				referencesDropped: reply.data.referencesDropped || undefined,
+				costUsd: reply.data.costUsd,
+				durationMs: reply.data.durationMs,
+			},
+			lines: Object.entries((reply.data.added ?? {}) as Record<string, number>).map(([kind, count]) => [
+				'added',
+				kind,
+				count,
+			]),
+		}),
+	},
 	log: {
 		positionals: [],
 		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
@@ -1344,7 +1443,8 @@ function parse(name: string, tokens: string[]) {
 			continue
 		}
 		const next = tokens[++i]
-		if (next === undefined || next.startsWith('--')) throw wrong(`Missing value for ${token}`)
+		if (next === undefined || (next.startsWith('--') && flag !== 'claude-arg'))
+			throw wrong(`Missing value for ${token}`)
 		optionValue(token, kind, next)
 		if (kind !== 'list' && kind !== 'repeat') {
 			if (flag in args) throw wrong(`Option ${token} is given twice`)
@@ -1461,7 +1561,13 @@ export function run(argv: string[], io: Io): Outcome {
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
-		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin })
+		const reply = command.run(store, args, {
+			actor,
+			stdin: () => readJson(io.stdin()),
+			text: io.stdin,
+			cwd: io.cwd,
+			env: io.env,
+		})
 		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }

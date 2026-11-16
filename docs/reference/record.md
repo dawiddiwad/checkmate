@@ -12,6 +12,7 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 
 - Any command creates `.checkmate/` and the schema when they are missing. `checkmate init` only creates them.
 - `.checkmate/tmp/` holds binary evidence and browser output for a short time. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
+- `.checkmate/work/<explorationId>/` holds the files of the explorers while an exploration runs. Checkmate removes it when the exploration or a follow-up completes.
 - Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.
 
 ## Rules

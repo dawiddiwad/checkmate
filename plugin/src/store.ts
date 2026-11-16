@@ -438,6 +438,12 @@ function sorted(value: unknown): unknown {
 	return value
 }
 
+export function saveBlob(store: Store, bytes: Uint8Array) {
+	const sha256 = digest(bytes)
+	execute(store, 'INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)', sha256, bytes.length, bytes)
+	return { sha256, size: bytes.length }
+}
+
 export function digest(content: string | Uint8Array) {
 	return createHash('sha256').update(content).digest('hex')
 }

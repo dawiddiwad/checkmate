@@ -395,6 +395,11 @@ function sorted(value2) {
     );
   return value2;
 }
+function saveBlob(store, bytes) {
+  const sha256 = digest(bytes);
+  execute(store, "INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)", sha256, bytes.length, bytes);
+  return { sha256, size: bytes.length };
+}
 function digest(content) {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -8245,6 +8250,17 @@ var storeDenyRules = [
   "Bash(cat .checkmate:*)",
   "Bash(sqlite3 .checkmate:*)"
 ];
+function workDenyRules(otherFolders) {
+  return [
+    "Read(./.checkmate/checkmate.db*)",
+    "Edit(./.checkmate/checkmate.db*)",
+    "Read(./.checkmate/tmp/**)",
+    "Edit(./.checkmate/tmp/**)",
+    "Bash(cat .checkmate/checkmate.db:*)",
+    "Bash(sqlite3 .checkmate:*)",
+    ...otherFolders.flatMap((folder) => [`Read(./${folder}/**)`, `Edit(./${folder}/**)`])
+  ];
+}
 var pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 var maxOutputBytes = 4 * 1024 * 1024;
 var reservedClaudeArgs = [
@@ -8307,7 +8323,7 @@ function checkClaudeArgs(claudeArgs) {
 function childArgs(context, own) {
   const settings = {
     ...context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {},
-    ...context.denyStore ? { permissions: { deny: storeDenyRules } } : {}
+    ...context.deny?.length ? { permissions: { deny: context.deny } } : {}
   };
   return [
     "-p",
@@ -9515,16 +9531,7 @@ function evidenceOf(store, spec, cwd, missing) {
   const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : void 0);
   if (found && (!missing || insideWorkspace(store, found))) {
     const name = relative(store.workspace, found);
-    const bytes = evidenceFile(store, name);
-    const sha256 = digest(bytes);
-    execute(
-      store,
-      "INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)",
-      sha256,
-      bytes.length,
-      bytes
-    );
-    return { path: name, sha256, size: bytes.length };
+    return { path: name, ...saveBlob(store, evidenceFile(store, name)) };
   }
   if (!found && isEvidenceText(spec)) return { text: spec };
   if (missing) {
@@ -12078,8 +12085,8 @@ function charterOf(store, planId, scope, change, knownState = null) {
     knownState
   };
 }
-function evidenceFolder(explorationId, name) {
-  return `qa-evidence/${explorationId}/${name}`;
+function workFolder(explorationId, explorer) {
+  return `.checkmate/work/${explorationId}${explorer ? `/${explorer}` : ""}`;
 }
 var maxKnownLines = 150;
 var isEntryId = (word) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(word);
@@ -12166,8 +12173,8 @@ function knownStateText(store, planId, build) {
 function writeKnownState(store, planId, explorationId, build) {
   if (!one(store, "SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?", planId, explorationId))
     return null;
-  const path = `${evidenceFolder(explorationId, "known-state")}.md`;
-  mkdirSync3(join5(store.workspace, evidenceFolder(explorationId, "")), { recursive: true });
+  const path = `${workFolder(explorationId)}/known-state.md`;
+  mkdirSync3(join5(store.workspace, workFolder(explorationId)), { recursive: true });
   writeFileSync(join5(store.workspace, path), knownStateText(store, planId, build));
   return path;
 }
@@ -12879,13 +12886,14 @@ function recorderPrompt(build, record, saved = []) {
     ] : []
   ].join("\n");
 }
-function followBrief(questions, evidenceFolder2, seconds) {
+function followBrief(questions, workFolder2, seconds) {
   return [
     "The owner of the product answered these questions:",
     ...questions.map((item, index2) => `${index2 + 1}. ${item.question} Answer: ${item.answer}`),
     "",
     "Test the points that these answers decide, on the same build.",
-    `Add to ${evidenceFolder2}/report.md: each new defect in the same form, and for each earlier unclear point that an answer settles, one line that says what is now known.`,
+    `Your work folder is ${workFolder2}/ again, and it is empty. Put each file that you or your tools make in it.`,
+    `Write ${workFolder2}/follow-up-report.md with only what this turn adds: each new defect in the same form as in your report, and for each earlier unclear point that an answer settles, one line that says what is now known.`,
     `You have ${seconds} seconds for this turn.`
   ].join("\n");
 }
@@ -12907,7 +12915,7 @@ function entryPointLine(entry) {
 function testDataText(dataPrefix) {
   return `Use the existing records of the application, and make new records when a case needs them. Start each name or value that you make with ${dataPrefix}.`;
 }
-function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
+function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   const change = charter.change;
   const diff = change ? [
     `The code of the change is shown by git diff ${change.range.join(" ")} in ${change.repo === "." ? "the workspace" : `the folder ${change.repo}`}.`,
@@ -12936,11 +12944,12 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
       `Tools you can use: ${charter.tools.map((tool) => tool.name).sort().join(", ")}.`
     ] : [],
     "A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.",
-    "Folders in the workspace whose names start with a dot belong to tools, not to the product under test.",
+    `Your work folder is ${workFolder2}/. Put each file that you or your tools make in it, for example notes, scripts, screenshots, responses, and logs.`,
+    "Apart from your work folder, the folders in the workspace whose names start with a dot belong to tools, not to the product under test.",
     "",
     "Study the sources, the changed files and the running application.",
-    `Write ${evidenceFolder2}/plan.md with your test approach.`,
-    `Write ${evidenceFolder2}/questions.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None.`,
+    `Write ${workFolder2}/plan.md with your test approach.`,
+    `Write ${workFolder2}/questions.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None.`,
     "Do not test the change in this turn.",
     `You have ${seconds.study} seconds for this turn. Write the two files early and update them as you go.`
   ];
@@ -12949,8 +12958,8 @@ function explorerBrief(charter, entries, dataPrefix, evidenceFolder2, seconds) {
     "The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.",
     ...diff,
     testDataText(dataPrefix),
-    `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
-    `Write ${evidenceFolder2}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
+    `Save the files that show a problem, for example screenshots or responses, in ${workFolder2}/.`,
+    `Write ${workFolder2}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
     ...charter.knownState ? [
       `For each problem in ${charter.knownState}, write one line in the report: still present, fixed, or not retested with the reason.`
     ] : [],
@@ -13021,7 +13030,7 @@ function verifierBrief(items, entries, operations, dataPrefix) {
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync2, mkdirSync as mkdirSync4, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join6 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["merge", "verify"];
@@ -13188,7 +13197,9 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   ];
   const missing = [];
   const dropped = [];
-  const log = (entries) => logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, entries, missing, dropped, cwd);
+  const work = join6(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
+  const evidenceCwd = existsSync2(work) ? work : cwd;
+  const log = (entries) => logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, entries, missing, dropped, evidenceCwd);
   const given = replyArray(calls[0].result);
   const first = given && newEntries(given, earlier);
   const repeated = given && first ? given.length - first.length : 0;
@@ -13319,7 +13330,7 @@ function upstreamBase(repository) {
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdirSync as mkdirSync5, openSync } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readFileSync as readFileSync5, rmSync as rmSync4 } from "node:fs";
 import { join as join7 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
@@ -13365,6 +13376,44 @@ function launchPlan(profile, input, env) {
 }
 function explorerNames(count) {
   return Array.from({ length: count }, (_, index2) => `a${index2 + 1}`);
+}
+function explorerWork(store, explorationId, explorer, count) {
+  const folder = workFolder(explorationId, explorer);
+  mkdirSync5(join7(store.workspace, folder), { recursive: true });
+  const others = explorerNames(count).filter((name) => name !== explorer);
+  return {
+    folder,
+    deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
+    extraEnv: {
+      PLAYWRIGHT_MCP_OUTPUT_DIR: join7(store.workspace, folder),
+      PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`
+    }
+  };
+}
+var keptFiles = ["plan.md", "questions.md", "report.md", "follow-up-report.md"];
+function keepWorkFiles(store, actor, explorationId, explorer, phase) {
+  const folder = join7(store.workspace, workFolder(explorationId, explorer));
+  const files2 = keptFiles.flatMap((name) => {
+    const path = join7(folder, name);
+    return existsSync3(path) ? [{ name, bytes: readFileSync5(path) }] : [];
+  });
+  if (!files2.length) return;
+  const input = { explorer, phase, files: files2.map((file) => file.name) };
+  write(store, { actor, command: "explore files", subject: explorationId, input }, (operationId, at) => {
+    const saved = files2.map(({ name, bytes }) => ({ name, ...saveBlob(store, bytes) }));
+    addEvent(
+      store,
+      explorationId,
+      { step: "files", explorer, status: "completed", detail: { phase, files: saved } },
+      operationId,
+      at
+    );
+    return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
+  });
+}
+function removeWork(store, explorationId) {
+  rmSync4(join7(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
+  rmSync4(join7(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
 }
 function startSupervisor(store, explorationId, actor, env, extra = []) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
@@ -13451,8 +13500,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
     const session = randomUUID3();
-    const folder = evidenceFolder(explorationId, explorer);
-    mkdirSync5(join7(store.workspace, folder), { recursive: true });
+    const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers);
     const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
       study: launch.studySeconds,
       test: launch.testSeconds
@@ -13465,10 +13513,10 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
     });
     const turn = (own, prompt) => launchClaude(
       claude,
-      childArgs({ ...launch.context, denyStore: true }, [...own, ...allowed]),
+      childArgs({ ...launch.context, deny }, [...own, ...allowed]),
       prompt,
       store.workspace,
-      childEnv(env),
+      childEnv(env, extraEnv),
       launch.timeoutSeconds
     );
     const study = await turn(["--session-id", session], brief.study);
@@ -13598,7 +13646,7 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const call = await launchClaude(
     requireClaude(env),
-    childArgs({ ...launch.context, denyStore: true }, ["--session-id", session, ...allowed]),
+    childArgs({ ...launch.context, deny: storeDenyRules }, ["--session-id", session, ...allowed]),
     brief,
     store.workspace,
     childEnv(env),
@@ -13650,6 +13698,7 @@ async function driveExploration(workspace, explorationId, env) {
         ended.filter((item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== "operational_error"),
         env
       );
+      for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, "test");
     }
     const ok = explorationEvents(store, explorationId).filter(
       (item) => item.step === "record" && item.status === "completed"
@@ -13657,6 +13706,7 @@ async function driveExploration(workspace, explorationId, env) {
     if (ok) {
       mergeReports(store, actor, explorationId, launch, env);
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env);
+      removeWork(store, explorationId);
     }
     event(store, actor, explorationId, {
       step: "done",
@@ -13785,16 +13835,19 @@ async function driveFollow(workspace, explorationId, env) {
       timeoutSeconds: plan.timeoutSeconds
     };
     const sessions = followSessions(events);
+    const phase = `follow-${events.filter((item) => item.step === "follow").length}`;
+    const count = startOf(events).explorers;
     const claude = requireClaude(env);
     const allowed = plan.allow.flatMap((rule) => ["--allowedTools", rule]);
     const ended = await Promise.all(
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
+        const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count);
         const call = await launchClaude(
           claude,
-          childArgs({ ...plan.context, denyStore: true }, ["--resume", session, ...allowed]),
-          followBrief(plan.questions, evidenceFolder(explorationId, explorer), plan.seconds),
+          childArgs({ ...plan.context, deny }, ["--resume", session, ...allowed]),
+          followBrief(plan.questions, folder, plan.seconds),
           store.workspace,
-          childEnv(env),
+          childEnv(env, extraEnv),
           plan.timeoutSeconds
         );
         return { explorer, session, call };
@@ -13819,9 +13872,11 @@ async function driveFollow(workspace, explorationId, env) {
     const recorded = recordExplorers(store, actor, explorationId, resumed, env).filter(
       (status) => status === "completed"
     ).length;
+    for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, phase);
     if (recorded) {
       mergeReports(store, actor, explorationId, launch, env, plan.after);
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after);
+      removeWork(store, explorationId);
     }
     const skipped = [
       ...sessions.flatMap((item) => item.skipped ? [item.skipped] : []),
@@ -13926,6 +13981,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
+    workFolder: ["failed", "stopped"].includes(state) && existsSync3(join7(store.workspace, workFolder(row.exploration_id))) ? workFolder(row.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -13963,7 +14019,17 @@ function explorationReport(store, explorationId) {
     questions: planQuestions(store, opened.plan_id).filter((question) => question.explorationId === explorationId),
     criteria: own.filter((entry) => entry.kind === "criterion").map(({ id: id2, text, source }) => ({ id: id2, text, source: source ?? null })),
     notes: own.filter((entry) => entry.kind === "note").map(({ id: id2, text, area: area2 }) => ({ id: id2, text, area: area2 ?? null })),
-    observations: own.filter((entry) => entry.kind === "observation").length
+    observations: own.filter((entry) => entry.kind === "observation").length,
+    files: explorationEvents(store, explorationId).filter((item) => item.step === "files").flatMap(
+      (item) => item.detail.files.map((file) => ({
+        explorer: item.explorer,
+        phase: item.detail.phase,
+        ...file,
+        text: Buffer.from(
+          one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", file.sha256).bytes
+        ).toString("utf8")
+      }))
+    )
   };
 }
 
@@ -15622,7 +15688,7 @@ function exportExploration(store, explorationId, format2) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync2, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync6 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/ui/html.ts
@@ -18452,19 +18518,19 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath2(new URL(candidate, import.meta.url));
-    if (existsSync2(path + file)) return path;
+    if (existsSync4(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name) => readFileSync5(files2 + name);
+  const read = (name) => readFileSync6(files2 + name);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name) => readFileSync5(`${fonts}${name}.woff2`)
+    font: (name) => readFileSync6(`${fonts}${name}.woff2`)
   };
 }
 function securityHeaders() {
@@ -19451,7 +19517,7 @@ function harvestExploration(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync3 } from "node:fs";
 import { dirname, resolve as resolve5 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
@@ -19572,7 +19638,8 @@ function explorationLines(reply) {
       since: status.since ?? void 0,
       until: status.until ?? void 0,
       studySeconds: status.studySeconds ?? void 0,
-      testSeconds: status.testSeconds ?? void 0
+      testSeconds: status.testSeconds ?? void 0,
+      workFolder: status.workFolder ?? void 0
     },
     lines: [
       ...status.explorers.map((item) => [
@@ -20620,7 +20687,8 @@ var commands = {
             question.question,
             ...question.members.length > 1 ? [`members=${question.members.join(",")}`] : []
           ]),
-          ...report.criteria.map((criterion) => [criterion.id, "criterion", criterion.text])
+          ...report.criteria.map((criterion) => [criterion.id, "criterion", criterion.text]),
+          ...report.files.map((file) => [file.explorer, "file", file.phase, file.name, `${file.size} bytes`])
         ]
       };
     }
@@ -21119,7 +21187,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync6(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync7(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
   requireWellFormed(
@@ -21231,7 +21299,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync6(0, "utf8")
+    stdin: () => readFileSync7(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

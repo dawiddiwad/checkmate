@@ -253,6 +253,7 @@ function explorationLines(reply: Reply): Printed {
 			until: status.until ?? undefined,
 			studySeconds: status.studySeconds ?? undefined,
 			testSeconds: status.testSeconds ?? undefined,
+			workFolder: status.workFolder ?? undefined,
 		},
 		lines: [
 			...status.explorers.map((item) => [
@@ -1367,6 +1368,7 @@ const commands: Record<string, Command> = {
 						...(question.members.length > 1 ? [`members=${question.members.join(',')}`] : []),
 					]),
 					...report.criteria.map((criterion) => [criterion.id, 'criterion', criterion.text]),
+					...report.files.map((file) => [file.explorer, 'file', file.phase, file.name, `${file.size} bytes`]),
 				],
 			}
 		},

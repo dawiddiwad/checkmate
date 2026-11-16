@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
+import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore } from '../plugin/src/store.ts'
-import { storeDenyRules } from '../plugin/src/sessions.ts'
+import { workDenyRules } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
@@ -61,7 +62,7 @@ test('explore follow refuses an exploration that is not completed or that has no
 })
 
 test('explore follow resumes each session with the answers, records only new entries, and joins claims', (t) => {
-	const { command, text, wait, reply, called } = setup(t)
+	const { command, text, wait, reply, called, workspace } = setup(t)
 	command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow])
 	wait('x-1')
 	const [tester] = called().filter((call) => call.role === 'tester')
@@ -102,15 +103,16 @@ test('explore follow resumes each session with the answers, records only new ent
 			'1. Can a coupon apply to a sale item? Answer: No.',
 			'',
 			'Test the points that these answers decide, on the same build.',
-			'Add to qa-evidence/x-1/a1/report.md: each new defect in the same form, and for each earlier unclear point that an answer settles, one line that says what is now known.',
+			'Your work folder is .checkmate/work/x-1/a1/ again, and it is empty. Put each file that you or your tools make in it.',
+			'Write .checkmate/work/x-1/a1/follow-up-report.md with only what this turn adds: each new defect in the same form as in your report, and for each earlier unclear point that an answer settles, one line that says what is now known.',
 			'You have 300 seconds for this turn.',
 		].join('\n')
 	)
 	assert.equal(after(follower.args, '--resume'), after(tester.args, '--resume'))
 	assert.equal(after(follower.args, '--model'), after(tester.args, '--model'))
-	assert.equal(after(follower.args, '--settings'), JSON.stringify({ permissions: { deny: storeDenyRules } }))
+	assert.equal(after(follower.args, '--settings'), JSON.stringify({ permissions: { deny: workDenyRules([]) } }))
 	assert.deepEqual(follower.args, tester.args)
-	assert.doesNotMatch(follower.prompt, /checkmate|journal|recorder|\brecord\b/i)
+	assert.doesNotMatch(follower.prompt.replaceAll('.checkmate/work/', ''), /checkmate|journal|recorder|\brecord\b/i)
 	assert.equal(after(recorder.args, '--resume'), after(tester.args, '--resume'))
 	assert.match(
 		recorder.prompt,
@@ -140,6 +142,16 @@ test('explore follow resumes each session with the answers, records only new ent
 	assert.match(text(['explore', 'status', 'x-1']), /\nfollow\tstarted\tanswers=1\n/)
 	assert.match(text(['explore', 'show', 'x-1']), /\nfollowed\tcompleted\tanswers=1(\n|$)/)
 
+	assert.deepEqual(
+		shown.files.map((file: { phase: string; name: string }) => [file.phase, file.name]),
+		[
+			['test', 'plan.md'],
+			['test', 'report.md'],
+			['follow-1', 'follow-up-report.md'],
+			['follow-2', 'follow-up-report.md'],
+		]
+	)
+	assert(!existsSync(join(workspace, '.checkmate', 'work', 'x-1')), 'work folder removed after the follow-up')
 	const used = command(['explore', 'follow', 'x-1'])
 	assert.match(used.body.reasons[1], /has no answer that a follow-up has not used/)
 	assert(!command(['status', 'checkout']).body.next.some((line: string) => /explore follow/.test(line)))

@@ -6,7 +6,7 @@ import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type Env = Record<string, string | undefined>
-export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[]; denyStore?: boolean }
+export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[]; deny?: string[] }
 
 export const storeDenyRules = [
 	'Read(./.checkmate/**)',
@@ -15,6 +15,18 @@ export const storeDenyRules = [
 	'Bash(cat .checkmate:*)',
 	'Bash(sqlite3 .checkmate:*)',
 ]
+
+export function workDenyRules(otherFolders: string[]) {
+	return [
+		'Read(./.checkmate/checkmate.db*)',
+		'Edit(./.checkmate/checkmate.db*)',
+		'Read(./.checkmate/tmp/**)',
+		'Edit(./.checkmate/tmp/**)',
+		'Bash(cat .checkmate/checkmate.db:*)',
+		'Bash(sqlite3 .checkmate:*)',
+		...otherFolders.flatMap((folder) => [`Read(./${folder}/**)`, `Edit(./${folder}/**)`]),
+	]
+}
 export type ClaudeCall = {
 	failure?: ['interrupted' | 'operational_error', string]
 	result?: unknown
@@ -93,7 +105,7 @@ export function checkClaudeArgs(claudeArgs: string[]) {
 export function childArgs(context: ChildContext, own: string[]) {
 	const settings = {
 		...(context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {}),
-		...(context.denyStore ? { permissions: { deny: storeDenyRules } } : {}),
+		...(context.deny?.length ? { permissions: { deny: context.deny } } : {}),
 	}
 	return [
 		'-p',

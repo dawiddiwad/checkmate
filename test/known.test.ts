@@ -63,7 +63,7 @@ test('a later exploration gets one plain file with the results of earlier builds
 		return { code: outcome.code, body: JSON.parse(outcome.output), output: outcome.output }
 	}
 	command(['explore', 'open', 'checkout', '--build', 'b1'])
-	assert.equal(existsSync(join(workspace, 'qa-evidence', 'x-1', 'known-state.md')), false)
+	assert.equal(existsSync(join(workspace, '.checkmate', 'work', 'x-1', 'known-state.md')), false)
 	const charter = (id: string) =>
 		JSON.parse(
 			command(['query', `SELECT charter FROM explorations WHERE exploration_id = '${id}'`]).body.rows[0].charter
@@ -75,8 +75,8 @@ test('a later exploration gets one plain file with the results of earlier builds
 	command(['claim', 'reject', 'checkout', 'a1/D1', '--rationale', 'Stacking is intended.'])
 	const started = command(['explore', 'start', 'checkout', '--build', 'b2', '--level', 'smoke', ...allow])
 	assert.equal(started.code, 0, started.output)
-	assert.equal(charter('x-2').knownState, 'qa-evidence/x-2/known-state.md')
-	const text = readFileSync(join(workspace, 'qa-evidence', 'x-2', 'known-state.md'), 'utf8')
+	assert.equal(charter('x-2').knownState, '.checkmate/work/x-2/known-state.md')
+	const text = readFileSync(join(workspace, '.checkmate', 'work', 'x-2', 'known-state.md'), 'utf8')
 	assert.equal(
 		text,
 		[
@@ -117,11 +117,11 @@ test('a later exploration gets one plain file with the results of earlier builds
 	const explorer = calls.find((call) => call.role === 'explorer')
 	assert.match(
 		explorer.prompt,
-		/\nRead qa-evidence\/x-2\/known-state\.md\. It has the results of earlier builds\. Retest each open problem/
+		/\nRead \.checkmate\/work\/x-2\/known-state\.md\. It has the results of earlier builds\. Retest each open problem/
 	)
 	assert.match(
 		explorer.prompt,
-		/\nFolders in the workspace whose names start with a dot belong to tools, not to the product under test\.\n/
+		/\nApart from your work folder, the folders in the workspace whose names start with a dot belong to tools, not to the product under test\.\n/
 	)
 	const recorder = calls.filter((call) => call.role === 'recorder').at(-1)
 	assert.match(recorder.prompt, /open defect a2\/D1 \(b1, low\): Wrong tax/)

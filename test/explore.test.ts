@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import type { Profile } from '../plugin/src/types.ts'
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
@@ -10,7 +10,7 @@ import { addEvent } from '../plugin/src/explorations.ts'
 import { explorerBrief } from '../plugin/src/briefs.ts'
 import { driveExploration, launchPlan } from '../plugin/src/explorers.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
-import { authenticationHint, storeDenyRules } from '../plugin/src/sessions.ts'
+import { authenticationHint, workDenyRules } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import type { FakeReplies } from './claude.ts'
@@ -51,13 +51,17 @@ function setup(
 
 const after = (args: string[], flag: string) => args[args.indexOf(flag) + 1]
 const hidden = JSON.stringify({ enabledPlugins: { 'checkmate@checkmate': false } })
-const explorerSettings = JSON.stringify({
-	enabledPlugins: { 'checkmate@checkmate': false },
-	permissions: { deny: storeDenyRules },
-})
+const others = (explorer: string, names: string[]) =>
+	names.filter((name) => name !== explorer).map((name) => `.checkmate/work/x-1/${name}`)
+const explorerSettings = (explorer: string) =>
+	JSON.stringify({
+		enabledPlugins: { 'checkmate@checkmate': false },
+		permissions: { deny: workDenyRules(others(explorer, ['a1', 'a2', 'a3'])) },
+	})
+const nameOf = (call: { prompt: string }) => /\.checkmate\/work\/x-1\/(a\d)\//.exec(call.prompt)![1]
 
 test('explore start launches the explorers of the level in a clean context, then records each session', (t) => {
-	const { start, wait, called, workspace } = setup(t)
+	const { start, wait, called, workspace, command } = setup(t)
 	const started = start()
 	assert.equal(started.code, 0, JSON.stringify(started.body))
 	assert.deepEqual(
@@ -91,11 +95,12 @@ test('explore start launches the explorers of the level in a clean context, then
 	assert.equal(explorers.length, 3)
 	for (const call of explorers) {
 		assert.equal(after(call.args, '--model'), testLevels.standard.model)
-		assert.equal(after(call.args, '--settings'), explorerSettings)
+		assert.equal(after(call.args, '--settings'), explorerSettings(nameOf(call)))
+		assert.equal(call.work, join(workspace, '.checkmate', 'work', 'x-1', nameOf(call)))
 		assert.match(call.prompt, /^A change of the application is ready for test\. Study it before you test\.\n/)
 		assert.match(
 			call.prompt,
-			/\nStudy the sources, the changed files and the running application\.\nWrite qa-evidence\/x-1\/a[123]\/plan\.md with your test approach\.\nWrite qa-evidence\/x-1\/a[123]\/questions\.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None\.\nDo not test the change in this turn\.\nYou have 600 seconds for this turn\. Write the two files early and update them as you go\.$/
+			/\nStudy the sources, the changed files and the running application\.\nWrite \.checkmate\/work\/x-1\/a[123]\/plan\.md with your test approach\.\nWrite \.checkmate\/work\/x-1\/a[123]\/questions\.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None\.\nDo not test the change in this turn\.\nYou have 600 seconds for this turn\. Write the two files early and update them as you go\.$/
 		)
 		assert.match(
 			call.prompt,
@@ -104,7 +109,7 @@ test('explore start launches the explorers of the level in a clean context, then
 		assert.deepEqual(call.args.filter((arg: string) => arg === '--allowedTools').length, 2)
 		assert.deepEqual(call.env, [])
 		assert.equal(call.cwd, workspace)
-		assert.doesNotMatch(call.prompt, /checkmate|journal|recorder|\brecord\b/i)
+		assert.doesNotMatch(call.prompt.replaceAll('.checkmate/work/', ''), /checkmate|journal|recorder|\brecord\b/i)
 		assert.doesNotMatch(call.prompt, /minutes|Test until|First read|At the end/)
 		assert.match(call.prompt, /http:\/\/127\.0\.0\.1:4173/)
 		assert.match(call.args.join(' '), /--session-id/)
@@ -117,14 +122,14 @@ test('explore start launches the explorers of the level in a clean context, then
 		const study = explorers.find((item) => after(item.args, '--session-id') === after(call.args, '--resume'))
 		assert(calls.indexOf(study) < calls.indexOf(call), 'study turn first')
 		assert.equal(after(call.args, '--model'), testLevels.standard.model)
-		assert.equal(after(call.args, '--settings'), explorerSettings)
+		assert.equal(after(call.args, '--settings'), explorerSettings(nameOf(call)))
 		assert.deepEqual(
 			call.args.filter((arg: string, index: number) => call.args[index - 1] === '--allowedTools'),
 			['Read', 'Bash']
 		)
 		assert(!call.args.some((arg: string) => /--tools|disallowed|--session-id|--fork-session/.test(arg)))
-		assert.doesNotMatch(call.prompt, /checkmate|journal|recorder|\brecord\b/i)
-		const explorer = /qa-evidence\/x-1\/(a\d)\/plan\.md/.exec(study.prompt)![1]
+		assert.doesNotMatch(call.prompt.replaceAll('.checkmate/work/', ''), /checkmate|journal|recorder|\brecord\b/i)
+		const explorer = /\.checkmate\/work\/x-1\/(a\d)\/plan\.md/.exec(study.prompt)![1]
 		assert.match(
 			call.prompt,
 			new RegExp(
@@ -132,8 +137,8 @@ test('explore start launches the explorers of the level in a clean context, then
 					'^Now test the change and the existing behaviour that it can break\\.',
 					'The owner of the product has not answered your questions yet\\. Use the sources where they decide the point, and report the rest as unclear\\.',
 					`Use the existing records of the application, and make new records when a case needs them\\. Start each name or value that you make with qa-x-1-${explorer}-\\.`,
-					`Save the files that show a problem, for example screenshots or responses, in qa-evidence/x-1/${explorer}/\\.`,
-					`Write qa-evidence/x-1/${explorer}/report\\.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files\\. Number the defects D1, D2, and so on\\. List also what you tested and what is still unclear\\.`,
+					`Save the files that show a problem, for example screenshots or responses, in \\.checkmate/work/x-1/${explorer}/\\.`,
+					`Write \\.checkmate/work/x-1/${explorer}/report\\.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files\\. Number the defects D1, D2, and so on\\. List also what you tested and what is still unclear\\.`,
 					'You have 900 seconds for this turn\\. Write the report early and update it as you go\\.$',
 				].join('\\n')
 			)
@@ -152,7 +157,21 @@ test('explore start launches the explorers of the level in a clean context, then
 		stdin: () => '',
 	})
 	assert.match(status.output, /^completed x-1 state=completed plan=checkout build=b1 level=standard explorers=3/)
-	assert.match(readFileSync(join(workspace, '.checkmate', 'tmp', 'explore-x-1.log'), 'utf8'), /^$/)
+	assert(!existsSync(join(workspace, '.checkmate', 'tmp', 'explore-x-1.log')), 'log removed')
+	assert(!existsSync(join(workspace, '.checkmate', 'work', 'x-1')), 'work folder removed')
+	assert(!existsSync(join(workspace, 'qa-evidence')), 'no folder in the project root')
+	const shown = command(['explore', 'show', 'x-1']).body
+	assert.deepEqual(
+		shown.files.map((file: { explorer: string; name: string; text: string }) => [
+			file.explorer,
+			file.name,
+			file.text,
+		]),
+		['a1', 'a2', 'a3'].flatMap((name) => [
+			[name, 'plan.md', `explorer of qa-x-1-${name}\n`],
+			[name, 'report.md', `tester of qa-x-1-${name}\n`],
+		])
+	)
 })
 
 test('the level sets the count and the model; --explorers, --claude-arg --model, and the profile override it', (t) => {
@@ -205,8 +224,8 @@ test('without an install record the explorers start without the override, and st
 			.filter((call) => call.args.includes('--settings'))
 			.map((call) => [call.role, JSON.parse(after(call.args, '--settings'))]),
 		[
-			['explorer', { permissions: { deny: storeDenyRules } }],
-			['tester', { permissions: { deny: storeDenyRules } }],
+			['explorer', { permissions: { deny: workDenyRules([]) } }],
+			['tester', { permissions: { deny: workDenyRules([]) } }],
 		]
 	)
 	const status = run(['explore', 'status', 'x-1', '--workspace', workspace], {
@@ -238,6 +257,9 @@ test('a failed launch keeps the last lines of stderr, and status offers the test
 	assert.equal(command(['explore', 'start', 'later', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
 	const failed = command(['explore', 'wait', 'x-1', '--timeout', '60'])
 	assert.equal(failed.body.outcome, 'failed')
+	assert.equal(failed.body.workFolder, '.checkmate/work/x-1')
+	assert(existsSync(join(workspace, '.checkmate', 'work', 'x-1', 'a1', 'plan.md')))
+	assert(existsSync(join(workspace, '.checkmate', 'tmp', 'explore-x-1.log')))
 	assert.deepEqual(
 		failed.body.explorers[0].stderr,
 		Array.from({ length: 10 }, (_, index) => `stack line ${index + 3}`)
@@ -379,4 +401,18 @@ test('a test turn that times out keeps its work: the recorder forks the session'
 		['explorer', 'tester', 'recorder']
 	)
 	assert.equal(after(calls[2].args, '--resume'), after(calls[0].args, '--session-id'))
+})
+
+test('the recorder stores each evidence file of the work folder as a blob before the folder goes', (t) => {
+	const { start, wait, command, workspace } = setup(t, {
+		replies: { explorer: 'Tested.', recorder: [{ ...defect, evidence: 'report.md' }] },
+	})
+	start(['--level', 'smoke'])
+	assert.equal(wait().body.outcome, 'done')
+	const [entry] = command(['query', "SELECT body FROM journal_entries WHERE kind = 'defect'"]).body.rows
+	const [evidence] = JSON.parse(entry.body).evidence
+	assert.equal(evidence.path, '.checkmate/work/x-1/a1/report.md')
+	const blob = command(['query', `SELECT size FROM blobs WHERE sha256 = '${evidence.sha256}'`]).body.rows
+	assert.deepEqual(blob, [{ size: evidence.size }])
+	assert(!existsSync(join(workspace, '.checkmate', 'work', 'x-1')))
 })

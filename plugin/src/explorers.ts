@@ -3,9 +3,9 @@ import type { Profile } from './types.ts'
 import type { ChildContext, ClaudeCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
-import { closeStore, completed, openStore, write } from './store.ts'
+import { closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
-import { addEvent, evidenceFolder, exploration, explorationEvents, insertExploration } from './explorations.ts'
+import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import {
 	explorationRow,
@@ -35,10 +35,12 @@ import {
 	replyArray,
 	launchClaude,
 	requireClaude,
+	storeDenyRules,
+	workDenyRules,
 } from './sessions.ts'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, openSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type StartInput = OpenInput & {
@@ -114,6 +116,48 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 
 export function explorerNames(count: number) {
 	return Array.from({ length: count }, (_, index) => `a${index + 1}`)
+}
+
+function explorerWork(store: Store, explorationId: string, explorer: string, count: number) {
+	const folder = workFolder(explorationId, explorer)
+	mkdirSync(join(store.workspace, folder), { recursive: true })
+	const others = explorerNames(count).filter((name) => name !== explorer)
+	return {
+		folder,
+		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
+		extraEnv: {
+			PLAYWRIGHT_MCP_OUTPUT_DIR: join(store.workspace, folder),
+			PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`,
+		},
+	}
+}
+
+const keptFiles = ['plan.md', 'questions.md', 'report.md', 'follow-up-report.md']
+
+function keepWorkFiles(store: Store, actor: string, explorationId: string, explorer: string, phase: string) {
+	const folder = join(store.workspace, workFolder(explorationId, explorer))
+	const files = keptFiles.flatMap((name) => {
+		const path = join(folder, name)
+		return existsSync(path) ? [{ name, bytes: readFileSync(path) }] : []
+	})
+	if (!files.length) return
+	const input = { explorer, phase, files: files.map((file) => file.name) }
+	write(store, { actor, command: 'explore files', subject: explorationId, input }, (operationId, at) => {
+		const saved = files.map(({ name, bytes }) => ({ name, ...saveBlob(store, bytes) }))
+		addEvent(
+			store,
+			explorationId,
+			{ step: 'files', explorer, status: 'completed', detail: { phase, files: saved } },
+			operationId,
+			at
+		)
+		return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] }
+	})
+}
+
+function removeWork(store: Store, explorationId: string) {
+	rmSync(join(store.workspace, workFolder(explorationId)), { recursive: true, force: true })
+	rmSync(join(store.workspace, '.checkmate', 'tmp', `explore-${explorationId}.log`), { force: true })
 }
 
 function startSupervisor(store: Store, explorationId: string, actor: string, env: Env, extra: string[] = []) {
@@ -217,8 +261,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
 	const runs = explorerNames(launch.explorers).map(async (explorer) => {
 		const session = randomUUID()
-		const folder = evidenceFolder(explorationId, explorer)
-		mkdirSync(join(store.workspace, folder), { recursive: true })
+		const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
 		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
 			study: launch.studySeconds,
 			test: launch.testSeconds,
@@ -232,10 +275,10 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 		const turn = (own: string[], prompt: string) =>
 			launchClaude(
 				claude,
-				childArgs({ ...launch.context, denyStore: true }, [...own, ...allowed]),
+				childArgs({ ...launch.context, deny }, [...own, ...allowed]),
 				prompt,
 				store.workspace,
-				childEnv(env),
+				childEnv(env, extraEnv),
 				launch.timeoutSeconds
 			)
 		const study = await turn(['--session-id', session], brief.study)
@@ -380,7 +423,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
 	const call = await launchClaude(
 		requireClaude(env),
-		childArgs({ ...launch.context, denyStore: true }, ['--session-id', session, ...allowed]),
+		childArgs({ ...launch.context, deny: storeDenyRules }, ['--session-id', session, ...allowed]),
 		brief,
 		store.workspace,
 		childEnv(env),
@@ -443,6 +486,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 				ended.filter((item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== 'operational_error'),
 				env
 			)
+			for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, 'test')
 		}
 		const ok = explorationEvents(store, explorationId).filter(
 			(item) => item.step === 'record' && item.status === 'completed'
@@ -450,6 +494,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 		if (ok) {
 			mergeReports(store, actor, explorationId, launch, env)
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
+			removeWork(store, explorationId)
 		}
 		event(store, actor, explorationId, {
 			step: 'done',
@@ -610,18 +655,21 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			timeoutSeconds: plan.timeoutSeconds,
 		}
 		const sessions = followSessions(events)
+		const phase = `follow-${events.filter((item) => item.step === 'follow').length}`
+		const count = startOf(events)!.explorers
 		const claude = requireClaude(env)
 		const allowed = plan.allow.flatMap((rule) => ['--allowedTools', rule])
 		const ended = await Promise.all(
 			sessions
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
+					const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
 					const call = await launchClaude(
 						claude,
-						childArgs({ ...plan.context, denyStore: true }, ['--resume', session, ...allowed]),
-						followBrief(plan.questions, evidenceFolder(explorationId, explorer), plan.seconds),
+						childArgs({ ...plan.context, deny }, ['--resume', session, ...allowed]),
+						followBrief(plan.questions, folder, plan.seconds),
 						store.workspace,
-						childEnv(env),
+						childEnv(env, extraEnv),
 						plan.timeoutSeconds
 					)
 					return { explorer, session, call }
@@ -646,9 +694,11 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		const recorded = recordExplorers(store, actor, explorationId, resumed, env).filter(
 			(status) => status === 'completed'
 		).length
+		for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, phase)
 		if (recorded) {
 			mergeReports(store, actor, explorationId, launch, env, plan.after)
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after)
+			removeWork(store, explorationId)
 		}
 		const skipped = [
 			...sessions.flatMap((item) => (item.skipped ? [item.skipped] : [])),
@@ -760,6 +810,10 @@ export function explorationStatus(store: Store, explorationId: string) {
 			.filter((item) => ['merge', 'verify', 'follow', 'followed'].includes(item.step))
 			.map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
 		doneHint: (done?.detail.hint ?? null) as string | null,
+		workFolder:
+			['failed', 'stopped'].includes(state) && existsSync(join(store.workspace, workFolder(row.exploration_id)))
+				? workFolder(row.exploration_id)
+				: null,
 		reason: (done?.detail.reason ?? (state === 'stopped' ? 'The supervisor stopped before the end.' : null)) as
 			string | null,
 	}
@@ -814,5 +868,18 @@ export function explorationReport(store: Store, explorationId: string) {
 			.filter((entry) => entry.kind === 'note')
 			.map(({ id, text, area }) => ({ id, text: text!, area: area ?? null })),
 		observations: own.filter((entry) => entry.kind === 'observation').length,
+		files: explorationEvents(store, explorationId)
+			.filter((item) => item.step === 'files')
+			.flatMap((item) =>
+				(item.detail.files as Array<{ name: string; sha256: string; size: number }>).map((file) => ({
+					explorer: item.explorer!,
+					phase: item.detail.phase as string,
+					...file,
+					text: Buffer.from(
+						one<{ bytes: Uint8Array }>(store, 'SELECT bytes FROM blobs WHERE sha256 = ?', file.sha256)!
+							.bytes
+					).toString('utf8'),
+				}))
+			),
 	}
 }

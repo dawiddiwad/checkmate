@@ -5,7 +5,7 @@ import { Refusal, requireIdentifier, requireWellFormed } from './contracts.ts'
 import { recorderPrompt, repairPrompt } from './briefs.ts'
 import { bareOf, explorationRow, freshIds, journal, logEntries, recordText, refusalText } from './journal.ts'
 import type { Entry, Refused } from './journal.ts'
-import { addEvent, explorationEvents } from './explorations.ts'
+import { addEvent, explorationEvents, workFolder } from './explorations.ts'
 import {
 	authenticationFailed,
 	authenticationHint,
@@ -16,7 +16,7 @@ import {
 	requireClaude,
 } from './sessions.ts'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type RecordInput = {
@@ -232,8 +232,10 @@ function recordLocked(
 	]
 	const missing: string[] = []
 	const dropped: string[] = []
+	const work = join(store.workspace, workFolder(exploration.exploration_id, plan.explorer))
+	const evidenceCwd = existsSync(work) ? work : cwd
 	const log = (entries: unknown[]) =>
-		logReply(store, actor, exploration.exploration_id, exploration.plan_id, entries, missing, dropped, cwd)
+		logReply(store, actor, exploration.exploration_id, exploration.plan_id, entries, missing, dropped, evidenceCwd)
 	const given = replyArray(calls[0].result)
 	const first = given && newEntries(given, earlier)
 	const repeated = given && first ? given.length - first.length : 0

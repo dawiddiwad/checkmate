@@ -135,7 +135,7 @@ export function recorderPrompt(build: string, record: string, saved: string[] = 
 
 export function followBrief(
 	questions: Array<{ question: string; answer: string }>,
-	evidenceFolder: string,
+	workFolder: string,
 	seconds: number
 ) {
 	return [
@@ -143,7 +143,8 @@ export function followBrief(
 		...questions.map((item, index) => `${index + 1}. ${item.question} Answer: ${item.answer}`),
 		'',
 		'Test the points that these answers decide, on the same build.',
-		`Add to ${evidenceFolder}/report.md: each new defect in the same form, and for each earlier unclear point that an answer settles, one line that says what is now known.`,
+		`Your work folder is ${workFolder}/ again, and it is empty. Put each file that you or your tools make in it.`,
+		`Write ${workFolder}/follow-up-report.md with only what this turn adds: each new defect in the same form as in your report, and for each earlier unclear point that an answer settles, one line that says what is now known.`,
 		`You have ${seconds} seconds for this turn.`,
 	].join('\n')
 }
@@ -176,7 +177,7 @@ export function explorerBrief(
 	charter: Charter,
 	entries: EntryPointValue[],
 	dataPrefix: string,
-	evidenceFolder: string,
+	workFolder: string,
 	seconds: { study: number; test: number }
 ) {
 	const change = charter.change
@@ -220,11 +221,12 @@ export function explorerBrief(
 				]
 			: []),
 		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
-		'Folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
+		`Your work folder is ${workFolder}/. Put each file that you or your tools make in it, for example notes, scripts, screenshots, responses, and logs.`,
+		'Apart from your work folder, the folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
 		'',
 		'Study the sources, the changed files and the running application.',
-		`Write ${evidenceFolder}/plan.md with your test approach.`,
-		`Write ${evidenceFolder}/questions.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None.`,
+		`Write ${workFolder}/plan.md with your test approach.`,
+		`Write ${workFolder}/questions.md with numbered questions for the owner of the product about anything unclear, one question for each numbered line, or None.`,
 		'Do not test the change in this turn.',
 		`You have ${seconds.study} seconds for this turn. Write the two files early and update them as you go.`,
 	]
@@ -233,8 +235,8 @@ export function explorerBrief(
 		'The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.',
 		...diff,
 		testDataText(dataPrefix),
-		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
-		`Write ${evidenceFolder}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
+		`Save the files that show a problem, for example screenshots or responses, in ${workFolder}/.`,
+		`Write ${workFolder}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
 		...(charter.knownState
 			? [
 					`For each problem in ${charter.knownState}, write one line in the report: still present, fixed, or not retested with the reason.`,

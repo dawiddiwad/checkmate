@@ -4,7 +4,8 @@ import { delimiter, join } from 'node:path'
 import { directory } from './support.ts'
 
 const script = `#!/usr/bin/env node
-const { appendFileSync, readFileSync } = require('node:fs')
+const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
+const { join } = require('node:path')
 const { randomUUID } = require('node:crypto')
 const args = process.argv.slice(2)
 const prompt = readFileSync(0, 'utf8')
@@ -25,7 +26,10 @@ const role = args.includes('--fork-session')
 						: 'explorer'
 const session = after('--session-id') ?? resumed ?? randomUUID()
 const env = Object.keys(process.env).filter((name) => name.startsWith('CHECKMATE_')).sort()
-appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, session }) + '\\n')
+const work = process.env.PLAYWRIGHT_MCP_OUTPUT_DIR
+const files = { explorer: 'plan.md', tester: 'report.md', follower: 'follow-up-report.md' }
+if (work && files[role]) writeFileSync(join(work, files[role]), role + ' of ' + process.env.PLAYWRIGHT_CLI_SESSION + '\\n')
+appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, work, session }) + '\\n')
 const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
 const chosen = replies[role]
 const reply = chosen && typeof chosen === 'object' && !Array.isArray(chosen) ? chosen[resumed ?? ''] ?? chosen['*'] : chosen

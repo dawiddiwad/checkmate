@@ -1,5 +1,5 @@
 import type { Store } from './store.ts'
-import { all, canonical, completed, digest, execute, one, write } from './store.ts'
+import { all, canonical, completed, digest, execute, one, saveBlob, write } from './store.ts'
 import { Refusal, requireCondition, requireWellFormed, schemaProblems, unusedId } from './contracts.ts'
 import { recordApproval } from './plans.ts'
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
@@ -234,16 +234,7 @@ function evidenceOf(store: Store, spec: string, cwd: string, missing?: string[])
 		(missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : undefined)
 	if (found && (!missing || insideWorkspace(store, found))) {
 		const name = relative(store.workspace, found)
-		const bytes = evidenceFile(store, name)
-		const sha256 = digest(bytes)
-		execute(
-			store,
-			'INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)',
-			sha256,
-			bytes.length,
-			bytes
-		)
-		return { path: name, sha256, size: bytes.length }
+		return { path: name, ...saveBlob(store, evidenceFile(store, name)) }
 	}
 	if (!found && isEvidenceText(spec)) return { text: spec }
 	if (missing) {

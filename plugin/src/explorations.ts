@@ -64,8 +64,8 @@ export function charterOf(
 	}
 }
 
-export function evidenceFolder(explorationId: string, name: string) {
-	return `qa-evidence/${explorationId}/${name}`
+export function workFolder(explorationId: string, explorer?: string) {
+	return `.checkmate/work/${explorationId}${explorer ? `/${explorer}` : ''}`
 }
 
 const maxKnownLines = 150
@@ -176,8 +176,8 @@ export function knownStateText(store: Store, planId: string, build: string) {
 function writeKnownState(store: Store, planId: string, explorationId: string, build: string) {
 	if (!one(store, 'SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?', planId, explorationId))
 		return null
-	const path = `${evidenceFolder(explorationId, 'known-state')}.md`
-	mkdirSync(join(store.workspace, evidenceFolder(explorationId, '')), { recursive: true })
+	const path = `${workFolder(explorationId)}/known-state.md`
+	mkdirSync(join(store.workspace, workFolder(explorationId)), { recursive: true })
 	writeFileSync(join(store.workspace, path), knownStateText(store, planId, build))
 	return path
 }

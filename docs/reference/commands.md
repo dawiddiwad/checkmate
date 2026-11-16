@@ -175,16 +175,16 @@ On `base`, the lines `criteria`, `criterion`, `happy_path`, `answer`, and `area`
 checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout <seconds>] [--actor <name>]
 ```
 
-`record` writes the record of one Claude Code test session. Run it from outside the test session, after the session or after a turn of it. A person runs it in a terminal, or the orchestrator of an agent factory runs it.
+`record` writes the record of one Claude Code test session. Run it from outside the test session, after the session or after a turn of it, in the directory where the test session ran. When that directory is not the project directory, set `CHECKMATE_WORKSPACE` to the project directory: it names the shared record. A person runs it in a terminal, or the orchestrator of an agent factory runs it.
 
 1. It refuses when `CHECKMATE_RECORDER` is set: a recorder cannot start another recorder. It refuses an unknown change, and a `PATH` without `claude`.
-2. It finds the session to copy. `--session` names it. Without `--session`, it uses the latest session of the workspace: the newest `<sessionId>.jsonl` file in `<config>/projects/<name>/`. `<config>` is `CLAUDE_CONFIG_DIR`, else `~/.claude`. `<name>` is the real path of the workspace with each character that is not a letter or a digit changed to `-`. A name of more than 200 characters is cut to 200 and ends with `-<hash>`. It skips the sessions of earlier recorders of the store, and the session in `CLAUDE_CODE_SESSION_ID`: the Claude Code session that runs `record`. When it finds no session, it refuses and tells you to pass `--session`.
+2. It finds the session to copy. `--session` names it. Without `--session`, it uses the latest session of the current directory: the newest `<sessionId>.jsonl` file in `<config>/projects/<name>/`. `<config>` is `CLAUDE_CONFIG_DIR`, else `~/.claude`. `<name>` is the real path of the current directory with each character that is not a letter or a digit changed to `-`. A name of more than 200 characters is cut to 200 and ends with `-<hash>`. It skips the sessions of earlier recorders of the store, and the session in `CLAUDE_CODE_SESSION_ID`: the Claude Code session that runs `record`. When it finds no session, it refuses and tells you to pass `--session`.
 3. It makes the folder `<files>`: `<workspace>/.checkmate/tmp/record-<recorderId>`, an absolute real path.
-4. It starts one recorder in the workspace, in print mode, and waits for it to end:
+4. It starts one recorder in the current directory, in print mode, and waits for it to end:
 
    ```sh
    claude -p --resume <sessionId> --fork-session --session-id <recorderId> --output-format json \
-     --permission-prompts none --allowedTools Read "Edit(/<files>/**)"
+     --permission-prompts none --add-dir <files> --allowedTools Read "Edit(/<files>/**)"
    ```
 
    The recorder is a new session with the history of the test session. The test session does not see what the recorder does. The recorder gets `CHECKMATE_WORKSPACE`, `CHECKMATE_ACTOR`, and `CHECKMATE_RECORDER=1`.
@@ -197,7 +197,7 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 
 The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
 
-The permissions let the recorder read files and write files only in `<files>`, without a prompt. `Edit(//abs/path/**)` is the host rule form for an absolute path, and the host checks a file write against `Edit` rules. The recorder has no Bash rule. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. Evidence is a path of a file that the tester saved in the workspace, or the text that the tester saw. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
+`--add-dir` lets the recorder write in `<files>` when `<files>` is outside the current directory. The permissions let the recorder read files and write files only in `<files>`, without a prompt. `Edit(//abs/path/**)` is the host rule form for an absolute path, and the host checks a file write against `Edit` rules. The recorder has no Bash rule. With `--permission-prompts none`, the host refuses each other tool call that needs a prompt. Evidence is a path of a file that the tester saved in the workspace, relative to the current directory or to the workspace, or the text that the tester saw. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
 
 `--timeout` is in seconds, from 1 to 86400, for all recorder calls together. The default is 600.
 

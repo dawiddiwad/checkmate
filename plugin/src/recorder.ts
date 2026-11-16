@@ -42,9 +42,9 @@ function executableOnPath(name: string, env: Env) {
 	return undefined
 }
 
-function claudeProjectFolders(workspace: string, env: Env) {
+function claudeProjectFolders(cwd: string, env: Env) {
 	const projects = join(env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude'), 'projects')
-	const name = realpathSync(workspace).replace(/[^a-zA-Z0-9]/g, '-')
+	const name = realpathSync(cwd).replace(/[^a-zA-Z0-9]/g, '-')
 	if (name.length <= longestProjectName) return [join(projects, name)]
 	const prefix = `${name.slice(0, longestProjectName)}-`
 	return names(projects)
@@ -99,7 +99,7 @@ function excerpt(text: unknown) {
 	return line ? `: ${line}` : ''
 }
 
-function prepare(store: Store, actor: string | undefined, input: RecordInput, env: Env) {
+function prepare(store: Store, actor: string | undefined, input: RecordInput, env: Env, cwd: string) {
 	const writer = actor?.trim()
 	if (!writer) throw new Error('A write needs an actor. Use --actor <name> or set CHECKMATE_ACTOR.')
 	if (env.CHECKMATE_RECORDER)
@@ -116,7 +116,7 @@ function prepare(store: Store, actor: string | undefined, input: RecordInput, en
 			'No claude executable on PATH. Nothing changed.',
 			'Install Claude Code, or add the directory of claude to PATH. Then run the command again.'
 		)
-	const folders = claudeProjectFolders(store.workspace, env)
+	const folders = claudeProjectFolders(cwd, env)
 	const skip = new Set([
 		...earlierRecorders(store),
 		...(env.CLAUDE_CODE_SESSION_ID ? [env.CLAUDE_CODE_SESSION_ID] : []),
@@ -125,7 +125,7 @@ function prepare(store: Store, actor: string | undefined, input: RecordInput, en
 	if (!session)
 		throw new Refusal(
 			'prohibited',
-			`No Claude Code session of ${store.workspace} in ${folders.join(', ') || 'the projects folder of Claude Code'}. Nothing changed.`,
+			`No Claude Code session of ${cwd} in ${folders.join(', ') || 'the projects folder of Claude Code'}. Nothing changed.`,
 			`Pass the ID of the test session: checkmate record ${input.changeId} --session <sessionId>. claude -p --output-format json gives it in session_id.`
 		)
 	return { claude, session, recorder: randomUUID(), actor: writer }
@@ -140,6 +140,8 @@ function recorderArgs(files: string, resume: string[]) {
 		'json',
 		'--permission-prompts',
 		'none',
+		'--add-dir',
+		files,
 		'--allowedTools',
 		'Read',
 		`Edit(/${files}/**)`,
@@ -185,14 +187,14 @@ function refusalText(item: { index: number; reason: string; hint?: string; fix?:
 	return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ''}${item.fix ? ` Send: ${JSON.stringify(item.fix)}` : ''}`
 }
 
-function logFile(store: Store, actor: string, input: RecordInput, path: string) {
+function logFile(store: Store, actor: string, input: RecordInput, path: string, cwd: string) {
 	if (!existsSync(path)) return undefined
 	try {
 		const reply = logEntries(store, actor, {
 			changeId: input.changeId,
 			build: input.build,
-			entries: readEntries(entriesFile(store, path, store.workspace)),
-			cwd: store.workspace,
+			entries: readEntries(entriesFile(store, path, cwd)),
+			cwd,
 		})
 		const refused = reply.data.refused as Array<{ index: number; reason: string; hint?: string; fix?: unknown }>
 		return { refusals: refused.map(refusalText) }
@@ -207,11 +209,17 @@ function sum(calls: Call[], key: 'costUsd' | 'durationMs') {
 	return values.length ? { [key]: values.reduce((total, value) => total + value, 0) } : {}
 }
 
-export function recordSession(store: Store, actor: string | undefined, input: RecordInput, env: Env): Reply {
+export function recordSession(
+	store: Store,
+	actor: string | undefined,
+	input: RecordInput,
+	env: Env,
+	cwd: string
+): Reply {
 	const operation = { actor, command: 'record', subject: input.changeId, input }
 	let plan: ReturnType<typeof prepare>
 	try {
-		plan = prepare(store, actor, input, env)
+		plan = prepare(store, actor, input, env, cwd)
 	} catch (error) {
 		return write(store, operation, () => {
 			throw error
@@ -234,12 +242,12 @@ export function recordSession(store: Store, actor: string | undefined, input: Re
 			plan.claude,
 			recorderArgs(files, [plan.session, '--fork-session', '--session-id', plan.recorder]),
 			prompt,
-			store.workspace,
+			cwd,
 			childEnv,
 			input.timeoutSeconds
 		),
 	]
-	const first = logFile(store, plan.actor, input, join(files, 'entries.json'))
+	const first = logFile(store, plan.actor, input, join(files, 'entries.json'), cwd)
 	let refusals = first?.refusals ?? []
 	if (!calls[0].failure && refusals.length && left() > 0) {
 		calls.push(
@@ -247,12 +255,12 @@ export function recordSession(store: Store, actor: string | undefined, input: Re
 				plan.claude,
 				recorderArgs(files, [plan.recorder]),
 				repairPrompt(files, refusals),
-				store.workspace,
+				cwd,
 				childEnv,
 				left()
 			)
 		)
-		const fixed = logFile(store, plan.actor, input, join(files, 'fix.json'))
+		const fixed = logFile(store, plan.actor, input, join(files, 'fix.json'), cwd)
 		if (fixed) refusals = fixed.refusals
 	}
 	rmSync(files, { recursive: true, force: true })

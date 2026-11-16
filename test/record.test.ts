@@ -97,6 +97,18 @@ function setup(t: TestContext) {
 		FAKE_CHECKMATE: script,
 		FAKE_CLAUDE: 'write',
 	}
+	const sessions = (directory: string) => {
+		const folder = join(config, 'projects', realpathSync(directory).replace(/[^a-zA-Z0-9]/g, '-'))
+		mkdirSync(folder, { recursive: true })
+		writeFileSync(join(folder, `${older}.jsonl`), '{}\n')
+		utimesSync(join(folder, `${older}.jsonl`), 500, 500)
+		writeFileSync(join(folder, `${tester}.jsonl`), '{}\n')
+		utimesSync(join(folder, `${tester}.jsonl`), 900, 900)
+	}
+	const recordFrom = (cwd: string, args: string[] = []) => {
+		const outcome = run(['record', 'cart', ...args, '--json'], { cwd, env, stdin: () => '' })
+		return { code: outcome.code, output: outcome.output, body: JSON.parse(outcome.output) }
+	}
 	const record = (args: string[] = [], change: Record<string, string | undefined> = {}, json = true) => {
 		const outcome = run(['record', 'cart', ...args, '--workspace', workspace, ...(json ? ['--json'] : [])], {
 			cwd: workspace,
@@ -110,7 +122,7 @@ function setup(t: TestContext) {
 		rmSync(call, { force: true })
 		return lines.map((line) => JSON.parse(line))
 	}
-	return { workspace, record, called }
+	return { workspace, record, recordFrom, sessions, called }
 }
 
 const allowed = (files: string) => [
@@ -118,6 +130,8 @@ const allowed = (files: string) => [
 	'json',
 	'--permission-prompts',
 	'none',
+	'--add-dir',
+	files,
 	'--allowedTools',
 	'Read',
 	`Edit(/${files}/**)`,
@@ -292,4 +306,35 @@ test('log --from reads the entries from a file in the workspace, with the eviden
 		assert.equal(refused.refusal, 'malformed')
 		assert.match(refused.reasons[1], reason)
 	}
+})
+
+test('record runs in the directory of the caller, and finds its session and its evidence there', (t) => {
+	const { workspace, recordFrom, sessions, called } = setup(t)
+	const subdirectory = join(workspace, 'qa')
+	mkdirSync(join(subdirectory, 'evidence'), { recursive: true })
+	writeFileSync(join(subdirectory, 'evidence', 'total.txt'), 'Total: 401.00')
+	const missing = recordFrom(subdirectory)
+	assert.equal(missing.code, 1)
+	assert.match(missing.body.reasons[1], new RegExp(`^No Claude Code session of ${realpathSync(subdirectory)} in`))
+	sessions(subdirectory)
+	const reply = recordFrom(subdirectory, ['--build', 'b1'])
+	assert.equal(reply.code, 0, reply.output)
+	assert.equal(reply.body.session, tester)
+	const [call] = called()
+	assert.equal(call.cwd, realpathSync(subdirectory))
+	assert.equal(call.files, join(workspace, '.checkmate', 'tmp', `record-${reply.body.recorder}`))
+	assert.deepEqual(call.args.slice(0, 6), [
+		'-p',
+		'--resume',
+		tester,
+		'--fork-session',
+		'--session-id',
+		reply.body.recorder,
+	])
+	assert.deepEqual(call.args.slice(-allowed(call.files).length), allowed(call.files))
+	assert.equal(call.env[0], workspace)
+	const defect = JSON.parse(cli(workspace, ['export', 'cart']).output).entries.find(
+		(entry: { kind: string }) => entry.kind === 'defect'
+	)
+	assert.equal(defect.evidence[0].path, 'qa/evidence/total.txt')
 })

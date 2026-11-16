@@ -494,7 +494,7 @@ const commands: Record<string, Command> = {
 		positionals: ['changeId'],
 		flags: { build: 'value', session: 'value', timeout: { min: 1, max: 86400 } },
 		write: true,
-		run: (store, args, { actor, env }) =>
+		run: (store, args, { actor, env, cwd }) =>
 			recordSession(
 				store,
 				actor,
@@ -504,7 +504,8 @@ const commands: Record<string, Command> = {
 					session: value(args, 'session'),
 					timeoutSeconds: integer(args, 'timeout') ?? defaultRecorderTimeout,
 				},
-				env
+				env,
+				cwd
 			),
 		print: (reply) => ({
 			facts: {

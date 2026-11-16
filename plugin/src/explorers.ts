@@ -4,19 +4,31 @@ import type { ChildContext, ClaudeCall, Env } from './sessions.ts'
 import type { ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { closeStore, completed, openStore, write } from './store.ts'
-import { Refusal, requireChoice, requireWellFormed } from './contracts.ts'
+import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration } from './explorations.ts'
-import { explorationRow } from './journal.ts'
+import type { Refused } from './journal.ts'
+import {
+	explorationRow,
+	journal,
+	logEntries,
+	mergeItems,
+	planClaims,
+	planQuestions,
+	refusalText,
+	verifyItems,
+} from './journal.ts'
 import { defaultLevel, levelNames, testLevels } from './levels.ts'
 import { explorerActor, recordSession, defaultRecorderTimeout } from './recorder.ts'
-import { explorerBrief } from './briefs.ts'
+import { explorerBrief, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
 import { findInstance, targetRevision } from './targets.ts'
 import {
 	checkClaudeArgs,
 	checkmateScript,
 	childArgs,
+	callClaude,
 	childEnv,
 	installedPluginId,
+	replyArray,
 	launchClaude,
 	requireClaude,
 } from './sessions.ts'
@@ -46,6 +58,8 @@ export type Launch = {
 
 export const defaultExplorerTimeout = 1800
 const pollMilliseconds = 500
+export const mergerActor = 'qa:merge'
+export const verifierActor = 'qa:verify'
 
 function hostModel(claudeArgs: string[]) {
 	for (const [index, arg] of claudeArgs.entries()) {
@@ -65,14 +79,15 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	const claudeArgs = checkClaudeArgs(input.claudeArgs)
 	const host = hostModel(claudeArgs)
 	const hiddenPlugin = installedPluginId(env)
+	const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers
 	requireWellFormed(
-		input.allow.length,
-		'Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash',
+		input.allow.length || (explorers === 0 && !row.verifier),
+		'Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash',
 		'The host owns the permissions. An explorer cannot answer a permission prompt.'
 	)
 	return {
 		level,
-		explorers: input.explorers ?? profile.explore?.explorers ?? row.explorers,
+		explorers,
 		model: host ?? row.model,
 		modelFrom: host ? 'host' : 'level',
 		verifier: row.verifier,
@@ -111,7 +126,9 @@ function startSupervisor(store: Store, explorationId: string, actor: string, env
 export function startExploration(store: Store, actor: string | undefined, input: StartInput, env: Env) {
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
 		requireClaude(env)
-		const opened = insertExploration(store, input, operationId, at)
+		const opened = input.explorationId
+			? finishable(store, input.explorationId)
+			: insertExploration(store, input, operationId, at)
 		const row = explorationRow(store, opened.explorationId)
 		const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env)
 		addEvent(
@@ -136,6 +153,26 @@ export function startExploration(store: Store, actor: string | undefined, input:
 	})
 	startSupervisor(store, reply.subject, actor!, env)
 	return reply
+}
+
+function finishable(store: Store, explorationId: string) {
+	const row = explorationRow(store, explorationId)
+	requireCondition(
+		!startOf(explorationEvents(store, explorationId)),
+		`Exploration ${explorationId} has started already.`,
+		`Run checkmate explore wait ${explorationId}.`
+	)
+	return { explorationId, planId: row.plan_id, build: row.build, mode: row.mode, instanceId: row.instance_id }
+}
+
+export function finishExploration(
+	store: Store,
+	actor: string | undefined,
+	input: Omit<StartInput, 'planId' | 'build'> & { explorationId: string },
+	env: Env
+) {
+	const row = explorationRow(store, input.explorationId)
+	return startExploration(store, actor, { ...input, planId: row.plan_id, build: row.build, explorers: 0 }, env)
 }
 
 function event(store: Store, actor: string, explorationId: string, item: Omit<ExplorationEvent, 'at'>) {
@@ -217,6 +254,107 @@ export function recordExplorers(
 	)
 }
 
+function costOf(calls: ClaudeCall[]) {
+	const costs = calls.flatMap((call) => (call.costUsd === undefined ? [] : [call.costUsd]))
+	return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {}
+}
+
+function mergeReports(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
+	const opened = explorationRow(store, explorationId)
+	const items = mergeItems(journal(store, opened.plan_id), opened.build)
+	if (items.testers < 2 || items.defects.length < 2) return
+	const session = randomUUID()
+	const claude = requireClaude(env)
+	const call = (args: string[], prompt: string) =>
+		callClaude(
+			claude,
+			childArgs(launch.context, args),
+			prompt,
+			store.workspace,
+			childEnv(env),
+			defaultRecorderTimeout
+		)
+	const log = (reply: unknown[] | undefined) => {
+		if (!reply?.length) return []
+		try {
+			return (logEntries(store, mergerActor, { explorationId, entries: reply }).data.refused as Refused[]).map(
+				refusalText
+			)
+		} catch (error) {
+			if (!(error instanceof Refusal)) throw error
+			return [`${error.message}${error.hint ? ` ${error.hint}` : ''}`]
+		}
+	}
+	const calls = [call(['--session-id', session], mergerPrompt(opened.build, items.defects, items.groups))]
+	let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result))
+	if (refusals.length) {
+		calls.push(call(['--resume', session], repairPrompt(refusals)))
+		refusals = log(replyArray(calls[1].result))
+	}
+	const failure = calls.find((item) => item.failure)?.failure
+	event(store, actor, explorationId, {
+		step: 'merge',
+		explorer: null,
+		status: failure?.[0] ?? 'completed',
+		detail: {
+			session,
+			reports: items.defects.length,
+			refused: refusals.length,
+			...(failure ? { reason: failure[1] } : {}),
+			...costOf(calls),
+		},
+	})
+}
+
+function verifiedEntries(reply: unknown[] | undefined, ids: Set<string>) {
+	return (reply ?? []).flatMap((raw) => {
+		const item = raw as { id?: unknown; seen?: unknown; saw?: unknown } | null
+		if (!item || typeof item.id !== 'string' || !ids.has(item.id) || typeof item.seen !== 'boolean') return []
+		const saw = typeof item.saw === 'string' && item.saw.trim() ? item.saw : item.seen ? 'Seen again.' : 'Not seen.'
+		return [{ kind: 'observation', saw, [item.seen ? 'confirms' : 'refutes']: item.id }]
+	})
+}
+
+async function verifyClaims(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
+	const opened = exploration(store, explorationId)
+	const items = verifyItems(planClaims(store, opened.plan_id), opened.build)
+	if (!items.length) return
+	const profile = targetRevision(store, opened.target_id, opened.target_revision).profile
+	const instance = findInstance(store, opened.target_id, opened.instance_id)
+	const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? '' }))
+	const session = randomUUID()
+	const brief = verifierBrief(items, entries, opened.charter.operations, `qa-${explorationId}-verify-`)
+	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
+	const call = await launchClaude(
+		requireClaude(env),
+		childArgs(launch.context, ['--session-id', session, ...allowed]),
+		brief,
+		store.workspace,
+		childEnv(env),
+		launch.timeoutSeconds
+	)
+	const observations = call.failure
+		? []
+		: verifiedEntries(replyArray(call.result), new Set(items.map((item) => item.id)))
+	if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations })
+	event(store, actor, explorationId, {
+		step: 'verify',
+		explorer: null,
+		status: call.failure?.[0] ?? (observations.length ? 'completed' : 'operational_error'),
+		detail: {
+			session,
+			items: items.length,
+			verified: observations.length,
+			...(call.failure
+				? { reason: call.failure[1] }
+				: observations.length
+					? {}
+					: { reason: 'The verifier gave no result.' }),
+			...costOf([call]),
+		},
+	})
+}
+
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
 	const store = openStore(workspace)
 	const actor = env.CHECKMATE_ACTOR ?? 'checkmate'
@@ -229,10 +367,23 @@ export async function driveExploration(workspace: string, explorationId: string,
 		})
 		const launch = startOf(explorationEvents(store, explorationId))
 		if (!launch) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
-		const ended = await launchExplorers(store, actor, explorationId, launch, env)
-		const finished = ended.filter((item) => !item.call.failure)
-		const recorded = recordExplorers(store, actor, explorationId, finished, env)
-		const ok = recorded.filter((status) => status === 'completed').length
+		if (launch.explorers) {
+			const ended = await launchExplorers(store, actor, explorationId, launch, env)
+			recordExplorers(
+				store,
+				actor,
+				explorationId,
+				ended.filter((item) => !item.call.failure),
+				env
+			)
+		}
+		const ok = explorationEvents(store, explorationId).filter(
+			(item) => item.step === 'record' && item.status === 'completed'
+		).length
+		if (ok) {
+			mergeReports(store, actor, explorationId, launch, env)
+			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
+		}
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
@@ -271,6 +422,7 @@ export function explorationState(events: ExplorationEvent[]) {
 	if (supervisor && !running(supervisor.detail.pid)) return 'stopped'
 	if (!events.some((item) => item.step === 'start')) return 'open'
 	if (!supervisor) return 'starting'
+	if (events.some((item) => item.step === 'merge')) return 'verifying'
 	if (events.some((item) => item.step === 'record')) return 'recording'
 	return 'testing'
 }
@@ -312,6 +464,9 @@ export function explorationStatus(store: Store, explorationId: string) {
 		verifier: launch?.verifier ?? null,
 		pluginHidden: launch?.pluginHidden ?? null,
 		explorers,
+		phases: events
+			.filter((item) => item.step === 'merge' || item.step === 'verify')
+			.map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
 		reason: (done?.detail.reason ?? (state === 'stopped' ? 'The supervisor stopped before the end.' : null)) as
 			string | null,
 	}
@@ -343,5 +498,25 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 			}
 		}
 		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMilliseconds)
+	}
+}
+
+export function explorationReport(store: Store, explorationId: string) {
+	const opened = exploration(store, explorationId)
+	const state = journal(store, opened.plan_id)
+	const own = state.team.filter((entry) => entry.explorationId === explorationId)
+	return {
+		...explorationStatus(store, explorationId),
+		charter: opened.charter,
+		startedAt: opened.started_at,
+		claims: planClaims(store, opened.plan_id).filter((claim) => claim.explorationId === explorationId),
+		questions: planQuestions(store, opened.plan_id).filter((question) => question.explorationId === explorationId),
+		criteria: own
+			.filter((entry) => entry.kind === 'criterion')
+			.map(({ id, text, source }) => ({ id, text: text!, source: source ?? null })),
+		notes: own
+			.filter((entry) => entry.kind === 'note')
+			.map(({ id, text, area }) => ({ id, text: text!, area: area ?? null })),
+		observations: own.filter((entry) => entry.kind === 'observation').length,
 	}
 }

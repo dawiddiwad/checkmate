@@ -8,9 +8,16 @@ import { heading } from './layout.ts'
 
 type Waiting = ReturnType<typeof inbox>
 
+export function gapLink(gap: Waiting['gaps'][number]) {
+	return gap.explorationId
+		? `/explorations/${gap.explorationId}/questions/${gap.gapId}#answer`
+		: `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`
+}
+
 export function inboxItems(waiting: Waiting) {
 	return [
-		...waiting.gaps.map((gap) => `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`),
+		...waiting.gaps.map(gapLink),
+		...waiting.claims.map((claim) => `/explorations/${claim.explorationId}/claims/${claim.claimId}#decide`),
 		...waiting.plans.map((plan) => `/plans/${plan.planId}@${plan.revision}#decide`),
 		...waiting.results.map((result) => `/runs/${result.runId}#decide`),
 	]
@@ -24,7 +31,7 @@ export function loopState(loop: { state: string; waitsOn: string }) {
 }
 
 export function inboxCount(waiting: Waiting) {
-	return waiting.gaps.length + waiting.plans.length + waiting.results.length
+	return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.claims.length
 }
 
 const countOrder = ['passed', 'failed', 'inconclusive', 'error', 'blocked', 'not_run'] as const
@@ -72,14 +79,18 @@ export function inboxPage(store: Store): Page {
 		(gap) =>
 			html`<a
 				class="item"
-				href="/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer"
+				href="${gapLink(gap)}"
 				data-nav-item
 				data-key="gap:${gap.planId}:${gap.gapId}"
 				data-announce="New gap ${gap.planId} ${gap.gapId}"
 			>
 				<span class="id">${gap.planId} · ${gap.gapId}</span>
 				<span class="what"
-					>${gap.question}${gap.runId ? html` <span class="muted">· from run ${gap.runId}</span>` : ''}</span
+					>${gap.question}${gap.runId ? html` <span class="muted">· from run ${gap.runId}</span>` : ''}${
+						gap.explorationId
+							? html` <span class="muted">· from exploration ${gap.explorationId}</span>`
+							: ''
+					}</span
 				>
 				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
 			</a>`
@@ -100,6 +111,22 @@ export function inboxPage(store: Store): Page {
 						>${time(plan.since)}</span
 					></span
 				>
+			</a>`
+	)
+	const claims = waiting.claims.map(
+		(claim) =>
+			html`<a
+				class="item"
+				href="/explorations/${claim.explorationId}/claims/${claim.claimId}#decide"
+				data-nav-item
+				data-key="claim:${claim.planId}:${claim.claimId}"
+				data-announce="Claim ${claim.planId} ${claim.claimId} is ${claim.state}"
+			>
+				<span class="id">${claim.planId} · ${claim.claimId}</span>
+				<span class="what"
+					>${claim.title}${claim.reason ? html` <span class="muted">· ${claim.reason}</span>` : ''}</span
+				>
+				<span class="end">${pill(claim.state)} ${pill(claim.severity)}</span>
 			</a>`
 	)
 	const results = waiting.results.map(
@@ -133,8 +160,9 @@ export function inboxPage(store: Store): Page {
 	const sub = total ? `${plural(total, 'item')} ${total === 1 ? 'waits' : 'wait'} for you, oldest first.` : null
 	const body =
 		total + requests.length
-			? html`${group('Gaps to answer', gaps, 'gaps')} ${group('Plans to approve or change', plans, 'plans')}
-				${group('Results to accept', results, 'results')} ${group('Plans to draft', requests, 'requests')}`
+			? html`${group('Gaps to answer', gaps, 'gaps')} ${group('Claims to decide', claims, 'claims')}
+				${group('Plans to approve or change', plans, 'plans')} ${group('Results to accept', results, 'results')}
+				${group('Plans to draft', requests, 'requests')}`
 			: emptyInbox(store)
 	return {
 		title: 'Inbox',

@@ -166,7 +166,7 @@ test('explore start refuses without tool rules or with a reserved Claude argumen
 	const { command } = setup(t)
 	const bare = command(['explore', 'start', 'checkout', '--build', 'b1'])
 	assert.equal(bare.code, 1)
-	assert.match(bare.body.reasons[1], /Give the tool rules of the explorers with --allow/)
+	assert.match(bare.body.reasons[1], /Give the tool rules of the explorers and the verifier with --allow/)
 	const reserved = command(['explore', 'start', 'checkout', '--build', 'b1', ...allow, '--claude-arg', '--settings'])
 	assert.match(reserved.body.reasons[1], /--claude-arg --settings is not permitted/)
 	assert.equal(command(['query', 'SELECT count(*) AS n FROM explorations']).body.rows[0].n, 0)

@@ -71,14 +71,21 @@ import {
 	runDetail,
 	runList,
 } from './views.ts'
-import { exportPlan, exportRun, formats, runFormats } from './render.ts'
+import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { explorationModes, openExploration } from './explorations.ts'
-import { logEntries, readEntries } from './journal.ts'
+import { decideClaim, logEntries, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs } from './sessions.ts'
-import { driveExploration, explorationStatus, startExploration, waitExploration } from './explorers.ts'
+import {
+	driveExploration,
+	explorationReport,
+	explorationStatus,
+	finishExploration,
+	startExploration,
+	waitExploration,
+} from './explorers.ts'
 import { levelNames, testLevels } from './levels.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -253,6 +260,11 @@ function explorationLines(reply: Reply): Printed {
 				`recorded=${item.recorded ?? '-'}`,
 				`saved=${item.saved}`,
 			]),
+			...(status.phases ?? []).map((item) => [
+				item.step,
+				item.status,
+				...(item.detail.reason ? [item.detail.reason] : []),
+			]),
 		],
 	}
 }
@@ -276,19 +288,22 @@ const commands: Record<string, Command> = {
 					gaps: waiting.gaps.length,
 					plans: waiting.plans.length,
 					results: waiting.results.length,
+					claims: waiting.claims.length || undefined,
 					requests: waiting.requests.length,
 				},
 				lines: [
 					...waiting.gaps.map((gap) =>
-						gap.runId
-							? [
-									`${gap.planId}@${gap.revision}/${gap.gapId}`,
-									'run_gap',
-									gap.severity,
-									gap.runId,
-									gap.question,
-								]
-							: [`${gap.planId}@${gap.revision}/${gap.gapId}`, 'gap', gap.severity, gap.question]
+						gap.explorationId
+							? [`${gap.planId}/${gap.gapId}`, 'question', gap.severity, gap.explorationId, gap.question]
+							: gap.runId
+								? [
+										`${gap.planId}@${gap.revision}/${gap.gapId}`,
+										'run_gap',
+										gap.severity,
+										gap.runId,
+										gap.question,
+									]
+								: [`${gap.planId}@${gap.revision}/${gap.gapId}`, 'gap', gap.severity, gap.question]
 					),
 					...waiting.plans.map((plan) => [
 						`${plan.planId}@${plan.revision}`,
@@ -303,6 +318,14 @@ const commands: Record<string, Command> = {
 						result.build,
 						result.coverage,
 						Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`),
+					]),
+					...waiting.claims.map((claim) => [
+						`${claim.planId}/${claim.claimId}`,
+						'claim',
+						claim.state,
+						claim.severity,
+						claim.title,
+						...(claim.reason ? [claim.reason] : []),
 					]),
 					...waiting.requests.map((request) => [
 						request.planId,
@@ -357,6 +380,21 @@ const commands: Record<string, Command> = {
 						defect.severity,
 						defect.assertionIds,
 						defect.title,
+					]),
+					...status.explorations.map((item) => [item.explorationId, 'exploration', item.build, item.state]),
+					...status.questions.map((question) => [
+						question.id,
+						'question',
+						question.explorationId,
+						question.question,
+					]),
+					...status.claims.map((claim) => [
+						claim.claimId,
+						'claim',
+						claim.state,
+						claim.severity,
+						claim.title,
+						...(claim.reason ? [claim.reason] : []),
 					]),
 					...(status.retest?.verdicts ?? []).map((item) => [
 						`${item.runId}/${item.findingId}`,
@@ -645,6 +683,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: {
 					decision: reply.data.decisionId,
+					answer: reply.data.answerId,
 					gap: reply.data.gapId,
 					from: adopted?.runId,
 					revision: adopted?.revision,
@@ -1033,6 +1072,9 @@ const commands: Record<string, Command> = {
 	},
 	'export plan': exportCommand('reference', formats, exportPlan),
 	'export run': exportCommand('runId', runFormats, exportRun),
+	'export exploration': exportCommand('explorationId', explorationFormats, exportExploration),
+	'claim accept': claimCommand('approved'),
+	'claim reject': claimCommand('rejected'),
 	'explore open': {
 		positionals: ['planId'],
 		flags: { build: 'value', instance: 'value', mode: explorationModes },
@@ -1093,6 +1135,67 @@ const commands: Record<string, Command> = {
 			},
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
 		}),
+	},
+	'explore finish': {
+		positionals: ['explorationId'],
+		flags: { level: levelNames, allow: 'repeat', 'claude-arg': 'repeat', timeout: { min: 60, max: 7200 } },
+		write: true,
+		run: (store, args, { actor, env }) =>
+			finishExploration(
+				store,
+				actor,
+				{
+					explorationId: value(args, 'explorationId')!,
+					level: value(args, 'level'),
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+				},
+				env
+			),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.planId,
+				build: reply.data.build,
+				level: reply.data.level,
+				verifier: reply.data.verifier,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore show': {
+		positionals: ['explorationId'],
+		readOnly: true,
+		run: (store, args) => {
+			const explorationId = value(args, 'explorationId')!
+			return completed(explorationId, explorationReport(store, explorationId))
+		},
+		print: (reply) => {
+			const report = reply.data as ReturnType<typeof explorationReport>
+			const status = explorationLines(reply)
+			return {
+				facts: status.facts,
+				lines: [
+					...(status.lines ?? []),
+					...report.claims.map((claim) => [
+						claim.id,
+						'claim',
+						claim.state,
+						claim.severity,
+						claim.actors.join(','),
+						claim.title,
+						...(claim.reason ? [claim.reason] : []),
+					]),
+					...report.questions.map((question) => [
+						question.id,
+						'question',
+						question.answer === null ? 'open' : 'answered',
+						question.question,
+					]),
+					...report.criteria.map((criterion) => [criterion.id, 'criterion', criterion.text]),
+				],
+			}
+		},
 	},
 	'explore status': {
 		positionals: ['explorationId'],
@@ -1311,6 +1414,23 @@ function exportCommand(
 			return completed(subject, { format, out: writeOutput(store, out, content) })
 		},
 		print: (reply) => ({ facts: { out: reply.data.out } }),
+	}
+}
+
+function claimCommand(verdict: 'approved' | 'rejected'): Command {
+	return {
+		positionals: ['planId', 'claimId'],
+		flags: { rationale: 'value' },
+		required: ['rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			decideClaim(store, actor, {
+				planId: value(args, 'planId')!,
+				claimId: value(args, 'claimId')!,
+				verdict,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({ facts: { claim: reply.data.claimId, verdict: reply.data.verdict } }),
 	}
 }
 

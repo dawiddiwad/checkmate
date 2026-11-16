@@ -8879,6 +8879,671 @@ function runInstance(store, targetId, instanceId) {
   return active[0];
 }
 
+// plugin/src/journal.ts
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join as join2, relative, resolve, sep } from "node:path";
+var entryKinds = ["criterion", "observation", "defect", "question", "verdict", "note", "issue"];
+var prefixes = {
+  criterion: "C",
+  observation: "O",
+  defect: "D",
+  question: "Q",
+  verdict: "V",
+  note: "N",
+  issue: "I",
+  answer: "A"
+};
+var fieldsHint = "Fix the named fields.";
+var jsonHint = "Use double quotes for keys and strings. Put a backslash before each quote inside a string.";
+var maxEvidenceBytes = 32 * 1024 * 1024;
+var nonTesters = ["merge", "verify"];
+var sharedKinds = ["answer"];
+var shortName = (actor) => actor.slice(actor.lastIndexOf(":") + 1);
+var isTester = (actor) => actor !== void 0 && actor.startsWith("qa:") && !nonTesters.includes(shortName(actor));
+var refOf = (actor, id2) => `${shortName(actor)}/${id2}`;
+var bareOf = (ref) => ref.slice(ref.lastIndexOf("/") + 1);
+function explorationRow(store, explorationId) {
+  const row = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
+  if (!row) {
+    const ids2 = all(
+      store,
+      "SELECT exploration_id FROM explorations ORDER BY rowid"
+    ).map((item) => item.exploration_id);
+    throw new Refusal(
+      "prohibited",
+      `Unknown exploration: ${explorationId}. The store has ${ids2.length ? `the explorations ${ids2.join(", ")}` : "no exploration"}.`,
+      "Run checkmate explore list to read the explorations. Start one with checkmate explore <planId> --build <build>."
+    );
+  }
+  return row;
+}
+function withRefs(entry, name) {
+  return {
+    ...entry,
+    ...entry.about !== void 0 && {
+      about: entry.about.split(/([\s,;]+)/).map(name).join("")
+    },
+    ...entry.links && { links: entry.links.map(name) },
+    ...entry.reports && { reports: entry.reports.map(name) },
+    ...entry.defect !== void 0 && { defect: name(entry.defect) },
+    ...entry.repeats !== void 0 && { repeats: name(entry.repeats) },
+    ...entry.confirms !== void 0 && { confirms: name(entry.confirms) },
+    ...entry.refutes !== void 0 && { refutes: name(entry.refutes) },
+    ...entry.kind === "answer" && { question: name(entry.question) }
+  };
+}
+function journal(store, planId, viewer2) {
+  const rows = all(
+    store,
+    `SELECT e.rowid AS seq, e.body, e.actor, e.exploration_id, o.at FROM journal_entries e
+		JOIN explorations x ON x.exploration_id = e.exploration_id
+		LEFT JOIN operations o ON o.id = e.operation_id
+		WHERE x.plan_id = ? ORDER BY e.rowid`,
+    planId
+  ).map((row) => {
+    const body = JSON.parse(row.body);
+    return {
+      ...body,
+      seq: row.seq,
+      actor: row.actor,
+      at: row.at,
+      ref: refOf(row.actor, body.id),
+      explorationId: row.exploration_id
+    };
+  });
+  const latest = /* @__PURE__ */ new Map();
+  for (const row of rows) latest.set(row.ref, row);
+  const seen = (row) => !isTester(viewer2) || row.actor === viewer2 || !isTester(row.actor) || sharedKinds.includes(row.kind);
+  const shown = [...latest.values()].filter(seen);
+  const full = (row, word) => latest.has(word) ? word : latest.has(refOf(row.actor, word)) ? refOf(row.actor, word) : word;
+  const team = shown.map((row) => ({ ...withRefs(row, (word) => full(row, word)), id: row.ref }));
+  const uses = /* @__PURE__ */ new Map();
+  for (const row of shown) uses.set(row.id, (uses.get(row.id) ?? 0) + 1);
+  const idOf = (ref) => {
+    const target = latest.get(ref);
+    return target && seen(target) && uses.get(target.id) === 1 ? target.id : ref;
+  };
+  const entries = team.map((entry) => ({
+    ...withRefs(entry, (word) => latest.has(word) ? idOf(word) : word),
+    id: idOf(entry.id)
+  }));
+  const builds = [...new Set(rows.filter(seen).flatMap((row) => row.build ? [row.build] : []))];
+  return { planId, viewer: viewer2, rows: rows.filter(seen), entries, team, builds };
+}
+function lookup(state, actor) {
+  const keys = /* @__PURE__ */ new Map();
+  for (const entry of state.team) keys.set(entry.id, entry);
+  state.entries.forEach((entry, index2) => keys.set(entry.id, state.team[index2]));
+  for (const entry of state.team) if (entry.actor === actor) keys.set(bareOf(entry.id), entry);
+  return keys;
+}
+var storedRef = (target, actor) => target.actor === actor ? bareOf(target.id) : target.id;
+var ofKind = (state, kind) => state.entries.filter((entry) => entry.kind === kind);
+function evidenceFile(store, name) {
+  requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
+  const real = realpathSync(resolve(store.workspace, name));
+  requireWellFormed(
+    real.startsWith(realpathSync(store.workspace) + sep),
+    `Evidence file must be inside the workspace: ${name}`
+  );
+  const stats = statSync(real);
+  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
+  requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
+  return readFileSync(real);
+}
+function insideWorkspace(store, path) {
+  return realpathSync(path).startsWith(realpathSync(store.workspace) + sep);
+}
+var skippedFolders = ["node_modules", ".git", ".checkmate"];
+var isEvidenceText = (spec) => /\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec);
+function folderItems(folder) {
+  try {
+    return readdirSync(folder, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+function filesEndingWith(folder, segments, above = []) {
+  return folderItems(folder).flatMap((item) => {
+    if (item.isFile()) {
+      const path = [...above, item.name];
+      const tail = path.slice(-segments.length);
+      return tail.length === segments.length && tail.every((name, index2) => name === segments[index2]) ? [join2(folder, item.name)] : [];
+    }
+    if (!item.isDirectory() || skippedFolders.includes(item.name)) return [];
+    return filesEndingWith(join2(folder, item.name), segments, [...above, item.name]);
+  });
+}
+function onlyFileEndingWith(cwd, spec) {
+  const segments = spec.split(/[/\\]/).filter((name) => name && name !== ".");
+  if (isAbsolute(spec) || !segments.length || segments.includes("..")) return void 0;
+  const matches = filesEndingWith(cwd, segments);
+  return matches.length === 1 ? matches[0] : void 0;
+}
+function evidenceOf(store, spec, cwd, missing) {
+  const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : void 0);
+  if (found && (!missing || insideWorkspace(store, found))) {
+    const name = relative(store.workspace, found);
+    const bytes = evidenceFile(store, name);
+    const sha256 = digest(bytes);
+    execute(
+      store,
+      "INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)",
+      sha256,
+      bytes.length,
+      bytes
+    );
+    return { path: name, sha256, size: bytes.length };
+  }
+  if (!found && isEvidenceText(spec)) return { text: spec };
+  if (missing) {
+    missing.push(spec);
+    return { text: spec };
+  }
+  throw new Refusal(
+    "malformed",
+    `Evidence file not found: ${spec}`,
+    "Save the file in the workspace first. Or give the text of what you saw."
+  );
+}
+var Unreadable = class {
+  reason;
+  text;
+  constructor(reason, text) {
+    this.reason = reason;
+    this.text = text;
+  }
+};
+var EntryRefusal = class extends Refusal {
+  field;
+  fix;
+  constructor(field2, message, hint, fix) {
+    super("malformed", message, hint);
+    this.field = field2;
+    this.fix = fix;
+  }
+};
+function unfenced(text) {
+  const fenced = /^\s*```[\w-]*[ \t]*\n([\s\S]*?)\n\s*```\s*$/.exec(text);
+  return fenced ? fenced[1] : text;
+}
+function withoutTrailingCommas(text) {
+  const closing = /\s*[}\]]/y;
+  let out = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      out += char;
+      if (char === "\\") out += text[++i] ?? "";
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    closing.lastIndex = i + 1;
+    if (char === "," && closing.test(text)) continue;
+    out += char;
+  }
+  return out;
+}
+function topLevelParts(text) {
+  const found = [];
+  let depth = 0;
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === "\\") i++;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+    const closed = depth === 0 && (char === "}" || char === "]");
+    if (closed || depth === 0 && char === ",") {
+      found.push(text.slice(start, closed ? i + 1 : i));
+      start = i + 1;
+    }
+  }
+  found.push(text.slice(start));
+  return found.map((part) => part.trim()).filter(Boolean);
+}
+function readEntries(text) {
+  requireWellFormed(
+    text.trim().length > 0,
+    "Missing JSON payload on standard input",
+    "Send the entries on standard input, in a quoted heredoc: checkmate log <explorationId> <<'EOF', the JSON, then EOF"
+  );
+  const body = withoutTrailingCommas(unfenced(text)).trim();
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    const parts = topLevelParts(body.startsWith("[") && body.endsWith("]") ? body.slice(1, -1) : body);
+    if (parts.length < 2)
+      throw new Refusal("malformed", `Standard input is not valid JSON: ${error.message}`, jsonHint);
+    return parts.flatMap((part) => {
+      try {
+        return [JSON.parse(part)].flat();
+      } catch (error2) {
+        return [new Unreadable(error2.message, part)];
+      }
+    });
+  }
+}
+function entryList(entries) {
+  if (Array.isArray(entries)) return entries;
+  const wrapper = entries;
+  if (wrapper && typeof wrapper === "object" && wrapper.kind === void 0 && Array.isArray(wrapper.entries))
+    return wrapper.entries;
+  return [entries];
+}
+function checkedEntry(store, raw, path, build, state, actor, cwd, missing, recorded) {
+  if (raw instanceof Unreadable)
+    throw new EntryRefusal(
+      path,
+      `${path} is not valid JSON (${raw.reason}): ${raw.text.slice(0, 80)}`,
+      `${jsonHint} Send this entry again.`
+    );
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new EntryRefusal(path, `${path} is not a JSON object.`, 'Send each entry as a JSON object with "kind".', {
+      kind: entryKinds.join("|")
+    });
+  const given = raw;
+  const draft = { ...given, build };
+  const problems = schemaProblems("journal-entry", draft, path);
+  const kind = String(draft.kind);
+  if (!problems.length) problems.push(...schemaProblems(`journal-${kind}`, draft, path));
+  if (problems.length) {
+    const fix = { ...given };
+    for (const problem of problems)
+      if (problem.unknown) delete fix[problem.field];
+      else fix[problem.field] = problem.choices?.join("|") ?? `<${problem.field}>`;
+    throw new EntryRefusal(
+      [...new Set(problems.map((problem) => `${path}.${problem.field}`))].join(", "),
+      problems.map((problem) => problem.text).join(", "),
+      fieldsHint,
+      fix
+    );
+  }
+  const entry = draft;
+  const known = lookup(state, actor);
+  const used = [...known.keys()];
+  if (entry.supersedes !== void 0) {
+    const earlier = known.get(entry.supersedes);
+    if (earlier?.actor !== actor || earlier.kind !== kind || entry.id !== void 0 && entry.id !== bareOf(earlier.id)) {
+      const { supersedes: _, ...fix } = given;
+      throw new EntryRefusal(
+        `${path}.supersedes`,
+        `${path}.supersedes names no earlier ${kind}: ${entry.supersedes}.`,
+        `Use the ID of an earlier ${kind}, and leave out "id".`,
+        fix
+      );
+    }
+    entry.id = bareOf(earlier.id);
+    entry.supersedes = entry.id;
+  } else if (entry.id !== void 0) {
+    if (known.has(entry.id)) {
+      const free = unusedId(prefixes[entry.kind], used);
+      throw new EntryRefusal(
+        `${path}.id`,
+        `${path}.id ${entry.id} is in use.`,
+        `To replace that entry, give "supersedes": "${entry.id}". Or use a new ID, for example ${free}.`,
+        { ...given, id: free }
+      );
+    }
+  } else entry.id = unusedId(prefixes[entry.kind], used);
+  const refer = (id2, kinds2, field2, fix) => {
+    const target = known.get(id2);
+    if (target && kinds2.includes(target.kind)) return storedRef(target, actor);
+    throw new EntryRefusal(
+      `${path}.${field2}`,
+      `${path}.${field2} names no ${kinds2.join(" or ")}: ${id2}.`,
+      `Use the ID of an earlier ${kinds2.join(" or ")}.`,
+      { ...given, [field2]: fix }
+    );
+  };
+  const idsOf = (kinds2) => state.entries.filter((item) => kinds2.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds2.join(" or ")} ID>`;
+  const defectOrIssue = ["defect", "issue"];
+  if (recorded) {
+    const unknown = (id2) => !known.has(id2) && !recorded.replyIds.has(id2);
+    const links = entry.links?.filter((id2) => !unknown(id2));
+    recorded.dropped.push(...(entry.links ?? []).filter(unknown));
+    if (links?.length) entry.links = links;
+    else delete entry.links;
+    if (entry.repeats !== void 0 && unknown(entry.repeats)) {
+      recorded.dropped.push(entry.repeats);
+      delete entry.repeats;
+    }
+  }
+  if (entry.defect !== void 0) entry.defect = refer(entry.defect, defectOrIssue, "defect", idsOf(["defect"]));
+  if (entry.confirms !== void 0)
+    entry.confirms = refer(entry.confirms, defectOrIssue, "confirms", idsOf(defectOrIssue));
+  if (entry.refutes !== void 0)
+    entry.refutes = refer(entry.refutes, defectOrIssue, "refutes", idsOf(defectOrIssue));
+  if (entry.repeats !== void 0)
+    entry.repeats = refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
+  const listed = (field2, kinds2) => {
+    const ids2 = entry[field2];
+    if (!ids2) return;
+    const fix = ids2.filter((item) => kinds2.includes(known.get(item)?.kind));
+    entry[field2] = ids2.map((item) => refer(item, kinds2, field2, field2 === "links" ? fix : idsOf(kinds2)));
+  };
+  listed("links", ["observation", "criterion", "question"]);
+  listed("reports", ["defect"]);
+  if (entry.about !== void 0)
+    entry.about = entry.about.split(/([\s,;]+)/).map((word) => {
+      const target = known.get(word);
+      return target ? storedRef(target, actor) : word;
+    }).join("");
+  const { evidence: evidence2, ...rest } = entry;
+  if (evidence2 === void 0) return rest;
+  try {
+    return { ...rest, evidence: [evidence2].flat().map((spec) => evidenceOf(store, spec, cwd, missing)) };
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    throw new EntryRefusal(`${path}.evidence`, error.message, error.hint ?? "", {
+      ...given,
+      evidence: "<a file in the workspace, or the text that you saw>"
+    });
+  }
+}
+function insertEntry(store, explorationId, entry, actor, operationId) {
+  execute(
+    store,
+    "INSERT INTO journal_entries (exploration_id, entry_id, kind, build, body, actor, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    explorationId,
+    entry.id,
+    entry.kind,
+    entry.build ?? null,
+    canonical(entry),
+    actor,
+    operationId
+  );
+}
+function replyIds(list2) {
+  return new Set(list2.flatMap((raw) => typeof raw?.id === "string" ? [raw.id] : []));
+}
+var fixText = (item) => item.fix ? ` Send: ${JSON.stringify(item.fix)}` : "";
+function refusalText(item) {
+  return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ""}${fixText(item)}`;
+}
+function logEntries(store, actor, input) {
+  const { cwd, missingEvidence, droppedReferences, ...logged } = input;
+  const operation = { actor, command: "log", subject: input.explorationId, input: logged };
+  return write(store, operation, (operationId, _, actor2) => {
+    const exploration2 = explorationRow(store, input.explorationId);
+    const list2 = entryList(input.entries);
+    requireCondition(list2.length, "The array has no entry.", "Send one entry, or an array of entries.");
+    const saved = [];
+    const refused2 = [];
+    const recorded = droppedReferences && { replyIds: replyIds(list2), dropped: droppedReferences };
+    for (const [index2, raw] of list2.entries()) {
+      const state = journal(store, exploration2.plan_id, actor2);
+      let entry;
+      try {
+        entry = checkedEntry(
+          store,
+          raw,
+          `[${index2}]`,
+          exploration2.build,
+          state,
+          actor2,
+          cwd ?? store.workspace,
+          missingEvidence,
+          recorded
+        );
+      } catch (error) {
+        if (!(error instanceof EntryRefusal)) throw error;
+        refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
+        continue;
+      }
+      insertEntry(store, exploration2.exploration_id, entry, actor2, operationId);
+      saved.push({ index: index2, id: entry.id, kind: entry.kind });
+    }
+    if (!saved.length)
+      throw new Refusal(
+        "malformed",
+        refused2.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
+        [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
+      );
+    return {
+      reply: completed(exploration2.exploration_id, { saved, refused: refused2 }),
+      subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`]
+    };
+  });
+}
+function freshIds(store, planId, actor, entries) {
+  const used = new Set(lookup(journal(store, planId, actor), actor).keys());
+  const given = entries.flatMap((raw) => typeof raw?.id === "string" ? [raw.id] : []);
+  const taken = [...used, ...given];
+  const renamed = /* @__PURE__ */ new Map();
+  for (const raw of entries) {
+    const entry = raw;
+    if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || entry.supersedes !== void 0)
+      continue;
+    const prefix = prefixes[entry.kind];
+    if (!used.has(entry.id) || !prefix || renamed.has(entry.id)) continue;
+    const fresh = unusedId(prefix, taken);
+    renamed.set(entry.id, fresh);
+    taken.push(fresh);
+  }
+  const name = (word) => renamed.get(word) ?? word;
+  const seen = /* @__PURE__ */ new Set();
+  return entries.map((raw) => {
+    const entry = raw;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return raw;
+    const first = typeof entry.id === "string" && entry.supersedes === void 0 && !seen.has(entry.id);
+    if (first) seen.add(entry.id);
+    return {
+      ...withRefs(entry, name),
+      ...entry.supersedes !== void 0 && { supersedes: name(entry.supersedes) },
+      ...first && { id: name(entry.id) }
+    };
+  });
+}
+function recordText(store, planId, viewer2) {
+  const state = journal(store, planId, viewer2);
+  const lines2 = [
+    ...ofKind(state, "criterion").map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
+    ...ofKind(state, "defect").map(
+      (defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}`
+    ),
+    ...ofKind(state, "question").map((question) => {
+      const answer = ofKind(state, "answer").filter((entry) => entry.question === question.id).at(-1);
+      return `question ${question.id}: ${question.question}${answer ? ` Answer: ${answer.answer}` : ""}`;
+    })
+  ];
+  return lines2.length ? lines2.join("\n") : "No criterion, defect, or question yet.";
+}
+var evidenceScore = (entry) => (entry.evidence?.length ?? 0) * 2 + (entry.steps ? 1 : 0);
+var short = (text) => (text ?? "").length > 120 ? `${(text ?? "").slice(0, 117)}...` : text ?? "";
+function claimDecisions(store, planId) {
+  const rows = all(
+    store,
+    "SELECT subject_id, verdict, actor, rationale FROM approvals WHERE subject_kind = 'claim' AND subject_id LIKE ? ORDER BY rowid",
+    `${planId}:%`
+  );
+  const decided = /* @__PURE__ */ new Map();
+  for (const row of rows)
+    decided.set(row.subject_id.slice(planId.length + 1), {
+      verdict: row.verdict,
+      actor: row.actor,
+      rationale: row.rationale
+    });
+  return decided;
+}
+function claimGroups(state) {
+  const defects = new Map(state.team.filter((entry) => entry.kind === "defect").map((entry) => [entry.id, entry]));
+  const recorded = state.team.filter((entry) => entry.kind === "issue");
+  const grouped = new Set(recorded.flatMap((issue) => issue.reports ?? []));
+  return [
+    ...recorded.map((issue) => ({ issue, reports: (issue.reports ?? []).filter((id2) => defects.has(id2)) })),
+    ...[...defects.values()].filter((defect) => !grouped.has(defect.id)).map((defect) => ({ issue: defect, reports: [defect.id] }))
+  ].filter((group2) => group2.reports.length).map((group2) => ({ ...group2, found: group2.reports.map((id2) => defects.get(id2)) }));
+}
+function claimList(state, decided = /* @__PURE__ */ new Map()) {
+  const order = (build) => state.builds.indexOf(build ?? "");
+  return claimGroups(state).map(({ issue, reports, found }) => {
+    const actors = [...new Set(found.map((defect) => defect.actor))];
+    const names = [issue.id, ...reports];
+    const checks = state.team.filter(
+      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names.some((name) => entry.confirms === name || entry.refutes === name)
+    ).sort((a, b) => a.seq - b.seq);
+    const checkOn = (build) => checks.filter((entry) => entry.build === build).at(-1);
+    const confirms = (check) => names.includes(check.confirms ?? "");
+    const best = found.reduce((top, defect) => evidenceScore(defect) > evidenceScore(top) ? defect : top);
+    const first = Math.min(...found.map((defect) => order(defect.build)));
+    const firstCheck = checkOn(state.builds[first]);
+    const verified = !firstCheck ? "none" : confirms(firstCheck) ? "confirmed" : "refuted";
+    const verdicts = state.team.filter((entry) => entry.kind === "verdict" && names.includes(entry.defect ?? "")).sort((a, b) => a.seq - b.seq);
+    const statusOn = (build) => {
+      const results = /* @__PURE__ */ new Map();
+      for (const verdict of verdicts.filter((entry) => entry.build === build))
+        results.set(verdict.actor, verdict.result);
+      const count = (result) => [...results.values()].filter((item) => item === result).length;
+      const check = checkOn(build);
+      if (check) return { status: confirms(check) ? "not_fixed" : "fixed", basis: "verified" };
+      if (!results.size) return { status: "no verdict", basis: "none" };
+      if (count("fixed") === count("not_fixed")) return { status: "fixed", basis: "disputed" };
+      return {
+        status: count("fixed") > count("not_fixed") ? "fixed" : "not_fixed",
+        basis: results.size === 1 ? "single" : "majority"
+      };
+    };
+    const statuses = Object.fromEntries(
+      state.builds.filter((_, index2) => index2 > first).map((build) => [build, statusOn(build)])
+    );
+    const decision = decided.get(issue.id) ?? null;
+    const confirmed = actors.length > 1 || verified === "confirmed";
+    const suspected = found.every((defect) => defect.suspected || !defect.steps && !defect.evidence?.length);
+    const claimState = decision ? decision.verdict === "approved" ? "accepted" : "rejected" : confirmed ? "confirmed" : verified === "refuted" ? "unresolved" : suspected ? "suspected" : "observed";
+    const latest = Object.values(statuses).filter((on) => on.status !== "no verdict").at(-1)?.status;
+    return {
+      id: issue.id,
+      title: issue.title,
+      severity: issue.severity,
+      build: state.builds[first],
+      explorationId: issue.explorationId,
+      expected: best.expected,
+      actual: best.actual,
+      steps: best.steps ?? null,
+      evidence: best.evidence ?? [],
+      reports,
+      reporters: actors.length,
+      actors: actors.map(shortName),
+      state: claimState,
+      verified,
+      reason: claimState === "unresolved" ? `The verifier did not see it: ${firstCheck?.saw ?? "no reason given"}` : decision?.rationale ?? null,
+      decision,
+      statuses,
+      open: claimState !== "rejected" && latest !== "fixed",
+      note: issue.note ?? null
+    };
+  });
+}
+function planClaims(store, planId) {
+  return claimList(journal(store, planId), claimDecisions(store, planId));
+}
+var factoryStates = ["observed", "confirmed", "accepted"];
+var oracleStates = ["suspected", "unresolved"];
+function planQuestions(store, planId) {
+  const state = journal(store, planId);
+  const answers = state.team.filter((entry) => entry.kind === "answer");
+  return state.team.filter((entry) => entry.kind === "question").map((question) => ({
+    id: question.id,
+    explorationId: question.explorationId,
+    at: question.at,
+    question: question.question,
+    about: question.about ?? null,
+    answer: answers.filter((entry) => entry.question === question.id).at(-1)?.answer ?? null
+  }));
+}
+var stopWords = new Set(
+  "the and for with not but was are from that this when has have its into than then there should instead".split(" ")
+);
+var wordsIn = (text) => new Set(
+  text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2 && !stopWords.has(word))
+);
+var wordsOf = (entry) => wordsIn(`${entry.title} ${entry.actual}`);
+var overlap = (a, b) => [...a].filter((word) => b.has(word)).length / ((/* @__PURE__ */ new Set([...a, ...b])).size || 1);
+var similarWords = 0.5;
+function mergeItems(state, build) {
+  const defects = state.team.filter((entry) => entry.kind === "defect" && entry.build === build);
+  const testers = new Set(defects.map((defect) => defect.actor));
+  const groups = [];
+  for (const [index2, a] of defects.entries())
+    for (const b of defects.slice(index2 + 1)) {
+      if (a.actor === b.actor || overlap(wordsOf(a), wordsOf(b)) < similarWords) continue;
+      const joined = groups.filter((group3) => group3.includes(a.id) || group3.includes(b.id));
+      const group2 = [.../* @__PURE__ */ new Set([...joined.flat(), a.id, b.id])];
+      groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group2);
+    }
+  return {
+    testers: testers.size,
+    defects: defects.map((defect) => ({
+      id: defect.id,
+      severity: defect.severity,
+      title: short(defect.title),
+      expected: short(defect.expected),
+      actual: short(defect.actual),
+      steps: short([defect.steps ?? []].flat().join(" "))
+    })),
+    groups
+  };
+}
+function verifyItems(claims, build) {
+  return claims.filter(
+    (claim) => claim.build === build && claim.reporters === 1 && claim.verified === "none" && !claim.decision
+  );
+}
+function answerQuestion(store, actor, operationId, input) {
+  const state = journal(store, input.planId);
+  const question = state.team.find((entry2) => entry2.kind === "question" && entry2.id === input.questionId);
+  requireCondition(
+    question,
+    `Unknown gap or question ${input.questionId} of plan ${input.planId}.`,
+    "Run checkmate inbox to read the open gaps and questions with their IDs."
+  );
+  const used = state.rows.filter((row) => row.actor === actor).map((row) => row.id);
+  const entry = {
+    kind: "answer",
+    id: unusedId("A", used),
+    question: question.id,
+    answer: input.value,
+    decision: input.kind,
+    ...input.source ? { source: input.source } : {},
+    rationale: input.rationale
+  };
+  insertEntry(store, question.explorationId, entry, actor, operationId);
+  return entry;
+}
+function decideClaim(store, actor, input) {
+  const command = input.verdict === "approved" ? "claim accept" : "claim reject";
+  return write(store, { actor, command, subject: input.planId, input }, (operationId, _, actor2) => {
+    const claims = planClaims(store, input.planId);
+    const claim = claims.find((item) => item.id === input.claimId);
+    requireCondition(
+      claim,
+      `Unknown claim ${input.claimId} of plan ${input.planId}.`,
+      `Use one of: ${claims.map((item) => item.id).join(", ") || "no claim yet"}.`
+    );
+    const sha256 = digest(canonical({ id: claim.id, reports: claim.reports, title: claim.title }));
+    const reply = recordApproval(store, actor2, operationId, {
+      kind: "claim",
+      subject: `${input.planId}:${claim.id}`,
+      sha256,
+      verdict: input.verdict,
+      rationale: input.rationale
+    });
+    return {
+      reply: { ...reply, subject: input.planId, data: { ...reply.data, claimId: claim.id } },
+      subjects: [`plan:${input.planId}`, `exploration:${claim.explorationId}`, "inbox"]
+    };
+  });
+}
+
 // plugin/src/plans.ts
 var decisionKinds = ["clarify", "accept_assumption", "defer"];
 var partialModes = ["wait_for_resolution", "ready_only"];
@@ -9314,6 +9979,21 @@ function answerGap(store, actor, input) {
     const source = input.source ?? null;
     if (source !== null) requireText(source, "source (--source)");
     requireWellFormed(kind !== "clarify" || source, "A clarification needs a source (--source)");
+    if (input.gapId.includes("/")) {
+      planRequest(store, input.planId);
+      const entry = answerQuestion(store, actor2, operationId, {
+        ...input,
+        kind,
+        value: value2,
+        source,
+        rationale,
+        questionId: input.gapId
+      });
+      return {
+        reply: completed(input.planId, { planId: input.planId, gapId: input.gapId, answerId: entry.id, kind }),
+        subjects: [`plan:${input.planId}`, "inbox"]
+      };
+    }
     const answered = planRevision(store, input.planId);
     expectDigest(answered.sha256, input.expectSha256, `${input.planId}@${answered.plan.revision}`);
     const adopted = answered.plan.gaps.some((gap2) => gap2.id === input.gapId) ? null : adoptRunGap(store, operationId, answered, input.gapId);
@@ -9962,10 +10642,10 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync2, readFileSync, realpathSync, rmSync as rmSync2, statSync } from "node:fs";
-import { basename, extname, isAbsolute, join as join2, resolve, sep } from "node:path";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync2, realpathSync as realpathSync2, rmSync as rmSync2, statSync as statSync2 } from "node:fs";
+import { basename, extname, isAbsolute as isAbsolute2, join as join3, resolve as resolve2, sep as sep2 } from "node:path";
 import { randomUUID } from "node:crypto";
-var maxEvidenceBytes = 32 * 1024 * 1024;
+var maxEvidenceBytes2 = 32 * 1024 * 1024;
 var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
 var closeOutcomes = ["blocked", "not_run", "error"];
 var completions = ["completed", "interrupted", "operational_error"];
@@ -10172,7 +10852,7 @@ function beginRun(store, actor, input) {
     }
   );
   if (reply.status === "completed")
-    mkdirSync2(join2(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
+    mkdirSync2(join3(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
 function plannedTarget(store, text) {
@@ -10186,7 +10866,7 @@ function textEvidence(input, name) {
     "Missing evidence text on standard input"
   );
   const bytes = Buffer.from(input.text, "utf8");
-  requireWellFormed(bytes.length <= maxEvidenceBytes, "Evidence text exceeds 32 MiB");
+  requireWellFormed(bytes.length <= maxEvidenceBytes2, "Evidence text exceeds 32 MiB");
   let json = true;
   try {
     JSON.parse(input.text);
@@ -10204,32 +10884,32 @@ function textEvidence(input, name) {
 function readEvidence(store, runId, spec) {
   const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec);
   const name = match ? match[1] : spec;
-  requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
+  requireWellFormed(name && !isAbsolute2(name), `Evidence path must be relative to the workspace: ${name}`);
   const directory2 = evidenceDirectory(runId);
   let root;
   let real;
   try {
-    root = realpathSync(join2(store.workspace, directory2));
+    root = realpathSync2(join3(store.workspace, directory2));
   } catch {
     throw new Error(`Evidence directory ${directory2} does not exist`);
   }
-  const path = resolve(store.workspace, name);
+  const path = resolve2(store.workspace, name);
   try {
-    real = realpathSync(path);
+    real = realpathSync2(path);
   } catch {
     throw new Refusal("malformed", `Evidence file not found: ${name}`, `Save the file in ${directory2} first.`);
   }
-  requireWellFormed(real.startsWith(root + sep), `Evidence file must be inside ${directory2}: ${name}`);
-  const stats = statSync(real);
+  requireWellFormed(real.startsWith(root + sep2), `Evidence file must be inside ${directory2}: ${name}`);
+  const stats = statSync2(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
-  requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
+  requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name}`);
   const extension = extname(name).toLowerCase();
   return {
     path,
     name: basename(name),
     kind: match ? match[2] : kindByExtension[extension] ?? "observation",
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
-    bytes: readFileSync(real)
+    bytes: readFileSync2(real)
   };
 }
 function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
@@ -10808,6 +11488,1577 @@ function resultAcceptance(store, run2, sha256) {
   return approvalState(store, "result", run2.run_id, sha256, policy);
 }
 
+// plugin/src/explorations.ts
+var explorationModes = ["exploratory", "regression"];
+function latestRevision(store, planId) {
+  const row = one(
+    store,
+    "SELECT revision, body FROM latest_plans WHERE plan_id = ?",
+    planId
+  );
+  return row ? { revision: row.revision, plan: JSON.parse(row.body) } : null;
+}
+function charterOf(store, planId, scope) {
+  const { request, target } = planRequest(store, planId);
+  const latest = latestRevision(store, planId);
+  const requirements = latest?.plan.requirements ?? request.requirements ?? [];
+  return {
+    goal: request.objective,
+    requirements: requirements.map(({ id: id2, text }) => ({ id: id2, text })),
+    sources: request.context?.sources ?? [],
+    instructions: request.context?.instructions ?? null,
+    capabilities: target.profile.capabilities,
+    operations: target.profile.allowedOperations,
+    tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
+    scope
+  };
+}
+function nextExplorationId(store) {
+  const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
+    (row) => row.exploration_id
+  );
+  return unusedId("x-", ids2);
+}
+function insertExploration(store, input, operationId, at) {
+  const planId = requireIdentifier(input.planId, "plan ID");
+  const { target } = planRequest(store, planId);
+  const build = requireText(input.build, "application build (--build)");
+  const mode = requireChoice(input.mode ?? "exploratory", explorationModes, "mode (--mode)");
+  const instance = runInstance(store, target.profile.targetId, input.instance);
+  const explorationId = input.explorationId ?? nextExplorationId(store);
+  const charter = charterOf(store, planId, input.scope ?? []);
+  execute(
+    store,
+    "INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    explorationId,
+    planId,
+    latestRevision(store, planId)?.revision ?? null,
+    target.profile.targetId,
+    target.revision,
+    instance.instanceId,
+    build,
+    mode,
+    canonical(charter),
+    at,
+    operationId
+  );
+  return { explorationId, planId, build, mode, instanceId: instance.instanceId, charter };
+}
+function openExploration(store, actor, input) {
+  return write(store, { actor, command: "explore open", subject: input.planId, input }, (operationId, at) => {
+    const opened = insertExploration(store, input, operationId, at);
+    return {
+      reply: completed(opened.explorationId, {
+        ...opened,
+        next: [
+          `Record each test session: checkmate record ${opened.explorationId} --explorer <name> --session <sessionId>`,
+          `Then merge and verify: checkmate explore finish ${opened.explorationId}`
+        ]
+      }),
+      subjects: [`exploration:${opened.explorationId}`, `plan:${opened.planId}`]
+    };
+  });
+}
+function addEvent(store, explorationId, event2, operationId, at) {
+  execute(
+    store,
+    "INSERT INTO exploration_events (exploration_id, at, step, explorer, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    explorationId,
+    at,
+    event2.step,
+    event2.explorer,
+    event2.status,
+    canonical(event2.detail),
+    operationId
+  );
+}
+function explorationEvents(store, explorationId) {
+  return all(
+    store,
+    "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
+    explorationId
+  ).map((row) => ({ ...row, detail: JSON.parse(row.detail) }));
+}
+function exploration(store, explorationId) {
+  const row = explorationRow(store, explorationId);
+  return { ...row, charter: JSON.parse(row.charter) };
+}
+
+// plugin/src/levels.ts
+var testLevels = {
+  smoke: { explorers: 1, model: "haiku", verifier: false },
+  standard: { explorers: 3, model: "haiku", verifier: true },
+  deep: { explorers: 2, model: "sonnet", verifier: true }
+};
+var levelNames = Object.keys(testLevels);
+var defaultLevel = "standard";
+
+// plugin/contracts/journal-entry.schema.json
+var journal_entry_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-entry.schema.json",
+  description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.",
+  type: "object",
+  properties: {
+    kind: {
+      description: "The kind.",
+      enum: ["criterion", "observation", "defect", "question", "verdict", "note", "issue"]
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    }
+  },
+  required: ["kind"],
+  examples: [
+    [
+      {
+        kind: "criterion",
+        id: "C1",
+        text: "5 or more items get 10% off.",
+        source: "ticket.md#AC2"
+      },
+      {
+        kind: "observation",
+        id: "O1",
+        about: "C1",
+        steps: "Add 4 pens in the cart",
+        saw: "Total 40.00",
+        value: "40.00",
+        verdict: "ok",
+        via: "ui"
+      },
+      {
+        kind: "defect",
+        id: "D1",
+        title: "No discount at 5 items",
+        expected: "45.00 (AC2)",
+        actual: "Total 50.00",
+        severity: "high",
+        links: ["C1"],
+        steps: "Add 5 pens in the cart",
+        value: "50.00",
+        via: "ui",
+        evidence: "cart-5.png"
+      }
+    ]
+  ],
+  definitions: {
+    id: {
+      description: "Your ID, for example D1. Without it, Checkmate gives one.",
+      type: "string",
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+    },
+    build: {
+      description: "The build that you tested. Checkmate gives the build of the exploration.",
+      type: "string",
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"
+    },
+    supersedes: {
+      description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",
+      type: "string",
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+    },
+    about: {
+      description: "A criterion ID, a question ID, a diff area, or free text.",
+      type: "string",
+      minLength: 1
+    },
+    area: {
+      description: "A changed area, for example src/cart.js.",
+      type: "string",
+      minLength: 1
+    },
+    steps: {
+      description: "What you did.",
+      anyOf: [
+        {
+          type: "string",
+          minLength: 1
+        },
+        {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1
+          },
+          minItems: 1
+        }
+      ]
+    },
+    saw: {
+      description: "What you saw.",
+      type: "string",
+      minLength: 1
+    },
+    value: {
+      description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.",
+      type: "string",
+      minLength: 1
+    },
+    via: {
+      description: "The entry point that you used.",
+      enum: ["ui", "api", "code", "other"]
+    },
+    evidence: {
+      description: "A workspace file or the text that you saw, or an array of them.",
+      anyOf: [
+        {
+          type: "string",
+          minLength: 1
+        },
+        {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1
+          },
+          minItems: 1
+        }
+      ]
+    }
+  }
+};
+
+// plugin/contracts/journal-criterion.schema.json
+var journal_criterion_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-criterion.schema.json",
+  description: "A rule or an acceptance criterion that the change must meet.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "criterion"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    text: {
+      description: "The rule.",
+      type: "string",
+      minLength: 1
+    },
+    source: {
+      description: "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
+      type: "string",
+      minLength: 1
+    },
+    area: {
+      $ref: "journal-entry.schema.json#/definitions/area"
+    }
+  },
+  required: ["kind", "text"],
+  additionalProperties: false
+};
+
+// plugin/contracts/journal-observation.schema.json
+var journal_observation_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-observation.schema.json",
+  description: "What you did and what you saw.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "observation"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    about: {
+      $ref: "journal-entry.schema.json#/definitions/about"
+    },
+    steps: {
+      $ref: "journal-entry.schema.json#/definitions/steps"
+    },
+    saw: {
+      $ref: "journal-entry.schema.json#/definitions/saw"
+    },
+    value: {
+      $ref: "journal-entry.schema.json#/definitions/value"
+    },
+    repeats: {
+      description: "The ID of an earlier observation that you did again.",
+      type: "string",
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$"
+    },
+    verdict: {
+      description: "ok when the result is correct. wrong when it is not.",
+      enum: ["ok", "wrong"]
+    },
+    via: {
+      $ref: "journal-entry.schema.json#/definitions/via"
+    },
+    evidence: {
+      $ref: "journal-entry.schema.json#/definitions/evidence"
+    },
+    confirms: {
+      description: "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.",
+      type: "string",
+      minLength: 1
+    },
+    refutes: {
+      description: "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.",
+      type: "string",
+      minLength: 1
+    }
+  },
+  required: ["kind", "build", "saw"],
+  additionalProperties: false,
+  examples: [
+    {
+      kind: "observation",
+      confirms: "a1/D3",
+      steps: "Add 5 pens in the cart",
+      saw: "Total 50.00, no discount",
+      via: "ui",
+      evidence: "evidence/cart-5.png"
+    }
+  ]
+};
+
+// plugin/contracts/journal-defect.schema.json
+var journal_defect_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-defect.schema.json",
+  description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "defect"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    title: {
+      description: "What is wrong.",
+      type: "string",
+      minLength: 1
+    },
+    expected: {
+      description: "The correct result and its source.",
+      type: "string",
+      minLength: 1
+    },
+    actual: {
+      description: "What you saw.",
+      type: "string",
+      minLength: 1
+    },
+    severity: {
+      description: "The severity.",
+      enum: ["critical", "high", "medium", "low"]
+    },
+    about: {
+      $ref: "journal-entry.schema.json#/definitions/about"
+    },
+    steps: {
+      $ref: "journal-entry.schema.json#/definitions/steps"
+    },
+    saw: {
+      $ref: "journal-entry.schema.json#/definitions/saw"
+    },
+    value: {
+      $ref: "journal-entry.schema.json#/definitions/value"
+    },
+    via: {
+      $ref: "journal-entry.schema.json#/definitions/via"
+    },
+    evidence: {
+      description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.",
+      $ref: "journal-entry.schema.json#/definitions/evidence"
+    },
+    links: {
+      description: "The IDs of the observations, criteria, or questions that show it.",
+      type: "array",
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    },
+    suspected: {
+      description: "true when you are not sure.",
+      type: "boolean"
+    },
+    question: {
+      description: "The question that settles a suspected defect.",
+      type: "string",
+      minLength: 1
+    }
+  },
+  required: ["kind", "build", "title", "expected", "actual", "severity"],
+  additionalProperties: false
+};
+
+// plugin/contracts/journal-question.schema.json
+var journal_question_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-question.schema.json",
+  description: "A question for the product owner. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "question"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    question: {
+      description: "The question.",
+      type: "string",
+      minLength: 1
+    },
+    about: {
+      $ref: "journal-entry.schema.json#/definitions/about"
+    }
+  },
+  required: ["kind", "question"],
+  additionalProperties: false
+};
+
+// plugin/contracts/journal-verdict.schema.json
+var journal_verdict_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-verdict.schema.json",
+  description: "The retest of an earlier defect on this build.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "verdict"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    defect: {
+      description: "The ID of the earlier defect or issue.",
+      type: "string",
+      minLength: 1
+    },
+    result: {
+      description: "The result of the retest.",
+      enum: ["fixed", "not_fixed"]
+    },
+    saw: {
+      description: "What you saw.",
+      type: "string",
+      minLength: 1
+    },
+    evidence: {
+      $ref: "journal-entry.schema.json#/definitions/evidence"
+    }
+  },
+  required: ["kind", "build", "defect", "result"],
+  additionalProperties: false
+};
+
+// plugin/contracts/journal-note.schema.json
+var journal_note_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-note.schema.json",
+  description: "Anything else, for example where you explored.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "note"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    text: {
+      description: "The note.",
+      type: "string",
+      minLength: 1
+    },
+    about: {
+      $ref: "journal-entry.schema.json#/definitions/about"
+    },
+    area: {
+      $ref: "journal-entry.schema.json#/definitions/area"
+    },
+    evidence: {
+      $ref: "journal-entry.schema.json#/definitions/evidence"
+    }
+  },
+  required: ["kind", "text"],
+  additionalProperties: false
+};
+
+// plugin/contracts/journal-issue.schema.json
+var journal_issue_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "journal-issue.schema.json",
+  description: "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.",
+  type: "object",
+  properties: {
+    kind: {
+      const: "issue"
+    },
+    id: {
+      $ref: "journal-entry.schema.json#/definitions/id"
+    },
+    build: {
+      $ref: "journal-entry.schema.json#/definitions/build"
+    },
+    supersedes: {
+      $ref: "journal-entry.schema.json#/definitions/supersedes"
+    },
+    title: {
+      description: "What is wrong, in one line.",
+      type: "string",
+      minLength: 1
+    },
+    severity: {
+      description: "The severity.",
+      enum: ["critical", "high", "medium", "low"]
+    },
+    reports: {
+      description: "The full IDs of the defect entries that describe this defect, for example a1/D1.",
+      type: "array",
+      items: {
+        type: "string",
+        minLength: 1
+      },
+      minItems: 1
+    },
+    note: {
+      description: "Why these reports are one defect.",
+      type: "string",
+      minLength: 1
+    }
+  },
+  required: ["kind", "title", "severity", "reports"],
+  additionalProperties: false,
+  examples: [
+    {
+      kind: "issue",
+      title: "No discount at 5 items",
+      severity: "high",
+      reports: ["a1/D1", "a3/D2"],
+      note: "The same total of 50.00 for 5 items."
+    }
+  ]
+};
+
+// plugin/src/briefs.ts
+var files = {
+  "journal-entry.schema.json": journal_entry_schema_default,
+  "journal-criterion.schema.json": journal_criterion_schema_default,
+  "journal-observation.schema.json": journal_observation_schema_default,
+  "journal-defect.schema.json": journal_defect_schema_default,
+  "journal-question.schema.json": journal_question_schema_default,
+  "journal-verdict.schema.json": journal_verdict_schema_default,
+  "journal-note.schema.json": journal_note_schema_default,
+  "journal-issue.schema.json": journal_issue_schema_default
+};
+var commonFields = ["kind", "id", "build", "supersedes"];
+var teamFields = ["confirms", "refutes"];
+var recordedKinds = ["criterion", "observation", "defect", "question", "verdict", "note"];
+function resolved(node, file) {
+  if (!node.$ref) return [node, file];
+  const [path, pointer] = node.$ref.split("#");
+  const target = path || file;
+  let found = files[target];
+  for (const key of pointer.split("/").filter(Boolean)) found = found[key];
+  const [inner, at] = resolved(found, target);
+  const { $ref, ...own } = node;
+  return [{ ...inner, ...own }, at];
+}
+function fieldsOf(node, file, prefix) {
+  return Object.entries(node.properties ?? {}).flatMap(([name, child]) => {
+    const [field2, at] = resolved(child, file);
+    const [items, itemsAt] = field2.items ? resolved(field2.items, at) : [void 0, at];
+    const path = `${prefix}${name}`;
+    const type = field2.enum ? field2.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field2.type ?? "value";
+    const row = {
+      path,
+      type,
+      required: Boolean(node.required?.includes(name)),
+      description: field2.description ?? ""
+    };
+    const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field2.properties ? fieldsOf(field2, at, `${path}.`) : [];
+    return [row, ...nested];
+  });
+}
+function fieldText(fields, described) {
+  return fields.map((field2) => {
+    const name = `${field2.path}${field2.type.includes("|") ? ` (${field2.type})` : ""}${field2.required ? " (required)" : ""}`;
+    if (described.has(field2.description)) return `${name}.`;
+    described.add(field2.description);
+    return `${name}: ${field2.description}`;
+  }).join(" ");
+}
+function kindText(kind, keep, described) {
+  const file = `journal-${kind}.schema.json`;
+  const fields = fieldsOf(files[file], file, "").filter((field2) => !commonFields.includes(field2.path) && keep(field2));
+  return `Kind ${kind}: ${files[file].description} ${fieldText(fields, described)}`;
+}
+function commonText(kinds2, described) {
+  const file = "journal-entry.schema.json";
+  const fields = fieldsOf(files[file], file, "").filter((field2) => field2.path !== "build").map((field2) => field2.path === "kind" ? { ...field2, type: kinds2.join("|") } : field2);
+  return `${files[file].description} Every entry has: ${fieldText(fields, described)}`;
+}
+function entryText(kinds2 = recordedKinds, keep = (field2) => !teamFields.includes(field2.path)) {
+  const described = /* @__PURE__ */ new Set();
+  return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
+}
+function recorderPrompt(build, record) {
+  return [
+    `Now write the record of this test session for the QA record of the team (build ${build}).`,
+    "Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
+    "Reply with only one JSON array of the new entries, and nothing else. Use no tool.",
+    "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
+    "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
+    "",
+    "The entries:",
+    entryText(),
+    "",
+    "Example of a reply:",
+    JSON.stringify(journal_entry_schema_default.examples[0]),
+    "",
+    "The record already holds:",
+    record
+  ].join("\n");
+}
+function repairPrompt(refusals) {
+  return [
+    "Checkmate refused these entries of your reply:",
+    ...refusals.map((refusal) => `- ${refusal}`),
+    "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
+  ].join("\n");
+}
+function entryPointLine(entry) {
+  if (entry.kind === "command")
+    return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
+  return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
+}
+function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
+  return [
+    "Test this change of the application and find its defects.",
+    "",
+    `Goal: ${charter.goal}`,
+    ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
+    ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
+    ...charter.instructions ? ["", charter.instructions] : [],
+    ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
+    "",
+    "The application:",
+    ...entries.map(entryPointLine),
+    "",
+    `You can: ${charter.operations.join(", ")}. Do not change the code, the configuration, or the deployment of the application.`,
+    ...charter.tools.length ? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join("; ")}`] : [],
+    `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+    `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
+    "At the end, list what you tested and each problem that you found, with its steps."
+  ].join("\n");
+}
+function mergerPrompt(build, reports, groups) {
+  return [
+    `Merge the defect reports of independent testers of build ${build}. Do not test.`,
+    "Two reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.",
+    "Reply with only one JSON array of issue entries, one for each defect that two or more reports describe, and nothing else. Use no tool. Reply [] when no reports describe the same defect.",
+    "",
+    entryText(["issue"], () => true),
+    "",
+    "Example of an entry:",
+    JSON.stringify(journal_issue_schema_default.examples[0]),
+    "",
+    "The reports:",
+    ...reports.map(
+      (report) => `${report.id} (${report.severity}): ${report.title} Expected: ${report.expected} Actual: ${report.actual}${report.steps ? ` Steps: ${report.steps}` : ""}`
+    ),
+    ...groups.length ? [
+      "",
+      "Reports with many of the same words. These are ideas, not rules:",
+      ...groups.map((group2) => `- ${group2.join(", ")}`)
+    ] : []
+  ].join("\n");
+}
+function verifierBrief(items, entries, operations, dataPrefix) {
+  return [
+    "Reproduce each problem below on the application. Do not test other things.",
+    "",
+    "The application:",
+    ...entries.map(entryPointLine),
+    "",
+    `You can: ${operations.join(", ")}. Do not change the code, the configuration, or the deployment of the application.`,
+    `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+    "",
+    "The problems:",
+    ...items.map(
+      (item) => `- ${item.id}: ${item.title} Steps: ${[item.steps ?? "not given"].flat().join(" ")} Expected: ${item.expected} Reported: ${item.actual}`
+    ),
+    "",
+    'At the end, reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.'
+  ].join("\n");
+}
+
+// plugin/src/sessions.ts
+import { spawn, spawnSync } from "node:child_process";
+import { accessSync, constants, readFileSync as readFileSync3, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, join as join4 } from "node:path";
+import { fileURLToPath } from "node:url";
+var pluginRoot = fileURLToPath(new URL("..", import.meta.url));
+var maxOutputBytes = 4 * 1024 * 1024;
+var reservedClaudeArgs = [
+  "-p",
+  "--print",
+  "--output-format",
+  "--input-format",
+  "--json-schema",
+  "--plugin-dir",
+  "--settings",
+  "--resume",
+  "--fork-session",
+  "--session-id",
+  "--permission-prompts",
+  "--allowedTools",
+  "--allowed-tools",
+  "--tools",
+  "--disallowedTools",
+  "--disallowed-tools"
+];
+function checkmateScript() {
+  const own = fileURLToPath(import.meta.url);
+  return own.endsWith(".ts") ? join4(pluginRoot, "bin", "checkmate.ts") : own;
+}
+function claudeConfigDir(env) {
+  return env.CLAUDE_CONFIG_DIR?.trim() || join4(homedir(), ".claude");
+}
+function realPath(path) {
+  try {
+    return realpathSync3(path);
+  } catch {
+    return void 0;
+  }
+}
+function installedPluginId(env, root = pluginRoot) {
+  let installed;
+  try {
+    installed = JSON.parse(readFileSync3(join4(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
+  } catch {
+    return null;
+  }
+  const own = realPath(root);
+  for (const [id2, installs] of Object.entries(installed.plugins ?? {}))
+    for (const install of Array.isArray(installs) ? installs : [])
+      if (typeof install.installPath === "string" && own && realPath(install.installPath) === own) return id2;
+  return null;
+}
+function checkClaudeArgs(claudeArgs) {
+  for (const arg of claudeArgs) {
+    const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`));
+    if (reserved)
+      throw new Refusal(
+        "malformed",
+        `--claude-arg ${arg} is not permitted. Checkmate needs its own control of ${reserved}.`,
+        "Give tool rules with --allow. Give other host choices, for example --model, with --claude-arg."
+      );
+  }
+  return claudeArgs;
+}
+function childArgs(context, own) {
+  return [
+    "-p",
+    ...context.claudeArgs,
+    ...context.hiddenPlugin ? ["--settings", JSON.stringify({ enabledPlugins: { [context.hiddenPlugin]: false } })] : [],
+    ...own,
+    "--output-format",
+    "json",
+    "--permission-prompts",
+    "none"
+  ];
+}
+function childEnv(env, extra = {}) {
+  return {
+    ...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith("CHECKMATE_"))),
+    ...extra
+  };
+}
+function executableOnPath(name, env) {
+  for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    const path = join4(directory2, name);
+    try {
+      accessSync(path, constants.X_OK);
+      if (statSync3(path).isFile()) return path;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function requireClaude(env) {
+  const claude = executableOnPath("claude", env);
+  if (!claude)
+    throw new Refusal(
+      "prohibited",
+      "No claude executable on PATH. Nothing changed.",
+      "Install Claude Code, or add the directory of claude to PATH. Then run the command again."
+    );
+  return claude;
+}
+function excerpt(text) {
+  const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
+  return line ? `: ${line}` : "";
+}
+function claudeResult(output, error, status, signal) {
+  let parsed = {};
+  try {
+    const value2 = JSON.parse(output);
+    if (value2 && typeof value2 === "object") parsed = value2;
+  } catch {
+  }
+  const failure = status !== 0 ? [
+    "operational_error",
+    `claude exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || parsed.result)}`
+  ] : parsed.is_error === true ? ["operational_error", `claude ended with an error${excerpt(parsed.result)}`] : void 0;
+  return {
+    failure,
+    result: parsed.result,
+    ...typeof parsed.total_cost_usd === "number" ? { costUsd: parsed.total_cost_usd } : {},
+    ...typeof parsed.duration_ms === "number" ? { durationMs: parsed.duration_ms } : {},
+    ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
+  };
+}
+function callClaude(claude, args, prompt, cwd, env, seconds) {
+  const child = spawnSync(claude, args, {
+    cwd,
+    env,
+    input: prompt,
+    encoding: "utf8",
+    timeout: seconds * 1e3,
+    killSignal: "SIGTERM",
+    maxBuffer: maxOutputBytes
+  });
+  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
+  if (code === "ETIMEDOUT")
+    return { failure: ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`] };
+  if (code) return { failure: ["operational_error", `claude failed: ${code}.`] };
+  return claudeResult(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
+}
+function closingBracket(text, start) {
+  let depth = 0;
+  let quoted = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === "\\") i++;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "[") depth++;
+    else if (char === "]" && --depth === 0) return i;
+  }
+  return -1;
+}
+function replyArray(text) {
+  if (typeof text !== "string") return void 0;
+  for (let start = text.indexOf("["); start !== -1; start = text.indexOf("[", start + 1)) {
+    const end = closingBracket(text, start);
+    if (end === -1) continue;
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1));
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function launchClaude(claude, args, prompt, cwd, env, seconds) {
+  return new Promise((resolvePromise) => {
+    const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    let output = "";
+    let errors = "";
+    let failure;
+    const kill = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+      }
+    };
+    const timer = setTimeout(() => {
+      failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
+      kill("SIGTERM");
+      setTimeout(() => kill("SIGKILL"), 1500).unref();
+    }, seconds * 1e3);
+    child.stdout.on("data", (bytes) => {
+      if (output.length < maxOutputBytes) output += bytes.toString();
+    });
+    child.stderr.on("data", (bytes) => {
+      if (errors.length < 4096) errors += bytes.toString();
+    });
+    child.stdin.on("error", () => {
+    });
+    child.stdin.end(prompt);
+    child.on("error", (error) => {
+      failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
+    });
+    child.on("close", (status, signal) => {
+      clearTimeout(timer);
+      resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
+    });
+  });
+}
+
+// plugin/src/recorder.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync } from "node:fs";
+import { join as join5 } from "node:path";
+var defaultRecorderTimeout = 600;
+var reservedExplorers = ["merge", "verify"];
+function explorerActor(explorer) {
+  return `qa:${explorer}`;
+}
+function lastEntry(store) {
+  return one(store, "SELECT coalesce(max(rowid), 0) AS seq FROM journal_entries").seq;
+}
+function addedEntries(store, explorationId, actor, after) {
+  const rows = all(
+    store,
+    "SELECT kind, count(*) AS count FROM journal_entries WHERE exploration_id = ? AND actor = ? AND rowid > ? GROUP BY kind ORDER BY min(rowid)",
+    explorationId,
+    actor,
+    after
+  );
+  return Object.fromEntries(rows.map((row) => [row.kind, row.count]));
+}
+function launchContext(store, explorationId, explorer, session) {
+  const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
+  return launch ? launch.detail.context : void 0;
+}
+function logReply(store, actor, explorationId, planId, entries, missing, dropped, cwd) {
+  try {
+    const reply = logEntries(store, actor, {
+      explorationId,
+      entries: freshIds(store, planId, actor, entries),
+      cwd,
+      missingEvidence: missing,
+      droppedReferences: dropped
+    });
+    return reply.data.refused.map(refusalText);
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
+  }
+}
+function sum(calls, key) {
+  const values = calls.flatMap((call) => call[key] === void 0 ? [] : [call[key]]);
+  return values.length ? { [key]: values.reduce((total, value2) => total + value2, 0) } : {};
+}
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+function lockHolder(path) {
+  try {
+    return Number(readFileSync4(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function takeLock(path, until) {
+  mkdirSync3(join5(path, ".."), { recursive: true });
+  for (; ; ) {
+    try {
+      writeFileSync(path, String(process.pid), { flag: "wx" });
+      return true;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    const holder = lockHolder(path);
+    if (holder && !running(holder) && lockHolder(path) === holder) {
+      rmSync3(path, { force: true });
+      continue;
+    }
+    if (Date.now() >= until) return false;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+  }
+}
+function releaseLock(path) {
+  if (lockHolder(path) === process.pid) rmSync3(path, { force: true });
+}
+function prepare(store, input, env) {
+  if (env.CHECKMATE_RECORDER)
+    throw new Refusal(
+      "prohibited",
+      "A recorder cannot start another recorder. CHECKMATE_RECORDER is set. Nothing changed.",
+      "Run checkmate record from outside the recorder session, after the test session."
+    );
+  const explorer = requireIdentifier(input.explorer, "explorer (--explorer)");
+  requireWellFormed(
+    !reservedExplorers.includes(explorer),
+    `Explorer name ${explorer} is reserved. Use another name, for example a1.`
+  );
+  requireWellFormed(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.session),
+    `Invalid session ID: ${input.session}. Give the session_id of the test session.`,
+    "claude -p --output-format json gives it in session_id. In an interactive session, /status shows it."
+  );
+  const exploration2 = explorationRow(store, input.explorationId);
+  const claude = requireClaude(env);
+  const context = launchContext(store, exploration2.exploration_id, explorer, input.session) ?? {
+    hiddenPlugin: null,
+    claudeArgs: input.claudeArgs ?? []
+  };
+  return { claude, exploration: exploration2, explorer, context, recorder: randomUUID2(), actor: explorerActor(explorer) };
+}
+function recordSession(store, actor, input, env, cwd) {
+  const operation = { actor, command: "record", subject: input.explorationId, input };
+  let plan;
+  try {
+    plan = prepare(store, input, env);
+  } catch (error) {
+    return write(store, operation, () => {
+      throw error;
+    });
+  }
+  const started = Date.now();
+  const lock = join5(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
+  if (!takeLock(lock, started + input.timeoutSeconds * 1e3))
+    return write(store, operation, () => ({
+      reply: {
+        status: "operational_error",
+        subject: input.explorationId,
+        reasons: [
+          `Another recorder of ${plan.explorer} runs. Checkmate waited ${input.timeoutSeconds} seconds for it. No recorder started.`
+        ],
+        hint: `Run the same record command again when the other recorder ends.`,
+        data: { explorationId: input.explorationId, session: input.session }
+      },
+      subjects: [`exploration:${input.explorationId}`]
+    }));
+  try {
+    return recordLocked(store, operation, input, plan, env, cwd, started);
+  } finally {
+    releaseLock(lock);
+  }
+}
+function recordLocked(store, operation, input, plan, env, cwd, started) {
+  const { exploration: exploration2, actor } = plan;
+  const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" });
+  const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
+  const after = lastEntry(store);
+  const prompt = recorderPrompt(exploration2.build, recordText(store, exploration2.plan_id, actor));
+  const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
+  const calls = [
+    callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
+  ];
+  const missing = [];
+  const dropped = [];
+  const log = (entries) => logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, entries, missing, dropped, cwd);
+  const first = replyArray(calls[0].result);
+  let refusals = first ? log(first) : [];
+  if (!calls[0].failure && refusals.length && left() > 0) {
+    calls.push(
+      callClaude(
+        plan.claude,
+        childArgs(plan.context, ["--resume", plan.recorder]),
+        repairPrompt(refusals),
+        cwd,
+        childEnvironment,
+        left()
+      )
+    );
+    const fix = replyArray(calls[1].result);
+    if (fix) refusals = log(fix);
+  }
+  const added = addedEntries(store, exploration2.exploration_id, actor, after);
+  const saved = Object.values(added).reduce((total, count) => total + count, 0);
+  const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
+  const status = timedOut ? "interrupted" : calls[0].failure || !saved ? "operational_error" : "completed";
+  const reasons2 = [
+    ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
+    ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
+    ...first && !saved ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
+  ];
+  const data = {
+    explorationId: exploration2.exploration_id,
+    explorer: plan.explorer,
+    session: input.session,
+    recorder: calls[0].sessionId ?? plan.recorder,
+    calls: calls.length,
+    saved,
+    refused: refusals.length,
+    added,
+    evidenceMissing: missing.length,
+    ...missing.length ? { missingEvidence: missing } : {},
+    referencesDropped: dropped.length,
+    ...dropped.length ? { droppedReferences: dropped } : {},
+    ...sum(calls, "costUsd"),
+    ...sum(calls, "durationMs")
+  };
+  const reply = {
+    status,
+    subject: exploration2.exploration_id,
+    reasons: reasons2,
+    ...status === "completed" ? {} : {
+      hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`
+    },
+    data
+  };
+  return write(store, { ...operation, input: { ...input, recorder: plan.recorder } }, (operationId, at) => {
+    addEvent(
+      store,
+      exploration2.exploration_id,
+      { step: "record", explorer: plan.explorer, status, detail: { ...data, reasons: reasons2 } },
+      operationId,
+      at
+    );
+    return { reply, subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`] };
+  });
+}
+
+// plugin/src/explorers.ts
+import { spawn as spawn2 } from "node:child_process";
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { mkdirSync as mkdirSync4, openSync } from "node:fs";
+import { join as join6 } from "node:path";
+var defaultExplorerTimeout = 1800;
+var pollMilliseconds = 500;
+var mergerActor = "qa:merge";
+var verifierActor = "qa:verify";
+function hostModel(claudeArgs) {
+  for (const [index2, arg] of claudeArgs.entries()) {
+    if (arg === "--model") return claudeArgs[index2 + 1];
+    if (arg.startsWith("--model=")) return arg.slice("--model=".length);
+  }
+  return void 0;
+}
+function launchPlan(profile, input, env) {
+  const level = requireChoice(
+    input.level ?? profile.explore?.level ?? defaultLevel,
+    levelNames,
+    "test level (--level)"
+  );
+  const row = testLevels[level];
+  const claudeArgs = checkClaudeArgs(input.claudeArgs);
+  const host = hostModel(claudeArgs);
+  const hiddenPlugin = installedPluginId(env);
+  const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers;
+  requireWellFormed(
+    input.allow.length || explorers === 0 && !row.verifier,
+    "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
+    "The host owns the permissions. An explorer cannot answer a permission prompt."
+  );
+  return {
+    level,
+    explorers,
+    model: host ?? row.model,
+    modelFrom: host ? "host" : "level",
+    verifier: row.verifier,
+    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row.model] },
+    allow: input.allow,
+    timeoutSeconds: input.timeoutSeconds ?? defaultExplorerTimeout,
+    pluginHidden: hiddenPlugin !== null
+  };
+}
+function explorerNames(count) {
+  return Array.from({ length: count }, (_, index2) => `a${index2 + 1}`);
+}
+function evidenceFolder(explorationId, explorer) {
+  return `qa-evidence/${explorationId}/${explorer}`;
+}
+function startSupervisor(store, explorationId, actor, env) {
+  const folder = join6(store.workspace, ".checkmate", "tmp");
+  mkdirSync4(folder, { recursive: true });
+  const log = openSync(join6(folder, `explore-${explorationId}.log`), "a");
+  const child = spawn2(
+    process.execPath,
+    [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace],
+    {
+      cwd: store.workspace,
+      env: { ...env, CHECKMATE_ACTOR: actor },
+      detached: true,
+      stdio: ["ignore", log, log]
+    }
+  );
+  child.unref();
+}
+function startExploration(store, actor, input, env) {
+  const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
+    requireClaude(env);
+    const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
+    const row = explorationRow(store, opened.explorationId);
+    const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env);
+    addEvent(
+      store,
+      opened.explorationId,
+      { step: "start", explorer: null, status: "started", detail: launch },
+      operationId,
+      at
+    );
+    return {
+      reply: completed(opened.explorationId, {
+        ...opened,
+        level: launch.level,
+        explorers: launch.explorers,
+        model: launch.model,
+        verifier: launch.verifier,
+        pluginHidden: launch.pluginHidden,
+        next: [`checkmate explore wait ${opened.explorationId}`]
+      }),
+      subjects: [`exploration:${opened.explorationId}`, `plan:${opened.planId}`]
+    };
+  });
+  startSupervisor(store, reply.subject, actor, env);
+  return reply;
+}
+function finishable(store, explorationId) {
+  const row = explorationRow(store, explorationId);
+  requireCondition(
+    !startOf(explorationEvents(store, explorationId)),
+    `Exploration ${explorationId} has started already.`,
+    `Run checkmate explore wait ${explorationId}.`
+  );
+  return { explorationId, planId: row.plan_id, build: row.build, mode: row.mode, instanceId: row.instance_id };
+}
+function finishExploration(store, actor, input, env) {
+  const row = explorationRow(store, input.explorationId);
+  return startExploration(store, actor, { ...input, planId: row.plan_id, build: row.build, explorers: 0 }, env);
+}
+function event(store, actor, explorationId, item) {
+  write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
+    addEvent(store, explorationId, item, operationId, at);
+    return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
+  });
+}
+function startOf(events) {
+  return events.find((item) => item.step === "start")?.detail;
+}
+function modelHint(launch, call) {
+  if (!/model/i.test(call.failure?.[1] ?? "")) return void 0;
+  return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
+}
+async function launchExplorers(store, actor, explorationId, launch, env) {
+  const opened = exploration(store, explorationId);
+  const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
+  const instance = findInstance(store, opened.target_id, opened.instance_id);
+  const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
+  const claude = requireClaude(env);
+  const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
+  const runs = explorerNames(launch.explorers).map((explorer) => {
+    const session = randomUUID3();
+    const folder = evidenceFolder(explorationId, explorer);
+    mkdirSync4(join6(store.workspace, folder), { recursive: true });
+    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder);
+    event(store, actor, explorationId, {
+      step: "launch",
+      explorer,
+      status: "started",
+      detail: { session, context: launch.context, brief }
+    });
+    const args = childArgs(launch.context, ["--session-id", session, ...allowed]);
+    return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
+      (call) => ({ explorer, session, call })
+    );
+  });
+  const ended = await Promise.all(runs);
+  for (const { explorer, session, call } of ended) {
+    const hint = modelHint(launch, call);
+    event(store, actor, explorationId, {
+      step: "end",
+      explorer,
+      status: call.failure?.[0] ?? "completed",
+      detail: {
+        session,
+        ...call.failure ? { reason: call.failure[1] } : {},
+        ...hint ? { hint } : {},
+        ...call.costUsd === void 0 ? {} : { costUsd: call.costUsd },
+        ...call.durationMs === void 0 ? {} : { durationMs: call.durationMs }
+      }
+    });
+  }
+  return ended;
+}
+function recordExplorers(store, actor, explorationId, sessions, env) {
+  return sessions.map(
+    ({ explorer, session }) => recordSession(
+      store,
+      actor,
+      { explorationId, explorer, session, timeoutSeconds: defaultRecorderTimeout },
+      env,
+      store.workspace
+    ).status
+  );
+}
+function costOf(calls) {
+  const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
+  return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {};
+}
+function mergeReports(store, actor, explorationId, launch, env) {
+  const opened = explorationRow(store, explorationId);
+  const items = mergeItems(journal(store, opened.plan_id), opened.build);
+  if (items.testers < 2 || items.defects.length < 2) return;
+  const session = randomUUID3();
+  const claude = requireClaude(env);
+  const call = (args, prompt) => callClaude(
+    claude,
+    childArgs(launch.context, args),
+    prompt,
+    store.workspace,
+    childEnv(env),
+    defaultRecorderTimeout
+  );
+  const log = (reply) => {
+    if (!reply?.length) return [];
+    try {
+      return logEntries(store, mergerActor, { explorationId, entries: reply }).data.refused.map(
+        refusalText
+      );
+    } catch (error) {
+      if (!(error instanceof Refusal)) throw error;
+      return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
+    }
+  };
+  const calls = [call(["--session-id", session], mergerPrompt(opened.build, items.defects, items.groups))];
+  let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result));
+  if (refusals.length) {
+    calls.push(call(["--resume", session], repairPrompt(refusals)));
+    refusals = log(replyArray(calls[1].result));
+  }
+  const failure = calls.find((item) => item.failure)?.failure;
+  event(store, actor, explorationId, {
+    step: "merge",
+    explorer: null,
+    status: failure?.[0] ?? "completed",
+    detail: {
+      session,
+      reports: items.defects.length,
+      refused: refusals.length,
+      ...failure ? { reason: failure[1] } : {},
+      ...costOf(calls)
+    }
+  });
+}
+function verifiedEntries(reply, ids2) {
+  return (reply ?? []).flatMap((raw) => {
+    const item = raw;
+    if (!item || typeof item.id !== "string" || !ids2.has(item.id) || typeof item.seen !== "boolean") return [];
+    const saw = typeof item.saw === "string" && item.saw.trim() ? item.saw : item.seen ? "Seen again." : "Not seen.";
+    return [{ kind: "observation", saw, [item.seen ? "confirms" : "refutes"]: item.id }];
+  });
+}
+async function verifyClaims(store, actor, explorationId, launch, env) {
+  const opened = exploration(store, explorationId);
+  const items = verifyItems(planClaims(store, opened.plan_id), opened.build);
+  if (!items.length) return;
+  const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
+  const instance = findInstance(store, opened.target_id, opened.instance_id);
+  const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
+  const session = randomUUID3();
+  const brief = verifierBrief(items, entries, opened.charter.operations, `qa-${explorationId}-verify-`);
+  const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
+  const call = await launchClaude(
+    requireClaude(env),
+    childArgs(launch.context, ["--session-id", session, ...allowed]),
+    brief,
+    store.workspace,
+    childEnv(env),
+    launch.timeoutSeconds
+  );
+  const observations = call.failure ? [] : verifiedEntries(replyArray(call.result), new Set(items.map((item) => item.id)));
+  if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations });
+  event(store, actor, explorationId, {
+    step: "verify",
+    explorer: null,
+    status: call.failure?.[0] ?? (observations.length ? "completed" : "operational_error"),
+    detail: {
+      session,
+      items: items.length,
+      verified: observations.length,
+      ...call.failure ? { reason: call.failure[1] } : observations.length ? {} : { reason: "The verifier gave no result." },
+      ...costOf([call])
+    }
+  });
+}
+async function driveExploration(workspace, explorationId, env) {
+  const store = openStore(workspace);
+  const actor = env.CHECKMATE_ACTOR ?? "checkmate";
+  try {
+    event(store, actor, explorationId, {
+      step: "supervisor",
+      explorer: null,
+      status: "started",
+      detail: { pid: process.pid }
+    });
+    const launch = startOf(explorationEvents(store, explorationId));
+    if (!launch) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
+    if (launch.explorers) {
+      const ended = await launchExplorers(store, actor, explorationId, launch, env);
+      recordExplorers(
+        store,
+        actor,
+        explorationId,
+        ended.filter((item) => !item.call.failure),
+        env
+      );
+    }
+    const ok = explorationEvents(store, explorationId).filter(
+      (item) => item.step === "record" && item.status === "completed"
+    ).length;
+    if (ok) {
+      mergeReports(store, actor, explorationId, launch, env);
+      if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env);
+    }
+    event(store, actor, explorationId, {
+      step: "done",
+      explorer: null,
+      status: ok ? "completed" : "failed",
+      detail: {
+        recorded: ok,
+        ...ok ? {} : { reason: "No explorer session was recorded." }
+      }
+    });
+  } catch (error) {
+    event(store, actor, explorationId, {
+      step: "done",
+      explorer: null,
+      status: "failed",
+      detail: { reason: error instanceof Error ? error.message : String(error) }
+    });
+  } finally {
+    closeStore(store);
+  }
+}
+function running2(pid) {
+  if (typeof pid !== "number") return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+function explorationState(events) {
+  const done = events.find((item) => item.step === "done");
+  if (done) return done.status === "completed" ? "completed" : "failed";
+  const supervisor = events.find((item) => item.step === "supervisor");
+  if (supervisor && !running2(supervisor.detail.pid)) return "stopped";
+  if (!events.some((item) => item.step === "start")) return "open";
+  if (!supervisor) return "starting";
+  if (events.some((item) => item.step === "merge")) return "verifying";
+  if (events.some((item) => item.step === "record")) return "recording";
+  return "testing";
+}
+function explorationStatus(store, explorationId) {
+  const row = explorationRow(store, explorationId);
+  const events = explorationEvents(store, explorationId);
+  const launch = startOf(events);
+  const state = explorationState(events);
+  const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
+  const explorers = names.map((explorer) => {
+    const own = events.filter((item) => item.explorer === explorer);
+    const last = (step) => own.filter((item) => item.step === step).at(-1);
+    const end = last("end");
+    const record = last("record");
+    return {
+      explorer,
+      actor: explorerActor(explorer),
+      session: last("launch")?.detail.session ?? record?.detail.session ?? null,
+      ended: end?.status ?? null,
+      recorded: record?.status ?? null,
+      saved: record?.detail.saved ?? 0,
+      reason: end?.detail.reason ?? record?.detail.reasons ?? null,
+      hint: end?.detail.hint ?? null
+    };
+  });
+  const done = events.find((item) => item.step === "done");
+  return {
+    explorationId: row.exploration_id,
+    planId: row.plan_id,
+    build: row.build,
+    mode: row.mode,
+    instanceId: row.instance_id,
+    state,
+    level: launch?.level ?? null,
+    explorerCount: launch?.explorers ?? null,
+    model: launch?.model ?? null,
+    modelFrom: launch?.modelFrom ?? null,
+    verifier: launch?.verifier ?? null,
+    pluginHidden: launch?.pluginHidden ?? null,
+    explorers,
+    phases: events.filter((item) => item.step === "merge" || item.step === "verify").map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
+    reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
+  };
+}
+function waitExploration(store, explorationId, timeoutSeconds) {
+  const until = Date.now() + timeoutSeconds * 1e3;
+  for (; ; ) {
+    const status = explorationStatus(store, explorationId);
+    const ended = ["completed", "failed", "stopped", "open"].includes(status.state);
+    if (ended || Date.now() >= until) {
+      const outcome = status.state === "completed" ? "done" : ended ? "failed" : "timeout";
+      const hints = status.explorers.flatMap((item) => item.hint ? [item.hint] : []);
+      return {
+        status: outcome === "done" ? "completed" : outcome === "timeout" ? "interrupted" : "operational_error",
+        subject: explorationId,
+        reasons: outcome === "timeout" ? [`Exploration ${explorationId} is ${status.state} after ${timeoutSeconds} seconds.`] : outcome === "failed" ? [status.reason ?? `Exploration ${explorationId} is ${status.state}.`] : [],
+        ...outcome === "timeout" ? { hint: `Run checkmate explore wait ${explorationId} again.` } : hints.length ? { hint: [...new Set(hints)].join(" ") } : {},
+        data: { ...status, outcome }
+      };
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMilliseconds);
+  }
+}
+function explorationReport(store, explorationId) {
+  const opened = exploration(store, explorationId);
+  const state = journal(store, opened.plan_id);
+  const own = state.team.filter((entry) => entry.explorationId === explorationId);
+  return {
+    ...explorationStatus(store, explorationId),
+    charter: opened.charter,
+    startedAt: opened.started_at,
+    claims: planClaims(store, opened.plan_id).filter((claim) => claim.explorationId === explorationId),
+    questions: planQuestions(store, opened.plan_id).filter((question) => question.explorationId === explorationId),
+    criteria: own.filter((entry) => entry.kind === "criterion").map(({ id: id2, text, source }) => ({ id: id2, text, source: source ?? null })),
+    notes: own.filter((entry) => entry.kind === "note").map(({ id: id2, text, area: area2 }) => ({ id: id2, text, area: area2 ?? null })),
+    observations: own.filter((entry) => entry.kind === "observation").length
+  };
+}
+
 // plugin/src/views.ts
 function approvalLabel(state) {
   if (state.approved) return "approved";
@@ -10855,7 +13106,8 @@ function inbox(store) {
       question: gap.question,
       severity: gap.severity,
       since: row.at,
-      runId: null
+      runId: null,
+      explorationId: null
     })),
     ...planRunGaps(store, row.plan_id).filter((item) => !item.adopted).map((item) => ({
       planId: row.plan_id,
@@ -10864,9 +13116,37 @@ function inbox(store) {
       question: item.gap.question,
       severity: item.gap.severity,
       since: item.at,
-      runId: item.runId
+      runId: item.runId,
+      explorationId: null
     }))
-  ]).sort(bySince);
+  ]);
+  const explored = exploredPlans(store);
+  const questions = explored.flatMap(
+    (planId) => planQuestions(store, planId).filter((question) => question.answer === null).map((question) => ({
+      planId,
+      revision: null,
+      gapId: question.id,
+      question: question.question,
+      severity: "non_blocking",
+      since: question.at,
+      runId: null,
+      explorationId: question.explorationId
+    }))
+  );
+  const allGaps = [...gaps.map((gap) => ({ ...gap, revision: gap.revision })), ...questions].sort(
+    bySince
+  );
+  const claims = explored.flatMap(
+    (planId) => planClaims(store, planId).filter((claim) => claim.open && oracleStates.includes(claim.state)).map((claim) => ({
+      planId,
+      claimId: claim.id,
+      explorationId: claim.explorationId,
+      state: claim.state,
+      severity: claim.severity,
+      title: claim.title,
+      reason: claim.reason
+    }))
+  );
   const plans = revisions.map((row) => ({ row, approval: approvalLabel(planApproval(store, row.plan, row.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row, approval }) => ({
     planId: row.plan_id,
     revision: row.revision,
@@ -10893,7 +13173,7 @@ function inbox(store) {
       };
     });
   });
-  return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) };
+  return { gaps: allGaps, plans, results, claims, requests: requestedPlans(store).sort(bySince) };
 }
 function selectedCounts(result) {
   return outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
@@ -11002,7 +13282,84 @@ function planHistory(store, planId) {
   }));
 }
 var roles = ["planner", "oracle", "qa", "factory", "none"];
+function exploredPlans(store) {
+  return all(store, "SELECT DISTINCT plan_id FROM explorations ORDER BY plan_id").map(
+    (row) => row.plan_id
+  );
+}
+var runningExploration = ["starting", "testing", "recording", "verifying"];
+var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
 function planStatus(store, planId) {
+  const base = checkStatus(store, planId);
+  const explorations = all(
+    store,
+    "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
+    planId
+  ).map((row) => {
+    const status = explorationStatus(store, row.exploration_id);
+    return { explorationId: status.explorationId, build: status.build, state: status.state };
+  });
+  const claims = planClaims(store, planId).filter((claim) => claim.open).map((claim) => ({
+    claimId: claim.id,
+    explorationId: claim.explorationId,
+    build: claim.build,
+    state: claim.state,
+    severity: claim.severity,
+    title: claim.title,
+    reason: claim.reason
+  }));
+  const questions = planQuestions(store, planId).filter((question) => question.answer === null);
+  const extra = { explorations, claims, questions };
+  if (!overlaid.includes(base.state)) return { ...base, ...extra };
+  const running3 = explorations.filter((item) => runningExploration.includes(item.state));
+  if (running3.length)
+    return {
+      ...base,
+      ...extra,
+      ...loop(
+        "exploring",
+        "qa",
+        running3.map((item) => `${item.explorationId} is ${item.state} on build ${item.build}`),
+        running3.map((item) => `checkmate explore wait ${item.explorationId}`)
+      )
+    };
+  const triage = claims.filter((claim) => oracleStates.includes(claim.state));
+  if (triage.length || questions.length)
+    return {
+      ...base,
+      ...extra,
+      ...loop(
+        "needs_triage",
+        "oracle",
+        [
+          ...questions.length ? [amount(questions.length, "open question")] : [],
+          ...triage.map((claim) => `${claim.claimId} is ${claim.state}: ${claim.title}`)
+        ],
+        [
+          ...questions.length ? [
+            `checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`
+          ] : [],
+          ...triage.length ? [`checkmate claim accept|reject ${planId} <claimId> --rationale "<why>"`] : []
+        ]
+      )
+    };
+  const fixes = claims.filter((claim) => factoryStates.includes(claim.state));
+  if (fixes.length)
+    return {
+      ...base,
+      ...extra,
+      ...loop(
+        "defects_open",
+        "factory",
+        [amount(fixes.length, "open claim")],
+        [
+          `Build a fix, then explore the new build: checkmate explore start ${planId} --build <new build> --allow <rule>`
+        ]
+      )
+    };
+  return { ...base, ...extra };
+}
+function checkStatus(store, planId) {
   if (!one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId)) {
     planRequest(store, planId);
     return {
@@ -11725,8 +14082,8 @@ var tones = {
   not_executed: "muted"
 };
 var none = "\u2014";
-var join3 = (values) => values.length ? values.join(", ") : none;
-var pairs = (metadata = {}) => join3(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
+var join7 = (values) => values.length ? values.join(", ") : none;
+var pairs = (metadata = {}) => join7(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
 function markdownText(value2) {
   return value2.replace(/\\/g, "\\\\").replace(/([|[\]*_`])/g, "\\$1").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, " ");
 }
@@ -11870,7 +14227,7 @@ function runDocument(report) {
   const { result, sha256, acceptance, plan } = report;
   const planned = new Map(plan.tests.map((test) => [test.id, test]));
   const evidence2 = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files2 = (ids2) => join3(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
+  const files2 = (ids2) => join7(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
   const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
   const assertions = result.tests.flatMap((test) => test.assertions);
   const blocks = [
@@ -11948,8 +14305,8 @@ function runDocument(report) {
     blocks.push({
       table: ["Field", "Value"],
       rows: [
-        ["Assertions", join3(finding.assertionIds)],
-        ["Requirements", join3(finding.requirementIds)],
+        ["Assertions", join7(finding.assertionIds)],
+        ["Requirements", join7(finding.requirementIds)],
         ["Expected", finding.expected],
         ["Observed", finding.observed],
         ["Evidence", files2(finding.evidenceIds)],
@@ -11968,8 +14325,8 @@ function runDocument(report) {
         gap.severity,
         gap.question,
         gap.consequence,
-        join3(gap.requirementIds),
-        join3(gap.testIds)
+        join7(gap.requirementIds),
+        join7(gap.testIds)
       ])
     });
   blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
@@ -12030,7 +14387,7 @@ function runDocument(report) {
           row.requirementId,
           requirement?.text ?? none,
           row.status,
-          join3(row.testIds),
+          join7(row.testIds),
           row.reason ?? none,
           pairs(requirement?.metadata)
         ];
@@ -12076,9 +14433,9 @@ function planReport(plan, sha256) {
         test.id,
         test.title,
         test.readiness,
-        join3(test.requirementIds),
-        join3(test.dependsOn),
-        join3(test.preconditions),
+        join7(test.requirementIds),
+        join7(test.dependsOn),
+        join7(test.preconditions),
         test.action,
         pairs(test.metadata)
       ])
@@ -12288,35 +14645,50 @@ function testTimes(store, runId) {
 function exportRun(store, runId, format2) {
   return renderRun(runReport(store, runId), requireChoice(format2, runFormats, "format (--format)"));
 }
+var explorationFormats = ["md", "json"];
+function mdCell(text) {
+  return String(text ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+function exportExploration(store, explorationId, format2) {
+  const report = explorationReport(store, explorationId);
+  if (requireChoice(format2, explorationFormats, "format (--format)") === "json")
+    return JSON.stringify(report, null, "	") + "\n";
+  const lines2 = [
+    `# Exploration ${report.explorationId}`,
+    "",
+    `Plan ${report.planId}, build ${report.build}, instance ${report.instanceId}, mode ${report.mode}. State: ${report.state}.`,
+    `Level ${report.level ?? "-"}, ${report.explorerCount ?? 0} explorers, model ${report.model ?? "-"}, verifier ${report.verifier ?? "-"}.`,
+    "",
+    `Goal: ${report.charter.goal}`,
+    "",
+    "## Claims",
+    "",
+    "| Claim | State | Severity | Reporters | Title | Reason |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...report.claims.map(
+      (claim) => `| ${mdCell(claim.id)} | ${claim.state} | ${claim.severity} | ${claim.actors.join(", ")} | ${mdCell(claim.title)} | ${mdCell(claim.reason)} |`
+    ),
+    "",
+    "## Questions",
+    "",
+    ...report.questions.length ? report.questions.map(
+      (question) => `- ${question.id}: ${question.question}${question.answer ? ` Answer: ${question.answer}` : ""}`
+    ) : ["None."],
+    "",
+    "## Explorers",
+    "",
+    ...report.explorers.map(
+      (item) => `- ${item.explorer}: ended ${item.ended ?? "-"}, recorded ${item.recorded ?? "-"}, ${item.saved} entries`
+    )
+  ];
+  return lines2.join("\n") + "\n";
+}
 
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync as readFileSync2 } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-// plugin/src/actor.ts
-import { execFileSync } from "node:child_process";
-import { userInfo } from "node:os";
-function defaultActor(workspace, env) {
-  const named = env.CHECKMATE_ACTOR?.trim();
-  if (named) return named;
-  try {
-    const name = execFileSync("git", ["config", "user.name"], {
-      cwd: workspace,
-      env,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    if (name) return name;
-  } catch {
-  }
-  try {
-    return userInfo().username;
-  } catch {
-    return void 0;
-  }
-}
+import { existsSync as existsSync2, readFileSync as readFileSync5 } from "node:fs";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/ui/html.ts
 var entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -12337,7 +14709,7 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
   return { html: text };
 }
-function join4(items, separator) {
+function join8(items, separator) {
   return html2`${items.flatMap((item, i) => i ? [separator, item] : [item])}`;
 }
 var statusLook = {
@@ -12410,7 +14782,7 @@ function icon(status) {
 		>${symbol}</span
 	>`;
 }
-function short(sha256) {
+function short2(sha256) {
   return `${sha256.slice(0, 4)}\u2026${sha256.slice(-4)}`;
 }
 function age(iso, now = Date.now()) {
@@ -12701,7 +15073,7 @@ function verdictPanel(context, verdict, state) {
 		<h2 class="lab" id="decide-title">Decision</h2>
 		<p class="subj">${verdict.question}</p>
 		<p class="help">
-			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short(verdict.sha256)}</code>. Your decision
+			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short2(verdict.sha256)}</code>. Your decision
 			is recorded in the log.
 		</p>
 		<div data-stale-slot>${messages(state)}</div>
@@ -12791,10 +15163,180 @@ function recordPanel(title, content, decided = "") {
 	</section>`;
 }
 
+// plugin/src/ui/exploration.ts
+function claimRow(explorationId, claim) {
+  return html2`<tr id="${claim.id}">
+		<td><a class="mono" href="/explorations/${explorationId}/claims/${claim.id}">${claim.id}</a></td>
+		<td>${pill(claim.state)}</td>
+		<td>${pill(claim.severity)}</td>
+		<td>${claim.actors.join(", ")}</td>
+		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
+	</tr>`;
+}
+function explorationPage(store, explorationId) {
+  const report = explorationReport(store, explorationId);
+  const meta = html2`<div class="meta">
+		${pill(report.state)} <a class="pill" href="/plans/${report.planId}">${report.planId}</a>
+		<span class="pill">build ${report.build}</span>
+		<span class="pill"
+			>${report.level ?? "no level"} · ${report.explorerCount ?? 0} explorers · ${report.model ?? "-"}</span
+		>
+	</div>`;
+  const body = html2`${heading(html2`Exploration ${explorationId}`, report.charter.goal, meta)}
+		<section class="panel" aria-labelledby="claims-title">
+			<h2 class="lab" id="claims-title">Claims</h2>
+			${report.claims.length ? html2`<table class="table">
+							<thead>
+								<tr>
+									<th>Claim</th>
+									<th>State</th>
+									<th>Severity</th>
+									<th>Reporters</th>
+									<th>Title</th>
+								</tr>
+							</thead>
+							<tbody>
+								${report.claims.map((claim) => claimRow(explorationId, claim))}
+							</tbody>
+						</table>` : html2`<p class="none">No claim.</p>`}
+		</section>
+		<section class="panel" aria-labelledby="questions-title">
+			<h2 class="lab" id="questions-title">Questions</h2>
+			${report.questions.length ? html2`<ul class="items">
+							${report.questions.map(
+    (question) => html2`<li>
+										<a
+											class="item"
+											href="/explorations/${explorationId}/questions/${question.id}#answer"
+											><span class="id">${question.id}</span
+											><span class="what">${question.question}</span
+											><span class="end"
+												>${pill(question.answer === null ? "open" : "answered")}</span
+											></a
+										>
+									</li>`
+  )}
+						</ul>` : html2`<p class="none">No question.</p>`}
+		</section>
+		<section class="panel" aria-labelledby="explorers-title">
+			<h2 class="lab" id="explorers-title">Explorers</h2>
+			<ul class="items">
+				${report.explorers.map(
+    (item) => html2`<li>
+							<span class="id">${item.explorer}</span> ended ${item.ended ?? "-"} · recorded
+							${item.recorded ?? "-"} · ${item.saved} entries
+						</li>`
+  )}
+			</ul>
+		</section>
+		${downloads("Download report", `/explorations/${explorationId}/export`, "The record of this exploration.", ["md", "json"])}`;
+  return { title: `Exploration ${explorationId}`, section: "plans", subjects: [`exploration:${explorationId}`], body };
+}
+function questionPage(store, context, explorationId, questionId, state = null) {
+  const report = explorationReport(store, explorationId);
+  const question = report.questions.find((item) => item.id === questionId);
+  if (!question) throw new Error(`Unknown question ${questionId} in ${explorationId}`);
+  const panel = question.answer === null || state ? gapPanel(
+    context,
+    {
+      action: `/explorations/${explorationId}/questions/${question.id}`,
+      cancel: `/explorations/${explorationId}`,
+      sha256: "",
+      title: html2`${report.planId} · ${question.id}`,
+      question: question.question,
+      staleMessage: `${explorationId} changed. Review it before you answer.`
+    },
+    state ?? emptyState()
+  ) : recordPanel("Answer", html2`<blockquote>${question.answer}</blockquote>`);
+  return {
+    title: `${report.planId} \xB7 ${question.id}`,
+    section: "inbox",
+    subjects: [`exploration:${explorationId}`, "inbox"],
+    body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
+			<p><a href="/explorations/${explorationId}">Exploration ${explorationId}</a></p>
+			${panel}`
+  };
+}
+function claimPage(store, context, explorationId, claimId, state = null) {
+  const report = explorationReport(store, explorationId);
+  const claim = report.claims.find((item) => item.id === claimId);
+  if (!claim) throw new Error(`Unknown claim ${claimId} in ${explorationId}`);
+  const shown = state ?? emptyState();
+  const panel = claim.decision ? recordPanel(
+    "Decision",
+    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Rationale: ${claim.decision.rationale}</p>`
+  ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
+				<h2 class="lab" id="decide-title">Decision</h2>
+				<p class="subj">Is ${claim.id} a defect?</p>
+				<div>${messages(shown)}</div>
+				<form method="post" action="/explorations/${explorationId}/claims/${claim.id}" class="decision-form">
+					${hidden(context, "")} ${actorField(context, shown)}
+					${rationaleField(shown, "Why do you decide this?")}
+					<div class="btns">
+						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
+						<button class="btn" name="verdict" value="rejected">Reject</button>
+					</div>
+				</form>
+			</section>`;
+  const steps = [claim.steps ?? []].flat();
+  return {
+    title: `${report.planId} \xB7 ${claim.id}`,
+    section: "inbox",
+    subjects: [`exploration:${explorationId}`, "inbox"],
+    body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
+			<div class="split">
+				<section class="panel" aria-labelledby="claim-title">
+					<h2 class="lab" id="claim-title">Claim</h2>
+					<p>
+						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
+					</p>
+					<p class="lab">Expected</p>
+					<p>${claim.expected}</p>
+					<p class="lab">Actual</p>
+					<p>${claim.actual}</p>
+					${steps.length ? html2`<p class="lab">Steps</p>
+									<ol>
+										${steps.map((step) => html2`<li>${step}</li>`)}
+									</ol>` : ""}
+					<p class="help">Reported by ${claim.actors.join(", ")}. ${claim.reason ?? ""}</p>
+				</section>
+				${panel}
+			</div>`
+  };
+}
+
+// plugin/src/actor.ts
+import { execFileSync } from "node:child_process";
+import { userInfo } from "node:os";
+function defaultActor(workspace, env) {
+  const named = env.CHECKMATE_ACTOR?.trim();
+  if (named) return named;
+  try {
+    const name = execFileSync("git", ["config", "user.name"], {
+      cwd: workspace,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (name) return name;
+  } catch {
+  }
+  try {
+    return userInfo().username;
+  } catch {
+    return void 0;
+  }
+}
+
 // plugin/src/ui/lists.ts
+function gapLink(gap) {
+  return gap.explorationId ? `/explorations/${gap.explorationId}/questions/${gap.gapId}#answer` : `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`;
+}
 function inboxItems(waiting) {
   return [
-    ...waiting.gaps.map((gap) => `/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer`),
+    ...waiting.gaps.map(gapLink),
+    ...waiting.claims.map((claim) => `/explorations/${claim.explorationId}/claims/${claim.claimId}#decide`),
     ...waiting.plans.map((plan) => `/plans/${plan.planId}@${plan.revision}#decide`),
     ...waiting.results.map((result) => `/runs/${result.runId}#decide`)
   ];
@@ -12806,7 +15348,7 @@ function loopState(loop2) {
 	>`;
 }
 function inboxCount(waiting) {
-  return waiting.gaps.length + waiting.plans.length + waiting.results.length;
+  return waiting.gaps.length + waiting.plans.length + waiting.results.length + waiting.claims.length;
 }
 var countOrder = ["passed", "failed", "inconclusive", "error", "blocked", "not_run"];
 var countLook = {
@@ -12844,14 +15386,14 @@ function inboxPage(store) {
   const gaps = waiting.gaps.map(
     (gap) => html2`<a
 				class="item"
-				href="/plans/${gap.planId}@${gap.revision}/gaps/${gap.gapId}#answer"
+				href="${gapLink(gap)}"
 				data-nav-item
 				data-key="gap:${gap.planId}:${gap.gapId}"
 				data-announce="New gap ${gap.planId} ${gap.gapId}"
 			>
 				<span class="id">${gap.planId} · ${gap.gapId}</span>
 				<span class="what"
-					>${gap.question}${gap.runId ? html2` <span class="muted">· from run ${gap.runId}</span>` : ""}</span
+					>${gap.question}${gap.runId ? html2` <span class="muted">· from run ${gap.runId}</span>` : ""}${gap.explorationId ? html2` <span class="muted">· from exploration ${gap.explorationId}</span>` : ""}</span
 				>
 				<span class="end">${pill(gap.severity)} <span class="age">${time(gap.since)}</span></span>
 			</a>`
@@ -12871,6 +15413,21 @@ function inboxPage(store) {
 						>${time(plan.since)}</span
 					></span
 				>
+			</a>`
+  );
+  const claims = waiting.claims.map(
+    (claim) => html2`<a
+				class="item"
+				href="/explorations/${claim.explorationId}/claims/${claim.claimId}#decide"
+				data-nav-item
+				data-key="claim:${claim.planId}:${claim.claimId}"
+				data-announce="Claim ${claim.planId} ${claim.claimId} is ${claim.state}"
+			>
+				<span class="id">${claim.planId} · ${claim.claimId}</span>
+				<span class="what"
+					>${claim.title}${claim.reason ? html2` <span class="muted">· ${claim.reason}</span>` : ""}</span
+				>
+				<span class="end">${pill(claim.state)} ${pill(claim.severity)}</span>
 			</a>`
   );
   const results = waiting.results.map(
@@ -12900,8 +15457,9 @@ function inboxPage(store) {
 			</div>`
   );
   const sub = total ? `${plural(total, "item")} ${total === 1 ? "waits" : "wait"} for you, oldest first.` : null;
-  const body = total + requests.length ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Plans to approve or change", plans, "plans")}
-				${group("Results to accept", results, "results")} ${group("Plans to draft", requests, "requests")}` : emptyInbox(store);
+  const body = total + requests.length ? html2`${group("Gaps to answer", gaps, "gaps")} ${group("Claims to decide", claims, "claims")}
+				${group("Plans to approve or change", plans, "plans")} ${group("Results to accept", results, "results")}
+				${group("Plans to draft", requests, "requests")}` : emptyInbox(store);
   return {
     title: "Inbox",
     section: "inbox",
@@ -13136,7 +15694,7 @@ function planRow(row) {
 		<td>${loopState(row.loop)}</td>
 		<td>${testSummary(row.tests)}</td>
 		<td>
-			${row.openGaps.length ? join4(
+			${row.openGaps.length ? join8(
     row.openGaps.map(
       (id2) => html2`<a class="mono" href="/plans/${row.planId}@${row.revision}/gaps/${id2}"
 										>${id2}${row.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
@@ -13315,7 +15873,7 @@ function logRow(row) {
 		</td>
 		<td>${pill(row.status === "rejected" ? "rejected_operation" : row.status, words(row.status))}</td>
 		<td>
-			${row.subjects.length ? join4(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
+			${row.subjects.length ? join8(row.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
 		</td>
 		<td class="mono muted">${row.id}</td>
 	</tr>`;
@@ -13338,7 +15896,7 @@ function testLink(planId, revision, reference) {
   return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision}#${id2}">${reference}</a>`;
 }
 function ids(values, link) {
-  return values.length ? join4(values.map(link), ", ") : html2`<span class="muted">none</span>`;
+  return values.length ? join8(values.map(link), ", ") : html2`<span class="muted">none</span>`;
 }
 function facts(rows) {
   const shown = rows.filter(([, value2]) => value2 !== false);
@@ -13561,7 +16119,7 @@ function planHistoryList(store, detail, all2) {
 							<summary class="record-h">
 								<span class="mono rev">${detail.planId}@${item.revision}</span>
 								<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-								<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+								<code class="muted small" title="${item.sha256}">${short2(item.sha256)}</code>
 								<span class="muted small"
 									>${item.changes.length ? plural(item.changes.length, "change") : "first revision"}</span
 								>
@@ -13598,7 +16156,7 @@ function approvalPanel(store, context, detail, state) {
       "Approval",
       html2`<p class="subj">${pill(latest.verdict)} ${subject}</p>
 				<p class="help">
-					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
 				${latest.sha256 !== detail.sha256 ? banner("warn", "This decision was for another digest.") : ""}`,
@@ -13660,7 +16218,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   const meta = html2`<div class="meta">
 		${loopState(planStatus(store, planId))} ${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
-		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
+		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short2(detail.sha256)}</span></span>
 		<span class="head-actions">
 			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
 			${downloads("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
@@ -14058,7 +16616,7 @@ function editPage(store, context, planId, revision, state = null) {
     html2`<div class="meta">
 				<a class="pill" href="/plans/${subject}">${subject}</a>
 				<span class="pill" title="${detail.sha256}"
-					>sha256 <span class="mono">${short(detail.sha256)}</span></span
+					>sha256 <span class="mono">${short2(detail.sha256)}</span></span
 				>
 			</div>`
   )}
@@ -14157,7 +16715,7 @@ function findingRefs(detail, reference) {
   const findings2 = detail.findings.filter((finding) => finding.assertionIds.includes(reference));
   if (!findings2.length) return "";
   return html2` ·
-	${join4(
+	${join8(
     findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
     ", "
   )}`;
@@ -14271,7 +16829,7 @@ function findings(store, detail) {
 										</ol>` : ""}
 						<p class="muted small">
 							Assertions
-							${join4(
+							${join8(
       finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
       ", "
     )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
@@ -14437,7 +16995,7 @@ function decisionPanel(store, context, detail, state) {
 					${pill(latest.verdict, latest.verdict === "approved" ? "accepted" : "rejected")} ${detail.runId}
 				</p>
 				<p class="help">
-					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
+					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>`,
       `${detail.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
@@ -14560,7 +17118,7 @@ function none2(text = "none") {
   return html2`<span class="muted">${text}</span>`;
 }
 function words3(items) {
-  return items.length ? join4(
+  return items.length ? join8(
     items.map((item) => html2`<code>${item}</code>`),
     " "
   ) : none2();
@@ -14705,7 +17263,7 @@ function historyList(store, targetId, shown) {
 							>${targetId}@${item.revision}</a
 						>
 						<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-						<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
+						<code class="muted small" title="${item.sha256}">${short2(item.sha256)}</code>
 						<span class="muted small"
 							>${item.changed.length ? html2`changed ${item.changed.join(", ")}` : "first revision"}</span
 						>
@@ -14714,14 +17272,14 @@ function historyList(store, targetId, shown) {
   )}
 	</ol>`;
 }
-function entryList(instance) {
+function entryList2(instance) {
   return html2`<dl class="entries">
 		${Object.entries(instance.entries).map(
     ([name, value2]) => html2`<div>
 					<dt class="mono">${name}</dt>
 					<dd>
 						<code
-							>${join4(
+							>${join8(
       value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -14776,7 +17334,7 @@ function instancesTable(context, targetId, instances, retire) {
 				${instances.map(
     (instance) => html2`<tr id="instance-${instance.instanceId}" data-key="instance:${instance.instanceId}">
 							<td class="mono">${instance.instanceId}</td>
-							<td>${entryList(instance)}</td>
+							<td>${entryList2(instance)}</td>
 							<td>${instance.environment ?? none2()}</td>
 							<td>${words3(instance.references)}</td>
 							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
@@ -14867,7 +17425,7 @@ function targetPage(store, context, targetId, revision, form = null, retire = nu
     targetId,
     sub,
     html2`<div class="meta">
-				${shown ? html2`<span class="pill" title="${shown.sha256}">sha256 <span class="mono">${short(shown.sha256)}</span></span>` : ""}
+				${shown ? html2`<span class="pill" title="${shown.sha256}">sha256 <span class="mono">${short2(shown.sha256)}</span></span>` : ""}
 			</div>`
   )}
 		<div class="split">
@@ -14935,6 +17493,10 @@ var routes = {
   target: new RegExp(`^/settings/targets/(${id})$`),
   addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
   retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
+  exploration: new RegExp(`^/explorations/(${id})$`),
+  explorationExport: new RegExp(`^/explorations/(${id})/export\\.(md|json)$`),
+  question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
+  claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
   font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
@@ -14949,20 +17511,20 @@ var themes = ["system", "light", "dark"];
 var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
-    const path = fileURLToPath(new URL(candidate, import.meta.url));
-    if (existsSync(path + file)) return path;
+    const path = fileURLToPath2(new URL(candidate, import.meta.url));
+    if (existsSync2(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name) => readFileSync2(files2 + name);
+  const read = (name) => readFileSync5(files2 + name);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name) => readFileSync2(`${fonts}${name}.woff2`)
+    font: (name) => readFileSync5(`${fonts}${name}.woff2`)
   };
 }
 function securityHeaders() {
@@ -15211,6 +17773,22 @@ data: ${matched.join(",") || "*"}
       const name = format2 === "junit" ? `${runId}-junit.xml` : `${runId}-report.${format2}`;
       return download(request, exportRun(store, runId, format2), format2, name);
     }
+    const exploration2 = routes.exploration.exec(pathname);
+    if (exploration2) return render(request, explorationPage(store, exploration2[1]));
+    const explorationExport = routes.explorationExport.exec(pathname);
+    if (explorationExport) {
+      const [, explorationId, format2] = explorationExport;
+      return download(
+        request,
+        exportExploration(store, explorationId, format2),
+        format2,
+        `${explorationId}-report.${format2}`
+      );
+    }
+    const question = routes.question.exec(pathname);
+    if (question) return render(request, questionPage(store, shown, question[1], question[2]));
+    const claim = routes.claim.exec(pathname);
+    if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]));
     const gap = routes.gap.exec(pathname);
     if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]));
     const run2 = routes.run.exec(pathname);
@@ -15289,6 +17867,51 @@ data: ${matched.join(",") || "*"}
     }
     const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies);
     redirect(request.res, next.location, next.cookies);
+  }
+  function answerExplorationQuestion(request, form, explorationId, questionId) {
+    const state = {
+      ...emptyState(),
+      values: values(form, ["kind", "value", "source", "rationale", "actor"])
+    };
+    const { actor, cookies } = actorFrom(request, form);
+    const kind = state.values.kind;
+    const planId = planOfExploration(explorationId);
+    try {
+      answerGap(store, actor, {
+        planId,
+        gapId: questionId,
+        kind,
+        value: state.values.value.trim(),
+        source: kind === "clarify" ? state.values.source.trim() : null,
+        rationale: state.values.rationale.trim()
+      });
+    } catch (error) {
+      state.error = plainMessage(error);
+      return refuse(
+        request,
+        () => questionPage(store, context(request), explorationId, questionId, state),
+        cookies
+      );
+    }
+    const next = nextItem(`Answered ${planId} \xB7 ${questionId}`, cookies);
+    redirect(request.res, next.location, next.cookies);
+  }
+  function decideExplorationClaim(request, form, explorationId, claimId) {
+    const state = { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
+    const { actor, cookies } = actorFrom(request, form);
+    const planId = planOfExploration(explorationId);
+    const verdict = state.values.verdict === "rejected" ? "rejected" : "approved";
+    try {
+      decideClaim(store, actor, { planId, claimId, verdict, rationale: state.values.rationale.trim() });
+    } catch (error) {
+      state.error = plainMessage(error);
+      return refuse(request, () => claimPage(store, context(request), explorationId, claimId, state), cookies);
+    }
+    const next = nextItem(`${verdict === "approved" ? "Accepted" : "Rejected"} ${planId} \xB7 ${claimId}`, cookies);
+    redirect(request.res, next.location, next.cookies);
+  }
+  function planOfExploration(explorationId) {
+    return explorationRow(store, explorationId).plan_id;
   }
   function verdictState(form) {
     return { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
@@ -15546,6 +18169,10 @@ data: ${matched.join(",") || "*"}
     }
     const edit = routes.edit.exec(pathname);
     if (edit) return saveEdit(request, form, edit[1], Number(edit[2]));
+    const question = routes.question.exec(pathname);
+    if (question) return answerExplorationQuestion(request, form, question[1], question[2]);
+    const claim = routes.claim.exec(pathname);
+    if (claim) return decideExplorationClaim(request, form, claim[1], claim[2]);
     const gap = routes.gap.exec(pathname);
     if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3]);
     const plan = routes.plan.exec(pathname);
@@ -15610,1880 +18237,6 @@ data: ${matched.join(",") || "*"}
       closeStore(store);
     }
   };
-}
-
-// plugin/src/journal.ts
-import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync3, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
-import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2, sep as sep2 } from "node:path";
-var entryKinds = ["criterion", "observation", "defect", "question", "verdict", "note", "issue"];
-var prefixes = {
-  criterion: "C",
-  observation: "O",
-  defect: "D",
-  question: "Q",
-  verdict: "V",
-  note: "N",
-  issue: "I",
-  answer: "A"
-};
-var fieldsHint = "Fix the named fields.";
-var jsonHint = "Use double quotes for keys and strings. Put a backslash before each quote inside a string.";
-var maxEvidenceBytes2 = 32 * 1024 * 1024;
-var nonTesters = ["merge", "verify"];
-var sharedKinds = ["answer"];
-var shortName = (actor) => actor.slice(actor.lastIndexOf(":") + 1);
-var isTester = (actor) => actor !== void 0 && actor.startsWith("qa:") && !nonTesters.includes(shortName(actor));
-var refOf = (actor, id2) => `${shortName(actor)}/${id2}`;
-var bareOf = (ref) => ref.slice(ref.lastIndexOf("/") + 1);
-function explorationRow(store, explorationId) {
-  const row = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
-  if (!row) {
-    const ids2 = all(
-      store,
-      "SELECT exploration_id FROM explorations ORDER BY rowid"
-    ).map((item) => item.exploration_id);
-    throw new Refusal(
-      "prohibited",
-      `Unknown exploration: ${explorationId}. The store has ${ids2.length ? `the explorations ${ids2.join(", ")}` : "no exploration"}.`,
-      "Run checkmate explore list to read the explorations. Start one with checkmate explore <planId> --build <build>."
-    );
-  }
-  return row;
-}
-function withRefs(entry, name) {
-  return {
-    ...entry,
-    ...entry.about !== void 0 && {
-      about: entry.about.split(/([\s,;]+)/).map(name).join("")
-    },
-    ...entry.links && { links: entry.links.map(name) },
-    ...entry.reports && { reports: entry.reports.map(name) },
-    ...entry.defect !== void 0 && { defect: name(entry.defect) },
-    ...entry.repeats !== void 0 && { repeats: name(entry.repeats) },
-    ...entry.confirms !== void 0 && { confirms: name(entry.confirms) },
-    ...entry.refutes !== void 0 && { refutes: name(entry.refutes) },
-    ...entry.kind === "answer" && { question: name(entry.question) }
-  };
-}
-function journal(store, planId, viewer2) {
-  const rows = all(
-    store,
-    `SELECT e.rowid AS seq, e.body, e.actor, e.exploration_id, o.at FROM journal_entries e
-		JOIN explorations x ON x.exploration_id = e.exploration_id
-		LEFT JOIN operations o ON o.id = e.operation_id
-		WHERE x.plan_id = ? ORDER BY e.rowid`,
-    planId
-  ).map((row) => {
-    const body = JSON.parse(row.body);
-    return {
-      ...body,
-      seq: row.seq,
-      actor: row.actor,
-      at: row.at,
-      ref: refOf(row.actor, body.id),
-      explorationId: row.exploration_id
-    };
-  });
-  const latest = /* @__PURE__ */ new Map();
-  for (const row of rows) latest.set(row.ref, row);
-  const seen = (row) => !isTester(viewer2) || row.actor === viewer2 || !isTester(row.actor) || sharedKinds.includes(row.kind);
-  const shown = [...latest.values()].filter(seen);
-  const full = (row, word) => latest.has(word) ? word : latest.has(refOf(row.actor, word)) ? refOf(row.actor, word) : word;
-  const team = shown.map((row) => ({ ...withRefs(row, (word) => full(row, word)), id: row.ref }));
-  const uses = /* @__PURE__ */ new Map();
-  for (const row of shown) uses.set(row.id, (uses.get(row.id) ?? 0) + 1);
-  const idOf = (ref) => {
-    const target = latest.get(ref);
-    return target && seen(target) && uses.get(target.id) === 1 ? target.id : ref;
-  };
-  const entries = team.map((entry) => ({
-    ...withRefs(entry, (word) => latest.has(word) ? idOf(word) : word),
-    id: idOf(entry.id)
-  }));
-  const builds = [...new Set(rows.filter(seen).flatMap((row) => row.build ? [row.build] : []))];
-  return { planId, viewer: viewer2, rows: rows.filter(seen), entries, team, builds };
-}
-function lookup(state, actor) {
-  const keys = /* @__PURE__ */ new Map();
-  for (const entry of state.team) keys.set(entry.id, entry);
-  state.entries.forEach((entry, index2) => keys.set(entry.id, state.team[index2]));
-  for (const entry of state.team) if (entry.actor === actor) keys.set(bareOf(entry.id), entry);
-  return keys;
-}
-var storedRef = (target, actor) => target.actor === actor ? bareOf(target.id) : target.id;
-var ofKind = (state, kind) => state.entries.filter((entry) => entry.kind === kind);
-function evidenceFile(store, name) {
-  requireWellFormed(name && !isAbsolute2(name), `Evidence path must be relative to the workspace: ${name}`);
-  const real = realpathSync2(resolve2(store.workspace, name));
-  requireWellFormed(
-    real.startsWith(realpathSync2(store.workspace) + sep2),
-    `Evidence file must be inside the workspace: ${name}`
-  );
-  const stats = statSync2(real);
-  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
-  requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name}`);
-  return readFileSync3(real);
-}
-function insideWorkspace(store, path) {
-  return realpathSync2(path).startsWith(realpathSync2(store.workspace) + sep2);
-}
-var skippedFolders = ["node_modules", ".git", ".checkmate"];
-var isEvidenceText = (spec) => /\s|:\/\//.test(spec.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec);
-function folderItems(folder) {
-  try {
-    return readdirSync(folder, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-}
-function filesEndingWith(folder, segments, above = []) {
-  return folderItems(folder).flatMap((item) => {
-    if (item.isFile()) {
-      const path = [...above, item.name];
-      const tail = path.slice(-segments.length);
-      return tail.length === segments.length && tail.every((name, index2) => name === segments[index2]) ? [join5(folder, item.name)] : [];
-    }
-    if (!item.isDirectory() || skippedFolders.includes(item.name)) return [];
-    return filesEndingWith(join5(folder, item.name), segments, [...above, item.name]);
-  });
-}
-function onlyFileEndingWith(cwd, spec) {
-  const segments = spec.split(/[/\\]/).filter((name) => name && name !== ".");
-  if (isAbsolute2(spec) || !segments.length || segments.includes("..")) return void 0;
-  const matches = filesEndingWith(cwd, segments);
-  return matches.length === 1 ? matches[0] : void 0;
-}
-function evidenceOf(store, spec, cwd, missing) {
-  const found = [resolve2(cwd, spec), resolve2(store.workspace, spec)].find((path) => existsSync2(path)) ?? (missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : void 0);
-  if (found && (!missing || insideWorkspace(store, found))) {
-    const name = relative(store.workspace, found);
-    const bytes = evidenceFile(store, name);
-    const sha256 = digest(bytes);
-    execute(
-      store,
-      "INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)",
-      sha256,
-      bytes.length,
-      bytes
-    );
-    return { path: name, sha256, size: bytes.length };
-  }
-  if (!found && isEvidenceText(spec)) return { text: spec };
-  if (missing) {
-    missing.push(spec);
-    return { text: spec };
-  }
-  throw new Refusal(
-    "malformed",
-    `Evidence file not found: ${spec}`,
-    "Save the file in the workspace first. Or give the text of what you saw."
-  );
-}
-var Unreadable = class {
-  reason;
-  text;
-  constructor(reason, text) {
-    this.reason = reason;
-    this.text = text;
-  }
-};
-var EntryRefusal = class extends Refusal {
-  field;
-  fix;
-  constructor(field2, message, hint, fix) {
-    super("malformed", message, hint);
-    this.field = field2;
-    this.fix = fix;
-  }
-};
-function unfenced(text) {
-  const fenced = /^\s*```[\w-]*[ \t]*\n([\s\S]*?)\n\s*```\s*$/.exec(text);
-  return fenced ? fenced[1] : text;
-}
-function withoutTrailingCommas(text) {
-  const closing = /\s*[}\]]/y;
-  let out = "";
-  let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (quoted) {
-      out += char;
-      if (char === "\\") out += text[++i] ?? "";
-      else if (char === '"') quoted = false;
-      continue;
-    }
-    if (char === '"') quoted = true;
-    closing.lastIndex = i + 1;
-    if (char === "," && closing.test(text)) continue;
-    out += char;
-  }
-  return out;
-}
-function topLevelParts(text) {
-  const found = [];
-  let depth = 0;
-  let quoted = false;
-  let start = 0;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (quoted) {
-      if (char === "\\") i++;
-      else if (char === '"') quoted = false;
-      continue;
-    }
-    if (char === '"') quoted = true;
-    else if (char === "{" || char === "[") depth++;
-    else if (char === "}" || char === "]") depth--;
-    const closed = depth === 0 && (char === "}" || char === "]");
-    if (closed || depth === 0 && char === ",") {
-      found.push(text.slice(start, closed ? i + 1 : i));
-      start = i + 1;
-    }
-  }
-  found.push(text.slice(start));
-  return found.map((part) => part.trim()).filter(Boolean);
-}
-function readEntries(text) {
-  requireWellFormed(
-    text.trim().length > 0,
-    "Missing JSON payload on standard input",
-    "Send the entries on standard input, in a quoted heredoc: checkmate log <explorationId> <<'EOF', the JSON, then EOF"
-  );
-  const body = withoutTrailingCommas(unfenced(text)).trim();
-  try {
-    return JSON.parse(body);
-  } catch (error) {
-    const parts = topLevelParts(body.startsWith("[") && body.endsWith("]") ? body.slice(1, -1) : body);
-    if (parts.length < 2)
-      throw new Refusal("malformed", `Standard input is not valid JSON: ${error.message}`, jsonHint);
-    return parts.flatMap((part) => {
-      try {
-        return [JSON.parse(part)].flat();
-      } catch (error2) {
-        return [new Unreadable(error2.message, part)];
-      }
-    });
-  }
-}
-function entryList2(entries) {
-  if (Array.isArray(entries)) return entries;
-  const wrapper = entries;
-  if (wrapper && typeof wrapper === "object" && wrapper.kind === void 0 && Array.isArray(wrapper.entries))
-    return wrapper.entries;
-  return [entries];
-}
-function checkedEntry(store, raw, path, build, state, actor, cwd, missing, recorded) {
-  if (raw instanceof Unreadable)
-    throw new EntryRefusal(
-      path,
-      `${path} is not valid JSON (${raw.reason}): ${raw.text.slice(0, 80)}`,
-      `${jsonHint} Send this entry again.`
-    );
-  if (!raw || typeof raw !== "object" || Array.isArray(raw))
-    throw new EntryRefusal(path, `${path} is not a JSON object.`, 'Send each entry as a JSON object with "kind".', {
-      kind: entryKinds.join("|")
-    });
-  const given = raw;
-  const draft = { ...given, build };
-  const problems = schemaProblems("journal-entry", draft, path);
-  const kind = String(draft.kind);
-  if (!problems.length) problems.push(...schemaProblems(`journal-${kind}`, draft, path));
-  if (problems.length) {
-    const fix = { ...given };
-    for (const problem of problems)
-      if (problem.unknown) delete fix[problem.field];
-      else fix[problem.field] = problem.choices?.join("|") ?? `<${problem.field}>`;
-    throw new EntryRefusal(
-      [...new Set(problems.map((problem) => `${path}.${problem.field}`))].join(", "),
-      problems.map((problem) => problem.text).join(", "),
-      fieldsHint,
-      fix
-    );
-  }
-  const entry = draft;
-  const known = lookup(state, actor);
-  const used = [...known.keys()];
-  if (entry.supersedes !== void 0) {
-    const earlier = known.get(entry.supersedes);
-    if (earlier?.actor !== actor || earlier.kind !== kind || entry.id !== void 0 && entry.id !== bareOf(earlier.id)) {
-      const { supersedes: _, ...fix } = given;
-      throw new EntryRefusal(
-        `${path}.supersedes`,
-        `${path}.supersedes names no earlier ${kind}: ${entry.supersedes}.`,
-        `Use the ID of an earlier ${kind}, and leave out "id".`,
-        fix
-      );
-    }
-    entry.id = bareOf(earlier.id);
-    entry.supersedes = entry.id;
-  } else if (entry.id !== void 0) {
-    if (known.has(entry.id)) {
-      const free = unusedId(prefixes[entry.kind], used);
-      throw new EntryRefusal(
-        `${path}.id`,
-        `${path}.id ${entry.id} is in use.`,
-        `To replace that entry, give "supersedes": "${entry.id}". Or use a new ID, for example ${free}.`,
-        { ...given, id: free }
-      );
-    }
-  } else entry.id = unusedId(prefixes[entry.kind], used);
-  const refer = (id2, kinds2, field2, fix) => {
-    const target = known.get(id2);
-    if (target && kinds2.includes(target.kind)) return storedRef(target, actor);
-    throw new EntryRefusal(
-      `${path}.${field2}`,
-      `${path}.${field2} names no ${kinds2.join(" or ")}: ${id2}.`,
-      `Use the ID of an earlier ${kinds2.join(" or ")}.`,
-      { ...given, [field2]: fix }
-    );
-  };
-  const idsOf = (kinds2) => state.entries.filter((item) => kinds2.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds2.join(" or ")} ID>`;
-  const defectOrIssue = ["defect", "issue"];
-  if (recorded) {
-    const unknown = (id2) => !known.has(id2) && !recorded.replyIds.has(id2);
-    const links = entry.links?.filter((id2) => !unknown(id2));
-    recorded.dropped.push(...(entry.links ?? []).filter(unknown));
-    if (links?.length) entry.links = links;
-    else delete entry.links;
-    if (entry.repeats !== void 0 && unknown(entry.repeats)) {
-      recorded.dropped.push(entry.repeats);
-      delete entry.repeats;
-    }
-  }
-  if (entry.defect !== void 0) entry.defect = refer(entry.defect, defectOrIssue, "defect", idsOf(["defect"]));
-  if (entry.confirms !== void 0)
-    entry.confirms = refer(entry.confirms, defectOrIssue, "confirms", idsOf(defectOrIssue));
-  if (entry.refutes !== void 0)
-    entry.refutes = refer(entry.refutes, defectOrIssue, "refutes", idsOf(defectOrIssue));
-  if (entry.repeats !== void 0)
-    entry.repeats = refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
-  const listed = (field2, kinds2) => {
-    const ids2 = entry[field2];
-    if (!ids2) return;
-    const fix = ids2.filter((item) => kinds2.includes(known.get(item)?.kind));
-    entry[field2] = ids2.map((item) => refer(item, kinds2, field2, field2 === "links" ? fix : idsOf(kinds2)));
-  };
-  listed("links", ["observation", "criterion", "question"]);
-  listed("reports", ["defect"]);
-  if (entry.about !== void 0)
-    entry.about = entry.about.split(/([\s,;]+)/).map((word) => {
-      const target = known.get(word);
-      return target ? storedRef(target, actor) : word;
-    }).join("");
-  const { evidence: evidence2, ...rest } = entry;
-  if (evidence2 === void 0) return rest;
-  try {
-    return { ...rest, evidence: [evidence2].flat().map((spec) => evidenceOf(store, spec, cwd, missing)) };
-  } catch (error) {
-    if (!(error instanceof Refusal)) throw error;
-    throw new EntryRefusal(`${path}.evidence`, error.message, error.hint ?? "", {
-      ...given,
-      evidence: "<a file in the workspace, or the text that you saw>"
-    });
-  }
-}
-function insertEntry(store, explorationId, entry, actor, operationId) {
-  execute(
-    store,
-    "INSERT INTO journal_entries (exploration_id, entry_id, kind, build, body, actor, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    explorationId,
-    entry.id,
-    entry.kind,
-    entry.build ?? null,
-    canonical(entry),
-    actor,
-    operationId
-  );
-}
-function replyIds(list2) {
-  return new Set(list2.flatMap((raw) => typeof raw?.id === "string" ? [raw.id] : []));
-}
-var fixText = (item) => item.fix ? ` Send: ${JSON.stringify(item.fix)}` : "";
-function refusalText(item) {
-  return `[${item.index}] ${item.reason}.${item.hint ? ` ${item.hint}` : ""}${fixText(item)}`;
-}
-function logEntries(store, actor, input) {
-  const { cwd, missingEvidence, droppedReferences, ...logged } = input;
-  const operation = { actor, command: "log", subject: input.explorationId, input: logged };
-  return write(store, operation, (operationId, _, actor2) => {
-    const exploration2 = explorationRow(store, input.explorationId);
-    const list2 = entryList2(input.entries);
-    requireCondition(list2.length, "The array has no entry.", "Send one entry, or an array of entries.");
-    const saved = [];
-    const refused2 = [];
-    const recorded = droppedReferences && { replyIds: replyIds(list2), dropped: droppedReferences };
-    for (const [index2, raw] of list2.entries()) {
-      const state = journal(store, exploration2.plan_id, actor2);
-      let entry;
-      try {
-        entry = checkedEntry(
-          store,
-          raw,
-          `[${index2}]`,
-          exploration2.build,
-          state,
-          actor2,
-          cwd ?? store.workspace,
-          missingEvidence,
-          recorded
-        );
-      } catch (error) {
-        if (!(error instanceof EntryRefusal)) throw error;
-        refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
-        continue;
-      }
-      insertEntry(store, exploration2.exploration_id, entry, actor2, operationId);
-      saved.push({ index: index2, id: entry.id, kind: entry.kind });
-    }
-    if (!saved.length)
-      throw new Refusal(
-        "malformed",
-        refused2.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
-        [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
-      );
-    return {
-      reply: completed(exploration2.exploration_id, { saved, refused: refused2 }),
-      subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`]
-    };
-  });
-}
-function freshIds(store, planId, actor, entries) {
-  const used = new Set(lookup(journal(store, planId, actor), actor).keys());
-  const given = entries.flatMap((raw) => typeof raw?.id === "string" ? [raw.id] : []);
-  const taken = [...used, ...given];
-  const renamed = /* @__PURE__ */ new Map();
-  for (const raw of entries) {
-    const entry = raw;
-    if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || entry.supersedes !== void 0)
-      continue;
-    const prefix = prefixes[entry.kind];
-    if (!used.has(entry.id) || !prefix || renamed.has(entry.id)) continue;
-    const fresh = unusedId(prefix, taken);
-    renamed.set(entry.id, fresh);
-    taken.push(fresh);
-  }
-  const name = (word) => renamed.get(word) ?? word;
-  const seen = /* @__PURE__ */ new Set();
-  return entries.map((raw) => {
-    const entry = raw;
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return raw;
-    const first = typeof entry.id === "string" && entry.supersedes === void 0 && !seen.has(entry.id);
-    if (first) seen.add(entry.id);
-    return {
-      ...withRefs(entry, name),
-      ...entry.supersedes !== void 0 && { supersedes: name(entry.supersedes) },
-      ...first && { id: name(entry.id) }
-    };
-  });
-}
-function recordText(store, planId, viewer2) {
-  const state = journal(store, planId, viewer2);
-  const lines2 = [
-    ...ofKind(state, "criterion").map((criterion) => `criterion ${criterion.id}: ${criterion.text}`),
-    ...ofKind(state, "defect").map(
-      (defect) => `defect ${defect.id} (${defect.build}, ${defect.severity}): ${defect.title}`
-    ),
-    ...ofKind(state, "question").map((question) => {
-      const answer = ofKind(state, "answer").filter((entry) => entry.question === question.id).at(-1);
-      return `question ${question.id}: ${question.question}${answer ? ` Answer: ${answer.answer}` : ""}`;
-    })
-  ];
-  return lines2.length ? lines2.join("\n") : "No criterion, defect, or question yet.";
-}
-
-// plugin/src/explorations.ts
-var explorationModes = ["exploratory", "regression"];
-function latestRevision(store, planId) {
-  const row = one(
-    store,
-    "SELECT revision, body FROM latest_plans WHERE plan_id = ?",
-    planId
-  );
-  return row ? { revision: row.revision, plan: JSON.parse(row.body) } : null;
-}
-function charterOf(store, planId, scope) {
-  const { request, target } = planRequest(store, planId);
-  const latest = latestRevision(store, planId);
-  const requirements = latest?.plan.requirements ?? request.requirements ?? [];
-  return {
-    goal: request.objective,
-    requirements: requirements.map(({ id: id2, text }) => ({ id: id2, text })),
-    sources: request.context?.sources ?? [],
-    instructions: request.context?.instructions ?? null,
-    capabilities: target.profile.capabilities,
-    operations: target.profile.allowedOperations,
-    tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
-    scope
-  };
-}
-function nextExplorationId(store) {
-  const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
-    (row) => row.exploration_id
-  );
-  return unusedId("x-", ids2);
-}
-function insertExploration(store, input, operationId, at) {
-  const planId = requireIdentifier(input.planId, "plan ID");
-  const { target } = planRequest(store, planId);
-  const build = requireText(input.build, "application build (--build)");
-  const mode = requireChoice(input.mode ?? "exploratory", explorationModes, "mode (--mode)");
-  const instance = runInstance(store, target.profile.targetId, input.instance);
-  const explorationId = input.explorationId ?? nextExplorationId(store);
-  const charter = charterOf(store, planId, input.scope ?? []);
-  execute(
-    store,
-    "INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    explorationId,
-    planId,
-    latestRevision(store, planId)?.revision ?? null,
-    target.profile.targetId,
-    target.revision,
-    instance.instanceId,
-    build,
-    mode,
-    canonical(charter),
-    at,
-    operationId
-  );
-  return { explorationId, planId, build, mode, instanceId: instance.instanceId, charter };
-}
-function openExploration(store, actor, input) {
-  return write(store, { actor, command: "explore open", subject: input.planId, input }, (operationId, at) => {
-    const opened = insertExploration(store, input, operationId, at);
-    return {
-      reply: completed(opened.explorationId, {
-        ...opened,
-        next: [
-          `Record each test session: checkmate record ${opened.explorationId} --explorer <name> --session <sessionId>`,
-          `Then merge and verify: checkmate explore finish ${opened.explorationId}`
-        ]
-      }),
-      subjects: [`exploration:${opened.explorationId}`, `plan:${opened.planId}`]
-    };
-  });
-}
-function addEvent(store, explorationId, event2, operationId, at) {
-  execute(
-    store,
-    "INSERT INTO exploration_events (exploration_id, at, step, explorer, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    explorationId,
-    at,
-    event2.step,
-    event2.explorer,
-    event2.status,
-    canonical(event2.detail),
-    operationId
-  );
-}
-function explorationEvents(store, explorationId) {
-  return all(
-    store,
-    "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
-    explorationId
-  ).map((row) => ({ ...row, detail: JSON.parse(row.detail) }));
-}
-function exploration(store, explorationId) {
-  const row = explorationRow(store, explorationId);
-  return { ...row, charter: JSON.parse(row.charter) };
-}
-
-// plugin/contracts/journal-entry.schema.json
-var journal_entry_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-entry.schema.json",
-  description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.",
-  type: "object",
-  properties: {
-    kind: {
-      description: "The kind.",
-      enum: ["criterion", "observation", "defect", "question", "verdict", "note", "issue"]
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    }
-  },
-  required: ["kind"],
-  examples: [
-    [
-      {
-        kind: "criterion",
-        id: "C1",
-        text: "5 or more items get 10% off.",
-        source: "ticket.md#AC2"
-      },
-      {
-        kind: "observation",
-        id: "O1",
-        about: "C1",
-        steps: "Add 4 pens in the cart",
-        saw: "Total 40.00",
-        value: "40.00",
-        verdict: "ok",
-        via: "ui"
-      },
-      {
-        kind: "defect",
-        id: "D1",
-        title: "No discount at 5 items",
-        expected: "45.00 (AC2)",
-        actual: "Total 50.00",
-        severity: "high",
-        links: ["C1"],
-        steps: "Add 5 pens in the cart",
-        value: "50.00",
-        via: "ui",
-        evidence: "cart-5.png"
-      }
-    ]
-  ],
-  definitions: {
-    id: {
-      description: "Your ID, for example D1. Without it, Checkmate gives one.",
-      type: "string",
-      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-    },
-    build: {
-      description: "The build that you tested. Checkmate gives the build of the exploration.",
-      type: "string",
-      pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"
-    },
-    supersedes: {
-      description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",
-      type: "string",
-      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-    },
-    about: {
-      description: "A criterion ID, a question ID, a diff area, or free text.",
-      type: "string",
-      minLength: 1
-    },
-    area: {
-      description: "A changed area, for example src/cart.js.",
-      type: "string",
-      minLength: 1
-    },
-    steps: {
-      description: "What you did.",
-      anyOf: [
-        {
-          type: "string",
-          minLength: 1
-        },
-        {
-          type: "array",
-          items: {
-            type: "string",
-            minLength: 1
-          },
-          minItems: 1
-        }
-      ]
-    },
-    saw: {
-      description: "What you saw.",
-      type: "string",
-      minLength: 1
-    },
-    value: {
-      description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.",
-      type: "string",
-      minLength: 1
-    },
-    via: {
-      description: "The entry point that you used.",
-      enum: ["ui", "api", "code", "other"]
-    },
-    evidence: {
-      description: "A workspace file or the text that you saw, or an array of them.",
-      anyOf: [
-        {
-          type: "string",
-          minLength: 1
-        },
-        {
-          type: "array",
-          items: {
-            type: "string",
-            minLength: 1
-          },
-          minItems: 1
-        }
-      ]
-    }
-  }
-};
-
-// plugin/contracts/journal-criterion.schema.json
-var journal_criterion_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-criterion.schema.json",
-  description: "A rule or an acceptance criterion that the change must meet.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "criterion"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    text: {
-      description: "The rule.",
-      type: "string",
-      minLength: 1
-    },
-    source: {
-      description: "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
-      type: "string",
-      minLength: 1
-    },
-    area: {
-      $ref: "journal-entry.schema.json#/definitions/area"
-    }
-  },
-  required: ["kind", "text"],
-  additionalProperties: false
-};
-
-// plugin/contracts/journal-observation.schema.json
-var journal_observation_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-observation.schema.json",
-  description: "What you did and what you saw.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "observation"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    about: {
-      $ref: "journal-entry.schema.json#/definitions/about"
-    },
-    steps: {
-      $ref: "journal-entry.schema.json#/definitions/steps"
-    },
-    saw: {
-      $ref: "journal-entry.schema.json#/definitions/saw"
-    },
-    value: {
-      $ref: "journal-entry.schema.json#/definitions/value"
-    },
-    repeats: {
-      description: "The ID of an earlier observation that you did again.",
-      type: "string",
-      pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$"
-    },
-    verdict: {
-      description: "ok when the result is correct. wrong when it is not.",
-      enum: ["ok", "wrong"]
-    },
-    via: {
-      $ref: "journal-entry.schema.json#/definitions/via"
-    },
-    evidence: {
-      $ref: "journal-entry.schema.json#/definitions/evidence"
-    },
-    confirms: {
-      description: "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.",
-      type: "string",
-      minLength: 1
-    },
-    refutes: {
-      description: "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.",
-      type: "string",
-      minLength: 1
-    }
-  },
-  required: ["kind", "build", "saw"],
-  additionalProperties: false,
-  examples: [
-    {
-      kind: "observation",
-      confirms: "a1/D3",
-      steps: "Add 5 pens in the cart",
-      saw: "Total 50.00, no discount",
-      via: "ui",
-      evidence: "evidence/cart-5.png"
-    }
-  ]
-};
-
-// plugin/contracts/journal-defect.schema.json
-var journal_defect_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-defect.schema.json",
-  description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "defect"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    title: {
-      description: "What is wrong.",
-      type: "string",
-      minLength: 1
-    },
-    expected: {
-      description: "The correct result and its source.",
-      type: "string",
-      minLength: 1
-    },
-    actual: {
-      description: "What you saw.",
-      type: "string",
-      minLength: 1
-    },
-    severity: {
-      description: "The severity.",
-      enum: ["critical", "high", "medium", "low"]
-    },
-    about: {
-      $ref: "journal-entry.schema.json#/definitions/about"
-    },
-    steps: {
-      $ref: "journal-entry.schema.json#/definitions/steps"
-    },
-    saw: {
-      $ref: "journal-entry.schema.json#/definitions/saw"
-    },
-    value: {
-      $ref: "journal-entry.schema.json#/definitions/value"
-    },
-    via: {
-      $ref: "journal-entry.schema.json#/definitions/via"
-    },
-    evidence: {
-      description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.",
-      $ref: "journal-entry.schema.json#/definitions/evidence"
-    },
-    links: {
-      description: "The IDs of the observations, criteria, or questions that show it.",
-      type: "array",
-      items: {
-        type: "string",
-        minLength: 1
-      }
-    },
-    suspected: {
-      description: "true when you are not sure.",
-      type: "boolean"
-    },
-    question: {
-      description: "The question that settles a suspected defect.",
-      type: "string",
-      minLength: 1
-    }
-  },
-  required: ["kind", "build", "title", "expected", "actual", "severity"],
-  additionalProperties: false
-};
-
-// plugin/contracts/journal-question.schema.json
-var journal_question_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-question.schema.json",
-  description: "A question for the product owner. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "question"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    question: {
-      description: "The question.",
-      type: "string",
-      minLength: 1
-    },
-    about: {
-      $ref: "journal-entry.schema.json#/definitions/about"
-    }
-  },
-  required: ["kind", "question"],
-  additionalProperties: false
-};
-
-// plugin/contracts/journal-verdict.schema.json
-var journal_verdict_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-verdict.schema.json",
-  description: "The retest of an earlier defect on this build.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "verdict"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    defect: {
-      description: "The ID of the earlier defect or issue.",
-      type: "string",
-      minLength: 1
-    },
-    result: {
-      description: "The result of the retest.",
-      enum: ["fixed", "not_fixed"]
-    },
-    saw: {
-      description: "What you saw.",
-      type: "string",
-      minLength: 1
-    },
-    evidence: {
-      $ref: "journal-entry.schema.json#/definitions/evidence"
-    }
-  },
-  required: ["kind", "build", "defect", "result"],
-  additionalProperties: false
-};
-
-// plugin/contracts/journal-note.schema.json
-var journal_note_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-note.schema.json",
-  description: "Anything else, for example where you explored.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "note"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    text: {
-      description: "The note.",
-      type: "string",
-      minLength: 1
-    },
-    about: {
-      $ref: "journal-entry.schema.json#/definitions/about"
-    },
-    area: {
-      $ref: "journal-entry.schema.json#/definitions/area"
-    },
-    evidence: {
-      $ref: "journal-entry.schema.json#/definitions/evidence"
-    }
-  },
-  required: ["kind", "text"],
-  additionalProperties: false
-};
-
-// plugin/contracts/journal-issue.schema.json
-var journal_issue_schema_default = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "journal-issue.schema.json",
-  description: "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.",
-  type: "object",
-  properties: {
-    kind: {
-      const: "issue"
-    },
-    id: {
-      $ref: "journal-entry.schema.json#/definitions/id"
-    },
-    build: {
-      $ref: "journal-entry.schema.json#/definitions/build"
-    },
-    supersedes: {
-      $ref: "journal-entry.schema.json#/definitions/supersedes"
-    },
-    title: {
-      description: "What is wrong, in one line.",
-      type: "string",
-      minLength: 1
-    },
-    severity: {
-      description: "The severity.",
-      enum: ["critical", "high", "medium", "low"]
-    },
-    reports: {
-      description: "The full IDs of the defect entries that describe this defect, for example a1/D1.",
-      type: "array",
-      items: {
-        type: "string",
-        minLength: 1
-      },
-      minItems: 1
-    },
-    note: {
-      description: "Why these reports are one defect.",
-      type: "string",
-      minLength: 1
-    }
-  },
-  required: ["kind", "title", "severity", "reports"],
-  additionalProperties: false,
-  examples: [
-    {
-      kind: "issue",
-      title: "No discount at 5 items",
-      severity: "high",
-      reports: ["a1/D1", "a3/D2"],
-      note: "The same total of 50.00 for 5 items."
-    }
-  ]
-};
-
-// plugin/src/briefs.ts
-var files = {
-  "journal-entry.schema.json": journal_entry_schema_default,
-  "journal-criterion.schema.json": journal_criterion_schema_default,
-  "journal-observation.schema.json": journal_observation_schema_default,
-  "journal-defect.schema.json": journal_defect_schema_default,
-  "journal-question.schema.json": journal_question_schema_default,
-  "journal-verdict.schema.json": journal_verdict_schema_default,
-  "journal-note.schema.json": journal_note_schema_default,
-  "journal-issue.schema.json": journal_issue_schema_default
-};
-var commonFields = ["kind", "id", "build", "supersedes"];
-var teamFields = ["confirms", "refutes"];
-var recordedKinds = ["criterion", "observation", "defect", "question", "verdict", "note"];
-function resolved(node, file) {
-  if (!node.$ref) return [node, file];
-  const [path, pointer] = node.$ref.split("#");
-  const target = path || file;
-  let found = files[target];
-  for (const key of pointer.split("/").filter(Boolean)) found = found[key];
-  const [inner, at] = resolved(found, target);
-  const { $ref, ...own } = node;
-  return [{ ...inner, ...own }, at];
-}
-function fieldsOf(node, file, prefix) {
-  return Object.entries(node.properties ?? {}).flatMap(([name, child]) => {
-    const [field2, at] = resolved(child, file);
-    const [items, itemsAt] = field2.items ? resolved(field2.items, at) : [void 0, at];
-    const path = `${prefix}${name}`;
-    const type = field2.enum ? field2.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field2.type ?? "value";
-    const row = {
-      path,
-      type,
-      required: Boolean(node.required?.includes(name)),
-      description: field2.description ?? ""
-    };
-    const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field2.properties ? fieldsOf(field2, at, `${path}.`) : [];
-    return [row, ...nested];
-  });
-}
-function fieldText(fields, described) {
-  return fields.map((field2) => {
-    const name = `${field2.path}${field2.type.includes("|") ? ` (${field2.type})` : ""}${field2.required ? " (required)" : ""}`;
-    if (described.has(field2.description)) return `${name}.`;
-    described.add(field2.description);
-    return `${name}: ${field2.description}`;
-  }).join(" ");
-}
-function kindText(kind, keep, described) {
-  const file = `journal-${kind}.schema.json`;
-  const fields = fieldsOf(files[file], file, "").filter((field2) => !commonFields.includes(field2.path) && keep(field2));
-  return `Kind ${kind}: ${files[file].description} ${fieldText(fields, described)}`;
-}
-function commonText(kinds2, described) {
-  const file = "journal-entry.schema.json";
-  const fields = fieldsOf(files[file], file, "").filter((field2) => field2.path !== "build").map((field2) => field2.path === "kind" ? { ...field2, type: kinds2.join("|") } : field2);
-  return `${files[file].description} Every entry has: ${fieldText(fields, described)}`;
-}
-function entryText(kinds2 = recordedKinds, keep = (field2) => !teamFields.includes(field2.path)) {
-  const described = /* @__PURE__ */ new Set();
-  return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
-}
-function recorderPrompt(build, record) {
-  return [
-    `Now write the record of this test session for the QA record of the team (build ${build}).`,
-    "Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
-    "Reply with only one JSON array of the new entries, and nothing else. Use no tool.",
-    "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
-    "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
-    "",
-    "The entries:",
-    entryText(),
-    "",
-    "Example of a reply:",
-    JSON.stringify(journal_entry_schema_default.examples[0]),
-    "",
-    "The record already holds:",
-    record
-  ].join("\n");
-}
-function repairPrompt(refusals) {
-  return [
-    "Checkmate refused these entries of your reply:",
-    ...refusals.map((refusal) => `- ${refusal}`),
-    "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
-  ].join("\n");
-}
-function entryPointLine(entry) {
-  if (entry.kind === "command")
-    return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
-  return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
-}
-function explorerBrief(charter, entries, dataPrefix, evidenceFolder2) {
-  return [
-    "Test this change of the application and find its defects.",
-    "",
-    `Goal: ${charter.goal}`,
-    ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
-    ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
-    ...charter.instructions ? ["", charter.instructions] : [],
-    ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
-    "",
-    "The application:",
-    ...entries.map(entryPointLine),
-    "",
-    `You can: ${charter.operations.join(", ")}. Do not change the code, the configuration, or the deployment of the application.`,
-    ...charter.tools.length ? [`Tools: ${charter.tools.map((tool) => `${tool.name} (${tool.purpose})`).join("; ")}`] : [],
-    `Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
-    `Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder2}/.`,
-    "At the end, list what you tested and each problem that you found, with its steps."
-  ].join("\n");
-}
-
-// plugin/src/sessions.ts
-import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, readFileSync as readFileSync4, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
-import { homedir } from "node:os";
-import { delimiter, join as join6 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-var pluginRoot = fileURLToPath2(new URL("..", import.meta.url));
-var maxOutputBytes = 4 * 1024 * 1024;
-var reservedClaudeArgs = [
-  "-p",
-  "--print",
-  "--output-format",
-  "--input-format",
-  "--json-schema",
-  "--plugin-dir",
-  "--settings",
-  "--resume",
-  "--fork-session",
-  "--session-id",
-  "--permission-prompts",
-  "--allowedTools",
-  "--allowed-tools",
-  "--tools",
-  "--disallowedTools",
-  "--disallowed-tools"
-];
-function checkmateScript() {
-  const own = fileURLToPath2(import.meta.url);
-  return own.endsWith(".ts") ? join6(pluginRoot, "bin", "checkmate.ts") : own;
-}
-function claudeConfigDir(env) {
-  return env.CLAUDE_CONFIG_DIR?.trim() || join6(homedir(), ".claude");
-}
-function realPath(path) {
-  try {
-    return realpathSync3(path);
-  } catch {
-    return void 0;
-  }
-}
-function installedPluginId(env, root = pluginRoot) {
-  let installed;
-  try {
-    installed = JSON.parse(readFileSync4(join6(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
-  } catch {
-    return null;
-  }
-  const own = realPath(root);
-  for (const [id2, installs] of Object.entries(installed.plugins ?? {}))
-    for (const install of Array.isArray(installs) ? installs : [])
-      if (typeof install.installPath === "string" && own && realPath(install.installPath) === own) return id2;
-  return null;
-}
-function checkClaudeArgs(claudeArgs) {
-  for (const arg of claudeArgs) {
-    const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`));
-    if (reserved)
-      throw new Refusal(
-        "malformed",
-        `--claude-arg ${arg} is not permitted. Checkmate needs its own control of ${reserved}.`,
-        "Give tool rules with --allow. Give other host choices, for example --model, with --claude-arg."
-      );
-  }
-  return claudeArgs;
-}
-function childArgs(context, own) {
-  return [
-    "-p",
-    ...context.claudeArgs,
-    ...context.hiddenPlugin ? ["--settings", JSON.stringify({ enabledPlugins: { [context.hiddenPlugin]: false } })] : [],
-    ...own,
-    "--output-format",
-    "json",
-    "--permission-prompts",
-    "none"
-  ];
-}
-function childEnv(env, extra = {}) {
-  return {
-    ...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith("CHECKMATE_"))),
-    ...extra
-  };
-}
-function executableOnPath(name, env) {
-  for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const path = join6(directory2, name);
-    try {
-      accessSync(path, constants.X_OK);
-      if (statSync3(path).isFile()) return path;
-    } catch {
-    }
-  }
-  return void 0;
-}
-function requireClaude(env) {
-  const claude = executableOnPath("claude", env);
-  if (!claude)
-    throw new Refusal(
-      "prohibited",
-      "No claude executable on PATH. Nothing changed.",
-      "Install Claude Code, or add the directory of claude to PATH. Then run the command again."
-    );
-  return claude;
-}
-function excerpt(text) {
-  const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
-  return line ? `: ${line}` : "";
-}
-function claudeResult(output, error, status, signal) {
-  let parsed = {};
-  try {
-    const value2 = JSON.parse(output);
-    if (value2 && typeof value2 === "object") parsed = value2;
-  } catch {
-  }
-  const failure = status !== 0 ? [
-    "operational_error",
-    `claude exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || parsed.result)}`
-  ] : parsed.is_error === true ? ["operational_error", `claude ended with an error${excerpt(parsed.result)}`] : void 0;
-  return {
-    failure,
-    result: parsed.result,
-    ...typeof parsed.total_cost_usd === "number" ? { costUsd: parsed.total_cost_usd } : {},
-    ...typeof parsed.duration_ms === "number" ? { durationMs: parsed.duration_ms } : {},
-    ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
-  };
-}
-function callClaude(claude, args, prompt, cwd, env, seconds) {
-  const child = spawnSync(claude, args, {
-    cwd,
-    env,
-    input: prompt,
-    encoding: "utf8",
-    timeout: seconds * 1e3,
-    killSignal: "SIGTERM",
-    maxBuffer: maxOutputBytes
-  });
-  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
-  if (code === "ETIMEDOUT")
-    return { failure: ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`] };
-  if (code) return { failure: ["operational_error", `claude failed: ${code}.`] };
-  return claudeResult(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
-}
-function closingBracket(text, start) {
-  let depth = 0;
-  let quoted = false;
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-    if (quoted) {
-      if (char === "\\") i++;
-      else if (char === '"') quoted = false;
-    } else if (char === '"') quoted = true;
-    else if (char === "[") depth++;
-    else if (char === "]" && --depth === 0) return i;
-  }
-  return -1;
-}
-function replyArray(text) {
-  if (typeof text !== "string") return void 0;
-  for (let start = text.indexOf("["); start !== -1; start = text.indexOf("[", start + 1)) {
-    const end = closingBracket(text, start);
-    if (end === -1) continue;
-    try {
-      const parsed = JSON.parse(text.slice(start, end + 1));
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-    }
-  }
-  return void 0;
-}
-function launchClaude(claude, args, prompt, cwd, env, seconds) {
-  return new Promise((resolvePromise) => {
-    const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
-    let output = "";
-    let errors = "";
-    let failure;
-    const kill = (signal) => {
-      try {
-        process.kill(-child.pid, signal);
-      } catch {
-      }
-    };
-    const timer = setTimeout(() => {
-      failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
-      kill("SIGTERM");
-      setTimeout(() => kill("SIGKILL"), 1500).unref();
-    }, seconds * 1e3);
-    child.stdout.on("data", (bytes) => {
-      if (output.length < maxOutputBytes) output += bytes.toString();
-    });
-    child.stderr.on("data", (bytes) => {
-      if (errors.length < 4096) errors += bytes.toString();
-    });
-    child.stdin.on("error", () => {
-    });
-    child.stdin.end(prompt);
-    child.on("error", (error) => {
-      failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
-    });
-    child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
-    });
-  });
-}
-
-// plugin/src/recorder.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync5, rmSync as rmSync3, writeFileSync } from "node:fs";
-import { join as join7 } from "node:path";
-var defaultRecorderTimeout = 600;
-var reservedExplorers = ["merge", "verify"];
-function explorerActor(explorer) {
-  return `qa:${explorer}`;
-}
-function lastEntry(store) {
-  return one(store, "SELECT coalesce(max(rowid), 0) AS seq FROM journal_entries").seq;
-}
-function addedEntries(store, explorationId, actor, after) {
-  const rows = all(
-    store,
-    "SELECT kind, count(*) AS count FROM journal_entries WHERE exploration_id = ? AND actor = ? AND rowid > ? GROUP BY kind ORDER BY min(rowid)",
-    explorationId,
-    actor,
-    after
-  );
-  return Object.fromEntries(rows.map((row) => [row.kind, row.count]));
-}
-function launchContext(store, explorationId, explorer, session) {
-  const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
-  return launch ? launch.detail.context : void 0;
-}
-function logReply(store, actor, explorationId, planId, entries, missing, dropped, cwd) {
-  try {
-    const reply = logEntries(store, actor, {
-      explorationId,
-      entries: freshIds(store, planId, actor, entries),
-      cwd,
-      missingEvidence: missing,
-      droppedReferences: dropped
-    });
-    return reply.data.refused.map(refusalText);
-  } catch (error) {
-    if (!(error instanceof Refusal)) throw error;
-    return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
-  }
-}
-function sum(calls, key) {
-  const values = calls.flatMap((call) => call[key] === void 0 ? [] : [call[key]]);
-  return values.length ? { [key]: values.reduce((total, value2) => total + value2, 0) } : {};
-}
-function running(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-function lockHolder(path) {
-  try {
-    return Number(readFileSync5(path, "utf8"));
-  } catch {
-    return void 0;
-  }
-}
-function takeLock(path, until) {
-  mkdirSync3(join7(path, ".."), { recursive: true });
-  for (; ; ) {
-    try {
-      writeFileSync(path, String(process.pid), { flag: "wx" });
-      return true;
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
-    }
-    const holder = lockHolder(path);
-    if (holder && !running(holder) && lockHolder(path) === holder) {
-      rmSync3(path, { force: true });
-      continue;
-    }
-    if (Date.now() >= until) return false;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
-  }
-}
-function releaseLock(path) {
-  if (lockHolder(path) === process.pid) rmSync3(path, { force: true });
-}
-function prepare(store, input, env) {
-  if (env.CHECKMATE_RECORDER)
-    throw new Refusal(
-      "prohibited",
-      "A recorder cannot start another recorder. CHECKMATE_RECORDER is set. Nothing changed.",
-      "Run checkmate record from outside the recorder session, after the test session."
-    );
-  const explorer = requireIdentifier(input.explorer, "explorer (--explorer)");
-  requireWellFormed(
-    !reservedExplorers.includes(explorer),
-    `Explorer name ${explorer} is reserved. Use another name, for example a1.`
-  );
-  requireWellFormed(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.session),
-    `Invalid session ID: ${input.session}. Give the session_id of the test session.`,
-    "claude -p --output-format json gives it in session_id. In an interactive session, /status shows it."
-  );
-  const exploration2 = explorationRow(store, input.explorationId);
-  const claude = requireClaude(env);
-  const context = launchContext(store, exploration2.exploration_id, explorer, input.session) ?? {
-    hiddenPlugin: null,
-    claudeArgs: input.claudeArgs ?? []
-  };
-  return { claude, exploration: exploration2, explorer, context, recorder: randomUUID2(), actor: explorerActor(explorer) };
-}
-function recordSession(store, actor, input, env, cwd) {
-  const operation = { actor, command: "record", subject: input.explorationId, input };
-  let plan;
-  try {
-    plan = prepare(store, input, env);
-  } catch (error) {
-    return write(store, operation, () => {
-      throw error;
-    });
-  }
-  const started = Date.now();
-  const lock = join7(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
-  if (!takeLock(lock, started + input.timeoutSeconds * 1e3))
-    return write(store, operation, () => ({
-      reply: {
-        status: "operational_error",
-        subject: input.explorationId,
-        reasons: [
-          `Another recorder of ${plan.explorer} runs. Checkmate waited ${input.timeoutSeconds} seconds for it. No recorder started.`
-        ],
-        hint: `Run the same record command again when the other recorder ends.`,
-        data: { explorationId: input.explorationId, session: input.session }
-      },
-      subjects: [`exploration:${input.explorationId}`]
-    }));
-  try {
-    return recordLocked(store, operation, input, plan, env, cwd, started);
-  } finally {
-    releaseLock(lock);
-  }
-}
-function recordLocked(store, operation, input, plan, env, cwd, started) {
-  const { exploration: exploration2, actor } = plan;
-  const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" });
-  const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
-  const after = lastEntry(store);
-  const prompt = recorderPrompt(exploration2.build, recordText(store, exploration2.plan_id, actor));
-  const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
-  const calls = [
-    callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
-  ];
-  const missing = [];
-  const dropped = [];
-  const log = (entries) => logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, entries, missing, dropped, cwd);
-  const first = replyArray(calls[0].result);
-  let refusals = first ? log(first) : [];
-  if (!calls[0].failure && refusals.length && left() > 0) {
-    calls.push(
-      callClaude(
-        plan.claude,
-        childArgs(plan.context, ["--resume", plan.recorder]),
-        repairPrompt(refusals),
-        cwd,
-        childEnvironment,
-        left()
-      )
-    );
-    const fix = replyArray(calls[1].result);
-    if (fix) refusals = log(fix);
-  }
-  const added = addedEntries(store, exploration2.exploration_id, actor, after);
-  const saved = Object.values(added).reduce((total, count) => total + count, 0);
-  const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
-  const status = timedOut ? "interrupted" : calls[0].failure || !saved ? "operational_error" : "completed";
-  const reasons2 = [
-    ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
-    ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
-    ...first && !saved ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal) => `Refused: ${refusal}`)
-  ];
-  const data = {
-    explorationId: exploration2.exploration_id,
-    explorer: plan.explorer,
-    session: input.session,
-    recorder: calls[0].sessionId ?? plan.recorder,
-    calls: calls.length,
-    saved,
-    refused: refusals.length,
-    added,
-    evidenceMissing: missing.length,
-    ...missing.length ? { missingEvidence: missing } : {},
-    referencesDropped: dropped.length,
-    ...dropped.length ? { droppedReferences: dropped } : {},
-    ...sum(calls, "costUsd"),
-    ...sum(calls, "durationMs")
-  };
-  const reply = {
-    status,
-    subject: exploration2.exploration_id,
-    reasons: reasons2,
-    ...status === "completed" ? {} : {
-      hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`
-    },
-    data
-  };
-  return write(store, { ...operation, input: { ...input, recorder: plan.recorder } }, (operationId, at) => {
-    addEvent(
-      store,
-      exploration2.exploration_id,
-      { step: "record", explorer: plan.explorer, status, detail: { ...data, reasons: reasons2 } },
-      operationId,
-      at
-    );
-    return { reply, subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`] };
-  });
-}
-
-// plugin/src/levels.ts
-var testLevels = {
-  smoke: { explorers: 1, model: "haiku", verifier: false },
-  standard: { explorers: 3, model: "haiku", verifier: true },
-  deep: { explorers: 2, model: "sonnet", verifier: true }
-};
-var levelNames = Object.keys(testLevels);
-var defaultLevel = "standard";
-
-// plugin/src/explorers.ts
-import { spawn as spawn2 } from "node:child_process";
-import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdirSync as mkdirSync4, openSync } from "node:fs";
-import { join as join8 } from "node:path";
-var defaultExplorerTimeout = 1800;
-var pollMilliseconds = 500;
-function hostModel(claudeArgs) {
-  for (const [index2, arg] of claudeArgs.entries()) {
-    if (arg === "--model") return claudeArgs[index2 + 1];
-    if (arg.startsWith("--model=")) return arg.slice("--model=".length);
-  }
-  return void 0;
-}
-function launchPlan(profile, input, env) {
-  const level = requireChoice(
-    input.level ?? profile.explore?.level ?? defaultLevel,
-    levelNames,
-    "test level (--level)"
-  );
-  const row = testLevels[level];
-  const claudeArgs = checkClaudeArgs(input.claudeArgs);
-  const host = hostModel(claudeArgs);
-  const hiddenPlugin = installedPluginId(env);
-  requireWellFormed(
-    input.allow.length,
-    "Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash",
-    "The host owns the permissions. An explorer cannot answer a permission prompt."
-  );
-  return {
-    level,
-    explorers: input.explorers ?? profile.explore?.explorers ?? row.explorers,
-    model: host ?? row.model,
-    modelFrom: host ? "host" : "level",
-    verifier: row.verifier,
-    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row.model] },
-    allow: input.allow,
-    timeoutSeconds: input.timeoutSeconds ?? defaultExplorerTimeout,
-    pluginHidden: hiddenPlugin !== null
-  };
-}
-function explorerNames(count) {
-  return Array.from({ length: count }, (_, index2) => `a${index2 + 1}`);
-}
-function evidenceFolder(explorationId, explorer) {
-  return `qa-evidence/${explorationId}/${explorer}`;
-}
-function startSupervisor(store, explorationId, actor, env) {
-  const folder = join8(store.workspace, ".checkmate", "tmp");
-  mkdirSync4(folder, { recursive: true });
-  const log = openSync(join8(folder, `explore-${explorationId}.log`), "a");
-  const child = spawn2(
-    process.execPath,
-    [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace],
-    {
-      cwd: store.workspace,
-      env: { ...env, CHECKMATE_ACTOR: actor },
-      detached: true,
-      stdio: ["ignore", log, log]
-    }
-  );
-  child.unref();
-}
-function startExploration(store, actor, input, env) {
-  const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
-    requireClaude(env);
-    const opened = insertExploration(store, input, operationId, at);
-    const row = explorationRow(store, opened.explorationId);
-    const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env);
-    addEvent(
-      store,
-      opened.explorationId,
-      { step: "start", explorer: null, status: "started", detail: launch },
-      operationId,
-      at
-    );
-    return {
-      reply: completed(opened.explorationId, {
-        ...opened,
-        level: launch.level,
-        explorers: launch.explorers,
-        model: launch.model,
-        verifier: launch.verifier,
-        pluginHidden: launch.pluginHidden,
-        next: [`checkmate explore wait ${opened.explorationId}`]
-      }),
-      subjects: [`exploration:${opened.explorationId}`, `plan:${opened.planId}`]
-    };
-  });
-  startSupervisor(store, reply.subject, actor, env);
-  return reply;
-}
-function event(store, actor, explorationId, item) {
-  write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
-    addEvent(store, explorationId, item, operationId, at);
-    return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
-  });
-}
-function startOf(events) {
-  return events.find((item) => item.step === "start")?.detail;
-}
-function modelHint(launch, call) {
-  if (!/model/i.test(call.failure?.[1] ?? "")) return void 0;
-  return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
-}
-async function launchExplorers(store, actor, explorationId, launch, env) {
-  const opened = exploration(store, explorationId);
-  const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
-  const instance = findInstance(store, opened.target_id, opened.instance_id);
-  const entries = profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
-  const claude = requireClaude(env);
-  const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
-  const runs = explorerNames(launch.explorers).map((explorer) => {
-    const session = randomUUID3();
-    const folder = evidenceFolder(explorationId, explorer);
-    mkdirSync4(join8(store.workspace, folder), { recursive: true });
-    const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder);
-    event(store, actor, explorationId, {
-      step: "launch",
-      explorer,
-      status: "started",
-      detail: { session, context: launch.context, brief }
-    });
-    const args = childArgs(launch.context, ["--session-id", session, ...allowed]);
-    return launchClaude(claude, args, brief, store.workspace, childEnv(env), launch.timeoutSeconds).then(
-      (call) => ({ explorer, session, call })
-    );
-  });
-  const ended = await Promise.all(runs);
-  for (const { explorer, session, call } of ended) {
-    const hint = modelHint(launch, call);
-    event(store, actor, explorationId, {
-      step: "end",
-      explorer,
-      status: call.failure?.[0] ?? "completed",
-      detail: {
-        session,
-        ...call.failure ? { reason: call.failure[1] } : {},
-        ...hint ? { hint } : {},
-        ...call.costUsd === void 0 ? {} : { costUsd: call.costUsd },
-        ...call.durationMs === void 0 ? {} : { durationMs: call.durationMs }
-      }
-    });
-  }
-  return ended;
-}
-function recordExplorers(store, actor, explorationId, sessions, env) {
-  return sessions.map(
-    ({ explorer, session }) => recordSession(
-      store,
-      actor,
-      { explorationId, explorer, session, timeoutSeconds: defaultRecorderTimeout },
-      env,
-      store.workspace
-    ).status
-  );
-}
-async function driveExploration(workspace, explorationId, env) {
-  const store = openStore(workspace);
-  const actor = env.CHECKMATE_ACTOR ?? "checkmate";
-  try {
-    event(store, actor, explorationId, {
-      step: "supervisor",
-      explorer: null,
-      status: "started",
-      detail: { pid: process.pid }
-    });
-    const launch = startOf(explorationEvents(store, explorationId));
-    if (!launch) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
-    const ended = await launchExplorers(store, actor, explorationId, launch, env);
-    const finished = ended.filter((item) => !item.call.failure);
-    const recorded = recordExplorers(store, actor, explorationId, finished, env);
-    const ok = recorded.filter((status) => status === "completed").length;
-    event(store, actor, explorationId, {
-      step: "done",
-      explorer: null,
-      status: ok ? "completed" : "failed",
-      detail: {
-        recorded: ok,
-        ...ok ? {} : { reason: "No explorer session was recorded." }
-      }
-    });
-  } catch (error) {
-    event(store, actor, explorationId, {
-      step: "done",
-      explorer: null,
-      status: "failed",
-      detail: { reason: error instanceof Error ? error.message : String(error) }
-    });
-  } finally {
-    closeStore(store);
-  }
-}
-function running2(pid) {
-  if (typeof pid !== "number") return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-function explorationState(events) {
-  const done = events.find((item) => item.step === "done");
-  if (done) return done.status === "completed" ? "completed" : "failed";
-  const supervisor = events.find((item) => item.step === "supervisor");
-  if (supervisor && !running2(supervisor.detail.pid)) return "stopped";
-  if (!events.some((item) => item.step === "start")) return "open";
-  if (!supervisor) return "starting";
-  if (events.some((item) => item.step === "record")) return "recording";
-  return "testing";
-}
-function explorationStatus(store, explorationId) {
-  const row = explorationRow(store, explorationId);
-  const events = explorationEvents(store, explorationId);
-  const launch = startOf(events);
-  const state = explorationState(events);
-  const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
-  const explorers = names.map((explorer) => {
-    const own = events.filter((item) => item.explorer === explorer);
-    const last = (step) => own.filter((item) => item.step === step).at(-1);
-    const end = last("end");
-    const record = last("record");
-    return {
-      explorer,
-      actor: explorerActor(explorer),
-      session: last("launch")?.detail.session ?? record?.detail.session ?? null,
-      ended: end?.status ?? null,
-      recorded: record?.status ?? null,
-      saved: record?.detail.saved ?? 0,
-      reason: end?.detail.reason ?? record?.detail.reasons ?? null,
-      hint: end?.detail.hint ?? null
-    };
-  });
-  const done = events.find((item) => item.step === "done");
-  return {
-    explorationId: row.exploration_id,
-    planId: row.plan_id,
-    build: row.build,
-    mode: row.mode,
-    instanceId: row.instance_id,
-    state,
-    level: launch?.level ?? null,
-    explorerCount: launch?.explorers ?? null,
-    model: launch?.model ?? null,
-    modelFrom: launch?.modelFrom ?? null,
-    verifier: launch?.verifier ?? null,
-    pluginHidden: launch?.pluginHidden ?? null,
-    explorers,
-    reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
-  };
-}
-function waitExploration(store, explorationId, timeoutSeconds) {
-  const until = Date.now() + timeoutSeconds * 1e3;
-  for (; ; ) {
-    const status = explorationStatus(store, explorationId);
-    const ended = ["completed", "failed", "stopped", "open"].includes(status.state);
-    if (ended || Date.now() >= until) {
-      const outcome = status.state === "completed" ? "done" : ended ? "failed" : "timeout";
-      const hints = status.explorers.flatMap((item) => item.hint ? [item.hint] : []);
-      return {
-        status: outcome === "done" ? "completed" : outcome === "timeout" ? "interrupted" : "operational_error",
-        subject: explorationId,
-        reasons: outcome === "timeout" ? [`Exploration ${explorationId} is ${status.state} after ${timeoutSeconds} seconds.`] : outcome === "failed" ? [status.reason ?? `Exploration ${explorationId} is ${status.state}.`] : [],
-        ...outcome === "timeout" ? { hint: `Run checkmate explore wait ${explorationId} again.` } : hints.length ? { hint: [...new Set(hints)].join(" ") } : {},
-        data: { ...status, outcome }
-      };
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMilliseconds);
-  }
 }
 
 // plugin/src/cli.ts
@@ -17620,11 +18373,16 @@ function explorationLines(reply) {
         `ended=${item.ended ?? "-"}`,
         `recorded=${item.recorded ?? "-"}`,
         `saved=${item.saved}`
+      ]),
+      ...(status.phases ?? []).map((item) => [
+        item.step,
+        item.status,
+        ...item.detail.reason ? [item.detail.reason] : []
       ])
     ]
   };
 }
-function short2(sha256) {
+function short3(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
 var commands = {
@@ -17642,11 +18400,12 @@ var commands = {
           gaps: waiting.gaps.length,
           plans: waiting.plans.length,
           results: waiting.results.length,
+          claims: waiting.claims.length || void 0,
           requests: waiting.requests.length
         },
         lines: [
           ...waiting.gaps.map(
-            (gap) => gap.runId ? [
+            (gap) => gap.explorationId ? [`${gap.planId}/${gap.gapId}`, "question", gap.severity, gap.explorationId, gap.question] : gap.runId ? [
               `${gap.planId}@${gap.revision}/${gap.gapId}`,
               "run_gap",
               gap.severity,
@@ -17657,7 +18416,7 @@ var commands = {
           ...waiting.plans.map((plan) => [
             `${plan.planId}@${plan.revision}`,
             "plan",
-            short2(plan.sha256),
+            short3(plan.sha256),
             plan.summary
           ]),
           ...waiting.results.map((result) => [
@@ -17667,6 +18426,14 @@ var commands = {
             result.build,
             result.coverage,
             Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`)
+          ]),
+          ...waiting.claims.map((claim) => [
+            `${claim.planId}/${claim.claimId}`,
+            "claim",
+            claim.state,
+            claim.severity,
+            claim.title,
+            ...claim.reason ? [claim.reason] : []
           ]),
           ...waiting.requests.map((request) => [
             request.planId,
@@ -17720,6 +18487,21 @@ var commands = {
             defect.assertionIds,
             defect.title
           ]),
+          ...status.explorations.map((item) => [item.explorationId, "exploration", item.build, item.state]),
+          ...status.questions.map((question) => [
+            question.id,
+            "question",
+            question.explorationId,
+            question.question
+          ]),
+          ...status.claims.map((claim) => [
+            claim.claimId,
+            "claim",
+            claim.state,
+            claim.severity,
+            claim.title,
+            ...claim.reason ? [claim.reason] : []
+          ]),
           ...(status.retest?.verdicts ?? []).map((item) => [
             `${item.runId}/${item.findingId}`,
             "retest",
@@ -17765,7 +18547,7 @@ var commands = {
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => saveTarget(store, actor, { targetId: value(args, "targetId"), profile: stdin() }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), recorded: reply.data.recorded } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256), recorded: reply.data.recorded } })
   },
   "target list": {
     positionals: [],
@@ -17789,7 +18571,7 @@ var commands = {
       const instance = reply.data.instance;
       return {
         facts: {
-          sha256: short2(reply.data.sha256),
+          sha256: short3(reply.data.sha256),
           ready: profile.readyForLiveExecution,
           instance: instance?.instanceId,
           retired: instance ? Boolean(instance.retired) : void 0
@@ -17911,7 +18693,7 @@ var commands = {
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => savePlan(store, actor, { planId: value(args, "planId"), candidate: stdin() }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256) } })
   },
   "plan show": {
     positionals: ["reference"],
@@ -17978,6 +18760,7 @@ var commands = {
       return {
         facts: {
           decision: reply.data.decisionId,
+          answer: reply.data.answerId,
           gap: reply.data.gapId,
           from: adopted?.runId,
           revision: adopted?.revision,
@@ -17992,7 +18775,7 @@ var commands = {
     print: (reply) => {
       const data = reply.data;
       return {
-        facts: { sha256: short2(data.sha256), decisions: data.decisions.length },
+        facts: { sha256: short3(data.sha256), decisions: data.decisions.length },
         lines: [
           ...data.decisions.map((decision) => [
             decision.id,
@@ -18017,7 +18800,7 @@ var commands = {
       delta: stdin(),
       expectSha256: value(args, "expect-sha")
     }),
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256) } })
   },
   "plan edit": {
     positionals: ["reference"],
@@ -18029,7 +18812,7 @@ var commands = {
       const expectSha256 = value(args, "expect-sha");
       return args.patch ? patchPlan(store, actor, { reference, patch: stdin(), expectSha256 }) : editPlan(store, actor, { reference, candidate: stdin(), expectSha256 });
     },
-    print: (reply) => ({ facts: { sha256: short2(reply.data.sha256), edit: reply.data.edit } })
+    print: (reply) => ({ facts: { sha256: short3(reply.data.sha256), edit: reply.data.edit } })
   },
   "plan adopt-gaps": {
     positionals: ["reference"],
@@ -18043,7 +18826,7 @@ var commands = {
       expectSha256: value(args, "expect-sha")
     }),
     print: (reply) => ({
-      facts: { sha256: short2(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted }
+      facts: { sha256: short3(reply.data.sha256), edit: reply.data.edit, adopted: reply.data.adopted }
     })
   },
   "plan approve": verdictCommand(
@@ -18066,7 +18849,7 @@ var commands = {
       retestOf: value(args, "retest-of") ?? null
     }).reply,
     print: (reply) => ({
-      facts: { sha256: short2(reply.data.sha256), tests: reply.data.tests },
+      facts: { sha256: short3(reply.data.sha256), tests: reply.data.tests },
       lines: leftOutLines(reply)
     })
   },
@@ -18177,7 +18960,7 @@ var commands = {
       cleanupReason: value(args, "cleanup-reason")
     }),
     print: (reply) => ({
-      facts: { coverage: reply.data.coverage, sha256: short2(reply.data.sha256) },
+      facts: { coverage: reply.data.coverage, sha256: short3(reply.data.sha256) },
       lines: Object.entries(reply.data.counts)
     })
   },
@@ -18344,6 +19127,9 @@ var commands = {
   },
   "export plan": exportCommand("reference", formats, exportPlan),
   "export run": exportCommand("runId", runFormats, exportRun),
+  "export exploration": exportCommand("explorationId", explorationFormats, exportExploration),
+  "claim accept": claimCommand("approved"),
+  "claim reject": claimCommand("rejected"),
   "explore open": {
     positionals: ["planId"],
     flags: { build: "value", instance: "value", mode: explorationModes },
@@ -18402,6 +19188,66 @@ var commands = {
       },
       lines: reply.data.next.map((line) => ["next", line])
     })
+  },
+  "explore finish": {
+    positionals: ["explorationId"],
+    flags: { level: levelNames, allow: "repeat", "claude-arg": "repeat", timeout: { min: 60, max: 7200 } },
+    write: true,
+    run: (store, args, { actor, env }) => finishExploration(
+      store,
+      actor,
+      {
+        explorationId: value(args, "explorationId"),
+        level: value(args, "level"),
+        allow: list(args, "allow") ?? [],
+        claudeArgs: list(args, "claude-arg") ?? [],
+        timeoutSeconds: integer(args, "timeout")
+      },
+      env
+    ),
+    print: (reply) => ({
+      facts: {
+        plan: reply.data.planId,
+        build: reply.data.build,
+        level: reply.data.level,
+        verifier: reply.data.verifier
+      },
+      lines: reply.data.next.map((line) => ["next", line])
+    })
+  },
+  "explore show": {
+    positionals: ["explorationId"],
+    readOnly: true,
+    run: (store, args) => {
+      const explorationId = value(args, "explorationId");
+      return completed(explorationId, explorationReport(store, explorationId));
+    },
+    print: (reply) => {
+      const report = reply.data;
+      const status = explorationLines(reply);
+      return {
+        facts: status.facts,
+        lines: [
+          ...status.lines ?? [],
+          ...report.claims.map((claim) => [
+            claim.id,
+            "claim",
+            claim.state,
+            claim.severity,
+            claim.actors.join(","),
+            claim.title,
+            ...claim.reason ? [claim.reason] : []
+          ]),
+          ...report.questions.map((question) => [
+            question.id,
+            "question",
+            question.answer === null ? "open" : "answered",
+            question.question
+          ]),
+          ...report.criteria.map((criterion) => [criterion.id, "criterion", criterion.text])
+        ]
+      };
+    }
   },
   "explore status": {
     positionals: ["explorationId"],
@@ -18610,6 +19456,21 @@ function exportCommand(positional, choices, render) {
     print: (reply) => ({ facts: { out: reply.data.out } })
   };
 }
+function claimCommand(verdict) {
+  return {
+    positionals: ["planId", "claimId"],
+    flags: { rationale: "value" },
+    required: ["rationale"],
+    write: true,
+    run: (store, args, { actor }) => decideClaim(store, actor, {
+      planId: value(args, "planId"),
+      claimId: value(args, "claimId"),
+      verdict,
+      rationale: value(args, "rationale")
+    }),
+    print: (reply) => ({ facts: { claim: reply.data.claimId, verdict: reply.data.verdict } })
+  };
+}
 function verdictCommand(positional, decide) {
   return {
     positionals: [positional],
@@ -18617,7 +19478,7 @@ function verdictCommand(positional, decide) {
     required: ["rationale"],
     write: true,
     run: (store, args, { actor }) => decide(store, actor, value(args, positional), value(args, "rationale"), value(args, "expect-sha")),
-    print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short2(reply.data.sha256) } })
+    print: (reply) => ({ facts: { verdict: reply.data.verdict, sha256: short3(reply.data.sha256) } })
   };
 }
 function showPlan(store, args) {
@@ -18678,7 +19539,7 @@ function testLines(test) {
   ];
 }
 function printPlan(reply) {
-  const facts2 = { sha256: short2(reply.data.sha256) };
+  const facts2 = { sha256: short3(reply.data.sha256) };
   if (reply.data.fields) {
     const fields = reply.data.fields;
     const tests = reply.data.tests;

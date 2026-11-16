@@ -1,5 +1,6 @@
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
+import { answerQuestion } from './journal.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
@@ -556,6 +557,21 @@ export function answerGap(store: Store, actor: string | undefined, input: GapAns
 		const source = input.source ?? null
 		if (source !== null) requireText(source, 'source (--source)')
 		requireWellFormed(kind !== 'clarify' || source, 'A clarification needs a source (--source)')
+		if (input.gapId.includes('/')) {
+			planRequest(store, input.planId)
+			const entry = answerQuestion(store, actor, operationId, {
+				...input,
+				kind,
+				value,
+				source,
+				rationale,
+				questionId: input.gapId,
+			})
+			return {
+				reply: completed(input.planId, { planId: input.planId, gapId: input.gapId, answerId: entry.id, kind }),
+				subjects: [`plan:${input.planId}`, 'inbox'],
+			}
+		}
 		const answered = planRevision(store, input.planId)
 		expectDigest(answered.sha256, input.expectSha256, `${input.planId}@${answered.plan.revision}`)
 		const adopted = answered.plan.gaps.some((gap) => gap.id === input.gapId)
@@ -775,7 +791,7 @@ export function recordApproval(
 	actor: string,
 	operationId: string,
 	input: {
-		kind: 'plan' | 'result'
+		kind: 'plan' | 'result' | 'claim'
 		subject: string
 		sha256: string
 		verdict: 'approved' | 'rejected'

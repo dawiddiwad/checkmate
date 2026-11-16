@@ -1,6 +1,7 @@
 import type { Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, write } from './store.ts'
 import { Refusal, requireCondition, requireWellFormed, schemaProblems, unusedId } from './contracts.ts'
+import { recordApproval } from './plans.ts'
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
@@ -604,4 +605,261 @@ export function recordText(store: Store, planId: string, viewer: string) {
 		}),
 	]
 	return lines.length ? lines.join('\n') : 'No criterion, defect, or question yet.'
+}
+
+export type ClaimState = 'observed' | 'suspected' | 'confirmed' | 'unresolved' | 'accepted' | 'rejected'
+export type BuildStatus = {
+	status: 'fixed' | 'not_fixed' | 'no verdict'
+	basis: 'majority' | 'disputed' | 'single' | 'verified' | 'none'
+}
+export type ClaimDecision = { verdict: 'approved' | 'rejected'; actor: string; rationale: string }
+export type Claim = ReturnType<typeof claimList>[number]
+
+const evidenceScore = (entry: Entry) => (entry.evidence?.length ?? 0) * 2 + (entry.steps ? 1 : 0)
+const short = (text: string | undefined) =>
+	(text ?? '').length > 120 ? `${(text ?? '').slice(0, 117)}...` : (text ?? '')
+
+function claimDecisions(store: Store, planId: string) {
+	const rows = all<{ subject_id: string; verdict: 'approved' | 'rejected'; actor: string; rationale: string }>(
+		store,
+		"SELECT subject_id, verdict, actor, rationale FROM approvals WHERE subject_kind = 'claim' AND subject_id LIKE ? ORDER BY rowid",
+		`${planId}:%`
+	)
+	const decided = new Map<string, ClaimDecision>()
+	for (const row of rows)
+		decided.set(row.subject_id.slice(planId.length + 1), {
+			verdict: row.verdict,
+			actor: row.actor,
+			rationale: row.rationale,
+		})
+	return decided
+}
+
+function claimGroups(state: Journal) {
+	const defects = new Map(state.team.filter((entry) => entry.kind === 'defect').map((entry) => [entry.id, entry]))
+	const recorded = state.team.filter((entry) => entry.kind === 'issue')
+	const grouped = new Set(recorded.flatMap((issue) => issue.reports ?? []))
+	return [
+		...recorded.map((issue) => ({ issue, reports: (issue.reports ?? []).filter((id) => defects.has(id)) })),
+		...[...defects.values()]
+			.filter((defect) => !grouped.has(defect.id))
+			.map((defect) => ({ issue: defect, reports: [defect.id] })),
+	]
+		.filter((group) => group.reports.length)
+		.map((group) => ({ ...group, found: group.reports.map((id) => defects.get(id)!) }))
+}
+
+export function claimList(state: Journal, decided: Map<string, ClaimDecision> = new Map()) {
+	const order = (build: string | undefined) => state.builds.indexOf(build ?? '')
+	return claimGroups(state).map(({ issue, reports, found }) => {
+		const actors = [...new Set(found.map((defect) => defect.actor))]
+		const names = [issue.id, ...reports]
+		const checks = state.team
+			.filter(
+				(entry) =>
+					entry.kind === 'observation' &&
+					!actors.includes(entry.actor) &&
+					names.some((name) => entry.confirms === name || entry.refutes === name)
+			)
+			.sort((a, b) => a.seq - b.seq)
+		const checkOn = (build: string) => checks.filter((entry) => entry.build === build).at(-1)
+		const confirms = (check: Entry) => names.includes(check.confirms ?? '')
+		const best = found.reduce((top, defect) => (evidenceScore(defect) > evidenceScore(top) ? defect : top))
+		const first = Math.min(...found.map((defect) => order(defect.build)))
+		const firstCheck = checkOn(state.builds[first])
+		const verified = !firstCheck ? 'none' : confirms(firstCheck) ? 'confirmed' : 'refuted'
+		const verdicts = state.team
+			.filter((entry) => entry.kind === 'verdict' && names.includes(entry.defect ?? ''))
+			.sort((a, b) => a.seq - b.seq)
+		const statusOn = (build: string): BuildStatus => {
+			const results = new Map<string, string>()
+			for (const verdict of verdicts.filter((entry) => entry.build === build))
+				results.set(verdict.actor, verdict.result!)
+			const count = (result: string) => [...results.values()].filter((item) => item === result).length
+			const check = checkOn(build)
+			if (check) return { status: confirms(check) ? 'not_fixed' : 'fixed', basis: 'verified' }
+			if (!results.size) return { status: 'no verdict', basis: 'none' }
+			if (count('fixed') === count('not_fixed')) return { status: 'fixed', basis: 'disputed' }
+			return {
+				status: count('fixed') > count('not_fixed') ? 'fixed' : 'not_fixed',
+				basis: results.size === 1 ? 'single' : 'majority',
+			}
+		}
+		const statuses = Object.fromEntries(
+			state.builds.filter((_, index) => index > first).map((build) => [build, statusOn(build)])
+		)
+		const decision = decided.get(issue.id) ?? null
+		const confirmed = actors.length > 1 || verified === 'confirmed'
+		const suspected = found.every((defect) => defect.suspected || (!defect.steps && !defect.evidence?.length))
+		const claimState: ClaimState = decision
+			? decision.verdict === 'approved'
+				? 'accepted'
+				: 'rejected'
+			: confirmed
+				? 'confirmed'
+				: verified === 'refuted'
+					? 'unresolved'
+					: suspected
+						? 'suspected'
+						: 'observed'
+		const latest = Object.values(statuses)
+			.filter((on) => on.status !== 'no verdict')
+			.at(-1)?.status
+		return {
+			id: issue.id,
+			title: issue.title!,
+			severity: issue.severity!,
+			build: state.builds[first],
+			explorationId: issue.explorationId,
+			expected: best.expected!,
+			actual: best.actual!,
+			steps: best.steps ?? null,
+			evidence: best.evidence ?? [],
+			reports,
+			reporters: actors.length,
+			actors: actors.map(shortName),
+			state: claimState,
+			verified,
+			reason:
+				claimState === 'unresolved'
+					? `The verifier did not see it: ${firstCheck?.saw ?? 'no reason given'}`
+					: (decision?.rationale ?? null),
+			decision,
+			statuses,
+			open: claimState !== 'rejected' && latest !== 'fixed',
+			note: issue.note ?? null,
+		}
+	})
+}
+
+export function planClaims(store: Store, planId: string) {
+	return claimList(journal(store, planId), claimDecisions(store, planId))
+}
+
+export const factoryStates: ClaimState[] = ['observed', 'confirmed', 'accepted']
+export const oracleStates: ClaimState[] = ['suspected', 'unresolved']
+
+export function planQuestions(store: Store, planId: string) {
+	const state = journal(store, planId)
+	const answers = state.team.filter((entry) => entry.kind === 'answer')
+	return state.team
+		.filter((entry) => entry.kind === 'question')
+		.map((question) => ({
+			id: question.id,
+			explorationId: question.explorationId,
+			at: question.at,
+			question: question.question!,
+			about: question.about ?? null,
+			answer: answers.filter((entry) => entry.question === question.id).at(-1)?.answer ?? null,
+		}))
+}
+
+export function planCriteria(store: Store, planId: string) {
+	return ofKind(journal(store, planId), 'criterion').map(({ id, text, source }) => ({
+		id,
+		text: text!,
+		source: source ?? null,
+	}))
+}
+
+const stopWords = new Set(
+	'the and for with not but was are from that this when has have its into than then there should instead'.split(' ')
+)
+const wordsIn = (text: string) =>
+	new Set(
+		text
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.filter((word) => word.length > 2 && !stopWords.has(word))
+	)
+const wordsOf = (entry: Entry) => wordsIn(`${entry.title} ${entry.actual}`)
+const overlap = (a: Set<string>, b: Set<string>) =>
+	[...a].filter((word) => b.has(word)).length / (new Set([...a, ...b]).size || 1)
+const similarWords = 0.5
+
+export function mergeItems(state: Journal, build: string) {
+	const defects = state.team.filter((entry) => entry.kind === 'defect' && entry.build === build)
+	const testers = new Set(defects.map((defect) => defect.actor))
+	const groups: string[][] = []
+	for (const [index, a] of defects.entries())
+		for (const b of defects.slice(index + 1)) {
+			if (a.actor === b.actor || overlap(wordsOf(a), wordsOf(b)) < similarWords) continue
+			const joined = groups.filter((group) => group.includes(a.id) || group.includes(b.id))
+			const group = [...new Set([...joined.flat(), a.id, b.id])]
+			groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group)
+		}
+	return {
+		testers: testers.size,
+		defects: defects.map((defect) => ({
+			id: defect.id,
+			severity: defect.severity!,
+			title: short(defect.title),
+			expected: short(defect.expected),
+			actual: short(defect.actual),
+			steps: short([defect.steps ?? []].flat().join(' ')),
+		})),
+		groups,
+	}
+}
+
+export function verifyItems(claims: Claim[], build: string) {
+	return claims.filter(
+		(claim) => claim.build === build && claim.reporters === 1 && claim.verified === 'none' && !claim.decision
+	)
+}
+
+export function answerQuestion(
+	store: Store,
+	actor: string,
+	operationId: string,
+	input: { planId: string; questionId: string; kind: string; value: string; source: string | null; rationale: string }
+) {
+	const state = journal(store, input.planId)
+	const question = state.team.find((entry) => entry.kind === 'question' && entry.id === input.questionId)
+	requireCondition(
+		question,
+		`Unknown gap or question ${input.questionId} of plan ${input.planId}.`,
+		'Run checkmate inbox to read the open gaps and questions with their IDs.'
+	)
+	const used = state.rows.filter((row) => row.actor === actor).map((row) => row.id)
+	const entry: Entry & { decision: string; source?: string; rationale: string } = {
+		kind: 'answer',
+		id: unusedId('A', used),
+		question: question.id,
+		answer: input.value,
+		decision: input.kind,
+		...(input.source ? { source: input.source } : {}),
+		rationale: input.rationale,
+	}
+	insertEntry(store, question.explorationId, entry, actor, operationId)
+	return entry
+}
+
+export function decideClaim(
+	store: Store,
+	actor: string | undefined,
+	input: { planId: string; claimId: string; verdict: 'approved' | 'rejected'; rationale: string }
+) {
+	const command = input.verdict === 'approved' ? 'claim accept' : 'claim reject'
+	return write(store, { actor, command, subject: input.planId, input }, (operationId, _, actor) => {
+		const claims = planClaims(store, input.planId)
+		const claim = claims.find((item) => item.id === input.claimId)
+		requireCondition(
+			claim,
+			`Unknown claim ${input.claimId} of plan ${input.planId}.`,
+			`Use one of: ${claims.map((item) => item.id).join(', ') || 'no claim yet'}.`
+		)
+		const sha256 = digest(canonical({ id: claim.id, reports: claim.reports, title: claim.title }))
+		const reply = recordApproval(store, actor, operationId, {
+			kind: 'claim',
+			subject: `${input.planId}:${claim.id}`,
+			sha256,
+			verdict: input.verdict,
+			rationale: input.rationale,
+		})
+		return {
+			reply: { ...reply, subject: input.planId, data: { ...reply.data, claimId: claim.id } },
+			subjects: [`plan:${input.planId}`, `exploration:${claim.explorationId}`, 'inbox'],
+		}
+	})
 }

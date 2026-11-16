@@ -19,7 +19,9 @@ import {
 	planCandidate,
 	rejectPlan,
 } from '../plans.ts'
-import { exportPlan, exportRun } from '../render.ts'
+import { exportExploration, exportPlan, exportRun } from '../render.ts'
+import { decideClaim, explorationRow } from '../journal.ts'
+import { claimPage, explorationPage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
 import { changesAfter, evidenceBytes, inbox, operationLog, planDetail, runDetail } from '../views.ts'
@@ -57,6 +59,10 @@ const routes = {
 	target: new RegExp(`^/settings/targets/(${id})$`),
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
 	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
+	exploration: new RegExp(`^/explorations/(${id})$`),
+	explorationExport: new RegExp(`^/explorations/(${id})/export\\.(md|json)$`),
+	question: new RegExp(`^/explorations/(${id})/questions/(${id}/${id})$`),
+	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
 	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
 }
 const contentSecurityPolicy =
@@ -370,6 +376,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const name = format === 'junit' ? `${runId}-junit.xml` : `${runId}-report.${format}`
 			return download(request, exportRun(store, runId, format), format, name)
 		}
+		const exploration = routes.exploration.exec(pathname)
+		if (exploration) return render(request, explorationPage(store, exploration[1]))
+		const explorationExport = routes.explorationExport.exec(pathname)
+		if (explorationExport) {
+			const [, explorationId, format] = explorationExport
+			return download(
+				request,
+				exportExploration(store, explorationId, format),
+				format,
+				`${explorationId}-report.${format}`
+			)
+		}
+		const question = routes.question.exec(pathname)
+		if (question) return render(request, questionPage(store, shown, question[1], question[2]))
+		const claim = routes.claim.exec(pathname)
+		if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]))
 		const gap = routes.gap.exec(pathname)
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
 		const run = routes.run.exec(pathname)
@@ -453,6 +475,59 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		const next = nextItem(`Answered ${planId} · ${gapId}`, cookies)
 		redirect(request.res, next.location, next.cookies)
+	}
+
+	function answerExplorationQuestion(
+		request: Request,
+		form: URLSearchParams,
+		explorationId: string,
+		questionId: string
+	) {
+		const state: FormState = {
+			...emptyState(),
+			values: values(form, ['kind', 'value', 'source', 'rationale', 'actor']),
+		}
+		const { actor, cookies } = actorFrom(request, form)
+		const kind = state.values.kind
+		const planId = planOfExploration(explorationId)
+		try {
+			answerGap(store, actor, {
+				planId,
+				gapId: questionId,
+				kind,
+				value: state.values.value.trim(),
+				source: kind === 'clarify' ? state.values.source.trim() : null,
+				rationale: state.values.rationale.trim(),
+			})
+		} catch (error) {
+			state.error = plainMessage(error)
+			return refuse(
+				request,
+				() => questionPage(store, context(request), explorationId, questionId, state),
+				cookies
+			)
+		}
+		const next = nextItem(`Answered ${planId} · ${questionId}`, cookies)
+		redirect(request.res, next.location, next.cookies)
+	}
+
+	function decideExplorationClaim(request: Request, form: URLSearchParams, explorationId: string, claimId: string) {
+		const state: FormState = { ...emptyState(), values: values(form, ['verdict', 'rationale', 'actor']) }
+		const { actor, cookies } = actorFrom(request, form)
+		const planId = planOfExploration(explorationId)
+		const verdict = state.values.verdict === 'rejected' ? 'rejected' : 'approved'
+		try {
+			decideClaim(store, actor, { planId, claimId, verdict, rationale: state.values.rationale.trim() })
+		} catch (error) {
+			state.error = plainMessage(error)
+			return refuse(request, () => claimPage(store, context(request), explorationId, claimId, state), cookies)
+		}
+		const next = nextItem(`${verdict === 'approved' ? 'Accepted' : 'Rejected'} ${planId} · ${claimId}`, cookies)
+		redirect(request.res, next.location, next.cookies)
+	}
+
+	function planOfExploration(explorationId: string) {
+		return explorationRow(store, explorationId).plan_id
 	}
 
 	function verdictState(form: URLSearchParams) {
@@ -737,6 +812,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		const edit = routes.edit.exec(pathname)
 		if (edit) return saveEdit(request, form, edit[1], Number(edit[2]))
+		const question = routes.question.exec(pathname)
+		if (question) return answerExplorationQuestion(request, form, question[1], question[2])
+		const claim = routes.claim.exec(pathname)
+		if (claim) return decideExplorationClaim(request, form, claim[1], claim[2])
 		const gap = routes.gap.exec(pathname)
 		if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3])
 		const plan = routes.plan.exec(pathname)

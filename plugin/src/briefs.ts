@@ -167,3 +167,58 @@ export function explorerBrief(
 		'At the end, list what you tested and each problem that you found, with its steps.',
 	].join('\n')
 }
+
+type MergeReport = { id: string; severity: string; title: string; expected: string; actual: string; steps: string }
+
+export function mergerPrompt(build: string, reports: MergeReport[], groups: string[][]) {
+	return [
+		`Merge the defect reports of independent testers of build ${build}. Do not test.`,
+		'Two reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.',
+		'Reply with only one JSON array of issue entries, one for each defect that two or more reports describe, and nothing else. Use no tool. Reply [] when no reports describe the same defect.',
+		'',
+		entryText(['issue'], () => true),
+		'',
+		'Example of an entry:',
+		JSON.stringify(issueSchema.examples[0]),
+		'',
+		'The reports:',
+		...reports.map(
+			(report) =>
+				`${report.id} (${report.severity}): ${report.title} Expected: ${report.expected} Actual: ${report.actual}${report.steps ? ` Steps: ${report.steps}` : ''}`
+		),
+		...(groups.length
+			? [
+					'',
+					'Reports with many of the same words. These are ideas, not rules:',
+					...groups.map((group) => `- ${group.join(', ')}`),
+				]
+			: []),
+	].join('\n')
+}
+
+type VerifyItem = { id: string; title: string; expected: string; actual: string; steps: string | string[] | null }
+
+export function verifierBrief(
+	items: VerifyItem[],
+	entries: EntryPointValue[],
+	operations: string[],
+	dataPrefix: string
+) {
+	return [
+		'Reproduce each problem below on the application. Do not test other things.',
+		'',
+		'The application:',
+		...entries.map(entryPointLine),
+		'',
+		`You can: ${operations.join(', ')}. Do not change the code, the configuration, or the deployment of the application.`,
+		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
+		'',
+		'The problems:',
+		...items.map(
+			(item) =>
+				`- ${item.id}: ${item.title} Steps: ${[item.steps ?? 'not given'].flat().join(' ')} Expected: ${item.expected} Reported: ${item.actual}`
+		),
+		'',
+		'At the end, reply with only one JSON array, with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.',
+	].join('\n')
+}

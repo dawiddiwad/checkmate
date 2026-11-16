@@ -65,6 +65,10 @@ The plugin has two more skills. `/checkmate:status` tells where a plan is in the
 
 **Finding.** A defect or a potential issue that a run found. A defect stays open until a later run passes its tests or a retest finds it again. Read [Open defects](runs.md#open-defects).
 
+**Exploration.** Free testing of one build of a plan by one or more explorers. An explorer does not use Checkmate. A recorder writes the record after the test session. An exploration needs a plan request, not a plan revision.
+
+**Claim.** A defect that an exploration found. A claim needs no assertion. Its state is `observed`, `suspected`, `confirmed`, `unresolved`, `accepted`, or `rejected`. Read [Merge, verify, and claims](commands.md#merge-verify-and-claims).
+
 **Evidence.** The bytes that show an observation, for example a page excerpt, an HTTP exchange, or a screenshot.
 
 **Result.** The final record of a run: completion, test outcomes, and coverage.

@@ -27,13 +27,13 @@ export function emptyState(): FormState {
 	return { values: {}, error: null, stale: null, confirm: false }
 }
 
-function hidden(context: Context, sha256: string, token = '') {
+export function hidden(context: Context, sha256: string, token = '') {
 	return html`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="sha" value="${sha256}" />
 		${token ? html`<input type="hidden" name="decision" value="${token}" />` : ''}`
 }
 
-function actorField(context: Context, state: FormState) {
+export function actorField(context: Context, state: FormState) {
 	if (context.actor) return ''
 	return html`<div class="field-group">
 		<label class="lab" for="actor">Your name</label>
@@ -42,12 +42,12 @@ function actorField(context: Context, state: FormState) {
 	</div>`
 }
 
-function messages(state: FormState) {
+export function messages(state: FormState) {
 	return html`${state.stale ? banner('warn', state.stale) : ''}
 	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
 }
 
-function rationaleField(state: FormState, placeholder: string) {
+export function rationaleField(state: FormState, placeholder: string) {
 	return html`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
 		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder}">

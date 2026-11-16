@@ -7,6 +7,7 @@ import { requireChoice, requireCondition, revisionReference } from './contracts.
 import { planApproval, planRevision } from './plans.ts'
 import { outcomeCounts, resultAcceptance, runResult, runState } from './runs.ts'
 import { approvalLabel, evidenceBytes } from './views.ts'
+import { explorationReport } from './explorers.ts'
 
 type Block =
 	| { heading: string; level?: 2 | 3 }
@@ -686,4 +687,52 @@ function testTimes(store: Store, runId: string) {
 
 export function exportRun(store: Store, runId: string, format: string) {
 	return renderRun(runReport(store, runId), requireChoice(format, runFormats, 'format (--format)'))
+}
+
+export const explorationFormats = ['md', 'json'] as const
+
+function mdCell(text: unknown) {
+	return String(text ?? '')
+		.replace(/\|/g, '\\|')
+		.replace(/\n/g, ' ')
+}
+
+export function exportExploration(store: Store, explorationId: string, format: string) {
+	const report = explorationReport(store, explorationId)
+	if (requireChoice(format, explorationFormats, 'format (--format)') === 'json')
+		return JSON.stringify(report, null, '\t') + '\n'
+	const lines = [
+		`# Exploration ${report.explorationId}`,
+		'',
+		`Plan ${report.planId}, build ${report.build}, instance ${report.instanceId}, mode ${report.mode}. State: ${report.state}.`,
+		`Level ${report.level ?? '-'}, ${report.explorerCount ?? 0} explorers, model ${report.model ?? '-'}, verifier ${report.verifier ?? '-'}.`,
+		'',
+		`Goal: ${report.charter.goal}`,
+		'',
+		'## Claims',
+		'',
+		'| Claim | State | Severity | Reporters | Title | Reason |',
+		'| --- | --- | --- | --- | --- | --- |',
+		...report.claims.map(
+			(claim) =>
+				`| ${mdCell(claim.id)} | ${claim.state} | ${claim.severity} | ${claim.actors.join(', ')} | ${mdCell(claim.title)} | ${mdCell(claim.reason)} |`
+		),
+		'',
+		'## Questions',
+		'',
+		...(report.questions.length
+			? report.questions.map(
+					(question) =>
+						`- ${question.id}: ${question.question}${question.answer ? ` Answer: ${question.answer}` : ''}`
+				)
+			: ['None.']),
+		'',
+		'## Explorers',
+		'',
+		...report.explorers.map(
+			(item) =>
+				`- ${item.explorer}: ended ${item.ended ?? '-'}, recorded ${item.recorded ?? '-'}, ${item.saved} entries`
+		),
+	]
+	return lines.join('\n') + '\n'
 }

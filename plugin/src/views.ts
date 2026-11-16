@@ -1,5 +1,7 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
+import { explorationStatus } from './explorers.ts'
+import { factoryStates, oracleStates, planClaims, planQuestions } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
 import {
@@ -94,32 +96,63 @@ export function inbox(store: Store) {
 		).map((row) => `${row.plan_id}:${row.gap_id}`)
 	)
 	const revisions = latestRevisions(store)
-	const gaps = revisions
-		.flatMap((row) => [
-			...row.plan.gaps
-				.filter((gap) => gap.status === 'open' && !pending.has(`${row.plan_id}:${gap.id}`))
-				.map((gap) => ({
-					planId: row.plan_id,
-					revision: row.revision,
-					gapId: gap.id,
-					question: gap.question,
-					severity: gap.severity,
-					since: row.at,
-					runId: null as string | null,
-				})),
-			...planRunGaps(store, row.plan_id)
-				.filter((item) => !item.adopted)
-				.map((item) => ({
-					planId: row.plan_id,
-					revision: row.revision,
-					gapId: item.gap.id,
-					question: item.gap.question,
-					severity: item.gap.severity,
-					since: item.at,
-					runId: item.runId,
-				})),
-		])
-		.sort(bySince)
+	const gaps = revisions.flatMap((row) => [
+		...row.plan.gaps
+			.filter((gap) => gap.status === 'open' && !pending.has(`${row.plan_id}:${gap.id}`))
+			.map((gap) => ({
+				planId: row.plan_id,
+				revision: row.revision,
+				gapId: gap.id,
+				question: gap.question,
+				severity: gap.severity,
+				since: row.at,
+				runId: null as string | null,
+				explorationId: null as string | null,
+			})),
+		...planRunGaps(store, row.plan_id)
+			.filter((item) => !item.adopted)
+			.map((item) => ({
+				planId: row.plan_id,
+				revision: row.revision,
+				gapId: item.gap.id,
+				question: item.gap.question,
+				severity: item.gap.severity,
+				since: item.at,
+				runId: item.runId as string | null,
+				explorationId: null as string | null,
+			})),
+	])
+	const explored = exploredPlans(store)
+	const questions = explored.flatMap((planId) =>
+		planQuestions(store, planId)
+			.filter((question) => question.answer === null)
+			.map((question) => ({
+				planId,
+				revision: null as number | null,
+				gapId: question.id,
+				question: question.question,
+				severity: 'non_blocking' as 'blocking' | 'non_blocking',
+				since: question.at,
+				runId: null as string | null,
+				explorationId: question.explorationId as string | null,
+			}))
+	)
+	const allGaps = [...gaps.map((gap) => ({ ...gap, revision: gap.revision as number | null })), ...questions].sort(
+		bySince
+	)
+	const claims = explored.flatMap((planId) =>
+		planClaims(store, planId)
+			.filter((claim) => claim.open && oracleStates.includes(claim.state))
+			.map((claim) => ({
+				planId,
+				claimId: claim.id,
+				explorationId: claim.explorationId,
+				state: claim.state,
+				severity: claim.severity,
+				title: claim.title,
+				reason: claim.reason,
+			}))
+	)
 	const plans = revisions
 		.map((row) => ({ row, approval: approvalLabel(planApproval(store, row.plan, row.sha256)) }))
 		.filter(({ approval }) => approval === 'pending' || approval === 'rejected')
@@ -152,7 +185,7 @@ export function inbox(store: Store) {
 				}
 			})
 	})
-	return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) }
+	return { gaps: allGaps, plans, results, claims, requests: requestedPlans(store).sort(bySince) }
 }
 
 function selectedCounts(result: Result) {
@@ -288,10 +321,96 @@ export type LoopState =
 	| 'awaits_acceptance'
 	| 'accepted'
 	| 'passed'
+	| 'exploring'
+	| 'needs_triage'
 export type Role = 'planner' | 'oracle' | 'qa' | 'factory' | 'none'
 export const roles = ['planner', 'oracle', 'qa', 'factory', 'none'] as const
 
+export function exploredPlans(store: Store) {
+	return all<{ plan_id: string }>(store, 'SELECT DISTINCT plan_id FROM explorations ORDER BY plan_id').map(
+		(row) => row.plan_id
+	)
+}
+
+const runningExploration = ['starting', 'testing', 'recording', 'verifying']
+const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
+
 export function planStatus(store: Store, planId: string) {
+	const base = checkStatus(store, planId)
+	const explorations = all<{ exploration_id: string }>(
+		store,
+		'SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid',
+		planId
+	).map((row) => {
+		const status = explorationStatus(store, row.exploration_id)
+		return { explorationId: status.explorationId, build: status.build, state: status.state }
+	})
+	const claims = planClaims(store, planId)
+		.filter((claim) => claim.open)
+		.map((claim) => ({
+			claimId: claim.id,
+			explorationId: claim.explorationId,
+			build: claim.build,
+			state: claim.state,
+			severity: claim.severity,
+			title: claim.title,
+			reason: claim.reason,
+		}))
+	const questions = planQuestions(store, planId).filter((question) => question.answer === null)
+	const extra = { explorations, claims, questions }
+	if (!overlaid.includes(base.state)) return { ...base, ...extra }
+	const running = explorations.filter((item) => runningExploration.includes(item.state))
+	if (running.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'exploring',
+				'qa',
+				running.map((item) => `${item.explorationId} is ${item.state} on build ${item.build}`),
+				running.map((item) => `checkmate explore wait ${item.explorationId}`)
+			),
+		}
+	const triage = claims.filter((claim) => oracleStates.includes(claim.state))
+	if (triage.length || questions.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'needs_triage',
+				'oracle',
+				[
+					...(questions.length ? [amount(questions.length, 'open question')] : []),
+					...triage.map((claim) => `${claim.claimId} is ${claim.state}: ${claim.title}`),
+				],
+				[
+					...(questions.length
+						? [
+								`checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
+							]
+						: []),
+					...(triage.length ? [`checkmate claim accept|reject ${planId} <claimId> --rationale "<why>"`] : []),
+				]
+			),
+		}
+	const fixes = claims.filter((claim) => factoryStates.includes(claim.state))
+	if (fixes.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'defects_open',
+				'factory',
+				[amount(fixes.length, 'open claim')],
+				[
+					`Build a fix, then explore the new build: checkmate explore start ${planId} --build <new build> --allow <rule>`,
+				]
+			),
+		}
+	return { ...base, ...extra }
+}
+
+function checkStatus(store: Store, planId: string) {
 	if (!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId)) {
 		planRequest(store, planId)
 		return {

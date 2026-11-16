@@ -21,54 +21,58 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 
 ## Command list
 
-| Group     | Command                                                   | Does                                                                                                                              |
-| --------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| State     | `init`                                                    | Creates `.checkmate/checkmate.db`. Any command does this too.                                                                     |
-|           | `inbox`                                                   | Lists what waits for the oracle.                                                                                                  |
-|           | `status <planId>`                                         | Prints the loop state of one plan.                                                                                                |
-|           | `log [--subject <s>] [--limit <n>] [--after <rowid>]`     | Lists the operation log, newest first. The limit is 1 to 1000. The default is 50.                                                 |
-|           | `query "<sql>"`                                           | Runs one SQL statement on a read-only connection. It refuses a second statement, a write, and a statement without result columns. |
-| Target    | `target open <targetId>`                                  | Records a setup request.                                                                                                          |
-|           | `target request <targetId>`                               | Prints the setup request.                                                                                                         |
-|           | `target save <targetId>`                                  | Saves a profile from standard input.                                                                                              |
-|           | `target list`                                             | Lists each target with its latest revision and instances.                                                                         |
-|           | `target show <targetId[@rev]> [--instance <id>]`          | Prints a profile, and the values of one instance.                                                                                 |
-|           | `target instance add <targetId> <instanceId>`             | Adds an instance from `--entry` flags or standard input.                                                                          |
-|           | `target instance retire <targetId> <instanceId>`          | Retires an instance. No new run can start on it.                                                                                  |
-|           | `target instance list <targetId>`                         | Lists the instances of a target, active and retired.                                                                              |
-| Plan      | `plan open <planId> --target <targetId@rev>`              | Records a plan request.                                                                                                           |
-|           | `plan request <planId>`                                   | Prints the request with the resolved tools.                                                                                       |
-|           | `plan save <planId>`                                      | Saves revision 1 from a candidate.                                                                                                |
-|           | `plan show <planId[@rev]>`                                | Prints a revision. Without `@rev`, the latest.                                                                                    |
-|           | `plan list`                                               | Lists each plan at its latest revision.                                                                                           |
-|           | `plan pending <planId>`                                   | Prints the pending decisions and the tests they affect.                                                                           |
-|           | `plan revise <planId>`                                    | Saves the next revision from a delta.                                                                                             |
-|           | `plan diff <planId> <from> <to>`                          | Prints the field changes and a JSON Patch.                                                                                        |
-| Decisions | `gap answer <planId> <gapId>`                             | Records an answer to a gap.                                                                                                       |
-|           | `plan edit <planId@rev> [--patch]`                        | Changes the latest revision.                                                                                                      |
-|           | `plan adopt-gaps <planId@rev> --run <runId>`              | Adds the gaps of a run to the plan.                                                                                               |
-|           | `plan approve <planId@rev>`, `plan reject <planId@rev>`   | Records a verdict on the latest revision.                                                                                         |
-|           | `result accept <runId>`, `result reject <runId>`          | Records a verdict on a result.                                                                                                    |
-| Run       | `run gate <planId@rev>`                                   | Checks the gate. Records nothing.                                                                                                 |
-|           | `run begin <runId> <planId@rev>`                          | Checks the gate and starts a run on one instance.                                                                                 |
-|           | `run check <runId> <testId> <assertionId>`                | Records one assertion result with evidence.                                                                                       |
-|           | `run close <runId> <testId>`                              | Closes a test and derives its outcome.                                                                                            |
-|           | `run finding <runId>`, `run gap <runId>`                  | Records a finding or a new gap from standard input.                                                                               |
-|           | `run finish <runId>`                                      | Checks the run and stores the result.                                                                                             |
-|           | `run resume <runId>`                                      | Records a new attempt for a stalled run.                                                                                          |
-|           | `run show <runId>`, `run list`                            | Prints a run, or lists runs.                                                                                                      |
-|           | `finding list [--plan <planId>] [--open]`                 | Lists the findings of all runs, one line for each finding.                                                                        |
-| Explore   | `explore start <planId> --build <build> --allow <rule>`   | Records an exploration and starts its explorers in the background. Read [Explore](#explore).                                      |
-|           | `explore status <explorationId>`                          | Prints the state, the level, the model, and each explorer.                                                                        |
-|           | `explore wait <explorationId> [--timeout <s>]`            | Waits until the exploration ends, and prints the status.                                                                          |
-|           | `explore levels`                                          | Prints the test levels: explorers, model alias, and verifier.                                                                     |
-|           | `explore open <planId> --build <build>`                   | Records an exploration without explorers.                                                                                         |
-|           | `record <explorationId> --explorer <name> --session <id>` | Starts a recorder: a copy of a test session that writes the record of that session.                                               |
-|           | `explore log <explorationId>`                             | Saves each valid entry from standard input for the actor, and refuses each invalid entry alone.                                   |
-| Output    | `export plan <ref>`, `export run <runId>`                 | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
-|           | `evidence get <evidenceId> --out <file>`                  | Writes the evidence bytes to a new file.                                                                                          |
-|           | `ui`                                                      | Starts the review UI.                                                                                                             |
-| npm only  | `delegate <stage> <subject>`                              | Runs a stage in a new Claude Code session.                                                                                        |
+| Group     | Command                                                      | Does                                                                                                                              |
+| --------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| State     | `init`                                                       | Creates `.checkmate/checkmate.db`. Any command does this too.                                                                     |
+|           | `inbox`                                                      | Lists what waits for the oracle.                                                                                                  |
+|           | `status <planId>`                                            | Prints the loop state of one plan.                                                                                                |
+|           | `log [--subject <s>] [--limit <n>] [--after <rowid>]`        | Lists the operation log, newest first. The limit is 1 to 1000. The default is 50.                                                 |
+|           | `query "<sql>"`                                              | Runs one SQL statement on a read-only connection. It refuses a second statement, a write, and a statement without result columns. |
+| Target    | `target open <targetId>`                                     | Records a setup request.                                                                                                          |
+|           | `target request <targetId>`                                  | Prints the setup request.                                                                                                         |
+|           | `target save <targetId>`                                     | Saves a profile from standard input.                                                                                              |
+|           | `target list`                                                | Lists each target with its latest revision and instances.                                                                         |
+|           | `target show <targetId[@rev]> [--instance <id>]`             | Prints a profile, and the values of one instance.                                                                                 |
+|           | `target instance add <targetId> <instanceId>`                | Adds an instance from `--entry` flags or standard input.                                                                          |
+|           | `target instance retire <targetId> <instanceId>`             | Retires an instance. No new run can start on it.                                                                                  |
+|           | `target instance list <targetId>`                            | Lists the instances of a target, active and retired.                                                                              |
+| Plan      | `plan open <planId> --target <targetId@rev>`                 | Records a plan request.                                                                                                           |
+|           | `plan request <planId>`                                      | Prints the request with the resolved tools.                                                                                       |
+|           | `plan save <planId>`                                         | Saves revision 1 from a candidate.                                                                                                |
+|           | `plan show <planId[@rev]>`                                   | Prints a revision. Without `@rev`, the latest.                                                                                    |
+|           | `plan list`                                                  | Lists each plan at its latest revision.                                                                                           |
+|           | `plan pending <planId>`                                      | Prints the pending decisions and the tests they affect.                                                                           |
+|           | `plan revise <planId>`                                       | Saves the next revision from a delta.                                                                                             |
+|           | `plan diff <planId> <from> <to>`                             | Prints the field changes and a JSON Patch.                                                                                        |
+| Decisions | `gap answer <planId> <gapId>`                                | Records an answer to a gap.                                                                                                       |
+|           | `plan edit <planId@rev> [--patch]`                           | Changes the latest revision.                                                                                                      |
+|           | `plan adopt-gaps <planId@rev> --run <runId>`                 | Adds the gaps of a run to the plan.                                                                                               |
+|           | `plan approve <planId@rev>`, `plan reject <planId@rev>`      | Records a verdict on the latest revision.                                                                                         |
+|           | `result accept <runId>`, `result reject <runId>`             | Records a verdict on a result.                                                                                                    |
+| Run       | `run gate <planId@rev>`                                      | Checks the gate. Records nothing.                                                                                                 |
+|           | `run begin <runId> <planId@rev>`                             | Checks the gate and starts a run on one instance.                                                                                 |
+|           | `run check <runId> <testId> <assertionId>`                   | Records one assertion result with evidence.                                                                                       |
+|           | `run close <runId> <testId>`                                 | Closes a test and derives its outcome.                                                                                            |
+|           | `run finding <runId>`, `run gap <runId>`                     | Records a finding or a new gap from standard input.                                                                               |
+|           | `run finish <runId>`                                         | Checks the run and stores the result.                                                                                             |
+|           | `run resume <runId>`                                         | Records a new attempt for a stalled run.                                                                                          |
+|           | `run show <runId>`, `run list`                               | Prints a run, or lists runs.                                                                                                      |
+|           | `finding list [--plan <planId>] [--open]`                    | Lists the findings of all runs, one line for each finding.                                                                        |
+| Explore   | `explore start <planId> --build <build> --allow <rule>`      | Records an exploration and starts its explorers in the background. Read [Explore](#explore).                                      |
+|           | `explore status <explorationId>`                             | Prints the state, the level, the model, and each explorer.                                                                        |
+|           | `explore wait <explorationId> [--timeout <s>]`               | Waits until the exploration ends, and prints the status.                                                                          |
+|           | `explore levels`                                             | Prints the test levels: explorers, model alias, and verifier.                                                                     |
+|           | `explore open <planId> --build <build>`                      | Records an exploration without explorers.                                                                                         |
+|           | `explore finish <explorationId>`                             | Merges and verifies the recorded sessions of an exploration without explorers.                                                    |
+|           | `explore show <explorationId>`                               | Prints the exploration with its claims, questions, and criteria.                                                                  |
+|           | `claim accept\|reject <planId> <claimId> --rationale <text>` | Records the decision of the oracle on a claim.                                                                                    |
+|           | `export exploration <explorationId> --format md\|json`       | Prints the report of an exploration.                                                                                              |
+|           | `record <explorationId> --explorer <name> --session <id>`    | Starts a recorder: a copy of a test session that writes the record of that session.                                               |
+|           | `explore log <explorationId>`                                | Saves each valid entry from standard input for the actor, and refuses each invalid entry alone.                                   |
+| Output    | `export plan <ref>`, `export run <runId>`                    | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
+|           | `evidence get <evidenceId> --out <file>`                     | Writes the evidence bytes to a new file.                                                                                          |
+|           | `ui`                                                         | Starts the review UI.                                                                                                             |
+| npm only  | `delegate <stage> <subject>`                                 | Runs a stage in a new Claude Code session.                                                                                        |
 
 The run commands are in [Runs and evidence](runs.md). The payloads are in [Payloads](payloads.md).
 
@@ -137,6 +141,10 @@ next	checkmate delegate revise checkout --allow Read --allow Bash
 | `awaits_acceptance` | oracle   | Each ready test passed in its latest run. One or more of these runs wait for acceptance. The `why` lines name them.                                                   |
 | `accepted`          | none     | The oracle accepted each run that has the latest outcome of a ready test.                                                                                             |
 | `passed`            | none     | Each ready test passed in its latest run. Result acceptance is not required.                                                                                          |
+| `exploring`         | qa       | An exploration of the plan runs. The `next` line is `checkmate explore wait <explorationId>`.                                                                         |
+| `needs_triage`      | oracle   | An exploration question has no answer, or a claim is `suspected` or `unresolved`.                                                                                     |
+
+The exploration states apply only when the check state is `needs_plan`, `ready_to_run`, `nothing_to_run`, `needs_retest`, `passed`, or `accepted`. Then `exploring` comes first, then `needs_triage`, then `defects_open` for an open claim that is `observed`, `confirmed`, or `accepted`. `status` also prints one `exploration` line for each exploration, one `question` line for each open question, and one `claim` line for each open claim.
 
 When the oracle rejected the latest revision, or a run that has a latest outcome of a ready test, a `why` line gives the decision: `<subject> was rejected by <actor>: <rationale>`. Address the rationale in the next revision or the next run.
 
@@ -213,6 +221,32 @@ When the host refuses the model, the launch of that explorer fails. `explore wai
 | `timeout` | `interrupted`       | 1    |
 
 An operator agent runs `explore wait` as a background command. A factory runs it directly.
+
+### Merge, verify, and claims
+
+After the records, the supervisor does two more steps:
+
+1. **Merge.** When two or more explorers reported defects on the build, a merger gets the defect reports and a list of reports with many of the same words. The merger is a new Claude Code session with the model of the level and no tool rules. It replies with `issue` entries: one for each defect that two or more reports describe. Checkmate logs them as `qa:merge`, and repairs refused entries once.
+2. **Verify.** When the level has a verifier, a verifier gets each claim of the build with one reporter and no verification. It is a new Claude Code session in a clean context, with the tool rules of the explorers. Its brief has the steps, the expected result, and the reported result of each claim, and does not name Checkmate. It replies with one result for each claim: seen or not seen, and what it saw. Checkmate logs an observation as `qa:verify` that confirms or refutes the claim.
+
+A claim is an issue of the merger, or a defect that is in no issue. Its ID is `<explorer>/<entryId>`, for example `a1/D1`, or `merge/I1`. A claim has one state:
+
+| State        | When                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------- |
+| `observed`   | One explorer reported it with steps or evidence.                                                     |
+| `suspected`  | Each report is marked `suspected`, or has no steps and no evidence.                                  |
+| `confirmed`  | Two or more explorers reported it, or the verifier saw it again.                                     |
+| `unresolved` | The verifier did not see it. The reason gives what the verifier saw. The claim stays in the record.  |
+| `accepted`   | The oracle accepted it as a defect: `checkmate claim accept <planId> <claimId> --rationale "<why>"`. |
+| `rejected`   | The oracle rejected it: `checkmate claim reject <planId> <claimId> --rationale "<why>"`.             |
+
+A claim needs no planned assertion. The factory works on the open claims that are `observed`, `confirmed`, or `accepted`. The inbox lists the open claims that are `suspected` or `unresolved`. A claim is closed when the oracle rejects it, or when the latest retest verdict of a later build is `fixed`.
+
+**Questions.** A question of an explorer is in the same inbox list as the gaps of the plans, with its ID `<explorer>/<entryId>`. Answer it as a gap: `checkmate gap answer <planId> a1/Q1 --kind <kind> --value "<answer>" --rationale "<why>"`. The answer goes into the record. The next recorders of the plan see it.
+
+### explore finish
+
+`checkmate explore finish <explorationId> [--level <level>] [--allow <rule>] [--claude-arg <arg>]` is for an exploration without explorers, after `record` of each session. It starts the supervisor for the merge and the verify steps. It needs `--allow` when the level has a verifier.
 
 ### record
 

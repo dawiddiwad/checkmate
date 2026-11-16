@@ -26,7 +26,11 @@ The command prints `completed ui url=<url>`. Open that URL in a browser on the s
 
 <img src="../img/ui/inbox.jpg" alt="The inbox in dark mode with four items: two gaps to answer, one of them from run-7, one plan to approve, and one result to accept." width="100%"/>
 
-The start page. It groups the gaps to answer, the plans to approve or change, the results to accept, and the plans to draft. A rejected plan shows `rejected`, and its summary starts with `Rejected. Change the plan.` The number next to `Inbox` counts the oracle actions only. A rejected plan is an oracle action. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. After a decision, the UI opens the next item.
+The start page. It groups the gaps to answer, the plans to approve or change, the results to accept, and the plans to draft. A rejected plan shows `rejected`, and its summary starts with `Rejected. Change the plan.` The number next to `Inbox` counts the oracle actions only. A rejected plan is an oracle action. A plan to draft waits on the planner, so the number does not include it. A gap from a run shows `from run <runId>`. A question of an exploration is in the same list and shows `from exploration <explorationId>`. You answer it with the same form as a gap. The group `Claims to decide` lists the claims that are `suspected` or `unresolved`. After a decision, the UI opens the next item.
+
+### Exploration
+
+`/explorations/<explorationId>` shows the state, the level, the claims with their states and reasons, the questions, and the explorers. A claim page shows the expected result, the actual result, the steps, and the reporters. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
 
 ### Plans
 

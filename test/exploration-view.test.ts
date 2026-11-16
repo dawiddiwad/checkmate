@@ -306,8 +306,8 @@ test('after completion the plan page answers a merged question and decides a mer
 	const url = await ui(t, workspace)
 	const page = (await call(url, '/plans/checkout')).body
 	assert(!keyed(page, 'running:x-1'))
-	assert.match(page, /href="\/explorations\/x-1\/questions\/a1\/Q1#answer"/)
-	assert.match(page, /href="\/explorations\/x-1\/claims\/a1\/D1#decide"/)
+	assert.match(page, /href="\/\?plan=checkout&amp;item=question%3Acheckout%3Aa1%2FQ1"/)
+	assert.match(page, /href="\/claims\?plan=checkout&amp;item=claim%3Acheckout%3Aa1%2FD1"/)
 	assert.match(page, /checkmate harvest x-1/)
 	assert.match((await call(url, '/')).body, /data-region="nav-count">1</)
 	const live = (await call(url, '/explorations/x-1')).body

@@ -388,7 +388,13 @@ function inconclusiveList(detail: Detail) {
 	</div>`
 }
 
-function decisionPanel(store: Store, context: Context, detail: Detail, state: FormState | null) {
+export function decisionPanel(
+	store: Store,
+	context: Context,
+	detail: Detail,
+	state: FormState | null,
+	extra: Html | null = null
+) {
 	const result = detail.result
 	if (!result)
 		return recordPanel(
@@ -433,6 +439,7 @@ function decisionPanel(store: Store, context: Context, detail: Detail, state: Fo
 				summary: `Reject ${detail.runId}. Dependent plans stay blocked.`,
 			},
 			staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
+			...(extra ? { extra } : {}),
 			intro: inconclusiveList(detail),
 		},
 		state ?? emptyState()
@@ -503,10 +510,17 @@ export function runPage(
 					${cleanup(detail)}
 				</section>
 			</div>
-			<aside class="side" aria-label="Decision">
-				${decisionPanel(store, context, detail, state)}
-				<p class="back"><a href="/">← Back to inbox</a></p>
-			</aside>
+			<aside class="side" aria-label="Decision">${decisionPanel(store, context, detail, state)}</aside>
 		</div>`
-	return { title: runId, section: 'runs', subjects: [`run:${runId}`, 'inbox'], body }
+	return {
+		title: runId,
+		section: 'runs',
+		subjects: [`run:${runId}`, 'inbox'],
+		body,
+		crumbs: [
+			['Runs', '/runs'],
+			[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
+			[runId, null],
+		],
+	}
 }

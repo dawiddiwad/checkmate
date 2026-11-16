@@ -21,6 +21,7 @@ export type Verdict = {
 	reject: { value: string; label: string; confirm: string; summary: string }
 	staleMessage: string
 	intro?: Html | ''
+	extra?: Html
 }
 
 export function emptyState(): FormState {
@@ -58,7 +59,7 @@ ${state.values.rationale ?? ''}</textarea>
 function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 	const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve
 	return html`<form method="post" action="${verdict.action}" class="decision-form">
-		${hidden(context, verdict.sha256, verdict.token)}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''}
 		<input type="hidden" name="verdict" value="${choice.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ''}" />
 		${context.actor ? '' : html`<input type="hidden" name="actor" value="${state.values.actor ?? ''}" />`}
@@ -87,7 +88,7 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 			${choice.label}
 		</button>`
 	return html`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
-		${hidden(context, verdict.sha256, verdict.token)} ${actorField(context, state)}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''} ${actorField(context, state)}
 		${rationaleField(state, 'Why do you decide this?')}
 		<div class="confirm-box" data-confirm hidden>
 			<p class="lab">Confirm</p>
@@ -214,4 +215,29 @@ export function recordPanel(title: string, content: Html, decided = '') {
 		<h2 class="lab" id="decide-title">${title}</h2>
 		${content}
 	</section>`
+}
+
+export function returnFields(item: { key: string }, back: string) {
+	return html`<input type="hidden" name="item" value="${item.key}" />
+		<input type="hidden" name="return" value="${back}" />`
+}
+
+export function sourceAndReason(context: Context, state: FormState, reasonLabel: string) {
+	const used = Boolean(state.values.source || state.values.rationale)
+	return html`<details class="more" data-more ${used ? html`open` : ''}>
+		<summary>Add source and reason</summary>
+		<div class="field-group">
+			<label class="lab" for="source">Source</label>
+			<input
+				id="source"
+				name="source"
+				value="${state.values.source ?? ''}"
+				placeholder="Default: ${context.actor ?? 'you'}, in the review UI"
+			/>
+		</div>
+		<div class="field-group">
+			<label class="lab" for="rationale">${reasonLabel}</label>
+			<textarea id="rationale" name="rationale" rows="2">${state.values.rationale ?? ''}</textarea>
+		</div>
+	</details>`
 }

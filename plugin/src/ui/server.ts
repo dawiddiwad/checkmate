@@ -40,6 +40,7 @@ import { emptyState } from './forms.ts'
 import { inboxPage, logPage, plansPage, runsPage } from './lists.ts'
 import type { QueueRefusal } from './queue.ts'
 import { queueCount, queuePage } from './queue.ts'
+import { claimsPage } from './claims.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, ownChanges } from './edit.ts'
 import type { AdoptError } from './run.ts'
@@ -286,8 +287,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const key = form.get('item')
 		if (form.get('return') === null || key === null) return page
 		const back = safeBack(form.get('return'))
+		const params = new URL(back, request.url).searchParams
+		if (back.startsWith('/claims')) return () => claimsPage(store, context(request, back), params, { key, state })
 		const refusal: QueueRefusal = { key, state }
-		return () => queuePage(store, context(request, back), new URL(back, request.url).searchParams, refusal)
+		return () => queuePage(store, context(request, back), params, refusal)
 	}
 
 	function serveClaimEvidence(request: Request, explorationId: string, claimId: string, index: number) {
@@ -360,6 +363,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		if (pathname === '/') return render(request, queuePage(store, shown, searchParams))
 		if (pathname === '/inbox') return render(request, inboxPage(store))
+		if (pathname === '/claims') return render(request, claimsPage(store, shown, searchParams))
 		if (pathname === '/plans') return render(request, plansPage(store, searchParams))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
@@ -476,23 +480,23 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			values: values(form, ['kind', 'value', 'source', 'rationale', 'actor']),
 		}
 		const { actor, cookies } = actorFrom(request, form)
-		const kind = state.values.kind
+		const input = answerInput(form, state, actor)
 		const page = inQueue(
 			request,
 			form,
 			() => gapPage(store, context(request), planId, revision, gapId, state),
 			state
 		)
-		state.error = answerProblem(state, actor)
+		state.error = answerProblem(input, actor)
 		if (state.error) return refuse(request, page, cookies)
 		try {
 			answerGap(store, actor, {
 				planId,
 				gapId,
-				kind,
-				value: state.values.value.trim(),
-				source: kind === 'clarify' ? state.values.source.trim() : null,
-				rationale: state.values.rationale.trim(),
+				kind: input.kind,
+				value: input.value,
+				source: input.kind === 'clarify' ? input.source : null,
+				rationale: input.rationale,
 				expectSha256: form.get('sha') ?? '',
 			})
 		} catch (error) {
@@ -510,8 +514,25 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		redirect(request.res, next.location, next.cookies)
 	}
 
-	function answerProblem(state: FormState, actor: string) {
-		const { kind, value, source, rationale } = state.values
+	function answerInput(form: URLSearchParams, state: FormState, actor: string) {
+		const typed = state.values
+		const trimmed = {
+			kind: typed.kind || 'clarify',
+			value: typed.value.trim(),
+			source: typed.source.trim(),
+			rationale: typed.rationale.trim(),
+		}
+		if (form.get('return') === null) return { ...trimmed, kind: typed.kind }
+		return {
+			...trimmed,
+			value: trimmed.value || (trimmed.kind === 'defer' ? 'Deferred in the review UI.' : ''),
+			source: trimmed.source || `${actor}, in the review UI`,
+			rationale: trimmed.rationale || 'Answered in the review UI. No reason was given.',
+		}
+	}
+
+	function answerProblem(input: ReturnType<typeof answerInput>, actor: string) {
+		const { kind, value, source, rationale } = input
 		if (!actor) return 'Enter your name. Checkmate records it with your answer.'
 		if (!['clarify', 'accept_assumption', 'defer'].includes(kind))
 			return 'Choose Clarify, Accept assumption, or Defer.'
@@ -533,19 +554,19 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			values: values(form, ['kind', 'value', 'source', 'rationale', 'actor']),
 		}
 		const { actor, cookies } = actorFrom(request, form)
-		const kind = state.values.kind
+		const input = answerInput(form, state, actor)
 		const planId = planOfExploration(explorationId)
 		const page = () => questionPage(store, context(request), explorationId, questionId, state)
-		state.error = answerProblem(state, actor)
+		state.error = answerProblem(input, actor)
 		if (state.error) return refuse(request, inQueue(request, form, page, state), cookies)
 		try {
 			answerGap(store, actor, {
 				planId,
 				gapId: questionId,
-				kind,
-				value: state.values.value.trim(),
-				source: kind === 'clarify' ? state.values.source.trim() : null,
-				rationale: state.values.rationale.trim(),
+				kind: input.kind,
+				value: input.value,
+				source: input.kind === 'clarify' ? input.source : null,
+				rationale: input.rationale,
 			})
 		} catch (error) {
 			state.error = plainMessage(error)
@@ -570,8 +591,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			state.error = 'Choose Accept as a defect or Reject.'
 			return refuse(request, page, cookies)
 		}
+		const typed = state.values.rationale.trim()
+		const quick = form.get('return') !== null
+		if (quick && verdict === 'rejected' && !typed) {
+			state.error = 'Write a short reason for the reject.'
+			return refuse(request, page, cookies)
+		}
+		const rationale = typed || (quick ? 'Accepted in the review UI. No reason was given.' : '')
 		try {
-			decideClaim(store, actor, { planId, claimId, verdict, rationale: state.values.rationale.trim() })
+			decideClaim(store, actor, { planId, claimId, verdict, rationale })
 		} catch (error) {
 			state.error = plainMessage(error)
 			return refuse(request, page, cookies)
@@ -643,7 +671,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			request,
 			form,
 			['approve', 'reject'],
-			(state) => planPage(store, context(request), planId, revision, state),
+			(state) =>
+				inQueue(request, form, () => planPage(store, context(request), planId, revision, state), state)(),
 			(actor, verdict, rationale, sha, token) => {
 				const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token }
 				if (verdict === 'approve') approvePlan(store, actor, input)
@@ -669,7 +698,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			request,
 			form,
 			['accept', 'reject'],
-			(state) => runPage(store, context(request), runId, state),
+			(state) => inQueue(request, form, () => runPage(store, context(request), runId, state), state)(),
 			(actor, verdict, rationale, sha, token) => {
 				const input = { runId, rationale, expectSha256: sha, expectDecision: token }
 				if (verdict === 'accept') acceptResult(store, actor, input)

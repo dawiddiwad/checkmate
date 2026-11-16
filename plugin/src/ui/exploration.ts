@@ -3,7 +3,7 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { explorationReport } from '../explorers.ts'
-import { claimEvidence, explorationLive, mergedClaims, mergedQuestions, planExplorations } from '../views.ts'
+import { claimEvidence, explorationLive, planExplorations } from '../views.ts'
 import { actorField, emptyState, gapPanel, hidden, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { clock, duration, html, join, pill, plural, time } from './html.ts'
@@ -13,14 +13,11 @@ type Live = ReturnType<typeof explorationLive>
 type Question = Live['questions'][number]
 type Listed = ReturnType<typeof planExplorations>[number]
 
-function claimRow(claim: Claim) {
+function claimRow(planId: string, claim: Claim) {
+	const key = encodeURIComponent(`claim:${planId}:${claim.id}`)
 	return html`<tr id="${claim.id}" data-key="claim:${claim.id}">
 		<td>
-			<a
-				class="mono"
-				href="/explorations/${claim.explorationId}/claims/${claim.id}${claim.decision ? '' : '#decide'}"
-				>${claim.id}</a
-			>
+			<a class="mono" href="/claims?plan=${planId}&amp;item=${key}">${claim.id}</a>
 		</td>
 		<td>${pill(claim.state)}</td>
 		<td>${pill(claim.severity)}</td>
@@ -29,7 +26,7 @@ function claimRow(claim: Claim) {
 	</tr>`
 }
 
-export function claimsTable(claims: Claim[]) {
+export function claimsTable(planId: string, claims: Claim[]) {
 	if (!claims.length) return html`<p class="empty-line">No claim.</p>`
 	return html`<div class="scroll">
 		<table>
@@ -43,13 +40,13 @@ export function claimsTable(claims: Claim[]) {
 				</tr>
 			</thead>
 			<tbody>
-				${claims.map(claimRow)}
+				${claims.map((claim) => claimRow(planId, claim))}
 			</tbody>
 		</table>
 	</div>`
 }
 
-export function questionsList(questions: Question[]) {
+export function questionsList(planId: string, questions: Question[]) {
 	if (!questions.length) return html`<p class="empty-line">No question.</p>`
 	return html`<ul class="items">
 		${questions.map(
@@ -57,7 +54,11 @@ export function questionsList(questions: Question[]) {
 				html`<li data-key="question:${question.id}">
 					<a
 						class="item"
-						href="/explorations/${question.explorationId}/questions/${question.id}${question.answer === null ? '#answer' : ''}"
+						href="${
+							question.answer === null
+								? `/?plan=${planId}&item=${encodeURIComponent(`question:${planId}:${question.id}`)}`
+								: `/explorations/${question.explorationId}/questions/${question.id}`
+						}"
 						><span class="id">${question.id}</span><span class="what">${question.question}</span
 						><span class="end"
 							>${question.blocking ? html`${pill('blocking')} ` : ''}${pill(
@@ -191,26 +192,6 @@ export function explorationsTable(explorations: Listed[]) {
 			</tbody>
 		</table>
 	</div>`
-}
-
-export function explorationSections(store: Store, planId: string) {
-	const explorations = planExplorations(store, planId)
-	const claims = mergedClaims(store, planId)
-	const questions = mergedQuestions(store, planId)
-	return html`<section aria-labelledby="explorations" data-region="explorations">
-			<h2 id="explorations">Explorations <span class="n">${explorations.length}</span></h2>
-			${explorationsTable(explorations)}
-		</section>
-		<section aria-labelledby="claims" data-region="claims">
-			<h2 id="claims">Claims <span class="n">${claims.length}</span></h2>
-			<p class="help">The merged claims of completed explorations.</p>
-			${claimsTable(claims)}
-		</section>
-		<section aria-labelledby="questions" data-region="questions">
-			<h2 id="questions">Questions <span class="n">${questions.length}</span></h2>
-			<p class="help">The merged questions of completed explorations.</p>
-			${questionsList(questions)}
-		</section>`
 }
 
 function explorerRow(live: Live, item: Live['explorers'][number]) {
@@ -383,13 +364,13 @@ export function explorationPage(store: Store, explorationId: string): Page {
 			${unmergedSection(live)}
 			<section class="panel" aria-labelledby="claims-title">
 				<h2 class="lab" id="claims-title">Claims</h2>
-				${merged ? claimsTable(live.claims) : html`<p class="none">The claims show when the exploration is completed.</p>`}
+				${merged ? claimsTable(live.planId, live.claims) : html`<p class="none">The claims show when the exploration is completed.</p>`}
 			</section>
 			<section class="panel" aria-labelledby="questions-title">
 				<h2 class="lab" id="questions-title">Questions</h2>
 				${
 					merged
-						? questionsList(live.questions)
+						? questionsList(live.planId, live.questions)
 						: html`<p class="none">The merged questions show when the exploration is completed.</p>`
 				}
 			</section>
@@ -400,6 +381,11 @@ export function explorationPage(store: Store, explorationId: string): Page {
 	return {
 		title: `Exploration ${explorationId}`,
 		section: 'plans',
+		crumbs: [
+			['Plans', '/plans'],
+			[live.planId, `/plans/${live.planId}`],
+			[explorationId, null],
+		],
 		subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
 		body,
 	}
@@ -419,6 +405,11 @@ export function explorerFilePage(
 	return {
 		title: `${explorationId} · ${explorer} · ${name}`,
 		section: 'plans',
+		crumbs: [
+			['Plans', '/plans'],
+			[explorationId, `/explorations/${explorationId}`],
+			[`${explorer} · ${name}`, null],
+		],
 		subjects: [`exploration:${explorationId}`],
 		body: html`${heading(html`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
 			<p>
@@ -456,6 +447,12 @@ export function questionPage(
 	return {
 		title: `${report.planId} · ${question.id}`,
 		section: 'inbox',
+		crumbs: [
+			['Needs you', '/'],
+			[report.planId, `/plans/${report.planId}`],
+			[explorationId, `/explorations/${explorationId}`],
+			[question.id, null],
+		],
 		subjects: [`exploration:${explorationId}`, 'inbox'],
 		body: html`${heading(html`${report.planId} · ${question.id}`, question.question)}
 			<p>
@@ -502,6 +499,12 @@ export function claimPage(
 	return {
 		title: `${report.planId} · ${claim.id}`,
 		section: 'inbox',
+		crumbs: [
+			['Claims', '/claims'],
+			[report.planId, `/plans/${report.planId}`],
+			[explorationId, `/explorations/${explorationId}`],
+			[claim.id, null],
+		],
 		subjects: [`exploration:${explorationId}`, 'inbox'],
 		body: html`${heading(html`${report.planId} · ${claim.id}`, claim.title, html`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
 			<div class="split">

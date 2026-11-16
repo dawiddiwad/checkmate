@@ -1049,7 +1049,8 @@ summary.asr-row:focus-visible {
 	padding: 10px 12px;
 	max-height: 240px;
 	overflow: auto;
-	white-space: pre;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 .ev-name {
 	overflow-wrap: anywhere;
@@ -2279,4 +2280,135 @@ main:has(> .queue) {
 body:has(.queue) .bar-in,
 body:has(.queue) .foot {
 	max-width: 1480px;
+}
+.q-filters {
+	flex-wrap: wrap;
+}
+.q-filters input[type='search'] {
+	flex-basis: 100%;
+}
+.q-filters select {
+	flex: 1 1 auto;
+	max-width: none;
+	min-width: 0;
+}
+.q-detail .seg label kbd,
+.q-detail .btn kbd {
+	margin-left: 6px;
+	font-size: 10.5px;
+}
+.q-detail .btn.primary kbd {
+	background: transparent;
+	color: inherit;
+	border-color: currentColor;
+}
+.more {
+	display: grid;
+	gap: 8px;
+}
+.more > summary {
+	cursor: pointer;
+	color: var(--accent);
+	font-size: 13.5px;
+	min-height: 24px;
+	width: fit-content;
+}
+.decision-form textarea#value {
+	min-height: 60px;
+}
+.crumbs-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 14px;
+	font-size: 13px;
+	margin-bottom: 14px;
+}
+.crumbs-bar ol {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	color: var(--muted);
+}
+.crumbs-bar li + li::before {
+	content: '›';
+	margin-right: 4px;
+	color: var(--line-strong);
+}
+.crumbs-bar [aria-current='page'] {
+	color: var(--ink);
+	font-family: var(--font-mono);
+}
+.back-link {
+	text-decoration: none;
+	font-weight: 600;
+}
+.next-line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 12px;
+	margin: -8px 0 12px;
+	font-size: 14px;
+}
+.next-line code {
+	font-size: 12px;
+}
+.chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 16px;
+}
+.chips a {
+	font-size: 13px;
+	color: var(--ink);
+	text-decoration: none;
+	padding: 3px 10px;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	background: var(--surface);
+	display: inline-flex;
+	gap: 6px;
+	align-items: center;
+}
+.chips a:hover {
+	border-color: var(--line-strong);
+}
+.fold {
+	border-bottom: 1px solid var(--line);
+}
+.fold > summary {
+	cursor: pointer;
+	list-style: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.fold > summary::-webkit-details-marker {
+	display: none;
+}
+.fold > summary::before {
+	content: '▸';
+	color: var(--muted);
+	font-size: 13px;
+}
+.fold[open] > summary::before {
+	content: '▾';
+}
+.main-col > .fold > summary h2 {
+	font-size: 18px;
+	margin: 14px 0;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	scroll-margin-top: 80px;
+}
+.fold-b {
+	padding: 0 0 18px;
+	display: grid;
+	gap: 10px;
 }

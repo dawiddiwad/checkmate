@@ -3,14 +3,23 @@ import type { Plan } from '../types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
-import { planDetail, planExplorations, planHistory, planStatus } from '../views.ts'
+import type { QueueItem } from '../views.ts'
+import {
+	mergedClaims,
+	mergedQuestions,
+	needsYou,
+	planDetail,
+	planExplorations,
+	planHistory,
+	planStatus,
+} from '../views.ts'
 import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
 import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
-import { explorationBanners, explorationSections } from './exploration.ts'
+import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]
@@ -320,7 +329,13 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 	</div>`
 }
 
-function approvalPanel(store: Store, context: Context, detail: Detail, state: FormState | null) {
+export function approvalPanel(
+	store: Store,
+	context: Context,
+	detail: Detail,
+	state: FormState | null,
+	extra: Html | null = null
+) {
 	const subject = `${detail.planId}@${detail.revision}`
 	const latest = detail.approval.latest
 	if (detail.approval.policy === 'none')
@@ -358,6 +373,7 @@ function approvalPanel(store: Store, context: Context, detail: Detail, state: Fo
 				summary: `Reject ${subject}. The agent must revise the plan.`,
 			},
 			staleMessage: `${detail.planId} changed. Review it before you decide.`,
+			...(extra ? { extra } : {}),
 			intro: html`<p class="help">${planSummaryLine(detail.plan)}</p>`,
 		},
 		state ?? emptyState()
@@ -382,10 +398,120 @@ function newerBanner(detail: Detail) {
 }
 
 function side(content: Html) {
-	return html`<aside class="side" aria-label="Decision">
-		${content}
-		<p class="back"><a href="/">← Back to inbox</a></p>
-	</aside>`
+	return html`<aside class="side" aria-label="Decision">${content}</aside>`
+}
+
+function fold(id: string, title: Html | string, count: number | null, open: boolean, body: Html, region = '') {
+	return html`<details
+		class="fold"
+		data-open-key="section:${id}"
+		${region ? html`data-region="${region}"` : ''}
+		${open ? html`open` : ''}
+	>
+		<summary>
+			<h2 id="${id}">${title}${count === null ? '' : html` <span class="n">${count}</span>`}</h2>
+		</summary>
+		<div class="fold-b">${body}</div>
+	</details>`
+}
+
+type PlanContext = {
+	waiting: QueueItem[]
+	claims: ReturnType<typeof mergedClaims>
+	questions: ReturnType<typeof mergedQuestions>
+	explorations: ReturnType<typeof planExplorations>
+	status: ReturnType<typeof planStatus>
+}
+
+function planContext(store: Store, planId: string): PlanContext {
+	return {
+		waiting: needsYou(store).items.filter((item) => item.planId === planId),
+		claims: mergedClaims(store, planId),
+		questions: mergedQuestions(store, planId),
+		explorations: planExplorations(store, planId),
+		status: planStatus(store, planId),
+	}
+}
+
+function nextLine(planId: string, found: PlanContext) {
+	const mine = found.waiting.filter((item) => item.group !== 'questions').length
+	const why = found.status.why[0]
+	const action =
+		mine > 0
+			? html`<a class="btn small primary" href="/?plan=${planId}">Decide ${plural(mine, 'item')} in Needs you</a>`
+			: found.status.next[0]
+				? html`<code>${found.status.next[0]}</code>`
+				: ''
+	return html`<div class="next-line" data-region="next">
+		${loopState(found.status)} ${why ? html`<span>${why}</span>` : ''} ${action}
+	</div>`
+}
+
+function chips(found: PlanContext, extra: Array<[string, string, number]>) {
+	const deciding = found.waiting.filter((item) => item.kind === 'claim').length
+	const open = found.questions.filter((question) => question.answer === null)
+	const blocking = open.filter((question) => question.blocking).length
+	const items: Array<[string, Html | string]> = [
+		[
+			'claims',
+			html`Claims
+				<b>${found.claims.length}</b
+				>${deciding ? html` <span class="st warn">${deciding} to decide</span>` : ''}`,
+		],
+		[
+			'questions',
+			html`Questions
+				<b>${open.length}</b> open${blocking ? html` <span class="st fail">${blocking} blocking</span>` : ''}`,
+		],
+		['explorations', html`Explorations <b>${found.explorations.length}</b>`],
+		...extra.map(([id, label, count]): [string, Html] => [id, html`${label} <b>${count}</b>`]),
+	]
+	return html`<nav class="chips" aria-label="Sections">
+		${items.map(([id, label]) => html`<a href="#${id}">${label}</a>`)}
+	</nav>`
+}
+
+function claimsFold(planId: string, found: PlanContext) {
+	const deciding = found.waiting.some((item) => item.kind === 'claim')
+	return fold(
+		'claims',
+		'Claims',
+		found.claims.length,
+		deciding,
+		html`<p class="help">
+				The merged claims of completed explorations.
+				<a href="/claims?plan=${planId}">Open them as a list with filters</a>.
+			</p>
+			${claimsTable(planId, found.claims)}`,
+		'claims'
+	)
+}
+
+function questionsFold(planId: string, found: PlanContext, gaps: Html | '' = '', openGaps = 0, blockingGaps = 0) {
+	const open = found.questions.filter((question) => question.answer === null)
+	const blocking = open.some((question) => question.blocking) || blockingGaps > 0
+	return fold(
+		'questions',
+		'Questions',
+		open.length + openGaps,
+		blocking,
+		html`${gaps}
+			<h3 class="minor">Questions of the testers <span class="n">${found.questions.length}</span></h3>
+			${questionsList(planId, found.questions)}`,
+		'questions'
+	)
+}
+
+function explorationsFold(found: PlanContext) {
+	const attention = found.explorations.some((item) => item.running || ['failed', 'stopped'].includes(item.state))
+	return fold(
+		'explorations',
+		'Explorations',
+		found.explorations.length,
+		attention,
+		explorationsTable(found.explorations),
+		'explorations'
+	)
 }
 
 export function planPage(
@@ -400,8 +526,9 @@ export function planPage(
 	const { plan } = detail
 	const subject = `${planId}@${revision}`
 	const latest = detail.revision === detail.latestRevision
+	const found = planContext(store, planId)
 	const meta = html`<div class="meta">
-		${loopState(planStatus(store, planId))} ${pill(detail.approval.state)}
+		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
 		<span class="head-actions">
@@ -417,47 +544,52 @@ export function planPage(
 				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(', ')}.`
 			)
 		: ''
-	const explorations = planExplorations(store, planId)
-	const body = html`${heading(subject, plan.objective, meta)}
-		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(explorations)}</div>
+	const openGaps = plan.gaps.filter((gap) => gap.status === 'open')
+	const approving = detail.approval.state === 'pending' || detail.approval.state === 'rejected'
+	const accepting = detail.runs.some((run) => run.acceptance === 'pending')
+	const anyOpen =
+		approving ||
+		accepting ||
+		found.waiting.length > 0 ||
+		found.explorations.some((item) => item.running || ['failed', 'stopped'].includes(item.state))
+	const overview = html`<p class="lead">${plan.objective}</p>
+		<p class="help">${planSummaryLine(plan)}</p>
+		<h3 class="minor" id="requirements">
+			Requirements and coverage
+			${latest ? html`<a class="h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ''}
+		</h3>
+		${requirementsTable(plan)}
+		<h3 class="minor" id="decisions">Decisions</h3>
+		${decisionsList(plan)}`
+	const gaps = html`<h3 class="minor" id="gaps">Gaps of the plan <span class="n">${plan.gaps.length}</span></h3>
+		<div data-region="gaps">${gapsList(detail)}</div>`
+	const body = html`${heading(subject, null, meta)} ${nextLine(planId, found)}
+		${chips(found, [
+			['tests', 'Tests', plan.tests.length],
+			['runs', 'Runs', detail.runs.length],
+		])}
+		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(found.explorations)}</div>
 		<div class="split">
 			<div class="main-col">
-				<nav class="jump" aria-label="On this page">
-					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
-					><a href="#runs">Runs</a><a href="#explorations">Explorations</a><a href="#decisions">Decisions</a
-					><a href="#history">History</a>
-				</nav>
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">
-						Tests <span class="n">${plan.tests.length}</span>
-						${latest ? html`<a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}
-					</h2>
-					<div class="stack">${plan.tests.map((test) => testCard(detail, test))}</div>
-				</section>
-				<section aria-labelledby="gaps" data-region="gaps">
-					<h2 id="gaps">Gaps <span class="n">${plan.gaps.length}</span></h2>
-					${gapsList(detail)}
-				</section>
-				<section aria-labelledby="requirements">
-					<h2 id="requirements">
-						Requirements and coverage
-						${latest ? html`<a class="h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ''}
-					</h2>
-					${requirementsTable(plan)}
-				</section>
-				<section aria-labelledby="runs" data-region="plan-runs">
-					<h2 id="runs">Runs <span class="n">${detail.runs.length}</span></h2>
-					${runsTable(detail)}
-				</section>
-				${explorationSections(store, planId)}
-				<section aria-labelledby="decisions">
-					<h2 id="decisions">Decisions</h2>
-					${decisionsList(plan)}
-				</section>
-				<section aria-labelledby="history" data-region="history">
-					<h2 id="history">History</h2>
-					${planHistoryList(store, detail, allHistory)}
-				</section>
+				${fold('overview', 'Overview', null, approving || !anyOpen, overview)} ${claimsFold(planId, found)}
+				${questionsFold(
+					planId,
+					found,
+					gaps,
+					openGaps.length,
+					openGaps.filter((gap) => gap.severity === 'blocking').length
+				)}
+				${explorationsFold(found)}
+				${fold(
+					'tests',
+					html`Tests${latest ? html` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}`,
+					plan.tests.length,
+					approving,
+					html`<div class="stack">${plan.tests.map((test) => testCard(detail, test))}</div>`,
+					'tests'
+				)}
+				${fold('runs', 'Runs', detail.runs.length, accepting, runsTable(detail), 'plan-runs')}
+				${fold('history', 'History', null, allHistory, planHistoryList(store, detail, allHistory), 'history')}
 			</div>
 			${side(approvalPanel(store, context, detail, state))}
 		</div>`
@@ -468,9 +600,13 @@ export function planPage(
 			`plan:${planId}`,
 			'inbox',
 			...detail.runs.map((run) => `run:${run.runId}`),
-			...explorations.map((item) => `exploration:${item.explorationId}`),
+			...found.explorations.map((item) => `exploration:${item.explorationId}`),
 		],
 		body,
+		crumbs: [
+			['Plans', '/plans'],
+			[subject, null],
+		],
 	}
 }
 
@@ -487,72 +623,64 @@ function storedTestsEmpty(planId: string, completed: string | undefined) {
 
 export function requestPage(store: Store, planId: string): Page {
 	const { request, target } = planRequest(store, planId)
-	const status = planStatus(store, planId)
-	const explorations = planExplorations(store, planId)
+	const found = planContext(store, planId)
 	const targetRef = `${target.profile.targetId}@${target.revision}`
 	const targetLink = html`<a
 		class="mono"
 		href="/settings/targets/${target.profile.targetId}?revision=${target.revision}"
 		>${targetRef}</a
 	>`
-	const instances = [...new Set(explorations.map((item) => item.instanceId))]
+	const instances = [...new Set(found.explorations.map((item) => item.instanceId))]
 	const sources = [...(request.context?.sources ?? []), ...(request.sourceContext ?? []).map((item) => item.uri)]
-	const completed = explorations.filter((item) => item.state === 'completed').at(-1)?.explorationId
+	const completed = found.explorations.filter((item) => item.state === 'completed').at(-1)?.explorationId
 	const meta = html`<div class="meta">
-		${loopState(status)} ${pill('requested', 'no revision yet')}
+		${pill('requested', 'no revision yet')}
 		<span class="pill">target <span class="mono">${targetRef}</span></span>
 	</div>`
-	const body = html`${heading(planId, request.objective, meta)}
-		<div data-region="banners">${explorationBanners(explorations)}</div>
+	const anyOpen =
+		found.waiting.length > 0 ||
+		found.explorations.some((item) => item.running || ['failed', 'stopped'].includes(item.state))
+	const overview = facts([
+		['Objective', request.objective],
+		['Target', targetLink],
+		[
+			'Instance',
+			instances.length
+				? html`<span class="mono">${instances.join(', ')}</span>`
+				: html`<span class="muted">none yet</span>`,
+		],
+		[
+			'Sources',
+			sources.length
+				? html`<ul class="plain">
+						${sources.map((source) => html`<li><code>${source}</code></li>`)}
+					</ul>`
+				: html`<span class="muted">none</span>`,
+		],
+		['Instructions', request.context?.instructions || false],
+		[
+			'Requirements',
+			(request.requirements ?? []).length > 0 &&
+				html`<ul class="plain">
+					${(request.requirements ?? []).map((item) => html`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
+				</ul>`,
+		],
+	])
+	const body = html`${heading(planId, request.objective, meta)} ${nextLine(planId, found)}
+		${chips(found, [['tests', 'Stored tests', 0]])}
+		<div data-region="banners">${explorationBanners(found.explorations)}</div>
 		<div class="split">
 			<div class="main-col">
-				<nav class="jump" aria-label="On this page">
-					<a href="#request">Request</a><a href="#explorations">Explorations</a><a href="#claims">Claims</a
-					><a href="#questions">Questions</a><a href="#tests">Stored tests</a>
-				</nav>
-				<section aria-labelledby="request">
-					<h2 id="request">Request</h2>
-					${facts([
-						['Objective', request.objective],
-						['Target', targetLink],
-						[
-							'Instance',
-							instances.length
-								? html`<span class="mono">${instances.join(', ')}</span>`
-								: html`<span class="muted">none yet</span>`,
-						],
-						[
-							'Sources',
-							sources.length
-								? html`<ul class="plain">
-										${sources.map((source) => html`<li><code>${source}</code></li>`)}
-									</ul>`
-								: html`<span class="muted">none</span>`,
-						],
-						['Instructions', request.context?.instructions || false],
-						[
-							'Requirements',
-							(request.requirements ?? []).length > 0 &&
-								html`<ul class="plain">
-									${(request.requirements ?? []).map(
-										(item) => html`<li><span class="mono">${item.id}</span> ${item.text}</li>`
-									)}
-								</ul>`,
-						],
-					])}
-				</section>
-				${explorationSections(store, planId)}
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Stored tests <span class="n">0</span></h2>
-					${storedTestsEmpty(planId, completed)}
-				</section>
+				${fold('request', 'Request', null, !anyOpen, overview)} ${claimsFold(planId, found)}
+				${questionsFold(planId, found)} ${explorationsFold(found)}
+				${fold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed), 'tests')}
 			</div>
 			${side(
 				recordPanel(
 					'Next',
-					html`${status.why.map((line) => html`<p class="help">${line}</p>`)}
+					html`${found.status.why.map((line) => html`<p class="help">${line}</p>`)}
 						<ul class="plain">
-							${status.next.map((line) => html`<li><code>${line}</code></li>`)}
+							${found.status.next.map((line) => html`<li><code>${line}</code></li>`)}
 						</ul>`
 				)
 			)}
@@ -560,8 +688,12 @@ export function requestPage(store: Store, planId: string): Page {
 	return {
 		title: planId,
 		section: 'plans',
-		subjects: [`plan:${planId}`, 'inbox', ...explorations.map((item) => `exploration:${item.explorationId}`)],
+		subjects: [`plan:${planId}`, 'inbox', ...found.explorations.map((item) => `exploration:${item.explorationId}`)],
 		body,
+		crumbs: [
+			['Plans', '/plans'],
+			[planId, null],
+		],
 	}
 }
 
@@ -672,6 +804,11 @@ export function gapPage(
 	return {
 		title: `${planId} ${gap.id}`,
 		section: 'inbox',
+		crumbs: [
+			['Plans', '/plans'],
+			[subject, `/plans/${subject}`],
+			[gap.id, null],
+		],
 		subjects: [`plan:${planId}`, 'inbox', ...(fromRun ? [`run:${fromRun.runId}`] : [])],
 		body,
 	}

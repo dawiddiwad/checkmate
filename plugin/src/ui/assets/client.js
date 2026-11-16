@@ -463,6 +463,16 @@ function plainClick(event) {
 
 document.addEventListener('click', (event) => {
 	if (!plainClick(event)) return
+	const back = event.target.closest('a[data-back]')
+	if (
+		back &&
+		document.referrer &&
+		new URL(document.referrer).origin === location.origin &&
+		window.history.length > 1
+	) {
+		event.preventDefault()
+		return void window.history.back()
+	}
 	const link = event.target.closest('a[data-list-link]')
 	if (link && listForm) {
 		event.preventDefault()
@@ -603,6 +613,7 @@ function swapQueue(fresh, keepDetail = false) {
 	}
 	syncRationale(queue)
 	syncSource(queue)
+	keepMore()
 	showToast(fresh)
 	return true
 }
@@ -646,6 +657,7 @@ async function queueGo(url, mode, focus) {
 		if (!swapQueue(fresh)) return void location.assign(url)
 		if (mode === 'push') window.history.pushState(null, '', url)
 		if (mode === 'replace') window.history.replaceState(null, '', url)
+		window.scrollTo(0, 0)
 		queueFocus(focus)
 	} catch {
 		location.assign(url)
@@ -667,13 +679,35 @@ function queueStep(step) {
 	queueGo(next.href, 'replace', 'row')
 }
 
-function queuePick(event, selector, field) {
-	const input = queueDetail().querySelector(selector)
+function queueKind(event, value, send) {
+	const input = queueDetail().querySelector(`[data-quick-form] #kind-${value}`)
 	if (!input) return false
 	event.preventDefault()
 	input.checked = true
-	input.dispatchEvent(new window.Event('change', { bubbles: true }))
-	queueDetail().querySelector(field)?.focus()
+	if (send) {
+		input.form.requestSubmit()
+		return true
+	}
+	queueDetail().querySelector('#value')?.focus()
+	return true
+}
+
+function queueVerdict(event, accept) {
+	const quick = queueDetail().querySelector('[data-quick-claim]')
+	if (quick) {
+		event.preventDefault()
+		if (accept) quick.requestSubmit(quick.querySelector('button[value="approved"]'))
+		else {
+			quick.dataset.choice = 'rejected'
+			quick.querySelector('#rationale').focus()
+		}
+		return true
+	}
+	const form = queueDetail().querySelector('[data-verdict-form]:not([data-confirming])')
+	if (!form) return false
+	event.preventDefault()
+	form.dataset.choice = form.querySelectorAll('[data-choose] button[name="verdict"]')[accept ? 0 : 1].value
+	form.querySelector('[data-rationale]').focus()
 	return true
 }
 
@@ -689,11 +723,11 @@ function queueKey(event) {
 		queueStep(-1)
 		return true
 	}
-	if (event.key === 'a') return queuePick(event, '#verdict-approved', '#rationale')
-	if (event.key === 'r') return queuePick(event, '#verdict-rejected', '#rationale')
-	if (event.key === 'c') return queuePick(event, '#kind-clarify', '#value')
-	if (event.key === 's') return queuePick(event, '#kind-accept_assumption', '#value')
-	if (event.key === 'd') return queuePick(event, '#kind-defer', '#value')
+	if (event.key === 'a') return queueVerdict(event, true)
+	if (event.key === 'r') return queueVerdict(event, false)
+	if (event.key === 'c') return queueKind(event, 'clarify', false)
+	if (event.key === 's') return queueKind(event, 'accept_assumption', false)
+	if (event.key === 'd') return queueKind(event, 'defer', true)
 	return false
 }
 
@@ -701,23 +735,59 @@ function queueFilterUrl(form) {
 	const params = new URLSearchParams()
 	for (const field of form.elements) if (field.name && field.value.trim()) params.set(field.name, field.value.trim())
 	const query = params.toString()
-	return query ? `/?${query}` : '/'
+	return query ? `${form.getAttribute('action')}?${query}` : form.getAttribute('action')
 }
 
-async function queueSend(form) {
+function keepMore() {
+	try {
+		if (window.sessionStorage.getItem('checkmate-more') !== '1') return
+	} catch {
+		return
+	}
+	for (const details of queue.querySelectorAll('details[data-more]')) details.open = true
+}
+
+function sendChoice(form) {
+	if (form.dataset.confirming) return form.querySelector('[data-confirm-submit]')
+	if (form.dataset.choice) return form.querySelector(`button[name="verdict"][value="${form.dataset.choice}"]`)
+	if (form.matches('[data-quick-claim]')) return form.querySelector('button[value="approved"]')
+	return null
+}
+
+function rejectWithoutReason(form, submitter) {
+	if (!form.matches('[data-quick-claim]') || submitter?.value !== 'rejected') return false
+	const reason = form.querySelector('#rationale')
+	if (reason.value.trim()) return false
+	let message = form.querySelector('[data-reason-error]')
+	if (!message) {
+		message = document.createElement('p')
+		message.className = 'form-error'
+		message.setAttribute('role', 'alert')
+		message.dataset.reasonError = ''
+		reason.after(message)
+	}
+	message.textContent = 'Write a short reason for the reject.'
+	reason.focus()
+	return true
+}
+
+async function queueSend(form, submitter) {
 	const button = form.querySelector('button.primary')
+	const body = new URLSearchParams(new FormData(form))
+	if (submitter?.name) body.set(submitter.name, submitter.value)
 	if (button) button.disabled = true
 	const ticket = ++queueTicket
 	queueBusy = true
 	try {
 		const response = await fetch(form.action, {
 			method: 'POST',
-			body: new URLSearchParams(new FormData(form)),
+			body,
 			headers: { 'X-Checkmate-Queue': '1' },
 		})
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (!swapQueue(fresh)) return void form.submit()
 		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
+		window.scrollTo(0, 0)
 		queueFocus(response.ok ? 'row' : 'form')
 	} catch {
 		form.submit()
@@ -744,14 +814,27 @@ if (queue) {
 	})
 	document.addEventListener('submit', (event) => {
 		const form = event.target
+		if (event.defaultPrevented) return
 		if (form.matches('[data-queue-filter]')) {
 			event.preventDefault()
 			return void queueGo(queueFilterUrl(form), 'push', null)
 		}
 		if (!form.closest('[data-region="queue-detail"]') || form.method !== 'post') return
 		event.preventDefault()
-		queueSend(form)
+		if (rejectWithoutReason(form, event.submitter)) return
+		queueSend(form, event.submitter)
 	})
+	document.addEventListener(
+		'toggle',
+		(event) => {
+			if (!event.target.matches?.('details[data-more]') || !event.target.open) return
+			try {
+				window.sessionStorage.setItem('checkmate-more', '1')
+			} catch {}
+		},
+		true
+	)
+	keepMore()
 	document.addEventListener('change', (event) => {
 		const form = event.target.closest?.('[data-queue-filter]')
 		if (form && event.target.tagName === 'SELECT') queueGo(queueFilterUrl(form), 'push', null)
@@ -767,7 +850,10 @@ if (queue) {
 		const form = event.target.closest?.('[data-region="queue-detail"] form')
 		if (!form) return
 		event.preventDefault()
-		if (form.reportValidity()) form.requestSubmit()
+		const submitter = sendChoice(form)
+		if (form.matches('[data-verdict-form]') && !form.dataset.confirming && !submitter)
+			return void form.querySelector('[data-choose] button')?.focus()
+		if (form.reportValidity()) form.requestSubmit(submitter ?? undefined)
 	})
 	window.addEventListener('popstate', () => queueGo(location.href, null, 'row'))
 }

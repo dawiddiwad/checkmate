@@ -199,9 +199,9 @@ test('list filters, sorting, and pages update in place, keep the URL, and update
 	assert.match(page.url(), /\/plans\?q=search$/)
 })
 
-test('the plan page folds closed gaps and loads the full history on demand', { skip }, async (t) => {
+test('the plan page folds its sections and closed gaps, and loads the full history on demand', { skip }, async (t) => {
 	const { page, url } = await open(t)
-	await page.goto(url('/plans/checkout@2'))
+	await page.goto(url('/plans/checkout@2#G1'))
 	const closed = page.locator('#G1 details')
 	assert.equal(await closed.evaluate((details) => (details as HTMLDetailsElement).open), false)
 	assert(Number(await page.locator('#G1 summary').evaluate((summary) => getComputedStyle(summary).opacity)) < 1)
@@ -210,6 +210,11 @@ test('the plan page folds closed gaps and loads the full history on demand', { s
 	await page.locator('#runs').scrollIntoViewIfNeeded()
 	await page.locator('[data-region="plan-runs"] a', { hasText: 'run-7' }).waitFor()
 	await page.goto(url('/plans/account@7'))
+	assert.equal(
+		await page.locator('[data-region="history"]').evaluate((details) => (details as HTMLDetailsElement).open),
+		false
+	)
+	await page.getByRole('heading', { name: 'History' }).click()
 	const entries = page.locator('[data-history] ol.history > li')
 	assert.equal(await entries.count(), 6)
 	assert.equal(await page.locator('[data-history] details[open]').count(), 1)

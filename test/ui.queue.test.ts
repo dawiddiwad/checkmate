@@ -6,6 +6,7 @@ import { rmSync } from 'node:fs'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { closeStore, openStore } from '../plugin/src/index.ts'
 import { mergedClaims, mergedQuestions, needsYou } from '../plugin/src/views.ts'
+import { journal } from '../plugin/src/journal.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { copied, directory } from './support.ts'
 
@@ -85,17 +86,16 @@ test('filters and the selected item live in the URL', async (t) => {
 	assert.match(login.body, /<option value="login" selected>/)
 	const searched = await call('/?q=coupons%20stack%20checkout')
 	assert.deepEqual(keys(searched.body), ['claim:checkout:a1/D1'])
-	assert.match(searched.body, /<details class="q-group q-fold"[^>]*\sopen>|<section class="q-group"/)
 	const claim = read(needsYou).items.find((item) => item.kind === 'claim')!
 	const selected = await call(`/?plan=${claim.planId}&item=${encodeURIComponent(claim.key)}`)
 	assert.match(selected.body, new RegExp(`data-selected="${claim.key}"\\s+data-open`))
 	assert.match(selected.body, /href="\/\?plan=[a-z]+" data-queue-back>Needs you<\/a>/)
-	assert.match(selected.body, /<legend class="lab">Is [^ ]+ a defect\?<\/legend>/)
+	assert.match(selected.body, /<h3 class="lab" id="decide-title">Is [^ ]+ a defect\?<\/h3>/)
 	const gone = await call('/?item=claim:checkout:none')
 	assert.match(gone.body, /This item does not wait for you now\./)
 })
 
-test('a claim is decided inline and the list moves to the next item', async (t) => {
+test('a claim is accepted without a reason, and a reject needs one', async (t) => {
 	const { call, read } = await start(t)
 	const claims = read(needsYou).items.filter((item) => item.kind === 'claim')
 	const [first, second] = claims
@@ -105,52 +105,124 @@ test('a claim is decided inline and the list moves to the next item', async (t) 
 		csrf: field(page.body, 'csrf'),
 		item: first.key,
 		return: field(page.body, 'return'),
-		rationale: 'The steps show it on the fixture.',
+		rationale: '',
 	}
 	assert.equal(form.return, `/?item=${encodeURIComponent(second.key)}`)
 	const action = `/explorations/${first.explorationId}/claims/${first.id}`
-	const missing = await call(action, form)
+	const missing = await call(action, { ...form, verdict: 'rejected' })
 	assert.equal(missing.status, 422)
-	assert.match(missing.body, /Choose Accept as a defect or Reject\./)
+	assert.match(missing.body, /Write a short reason for the reject\./)
 	assert.match(missing.body, new RegExp(`data-selected="${first.key}"`))
-	assert.match(missing.body, /The steps show it on the fixture\.<\/textarea>/)
-	const decided = await call(action, { ...form, verdict: 'rejected' })
-	assert.equal(decided.status, 303)
-	assert.equal(decided.location, form.return)
-	assert.equal(
-		read((store) => mergedClaims(store, first.planId).find((item) => item.id === first.id)!.state),
-		'rejected'
-	)
+	const accepted = await call(action, { ...form, verdict: 'approved' })
+	assert.equal(accepted.status, 303)
+	assert.equal(accepted.location, form.return)
+	const decided = read((store) => mergedClaims(store, first.planId).find((item) => item.id === first.id)!)
+	assert.equal(decided.state, 'accepted')
+	assert.equal(decided.decision?.rationale, 'Accepted in the review UI. No reason was given.')
+	const rejected = await call(`/explorations/${second.explorationId}/claims/${second.id}`, {
+		...form,
+		item: second.key,
+		verdict: 'rejected',
+		rationale: 'Intended.',
+	})
+	assert.equal(rejected.status, 303)
 	assert(!keys((await call('/')).body).includes(first.key))
 })
 
-test('a question is answered inline; a refusal keeps the text in the queue', async (t) => {
+test('a question needs only the answer; the record names the review UI as the source', async (t) => {
 	const { call, read } = await start(t)
-	const question = read(needsYou).items.find((item) => item.kind === 'question' && item.group === 'blocking')!
+	const [question, other] = read(needsYou).items.filter((item) => item.kind === 'question')
 	const page = await call(`/?item=${encodeURIComponent(question.key)}`)
 	const action = `/explorations/${question.explorationId}/questions/${question.id}`
 	assert.match(page.body, new RegExp(`action="${action}"`))
-	const form = {
-		csrf: field(page.body, 'csrf'),
-		item: question.key,
-		return: field(page.body, 'return'),
-		kind: 'clarify',
-		value: 'Card and bank transfer only.',
-		source: '',
-		rationale: 'The payment policy says so.',
-	}
-	const refused = await call(action, form)
-	assert.equal(refused.status, 422)
-	assert.match(refused.body, /A clarification needs a source/)
-	assert.match(refused.body, /Card and bank transfer only\.<\/textarea>/)
-	assert.match(refused.body, /class="queue"/)
-	const answered = await call(action, { ...form, source: 'oracle://payments#limits' })
+	assert.match(page.body, /<input\s+type="radio"\s+id="kind-clarify"\s+name="kind"\s+value="clarify"\s+checked/)
+	assert.match(page.body, /<summary>Add source and reason<\/summary>/)
+	const form = { csrf: field(page.body, 'csrf'), item: question.key, return: field(page.body, 'return') }
+	const empty = await call(action, { ...form, kind: 'clarify', value: '' })
+	assert.equal(empty.status, 422)
+	assert.match(empty.body, /Write the answer\./)
+	const answered = await call(action, { ...form, kind: 'clarify', value: 'Card and bank transfer only.' })
 	assert.equal(answered.status, 303)
 	assert.equal(answered.location, form.return)
+	const entry = read((store) =>
+		journal(store, question.planId).team.findLast((row) => row.kind === 'answer')
+	) as unknown as Record<string, string>
+	assert.equal(entry.answer, 'Card and bank transfer only.')
+	assert.equal(entry.source, 'qa-lead, in the review UI')
+	assert.equal(entry.rationale, 'Answered in the review UI. No reason was given.')
+	const deferred = await call(`/explorations/${other.explorationId}/questions/${other.id}`, {
+		...form,
+		item: other.key,
+		kind: 'defer',
+		value: '',
+	})
+	assert.equal(deferred.status, 303)
 	assert.equal(
-		read((store) => mergedQuestions(store, question.planId).find((item) => item.id === question.id)!.answer),
-		'Card and bank transfer only.'
+		read((store) => mergedQuestions(store, other.planId).find((item) => item.id === other.id)!.answer),
+		'Deferred in the review UI.'
 	)
+})
+
+test('a plan is approved inside the queue with its confirm step', async (t) => {
+	const { call, read } = await start(t)
+	const plan = read(needsYou).items.find((item) => item.kind === 'plan')!
+	const page = await call(`/?item=${encodeURIComponent(plan.key)}`)
+	assert.match(page.body, /data-verdict-form/)
+	const action = `/plans/${plan.id}`
+	const form = {
+		csrf: field(page.body, 'csrf'),
+		sha: field(page.body, 'sha'),
+		decision: field(page.body, 'decision'),
+		item: plan.key,
+		return: field(page.body, 'return'),
+		verdict: 'approve',
+		rationale: 'The tests cover the request.',
+	}
+	const confirm = await call(action, form)
+	assert.equal(confirm.status, 200)
+	assert.match(confirm.body, /class="queue"/)
+	assert.match(confirm.body, /Confirm approval/)
+	const done = await call(action, { ...form, confirmed: '1' })
+	assert.equal(done.status, 303)
+	assert.equal(done.location, form.return)
+	assert(!keys((await call('/')).body).includes(plan.key))
+	const result = read(needsYou).items.find((item) => item.kind === 'result')!
+	assert.match((await call(`/?item=${encodeURIComponent(result.key)}`)).body, /Accept run-7/)
+})
+
+test('the claims list filters by state, severity, plan, build, time, and text in the address', async (t) => {
+	const { call } = await start(t)
+	const all = await call('/claims')
+	assert.equal(all.status, 200)
+	assert.equal(keys(all.body).length, 60)
+	const week = await call('/claims?since=7&severity=high')
+	assert(keys(week.body).length > 0 && keys(week.body).length < 60)
+	assert.match(week.body, /<option value="7" selected>Last 7 days<\/option>/)
+	const found = await call('/claims?q=coupons%20stack&plan=checkout')
+	assert.deepEqual(keys(found.body), ['claim:checkout:a1/D1'])
+	assert.match(found.body, /data-selected="claim:checkout:a1\/D1"/)
+	assert.match(found.body, /href="\/explorations\/x-1\/claims\/a1\/D1\/evidence\/0"/)
+	assert.match(found.body, /href="\/claims\?q=coupons\+stack&amp;plan=checkout" data-queue-back>Claims<\/a>/)
+	const accepted = await call('/claims?state=accepted')
+	assert.match(accepted.body, /<h2 class="lab" id="decide-title">Decision<\/h2>/)
+	assert.equal(keys((await call('/claims?state=none')).body).length, 60)
+})
+
+test('pages that are not rebuilt have a breadcrumb and a back link', async (t) => {
+	const { call } = await start(t)
+	for (const [path, crumb] of [
+		['/explorations/x-1/claims/a1/D1', 'a1/D1'],
+		['/explorations/x-1', 'x-1'],
+		['/runs/run-7', 'run-7'],
+		['/plans/checkout@2/gaps/G2', 'G2'],
+		['/plans/checkout@2/edit', 'Edit'],
+		['/plans/checkout@2', 'checkout@2'],
+		['/plans/basket@1', 'basket@1'],
+	]) {
+		const body = (await call(path)).body
+		assert.match(body, /<a class="back-link" href="[^"]+" data-back>← Back<\/a>/, path)
+		assert.match(body, new RegExp(`<li aria-current="page">${crumb}</li>`), path)
+	}
 })
 
 test('the evidence of a claim opens from its own address', async (t) => {

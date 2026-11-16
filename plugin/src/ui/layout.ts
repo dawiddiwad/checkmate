@@ -2,7 +2,7 @@ import type { Html } from './html.ts'
 import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'inbox' | 'plans' | 'runs' | 'log' | 'settings' | null
+export type Section = 'inbox' | 'claims' | 'plans' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {
 	path: string
@@ -21,6 +21,7 @@ export type Page = {
 	subjects: string[]
 	body: Html
 	status?: number
+	crumbs?: Array<[string, string | null]>
 }
 
 const nextTheme: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' }
@@ -97,6 +98,7 @@ function header(context: Context, page: Page) {
 			<nav aria-label="Main">
 				<ul class="nav">
 					${navLink(context, page, 'inbox', '/', 'Needs you', count)}
+					${navLink(context, page, 'claims', '/claims', 'Claims')}
 					${navLink(context, page, 'plans', '/plans', 'Plans')}
 					${navLink(context, page, 'runs', '/runs', 'Runs')} ${navLink(context, page, 'log', '/log', 'Log')}
 				</ul>
@@ -173,7 +175,7 @@ export function layout(context: Context, page: Page) {
 			<body data-subjects="${page.subjects.join(',')}" data-cursor="${context.cursor}">
 				<a class="skip" href="#main">Skip to content</a>
 				${header(context, page)}
-				<main id="main" tabindex="-1">${page.body}</main>
+				<main id="main" tabindex="-1">${crumbBar(page.crumbs)}${page.body}</main>
 				<footer class="foot">
 					<span>Workspace <code>${context.workspace}</code></span>
 					<span>Press <kbd>?</kbd> for keyboard shortcuts</span>
@@ -183,6 +185,21 @@ export function layout(context: Context, page: Page) {
 				${shortcuts} ${viewer}
 			</body>
 		</html>`
+}
+
+function crumbBar(crumbs: Page['crumbs']) {
+	if (!crumbs?.length) return ''
+	const parent = crumbs.findLast(([, href]) => href)?.[1] ?? '/'
+	return html`<div class="crumbs-bar">
+		<a class="back-link" href="${parent}" data-back>← Back</a>
+		<nav aria-label="Breadcrumb">
+			<ol>
+				${crumbs.map(([label, href]) =>
+					href ? html`<li><a href="${href}">${label}</a></li>` : html`<li aria-current="page">${label}</li>`
+				)}
+			</ol>
+		</nav>
+	</div>`
 }
 
 export function heading(title: Html | string, sub: Html | string | null = null, extra: Html | string = '') {

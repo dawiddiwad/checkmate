@@ -325,10 +325,10 @@ function openReadOnlyStore(workspace) {
   return checkedStore(db, workspace, path);
 }
 function checkedStore(db, workspace, path) {
-  const row2 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
-  if (row2?.value !== schemaVersion) {
+  const row3 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
+  if (row3?.value !== schemaVersion) {
     db.close();
-    throw new Error(`Database ${path} has schema version ${row2?.value ?? "none"}. Expected ${schemaVersion}.`);
+    throw new Error(`Database ${path} has schema version ${row3?.value ?? "none"}. Expected ${schemaVersion}.`);
   }
   return { db, workspace, path };
 }
@@ -8728,9 +8728,9 @@ function toolCheck(tool) {
   };
 }
 function targetRequest(store, targetId) {
-  const row2 = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
-  requireCondition(row2, `Unknown target: ${targetId}. Run target open first.`);
-  return JSON.parse(row2.body);
+  const row3 = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
+  requireCondition(row3, `Unknown target: ${targetId}. Run target open first.`);
+  return JSON.parse(row3.body);
 }
 function showTargetRequest(store, targetId) {
   return completed(targetId, { request: targetRequest(store, targetId) });
@@ -8818,14 +8818,14 @@ function save(store, actor, input) {
   });
 }
 function targetRevision(store, targetId, revision = null) {
-  const row2 = one(
+  const row3 = one(
     store,
     revision === null ? "SELECT revision, sha256, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1" : "SELECT revision, sha256, body FROM profiles WHERE target_id = ? AND revision = ?",
     targetId,
     ...revision === null ? [] : [revision]
   );
-  requireCondition(row2, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
-  return { profile: JSON.parse(row2.body), revision: row2.revision, sha256: row2.sha256 };
+  requireCondition(row3, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
+  return { profile: JSON.parse(row3.body), revision: row3.revision, sha256: row3.sha256 };
 }
 function showTarget(store, reference, instanceId) {
   const { id: id2, revision } = revisionReference(reference, "target reference");
@@ -8848,14 +8848,14 @@ function targetList(store) {
 				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
 				AS instances
 		FROM target_requests r ORDER BY r.target_id`
-  ).map((row2) => {
-    const request = JSON.parse(row2.body);
+  ).map((row3) => {
+    const request = JSON.parse(row3.body);
     return {
-      targetId: row2.target_id,
-      revision: row2.revision,
+      targetId: row3.target_id,
+      revision: row3.revision,
       capabilities: request.capabilities,
       entryPoints: request.entryPoints.map((entry) => entry.name),
-      activeInstances: row2.instances
+      activeInstances: row3.instances
     };
   });
 }
@@ -8867,24 +8867,24 @@ function targetHistory(store, targetId) {
 		WHERE p.target_id = ? ORDER BY p.revision`,
     targetId
   );
-  return rows.map((row2, i) => {
-    const profile = JSON.parse(row2.body);
+  return rows.map((row3, i) => {
+    const profile = JSON.parse(row3.body);
     const before = i ? JSON.parse(rows[i - 1].body) : null;
     const keys = [.../* @__PURE__ */ new Set([...Object.keys(profile), ...Object.keys(before ?? {})])].sort();
     return {
-      revision: row2.revision,
-      sha256: row2.sha256,
-      at: row2.at,
-      actor: row2.actor,
+      revision: row3.revision,
+      sha256: row3.sha256,
+      at: row3.at,
+      actor: row3.actor,
       changed: before ? keys.filter((key) => key !== "revision" && canonical(profile[key]) !== canonical(before[key])) : []
     };
   });
 }
 function instanceCheck(entryPoints, value2) {
   const instance = validate("instance", value2);
-  const names = Object.keys(instance.entries);
-  const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
-  const unknown = names.filter((name) => !entryPoints.some((entry) => entry.name === name));
+  const names2 = Object.keys(instance.entries);
+  const missing = entryPoints.filter((entry) => !names2.includes(entry.name)).map((entry) => entry.name);
+  const unknown = names2.filter((name) => !entryPoints.some((entry) => entry.name === name));
   requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
   requireCondition(
     !unknown.length,
@@ -8984,7 +8984,7 @@ function retireInstance(store, actor, input) {
       "SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid",
       input.targetId,
       input.instanceId
-    ).map((row2) => row2.run_id);
+    ).map((row3) => row3.run_id);
     return {
       reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
       subjects: [`target:${input.targetId}`]
@@ -9000,18 +9000,18 @@ function retirement(store, targetId, instanceId) {
     instanceId
   );
 }
-function instanceRecord(store, targetId, row2) {
-  const body = JSON.parse(row2.body);
+function instanceRecord(store, targetId, row3) {
+  const body = JSON.parse(row3.body);
   const order = targetRequest(store, targetId).entryPoints.map((entry) => entry.name);
-  const retired = retirement(store, targetId, row2.instance_id);
+  const retired = retirement(store, targetId, row3.instance_id);
   return {
     targetId,
-    instanceId: row2.instance_id,
+    instanceId: row3.instance_id,
     entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
     environment: body.environment ?? null,
     references: body.references ?? [],
-    addedAt: row2.at,
-    addedBy: row2.actor,
+    addedAt: row3.at,
+    addedBy: row3.actor,
     retired: retired ? { at: retired.at, actor: retired.actor } : null
   };
 }
@@ -9022,19 +9022,19 @@ function instanceList(store, targetId) {
     `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
 		WHERE i.target_id = ? ORDER BY i.rowid`,
     targetId
-  ).map((row2) => instanceRecord(store, targetId, row2));
+  ).map((row3) => instanceRecord(store, targetId, row3));
 }
 function findInstance(store, targetId, instanceId) {
   targetRequest(store, targetId);
-  const row2 = one(
+  const row3 = one(
     store,
     `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
 		WHERE i.target_id = ? AND i.instance_id = ?`,
     targetId,
     instanceId
   );
-  requireCondition(row2, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
-  return instanceRecord(store, targetId, row2);
+  requireCondition(row3, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
+  return instanceRecord(store, targetId, row3);
 }
 function runInstance(store, targetId, instanceId) {
   if (instanceId !== void 0) {
@@ -9534,7 +9534,7 @@ function resultCoverage(plan, tests, newGaps2) {
   });
   const executed = ["passed", "failed", "error", "inconclusive"];
   return {
-    status: requirements.every((row2) => row2.status === "tested") ? "complete" : tests.some((test) => executed.includes(test.outcome)) ? "partial" : "not_executed",
+    status: requirements.every((row3) => row3.status === "tested") ? "complete" : tests.some((test) => executed.includes(test.outcome)) ? "partial" : "not_executed",
     requirements
   };
 }
@@ -9573,8 +9573,8 @@ var isTester = (actor) => actor !== void 0 && actor.startsWith("qa:") && !nonTes
 var refOf = (actor, id2) => `${shortName(actor)}/${id2}`;
 var bareOf = (ref) => ref.slice(ref.lastIndexOf("/") + 1);
 function explorationRow(store, explorationId) {
-  const row2 = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
-  if (!row2) {
+  const row3 = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
+  if (!row3) {
     const ids2 = all(
       store,
       "SELECT exploration_id FROM explorations ORDER BY rowid"
@@ -9585,7 +9585,7 @@ function explorationRow(store, explorationId) {
       "Run checkmate explore list to read the explorations. Start one with checkmate explore <planId> --build <build>."
     );
   }
-  return row2;
+  return row3;
 }
 function withRefs(entry, name) {
   return {
@@ -9611,26 +9611,26 @@ function journal(store, planId, viewer2, keep = () => true) {
 		LEFT JOIN operations o ON o.id = e.operation_id
 		WHERE x.plan_id = ? ORDER BY e.rowid`,
     planId
-  ).map((row2) => {
-    const body = JSON.parse(row2.body);
+  ).map((row3) => {
+    const body = JSON.parse(row3.body);
     return {
       ...body,
-      seq: row2.seq,
-      actor: row2.actor,
-      at: row2.at,
-      ref: refOf(row2.actor, body.id),
-      explorationId: row2.exploration_id
+      seq: row3.seq,
+      actor: row3.actor,
+      at: row3.at,
+      ref: refOf(row3.actor, body.id),
+      explorationId: row3.exploration_id
     };
   });
   const rows = listed.filter(keep);
   const latest = /* @__PURE__ */ new Map();
-  for (const row2 of rows) latest.set(row2.ref, row2);
-  const seen = (row2) => !isTester(viewer2) || row2.actor === viewer2 || !isTester(row2.actor) || sharedKinds.includes(row2.kind);
+  for (const row3 of rows) latest.set(row3.ref, row3);
+  const seen = (row3) => !isTester(viewer2) || row3.actor === viewer2 || !isTester(row3.actor) || sharedKinds.includes(row3.kind);
   const shown = [...latest.values()].filter(seen);
-  const full = (row2, word) => latest.has(word) ? word : latest.has(refOf(row2.actor, word)) ? refOf(row2.actor, word) : word;
-  const team = shown.map((row2) => ({ ...withRefs(row2, (word) => full(row2, word)), id: row2.ref }));
+  const full = (row3, word) => latest.has(word) ? word : latest.has(refOf(row3.actor, word)) ? refOf(row3.actor, word) : word;
+  const team = shown.map((row3) => ({ ...withRefs(row3, (word) => full(row3, word)), id: row3.ref }));
   const uses = /* @__PURE__ */ new Map();
-  for (const row2 of shown) uses.set(row2.id, (uses.get(row2.id) ?? 0) + 1);
+  for (const row3 of shown) uses.set(row3.id, (uses.get(row3.id) ?? 0) + 1);
   const idOf = (ref) => {
     const target = latest.get(ref);
     return target && seen(target) && uses.get(target.id) === 1 ? target.id : ref;
@@ -9639,7 +9639,7 @@ function journal(store, planId, viewer2, keep = () => true) {
     ...withRefs(entry, (word) => latest.has(word) ? idOf(word) : word),
     id: idOf(entry.id)
   }));
-  const builds = [...new Set(rows.filter(seen).flatMap((row2) => row2.build ? [row2.build] : []))];
+  const builds = [...new Set(rows.filter(seen).flatMap((row3) => row3.build ? [row3.build] : []))];
   return { planId, viewer: viewer2, rows: rows.filter(seen), entries, team, builds };
 }
 function lookup(state, actor) {
@@ -9689,8 +9689,8 @@ function filesEndingWith(folder, segments, above = []) {
 function onlyFileEndingWith(cwd, spec) {
   const segments = spec.split(/[/\\]/).filter((name) => name && name !== ".");
   if (isAbsolute(spec) || !segments.length || segments.includes("..")) return void 0;
-  const matches2 = filesEndingWith(cwd, segments);
-  return matches2.length === 1 ? matches2[0] : void 0;
+  const matches3 = filesEndingWith(cwd, segments);
+  return matches3.length === 1 ? matches3[0] : void 0;
 }
 function evidenceOf(store, spec, cwd, missing) {
   const found = [resolve(cwd, spec), resolve(store.workspace, spec)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec) ? onlyFileEndingWith(cwd, spec) : void 0);
@@ -9860,18 +9860,18 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, missing, recor
     }
   } else entry.id = unusedId(prefixes[entry.kind], used);
   const everyone = () => lookup(journal(store, state.planId), actor);
-  const refer = (id2, kinds2, field2, fix) => {
+  const refer = (id2, kinds3, field2, fix) => {
     const own = known.get(id2);
-    const target = own && kinds2.includes(own.kind) ? own : kinds2.includes("defect") ? everyone().get(id2) : own;
-    if (target && kinds2.includes(target.kind)) return storedRef(target, actor);
+    const target = own && kinds3.includes(own.kind) ? own : kinds3.includes("defect") ? everyone().get(id2) : own;
+    if (target && kinds3.includes(target.kind)) return storedRef(target, actor);
     throw new EntryRefusal(
       `${path}.${field2}`,
-      `${path}.${field2} names no ${kinds2.join(" or ")}: ${id2}.`,
-      `Use the ID of an earlier ${kinds2.join(" or ")}.`,
+      `${path}.${field2} names no ${kinds3.join(" or ")}: ${id2}.`,
+      `Use the ID of an earlier ${kinds3.join(" or ")}.`,
       { ...given, [field2]: fix }
     );
   };
-  const idsOf = (kinds2) => state.entries.filter((item) => kinds2.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds2.join(" or ")} ID>`;
+  const idsOf = (kinds3) => state.entries.filter((item) => kinds3.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds3.join(" or ")} ID>`;
   const defectOrIssue = ["defect", "issue"];
   if (recorded) {
     const unknown = (id2) => !known.has(id2) && !recorded.replyIds.has(id2);
@@ -9891,11 +9891,11 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, missing, recor
     entry.refutes = refer(entry.refutes, defectOrIssue, "refutes", idsOf(defectOrIssue));
   if (entry.repeats !== void 0)
     entry.repeats = refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
-  const listed = (field2, kinds2) => {
+  const listed = (field2, kinds3) => {
     const ids2 = entry[field2];
     if (!ids2) return;
-    const fix = ids2.filter((item) => kinds2.includes(known.get(item)?.kind));
-    entry[field2] = ids2.map((item) => refer(item, kinds2, field2, field2 === "links" ? fix : idsOf(kinds2)));
+    const fix = ids2.filter((item) => kinds3.includes(known.get(item)?.kind));
+    entry[field2] = ids2.map((item) => refer(item, kinds3, field2, field2 === "links" ? fix : idsOf(kinds3)));
   };
   listed("links", ["observation", "criterion", "question"]);
   listed("reports", ["defect"]);
@@ -10035,11 +10035,11 @@ function claimDecisions(store, planId) {
     `${planId}:%`
   );
   const decided = /* @__PURE__ */ new Map();
-  for (const row2 of rows)
-    decided.set(row2.subject_id.slice(planId.length + 1), {
-      verdict: row2.verdict,
-      actor: row2.actor,
-      rationale: row2.rationale
+  for (const row3 of rows)
+    decided.set(row3.subject_id.slice(planId.length + 1), {
+      verdict: row3.verdict,
+      actor: row3.actor,
+      rationale: row3.rationale
     });
   return decided;
 }
@@ -10056,17 +10056,17 @@ function claimList(state, decided = /* @__PURE__ */ new Map()) {
   const order = (build) => state.builds.indexOf(build ?? "");
   return claimGroups(state).map(({ issue, reports, found }) => {
     const actors = [...new Set(found.map((defect) => defect.actor))];
-    const names = [issue.id, ...reports];
+    const names2 = [issue.id, ...reports];
     const checks = state.team.filter(
-      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names.some((name) => entry.confirms === name || entry.refutes === name)
+      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names2.some((name) => entry.confirms === name || entry.refutes === name)
     ).sort((a, b) => a.seq - b.seq);
     const checkOn = (build) => checks.filter((entry) => entry.build === build).at(-1);
-    const confirms = (check) => names.includes(check.confirms ?? "");
+    const confirms = (check) => names2.includes(check.confirms ?? "");
     const best = found.reduce((top, defect) => evidenceScore(defect) > evidenceScore(top) ? defect : top);
     const first = Math.min(...found.map((defect) => order(defect.build)));
     const firstCheck = checkOn(state.builds[first]);
     const verified = !firstCheck ? "none" : confirms(firstCheck) ? "confirmed" : "refuted";
-    const verdicts = state.team.filter((entry) => entry.kind === "verdict" && names.includes(entry.defect ?? "")).sort((a, b) => a.seq - b.seq);
+    const verdicts = state.team.filter((entry) => entry.kind === "verdict" && names2.includes(entry.defect ?? "")).sort((a, b) => a.seq - b.seq);
     const statusOn = (build) => {
       const results = /* @__PURE__ */ new Map();
       for (const verdict of verdicts.filter((entry) => entry.build === build))
@@ -10129,9 +10129,9 @@ function planQuestions(store, planId, keep) {
     ...[...questions.values()].filter((entry) => !grouped.has(entry.id)).map((entry) => ({ head: entry, members: [entry.id] }))
   ].filter((group2) => group2.members.length);
   return groups2.map(({ head, members }) => {
-    const names = /* @__PURE__ */ new Set([head.id, ...members]);
+    const names2 = /* @__PURE__ */ new Set([head.id, ...members]);
     const found = members.map((id2) => questions.get(id2));
-    const answer = answers.filter((entry) => names.has(entry.question)).at(-1);
+    const answer = answers.filter((entry) => names2.has(entry.question)).at(-1);
     return {
       id: head.id,
       explorationId: head.explorationId,
@@ -10257,7 +10257,7 @@ function answerQuestion(store, actor, operationId, input) {
     `Unknown gap or question ${input.questionId} of plan ${input.planId}.`,
     "Run checkmate inbox to read the open gaps and questions with their IDs."
   );
-  const used = state.rows.filter((row2) => row2.actor === actor).map((row2) => row2.id);
+  const used = state.rows.filter((row3) => row3.actor === actor).map((row3) => row3.id);
   const entry = {
     kind: "answer",
     id: unusedId("A", used),
@@ -10323,8 +10323,8 @@ function openPlan(store, actor, input) {
           `Tool ${tool.name} is in the target profile. Name it as a string.`
         );
       }
-    const names = planTools(request, profile).map((tool) => tool.name);
-    requireWellFormed(new Set(names).size === names.length, "Duplicate tool name in the plan request");
+    const names2 = planTools(request, profile).map((tool) => tool.name);
+    requireWellFormed(new Set(names2).size === names2.length, "Duplicate tool name in the plan request");
     const body = canonical(request);
     const data = { planId, target: `${target.id}@${target.revision}` };
     const existing = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
@@ -10348,10 +10348,10 @@ function openPlan(store, actor, input) {
   });
 }
 function planRequest(store, planId) {
-  const row2 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
-  requireCondition(row2, `Unknown plan: ${planId}. Run plan open first.`);
-  const request = JSON.parse(row2.body);
-  return { request, target: targetRevision(store, row2.target_id, row2.target_revision) };
+  const row3 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
+  requireCondition(row3, `Unknown plan: ${planId}. Run plan open first.`);
+  const request = JSON.parse(row3.body);
+  return { request, target: targetRevision(store, row3.target_id, row3.target_revision) };
 }
 function planTools(request, profile) {
   const named = (request.tools ?? []).filter((tool) => typeof tool === "string");
@@ -10374,26 +10374,26 @@ function showPlanRequest(store, planId) {
   });
 }
 function planRevision(store, planId, revision = null) {
-  const row2 = one(
+  const row3 = one(
     store,
     revision === null ? "SELECT body, sha256 FROM latest_plans WHERE plan_id = ?" : "SELECT body, sha256 FROM plan_revisions WHERE plan_id = ? AND revision = ?",
     planId,
     ...revision === null ? [] : [revision]
   );
-  if (!row2) {
+  if (!row3) {
     planRequest(store, planId);
     throw new Error(
       revision === null ? `Plan ${planId} has no revision. Run plan save first.` : `Plan ${planId} has no revision ${revision}`
     );
   }
-  return { plan: JSON.parse(row2.body), sha256: row2.sha256 };
+  return { plan: JSON.parse(row3.body), sha256: row3.sha256 };
 }
 function latestPlans(store) {
   const rows = all(
     store,
     "SELECT plan_id, body FROM latest_plans ORDER BY plan_id"
   );
-  return new Map(rows.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
+  return new Map(rows.map((row3) => [row3.plan_id, JSON.parse(row3.body)]));
 }
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
@@ -10583,7 +10583,7 @@ function planRunGaps(store, planId) {
 		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id JOIN operations o ON o.id = g.operation_id
 		WHERE r.plan_id = ? ORDER BY g.rowid`,
     planId
-  ).map((row2) => ({ runId: row2.run_id, gap: JSON.parse(row2.body), adopted: row2.adopted === 1, at: row2.at }));
+  ).map((row3) => ({ runId: row3.run_id, gap: JSON.parse(row3.body), adopted: row3.adopted === 1, at: row3.at }));
 }
 function editableRevision(store, text, expectSha256) {
   const reference = revisionReference(requireText(text, "plan reference"), "plan reference");
@@ -10868,15 +10868,15 @@ function showPending(store, planId) {
     tests: affectedTests(latest.plan, gapIds)
   });
 }
-function decisionSnapshot(row2) {
+function decisionSnapshot(row3) {
   return {
-    id: row2.id,
-    gapId: row2.gap_id,
-    kind: row2.kind,
-    actor: row2.actor,
-    rationale: row2.rationale,
-    value: row2.value,
-    source: row2.source
+    id: row3.id,
+    gapId: row3.gap_id,
+    kind: row3.kind,
+    actor: row3.actor,
+    rationale: row3.rationale,
+    value: row3.value,
+    source: row3.source
   };
 }
 function revisePlan(store, actor, input) {
@@ -10934,7 +10934,7 @@ function usedAssertionIds(store, planId, testId) {
     "SELECT DISTINCT a.value ->> '$.id' AS id FROM plan_tests t, json_each(t.test, '$.assertions') a WHERE t.plan_id = ? AND t.test_id = ?",
     planId,
     testId
-  ).map((row2) => row2.id);
+  ).map((row3) => row3.id);
 }
 function applyTestChange(test, change, used) {
   if (change.action !== void 0) test.action = change.action;
@@ -11260,7 +11260,7 @@ function finalizedResults(store, planId) {
     store,
     "SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid",
     planId
-  ).map((row2) => JSON.parse(row2.body));
+  ).map((row3) => JSON.parse(row3.body));
 }
 function rejectedRuns(store, planId) {
   const rows = all(
@@ -11269,14 +11269,14 @@ function rejectedRuns(store, planId) {
     planId
   );
   const policies = /* @__PURE__ */ new Map();
-  const policy = (row2) => {
-    const key = `${row2.target_id}@${row2.target_revision}`;
+  const policy = (row3) => {
+    const key = `${row3.target_id}@${row3.target_revision}`;
     if (!policies.has(key))
-      policies.set(key, approvalPolicy(targetRevision(store, row2.target_id, row2.target_revision).profile).result);
+      policies.set(key, approvalPolicy(targetRevision(store, row3.target_id, row3.target_revision).profile).result);
     return policies.get(key);
   };
-  const rejected = rows.filter((row2) => approvalState(store, "result", row2.run_id, row2.sha256, policy(row2)).rejected);
-  return new Set(rejected.map((row2) => row2.run_id));
+  const rejected = rows.filter((row3) => approvalState(store, "result", row3.run_id, row3.sha256, policy(row3)).rejected);
+  return new Set(rejected.map((row3) => row3.run_id));
 }
 function selectedOutcome(result, testId) {
   if (!result.selectedTestIds.includes(testId)) return null;
@@ -11394,10 +11394,10 @@ function planChanges(before, after) {
     (item) => !before.assumptions.some((old) => old.decisionId === item.decisionId)
   ))
     lines2.push(`assumption ${assumption.decisionId}: ${JSON.stringify(assumption.text)}`);
-  for (const row2 of after.coverage) {
-    const old = before.coverage.find((item) => item.requirementId === row2.requirementId);
-    if (old && old.status !== row2.status)
-      lines2.push(`${row2.requirementId} coverage: ${JSON.stringify(old.status)} \u2192 ${JSON.stringify(row2.status)}`);
+  for (const row3 of after.coverage) {
+    const old = before.coverage.find((item) => item.requirementId === row3.requirementId);
+    if (old && old.status !== row3.status)
+      lines2.push(`${row3.requirementId} coverage: ${JSON.stringify(old.status)} \u2192 ${JSON.stringify(row3.status)}`);
   }
   return lines2;
 }
@@ -11484,17 +11484,17 @@ function evidenceDirectory(runId) {
   return `.checkmate/tmp/${runId}/`;
 }
 function runState(store, runId) {
-  const row2 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
-  requireCondition(row2, `Unknown run: ${runId}`);
+  const row3 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
+  requireCondition(row3, `Unknown run: ${runId}`);
   const plan = one(
     store,
     "SELECT body FROM plan_revisions WHERE plan_id = ? AND revision = ?",
-    row2.plan_id,
-    row2.plan_revision
+    row3.plan_id,
+    row3.plan_revision
   );
   return {
-    row: row2,
-    request: JSON.parse(row2.request),
+    row: row3,
+    request: JSON.parse(row3.request),
     plan: JSON.parse(plan.body),
     finished: Boolean(one(store, "SELECT 1 FROM results WHERE run_id = ?", runId))
   };
@@ -11516,24 +11516,24 @@ function selectedTest(run2, testId) {
   );
   return run2.plan.tests.find((test) => test.id === testId);
 }
-function runClock(store, row2, at = (/* @__PURE__ */ new Date()).toISOString()) {
+function runClock(store, row3, at = (/* @__PURE__ */ new Date()).toISOString()) {
   const attempt = one(
     store,
     "SELECT started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1",
-    row2.run_id
+    row3.run_id
   );
   const start = Date.parse(attempt.started_at);
   const elapsedSeconds = Math.max(0, Math.floor((Date.parse(at) - start) / 1e3));
   return {
     attemptStartedAt: attempt.started_at,
-    deadline: new Date(start + row2.deadline_seconds * 1e3).toISOString(),
-    deadlineSeconds: row2.deadline_seconds,
+    deadline: new Date(start + row3.deadline_seconds * 1e3).toISOString(),
+    deadlineSeconds: row3.deadline_seconds,
     elapsedSeconds,
-    remainingSeconds: Math.max(0, row2.deadline_seconds - elapsedSeconds)
+    remainingSeconds: Math.max(0, row3.deadline_seconds - elapsedSeconds)
   };
 }
-function refuseEarlyDeadline(store, row2, at) {
-  const clock2 = runClock(store, row2, at);
+function refuseEarlyDeadline(store, row3, at) {
+  const clock2 = runClock(store, row3, at);
   const used = clock2.elapsedSeconds / clock2.deadlineSeconds;
   requireCondition(
     used >= deadlineShare,
@@ -11550,11 +11550,11 @@ function runOutcomes(store, runId) {
 		FROM outcomes o LEFT JOIN operations p ON p.id = o.operation_id WHERE o.run_id = ? ORDER BY o.rowid`,
     runId
   );
-  return new Map(rows.map((row2) => [row2.test_id, row2]));
+  return new Map(rows.map((row3) => [row3.test_id, row3]));
 }
 function runAssertions(store, runId) {
   const rows = all(store, "SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid", runId);
-  return new Map(rows.map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
+  return new Map(rows.map((row3) => [`${row3.test_id}.${row3.assertion_id}`, row3]));
 }
 function runEvidence(store, runId) {
   return all(
@@ -11565,12 +11565,12 @@ function runEvidence(store, runId) {
 }
 function runFindings(store, runId) {
   return all(store, "SELECT body FROM findings WHERE run_id = ? ORDER BY rowid", runId).map(
-    (row2) => JSON.parse(row2.body)
+    (row3) => JSON.parse(row3.body)
   );
 }
 function runGaps(store, runId) {
   return all(store, "SELECT body FROM run_gaps WHERE run_id = ? ORDER BY rowid", runId).map(
-    (row2) => JSON.parse(row2.body)
+    (row3) => JSON.parse(row3.body)
   );
 }
 function beginRun(store, actor, input) {
@@ -11850,9 +11850,9 @@ function closeTest(store, actor, input) {
         `Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(", ")}`,
         `Record each one with checkmate run check ${input.runId} ${test.id} <assertionId> --result <passed|failed|inconclusive|not_checked>. Or close ${test.id} with --outcome error --reason "<why>".`
       );
-      outcome = testOutcome(recorded.map((row2) => row2.result));
-      const unchecked = recorded.filter((row2) => row2.result === "not_checked");
-      reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row2) => `${test.id}.${row2.assertion_id}`).join(", ")}` : null;
+      outcome = testOutcome(recorded.map((row3) => row3.result));
+      const unchecked = recorded.filter((row3) => row3.result === "not_checked");
+      reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row3) => `${test.id}.${row3.assertion_id}`).join(", ")}` : null;
     } else {
       outcome = requireChoice(input.outcome, closeOutcomes, "outcome (--outcome)");
       reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`);
@@ -11930,12 +11930,12 @@ function recordFinding(store, actor, input) {
           test.requirementIds.includes(requirementId),
           `Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
         );
-    const evidence2 = new Map(runEvidence(store, input.runId).map((row2) => [row2.id, row2]));
+    const evidence2 = new Map(runEvidence(store, input.runId).map((row3) => [row3.id, row3]));
     for (const id2 of finding.evidenceIds) {
-      const row2 = evidence2.get(id2);
-      requireWellFormed(row2, `Unknown evidence in finding ${finding.id}: ${id2}`);
+      const row3 = evidence2.get(id2);
+      requireWellFormed(row3, `Unknown evidence in finding ${finding.id}: ${id2}`);
       requireWellFormed(
-        testIds.includes(row2.test_id) && (row2.assertion_id === null || finding.assertionIds.includes(`${row2.test_id}.${row2.assertion_id}`)),
+        testIds.includes(row3.test_id) && (row3.assertion_id === null || finding.assertionIds.includes(`${row3.test_id}.${row3.assertion_id}`)),
         `Evidence ${id2} does not belong to the assertions or tests of finding ${finding.id}`
       );
     }
@@ -12042,14 +12042,14 @@ function finish(store, actor, input) {
     const results = runAssertions(store, input.runId);
     const findings2 = runFindings(store, input.runId);
     const newGaps2 = runGaps(store, input.runId);
-    for (const row2 of results.values())
-      if (row2.result === "failed")
+    for (const row3 of results.values())
+      if (row3.result === "failed")
         requireCondition(
           findings2.some(
-            (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row2.test_id}.${row2.assertion_id}`)
+            (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row3.test_id}.${row3.assertion_id}`)
           ),
-          `Failed assertion ${row2.test_id}.${row2.assertion_id} needs a defect finding. Record it with run finding.`,
-          defectHint(store, run2, row2, findings2)
+          `Failed assertion ${row3.test_id}.${row3.assertion_id} needs a defect finding. Record it with run finding.`,
+          defectHint(store, run2, row3, findings2)
         );
     if (completion === "completed") {
       const failures = selected.filter((id2) => outcomes2.get(id2).outcome === "error");
@@ -12093,15 +12093,15 @@ function finish(store, actor, input) {
         reason: closed.reason,
         ...closed.cause ? { cause: closed.cause } : {},
         assertions: test.assertions.flatMap((assertion) => {
-          const row2 = results.get(`${test.id}.${assertion.id}`);
-          if (!row2) return [];
+          const row3 = results.get(`${test.id}.${assertion.id}`);
+          if (!row3) return [];
           return {
             assertionId: assertion.id,
             check: assertion.check,
             checkKind: assertion.checkKind,
-            result: row2.result,
-            observed: row2.observed,
-            reason: row2.reason,
+            result: row3.result,
+            observed: row3.observed,
+            reason: row3.reason,
             evidenceIds: evidence2.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id).map((item) => item.id)
           };
         })
@@ -12126,15 +12126,15 @@ function finish(store, actor, input) {
       tests,
       findings: findings2,
       newGaps: newGaps2,
-      evidence: evidence2.map((row2) => ({
-        id: row2.id,
-        testId: row2.test_id,
-        assertionId: row2.assertion_id,
-        kind: row2.kind,
-        name: row2.name,
-        mediaType: row2.media_type,
-        sha256: row2.sha256,
-        size: row2.size
+      evidence: evidence2.map((row3) => ({
+        id: row3.id,
+        testId: row3.test_id,
+        assertionId: row3.assertion_id,
+        kind: row3.kind,
+        name: row3.name,
+        mediaType: row3.media_type,
+        sha256: row3.sha256,
+        size: row3.size
       })),
       cleanup: cleanup2,
       coverage: coverage2
@@ -12169,10 +12169,10 @@ function finish(store, actor, input) {
     };
   });
 }
-function defectHint(store, run2, row2, findings2) {
-  const reference = `${row2.test_id}.${row2.assertion_id}`;
-  const test = run2.plan.tests.find((item) => item.id === row2.test_id);
-  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row2.test_id && item.assertion_id === row2.assertion_id).map((item) => item.id);
+function defectHint(store, run2, row3, findings2) {
+  const reference = `${row3.test_id}.${row3.assertion_id}`;
+  const test = run2.plan.tests.find((item) => item.id === row3.test_id);
+  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row3.test_id && item.assertion_id === row3.assertion_id).map((item) => item.id);
   const finding = {
     id: unusedId(
       "F",
@@ -12184,7 +12184,7 @@ function defectHint(store, run2, row2, findings2) {
     requirementIds: test.requirementIds,
     title: "<short title>",
     expected: "<expected result>",
-    observed: row2.observed ?? "<observed result>",
+    observed: row3.observed ?? "<observed result>",
     reproduction: ["<step>"],
     evidenceIds
   };
@@ -12282,8 +12282,8 @@ function decideResult(store, actor, input, verdict) {
   });
 }
 function runResult(store, runId) {
-  const row2 = one(store, "SELECT sha256, body FROM results WHERE run_id = ?", runId);
-  return row2 ? { sha256: row2.sha256, result: JSON.parse(row2.body) } : null;
+  const row3 = one(store, "SELECT sha256, body FROM results WHERE run_id = ?", runId);
+  return row3 ? { sha256: row3.sha256, result: JSON.parse(row3.body) } : null;
 }
 function resultAcceptance(store, run2, sha256) {
   const policy = approvalPolicy(targetRevision(store, run2.target_id, run2.target_revision).profile).result;
@@ -12295,12 +12295,12 @@ import { mkdirSync as mkdirSync3, writeFileSync } from "node:fs";
 import { join as join5 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT revision, body FROM latest_plans WHERE plan_id = ?",
     planId
   );
-  return row2 ? { revision: row2.revision, plan: JSON.parse(row2.body) } : null;
+  return row3 ? { revision: row3.revision, plan: JSON.parse(row3.body) } : null;
 }
 function charterOf(store, planId, scope, change, knownState = null) {
   const { request, target } = planRequest(store, planId);
@@ -12414,7 +12414,7 @@ function writeKnownState(store, planId, explorationId, build) {
 }
 function nextExplorationId(store) {
   const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
-    (row2) => row2.exploration_id
+    (row3) => row3.exploration_id
   );
   return unusedId("x-", ids2);
 }
@@ -12482,11 +12482,11 @@ function explorationEvents(store, explorationId) {
     store,
     "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
     explorationId
-  ).map((row2) => ({ ...row2, detail: JSON.parse(row2.detail) }));
+  ).map((row3) => ({ ...row3, detail: JSON.parse(row3.detail) }));
 }
 function exploration(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
-  return { ...row2, charter: JSON.parse(row2.charter) };
+  const row3 = explorationRow(store, explorationId);
+  return { ...row3, charter: JSON.parse(row3.charter) };
 }
 
 // plugin/src/levels.ts
@@ -13067,14 +13067,14 @@ function fieldsOf(node, file, prefix) {
     const [items, itemsAt] = field2.items ? resolved(field2.items, at) : [void 0, at];
     const path = `${prefix}${name}`;
     const type = field2.enum ? field2.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field2.type ?? "value";
-    const row2 = {
+    const row3 = {
       path,
       type,
       required: Boolean(node.required?.includes(name)),
       description: field2.description ?? ""
     };
     const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field2.properties ? fieldsOf(field2, at, `${path}.`) : [];
-    return [row2, ...nested];
+    return [row3, ...nested];
   });
 }
 function fieldText(fields, described) {
@@ -13090,14 +13090,14 @@ function kindText(kind, keep, described) {
   const fields = fieldsOf(files[file], file, "").filter((field2) => !commonFields.includes(field2.path) && keep(field2));
   return `Kind ${kind}: ${files[file].description} ${fieldText(fields, described)}`;
 }
-function commonText(kinds2, described) {
+function commonText(kinds3, described) {
   const file = "journal-entry.schema.json";
-  const fields = fieldsOf(files[file], file, "").filter((field2) => field2.path !== "build").map((field2) => field2.path === "kind" ? { ...field2, type: kinds2.join("|") } : field2);
+  const fields = fieldsOf(files[file], file, "").filter((field2) => field2.path !== "build").map((field2) => field2.path === "kind" ? { ...field2, type: kinds3.join("|") } : field2);
   return `${files[file].description} Every entry has: ${fieldText(fields, described)}`;
 }
-function entryText(kinds2 = recordedKinds, keep = (field2) => !teamFields.includes(field2.path)) {
+function entryText(kinds3 = recordedKinds, keep = (field2) => !teamFields.includes(field2.path)) {
   const described = /* @__PURE__ */ new Set();
-  return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
+  return [commonText(kinds3, described), ...kinds3.map((kind) => kindText(kind, keep, described))].join("\n");
 }
 function withoutName(text) {
   return text.replace(/(^|\. )Checkmate\b/gm, "$1The record").replace(/\bCheckmate\b/g, "the record");
@@ -13304,7 +13304,7 @@ function addedEntries(store, explorationId, actor, after) {
     actor,
     after
   );
-  return Object.fromEntries(rows.map((row2) => [row2.kind, row2.count]));
+  return Object.fromEntries(rows.map((row3) => [row3.kind, row3.count]));
 }
 function launchContext(store, explorationId, explorer, session) {
   const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
@@ -13665,9 +13665,9 @@ function launchPlan(profile, input, env) {
     levelNames,
     "test level (--level)"
   );
-  const row2 = testLevels[level];
-  const explorers = input.explorers ?? profile.explore?.explorers ?? row2.explorers;
-  const testSeconds = input.minutes ? input.minutes * 60 : row2.testSeconds;
+  const row3 = testLevels[level];
+  const explorers = input.explorers ?? profile.explore?.explorers ?? row3.explorers;
+  const testSeconds = input.minutes ? input.minutes * 60 : row3.testSeconds;
   if (input.session) {
     requireWellFormed(
       !input.claudeArgs.length && input.timeoutSeconds === void 0,
@@ -13678,10 +13678,10 @@ function launchPlan(profile, input, env) {
       explorers,
       model: null,
       modelFrom: "agent",
-      verifier: row2.verifier,
+      verifier: row3.verifier,
       context: { hiddenPlugin: null, claudeArgs: [] },
       allow: input.allow,
-      studySeconds: row2.studySeconds,
+      studySeconds: row3.studySeconds,
       testSeconds,
       timeoutSeconds: 0,
       pluginHidden: true,
@@ -13692,21 +13692,21 @@ function launchPlan(profile, input, env) {
   const host = hostModel(claudeArgs);
   const hiddenPlugin = installedPluginId(env);
   requireWellFormed(
-    input.allow.length || explorers === 0 && !row2.verifier,
+    input.allow.length || explorers === 0 && !row3.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
     "The host owns the permissions. An explorer cannot answer a permission prompt."
   );
   return {
     level,
     explorers,
-    model: host ?? row2.model,
+    model: host ?? row3.model,
     modelFrom: host ? "host" : "level",
-    verifier: row2.verifier,
-    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row2.model] },
+    verifier: row3.verifier,
+    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model] },
     allow: input.allow,
-    studySeconds: row2.studySeconds,
+    studySeconds: row3.studySeconds,
     testSeconds,
-    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row2.studySeconds, testSeconds) * 3),
+    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row3.studySeconds, testSeconds) * 3),
     pluginHidden: hiddenPlugin !== null
   };
 }
@@ -13788,8 +13788,8 @@ function startExploration(store, actor, given, env) {
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
     if (!input.session) requireClaude(env);
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
-    const row2 = explorationRow(store, opened.explorationId);
-    const launch = launchPlan(targetRevision(store, row2.target_id, row2.target_revision).profile, input, env);
+    const row3 = explorationRow(store, opened.explorationId);
+    const launch = launchPlan(targetRevision(store, row3.target_id, row3.target_revision).profile, input, env);
     addEvent(
       store,
       opened.explorationId,
@@ -13822,17 +13822,17 @@ function startExploration(store, actor, given, env) {
   return reply;
 }
 function finishable(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   requireCondition(
     !startOf(explorationEvents(store, explorationId)),
     `Exploration ${explorationId} has started already.`,
     `Run checkmate explore wait ${explorationId}.`
   );
-  return { explorationId, planId: row2.plan_id, build: row2.build, mode: row2.mode, instanceId: row2.instance_id };
+  return { explorationId, planId: row3.plan_id, build: row3.build, mode: row3.mode, instanceId: row3.instance_id };
 }
 function finishExploration(store, actor, input, env) {
-  const row2 = explorationRow(store, input.explorationId);
-  return startExploration(store, actor, { ...input, planId: row2.plan_id, build: row2.build, explorers: 0 }, env);
+  const row3 = explorationRow(store, input.explorationId);
+  return startExploration(store, actor, { ...input, planId: row3.plan_id, build: row3.build, explorers: 0 }, env);
 }
 function event(store, actor, explorationId, item) {
   write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
@@ -14140,9 +14140,9 @@ function usedAnswers(events) {
   return used;
 }
 function unusedAnswers(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   const used = usedAnswers(explorationEvents(store, explorationId));
-  return planQuestions(store, row2.plan_id).filter(
+  return planQuestions(store, row3.plan_id).filter(
     (question) => question.explorationId === explorationId && question.answerId && !used.has(question.answerId)
   );
 }
@@ -14156,7 +14156,7 @@ function startFollow(store, actor, input, env) {
   const id2 = input.explorationId;
   let session = false;
   const reply = write(store, { actor, command: "explore follow", subject: id2, input }, (operationId, at) => {
-    const row2 = explorationRow(store, id2);
+    const row3 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
     session = startOf(events)?.path === "session";
     if (!session) requireClaude(env);
@@ -14164,13 +14164,13 @@ function startFollow(store, actor, input, env) {
     requireCondition(
       followable(events),
       `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
-      ["failed", "stopped", "open"].includes(state) ? `Start a new test: checkmate test ${row2.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
+      ["failed", "stopped", "open"].includes(state) ? `Start a new test: checkmate test ${row3.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
     );
     const answered = unusedAnswers(store, id2);
     requireCondition(
       answered.length,
       `Exploration ${id2} has no answer that a follow-up has not used.`,
-      `Answer a question of the exploration first: checkmate gap answer ${row2.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
+      `Answer a question of the exploration first: checkmate gap answer ${row3.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
     );
     const stored = startOf(events);
     const claudeArgs = checkClaudeArgs(input.claudeArgs);
@@ -14195,21 +14195,21 @@ function startFollow(store, actor, input, env) {
     return {
       reply: completed(id2, {
         explorationId: id2,
-        planId: row2.plan_id,
-        build: row2.build,
+        planId: row3.plan_id,
+        build: row3.build,
         answers: plan.answers.length,
         followSeconds: plan.seconds,
         next: [`checkmate explore ${session ? "next" : "wait"} ${id2}`]
       }),
-      subjects: [`exploration:${id2}`, `plan:${row2.plan_id}`]
+      subjects: [`exploration:${id2}`, `plan:${row3.plan_id}`]
     };
   });
   if (!session) startSupervisor(store, reply.subject, actor, env, ["--follow"]);
   return reply;
 }
 function followSessions(events) {
-  const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
-  return names.map((explorer) => {
+  const names2 = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
+  return names2.map((explorer) => {
     const own = events.filter((item) => item.explorer === explorer);
     const last = (step) => own.filter((item) => item.step === step).at(-1);
     const session = last("launch")?.detail.session ?? last("record")?.detail.session;
@@ -14344,13 +14344,13 @@ function explorationState(events) {
   return "testing";
 }
 function explorationStatus(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   const events = explorationEvents(store, explorationId);
   const launch = startOf(events);
-  const charter = JSON.parse(row2.charter);
+  const charter = JSON.parse(row3.charter);
   const state = explorationState(events);
-  const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
-  const explorers = names.map((explorer) => {
+  const names2 = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
+  const explorers = names2.map((explorer) => {
     const own = events.filter((item) => item.explorer === explorer);
     const last = (step) => own.filter((item) => item.step === step).at(-1);
     const end = last("end");
@@ -14371,11 +14371,11 @@ function explorationStatus(store, explorationId) {
   const followed = events.filter((item) => item.step === "followed").at(-1);
   const follow = followState(events);
   return {
-    explorationId: row2.exploration_id,
-    planId: row2.plan_id,
-    build: row2.build,
-    mode: row2.mode,
-    instanceId: row2.instance_id,
+    explorationId: row3.exploration_id,
+    planId: row3.plan_id,
+    build: row3.build,
+    mode: row3.mode,
+    instanceId: row3.instance_id,
     state,
     path: launch ? launch.path ?? "process" : null,
     paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
@@ -14394,7 +14394,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped"].includes(state) || follow === "failed" || follow === "stopped") && existsSync3(join7(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    workFolder: (["failed", "stopped"].includes(state) || follow === "failed" || follow === "stopped") && existsSync3(join7(store.workspace, workFolder(row3.exploration_id))) ? workFolder(row3.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -14459,7 +14459,7 @@ function latestRevisions(store) {
     store,
     `SELECT p.plan_id, p.revision, p.sha256, p.body, o.at, o.actor FROM latest_plans p
 		JOIN operations o ON o.id = p.operation_id ORDER BY p.plan_id`
-  ).map((row2) => ({ ...row2, plan: JSON.parse(row2.body) }));
+  ).map((row3) => ({ ...row3, plan: JSON.parse(row3.body) }));
 }
 function requestedPlans(store) {
   return all(
@@ -14467,11 +14467,11 @@ function requestedPlans(store) {
     `SELECT r.plan_id, r.target_id, r.target_revision, r.body, o.at FROM plan_requests r
 		JOIN operations o ON o.id = r.operation_id
 		WHERE NOT EXISTS (SELECT 1 FROM plan_revisions p WHERE p.plan_id = r.plan_id) ORDER BY r.plan_id`
-  ).map((row2) => ({
-    planId: row2.plan_id,
-    target: `${row2.target_id}@${row2.target_revision}`,
-    objective: JSON.parse(row2.body).objective,
-    since: row2.at
+  ).map((row3) => ({
+    planId: row3.plan_id,
+    target: `${row3.target_id}@${row3.target_revision}`,
+    objective: JSON.parse(row3.body).objective,
+    since: row3.at
   }));
 }
 function planSummary(plan) {
@@ -14484,23 +14484,23 @@ function inbox(store) {
     all(
       store,
       "SELECT plan_id, gap_id FROM decisions WHERE applied_revision IS NULL"
-    ).map((row2) => `${row2.plan_id}:${row2.gap_id}`)
+    ).map((row3) => `${row3.plan_id}:${row3.gap_id}`)
   );
   const revisions = latestRevisions(store);
-  const gaps = revisions.flatMap((row2) => [
-    ...row2.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row2.plan_id}:${gap.id}`)).map((gap) => ({
-      planId: row2.plan_id,
-      revision: row2.revision,
+  const gaps = revisions.flatMap((row3) => [
+    ...row3.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row3.plan_id}:${gap.id}`)).map((gap) => ({
+      planId: row3.plan_id,
+      revision: row3.revision,
       gapId: gap.id,
       question: gap.question,
       severity: gap.severity,
-      since: row2.at,
+      since: row3.at,
       runId: null,
       explorationId: null
     })),
-    ...planRunGaps(store, row2.plan_id).filter((item) => !item.adopted).map((item) => ({
-      planId: row2.plan_id,
-      revision: row2.revision,
+    ...planRunGaps(store, row3.plan_id).filter((item) => !item.adopted).map((item) => ({
+      planId: row3.plan_id,
+      revision: row3.revision,
       gapId: item.gap.id,
       question: item.gap.question,
       severity: item.gap.severity,
@@ -14536,17 +14536,17 @@ function inbox(store) {
       reason: claim.reason
     }))
   );
-  const plans = revisions.map((row2) => ({ row: row2, approval: approvalLabel(planApproval(store, row2.plan, row2.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row: row2, approval }) => ({
-    planId: row2.plan_id,
-    revision: row2.revision,
-    sha256: row2.sha256,
+  const plans = revisions.map((row3) => ({ row: row3, approval: approvalLabel(planApproval(store, row3.plan, row3.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row: row3, approval }) => ({
+    planId: row3.plan_id,
+    revision: row3.revision,
+    sha256: row3.sha256,
     approval,
-    since: row2.at,
-    summary: `${approval === "rejected" ? "Rejected. Change the plan. " : ""}${planSummary(row2.plan)}`
+    since: row3.at,
+    summary: `${approval === "rejected" ? "Rejected. Change the plan. " : ""}${planSummary(row3.plan)}`
   })).sort(bySince);
-  const results = revisions.flatMap((row2) => {
-    const runs = runList(store, { planId: row2.plan_id });
-    const record = planRecord(store, row2.plan);
+  const results = revisions.flatMap((row3) => {
+    const runs = runList(store, { planId: row3.plan_id });
+    const record = planRecord(store, row3.plan);
     const waited = /* @__PURE__ */ new Set([...record.supplied, ...record.defects.map((item) => item.runId)]);
     return runs.filter((run2) => waited.has(run2.runId) && run2.acceptance === "pending").map((run2) => {
       const result = record.results.find((item) => item.runId === run2.runId);
@@ -14576,28 +14576,28 @@ function testCounts(plan) {
   return { total: plan.tests.length, ready: count("ready"), blocked: count("blocked"), deferred: count("deferred") };
 }
 function planList(store) {
-  const drafted = latestRevisions(store).map((row2) => {
+  const drafted = latestRevisions(store).map((row3) => {
     const open = [
-      ...row2.plan.gaps.filter((gap) => gap.status === "open"),
-      ...planRunGaps(store, row2.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
+      ...row3.plan.gaps.filter((gap) => gap.status === "open"),
+      ...planRunGaps(store, row3.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
     ];
     return {
-      planId: row2.plan_id,
+      planId: row3.plan_id,
       status: "drafted",
-      revision: row2.revision,
-      sha256: row2.sha256,
-      since: row2.at,
+      revision: row3.revision,
+      sha256: row3.sha256,
+      since: row3.at,
       openGaps: open.map((gap) => gap.id),
       openBlockingGaps: open.filter((gap) => gap.severity === "blocking").map((gap) => gap.id),
-      tests: testCounts(row2.plan),
-      approval: approvalLabel(planApproval(store, row2.plan, row2.sha256)),
-      blocked: row2.plan.tests.flatMap(
+      tests: testCounts(row3.plan),
+      approval: approvalLabel(planApproval(store, row3.plan, row3.sha256)),
+      blocked: row3.plan.tests.flatMap(
         (test) => test.dependsOn.filter((dependency) => dependency.includes(":")).flatMap((dependency) => {
           const cause = dependencyBlock(store, dependency, null);
           return cause ? [{ testId: test.id, dependency, cause }] : [];
         })
       ),
-      loop: loopOf(store, row2.plan_id)
+      loop: loopOf(store, row3.plan_id)
     };
   });
   const requested = requestedPlans(store).map((request) => ({
@@ -14623,13 +14623,13 @@ function planDetail(store, planId, revision = null) {
     store,
     "SELECT id, gap_id, kind, value, actor, rationale FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row2) => ({
-    id: row2.id,
-    gapId: row2.gap_id,
-    kind: row2.kind,
-    value: row2.value,
-    actor: row2.actor,
-    rationale: row2.rationale
+  ).map((row3) => ({
+    id: row3.id,
+    gapId: row3.gap_id,
+    kind: row3.kind,
+    value: row3.value,
+    actor: row3.actor,
+    rationale: row3.rationale
   })) : [];
   return {
     planId,
@@ -14661,20 +14661,20 @@ function planHistory(store, planId) {
 		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision`,
     planId
   );
-  const plans = rows.map((row2) => JSON.parse(row2.body));
-  return rows.map((row2, i) => ({
-    revision: row2.revision,
-    sha256: row2.sha256,
-    operationId: row2.operation_id,
-    actor: row2.actor,
-    at: row2.at,
+  const plans = rows.map((row3) => JSON.parse(row3.body));
+  return rows.map((row3, i) => ({
+    revision: row3.revision,
+    sha256: row3.sha256,
+    operationId: row3.operation_id,
+    actor: row3.actor,
+    at: row3.at,
     changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i])
   }));
 }
 var roles = ["planner", "oracle", "qa", "factory", "none"];
 function exploredPlans(store) {
   return all(store, "SELECT DISTINCT plan_id FROM explorations ORDER BY plan_id").map(
-    (row2) => row2.plan_id
+    (row3) => row3.plan_id
   );
 }
 var runningExploration = ["starting", "testing", "recording", "verifying", "following"];
@@ -14685,14 +14685,14 @@ function mergedUpTo(events) {
   const ended = events.slice(follow + 1).find((item) => item.step === "followed");
   return ended?.status === "completed" ? Infinity : Number(events[follow].detail.after ?? 0);
 }
-var fromSession = (row2) => row2.actor.startsWith("qa:");
+var fromSession = (row3) => row3.actor.startsWith("qa:");
 function mergedEntries(store, planId) {
   const limits = new Map(
     all(store, "SELECT exploration_id FROM explorations WHERE plan_id = ?", planId).map(
-      (row2) => [row2.exploration_id, mergedUpTo(explorationEvents(store, row2.exploration_id))]
+      (row3) => [row3.exploration_id, mergedUpTo(explorationEvents(store, row3.exploration_id))]
     )
   );
-  return (row2) => !fromSession(row2) || row2.seq <= (limits.get(row2.explorationId) ?? 0);
+  return (row3) => !fromSession(row3) || row3.seq <= (limits.get(row3.explorationId) ?? 0);
 }
 function mergedClaims(store, planId) {
   return planClaims(store, planId, mergedEntries(store, planId));
@@ -14712,8 +14712,8 @@ function planExplorations(store, planId) {
     store,
     "SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid",
     planId
-  ).map((row2) => {
-    const status = explorationStatus(store, row2.exploration_id);
+  ).map((row3) => {
+    const status = explorationStatus(store, row3.exploration_id);
     const ended = ["failed", "stopped"].includes(status.state);
     return {
       explorationId: status.explorationId,
@@ -14723,7 +14723,7 @@ function planExplorations(store, planId) {
       instanceId: status.instanceId,
       level: status.level,
       explorers: status.explorerCount,
-      startedAt: row2.started_at,
+      startedAt: row3.started_at,
       reason: ended ? status.reason : null,
       follow: status.follow,
       followReason: status.followReason,
@@ -14894,8 +14894,8 @@ function loopStatus(store, planId) {
     store,
     "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
     planId
-  ).map((row2) => {
-    const status = explorationStatus(store, row2.exploration_id);
+  ).map((row3) => {
+    const status = explorationStatus(store, row3.exploration_id);
     return {
       explorationId: status.explorationId,
       build: status.build,
@@ -15018,7 +15018,7 @@ function checkStatus(store, planId) {
     store,
     "SELECT id, gap_id, kind FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row2) => ({ id: row2.id, gapId: row2.gap_id, kind: row2.kind }));
+  ).map((row3) => ({ id: row3.id, gapId: row3.gap_id, kind: row3.kind }));
   const gaps = [
     ...plan.gaps.filter((gap) => gap.status === "open" && !pendingDecisions2.some((item) => item.gapId === gap.id)).map((gap) => ({
       gapId: gap.id,
@@ -15072,7 +15072,7 @@ function checkStatus(store, planId) {
       `SELECT r.application_build AS build FROM runs r JOIN results s ON s.run_id = r.run_id
 			WHERE r.plan_id IN (SELECT value FROM json_each(?)) GROUP BY r.application_build ORDER BY max(r.rowid) DESC`,
       JSON.stringify(others)
-    ).map((row2) => row2.build);
+    ).map((row3) => row3.build);
   };
   const bestBuild = (count) => {
     let best;
@@ -15221,10 +15221,10 @@ function checkStatus(store, planId) {
         waiting.map((run2) => `${run2.runId} on build ${run2.build} waits for acceptance`),
         waiting.map((run2) => `checkmate result accept ${run2.runId} --rationale "<why>"`)
       );
-    const names = supplying.map((run2) => run2.runId).join(", ");
+    const names2 = supplying.map((run2) => run2.runId).join(", ");
     if (supplying.every((run2) => run2.acceptance === "approved"))
-      return loop("accepted", "none", [`${names} ${supplying.length === 1 ? "is" : "are"} accepted`], []);
-    return loop("passed", "none", [`${names} passed. Result acceptance is not required`], []);
+      return loop("accepted", "none", [`${names2} ${supplying.length === 1 ? "is" : "are"} accepted`], []);
+    return loop("passed", "none", [`${names2} passed. Result acceptance is not required`], []);
   };
   const loopState2 = state();
   loopState2.why = [
@@ -15249,18 +15249,18 @@ function checkStatus(store, planId) {
   };
 }
 function latestRetest(store, planId, record) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT run_id FROM runs WHERE plan_id = ? AND request ->> '$.retestOf' IS NOT NULL ORDER BY rowid DESC LIMIT 1",
     planId
   );
-  if (!row2) return null;
-  const run2 = runState(store, row2.run_id);
-  const verdicts = retestVerdicts(run2, runOutcomes(store, row2.run_id));
+  if (!row3) return null;
+  const run2 = runState(store, row3.run_id);
+  const verdicts = retestVerdicts(run2, runOutcomes(store, row3.run_id));
   const open = verdicts.some(
     (item) => record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
   );
-  return open || record.results.at(-1)?.runId === row2.run_id ? { runId: row2.run_id, verdicts } : null;
+  return open || record.results.at(-1)?.runId === row3.run_id ? { runId: row3.run_id, verdicts } : null;
 }
 function rejection(store, kind, subject) {
   const decision = latestApproval(store, kind, subject);
@@ -15349,23 +15349,23 @@ function runList(store, filters = {}) {
     filters.build ?? null,
     filters.build ?? null
   );
-  return rows.map((row2) => ({
-    runId: row2.run_id,
-    planId: row2.plan_id,
-    revision: row2.plan_revision,
-    build: row2.application_build,
-    instanceId: row2.instance_id,
-    startedAt: row2.started_at,
-    state: row2.sha256 ? "finalized" : "started",
-    completion: row2.completion,
-    coverage: row2.coverage,
-    sha256: row2.sha256,
-    acceptance: row2.sha256 ? approvalLabel(resultAcceptance(store, row2, row2.sha256)) : null,
+  return rows.map((row3) => ({
+    runId: row3.run_id,
+    planId: row3.plan_id,
+    revision: row3.plan_revision,
+    build: row3.application_build,
+    instanceId: row3.instance_id,
+    startedAt: row3.started_at,
+    state: row3.sha256 ? "finalized" : "started",
+    completion: row3.completion,
+    coverage: row3.coverage,
+    sha256: row3.sha256,
+    acceptance: row3.sha256 ? approvalLabel(resultAcceptance(store, row3, row3.sha256)) : null,
     counts: Object.fromEntries(
       all(
         store,
         "SELECT outcome, count(*) AS count FROM outcomes WHERE run_id = ? GROUP BY outcome ORDER BY outcome",
-        row2.run_id
+        row3.run_id
       ).map((count) => [count.outcome, count.count])
     )
   }));
@@ -15374,22 +15374,22 @@ function runDetail(store, runId) {
   const run2 = runState(store, runId);
   const outcomes2 = runOutcomes(store, runId);
   const results = runAssertions(store, runId);
-  const evidence2 = runEvidence(store, runId).map((row2) => ({
-    id: row2.id,
-    testId: row2.test_id,
-    assertionId: row2.assertion_id,
-    kind: row2.kind,
-    name: row2.name,
-    mediaType: row2.media_type,
-    sha256: row2.sha256,
-    size: row2.size
+  const evidence2 = runEvidence(store, runId).map((row3) => ({
+    id: row3.id,
+    testId: row3.test_id,
+    assertionId: row3.assertion_id,
+    kind: row3.kind,
+    name: row3.name,
+    mediaType: row3.media_type,
+    sha256: row3.sha256,
+    size: row3.size
   }));
   const finished = runResult(store, runId);
   const attempts = all(
     store,
     "SELECT attempt, started_at, actor FROM run_attempts WHERE run_id = ? ORDER BY attempt",
     runId
-  ).map((row2) => ({ attempt: row2.attempt, startedAt: row2.started_at, actor: row2.actor }));
+  ).map((row3) => ({ attempt: row3.attempt, startedAt: row3.started_at, actor: row3.actor }));
   const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id)).map((test) => {
     const closed = outcomes2.get(test.id);
     return {
@@ -15401,14 +15401,14 @@ function runDetail(store, runId) {
       reason: closed?.reason ?? null,
       evidence: evidence2.filter((item) => item.testId === test.id && item.assertionId === null),
       assertions: test.assertions.map((assertion) => {
-        const row2 = results.get(`${test.id}.${assertion.id}`);
+        const row3 = results.get(`${test.id}.${assertion.id}`);
         return {
           assertionId: assertion.id,
           check: assertion.check,
           checkKind: assertion.checkKind,
-          result: row2?.result ?? null,
-          observed: row2?.observed ?? null,
-          reason: row2?.reason ?? null,
+          result: row3?.result ?? null,
+          observed: row3?.observed ?? null,
+          reason: row3?.reason ?? null,
           evidence: evidence2.filter(
             (item) => item.testId === test.id && item.assertionId === assertion.id
           )
@@ -15458,20 +15458,20 @@ function findingList(store, filters = {}) {
     filters.planId ?? null
   );
   const open = new Set(
-    filters.open ? [...new Set(rows.map((row2) => row2.plan_id))].flatMap(
+    filters.open ? [...new Set(rows.map((row3) => row3.plan_id))].flatMap(
       (planId) => openDefects(finalizedResults(store, planId), rejectedRuns(store, planId)).map(
         ({ runId, finding }) => `${runId}/${finding.id}`
       )
     ) : []
   );
-  return rows.map((row2) => {
-    const finding = JSON.parse(row2.body);
+  return rows.map((row3) => {
+    const finding = JSON.parse(row3.body);
     return {
-      runId: row2.run_id,
-      planId: row2.plan_id,
-      revision: row2.plan_revision,
-      build: row2.application_build,
-      instanceId: row2.instance_id,
+      runId: row3.run_id,
+      planId: row3.plan_id,
+      revision: row3.plan_revision,
+      build: row3.application_build,
+      instanceId: row3.instance_id,
       testIds: finding.testIds,
       findingId: finding.id,
       type: finding.type,
@@ -15485,7 +15485,7 @@ function findingList(store, filters = {}) {
       evidenceIds: finding.evidenceIds,
       metadata: finding.metadata ?? {}
     };
-  }).filter((row2) => !filters.open || open.has(`${row2.runId}/${row2.findingId}`));
+  }).filter((row3) => !filters.open || open.has(`${row3.runId}/${row3.findingId}`));
 }
 function operationLog(store, filters = {}) {
   const limit = filters.limit ?? 50;
@@ -15501,17 +15501,17 @@ function operationLog(store, filters = {}) {
     limit
   ).map(operationRow);
 }
-function operationRow(row2) {
+function operationRow(row3) {
   return {
-    rowid: row2.rowid,
-    id: row2.id,
-    at: row2.at,
-    actor: row2.actor,
-    command: row2.command,
-    status: row2.status,
-    subjects: JSON.parse(row2.subjects),
-    arguments: JSON.parse(row2.arguments),
-    response: JSON.parse(row2.response)
+    rowid: row3.rowid,
+    id: row3.id,
+    at: row3.at,
+    actor: row3.actor,
+    command: row3.command,
+    status: row3.status,
+    subjects: JSON.parse(row3.subjects),
+    arguments: JSON.parse(row3.arguments),
+    response: JSON.parse(row3.response)
   };
 }
 function changesAfter(store, rowid) {
@@ -15519,26 +15519,26 @@ function changesAfter(store, rowid) {
     store,
     "SELECT rowid, id, subjects FROM operations WHERE rowid > ? ORDER BY rowid",
     rowid
-  ).map((row2) => ({ rowid: row2.rowid, id: row2.id, subjects: JSON.parse(row2.subjects) }));
+  ).map((row3) => ({ rowid: row3.rowid, id: row3.id, subjects: JSON.parse(row3.subjects) }));
 }
 function evidenceBytes(store, id2) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT e.id, e.run_id, e.test_id, e.assertion_id, e.kind, e.name, e.media_type, e.sha256, b.size, b.bytes FROM evidence e JOIN blobs b ON b.sha256 = e.sha256 WHERE e.id = ?",
     id2
   );
-  requireCondition(row2, `Unknown evidence: ${id2}`);
+  requireCondition(row3, `Unknown evidence: ${id2}`);
   return {
-    id: row2.id,
-    runId: row2.run_id,
-    testId: row2.test_id,
-    assertionId: row2.assertion_id,
-    kind: row2.kind,
-    name: row2.name,
-    mediaType: row2.media_type,
-    sha256: row2.sha256,
-    size: row2.size,
-    bytes: row2.bytes
+    id: row3.id,
+    runId: row3.run_id,
+    testId: row3.test_id,
+    assertionId: row3.assertion_id,
+    kind: row3.kind,
+    name: row3.name,
+    mediaType: row3.media_type,
+    sha256: row3.sha256,
+    size: row3.size,
+    bytes: row3.bytes
   };
 }
 var pageSizes = [25, 50, 100];
@@ -15553,12 +15553,12 @@ function listQuery(query, columns, defaults) {
   requireChoice(direction, ["asc", "desc"], "sort direction");
   return { limit, offset, sort, direction, q: query.q?.trim().toLowerCase() ?? "" };
 }
-function filterValue(filters, names) {
+function filterValue(filters, names2) {
   const values = {};
   for (const [name, value2] of Object.entries(filters ?? {})) {
     if (value2 === void 0 || value2 === "") continue;
-    requireCondition(name in names, `Unknown filter: ${name}. Use: ${Object.keys(names).join(", ")}.`);
-    const choices = names[name];
+    requireCondition(name in names2, `Unknown filter: ${name}. Use: ${Object.keys(names2).join(", ")}.`);
+    const choices = names2[name];
     if (choices) requireChoice(value2, choices, `${name} filter`);
     values[name] = value2;
   }
@@ -15566,13 +15566,13 @@ function filterValue(filters, names) {
 }
 function pageOf(rows, query, columns, text) {
   const matched = query.q ? rows.filter(
-    (row2) => text(row2).some(
+    (row3) => text(row3).some(
       (field2) => String(field2 ?? "").toLowerCase().includes(query.q)
     )
   ) : rows;
   const key = columns[query.sort];
   const order = query.direction === "asc" ? 1 : -1;
-  const position = new Map(matched.map((row2, index2) => [row2, index2]));
+  const position = new Map(matched.map((row3, index2) => [row3, index2]));
   const sorted2 = [...matched].sort((a, b) => {
     const x = key(a);
     const y = key(b);
@@ -15594,61 +15594,61 @@ var planShows = ["all", "needs_decision", "awaiting_approval", "blocked"];
 var approvalLabels = ["approved", "rejected", "pending", "not_required"];
 function pagedPlans(store, query = {}) {
   const columns = {
-    plan: (row2) => row2.planId,
-    loop: (row2) => row2.loop.state,
-    tests: (row2) => row2.tests.total,
-    gaps: (row2) => row2.openGaps.length,
-    approval: (row2) => row2.approval ?? row2.status,
-    blocked: (row2) => row2.blocked.length,
-    updated: (row2) => row2.since
+    plan: (row3) => row3.planId,
+    loop: (row3) => row3.loop.state,
+    tests: (row3) => row3.tests.total,
+    gaps: (row3) => row3.openGaps.length,
+    approval: (row3) => row3.approval ?? row3.status,
+    blocked: (row3) => row3.blocked.length,
+    updated: (row3) => row3.since
   };
   const options2 = listQuery(query, Object.keys(columns), { sort: "plan", direction: "asc" });
   const filters = filterValue(query.filters, { show: planShows, approval: approvalLabels, waits: roles });
   const rows = planList(store).filter(
-    (row2) => (filters.approval === void 0 || row2.approval === filters.approval) && (filters.waits === void 0 || row2.loop.waitsOn === filters.waits) && (filters.show !== "needs_decision" || row2.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row2.approval === "pending") && (filters.show !== "blocked" || row2.blocked.length > 0 || row2.openBlockingGaps.length > 0)
+    (row3) => (filters.approval === void 0 || row3.approval === filters.approval) && (filters.waits === void 0 || row3.loop.waitsOn === filters.waits) && (filters.show !== "needs_decision" || row3.openGaps.length > 0) && (filters.show !== "awaiting_approval" || row3.approval === "pending") && (filters.show !== "blocked" || row3.blocked.length > 0 || row3.openBlockingGaps.length > 0)
   );
-  return pageOf(rows, options2, columns, (row2) => [
-    row2.revision === null ? row2.planId : `${row2.planId}@${row2.revision}`,
-    row2.status,
-    row2.loop.state,
-    `waits on ${row2.loop.waitsOn}`,
-    `${row2.tests.total} tests ${row2.tests.ready} ready ${row2.tests.blocked} blocked ${row2.tests.deferred} deferred`,
-    ...row2.openGaps,
-    row2.approval,
-    ...row2.blocked.map((block) => `${block.testId} ${block.dependency} ${block.cause}`),
-    row2.since
+  return pageOf(rows, options2, columns, (row3) => [
+    row3.revision === null ? row3.planId : `${row3.planId}@${row3.revision}`,
+    row3.status,
+    row3.loop.state,
+    `waits on ${row3.loop.waitsOn}`,
+    `${row3.tests.total} tests ${row3.tests.ready} ready ${row3.tests.blocked} blocked ${row3.tests.deferred} deferred`,
+    ...row3.openGaps,
+    row3.approval,
+    ...row3.blocked.map((block) => `${block.testId} ${block.dependency} ${block.cause}`),
+    row3.since
   ]);
 }
 var runStatuses = ["started", "pending", "approved", "rejected", "not_required"];
-function runStatus(row2) {
-  return row2.state === "started" ? "started" : row2.acceptance ?? "finalized";
+function runStatus(row3) {
+  return row3.state === "started" ? "started" : row3.acceptance ?? "finalized";
 }
 function pagedRuns(store, query = {}) {
   const columns = {
-    run: (row2) => row2.runId,
-    plan: (row2) => `${row2.planId}@${String(row2.revision).padStart(9, "0")}`,
-    build: (row2) => row2.build,
-    instance: (row2) => row2.instanceId,
-    completion: (row2) => row2.completion,
-    coverage: (row2) => row2.coverage,
-    status: (row2) => runStatus(row2),
-    started: (row2) => row2.startedAt
+    run: (row3) => row3.runId,
+    plan: (row3) => `${row3.planId}@${String(row3.revision).padStart(9, "0")}`,
+    build: (row3) => row3.build,
+    instance: (row3) => row3.instanceId,
+    completion: (row3) => row3.completion,
+    coverage: (row3) => row3.coverage,
+    status: (row3) => runStatus(row3),
+    started: (row3) => row3.startedAt
   };
   const options2 = listQuery(query, Object.keys(columns), { sort: "started", direction: "desc" });
   const filters = filterValue(query.filters, { plan: null, build: null, status: runStatuses });
   const rows = runList(store, { planId: filters.plan, build: filters.build }).filter(
-    (row2) => filters.status === void 0 || runStatus(row2) === filters.status
+    (row3) => filters.status === void 0 || runStatus(row3) === filters.status
   );
-  return pageOf(rows, options2, columns, (row2) => [
-    row2.runId,
-    `${row2.planId}@${row2.revision}`,
-    row2.build,
-    row2.instanceId,
-    ...Object.entries(row2.counts).map(([outcome, count]) => `${count} ${outcome}`),
-    row2.completion,
-    row2.coverage,
-    runStatus(row2),
-    row2.startedAt
+  return pageOf(rows, options2, columns, (row3) => [
+    row3.runId,
+    `${row3.planId}@${row3.revision}`,
+    row3.build,
+    row3.instanceId,
+    ...Object.entries(row3.counts).map(([outcome, count]) => `${count} ${outcome}`),
+    row3.completion,
+    row3.coverage,
+    runStatus(row3),
+    row3.startedAt
   ]);
 }
 var logColumns = {
@@ -15781,16 +15781,31 @@ function claimEvidence(store, planId, claimId, index2) {
   requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`);
   const item = claim.evidence[index2];
   requireCondition(item && "path" in item, `Unknown evidence ${index2} of claim ${claimId}`);
-  const row2 = one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", item.sha256);
-  requireCondition(row2, `Unknown evidence ${index2} of claim ${claimId}`);
+  const row3 = one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", item.sha256);
+  requireCondition(row3, `Unknown evidence ${index2} of claim ${claimId}`);
   const name = item.path.slice(item.path.lastIndexOf("/") + 1);
   const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
   return {
     name,
     mediaType: evidenceTypes[extension] ?? "application/octet-stream",
     size: item.size,
-    bytes: row2.bytes
+    bytes: row3.bytes
   };
+}
+function claimsAcross(store) {
+  const started = new Map(
+    all(
+      store,
+      "SELECT exploration_id, started_at FROM explorations"
+    ).map((row3) => [row3.exploration_id, row3.started_at])
+  );
+  return exploredPlans(store).flatMap(
+    (planId) => mergedClaims(store, planId).map((claim) => ({
+      ...claim,
+      planId,
+      foundAt: started.get(claim.explorationId) ?? ""
+    }))
+  ).sort((a, b) => b.foundAt.localeCompare(a.foundAt));
 }
 
 // plugin/src/render.ts
@@ -15852,7 +15867,7 @@ function markdown(report) {
         [
           `| ${block.table.map(markdownText).join(" | ")} |`,
           `| ${block.table.map(() => "---").join(" | ")} |`,
-          ...block.rows.map((row2) => `| ${row2.map(markdownText).join(" | ")} |`)
+          ...block.rows.map((row3) => `| ${row3.map(markdownText).join(" | ")} |`)
         ].join("\n")
       );
     else if ("list" in block)
@@ -15942,7 +15957,7 @@ function html(report) {
     else if ("text" in block) parts.push(`<p>${escapeHtml(block.text)}</p>`);
     else if ("table" in block)
       parts.push(
-        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row2) => `<tr>${row2.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row3) => `<tr>${row3.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
       );
     else if ("list" in block) {
       const tag = block.numbered ? "ol" : "ul";
@@ -16124,14 +16139,14 @@ function runDocument(report) {
     { heading: "Coverage" },
     {
       table: ["Requirement", "Text", "Status", "Tests", "Reason", "Metadata"],
-      rows: result.coverage.requirements.map((row2) => {
-        const requirement = plan.requirements.find((item) => item.id === row2.requirementId);
+      rows: result.coverage.requirements.map((row3) => {
+        const requirement = plan.requirements.find((item) => item.id === row3.requirementId);
         return [
-          row2.requirementId,
+          row3.requirementId,
           requirement?.text ?? none,
-          row2.status,
-          join9(row2.testIds),
-          row2.reason ?? none,
+          row3.status,
+          join9(row3.testIds),
+          row3.reason ?? none,
           pairs(requirement?.metadata)
         ];
       })
@@ -16145,7 +16160,7 @@ function runDocument(report) {
   };
 }
 function planReport(plan, sha256) {
-  const coverage2 = new Map(plan.coverage.map((row2) => [row2.requirementId, row2.status]));
+  const coverage2 = new Map(plan.coverage.map((row3) => [row3.requirementId, row3.status]));
   const blocks = [
     {
       table: ["Field", "Value"],
@@ -16382,7 +16397,7 @@ function testTimes(store, runId) {
     runId
   );
   return Object.fromEntries(
-    rows.map((row2) => [row2.test_id, Math.max(0, Date.parse(row2.closed) - Date.parse(row2.first)) / 1e3])
+    rows.map((row3) => [row3.test_id, Math.max(0, Date.parse(row3.closed) - Date.parse(row3.first)) / 1e3])
   );
 }
 function exportRun(store, runId, format2) {
@@ -16653,6 +16668,7 @@ function header(context, page) {
 			<nav aria-label="Main">
 				<ul class="nav">
 					${navLink(context, page, "inbox", "/", "Needs you", count)}
+					${navLink(context, page, "claims", "/claims", "Claims")}
 					${navLink(context, page, "plans", "/plans", "Plans")}
 					${navLink(context, page, "runs", "/runs", "Runs")} ${navLink(context, page, "log", "/log", "Log")}
 				</ul>
@@ -16726,7 +16742,7 @@ function layout(context, page) {
 			<body data-subjects="${page.subjects.join(",")}" data-cursor="${context.cursor}">
 				<a class="skip" href="#main">Skip to content</a>
 				${header(context, page)}
-				<main id="main" tabindex="-1">${page.body}</main>
+				<main id="main" tabindex="-1">${crumbBar(page.crumbs)}${page.body}</main>
 				<footer class="foot">
 					<span>Workspace <code>${context.workspace}</code></span>
 					<span>Press <kbd>?</kbd> for keyboard shortcuts</span>
@@ -16736,6 +16752,20 @@ function layout(context, page) {
 				${shortcuts} ${viewer}
 			</body>
 		</html>`;
+}
+function crumbBar(crumbs3) {
+  if (!crumbs3?.length) return "";
+  const parent = crumbs3.findLast(([, href]) => href)?.[1] ?? "/";
+  return html2`<div class="crumbs-bar">
+		<a class="back-link" href="${parent}" data-back>← Back</a>
+		<nav aria-label="Breadcrumb">
+			<ol>
+				${crumbs3.map(
+    ([label, href]) => href ? html2`<li><a href="${href}">${label}</a></li>` : html2`<li aria-current="page">${label}</li>`
+  )}
+			</ol>
+		</nav>
+	</div>`;
 }
 function heading(title, sub = null, extra = "") {
   return html2`<div class="page-head">
@@ -16799,7 +16829,7 @@ ${state.values.rationale ?? ""}</textarea>
 function confirmStep(context, verdict, state) {
   const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
   return html2`<form method="post" action="${verdict.action}" class="decision-form">
-		${hidden(context, verdict.sha256, verdict.token)}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""}
 		<input type="hidden" name="verdict" value="${choice.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ""}" />
 		${context.actor ? "" : html2`<input type="hidden" name="actor" value="${state.values.actor ?? ""}" />`}
@@ -16826,7 +16856,7 @@ function chooseStep(context, verdict, state) {
 			${choice.label}
 		</button>`;
   return html2`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
-		${hidden(context, verdict.sha256, verdict.token)} ${actorField(context, state)}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""} ${actorField(context, state)}
 		${rationaleField(state, "Why do you decide this?")}
 		<div class="confirm-box" data-confirm hidden>
 			<p class="lab">Confirm</p>
@@ -16938,6 +16968,29 @@ function recordPanel(title, content, decided = "") {
 		<h2 class="lab" id="decide-title">${title}</h2>
 		${content}
 	</section>`;
+}
+function returnFields(item, back) {
+  return html2`<input type="hidden" name="item" value="${item.key}" />
+		<input type="hidden" name="return" value="${back}" />`;
+}
+function sourceAndReason(context, state, reasonLabel) {
+  const used = Boolean(state.values.source || state.values.rationale);
+  return html2`<details class="more" data-more ${used ? html2`open` : ""}>
+		<summary>Add source and reason</summary>
+		<div class="field-group">
+			<label class="lab" for="source">Source</label>
+			<input
+				id="source"
+				name="source"
+				value="${state.values.source ?? ""}"
+				placeholder="Default: ${context.actor ?? "you"}, in the review UI"
+			/>
+		</div>
+		<div class="field-group">
+			<label class="lab" for="rationale">${reasonLabel}</label>
+			<textarea id="rationale" name="rationale" rows="2">${state.values.rationale ?? ""}</textarea>
+		</div>
+	</details>`;
 }
 
 // plugin/src/ui/lists.ts
@@ -17277,39 +17330,39 @@ function testSummary(tests) {
 			ready${tests.blocked ? ` \xB7 ${tests.blocked} blocked` : ""}${tests.deferred ? ` \xB7 ${tests.deferred} deferred` : ""}</span
 		>`;
 }
-function requestedPlanRow(row2) {
-  return html2`<tr data-key="plan:${row2.planId}" data-nav-row>
-		<td><a class="mono" href="/plans/${row2.planId}" data-nav-item>${row2.planId}</a></td>
-		<td>${loopState(row2.loop)}</td>
+function requestedPlanRow(row3) {
+  return html2`<tr data-key="plan:${row3.planId}" data-nav-row>
+		<td><a class="mono" href="/plans/${row3.planId}" data-nav-item>${row3.planId}</a></td>
+		<td>${loopState(row3.loop)}</td>
 		<td><span class="muted">no revision yet</span></td>
 		<td><span class="muted">none</span></td>
 		<td>${pill("requested")}</td>
 		<td><span class="muted">none</span></td>
-		<td class="nowrap">${time(row2.since)}</td>
+		<td class="nowrap">${time(row3.since)}</td>
 	</tr>`;
 }
-function planRow(row2) {
-  if (row2.status === "requested") return requestedPlanRow(row2);
-  return html2`<tr data-key="plan:${row2.planId}" data-nav-row>
+function planRow(row3) {
+  if (row3.status === "requested") return requestedPlanRow(row3);
+  return html2`<tr data-key="plan:${row3.planId}" data-nav-row>
 		<td>
-			<a class="mono" href="/plans/${row2.planId}@${row2.revision}" data-nav-item>${row2.planId}@${row2.revision}</a>
+			<a class="mono" href="/plans/${row3.planId}@${row3.revision}" data-nav-item>${row3.planId}@${row3.revision}</a>
 		</td>
-		<td>${loopState(row2.loop)}</td>
-		<td>${testSummary(row2.tests)}</td>
+		<td>${loopState(row3.loop)}</td>
+		<td>${testSummary(row3.tests)}</td>
 		<td>
-			${row2.openGaps.length ? join10(
-    row2.openGaps.map(
-      (id2) => html2`<a class="mono" href="/plans/${row2.planId}@${row2.revision}/gaps/${id2}"
-										>${id2}${row2.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
+			${row3.openGaps.length ? join10(
+    row3.openGaps.map(
+      (id2) => html2`<a class="mono" href="/plans/${row3.planId}@${row3.revision}/gaps/${id2}"
+										>${id2}${row3.openBlockingGaps.includes(id2) ? html2`<span class="sr-only"> blocking</span>` : ""}</a
 									>`
     ),
     ", "
   ) : html2`<span class="muted">none</span>`}
 		</td>
-		<td>${pill(row2.approval ?? row2.status)}</td>
+		<td>${pill(row3.approval ?? row3.status)}</td>
 		<td>
-			${row2.blocked.length ? html2`<ul class="plain">
-							${row2.blocked.map(
+			${row3.blocked.length ? html2`<ul class="plain">
+							${row3.blocked.map(
     (block) => html2`<li>
 										<span class="mono">${block.testId}</span> by
 										<span class="mono">${block.dependency}</span>: ${block.cause}
@@ -17317,7 +17370,7 @@ function planRow(row2) {
   )}
 						</ul>` : html2`<span class="muted">none</span>`}
 		</td>
-		<td class="nowrap">${time(row2.since)}</td>
+		<td class="nowrap">${time(row3.since)}</td>
 	</tr>`;
 }
 function plansPage(store, params) {
@@ -17339,11 +17392,11 @@ var runStatuses2 = [
   ["rejected", "Rejected"],
   ["not_required", "No acceptance needed"]
 ];
-function runStatus2(row2) {
-  if (row2.state === "started") return pill("started", "in progress");
-  if (row2.acceptance === "approved") return pill("approved", "accepted");
-  if (row2.acceptance === "pending") return pill("pending", "awaiting acceptance");
-  return pill(row2.acceptance ?? "finalized");
+function runStatus2(row3) {
+  if (row3.state === "started") return pill("started", "in progress");
+  if (row3.acceptance === "approved") return pill("approved", "accepted");
+  if (row3.acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(row3.acceptance ?? "finalized");
 }
 function distinct(values) {
   return [...new Set(values)].sort().map((value2) => [value2, value2]);
@@ -17372,30 +17425,30 @@ function runsSpec(store) {
       {
         name: "plan",
         label: "Plan",
-        choices: [["", "All plans"], ...distinct(planList(store).map((row2) => row2.planId))],
+        choices: [["", "All plans"], ...distinct(planList(store).map((row3) => row3.planId))],
         strict: false
       },
       {
         name: "build",
         label: "Build",
-        choices: [["", "All builds"], ...distinct(runs.map((row2) => row2.build))],
+        choices: [["", "All builds"], ...distinct(runs.map((row3) => row3.build))],
         strict: false
       },
       { name: "status", label: "Status", choices: runStatuses2, strict: true }
     ]
   };
 }
-function runRow(row2) {
-  return html2`<tr data-key="run:${row2.runId}" data-nav-row>
-		<td><a class="mono" href="/runs/${row2.runId}" data-nav-item>${row2.runId}</a></td>
-		<td><a class="mono" href="/plans/${row2.planId}@${row2.revision}">${row2.planId}@${row2.revision}</a></td>
-		<td class="mono">${row2.build}</td>
-		<td class="mono">${row2.instanceId}</td>
-		<td>${counts(row2.counts)}</td>
-		<td>${row2.completion ? pill(row2.completion) : html2`<span class="muted">running</span>`}</td>
-		<td>${row2.coverage ? pill(row2.coverage) : html2`<span class="muted">–</span>`}</td>
-		<td>${runStatus2(row2)}</td>
-		<td class="nowrap">${time(row2.startedAt)}</td>
+function runRow(row3) {
+  return html2`<tr data-key="run:${row3.runId}" data-nav-row>
+		<td><a class="mono" href="/runs/${row3.runId}" data-nav-item>${row3.runId}</a></td>
+		<td><a class="mono" href="/plans/${row3.planId}@${row3.revision}">${row3.planId}@${row3.revision}</a></td>
+		<td class="mono">${row3.build}</td>
+		<td class="mono">${row3.instanceId}</td>
+		<td>${counts(row3.counts)}</td>
+		<td>${row3.completion ? pill(row3.completion) : html2`<span class="muted">running</span>`}</td>
+		<td>${row3.coverage ? pill(row3.coverage) : html2`<span class="muted">–</span>`}</td>
+		<td>${runStatus2(row3)}</td>
+		<td class="nowrap">${time(row3.startedAt)}</td>
 	</tr>`;
 }
 function runsPage(store, params) {
@@ -17442,43 +17495,43 @@ function logSpec(store) {
       {
         name: "subject",
         label: "Subject",
-        choices: [["", "All subjects"], ...distinct(recent.flatMap((row2) => row2.subjects))],
+        choices: [["", "All subjects"], ...distinct(recent.flatMap((row3) => row3.subjects))],
         strict: false
       },
       {
         name: "actor",
         label: "Actor",
-        choices: [["", "All actors"], ...distinct(recent.map((row2) => row2.actor))],
+        choices: [["", "All actors"], ...distinct(recent.map((row3) => row3.actor))],
         strict: false
       },
       {
         name: "command",
         label: "Command",
-        choices: [["", "All commands"], ...distinct(recent.map((row2) => row2.command))],
+        choices: [["", "All commands"], ...distinct(recent.map((row3) => row3.command))],
         strict: false
       },
       {
         name: "status",
         label: "Status",
-        choices: [["", "All statuses"], ...distinct(recent.map((row2) => row2.status))],
+        choices: [["", "All statuses"], ...distinct(recent.map((row3) => row3.status))],
         strict: false
       }
     ]
   };
 }
-function logRow(row2) {
-  return html2`<tr data-key="op:${row2.rowid}">
-		<td class="nowrap">${time(row2.at)}</td>
-		<td>${row2.actor}</td>
+function logRow(row3) {
+  return html2`<tr data-key="op:${row3.rowid}">
+		<td class="nowrap">${time(row3.at)}</td>
+		<td>${row3.actor}</td>
 		<td>
-			<span class="mono">${row2.command}</span>
-			${row2.status === "rejected" ? html2`<div class="reason">${reasons(row2.response).join(" ")}</div>` : ""}
+			<span class="mono">${row3.command}</span>
+			${row3.status === "rejected" ? html2`<div class="reason">${reasons(row3.response).join(" ")}</div>` : ""}
 		</td>
-		<td>${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words(row2.status))}</td>
+		<td>${pill(row3.status === "rejected" ? "rejected_operation" : row3.status, words(row3.status))}</td>
 		<td>
-			${row2.subjects.length ? join10(row2.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
+			${row3.subjects.length ? join10(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">none</span>`}
 		</td>
-		<td class="mono muted">${row2.id}</td>
+		<td class="mono muted">${row3.id}</td>
 	</tr>`;
 }
 function logPage(store, params) {
@@ -17731,17 +17784,17 @@ function coverage(store, detail2) {
 			</thead>
 			<tbody>
 				${result.coverage.requirements.map(
-    (row2) => html2`<tr>
-							<td class="mono">${row2.requirementId}</td>
+    (row3) => html2`<tr>
+							<td class="mono">${row3.requirementId}</td>
 							<td>
-								${requirements.get(row2.requirementId)?.text ?? ""}
-								${row2.reason ? html2`<div class="muted small">${row2.reason}</div>` : ""}
-								${hasMetadata(requirements.get(row2.requirementId)?.metadata) ? html2`<div class="small">
-												${metadataList(requirements.get(row2.requirementId)?.metadata)}
+								${requirements.get(row3.requirementId)?.text ?? ""}
+								${row3.reason ? html2`<div class="muted small">${row3.reason}</div>` : ""}
+								${hasMetadata(requirements.get(row3.requirementId)?.metadata) ? html2`<div class="small">
+												${metadataList(requirements.get(row3.requirementId)?.metadata)}
 											</div>` : ""}
 							</td>
-							<td class="mono">${row2.testIds.join(", ") || "\u2013"}</td>
-							<td>${pill(row2.status)}</td>
+							<td class="mono">${row3.testIds.join(", ") || "\u2013"}</td>
+							<td>${pill(row3.status)}</td>
 						</tr>`
   )}
 			</tbody>
@@ -17803,14 +17856,14 @@ function inconclusiveList(detail2) {
 		<p class="lab">Inconclusive · ${rows.length}</p>
 		<ul class="plist">
 			${rows.map(
-    (row2) => html2`<li>
-						<a href="#${row2.reference}"><code>${row2.reference}</code></a> ${row2.reason}
+    (row3) => html2`<li>
+						<a href="#${row3.reference}"><code>${row3.reference}</code></a> ${row3.reason}
 					</li>`
   )}
 		</ul>
 	</div>`;
 }
-function decisionPanel(store, context, detail2, state) {
+function decisionPanel(store, context, detail2, state, extra = null) {
   const result = detail2.result;
   if (!result)
     return recordPanel(
@@ -17855,6 +17908,7 @@ function decisionPanel(store, context, detail2, state) {
         summary: `Reject ${detail2.runId}. Dependent plans stay blocked.`
       },
       staleMessage: `${detail2.runId} has a new result. Review it before you decide.`,
+      ...extra ? { extra } : {},
       intro: inconclusiveList(detail2)
     },
     state ?? emptyState()
@@ -17915,23 +17969,27 @@ function runPage(store, context, runId, state = null, adoptError = null) {
 					${cleanup(detail2)}
 				</section>
 			</div>
-			<aside class="side" aria-label="Decision">
-				${decisionPanel(store, context, detail2, state)}
-				<p class="back"><a href="/">← Back to inbox</a></p>
-			</aside>
+			<aside class="side" aria-label="Decision">${decisionPanel(store, context, detail2, state)}</aside>
 		</div>`;
-  return { title: runId, section: "runs", subjects: [`run:${runId}`, "inbox"], body };
+  return {
+    title: runId,
+    section: "runs",
+    subjects: [`run:${runId}`, "inbox"],
+    body,
+    crumbs: [
+      ["Runs", "/runs"],
+      [`${detail2.planId}@${detail2.revision}`, `/plans/${detail2.planId}@${detail2.revision}`],
+      [runId, null]
+    ]
+  };
 }
 
 // plugin/src/ui/exploration.ts
-function claimRow(claim) {
+function claimRow(planId, claim) {
+  const key = encodeURIComponent(`claim:${planId}:${claim.id}`);
   return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
 		<td>
-			<a
-				class="mono"
-				href="/explorations/${claim.explorationId}/claims/${claim.id}${claim.decision ? "" : "#decide"}"
-				>${claim.id}</a
-			>
+			<a class="mono" href="/claims?plan=${planId}&amp;item=${key}">${claim.id}</a>
 		</td>
 		<td>${pill(claim.state)}</td>
 		<td>${pill(claim.severity)}</td>
@@ -17939,7 +17997,7 @@ function claimRow(claim) {
 		<td>${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
 	</tr>`;
 }
-function claimsTable(claims) {
+function claimsTable(planId, claims) {
   if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
   return html2`<div class="scroll">
 		<table>
@@ -17953,19 +18011,19 @@ function claimsTable(claims) {
 				</tr>
 			</thead>
 			<tbody>
-				${claims.map(claimRow)}
+				${claims.map((claim) => claimRow(planId, claim))}
 			</tbody>
 		</table>
 	</div>`;
 }
-function questionsList(questions) {
+function questionsList(planId, questions) {
   if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
   return html2`<ul class="items">
 		${questions.map(
     (question) => html2`<li data-key="question:${question.id}">
 					<a
 						class="item"
-						href="/explorations/${question.explorationId}/questions/${question.id}${question.answer === null ? "#answer" : ""}"
+						href="${question.answer === null ? `/?plan=${planId}&item=${encodeURIComponent(`question:${planId}:${question.id}`)}` : `/explorations/${question.explorationId}/questions/${question.id}`}"
 						><span class="id">${question.id}</span><span class="what">${question.question}</span
 						><span class="end"
 							>${question.blocking ? html2`${pill("blocking")} ` : ""}${pill(
@@ -18077,25 +18135,6 @@ function explorationsTable(explorations) {
 			</tbody>
 		</table>
 	</div>`;
-}
-function explorationSections(store, planId) {
-  const explorations = planExplorations(store, planId);
-  const claims = mergedClaims(store, planId);
-  const questions = mergedQuestions(store, planId);
-  return html2`<section aria-labelledby="explorations" data-region="explorations">
-			<h2 id="explorations">Explorations <span class="n">${explorations.length}</span></h2>
-			${explorationsTable(explorations)}
-		</section>
-		<section aria-labelledby="claims" data-region="claims">
-			<h2 id="claims">Claims <span class="n">${claims.length}</span></h2>
-			<p class="help">The merged claims of completed explorations.</p>
-			${claimsTable(claims)}
-		</section>
-		<section aria-labelledby="questions" data-region="questions">
-			<h2 id="questions">Questions <span class="n">${questions.length}</span></h2>
-			<p class="help">The merged questions of completed explorations.</p>
-			${questionsList(questions)}
-		</section>`;
 }
 function explorerRow(live, item) {
   const none3 = html2`<span class="muted">–</span>`;
@@ -18234,10 +18273,10 @@ function explorationPage(store, explorationId) {
 						</thead>
 						<tbody>
 							${live.phases.map(
-    (row2) => html2`<tr data-key="phase:${row2.phase}">
-										<td>${row2.phase}</td>
-										<td>${pill(row2.state)}</td>
-										<td>${row2.reason ?? ""}</td>
+    (row3) => html2`<tr data-key="phase:${row3.phase}">
+										<td>${row3.phase}</td>
+										<td>${pill(row3.state)}</td>
+										<td>${row3.reason ?? ""}</td>
 									</tr>`
   )}
 						</tbody>
@@ -18247,11 +18286,11 @@ function explorationPage(store, explorationId) {
 			${unmergedSection(live)}
 			<section class="panel" aria-labelledby="claims-title">
 				<h2 class="lab" id="claims-title">Claims</h2>
-				${merged ? claimsTable(live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
+				${merged ? claimsTable(live.planId, live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
 			</section>
 			<section class="panel" aria-labelledby="questions-title">
 				<h2 class="lab" id="questions-title">Questions</h2>
-				${merged ? questionsList(live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
+				${merged ? questionsList(live.planId, live.questions) : html2`<p class="none">The merged questions show when the exploration is completed.</p>`}
 			</section>
 		</div>
 		<div class="actions">
@@ -18260,6 +18299,11 @@ function explorationPage(store, explorationId) {
   return {
     title: `Exploration ${explorationId}`,
     section: "plans",
+    crumbs: [
+      ["Plans", "/plans"],
+      [live.planId, `/plans/${live.planId}`],
+      [explorationId, null]
+    ],
     subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
     body
   };
@@ -18272,6 +18316,11 @@ function explorerFilePage(store, explorationId, explorer, phase, name) {
   return {
     title: `${explorationId} \xB7 ${explorer} \xB7 ${name}`,
     section: "plans",
+    crumbs: [
+      ["Plans", "/plans"],
+      [explorationId, `/explorations/${explorationId}`],
+      [`${explorer} \xB7 ${name}`, null]
+    ],
     subjects: [`exploration:${explorationId}`],
     body: html2`${heading(html2`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
 			<p>
@@ -18299,6 +18348,12 @@ function questionPage(store, context, explorationId, questionId, state = null) {
   return {
     title: `${report.planId} \xB7 ${question.id}`,
     section: "inbox",
+    crumbs: [
+      ["Needs you", "/"],
+      [report.planId, `/plans/${report.planId}`],
+      [explorationId, `/explorations/${explorationId}`],
+      [question.id, null]
+    ],
     subjects: [`exploration:${explorationId}`, "inbox"],
     body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
 			<p>
@@ -18334,6 +18389,12 @@ function claimPage(store, context, explorationId, claimId, state = null) {
   return {
     title: `${report.planId} \xB7 ${claim.id}`,
     section: "inbox",
+    crumbs: [
+      ["Claims", "/claims"],
+      [report.planId, `/plans/${report.planId}`],
+      [explorationId, `/explorations/${explorationId}`],
+      [claim.id, null]
+    ],
     subjects: [`exploration:${explorationId}`, "inbox"],
     body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${pill(claim.state)} ${pill(claim.severity)}</div>`)}
 			<div class="split">
@@ -18383,194 +18444,82 @@ function defaultActor(workspace, env) {
   }
 }
 
-// plugin/src/ui/queue.ts
-var groups = [
-  { group: "blocking", title: "Blocks testing", help: "The testers wait for these answers." },
-  { group: "claims", title: "Claims to decide", help: "Suspected or unresolved. Accept or reject each." },
-  { group: "approvals", title: "Approvals", help: "Plans and results that wait for your decision." },
-  { group: "questions", title: "Questions that do not block", help: "Answer them when you have time." }
+// plugin/src/ui/claims.ts
+var states = ["suspected", "unresolved", "observed", "confirmed", "accepted", "rejected"];
+var severities = ["critical", "high", "medium", "low"];
+var periods = [
+  ["1", "Last 24 hours"],
+  ["7", "Last 7 days"],
+  ["14", "Last 14 days"],
+  ["30", "Last 30 days"]
 ];
-function queueFilters(params) {
-  return { plan: params.get("plan")?.trim() ?? "", q: params.get("q")?.trim() ?? "" };
+var names = ["q", "state", "severity", "plan", "build", "since"];
+function claimAddress(claim) {
+  return `/explorations/${claim.explorationId}/claims/${claim.id}`;
 }
-function queueHref(filters, key = null) {
+function claimKey(planId, claimId) {
+  return `claim:${planId}:${claimId}`;
+}
+function claimFilters(params) {
+  const value2 = (name) => params.get(name)?.trim() ?? "";
+  return {
+    q: value2("q"),
+    state: states.includes(value2("state")) ? value2("state") : "",
+    severity: severities.includes(value2("severity")) ? value2("severity") : "",
+    plan: value2("plan"),
+    build: value2("build"),
+    since: periods.some(([days]) => days === value2("since")) ? value2("since") : ""
+  };
+}
+function claimsHref(filters, key = null) {
   const params = new URLSearchParams();
-  if (filters.plan) params.set("plan", filters.plan);
-  if (filters.q) params.set("q", filters.q);
+  for (const name of names) if (filters[name]) params.set(name, filters[name]);
   if (key) params.set("item", key);
   const query = params.toString();
-  return query ? `/?${query}` : "/";
+  return query ? `/claims?${query}` : "/claims";
 }
-function matches(item, filters) {
-  if (filters.plan && item.planId !== filters.plan) return false;
+function matches(row3, filters, now) {
+  if (filters.state && row3.state !== filters.state) return false;
+  if (filters.severity && row3.severity !== filters.severity) return false;
+  if (filters.plan && row3.planId !== filters.plan) return false;
+  if (filters.build && row3.build !== filters.build) return false;
+  if (filters.since && now - Date.parse(row3.foundAt) > Number(filters.since) * 24 * 3600 * 1e3) return false;
   if (!filters.q) return true;
-  const text = `${item.planId} ${item.id} ${item.title} ${item.state ?? ""} ${item.severity ?? ""}`.toLowerCase();
+  const text = [row3.planId, row3.id, row3.title, row3.expected, row3.actual, row3.build, row3.explorationId, row3.state].join(" ").toLowerCase();
   return filters.q.toLowerCase().split(/\s+/).every((word) => text.includes(word));
 }
-function groupTitle(group2) {
-  return groups.find((item) => item.group === group2).title;
-}
-function badge(item) {
-  if (item.kind === "claim") return html2`${pill(item.severity)} ${pill(item.state)}`;
-  if (item.kind === "plan") return pill(item.state === "rejected" ? "rejected" : "pending", "plan");
-  if (item.kind === "result") return pill("pending", "result");
-  return "";
-}
-function row(item, filters, selected) {
-  const current = item.key === selected ? html2` aria-current="true"` : "";
-  return html2`<li>
-		<a
-			class="q-row"
-			href="${queueHref(filters, item.key)}"
-			data-queue-link
-			data-nav-item
-			data-key="${item.key}"
-			${current}
-		>
-			<span class="q-top"
-				><span class="q-id"
-					>${item.planId} · ${item.kind === "plan" ? `revision ${item.revision}` : item.id}</span
-				>
-				<span class="q-tags"
-					>${badge(item)}${item.since ? html2` <span class="age">${time(item.since)}</span>` : ""}</span
-				></span
-			>
-			<span class="q-title">${item.title}</span>
-		</a>
-	</li>`;
-}
-function groupList(group2, items, filters, selected) {
-  if (!items.length) return "";
-  const list2 = html2`<ul class="q-items">
-		${items.map((item) => row(item, filters, selected))}
-	</ul>`;
-  const head = html2`<span class="q-group-title">${group2.title}</span> <span class="n">${items.length}</span>`;
-  if (group2.group !== "questions")
-    return html2`<section class="q-group" aria-labelledby="q-${group2.group}">
-			<h2 class="q-group-h" id="q-${group2.group}">${head}</h2>
-			${list2}
-		</section>`;
-  const open = filters.q || items.some((item) => item.key === selected) ? html2` open` : "";
-  return html2`<details class="q-group q-fold" data-open-key="queue:questions" ${open}>
-		<summary class="q-group-h">${head} <span class="q-fold-note">${group2.help}</span></summary>
-		${list2}
-	</details>`;
-}
-function exploring(waiting) {
-  const running3 = waiting.running.map(
-    (item) => html2`<li data-key="running:${item.explorationId}">
-				<a href="/explorations/${item.explorationId}"
-					>${item.paused ? pill("stopped", "paused") : pill("running")}
-					<span class="mono">${item.planId} · ${item.explorationId}</span></a
-				>
-				<span class="muted"
-					>${item.paused ? html2`Waits for you in Claude Code: ${item.paused}` : html2`${item.state} on build ${item.build}`}</span
-				>
-			</li>`
-  );
-  const failed = waiting.failed.map(
-    (item) => html2`<li data-key="failed:${item.explorationId}">
-				<a href="/explorations/${item.explorationId}"
-					>${pill(item.state)} <span class="mono">${item.planId} · ${item.explorationId}</span></a
-				>
-				<span class="muted">${item.reason ?? ""}</span>
-			</li>`
-  );
-  if (!running3.length && !failed.length) return "";
-  return html2`<section class="q-now" aria-labelledby="q-now">
-		<h2 class="q-group-h" id="q-now">Explorations</h2>
-		<ul class="q-now-list">
-			${running3} ${failed}
-		</ul>
-	</section>`;
-}
-function filterForm(waiting, filters) {
-  const plans = [...new Set(waiting.items.map((item) => item.planId))].sort();
-  return html2`<form class="q-filters" method="get" action="/" role="search" data-queue-filter>
-		<label class="sr-only" for="queue-q">Search the items</label>
-		<input
-			id="queue-q"
-			type="search"
-			name="q"
-			value="${filters.q}"
-			placeholder="Search"
-			autocomplete="off"
-			data-search
-		/>
-		<label class="sr-only" for="queue-plan">Plan</label>
-		<select id="queue-plan" name="plan">
-			<option value="">All plans</option>
-			${plans.map(
-    (plan) => html2`<option value="${plan}" ${plan === filters.plan ? html2`selected` : ""}>${plan}</option>`
-  )}
-		</select>
-		<button class="btn small" data-queue-submit>Filter</button>
-	</form>`;
-}
-function crumbs(item, filters, full) {
-  return html2`<div class="q-crumbs">
-		<nav aria-label="Breadcrumb">
-			<ol>
-				<li><a href="${queueHref(filters)}" data-queue-back>Needs you</a></li>
-				<li>${groupTitle(item.group)}</li>
-				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
-				<li aria-current="page">${item.kind === "plan" ? `revision ${item.revision}` : item.id}</li>
-			</ol>
-		</nav>
-		<a class="btn small ghost" href="${full}">Open full page</a>
-	</div>`;
-}
-function returnFields(item, back) {
-  return html2`<input type="hidden" name="item" value="${item.key}" />
-		<input type="hidden" name="return" value="${back}" />`;
-}
-function questionDetail(store, context, item, filters, back, state) {
-  const question = mergedQuestions(store, item.planId).find((entry) => entry.id === item.id);
-  const action = item.explorationId ? `/explorations/${item.explorationId}/questions/${item.id}` : `/plans/${item.planId}@${planDetail(store, item.planId).latestRevision}/gaps/${item.id}`;
-  const sha256 = item.explorationId ? "" : planDetail(store, item.planId).sha256;
-  const source = item.explorationId ? html2`<a href="/explorations/${item.explorationId}">exploration ${item.explorationId}</a>` : item.runId ? html2`<a href="/runs/${item.runId}">run ${item.runId}</a>` : html2`<a href="/plans/${item.planId}">plan ${item.planId}</a>`;
-  return html2`${crumbs(item, filters, action)}
-		<h2 class="q-h">${item.title}</h2>
-		<p class="q-meta">
-			${item.group === "blocking" ? html2`${pill("blocking")} ` : ""}Asked in
-			${source}${item.since ? html2` · ${time(item.since)} ago` : ""}${question && question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
-		</p>
-		${gapPanel(
-    context,
-    {
-      action,
-      cancel: queueHref(filters),
-      sha256,
-      title: "",
-      question: "",
-      staleMessage: `${item.planId} changed. Review the question before you answer.`,
-      extra: returnFields(item, back)
-    },
-    state
-  )}`;
-}
-function claimDetail(store, context, item, filters, back, state) {
-  const claim = mergedClaims(store, item.planId).find((entry) => entry.id === item.id);
-  if (!claim) return gone(filters);
-  const action = `/explorations/${claim.explorationId}/claims/${claim.id}`;
+function claimPane(store, context, planId, claim, crumbs3, form) {
   const steps = [claim.steps ?? []].flat();
-  const verdict = state.values.verdict ?? "";
-  const choice = (value2, label) => html2`<input
-				type="radio"
-				id="verdict-${value2}"
-				name="verdict"
-				value="${value2}"
-				required
-				${verdict === value2 ? html2`checked` : ""}
-			/><label for="verdict-${value2}">${label}</label>`;
-  return html2`${crumbs(item, filters, action)}
+  const state = form.state;
+  const decision = claim.decision ? recordPanel(
+    "Decision",
+    html2`<p class="subj">${pill(claim.state)} ${claim.id}</p>
+					<p class="help">By ${claim.decision.actor}. Reason: ${claim.decision.rationale}</p>`
+  ) : html2`<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
+				<h3 class="lab" id="decide-title">Is ${claim.id} a defect?</h3>
+				<div data-stale-slot>${messages(state)}</div>
+				<form method="post" action="${claimAddress(claim)}" class="decision-form" data-quick-claim>
+					${hidden(context, "")} ${returnFields(form, form.back)}
+					<label class="lab" for="rationale">Reason <span class="req">needed to reject</span></label>
+					<textarea id="rationale" name="rationale" rows="2" placeholder="Optional to accept">
+${state.values.rationale ?? ""}</textarea>
+					${actorField(context, state)}
+					<div class="btns">
+						<button class="btn primary" name="verdict" value="approved">
+							Accept as a defect <kbd>a</kbd>
+						</button>
+						<button class="btn" name="verdict" value="rejected">Reject <kbd>r</kbd></button>
+					</div>
+				</form>
+			</section>`;
+  return html2`${crumbs3}
 		<h2 class="q-h">${claim.title}</h2>
 		<p class="q-meta">
 			${pill(claim.severity)} ${pill(claim.state)} Build <code>${claim.build}</code> ·
 			<a href="/explorations/${claim.explorationId}">exploration ${claim.explorationId}</a> · reported by
 			${claim.actors.join(", ")}
 		</p>
-		${claim.reason ? banner("warn", claim.reason) : ""}
+		${claim.reason && !claim.decision ? banner("warn", claim.reason) : ""}
 		<div class="q-compare">
 			<div>
 				<p class="lab">Expected</p>
@@ -18586,124 +18535,140 @@ function claimDetail(store, context, item, filters, back, state) {
 							${steps.map((step) => html2`<li>${step}</li>`)}
 						</ol>` : html2`<p class="help">The tester gave no steps.</p>`}
 		<p class="lab">Evidence</p>
-		${claimEvidenceList(store, item.planId, claim)}
-		<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-			<h3 class="lab" id="decide-title">Decision</h3>
-			<div data-stale-slot>${messages(state)}</div>
-			<form method="post" action="${action}" class="decision-form" data-claim-form>
-				${hidden(context, "")} ${returnFields(item, back)}
-				<fieldset class="seg-field">
-					<legend class="lab">Is ${claim.id} a defect?</legend>
-					<div class="seg">${choice("approved", "Accept as a defect")}${choice("rejected", "Reject")}</div>
-				</fieldset>
-				${rationaleField(state, "Why do you decide this?")} ${actorField(context, state)}
-				<div class="btns">
-					<button class="btn primary" data-needs-rationale>Record decision</button>
-					<span class="help"
-						>Keys: <kbd>a</kbd> accept, <kbd>r</kbd> reject, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> send</span
-					>
-				</div>
-			</form>
-		</section>`;
+		${claimEvidenceList(store, planId, claim)} ${decision}`;
 }
-function outcomes(tests) {
-  const found = {};
-  for (const test of tests) found[test.outcome ?? "not_run"] = (found[test.outcome ?? "not_run"] ?? 0) + 1;
-  return found;
-}
-function approvalDetail(store, item, filters) {
-  if (item.kind === "result") {
-    const detail2 = runDetail(store, item.runId);
-    const full2 = `/runs/${item.runId}#decide`;
-    return html2`${crumbs(item, filters, full2)}
-			<h2 class="q-h">${item.runId} waits for acceptance</h2>
-			<p class="q-meta">
-				${item.planId}@${item.revision} · build <code>${detail2.build}</code> · coverage
-				${detail2.result?.coverage ?? "none"}
-			</p>
-			<p>${counts(outcomes(detail2.tests))}</p>
-			<p><a class="btn primary" href="${full2}">Review and decide</a></p>`;
-  }
-  const full = `/plans/${item.planId}@${item.revision}#decide`;
-  return html2`${crumbs(item, filters, full)}
-		<h2 class="q-h">
-			${item.planId}@${item.revision} waits for ${item.state === "rejected" ? "a change" : "approval"}
-		</h2>
-		<p>${item.title}</p>
-		<p><a class="btn primary" href="${full}">Review and decide</a></p>`;
-}
-function gone(filters) {
-  return html2`<div class="empty">
-		<p class="empty-title">This item does not wait for you now.</p>
-		<p>Somebody decided it, or a filter hides it.</p>
-		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
-	</div>`;
-}
-function nothing(waiting, filters) {
-  const filtered = filters.plan || filters.q;
-  return html2`<div class="empty">
-		<p class="empty-title">${filtered ? "No item matches these filters." : "Nothing waits for you."}</p>
-		${filtered ? html2`<p><a href="/" data-queue-back>Clear the filters</a></p>` : html2`<p>${plural(waiting.running.length, "exploration")} running. The list updates by itself.</p>`}
-	</div>`;
-}
-function detail(store, context, waiting, item, filters, back, state) {
-  if (!item) return nothing(waiting, filters);
-  if (item.kind === "question" || item.kind === "gap")
-    return questionDetail(store, context, item, filters, back, state);
-  if (item.kind === "claim") return claimDetail(store, context, item, filters, back, state);
-  return approvalDetail(store, item, filters);
-}
-function queuePage(store, context, params, refusal = null) {
-  const waiting = needsYou(store);
-  const filters = queueFilters(params);
-  const shown = waiting.items.filter((item2) => matches(item2, filters));
-  const asked = refusal?.key ?? params.get("item");
-  const item = asked ? shown.find((entry) => entry.key === asked) ?? null : shown[0] ?? null;
-  const index2 = item ? shown.indexOf(item) : -1;
-  const next = shown[index2 + 1] ?? shown[index2 - 1] ?? null;
-  const back = queueHref(filters, next?.key ?? null);
-  const open = asked ? html2` data-open` : "";
-  const urgent = waiting.urgent;
-  const sub = urgent ? `${plural(urgent, "item")} ${urgent === 1 ? "needs" : "need"} your decision. The most urgent is first.` : "No decision waits for you.";
-  const list2 = html2`<section class="q-list" aria-labelledby="queue-title" data-region="queue-list">
-		<div class="q-head">
-			<h1 id="queue-title">Needs you</h1>
-			<p class="sub">${sub}</p>
-		</div>
-		${filterForm(waiting, filters)} ${exploring(waiting)}
-		${groups.map(
-    (group2) => groupList(
-      group2,
-      shown.filter((entry) => entry.group === group2.group),
-      filters,
-      item?.key ?? null
-    )
+function select(name, label, all2, choices, value2) {
+  return html2`<label class="sr-only" for="claims-${name}">${label}</label>
+		<select id="claims-${name}" name="${name}">
+			<option value="">${all2}</option>
+			${choices.map(
+    ([choice, text]) => html2`<option value="${choice}" ${choice === value2 ? html2`selected` : ""}>${text}</option>`
   )}
-		${shown.length ? "" : html2`<p class="none">${filters.plan || filters.q ? "No item matches these filters." : "Nothing waits for you."}</p>`}
-		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>
+		</select>`;
+}
+function filterForm(rows, filters) {
+  const plans = [...new Set(rows.map((row3) => row3.planId))].sort().map((plan) => [plan, plan]);
+  const builds = [...new Set(rows.map((row3) => row3.build))].sort().map((build) => [build, build]);
+  return html2`<form class="q-filters" method="get" action="/claims" role="search" data-queue-filter>
+		<label class="sr-only" for="claims-q">Search the claims</label>
+		<input
+			id="claims-q"
+			type="search"
+			name="q"
+			value="${filters.q}"
+			placeholder="Search title, expected, actual"
+			autocomplete="off"
+			data-search
+		/>
+		${select(
+    "state",
+    "State",
+    "Any state",
+    states.map((state) => [state, state]),
+    filters.state
+  )}
+		${select(
+    "severity",
+    "Severity",
+    "Any severity",
+    severities.map((severity) => [severity, severity]),
+    filters.severity
+  )}
+		${select("plan", "Plan", "All plans", plans, filters.plan)}
+		${select("build", "Build", "All builds", builds, filters.build)}
+		${select("since", "Found", "Any time", periods, filters.since)}
+		<button class="btn small" data-queue-submit>Filter</button>
+	</form>`;
+}
+function row(item, filters, selected) {
+  const key = claimKey(item.planId, item.id);
+  return html2`<li>
+		<a
+			class="q-row"
+			href="${claimsHref(filters, key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${key}"
+			${key === selected ? html2`aria-current="true"` : ""}
+		>
+			<span class="q-top"
+				><span class="q-id">${item.planId} · ${item.id}</span>
+				<span class="q-tags"
+					>${pill(item.severity)} ${pill(item.state)} <span class="age">${time(item.foundAt)}</span></span
+				></span
+			>
+			<span class="q-title">${item.title}</span>
+		</a>
+	</li>`;
+}
+function crumbs(item, filters) {
+  return html2`<div class="q-crumbs">
+		<nav aria-label="Breadcrumb">
+			<ol>
+				<li><a href="${claimsHref(filters)}" data-queue-back>Claims</a></li>
+				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
+				<li><a href="/explorations/${item.explorationId}">${item.explorationId}</a></li>
+				<li aria-current="page">${item.id}</li>
+			</ol>
+		</nav>
+		<a class="btn small ghost" href="${claimAddress(item)}">Open full page</a>
+	</div>`;
+}
+var shownLimit = 200;
+function nextKey(shown, item) {
+  const index2 = shown.indexOf(item);
+  const next = shown[index2 + 1] ?? shown[index2 - 1];
+  return next ? claimKey(next.planId, next.id) : null;
+}
+function claimsPage(store, context, params, refusal = null, now = Date.now()) {
+  const rows = claimsAcross(store);
+  const filters = claimFilters(params);
+  const shown = rows.filter((item2) => matches(item2, filters, now));
+  const asked = refusal?.key ?? params.get("item");
+  const item = asked ? shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null : shown[0] ?? null;
+  const key = item ? claimKey(item.planId, item.id) : null;
+  const filtered = names.some((name) => filters[name]);
+  const list2 = html2`<section class="q-list" aria-labelledby="claims-title" data-region="queue-list">
+		<div class="q-head">
+			<h1 id="claims-title">Claims</h1>
+			<p class="sub">
+				${filtered ? `${shown.length} of ${plural(rows.length, "claim")} match.` : `${plural(rows.length, "claim")}, newest first.`}
+			</p>
+		</div>
+		${filterForm(rows, filters)}
+		${shown.length ? html2`<ul class="q-items">
+						${shown.slice(0, shownLimit).map((entry) => row(entry, filters, key))}
+					</ul>` : html2`<p class="none">
+						No claim matches these filters. <a href="/claims" data-queue-back>Clear the filters</a>
+					</p>`}
+		${shown.length > shownLimit ? html2`<p class="help">The list shows the first ${shownLimit}. Add a filter to see the others.</p>` : ""}
 	</section>`;
-  const pane = asked && !item ? gone(filters) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
+  const pane = item ? claimPane(store, context, item.planId, item, crumbs(item, filters), {
+    key,
+    back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
+    state: refusal?.state ?? emptyState()
+  }) : html2`<div class="empty">
+				<p class="empty-title">${asked ? "This claim does not match the filters." : "No claim to show."}</p>
+				<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
+			</div>`;
   return {
-    title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
-    section: "inbox",
+    title: item ? `${item.planId} \xB7 ${item.id} \xB7 Claims` : "Claims",
+    section: "claims",
     subjects: ["*"],
     status: refusal ? 422 : void 0,
-    body: html2`<div class="queue" data-queue data-selected="${item?.key ?? ""}" ${open}>
+    body: html2`<div class="queue" data-queue data-selected="${key ?? ""}" ${asked ? html2`data-open` : ""}>
 			${list2}
 			<section
 				class="q-detail"
-				aria-label="Selected item"
+				aria-label="Selected claim"
 				tabindex="-1"
 				data-region="queue-detail"
-				data-key="detail:${item?.key ?? ""}"
+				data-key="detail:${key ?? ""}"
 			>
 				${pane}
 			</section>
 		</div>`
   };
-}
-function queueCount(store) {
-  return needsYou(store).urgent;
 }
 
 // plugin/src/ui/plan.ts
@@ -18870,7 +18835,7 @@ function requirementsTable(plan) {
 			</thead>
 			<tbody>
 				${plan.requirements.map((requirement) => {
-    const coverage2 = plan.coverage.find((row2) => row2.requirementId === requirement.id);
+    const coverage2 = plan.coverage.find((row3) => row3.requirementId === requirement.id);
     return html2`<tr id="${requirement.id}">
 						<td class="mono">${requirement.id}</td>
 						<td>
@@ -18962,7 +18927,7 @@ function planHistoryList(store, detail2, all2) {
 					>` : ""}
 	</div>`;
 }
-function approvalPanel(store, context, detail2, state) {
+function approvalPanel(store, context, detail2, state, extra = null) {
   const subject = `${detail2.planId}@${detail2.revision}`;
   const latest = detail2.approval.latest;
   if (detail2.approval.policy === "none")
@@ -19000,6 +18965,7 @@ function approvalPanel(store, context, detail2, state) {
         summary: `Reject ${subject}. The agent must revise the plan.`
       },
       staleMessage: `${detail2.planId} changed. Review it before you decide.`,
+      ...extra ? { extra } : {},
       intro: html2`<p class="help">${planSummaryLine(detail2.plan)}</p>`
     },
     state ?? emptyState()
@@ -19021,18 +18987,109 @@ function newerBanner(detail2) {
   );
 }
 function side(content) {
-  return html2`<aside class="side" aria-label="Decision">
-		${content}
-		<p class="back"><a href="/">← Back to inbox</a></p>
-	</aside>`;
+  return html2`<aside class="side" aria-label="Decision">${content}</aside>`;
+}
+function fold(id2, title, count, open, body, region = "") {
+  return html2`<details
+		class="fold"
+		data-open-key="section:${id2}"
+		${region ? html2`data-region="${region}"` : ""}
+		${open ? html2`open` : ""}
+	>
+		<summary>
+			<h2 id="${id2}">${title}${count === null ? "" : html2` <span class="n">${count}</span>`}</h2>
+		</summary>
+		<div class="fold-b">${body}</div>
+	</details>`;
+}
+function planContext(store, planId) {
+  return {
+    waiting: needsYou(store).items.filter((item) => item.planId === planId),
+    claims: mergedClaims(store, planId),
+    questions: mergedQuestions(store, planId),
+    explorations: planExplorations(store, planId),
+    status: planStatus(store, planId)
+  };
+}
+function nextLine(planId, found) {
+  const mine = found.waiting.filter((item) => item.group !== "questions").length;
+  const why = found.status.why[0];
+  const action = mine > 0 ? html2`<a class="btn small primary" href="/?plan=${planId}">Decide ${plural(mine, "item")} in Needs you</a>` : found.status.next[0] ? html2`<code>${found.status.next[0]}</code>` : "";
+  return html2`<div class="next-line" data-region="next">
+		${loopState(found.status)} ${why ? html2`<span>${why}</span>` : ""} ${action}
+	</div>`;
+}
+function chips(found, extra) {
+  const deciding = found.waiting.filter((item) => item.kind === "claim").length;
+  const open = found.questions.filter((question) => question.answer === null);
+  const blocking = open.filter((question) => question.blocking).length;
+  const items = [
+    [
+      "claims",
+      html2`Claims
+				<b>${found.claims.length}</b
+				>${deciding ? html2` <span class="st warn">${deciding} to decide</span>` : ""}`
+    ],
+    [
+      "questions",
+      html2`Questions
+				<b>${open.length}</b> open${blocking ? html2` <span class="st fail">${blocking} blocking</span>` : ""}`
+    ],
+    ["explorations", html2`Explorations <b>${found.explorations.length}</b>`],
+    ...extra.map(([id2, label, count]) => [id2, html2`${label} <b>${count}</b>`])
+  ];
+  return html2`<nav class="chips" aria-label="Sections">
+		${items.map(([id2, label]) => html2`<a href="#${id2}">${label}</a>`)}
+	</nav>`;
+}
+function claimsFold(planId, found) {
+  const deciding = found.waiting.some((item) => item.kind === "claim");
+  return fold(
+    "claims",
+    "Claims",
+    found.claims.length,
+    deciding,
+    html2`<p class="help">
+				The merged claims of completed explorations.
+				<a href="/claims?plan=${planId}">Open them as a list with filters</a>.
+			</p>
+			${claimsTable(planId, found.claims)}`,
+    "claims"
+  );
+}
+function questionsFold(planId, found, gaps = "", openGaps = 0, blockingGaps = 0) {
+  const open = found.questions.filter((question) => question.answer === null);
+  const blocking = open.some((question) => question.blocking) || blockingGaps > 0;
+  return fold(
+    "questions",
+    "Questions",
+    open.length + openGaps,
+    blocking,
+    html2`${gaps}
+			<h3 class="minor">Questions of the testers <span class="n">${found.questions.length}</span></h3>
+			${questionsList(planId, found.questions)}`,
+    "questions"
+  );
+}
+function explorationsFold(found) {
+  const attention = found.explorations.some((item) => item.running || ["failed", "stopped"].includes(item.state));
+  return fold(
+    "explorations",
+    "Explorations",
+    found.explorations.length,
+    attention,
+    explorationsTable(found.explorations),
+    "explorations"
+  );
 }
 function planPage(store, context, planId, revision, state = null, allHistory = false) {
   const detail2 = planDetail(store, planId, revision);
   const { plan } = detail2;
   const subject = `${planId}@${revision}`;
   const latest = detail2.revision === detail2.latestRevision;
+  const found = planContext(store, planId);
   const meta = html2`<div class="meta">
-		${loopState(planStatus(store, planId))} ${pill(detail2.approval.state)}
+		${pill(detail2.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail2.sha256}">sha256 <span class="mono">${short2(detail2.sha256)}</span></span>
 		<span class="head-actions">
@@ -19046,47 +19103,48 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 				${detail2.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
 				${detail2.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(", ")}.`
   ) : "";
-  const explorations = planExplorations(store, planId);
-  const body = html2`${heading(subject, plan.objective, meta)}
-		<div data-region="banners">${newerBanner(detail2)} ${pending} ${explorationBanners(explorations)}</div>
+  const openGaps = plan.gaps.filter((gap) => gap.status === "open");
+  const approving = detail2.approval.state === "pending" || detail2.approval.state === "rejected";
+  const accepting = detail2.runs.some((run2) => run2.acceptance === "pending");
+  const anyOpen = approving || accepting || found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped"].includes(item.state));
+  const overview = html2`<p class="lead">${plan.objective}</p>
+		<p class="help">${planSummaryLine(plan)}</p>
+		<h3 class="minor" id="requirements">
+			Requirements and coverage
+			${latest ? html2`<a class="h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ""}
+		</h3>
+		${requirementsTable(plan)}
+		<h3 class="minor" id="decisions">Decisions</h3>
+		${decisionsList(plan)}`;
+  const gaps = html2`<h3 class="minor" id="gaps">Gaps of the plan <span class="n">${plan.gaps.length}</span></h3>
+		<div data-region="gaps">${gapsList(detail2)}</div>`;
+  const body = html2`${heading(subject, null, meta)} ${nextLine(planId, found)}
+		${chips(found, [
+    ["tests", "Tests", plan.tests.length],
+    ["runs", "Runs", detail2.runs.length]
+  ])}
+		<div data-region="banners">${newerBanner(detail2)} ${pending} ${explorationBanners(found.explorations)}</div>
 		<div class="split">
 			<div class="main-col">
-				<nav class="jump" aria-label="On this page">
-					<a href="#tests">Tests</a><a href="#gaps">Gaps</a><a href="#requirements">Requirements</a
-					><a href="#runs">Runs</a><a href="#explorations">Explorations</a><a href="#decisions">Decisions</a
-					><a href="#history">History</a>
-				</nav>
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">
-						Tests <span class="n">${plan.tests.length}</span>
-						${latest ? html2`<a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ""}
-					</h2>
-					<div class="stack">${plan.tests.map((test) => testCard2(detail2, test))}</div>
-				</section>
-				<section aria-labelledby="gaps" data-region="gaps">
-					<h2 id="gaps">Gaps <span class="n">${plan.gaps.length}</span></h2>
-					${gapsList(detail2)}
-				</section>
-				<section aria-labelledby="requirements">
-					<h2 id="requirements">
-						Requirements and coverage
-						${latest ? html2`<a class="h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ""}
-					</h2>
-					${requirementsTable(plan)}
-				</section>
-				<section aria-labelledby="runs" data-region="plan-runs">
-					<h2 id="runs">Runs <span class="n">${detail2.runs.length}</span></h2>
-					${runsTable(detail2)}
-				</section>
-				${explorationSections(store, planId)}
-				<section aria-labelledby="decisions">
-					<h2 id="decisions">Decisions</h2>
-					${decisionsList(plan)}
-				</section>
-				<section aria-labelledby="history" data-region="history">
-					<h2 id="history">History</h2>
-					${planHistoryList(store, detail2, allHistory)}
-				</section>
+				${fold("overview", "Overview", null, approving || !anyOpen, overview)} ${claimsFold(planId, found)}
+				${questionsFold(
+    planId,
+    found,
+    gaps,
+    openGaps.length,
+    openGaps.filter((gap) => gap.severity === "blocking").length
+  )}
+				${explorationsFold(found)}
+				${fold(
+    "tests",
+    html2`Tests${latest ? html2` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ""}`,
+    plan.tests.length,
+    approving,
+    html2`<div class="stack">${plan.tests.map((test) => testCard2(detail2, test))}</div>`,
+    "tests"
+  )}
+				${fold("runs", "Runs", detail2.runs.length, accepting, runsTable(detail2), "plan-runs")}
+				${fold("history", "History", null, allHistory, planHistoryList(store, detail2, allHistory), "history")}
 			</div>
 			${side(approvalPanel(store, context, detail2, state))}
 		</div>`;
@@ -19097,9 +19155,13 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
       `plan:${planId}`,
       "inbox",
       ...detail2.runs.map((run2) => `run:${run2.runId}`),
-      ...explorations.map((item) => `exploration:${item.explorationId}`)
+      ...found.explorations.map((item) => `exploration:${item.explorationId}`)
     ],
-    body
+    body,
+    crumbs: [
+      ["Plans", "/plans"],
+      [subject, null]
+    ]
   };
 }
 function storedTestsEmpty(planId, completed2) {
@@ -19114,32 +19176,22 @@ function storedTestsEmpty(planId, completed2) {
 }
 function requestPage(store, planId) {
   const { request, target } = planRequest(store, planId);
-  const status = planStatus(store, planId);
-  const explorations = planExplorations(store, planId);
+  const found = planContext(store, planId);
   const targetRef = `${target.profile.targetId}@${target.revision}`;
   const targetLink = html2`<a
 		class="mono"
 		href="/settings/targets/${target.profile.targetId}?revision=${target.revision}"
 		>${targetRef}</a
 	>`;
-  const instances = [...new Set(explorations.map((item) => item.instanceId))];
+  const instances = [...new Set(found.explorations.map((item) => item.instanceId))];
   const sources = [...request.context?.sources ?? [], ...(request.sourceContext ?? []).map((item) => item.uri)];
-  const completed2 = explorations.filter((item) => item.state === "completed").at(-1)?.explorationId;
+  const completed2 = found.explorations.filter((item) => item.state === "completed").at(-1)?.explorationId;
   const meta = html2`<div class="meta">
-		${loopState(status)} ${pill("requested", "no revision yet")}
+		${pill("requested", "no revision yet")}
 		<span class="pill">target <span class="mono">${targetRef}</span></span>
 	</div>`;
-  const body = html2`${heading(planId, request.objective, meta)}
-		<div data-region="banners">${explorationBanners(explorations)}</div>
-		<div class="split">
-			<div class="main-col">
-				<nav class="jump" aria-label="On this page">
-					<a href="#request">Request</a><a href="#explorations">Explorations</a><a href="#claims">Claims</a
-					><a href="#questions">Questions</a><a href="#tests">Stored tests</a>
-				</nav>
-				<section aria-labelledby="request">
-					<h2 id="request">Request</h2>
-					${facts([
+  const anyOpen = found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped"].includes(item.state));
+  const overview = facts([
     ["Objective", request.objective],
     ["Target", targetLink],
     [
@@ -19149,32 +19201,32 @@ function requestPage(store, planId) {
     [
       "Sources",
       sources.length ? html2`<ul class="plain">
-										${sources.map((source) => html2`<li><code>${source}</code></li>`)}
-									</ul>` : html2`<span class="muted">none</span>`
+						${sources.map((source) => html2`<li><code>${source}</code></li>`)}
+					</ul>` : html2`<span class="muted">none</span>`
     ],
     ["Instructions", request.context?.instructions || false],
     [
       "Requirements",
       (request.requirements ?? []).length > 0 && html2`<ul class="plain">
-									${(request.requirements ?? []).map(
-        (item) => html2`<li><span class="mono">${item.id}</span> ${item.text}</li>`
-      )}
-								</ul>`
+					${(request.requirements ?? []).map((item) => html2`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
+				</ul>`
     ]
-  ])}
-				</section>
-				${explorationSections(store, planId)}
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Stored tests <span class="n">0</span></h2>
-					${storedTestsEmpty(planId, completed2)}
-				</section>
+  ]);
+  const body = html2`${heading(planId, request.objective, meta)} ${nextLine(planId, found)}
+		${chips(found, [["tests", "Stored tests", 0]])}
+		<div data-region="banners">${explorationBanners(found.explorations)}</div>
+		<div class="split">
+			<div class="main-col">
+				${fold("request", "Request", null, !anyOpen, overview)} ${claimsFold(planId, found)}
+				${questionsFold(planId, found)} ${explorationsFold(found)}
+				${fold("tests", "Stored tests", 0, !found.explorations.length, storedTestsEmpty(planId, completed2), "tests")}
 			</div>
 			${side(
     recordPanel(
       "Next",
-      html2`${status.why.map((line) => html2`<p class="help">${line}</p>`)}
+      html2`${found.status.why.map((line) => html2`<p class="help">${line}</p>`)}
 						<ul class="plain">
-							${status.next.map((line) => html2`<li><code>${line}</code></li>`)}
+							${found.status.next.map((line) => html2`<li><code>${line}</code></li>`)}
 						</ul>`
     )
   )}
@@ -19182,8 +19234,12 @@ function requestPage(store, planId) {
   return {
     title: planId,
     section: "plans",
-    subjects: [`plan:${planId}`, "inbox", ...explorations.map((item) => `exploration:${item.explorationId}`)],
-    body
+    subjects: [`plan:${planId}`, "inbox", ...found.explorations.map((item) => `exploration:${item.explorationId}`)],
+    body,
+    crumbs: [
+      ["Plans", "/plans"],
+      [planId, null]
+    ]
   };
 }
 function gapPage(store, context, planId, revision, gapId, state = null) {
@@ -19274,6 +19330,11 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
   return {
     title: `${planId} ${gap.id}`,
     section: "inbox",
+    crumbs: [
+      ["Plans", "/plans"],
+      [subject, `/plans/${subject}`],
+      [gap.id, null]
+    ],
     subjects: [`plan:${planId}`, "inbox", ...fromRun ? [`run:${fromRun.runId}`] : []],
     body
   };
@@ -19281,6 +19342,324 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 function unadoptedRunGap(store, planId, gapId) {
   const found = planRunGaps(store, planId).filter((item) => item.gap.id === gapId && !item.adopted);
   return found.length === 1 ? found[0] : null;
+}
+
+// plugin/src/ui/queue.ts
+var groups = [
+  { group: "blocking", title: "Blocks testing", help: "The testers wait for these answers." },
+  { group: "claims", title: "Claims to decide", help: "Suspected or unresolved. Accept or reject each." },
+  { group: "approvals", title: "Approvals", help: "Plans and results that wait for your decision." },
+  { group: "questions", title: "Questions that do not block", help: "Answer them when you have time." }
+];
+function queueFilters(params) {
+  return { plan: params.get("plan")?.trim() ?? "", q: params.get("q")?.trim() ?? "" };
+}
+function queueHref(filters, key = null) {
+  const params = new URLSearchParams();
+  if (filters.plan) params.set("plan", filters.plan);
+  if (filters.q) params.set("q", filters.q);
+  if (key) params.set("item", key);
+  const query = params.toString();
+  return query ? `/?${query}` : "/";
+}
+function matches2(item, filters) {
+  if (filters.plan && item.planId !== filters.plan) return false;
+  if (!filters.q) return true;
+  const text = `${item.planId} ${item.id} ${item.title} ${item.state ?? ""} ${item.severity ?? ""}`.toLowerCase();
+  return filters.q.toLowerCase().split(/\s+/).every((word) => text.includes(word));
+}
+function groupTitle(group2) {
+  return groups.find((item) => item.group === group2).title;
+}
+function badge(item) {
+  if (item.kind === "claim") return html2`${pill(item.severity)} ${pill(item.state)}`;
+  if (item.kind === "plan") return pill(item.state === "rejected" ? "rejected" : "pending", "plan");
+  if (item.kind === "result") return pill("pending", "result");
+  return "";
+}
+function row2(item, filters, selected) {
+  const current = item.key === selected ? html2` aria-current="true"` : "";
+  return html2`<li>
+		<a
+			class="q-row"
+			href="${queueHref(filters, item.key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${item.key}"
+			${current}
+		>
+			<span class="q-top"
+				><span class="q-id"
+					>${item.planId} · ${item.kind === "plan" ? `revision ${item.revision}` : item.id}</span
+				>
+				<span class="q-tags"
+					>${badge(item)}${item.since ? html2` <span class="age">${time(item.since)}</span>` : ""}</span
+				></span
+			>
+			<span class="q-title">${item.title}</span>
+		</a>
+	</li>`;
+}
+function groupList(group2, items, filters, selected) {
+  if (!items.length) return "";
+  const list2 = html2`<ul class="q-items">
+		${items.map((item) => row2(item, filters, selected))}
+	</ul>`;
+  const head = html2`<span class="q-group-title">${group2.title}</span> <span class="n">${items.length}</span>`;
+  if (group2.group !== "questions")
+    return html2`<section class="q-group" aria-labelledby="q-${group2.group}">
+			<h2 class="q-group-h" id="q-${group2.group}">${head}</h2>
+			${list2}
+		</section>`;
+  const open = filters.q || items.some((item) => item.key === selected) ? html2` open` : "";
+  return html2`<details class="q-group q-fold" data-open-key="queue:questions" ${open}>
+		<summary class="q-group-h">${head} <span class="q-fold-note">${group2.help}</span></summary>
+		${list2}
+	</details>`;
+}
+function exploring(waiting) {
+  const running3 = waiting.running.map(
+    (item) => html2`<li data-key="running:${item.explorationId}">
+				<a href="/explorations/${item.explorationId}"
+					>${item.paused ? pill("stopped", "paused") : pill("running")}
+					<span class="mono">${item.planId} · ${item.explorationId}</span></a
+				>
+				<span class="muted"
+					>${item.paused ? html2`Waits for you in Claude Code: ${item.paused}` : html2`${item.state} on build ${item.build}`}</span
+				>
+			</li>`
+  );
+  const failed = waiting.failed.map(
+    (item) => html2`<li data-key="failed:${item.explorationId}">
+				<a href="/explorations/${item.explorationId}"
+					>${pill(item.state)} <span class="mono">${item.planId} · ${item.explorationId}</span></a
+				>
+				<span class="muted">${item.reason ?? ""}</span>
+			</li>`
+  );
+  if (!running3.length && !failed.length) return "";
+  return html2`<section class="q-now" aria-labelledby="q-now">
+		<h2 class="q-group-h" id="q-now">Explorations</h2>
+		<ul class="q-now-list">
+			${running3} ${failed}
+		</ul>
+	</section>`;
+}
+function filterForm2(waiting, filters) {
+  const plans = [...new Set(waiting.items.map((item) => item.planId))].sort();
+  return html2`<form class="q-filters" method="get" action="/" role="search" data-queue-filter>
+		<label class="sr-only" for="queue-q">Search the items</label>
+		<input
+			id="queue-q"
+			type="search"
+			name="q"
+			value="${filters.q}"
+			placeholder="Search"
+			autocomplete="off"
+			data-search
+		/>
+		<label class="sr-only" for="queue-plan">Plan</label>
+		<select id="queue-plan" name="plan">
+			<option value="">All plans</option>
+			${plans.map(
+    (plan) => html2`<option value="${plan}" ${plan === filters.plan ? html2`selected` : ""}>${plan}</option>`
+  )}
+		</select>
+		<button class="btn small" data-queue-submit>Filter</button>
+	</form>`;
+}
+function crumbs2(item, filters, full) {
+  return html2`<div class="q-crumbs">
+		<nav aria-label="Breadcrumb">
+			<ol>
+				<li><a href="${queueHref(filters)}" data-queue-back>Needs you</a></li>
+				<li>${groupTitle(item.group)}</li>
+				<li><a href="/plans/${item.planId}">${item.planId}</a></li>
+				<li aria-current="page">${item.kind === "plan" ? `revision ${item.revision}` : item.id}</li>
+			</ol>
+		</nav>
+		<a class="btn small ghost" href="${full}">Open full page</a>
+	</div>`;
+}
+var kinds2 = [
+  { value: "clarify", label: "Clarify", key: "c", help: "Clarify gives the expected behaviour." },
+  {
+    value: "accept_assumption",
+    label: "Accept assumption",
+    key: "s",
+    help: "Tests run on your answer as an assumption."
+  },
+  {
+    value: "defer",
+    label: "Defer",
+    key: "d",
+    help: "Defer moves the question out of this scope. No answer is needed."
+  }
+];
+function questionDetail(store, context, item, filters, back, state) {
+  const question = mergedQuestions(store, item.planId).find((entry) => entry.id === item.id);
+  const action = item.explorationId ? `/explorations/${item.explorationId}/questions/${item.id}` : `/plans/${item.planId}@${planDetail(store, item.planId).latestRevision}/gaps/${item.id}`;
+  const sha256 = item.explorationId ? "" : planDetail(store, item.planId).sha256;
+  const source = item.explorationId ? html2`<a href="/explorations/${item.explorationId}">exploration ${item.explorationId}</a>` : item.runId ? html2`<a href="/runs/${item.runId}">run ${item.runId}</a>` : html2`<a href="/plans/${item.planId}">plan ${item.planId}</a>`;
+  const selected = state.values.kind || "clarify";
+  return html2`${crumbs2(item, filters, action)}
+		<h2 class="q-h">${item.title}</h2>
+		<p class="q-meta">
+			${item.group === "blocking" ? html2`${pill("blocking")} ` : ""}Asked in
+			${source}${item.since ? html2` · ${time(item.since)} ago` : ""}${question && question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
+		</p>
+		<section class="panel decision" id="answer" aria-labelledby="answer-title" data-region="decision">
+			<h3 class="lab" id="answer-title">Your answer</h3>
+			<div data-stale-slot>${messages(state)}</div>
+			<form method="post" action="${action}" class="decision-form gap-form" data-quick-form>
+				${hidden(context, sha256)} ${returnFields(item, back)}
+				<fieldset class="seg-field">
+					<legend class="sr-only">Kind of answer</legend>
+					<div class="seg">
+						${kinds2.map(
+    (kind) => html2`<input
+										type="radio"
+										id="kind-${kind.value}"
+										name="kind"
+										value="${kind.value}"
+										${selected === kind.value ? html2`checked` : ""}
+									/><label for="kind-${kind.value}">${kind.label} <kbd>${kind.key}</kbd></label>`
+  )}
+					</div>
+				</fieldset>
+				${kinds2.map((kind) => html2`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
+				<label class="sr-only" for="value">Answer</label>
+				<textarea id="value" name="value" rows="2" placeholder="Type the answer">
+${state.values.value ?? ""}</textarea>
+				${sourceAndReason(context, state, "Reason")} ${actorField(context, state)}
+				<div class="btns">
+					<button class="btn primary">Record answer</button>
+					<span class="help"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends. <kbd>d</kbd> defers at once.</span>
+				</div>
+			</form>
+		</section>`;
+}
+function claimDetail(store, context, item, filters, back, state) {
+  const claim = mergedClaims(store, item.planId).find((entry) => entry.id === item.id);
+  if (!claim) return gone(filters);
+  return claimPane(store, context, item.planId, claim, crumbs2(item, filters, claimAddress(claim)), {
+    key: item.key,
+    back,
+    state
+  });
+}
+function outcomes(tests) {
+  const found = {};
+  for (const test of tests) found[test.outcome ?? "not_run"] = (found[test.outcome ?? "not_run"] ?? 0) + 1;
+  return found;
+}
+function approvalDetail(store, context, item, filters, back, state) {
+  const extra = returnFields(item, back);
+  if (item.kind === "result") {
+    const detail3 = runDetail(store, item.runId);
+    const findings2 = detail3.findings.filter((finding) => finding.type === "defect");
+    return html2`${crumbs2(item, filters, `/runs/${item.runId}`)}
+			<h2 class="q-h">Accept the result of ${item.runId}?</h2>
+			<p class="q-meta">
+				${item.planId}@${item.revision} · build <code>${detail3.build}</code> · coverage
+				${detail3.result?.coverage ?? "none"} · ${counts(outcomes(detail3.tests))}
+			</p>
+			${findings2.length ? html2`<p class="lab">Defects</p>
+							<ul class="plain">
+								${findings2.map((finding) => html2`<li>${pill(finding.severity)} ${finding.title}</li>`)}
+							</ul>` : ""}
+			${decisionPanel(store, context, detail3, state, extra)}`;
+  }
+  const detail2 = planDetail(store, item.planId, item.revision);
+  return html2`${crumbs2(item, filters, `/plans/${item.planId}@${item.revision}`)}
+		<h2 class="q-h">
+			${item.state === "rejected" ? "Change or approve" : "Approve"} ${item.planId}@${item.revision}?
+		</h2>
+		<p class="q-meta">${detail2.plan.objective}</p>
+		<ul class="plain">
+			${detail2.plan.tests.map((test) => html2`<li>${pill(test.readiness)} <span class="mono">${test.id}</span> ${test.title}</li>`)}
+		</ul>
+		${approvalPanel(store, context, detail2, state, extra)}`;
+}
+function gone(filters) {
+  return html2`<div class="empty">
+		<p class="empty-title">This item does not wait for you now.</p>
+		<p>Somebody decided it, or a filter hides it.</p>
+		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
+	</div>`;
+}
+function nothing(waiting, filters) {
+  const filtered = filters.plan || filters.q;
+  return html2`<div class="empty">
+		<p class="empty-title">${filtered ? "No item matches these filters." : "Nothing waits for you."}</p>
+		${filtered ? html2`<p><a href="/" data-queue-back>Clear the filters</a></p>` : html2`<p>${plural(waiting.running.length, "exploration")} running. The list updates by itself.</p>`}
+	</div>`;
+}
+function detail(store, context, waiting, item, filters, back, state) {
+  if (!item) return nothing(waiting, filters);
+  if (item.kind === "question" || item.kind === "gap")
+    return questionDetail(store, context, item, filters, back, state);
+  if (item.kind === "claim") return claimDetail(store, context, item, filters, back, state);
+  return approvalDetail(
+    store,
+    context,
+    item,
+    filters,
+    back,
+    state.values.verdict || state.error || state.stale ? state : null
+  );
+}
+function queuePage(store, context, params, refusal = null) {
+  const waiting = needsYou(store);
+  const filters = queueFilters(params);
+  const shown = waiting.items.filter((item2) => matches2(item2, filters));
+  const asked = refusal?.key ?? params.get("item");
+  const item = asked ? shown.find((entry) => entry.key === asked) ?? null : shown[0] ?? null;
+  const index2 = item ? shown.indexOf(item) : -1;
+  const next = shown[index2 + 1] ?? shown[index2 - 1] ?? null;
+  const back = queueHref(filters, next?.key ?? null);
+  const open = asked ? html2` data-open` : "";
+  const urgent = waiting.urgent;
+  const sub = urgent ? `${plural(urgent, "item")} ${urgent === 1 ? "needs" : "need"} your decision. The most urgent is first.` : "No decision waits for you.";
+  const list2 = html2`<section class="q-list" aria-labelledby="queue-title" data-region="queue-list">
+		<div class="q-head">
+			<h1 id="queue-title">Needs you</h1>
+			<p class="sub">${sub}</p>
+		</div>
+		${filterForm2(waiting, filters)} ${exploring(waiting)}
+		${groups.map(
+    (group2) => groupList(
+      group2,
+      shown.filter((entry) => entry.group === group2.group),
+      filters,
+      item?.key ?? null
+    )
+  )}
+		${shown.length ? "" : html2`<p class="none">${filters.plan || filters.q ? "No item matches these filters." : "Nothing waits for you."}</p>`}
+		<p class="q-foot"><a href="/inbox">Show all items as one list</a></p>
+	</section>`;
+  const pane = asked && !item ? gone(filters) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
+  return {
+    title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
+    section: "inbox",
+    subjects: ["*"],
+    status: refusal ? 422 : void 0,
+    body: html2`<div class="queue" data-queue data-selected="${item?.key ?? ""}" ${open}>
+			${list2}
+			<section
+				class="q-detail"
+				aria-label="Selected item"
+				tabindex="-1"
+				data-region="queue-detail"
+				data-key="detail:${item?.key ?? ""}"
+			>
+				${pane}
+			</section>
+		</div>`
+  };
+}
+function queueCount(store) {
+  return needsYou(store).urgent;
 }
 
 // plugin/src/ui/edit.ts
@@ -19565,7 +19944,17 @@ function editPage(store, context, planId, revision, state = null) {
 				</form>
 			</details>
 		</div>`;
-  return { title, section: "plans", subjects: [`plan:${planId}`], body };
+  return {
+    title,
+    section: "plans",
+    subjects: [`plan:${planId}`],
+    body,
+    crumbs: [
+      ["Plans", "/plans"],
+      [subject, `/plans/${subject}`],
+      ["Edit", null]
+    ]
+  };
 }
 
 // plugin/src/ui/settings.ts
@@ -20156,8 +20545,10 @@ data: ${matched.join(",") || "*"}
     const key = form.get("item");
     if (form.get("return") === null || key === null) return page;
     const back = safeBack(form.get("return"));
+    const params = new URL(back, request.url).searchParams;
+    if (back.startsWith("/claims")) return () => claimsPage(store, context(request, back), params, { key, state });
     const refusal = { key, state };
-    return () => queuePage(store, context(request, back), new URL(back, request.url).searchParams, refusal);
+    return () => queuePage(store, context(request, back), params, refusal);
   }
   function serveClaimEvidence(request, explorationId, claimId, index2) {
     const evidence2 = claimEvidence(store, planOfExploration(explorationId), claimId, index2);
@@ -20222,6 +20613,7 @@ data: ${matched.join(",") || "*"}
     const shown = context(request);
     if (pathname === "/") return render(request, queuePage(store, shown, searchParams));
     if (pathname === "/inbox") return render(request, inboxPage(store));
+    if (pathname === "/claims") return render(request, claimsPage(store, shown, searchParams));
     if (pathname === "/plans") return render(request, plansPage(store, searchParams));
     if (pathname === "/runs") return render(request, runsPage(store, searchParams));
     if (pathname === "/log") return render(request, logPage(store, searchParams));
@@ -20320,8 +20712,8 @@ data: ${matched.join(",") || "*"}
     const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor;
     return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
   }
-  function values(form, names) {
-    return Object.fromEntries(names.map((name) => [name, form.get(name) ?? ""]));
+  function values(form, names2) {
+    return Object.fromEntries(names2.map((name) => [name, form.get(name) ?? ""]));
   }
   function refuse(request, page, cookies = []) {
     const shown = page();
@@ -20333,23 +20725,23 @@ data: ${matched.join(",") || "*"}
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
     };
     const { actor, cookies } = actorFrom(request, form);
-    const kind = state.values.kind;
+    const input = answerInput(form, state, actor);
     const page = inQueue(
       request,
       form,
       () => gapPage(store, context(request), planId, revision, gapId, state),
       state
     );
-    state.error = answerProblem(state, actor);
+    state.error = answerProblem(input, actor);
     if (state.error) return refuse(request, page, cookies);
     try {
       answerGap(store, actor, {
         planId,
         gapId,
-        kind,
-        value: state.values.value.trim(),
-        source: kind === "clarify" ? state.values.source.trim() : null,
-        rationale: state.values.rationale.trim(),
+        kind: input.kind,
+        value: input.value,
+        source: input.kind === "clarify" ? input.source : null,
+        rationale: input.rationale,
         expectSha256: form.get("sha") ?? ""
       });
     } catch (error) {
@@ -20366,8 +20758,24 @@ data: ${matched.join(",") || "*"}
     const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies, form);
     redirect(request.res, next.location, next.cookies);
   }
-  function answerProblem(state, actor) {
-    const { kind, value: value2, source, rationale } = state.values;
+  function answerInput(form, state, actor) {
+    const typed = state.values;
+    const trimmed = {
+      kind: typed.kind || "clarify",
+      value: typed.value.trim(),
+      source: typed.source.trim(),
+      rationale: typed.rationale.trim()
+    };
+    if (form.get("return") === null) return { ...trimmed, kind: typed.kind };
+    return {
+      ...trimmed,
+      value: trimmed.value || (trimmed.kind === "defer" ? "Deferred in the review UI." : ""),
+      source: trimmed.source || `${actor}, in the review UI`,
+      rationale: trimmed.rationale || "Answered in the review UI. No reason was given."
+    };
+  }
+  function answerProblem(input, actor) {
+    const { kind, value: value2, source, rationale } = input;
     if (!actor) return "Enter your name. Checkmate records it with your answer.";
     if (!["clarify", "accept_assumption", "defer"].includes(kind))
       return "Choose Clarify, Accept assumption, or Defer.";
@@ -20383,19 +20791,19 @@ data: ${matched.join(",") || "*"}
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
     };
     const { actor, cookies } = actorFrom(request, form);
-    const kind = state.values.kind;
+    const input = answerInput(form, state, actor);
     const planId = planOfExploration(explorationId);
     const page = () => questionPage(store, context(request), explorationId, questionId, state);
-    state.error = answerProblem(state, actor);
+    state.error = answerProblem(input, actor);
     if (state.error) return refuse(request, inQueue(request, form, page, state), cookies);
     try {
       answerGap(store, actor, {
         planId,
         gapId: questionId,
-        kind,
-        value: state.values.value.trim(),
-        source: kind === "clarify" ? state.values.source.trim() : null,
-        rationale: state.values.rationale.trim()
+        kind: input.kind,
+        value: input.value,
+        source: input.kind === "clarify" ? input.source : null,
+        rationale: input.rationale
       });
     } catch (error) {
       state.error = plainMessage(error);
@@ -20419,8 +20827,15 @@ data: ${matched.join(",") || "*"}
       state.error = "Choose Accept as a defect or Reject.";
       return refuse(request, page, cookies);
     }
+    const typed = state.values.rationale.trim();
+    const quick = form.get("return") !== null;
+    if (quick && verdict === "rejected" && !typed) {
+      state.error = "Write a short reason for the reject.";
+      return refuse(request, page, cookies);
+    }
+    const rationale = typed || (quick ? "Accepted in the review UI. No reason was given." : "");
     try {
-      decideClaim(store, actor, { planId, claimId, verdict, rationale: state.values.rationale.trim() });
+      decideClaim(store, actor, { planId, claimId, verdict, rationale });
     } catch (error) {
       state.error = plainMessage(error);
       return refuse(request, page, cookies);
@@ -20478,7 +20893,7 @@ data: ${matched.join(",") || "*"}
       request,
       form,
       ["approve", "reject"],
-      (state) => planPage(store, context(request), planId, revision, state),
+      (state) => inQueue(request, form, () => planPage(store, context(request), planId, revision, state), state)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "approve") approvePlan(store, actor, input);
@@ -20503,7 +20918,7 @@ data: ${matched.join(",") || "*"}
       request,
       form,
       ["accept", "reject"],
-      (state) => runPage(store, context(request), runId, state),
+      (state) => inQueue(request, form, () => runPage(store, context(request), runId, state), state)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { runId, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "accept") acceptResult(store, actor, input);
@@ -21045,7 +21460,7 @@ function finishPhase(store, actor, explorationId, phase, launch) {
   }
   const events = explorationEvents(store, explorationId);
   const reached = phase.events.filter((item) => item.step === "follow-turn" && item.status === "completed").length;
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   addOutcome(store, actor, explorationId, {
     step: "followed",
     explorer: null,
@@ -21059,7 +21474,7 @@ function finishPhase(store, actor, explorationId, phase, launch) {
       ],
       ...recorded ? {} : reached ? { reason: "No explorer session of the follow-up was recorded." } : {
         reason: "No tester of the follow-up could be reached.",
-        hint: `The testers ran in a session that ended. Run checkmate test ${row2.plan_id} --build ${row2.build} --session again. The answers reach the new testers through the known-state file.`
+        hint: `The testers ran in a session that ended. Run checkmate test ${row3.plan_id} --build ${row3.build} --session again. The answers reach the new testers through the known-state file.`
       }
     }
   });
@@ -21084,7 +21499,7 @@ function pauseRun(store, actor, explorationId, reason) {
     detail: { reason: reason.trim(), waitsOn: "oracle" }
   });
 }
-function stepsStarted(store, actor, explorationId, names) {
+function stepsStarted(store, actor, explorationId, names2) {
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
   clearPause(store, actor, explorationId, events);
@@ -21093,7 +21508,7 @@ function stepsStarted(store, actor, explorationId, names) {
     const last = (phase?.events ?? []).filter((item) => ownerOf(item) === name && item.step !== "bind").at(-1);
     return last?.step === "action" ? last : void 0;
   };
-  const wrong = names.filter((name) => !given(name));
+  const wrong = names2.filter((name) => !given(name));
   requireCondition(
     !wrong.length,
     `No given step waits to start for ${wrong.join(", ")} in exploration ${explorationId}.`,
@@ -21101,9 +21516,9 @@ function stepsStarted(store, actor, explorationId, names) {
   );
   return write(
     store,
-    { actor, command: "explore started", subject: explorationId, input: { explorationId, names } },
+    { actor, command: "explore started", subject: explorationId, input: { explorationId, names: names2 } },
     (operationId, at) => {
-      for (const name of names) {
+      for (const name of names2) {
         const action = given(name);
         addEvent(
           store,
@@ -21119,7 +21534,7 @@ function stepsStarted(store, actor, explorationId, names) {
         );
       }
       return {
-        reply: completed(explorationId, { explorationId, started: names }),
+        reply: completed(explorationId, { explorationId, started: names2 }),
         subjects: [`exploration:${explorationId}`]
       };
     }
@@ -21345,7 +21760,7 @@ function autoMode(store, planId) {
 function nextRunId(store) {
   return unusedId(
     "run-",
-    all(store, "SELECT run_id FROM runs").map((row2) => row2.run_id)
+    all(store, "SELECT run_id FROM runs").map((row3) => row3.run_id)
   );
 }
 function gitBuild(workspace) {
@@ -21358,7 +21773,7 @@ function dateBuild(now = /* @__PURE__ */ new Date()) {
 function chosenTarget(store, actor, input, env, assumed) {
   if (input.target) return input.target;
   const targets = all(store, "SELECT target_id FROM profiles GROUP BY target_id").map(
-    (row2) => row2.target_id
+    (row3) => row3.target_id
   );
   if (targets.length === 1) {
     assumed.push(`target=${targets[0]} (the only target)`);
@@ -21460,12 +21875,12 @@ function linkedCriterion(entry, criteria) {
   return ids2.map((id2) => criteria.get(id2)).find(Boolean);
 }
 function drafts(store, explorationId, observations) {
-  const row2 = explorationRow(store, explorationId);
-  const state = journal(store, row2.plan_id);
+  const row3 = explorationRow(store, explorationId);
+  const state = journal(store, row3.plan_id);
   const own = state.team.filter((entry) => entry.explorationId === explorationId);
   const byId = new Map(state.team.map((entry) => [entry.id, entry]));
   const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
-  const fromClaims = planClaims(store, row2.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
+  const fromClaims = planClaims(store, row3.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
     const report = byId.get(claim.reports[0]);
     const criterion = linkedCriterion(report, criteria);
     return {
@@ -21549,35 +21964,35 @@ function harvested(base, items, explorationId, build, capabilities, operations) 
 }
 function harvestExploration(store, actor, input) {
   return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
-    const row2 = explorationRow(store, input.explorationId);
-    const { request, target } = planRequest(store, row2.plan_id);
-    const items = drafts(store, row2.exploration_id, input.observations);
+    const row3 = explorationRow(store, input.explorationId);
+    const { request, target } = planRequest(store, row3.plan_id);
+    const items = drafts(store, row3.exploration_id, input.observations);
     requireCondition(
       items.length,
-      `Exploration ${row2.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
+      `Exploration ${row3.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
       input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
     );
-    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row2.plan_id);
-    const latest = hasRevision ? planRevision(store, row2.plan_id) : null;
+    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row3.plan_id);
+    const latest = hasRevision ? planRevision(store, row3.plan_id) : null;
     const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
     const result = harvested(
       base,
       items,
-      row2.exploration_id,
-      row2.build,
+      row3.exploration_id,
+      row3.build,
       target.profile.capabilities,
       target.profile.allowedOperations
     );
     requireCondition(
       result.added.length,
-      `Each item of ${row2.exploration_id} is harvested already into ${row2.plan_id}.`,
-      `Run checkmate plan show ${row2.plan_id} to read the harvested tests.`
+      `Each item of ${row3.exploration_id} is harvested already into ${row3.plan_id}.`,
+      `Run checkmate plan show ${row3.plan_id} to read the harvested tests.`
     );
     const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
       store,
       {
         contractVersion: "toolkit-2",
-        planId: row2.plan_id,
+        planId: row3.plan_id,
         revision: 1,
         previousRevision: null,
         target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
@@ -21595,12 +22010,12 @@ function harvestExploration(store, actor, input) {
         ...change.reply,
         data: {
           ...change.reply.data,
-          explorationId: row2.exploration_id,
+          explorationId: row3.exploration_id,
           tests: result.added,
           skipped: result.skipped
         }
       },
-      subjects: [...change.subjects, `exploration:${row2.exploration_id}`]
+      subjects: [...change.subjects, `exploration:${row3.exploration_id}`]
     };
   });
 }
@@ -22984,9 +23399,9 @@ var commands = {
       const statement = queryStatement(store, value(args, "sql"));
       const columns = statement.columns().map((column) => column.name);
       const rows = readOnly(() => statement.all()).map(
-        (row2) => Object.fromEntries(
+        (row3) => Object.fromEntries(
           columns.map((column) => {
-            const field2 = row2[column];
+            const field2 = row3[column];
             return [column, field2 instanceof Uint8Array ? `<blob ${field2.length} bytes>` : field2];
           })
         )
@@ -22998,7 +23413,7 @@ var commands = {
       const rows = reply.data.rows;
       return {
         facts: { rows: rows.length },
-        lines: [columns, ...rows.map((row2) => columns.map((name) => row2[name]))]
+        lines: [columns, ...rows.map((row3) => columns.map((name) => row3[name]))]
       };
     }
   }
@@ -23155,7 +23570,7 @@ function printPlan(reply) {
   }
   const detail2 = reply.data;
   const { plan } = detail2;
-  const coverage2 = new Map(plan.coverage.map((row2) => [row2.requirementId, row2.status]));
+  const coverage2 = new Map(plan.coverage.map((row3) => [row3.requirementId, row3.status]));
   return {
     facts: {
       ...facts2,
@@ -23243,13 +23658,13 @@ function unknownCommand(words4) {
     const prefix = words4.slice(0, words4.length - i).join(" ");
     return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `));
   });
-  const names = groups2.find((group2) => group2.length) ?? [
+  const names2 = groups2.find((group2) => group2.length) ?? [
     .../* @__PURE__ */ new Set([...Object.keys(commands).map((name) => name.split(" ")[0]), "ui"])
   ];
   return new Refusal(
     "malformed",
     `Unknown command: ${words4.join(" ") || "(none)"}`,
-    `Use one of: ${names.join(", ")}. Run checkmate --help for the usage of each command.`
+    `Use one of: ${names2.join(", ")}. Run checkmate --help for the usage of each command.`
   );
 }
 function parse(name, tokens) {
@@ -23339,8 +23754,8 @@ function commandHelp(argv) {
   for (let count = words4.length; count > 0; count--) {
     const prefix = words4.slice(0, count).join(" ");
     if (prefix === "ui") return completed("ui", { usage: [uiUsage.replace("Usage: ", "")] });
-    const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `));
-    if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace("Usage: ", "")) });
+    const names2 = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `));
+    if (names2.length) return completed(prefix, { usage: names2.map((name) => usage(name).replace("Usage: ", "")) });
   }
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }

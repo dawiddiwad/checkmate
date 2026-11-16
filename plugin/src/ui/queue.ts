@@ -3,11 +3,12 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import type { QueueGroup, QueueItem } from '../views.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, runDetail } from '../views.ts'
+import { claimAddress, claimPane } from './claims.ts'
 import { html, pill, plural, time } from './html.ts'
-import { banner } from './layout.ts'
-import { actorField, emptyState, gapPanel, hidden, messages, rationaleField } from './forms.ts'
-import { claimEvidenceList } from './exploration.ts'
+import { actorField, emptyState, hidden, messages, returnFields, sourceAndReason } from './forms.ts'
 import { counts } from './lists.ts'
+import { approvalPanel } from './plan.ts'
+import { decisionPanel } from './run.ts'
 
 export type QueueFilters = { plan: string; q: string }
 export type QueueRefusal = { key: string; state: FormState }
@@ -166,10 +167,21 @@ function crumbs(item: QueueItem, filters: QueueFilters, full: string) {
 	</div>`
 }
 
-function returnFields(item: QueueItem, back: string) {
-	return html`<input type="hidden" name="item" value="${item.key}" />
-		<input type="hidden" name="return" value="${back}" />`
-}
+const kinds = [
+	{ value: 'clarify', label: 'Clarify', key: 'c', help: 'Clarify gives the expected behaviour.' },
+	{
+		value: 'accept_assumption',
+		label: 'Accept assumption',
+		key: 's',
+		help: 'Tests run on your answer as an assumption.',
+	},
+	{
+		value: 'defer',
+		label: 'Defer',
+		key: 'd',
+		help: 'Defer moves the question out of this scope. No answer is needed.',
+	},
+]
 
 function questionDetail(
 	store: Store,
@@ -189,6 +201,7 @@ function questionDetail(
 		: item.runId
 			? html`<a href="/runs/${item.runId}">run ${item.runId}</a>`
 			: html`<a href="/plans/${item.planId}">plan ${item.planId}</a>`
+	const selected = state.values.kind || 'clarify'
 	return html`${crumbs(item, filters, action)}
 		<h2 class="q-h">${item.title}</h2>
 		<p class="q-meta">
@@ -197,19 +210,37 @@ function questionDetail(
 				question && question.members.length > 1 ? html` · asked as ${question.members.join(', ')}` : ''
 			}
 		</p>
-		${gapPanel(
-			context,
-			{
-				action,
-				cancel: queueHref(filters),
-				sha256,
-				title: '',
-				question: '',
-				staleMessage: `${item.planId} changed. Review the question before you answer.`,
-				extra: returnFields(item, back),
-			},
-			state
-		)}`
+		<section class="panel decision" id="answer" aria-labelledby="answer-title" data-region="decision">
+			<h3 class="lab" id="answer-title">Your answer</h3>
+			<div data-stale-slot>${messages(state)}</div>
+			<form method="post" action="${action}" class="decision-form gap-form" data-quick-form>
+				${hidden(context, sha256)} ${returnFields(item, back)}
+				<fieldset class="seg-field">
+					<legend class="sr-only">Kind of answer</legend>
+					<div class="seg">
+						${kinds.map(
+							(kind) =>
+								html`<input
+										type="radio"
+										id="kind-${kind.value}"
+										name="kind"
+										value="${kind.value}"
+										${selected === kind.value ? html`checked` : ''}
+									/><label for="kind-${kind.value}">${kind.label} <kbd>${kind.key}</kbd></label>`
+						)}
+					</div>
+				</fieldset>
+				${kinds.map((kind) => html`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
+				<label class="sr-only" for="value">Answer</label>
+				<textarea id="value" name="value" rows="2" placeholder="Type the answer">
+${state.values.value ?? ''}</textarea>
+				${sourceAndReason(context, state, 'Reason')} ${actorField(context, state)}
+				<div class="btns">
+					<button class="btn primary">Record answer</button>
+					<span class="help"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends. <kbd>d</kbd> defers at once.</span>
+				</div>
+			</form>
+		</section>`
 }
 
 function claimDetail(
@@ -222,64 +253,11 @@ function claimDetail(
 ) {
 	const claim = mergedClaims(store, item.planId).find((entry) => entry.id === item.id)
 	if (!claim) return gone(filters)
-	const action = `/explorations/${claim.explorationId}/claims/${claim.id}`
-	const steps = [claim.steps ?? []].flat()
-	const verdict = state.values.verdict ?? ''
-	const choice = (value: string, label: string) =>
-		html`<input
-				type="radio"
-				id="verdict-${value}"
-				name="verdict"
-				value="${value}"
-				required
-				${verdict === value ? html`checked` : ''}
-			/><label for="verdict-${value}">${label}</label>`
-	return html`${crumbs(item, filters, action)}
-		<h2 class="q-h">${claim.title}</h2>
-		<p class="q-meta">
-			${pill(claim.severity)} ${pill(claim.state)} Build <code>${claim.build}</code> ·
-			<a href="/explorations/${claim.explorationId}">exploration ${claim.explorationId}</a> · reported by
-			${claim.actors.join(', ')}
-		</p>
-		${claim.reason ? banner('warn', claim.reason) : ''}
-		<div class="q-compare">
-			<div>
-				<p class="lab">Expected</p>
-				<p>${claim.expected}</p>
-			</div>
-			<div>
-				<p class="lab">Actual</p>
-				<p>${claim.actual}</p>
-			</div>
-		</div>
-		${
-			steps.length
-				? html`<p class="lab">Steps</p>
-						<ol class="steps">
-							${steps.map((step) => html`<li>${step}</li>`)}
-						</ol>`
-				: html`<p class="help">The tester gave no steps.</p>`
-		}
-		<p class="lab">Evidence</p>
-		${claimEvidenceList(store, item.planId, claim)}
-		<section class="panel decision" id="decide" aria-labelledby="decide-title" data-region="decision">
-			<h3 class="lab" id="decide-title">Decision</h3>
-			<div data-stale-slot>${messages(state)}</div>
-			<form method="post" action="${action}" class="decision-form" data-claim-form>
-				${hidden(context, '')} ${returnFields(item, back)}
-				<fieldset class="seg-field">
-					<legend class="lab">Is ${claim.id} a defect?</legend>
-					<div class="seg">${choice('approved', 'Accept as a defect')}${choice('rejected', 'Reject')}</div>
-				</fieldset>
-				${rationaleField(state, 'Why do you decide this?')} ${actorField(context, state)}
-				<div class="btns">
-					<button class="btn primary" data-needs-rationale>Record decision</button>
-					<span class="help"
-						>Keys: <kbd>a</kbd> accept, <kbd>r</kbd> reject, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> send</span
-					>
-				</div>
-			</form>
-		</section>`
+	return claimPane(store, context, item.planId, claim, crumbs(item, filters, claimAddress(claim)), {
+		key: item.key,
+		back,
+		state,
+	})
 }
 
 function outcomes(tests: Array<{ outcome: string | null }>) {
@@ -288,26 +266,44 @@ function outcomes(tests: Array<{ outcome: string | null }>) {
 	return found
 }
 
-function approvalDetail(store: Store, item: QueueItem, filters: QueueFilters) {
+function approvalDetail(
+	store: Store,
+	context: Context,
+	item: QueueItem,
+	filters: QueueFilters,
+	back: string,
+	state: FormState | null
+) {
+	const extra = returnFields(item, back)
 	if (item.kind === 'result') {
 		const detail = runDetail(store, item.runId!)
-		const full = `/runs/${item.runId}#decide`
-		return html`${crumbs(item, filters, full)}
-			<h2 class="q-h">${item.runId} waits for acceptance</h2>
+		const findings = detail.findings.filter((finding) => finding.type === 'defect')
+		return html`${crumbs(item, filters, `/runs/${item.runId}`)}
+			<h2 class="q-h">Accept the result of ${item.runId}?</h2>
 			<p class="q-meta">
 				${item.planId}@${item.revision} · build <code>${detail.build}</code> · coverage
-				${detail.result?.coverage ?? 'none'}
+				${detail.result?.coverage ?? 'none'} · ${counts(outcomes(detail.tests))}
 			</p>
-			<p>${counts(outcomes(detail.tests))}</p>
-			<p><a class="btn primary" href="${full}">Review and decide</a></p>`
+			${
+				findings.length
+					? html`<p class="lab">Defects</p>
+							<ul class="plain">
+								${findings.map((finding) => html`<li>${pill(finding.severity)} ${finding.title}</li>`)}
+							</ul>`
+					: ''
+			}
+			${decisionPanel(store, context, detail, state, extra)}`
 	}
-	const full = `/plans/${item.planId}@${item.revision}#decide`
-	return html`${crumbs(item, filters, full)}
+	const detail = planDetail(store, item.planId, item.revision)
+	return html`${crumbs(item, filters, `/plans/${item.planId}@${item.revision}`)}
 		<h2 class="q-h">
-			${item.planId}@${item.revision} waits for ${item.state === 'rejected' ? 'a change' : 'approval'}
+			${item.state === 'rejected' ? 'Change or approve' : 'Approve'} ${item.planId}@${item.revision}?
 		</h2>
-		<p>${item.title}</p>
-		<p><a class="btn primary" href="${full}">Review and decide</a></p>`
+		<p class="q-meta">${detail.plan.objective}</p>
+		<ul class="plain">
+			${detail.plan.tests.map((test) => html`<li>${pill(test.readiness)} <span class="mono">${test.id}</span> ${test.title}</li>`)}
+		</ul>
+		${approvalPanel(store, context, detail, state, extra)}`
 }
 
 function gone(filters: QueueFilters) {
@@ -343,7 +339,14 @@ function detail(
 	if (item.kind === 'question' || item.kind === 'gap')
 		return questionDetail(store, context, item, filters, back, state)
 	if (item.kind === 'claim') return claimDetail(store, context, item, filters, back, state)
-	return approvalDetail(store, item, filters)
+	return approvalDetail(
+		store,
+		context,
+		item,
+		filters,
+		back,
+		state.values.verdict || state.error || state.stale ? state : null
+	)
 }
 
 export function queuePage(

@@ -347,5 +347,15 @@ export function editPage(
 				</form>
 			</details>
 		</div>`
-	return { title, section: 'plans', subjects: [`plan:${planId}`], body }
+	return {
+		title,
+		section: 'plans',
+		subjects: [`plan:${planId}`],
+		body,
+		crumbs: [
+			['Plans', '/plans'],
+			[subject, `/plans/${subject}`],
+			['Edit', null],
+		],
+	}
 }

@@ -5,9 +5,9 @@ import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
 import { clock, hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
-import { downloads, heading } from './layout.ts'
+import { crumbBar, downloads, listAndItem } from './layout.ts'
 import type { EvidenceFile } from './evidence.ts'
-import { emptyState, recordPanel, verdictPanel } from './forms.ts'
+import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
 import { evidenceList, shownAsText } from './evidence.ts'
 import { counts } from './lists.ts'
 
@@ -44,7 +44,12 @@ function findingRefs(detail: Detail, reference: string) {
 	if (!findings.length) return ''
 	return html` ·
 	${join(
-		findings.map((finding) => html`<a href="#${finding.id}">finding ${finding.id}</a>`),
+		findings.map(
+			(finding) =>
+				html`<a href="${runItemHref(detail.runId, `finding:${finding.id}`)}" data-queue-go
+					>finding ${finding.id}</a
+				>`
+		),
 		', '
 	)}`
 }
@@ -103,10 +108,10 @@ function testCard(store: Store, detail: Detail, test: RunTest) {
 	const passed = test.assertions.filter((assertion) => assertion.result === 'passed').length
 	const recorded = test.assertions.filter((assertion) => assertion.result).length
 	const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`
-	return html`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
+	return html`<article class="test" id="${test.testId}" data-key="card:${test.testId}" data-announce="${announce}">
 		<header class="test-h">
 			${testState(test, detail)}
-			<a class="id" href="#${test.testId}">${test.testId}</a>
+			<span class="id">${test.testId}</span>
 			<h3>${test.title}</h3>
 			<span class="count"
 				>${passed} of ${test.assertions.length}
@@ -140,56 +145,61 @@ function strip(detail: Detail) {
 	</div>`
 }
 
-function findings(store: Store, detail: Detail) {
-	if (!detail.findings.length) return html`<p class="empty-line">No findings.</p>`
+function runItemHref(runId: string, key: string, hash = '') {
+	return `/runs/${runId}${key === 'summary' ? '' : `?item=${encodeURIComponent(key)}`}${hash}`
+}
+
+function findingCard(store: Store, detail: Detail, finding: Detail['findings'][number]) {
 	const evidence = detail.tests.flatMap((test) => [
 		...test.evidence,
 		...test.assertions.flatMap((assertion) => assertion.evidence),
 	])
-	return html`<div class="stack">
-		${detail.findings.map(
-			(finding) =>
-				html`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
-					<header class="test-h">
-						${pill(finding.type)} <span class="id">${finding.id}</span>
-						<h3>${finding.title}</h3>
-						<span class="count">${pill(finding.severity)}</span>
-					</header>
-					<div class="test-b">
-						<div class="compare">
-							<div>
-								<small>Expected</small>
-								<p>${finding.expected}</p>
-							</div>
-							<div>
-								<small>Observed</small>
-								<p>${finding.observed}</p>
-							</div>
-						</div>
-						${
-							finding.reproduction.length
-								? html`<h4 class="minor">Reproduction</h4>
-										<ol class="steps">
-											${finding.reproduction.map((step) => html`<li>${step}</li>`)}
-										</ol>`
-								: ''
-						}
-						<p class="muted small">
-							Assertions
-							${join(
-								finding.assertionIds.map((id) => html`<a class="mono" href="#${id}">${id}</a>`),
-								', '
-							)}${finding.requirementIds.length ? ` · requirements ${finding.requirementIds.join(', ')}` : ''}
-						</p>
-						${hasMetadata(finding.metadata) ? html`<p>${metadataList(finding.metadata)}</p>` : ''}
-						${runEvidence(
-							store,
-							evidence.filter((item) => finding.evidenceIds.includes(item.id))
-						)}
-					</div>
-				</article>`
-		)}
-	</div>`
+	return html`<article class="finding" id="${finding.id}" data-key="card:${finding.id}">
+		<header class="test-h">
+			${pill(finding.type)} <span class="id">${finding.id}</span>
+			<h3>${finding.title}</h3>
+			<span class="count">${pill(finding.severity)}</span>
+		</header>
+		<div class="test-b">
+			<div class="compare">
+				<div>
+					<small>Expected</small>
+					<p>${finding.expected}</p>
+				</div>
+				<div>
+					<small>Observed</small>
+					<p>${finding.observed}</p>
+				</div>
+			</div>
+			${
+				finding.reproduction.length
+					? html`<h4 class="minor">Reproduction</h4>
+							<ol class="steps">
+								${finding.reproduction.map((step) => html`<li>${step}</li>`)}
+							</ol>`
+					: ''
+			}
+			<p class="muted small">
+				Assertions
+				${join(
+					finding.assertionIds.map((id) => assertionLink(detail.runId, id)),
+					', '
+				)}${finding.requirementIds.length ? ` · requirements ${finding.requirementIds.join(', ')}` : ''}
+			</p>
+			${hasMetadata(finding.metadata) ? html`<p>${metadataList(finding.metadata)}</p>` : ''}
+			${runEvidence(
+				store,
+				evidence.filter((item) => finding.evidenceIds.includes(item.id))
+			)}
+		</div>
+	</article>`
+}
+
+function assertionLink(runId: string, reference: string) {
+	const testId = reference.split('.')[0]
+	return html`<a class="mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-queue-go
+		>${reference}</a
+	>`
 }
 
 export type AdoptError = { gapId: string; message: Html | string }
@@ -213,38 +223,37 @@ function adoptForm(context: Context, detail: Detail, gapId: string, sha256: stri
 	</form>`
 }
 
-function newGaps(store: Store, context: Context, detail: Detail, adoptError: AdoptError | null) {
-	if (!detail.newGaps.length) return html`<p class="empty-line">No new gaps.</p>`
+function gapCard(
+	store: Store,
+	context: Context,
+	detail: Detail,
+	gap: Detail['newGaps'][number],
+	adoptError: AdoptError | null
+) {
 	const revision = planRevision(store, detail.planId)
 	const latest = `${detail.planId}@${revision.plan.revision}`
-	const adopted = planRunGaps(store, detail.planId)
-		.filter((item) => item.runId === detail.runId && item.adopted)
-		.map((item) => item.gap.id)
-	return html`<ul class="gaps">
-		${detail.newGaps.map(
-			(gap) =>
-				html`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
-					<div class="gap-h">
-						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
-						<span class="gap-refs muted"
-							>affects ${[...gap.requirementIds, ...gap.testIds].join(', ') || 'the plan'}</span
-						>
-					</div>
-					<p class="gap-q">${gap.question}</p>
-					<p class="muted">${gap.consequence}</p>
-					<div class="actions">
-						${
-							adopted.includes(gap.id)
-								? html`${pill('resolved', 'in plan')}
-										<a href="/plans/${latest}#${gap.id}">${latest}</a>`
-								: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
-										${adoptForm(context, detail, gap.id, revision.sha256)}`
-						}
-					</div>
-					${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
-				</li>`
-		)}
-	</ul>`
+	const adopted = planRunGaps(store, detail.planId).some(
+		(item) => item.runId === detail.runId && item.adopted && item.gap.id === gap.id
+	)
+	return html`<div class="gap" id="${gap.id}" data-key="card:${gap.id}">
+		<div class="gap-h">
+			<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
+			<span class="gap-refs muted"
+				>affects ${[...gap.requirementIds, ...gap.testIds].join(', ') || 'the plan'}</span
+			>
+		</div>
+		<p class="gap-q">${gap.question}</p>
+		<p class="muted">${gap.consequence}</p>
+		<div class="actions">
+			${
+				adopted
+					? html`${pill('resolved', 'in plan')} <a href="/plans/${latest}#${gap.id}">${latest}</a>`
+					: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+							${adoptForm(context, detail, gap.id, revision.sha256)}`
+			}
+		</div>
+		${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
+	</div>`
 }
 
 function coverage(store: Store, detail: Detail) {
@@ -349,12 +358,7 @@ function inconclusiveList(detail: Detail) {
 	return html`<div class="field-group">
 		<p class="lab">Inconclusive · ${rows.length}</p>
 		<ul class="plist">
-			${rows.map(
-				(row) =>
-					html`<li>
-						<a href="#${row.reference}"><code>${row.reference}</code></a> ${row.reason}
-					</li>`
-			)}
+			${rows.map((row) => html`<li>${assertionLink(detail.runId, row.reference)} ${row.reason}</li>`)}
 		</ul>
 	</div>`
 }
@@ -417,7 +421,7 @@ export function decisionPanel(
 	)
 }
 
-function runBadge(detail: Detail) {
+export function runBadge(detail: { state: string; result: { acceptance: string } | null }) {
 	const acceptance = detail.result?.acceptance
 	if (!acceptance) return pill('started', 'in progress')
 	if (acceptance === 'approved') return pill('approved', 'accepted')
@@ -425,73 +429,204 @@ function runBadge(detail: Detail) {
 	return pill(acceptance)
 }
 
-export function runPage(
-	store: Store,
-	context: Context,
+function runRow(
 	runId: string,
-	state: FormState | null = null,
-	adoptError: AdoptError | null = null
-): Page {
-	const detail = runDetail(store, runId)
-	const sub = html`<a class="mono" href="/plans/${detail.planId}@${detail.revision}"
-			>${detail.planId}@${detail.revision}</a
+	key: string,
+	selected: string,
+	top: Html | string,
+	tags: Html | string,
+	title: Html | string
+) {
+	return html`<li>
+		<a
+			class="q-row"
+			href="${runItemHref(runId, key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${key}"
+			${key === selected ? html`aria-current="true"` : ''}
 		>
-		· build <code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code> · started
-		${clock(detail.startedAt)} · ${plural(detail.attempts.length, 'attempt')}
-		${detail.result ? html`· finished ${time(detail.result.finishedAt)} ago` : ''}`
-	const badge = runBadge(detail)
+			<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
+			<span class="q-title">${title}</span>
+		</a>
+	</li>`
+}
+
+function runGroup(id: string, title: string, rows: Html[]) {
+	if (!rows.length) return ''
+	return html`<section class="q-group" aria-labelledby="g-${id}">
+		<h2 class="q-group-h" id="g-${id}">${title} <span class="n">${rows.length}</span></h2>
+		<ul class="q-items">
+			${rows}
+		</ul>
+	</section>`
+}
+
+function passedCount(test: RunTest) {
+	const passed = test.assertions.filter((assertion) => assertion.result === 'passed').length
+	return html`<span class="age">${passed} of ${test.assertions.length}</span>`
+}
+
+function runList(detail: Detail, selected: string) {
+	const result = detail.result
+	const tests = detail.tests.map((test) =>
+		runRow(
+			detail.runId,
+			`test:${test.testId}`,
+			selected,
+			test.testId,
+			html`${testState(test, detail)} ${passedCount(test)}`,
+			test.title
+		)
+	)
+	const found = detail.findings.map((finding) =>
+		runRow(
+			detail.runId,
+			`finding:${finding.id}`,
+			selected,
+			finding.id,
+			html`${pill(finding.severity)} ${pill(finding.type)}`,
+			finding.title
+		)
+	)
+	const gaps = detail.newGaps.map((gap) =>
+		runRow(
+			detail.runId,
+			`gap:${gap.id}`,
+			selected,
+			gap.id,
+			html`${pill(gap.severity)} ${pill(gap.status)}`,
+			gap.question
+		)
+	)
+	const record = [
+		runRow(
+			detail.runId,
+			'coverage',
+			selected,
+			'Coverage',
+			result ? pill(result.coverage.status) : pill('pending', 'not known yet'),
+			result ? `${plural(result.coverage.requirements.length, 'requirement')}` : 'Known when the run finishes.'
+		),
+		runRow(
+			detail.runId,
+			'cleanup',
+			selected,
+			'Cleanup and attempts',
+			result ? pill(result.cleanup.status) : pill('pending', 'not finished'),
+			plural(detail.attempts.length, 'attempt')
+		),
+	]
+	return html`<div class="q-head">
+			<h1>${detail.runId}</h1>
+			<p class="sub">
+				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
+				<code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code>
+			</p>
+		</div>
+		<p class="q-facts" data-region="state">
+			${runBadge(detail)} started
+			${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
+		</p>
+		<ul class="q-items">
+			${runRow(detail.runId, 'summary', selected, 'Overview', '', html`${counts(outcomeCounts(detail))}`)}
+		</ul>
+		${runGroup('tests', 'Tests', tests)} ${runGroup('findings', 'Findings', found)}
+		${runGroup('gaps', 'New gaps', gaps)} ${runGroup('record', 'Record', record)}`
+}
+
+function openChecks(detail: Detail) {
+	const rows = detail.tests.flatMap((test) =>
+		test.assertions
+			.filter((assertion) => assertion.result && assertion.result !== 'passed')
+			.map((assertion) => ({ test, assertion }))
+	)
+	if (!rows.length) return ''
+	return html`<section aria-labelledby="open-checks">
+		<h3 class="lab" id="open-checks">Not passed <span class="n">${rows.length}</span></h3>
+		<ul class="plist">
+			${rows.map(
+				({ test, assertion }) =>
+					html`<li>
+						${icon(assertion.result)}
+						${assertionLink(detail.runId, `${test.testId}.${assertion.assertionId}`)}
+						${assertion.check}${assertion.observed ? html` <span class="muted">Observed: ${assertion.observed}</span>` : ''}
+					</li>`
+			)}
+		</ul>
+	</section>`
+}
+
+function summaryDetail(store: Store, context: Context, detail: Detail, state: FormState | null, crumbs: Html) {
 	const report = detail.result
 		? downloads(
 				'Download report',
-				`/runs/${runId}/report`,
+				`/runs/${detail.runId}/report`,
 				'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
 				['html', 'md', 'json', 'junit']
 			)
 		: html`<span class="muted small">The report is ready when the run finishes.</span>`
-	const body: Html = html`${heading(
-			runId,
-			sub,
-			html`<div class="meta" data-region="state">${badge} <span class="head-actions">${report}</span></div>`
-		)}
-		<div class="split">
-			<div class="main-col">
-				${strip(detail)}
-				<nav class="jump" aria-label="On this page">
-					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
-					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
-				</nav>
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Tests <span class="n">${detail.tests.length}</span></h2>
-					<div class="stack">${detail.tests.map((test) => testCard(store, detail, test))}</div>
-				</section>
-				<section aria-labelledby="findings" data-region="findings">
-					<h2 id="findings">Findings <span class="n">${detail.findings.length}</span></h2>
-					${findings(store, detail)}
-				</section>
-				<section aria-labelledby="new-gaps" data-region="new-gaps">
-					<h2 id="new-gaps">New gaps <span class="n">${detail.newGaps.length}</span></h2>
-					${newGaps(store, context, detail, adoptError)}
-				</section>
-				<section aria-labelledby="coverage" data-region="coverage">
-					<h2 id="coverage">Coverage</h2>
-					${coverage(store, detail)}
-				</section>
-				<section aria-labelledby="cleanup" data-region="cleanup">
-					<h2 id="cleanup">Cleanup and attempts</h2>
-					${cleanup(detail)}
-				</section>
-			</div>
-			<aside class="side" aria-label="Decision">${decisionPanel(store, context, detail, state)}</aside>
-		</div>`
-	return {
-		title: runId,
-		section: 'runs',
-		subjects: [`run:${runId}`, 'inbox'],
-		body,
-		crumbs: [
+	return html`${crumbs}
+		<h2 class="q-h">Overview</h2>
+		${strip(detail)} ${openChecks(detail)}
+		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
+		<div class="actions">${report}</div>`
+}
+
+export function runPage(
+	store: Store,
+	context: Context,
+	runId: string,
+	params: URLSearchParams = new URLSearchParams(),
+	state: FormState | null = null,
+	adoptError: AdoptError | null = null
+): Page {
+	const detail = runDetail(store, runId)
+	const asked = adoptError ? `gap:${adoptError.gapId}` : (params.get('item') ?? 'summary')
+	const test = detail.tests.find((item) => `test:${item.testId}` === asked)
+	const finding = detail.findings.find((item) => `finding:${item.id}` === asked)
+	const gap = detail.newGaps.find((item) => `gap:${item.id}` === asked)
+	const record = asked === 'coverage' || asked === 'cleanup'
+	const selected = test || finding || gap || record ? asked : 'summary'
+	const label =
+		test?.testId ?? finding?.id ?? gap?.id ?? (asked === 'coverage' ? 'Coverage' : record ? 'Cleanup' : null)
+	const list = `/runs/${runId}`
+	const crumbs = crumbBar(
+		[
 			['Runs', '/runs'],
 			[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
-			[runId, null],
+			[runId, label ? list : null],
+			...(label ? [[label, null] as [string, null]] : []),
 		],
+		list
+	)
+	const pane = test
+		? html`${crumbs} ${testCard(store, detail, test)}`
+		: finding
+			? html`${crumbs} ${findingCard(store, detail, finding)}`
+			: gap
+				? html`${crumbs} ${gapCard(store, context, detail, gap, adoptError)}`
+				: asked === 'coverage'
+					? html`${crumbs}
+							<h2 class="q-h">Coverage</h2>
+							${coverage(store, detail)}`
+					: asked === 'cleanup'
+						? html`${crumbs}
+								<h2 class="q-h">Cleanup and attempts</h2>
+								${cleanup(detail)}`
+						: summaryDetail(store, context, detail, state, crumbs)
+	return {
+		title: label ? `${runId} · ${label}` : runId,
+		section: 'runs',
+		subjects: [`run:${runId}`, 'inbox'],
+		status: adoptError ? 422 : undefined,
+		body: listAndItem({
+			label: 'Run',
+			list: runList(detail, selected),
+			detail: pane,
+			selected,
+			open: params.has('item') || selected !== 'summary',
+			keep: true,
+		}),
 	}
 }

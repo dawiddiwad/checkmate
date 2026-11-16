@@ -141,9 +141,8 @@ test('the plan editor shows a long check in full at phone width', { skip }, asyn
 
 test('Bring into plan on the run page adds the run gap to the plan', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t)
-	await page.goto(url('/runs/run-7'))
+	await page.goto(url('/runs/run-7?item=gap%3AG4'))
 	await page.getByRole('button', { name: 'Bring into plan' }).click()
-	await page.waitForURL(/\/runs\/run-7#G4$/)
 	await page.getByRole('status').filter({ hasText: 'Brought G4 into checkout@3' }).waitFor()
 	await page.getByRole('link', { name: 'checkout@3' }).first().waitFor()
 	const store = openStore(workspace)
@@ -153,7 +152,8 @@ test('Bring into plan on the run page adds the run gap to the plan', { skip }, a
 
 test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, async (t) => {
 	const { page, url } = await open(t)
-	await page.goto(url('/runs/run-7'))
+	await page.goto(url('/runs/run-7?item=test%3AT1'))
+	await page.locator('[data-key="T1.A1"] summary').click()
 	const link = page.locator('a[data-view]:visible').first()
 	await link.focus()
 	await page.keyboard.press('Enter')

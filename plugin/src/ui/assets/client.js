@@ -358,6 +358,13 @@ function replaceRegion(region, fresh, previous) {
 	region.replaceWith(next)
 	next.scrollTop = scrolled
 	if (saved?.region === region) restoreFocus(saved)
+	const messages = markChanged(before, next)
+	syncRationale(next)
+	syncSource(next)
+	return messages
+}
+
+function markChanged(before, next) {
 	const changed = [...keyed(next)]
 		.filter(
 			([key, element]) =>
@@ -371,8 +378,6 @@ function replaceRegion(region, fresh, previous) {
 		element.classList.add('changed')
 		if (!reducedMotion.matches) setTimeout(() => element.classList.remove('changed'), 2000)
 	}
-	syncRationale(next)
-	syncSource(next)
 	return innermost.map((element) => element.dataset.announce).filter(Boolean)
 }
 
@@ -656,7 +661,8 @@ function showToast(fresh) {
 	setTimeout(() => shown.remove(), 6000)
 }
 
-function swapQueue(fresh, keepDetail = false) {
+function swapQueue(fresh, keepDetail = false, live = false) {
+	const messages = []
 	const next = fresh.querySelector('[data-queue]')
 	if (!next) return false
 	const search = document.activeElement?.matches('[data-search]') ? document.activeElement : null
@@ -677,11 +683,13 @@ function swapQueue(fresh, keepDetail = false) {
 		const scrolled = region.scrollTop
 		const imported = document.importNode(replacement, true)
 		for (const details of imported.querySelectorAll('details[data-open-key]'))
-			if (opened.get(details.dataset.openKey)) details.open = true
+			if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
 		region.replaceWith(imported)
 		imported.scrollTop = scrolled
+		if (live && previous) messages.push(...markChanged(keyed(previous), imported))
 		served.set(name, replacement.cloneNode(true))
 	}
+	if (messages.length) announce(messages.join('. '))
 	queue.dataset.selected = next.dataset.selected
 	queue.toggleAttribute('data-open', next.hasAttribute('data-open'))
 	document.title = fresh.title
@@ -725,7 +733,7 @@ async function queueRefresh() {
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (ticket !== queueTicket || queueBusy) return
 		const focused = document.activeElement?.closest('[data-region="queue-list"] [data-key]')?.dataset.key
-		swapQueue(fresh, dirty(queueDetail()))
+		swapQueue(fresh, dirty(queueDetail()), true)
 		if (focused) document.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true })
 	} catch {}
 }
@@ -740,8 +748,13 @@ async function queueGo(url, mode, focus) {
 		if (!swapQueue(fresh)) return void location.assign(url)
 		if (mode === 'push') window.history.pushState(null, '', url)
 		if (mode === 'replace') window.history.replaceState(null, '', url)
+		window.dispatchEvent(new window.Event('queue-moved'))
 		window.scrollTo(0, 0)
 		queueFocus(focus)
+		if (location.hash) {
+			openTarget()
+			document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView({ block: 'center' })
+		}
 	} catch {
 		location.assign(url)
 	} finally {
@@ -870,6 +883,7 @@ async function queueSend(form, submitter) {
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (!swapQueue(fresh)) return void form.submit()
 		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
+		window.dispatchEvent(new window.Event('queue-moved'))
 		window.scrollTo(0, 0)
 		queueFocus(response.ok ? 'row' : 'form')
 	} catch {
@@ -938,7 +952,12 @@ if (queue) {
 			return void form.querySelector('[data-choose] button')?.focus()
 		if (form.reportValidity()) form.requestSubmit(submitter ?? undefined)
 	})
-	window.addEventListener('popstate', () => queueGo(location.href, null, 'row'))
+	let queueAddress = location.pathname + location.search
+	window.addEventListener('popstate', () => {
+		if (location.pathname + location.search === queueAddress) return
+		queueGo(location.href, null, 'row')
+	})
+	window.addEventListener('queue-moved', () => (queueAddress = location.pathname + location.search))
 }
 
 document.querySelector('[data-shortcuts-open]').hidden = false

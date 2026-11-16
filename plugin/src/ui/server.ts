@@ -291,6 +291,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const back = safeBack(form.get('return'))
 		const params = new URL(back, request.url).searchParams
 		if (back.startsWith('/claims')) return () => claimsPage(store, context(request, back), params, { key, state })
+		const run = routes.run.exec(new URL(back, request.url).pathname)
+		if (run) return () => runPage(store, context(request, back), run[1], params, state)
 		const refusal: QueueRefusal = { key, state }
 		return () => queuePage(store, context(request, back), params, refusal)
 	}
@@ -449,7 +451,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const gap = routes.gap.exec(pathname)
 		if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]))
 		const run = routes.run.exec(pathname)
-		if (run) return render(request, runPage(store, shown, run[1]))
+		if (run) return render(request, runPage(store, shown, run[1], searchParams))
 		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from the inbox.`)
 	}
 
@@ -710,7 +712,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			request,
 			form,
 			['accept', 'reject'],
-			(state) => inQueue(request, form, () => runPage(store, context(request), runId, state), state)(),
+			(state) => inQueue(request, form, () => runPage(store, context(request), runId, undefined, state), state)(),
 			(actor, verdict, rationale, sha, token) => {
 				const input = { runId, rationale, expectSha256: sha, expectDecision: token }
 				if (verdict === 'accept') acceptResult(store, actor, input)
@@ -737,7 +739,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const planId = runDetail(store, runId).planId
 		const sha = form.get('sha') ?? ''
 		const page = (message: AdoptError['message']) => () =>
-			runPage(store, context(request), runId, null, { gapId, message })
+			runPage(store, context(request), runId, undefined, null, { gapId, message })
 		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the change.'), cookies)
 		const latest = planDetail(store, planId)
 		let adopted
@@ -756,7 +758,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 							the plan. Review the plan, then send again.`
 			return refuse(request, page(message), cookies)
 		}
-		redirect(request.res, `/runs/${runId}#${gapId}`, [
+		redirect(request.res, `/runs/${runId}?item=${encodeURIComponent(`gap:${gapId}`)}`, [
 			...cookies,
 			cookie('checkmate_toast', `Brought ${gapId} into ${adopted.subject}`, 60),
 		])

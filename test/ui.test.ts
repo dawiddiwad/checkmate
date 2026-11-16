@@ -346,10 +346,9 @@ test('evidence keeps its media type; images show inline, and plain text, XML, an
 	assert.equal(data.headers['content-type'], 'application/json')
 	assert.match(String(data.headers['content-disposition']), /^attachment; /)
 	assert.equal((await call(ui, '/evidence/01ARZ3NDEKTSV4RRFFQ69G5FAV')).status, 404)
-	const run = (await call(ui, '/runs/run-7')).body
-	assert.match(run, /<img src="\/evidence\//)
-	assert.match(run, /&quot;totalPLN&quot;: 220/)
-	read(workspace, (store) => {
+	assert.match((await call(ui, '/runs/run-7?item=test%3AT1')).body, /<img src="\/evidence\//)
+	assert.match((await call(ui, '/runs/run-7?item=test%3AT2')).body, /&quot;totalPLN&quot;: 220/)
+	const pending = read(workspace, (store) => {
 		const open = runDetail(store, 'run-8')
 			.tests.flatMap((test) => test.assertions.map((assertion) => ({ test, assertion })))
 			.find((item) => item.assertion.result === null)!
@@ -364,8 +363,9 @@ test('evidence keeps its media type; images show inline, and plain text, XML, an
 				evidenceFile(store, 'run-8', 'rows.csv', 'sku,total\nLAMP-01,400\n'),
 			],
 		})
+		return open.test.testId
 	})
-	const feed = (await call(ui, '/runs/run-8')).body
+	const feed = (await call(ui, `/runs/run-8?item=test%3A${pending}`)).body
 	assert.match(
 		feed,
 		/<pre tabindex="0" data-view-source>&lt;feed&gt;&lt;item&gt;Lamp&lt;\/item&gt;&lt;\/feed&gt;<\/pre>/
@@ -588,7 +588,10 @@ test('a run gap is in the inbox, and its answer adopts it into the plan', async 
 	const home = (await call(ui, '/inbox')).body
 	assert.match(home, /href="\/plans\/checkout@2\/gaps\/G4#answer"/)
 	assert.match(home, /from run run-7/)
-	assert.match((await call(ui, '/runs/run-7')).body, /href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</)
+	assert.match(
+		(await call(ui, '/runs/run-7?item=gap%3AG4')).body,
+		/href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</
+	)
 	const page = (await call(ui, '/plans/checkout@2/gaps/G4')).body
 	assert.match(page, /This gap comes from run <a class="mono" href="\/runs\/run-7">run-7<\/a>/)
 	const done = await call(ui, '/plans/checkout@2/gaps/G4', {
@@ -610,7 +613,7 @@ test('a run gap is in the inbox, and its answer adopts it into the plan', async 
 		['G4']
 	)
 	assert.match(
-		(await call(ui, '/runs/run-7')).body,
+		(await call(ui, '/runs/run-7?item=gap%3AG4')).body,
 		/in plan<\/span>\s*<a href="\/plans\/checkout@3#G4">checkout@3<\/a>/
 	)
 })
@@ -668,7 +671,7 @@ test('a started retest keeps the run that status waits on in the inbox and on it
 
 test('Bring into plan adopts one run gap with the digest guard and the actor', async (t) => {
 	const { ui, workspace } = await start(t)
-	const page = (await call(ui, '/runs/run-7')).body
+	const page = (await call(ui, '/runs/run-7?item=gap%3AG4')).body
 	assert.match(page, /<form method="post" action="\/runs\/run-7\/gaps\/G4" class="inline-form">/)
 	assert.match(page, /Bring into plan<\/button>/)
 	assert.match(page, /<div class="actions">\s*<a class="btn small" href="[^"]+\/gaps\/G4#answer">Answer<\/a>/)
@@ -678,13 +681,13 @@ test('Bring into plan adopts one run gap with the digest guard and the actor', a
 	assert.match(nameless.body, /<p class="form-error" role="alert">Enter your name/)
 	const done = await call(ui, '/runs/run-7/gaps/G4', { form: { ...form, actor: 'reviewer' } })
 	assert.equal(done.status, 303)
-	assert.equal(done.headers.location, '/runs/run-7#G4')
+	assert.equal(done.headers.location, '/runs/run-7?item=gap%3AG4')
 	const latest = read(workspace, (store) => planDetail(store, 'checkout'))
 	assert.equal(latest.revision, 3)
 	assert(latest.plan.gaps.some((gap) => gap.id === 'G4'))
 	const log = read(workspace, (store) => operationLog(store, { limit: 1 })[0])
 	assert.deepEqual([log.command, log.actor], ['plan adopt-gaps', 'reviewer'])
-	const after = (await call(ui, '/runs/run-7')).body
+	const after = (await call(ui, '/runs/run-7?item=gap%3AG4')).body
 	assert.doesNotMatch(after, /Bring into plan/)
 	const stale = await call(ui, '/runs/run-7/gaps/G4', { form: { ...form, actor: 'reviewer' } })
 	assert.equal(stale.status, 422)
@@ -990,7 +993,13 @@ test('the plan and run pages show team metadata as key and value tags', async (t
 	)
 	assert.match(plan, /<span class="tag">xrayKey=SHOP-T7<\/span>/)
 	assert.match(plan, /<span class="tag">jira=SHOP-41<\/span>/)
-	const run = (await call(ui, '/runs/run-7')).body
+	const run = (
+		await Promise.all(
+			['test%3AT2', 'finding%3AF1', 'coverage'].map(
+				async (item) => (await call(ui, `/runs/run-7?item=${item}`)).body
+			)
+		)
+	).join('\n')
 	assert.match(run, /<span class="tag">component=pricing<\/span>/)
 	assert.match(run, /<span class="tag">jiraKey=SHOP-142<\/span>/)
 	assert.match(run, /<span class="tag">regression=true<\/span>/)

@@ -113,7 +113,15 @@ A plan without a revision has the same page with the sections `Request`, `Claims
 
 <img src="../img/ui/run-gap.jpg" alt="The run page of run-7 in dark mode. It shows defect F1 with expected and observed values and reproduction steps, the new gap G4 with the Answer and Bring into plan buttons, the coverage table, and the Accept run-7 panel on the right." width="100%"/>
 
-The outcomes, the assertions with evidence, the findings, the new gaps, the coverage, and the result decision. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`. The decision panel lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, JSON, or JUnit XML. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags.
+`/runs/<runId>` has the same layout as `Needs you`: a list on the left and the selected item on the right. The list shows the state of the run, its plan, build, and instance, and these rows:
+
+- `Overview`: the outcome counts, the assertions that did not pass, and the result decision. The decision lists each inconclusive assertion above the buttons. When the run is finished, `Download report` gives HTML, Markdown, JSON, or JUnit XML.
+- `Tests`: one row for each test, with its outcome. The test shows its assertions and their evidence.
+- `Findings`: the defects and issues, with the expected and observed values, the reproduction steps, and the evidence.
+- `New gaps`: each new gap that the plan does not have yet has `Answer` and `Bring into plan`.
+- `Record`: the coverage, the cleanup, and the attempts.
+
+A link to an assertion, for example `T2.A2`, selects its test. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags. The selected item is in the address, for example `/runs/run-7?item=test:T2`.
 
 ### Runs and Log
 

@@ -9513,12 +9513,12 @@ function testOutcome(results) {
   if (results.includes("inconclusive")) return "inconclusive";
   return "passed";
 }
-function resultCoverage(plan, tests, newGaps2) {
+function resultCoverage(plan, tests, newGaps) {
   const outcomes2 = new Map(tests.map((test) => [test.testId, test.outcome]));
   const conclusive = (test) => ["passed", "failed"].includes(outcomes2.get(test.id) ?? "");
   const requirements = plan.requirements.map((requirement) => {
     const planned = plan.tests.filter((test) => test.requirementIds.includes(requirement.id));
-    const gaps = [...plan.gaps, ...newGaps2].filter(
+    const gaps = [...plan.gaps, ...newGaps].filter(
       (gap) => gap.requirementIds.includes(requirement.id) || !gap.requirementIds.length && !gap.testIds.length
     );
     const blocking = gaps.some((gap) => gap.status === "open" && gap.severity === "blocking");
@@ -12040,16 +12040,16 @@ function finish(store, actor, input) {
       );
     const outcomes2 = runOutcomes(store, input.runId);
     const results = runAssertions(store, input.runId);
-    const findings2 = runFindings(store, input.runId);
-    const newGaps2 = runGaps(store, input.runId);
+    const findings = runFindings(store, input.runId);
+    const newGaps = runGaps(store, input.runId);
     for (const row3 of results.values())
       if (row3.result === "failed")
         requireCondition(
-          findings2.some(
+          findings.some(
             (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row3.test_id}.${row3.assertion_id}`)
           ),
           `Failed assertion ${row3.test_id}.${row3.assertion_id} needs a defect finding. Record it with run finding.`,
-          defectHint(store, run2, row3, findings2)
+          defectHint(store, run2, row3, findings)
         );
     if (completion === "completed") {
       const failures = selected.filter((id2) => outcomes2.get(id2).outcome === "error");
@@ -12074,7 +12074,7 @@ function finish(store, actor, input) {
         if (outcome !== "not_run" && outcome !== "blocked") continue;
         const cause2 = test.dependsOn.some(
           (id2) => id2.includes(":") ? dependencyBlock(store, id2, run2.row.application_build) !== null : outcomes2.get(id2)?.outcome !== "passed"
-        ) || newGaps2.some((gap) => gap.severity === "blocking");
+        ) || newGaps.some((gap) => gap.severity === "blocking");
         requireCondition(
           cause2,
           `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
@@ -12107,7 +12107,7 @@ function finish(store, actor, input) {
         })
       };
     });
-    const coverage2 = resultCoverage(run2.plan, tests, newGaps2);
+    const coverage2 = resultCoverage(run2.plan, tests, newGaps);
     const result = validate("result", {
       contractVersion: "toolkit-2",
       runId: input.runId,
@@ -12124,8 +12124,8 @@ function finish(store, actor, input) {
       completionCause: cause,
       completionReason: reason,
       tests,
-      findings: findings2,
-      newGaps: newGaps2,
+      findings,
+      newGaps,
       evidence: evidence2.map((row3) => ({
         id: row3.id,
         testId: row3.test_id,
@@ -12169,14 +12169,14 @@ function finish(store, actor, input) {
     };
   });
 }
-function defectHint(store, run2, row3, findings2) {
+function defectHint(store, run2, row3, findings) {
   const reference = `${row3.test_id}.${row3.assertion_id}`;
   const test = run2.plan.tests.find((item) => item.id === row3.test_id);
   const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row3.test_id && item.assertion_id === row3.assertion_id).map((item) => item.id);
   const finding = {
     id: unusedId(
       "F",
-      findings2.map((item) => item.id)
+      findings.map((item) => item.id)
     ),
     type: "defect",
     severity: "<low|medium|high|critical>",
@@ -16313,9 +16313,9 @@ function junitStatus(report, test) {
   if (test.outcome === "blocked" || test.outcome === "not_run")
     return xmlTag("skipped", { message: `${test.outcome}: ${reason}` });
   if (test.outcome !== "failed") return xmlTag("error", { type: test.outcome, message: reason });
-  const findings2 = report.result.findings.filter((finding) => finding.testIds.includes(test.testId)).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
-  const defect = findings2.find((finding) => finding.type === "defect");
-  const text = findings2.map(
+  const findings = report.result.findings.filter((finding) => finding.testIds.includes(test.testId)).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
+  const defect = findings.find((finding) => finding.type === "defect");
+  const text = findings.map(
     (finding) => [
       `${finding.id} ${finding.type} ${finding.severity}: ${finding.title}`,
       `Expected: ${finding.expected}`,
@@ -17596,7 +17596,7 @@ function explorationPage(store, explorationId, params = new URLSearchParams()) {
       list: explorationList(live, selected),
       detail: detail2,
       selected,
-      open: selected !== "summary",
+      open: params.has("item") || selected !== "summary",
       keep: true
     })
   };
@@ -19214,11 +19214,15 @@ function tone(result) {
   return "";
 }
 function findingRefs(detail2, reference) {
-  const findings2 = detail2.findings.filter((finding) => finding.assertionIds.includes(reference));
-  if (!findings2.length) return "";
+  const findings = detail2.findings.filter((finding) => finding.assertionIds.includes(reference));
+  if (!findings.length) return "";
   return html2` ·
 	${join10(
-    findings2.map((finding) => html2`<a href="#${finding.id}">finding ${finding.id}</a>`),
+    findings.map(
+      (finding) => html2`<a href="${runItemHref(detail2.runId, `finding:${finding.id}`)}" data-queue-go
+					>finding ${finding.id}</a
+				>`
+    ),
     ", "
   )}`;
 }
@@ -19268,10 +19272,10 @@ function testCard2(store, detail2, test) {
   const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
   const recorded = test.assertions.filter((assertion) => assertion.result).length;
   const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
-  return html2`<article class="test" id="${test.testId}" data-key="test:${test.testId}" data-announce="${announce}">
+  return html2`<article class="test" id="${test.testId}" data-key="card:${test.testId}" data-announce="${announce}">
 		<header class="test-h">
 			${testState(test, detail2)}
-			<a class="id" href="#${test.testId}">${test.testId}</a>
+			<span class="id">${test.testId}</span>
 			<h3>${test.title}</h3>
 			<span class="count"
 				>${passed} of ${test.assertions.length}
@@ -19300,51 +19304,55 @@ function strip(detail2) {
 		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
 	</div>`;
 }
-function findings(store, detail2) {
-  if (!detail2.findings.length) return html2`<p class="empty-line">No findings.</p>`;
+function runItemHref(runId, key, hash = "") {
+  return `/runs/${runId}${key === "summary" ? "" : `?item=${encodeURIComponent(key)}`}${hash}`;
+}
+function findingCard(store, detail2, finding) {
   const evidence2 = detail2.tests.flatMap((test) => [
     ...test.evidence,
     ...test.assertions.flatMap((assertion) => assertion.evidence)
   ]);
-  return html2`<div class="stack">
-		${detail2.findings.map(
-    (finding) => html2`<article class="finding" id="${finding.id}" data-key="finding:${finding.id}">
-					<header class="test-h">
-						${pill(finding.type)} <span class="id">${finding.id}</span>
-						<h3>${finding.title}</h3>
-						<span class="count">${pill(finding.severity)}</span>
-					</header>
-					<div class="test-b">
-						<div class="compare">
-							<div>
-								<small>Expected</small>
-								<p>${finding.expected}</p>
-							</div>
-							<div>
-								<small>Observed</small>
-								<p>${finding.observed}</p>
-							</div>
-						</div>
-						${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
-										<ol class="steps">
-											${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
-										</ol>` : ""}
-						<p class="muted small">
-							Assertions
-							${join10(
-      finding.assertionIds.map((id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`),
-      ", "
-    )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
-						</p>
-						${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
-						${runEvidence2(
-      store,
-      evidence2.filter((item) => finding.evidenceIds.includes(item.id))
-    )}
-					</div>
-				</article>`
+  return html2`<article class="finding" id="${finding.id}" data-key="card:${finding.id}">
+		<header class="test-h">
+			${pill(finding.type)} <span class="id">${finding.id}</span>
+			<h3>${finding.title}</h3>
+			<span class="count">${pill(finding.severity)}</span>
+		</header>
+		<div class="test-b">
+			<div class="compare">
+				<div>
+					<small>Expected</small>
+					<p>${finding.expected}</p>
+				</div>
+				<div>
+					<small>Observed</small>
+					<p>${finding.observed}</p>
+				</div>
+			</div>
+			${finding.reproduction.length ? html2`<h4 class="minor">Reproduction</h4>
+							<ol class="steps">
+								${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
+							</ol>` : ""}
+			<p class="muted small">
+				Assertions
+				${join10(
+    finding.assertionIds.map((id2) => assertionLink(detail2.runId, id2)),
+    ", "
+  )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
+			</p>
+			${hasMetadata(finding.metadata) ? html2`<p>${metadataList(finding.metadata)}</p>` : ""}
+			${runEvidence2(
+    store,
+    evidence2.filter((item) => finding.evidenceIds.includes(item.id))
   )}
-	</div>`;
+		</div>
+	</article>`;
+}
+function assertionLink(runId, reference) {
+  const testId = reference.split(".")[0];
+  return html2`<a class="mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-queue-go
+		>${reference}</a
+	>`;
 }
 function adoptForm(context, detail2, gapId, sha256) {
   return html2`<form method="post" action="/runs/${detail2.runId}/gaps/${gapId}" class="inline-form">
@@ -19360,31 +19368,27 @@ function adoptForm(context, detail2, gapId, sha256) {
 		<button class="btn small">Bring into plan</button>
 	</form>`;
 }
-function newGaps(store, context, detail2, adoptError) {
-  if (!detail2.newGaps.length) return html2`<p class="empty-line">No new gaps.</p>`;
+function gapCard(store, context, detail2, gap, adoptError) {
   const revision = planRevision(store, detail2.planId);
   const latest = `${detail2.planId}@${revision.plan.revision}`;
-  const adopted = planRunGaps(store, detail2.planId).filter((item) => item.runId === detail2.runId && item.adopted).map((item) => item.gap.id);
-  return html2`<ul class="gaps">
-		${detail2.newGaps.map(
-    (gap) => html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
-					<div class="gap-h">
-						<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
-						<span class="gap-refs muted"
-							>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
-						>
-					</div>
-					<p class="gap-q">${gap.question}</p>
-					<p class="muted">${gap.consequence}</p>
-					<div class="actions">
-						${adopted.includes(gap.id) ? html2`${pill("resolved", "in plan")}
-										<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
-										${adoptForm(context, detail2, gap.id, revision.sha256)}`}
-					</div>
-					${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
-				</li>`
-  )}
-	</ul>`;
+  const adopted = planRunGaps(store, detail2.planId).some(
+    (item) => item.runId === detail2.runId && item.adopted && item.gap.id === gap.id
+  );
+  return html2`<div class="gap" id="${gap.id}" data-key="card:${gap.id}">
+		<div class="gap-h">
+			<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
+			<span class="gap-refs muted"
+				>affects ${[...gap.requirementIds, ...gap.testIds].join(", ") || "the plan"}</span
+			>
+		</div>
+		<p class="gap-q">${gap.question}</p>
+		<p class="muted">${gap.consequence}</p>
+		<div class="actions">
+			${adopted ? html2`${pill("resolved", "in plan")} <a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
+							${adoptForm(context, detail2, gap.id, revision.sha256)}`}
+		</div>
+		${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
+	</div>`;
 }
 function coverage(store, detail2) {
   const result = detail2.result;
@@ -19474,11 +19478,7 @@ function inconclusiveList(detail2) {
   return html2`<div class="field-group">
 		<p class="lab">Inconclusive · ${rows.length}</p>
 		<ul class="plist">
-			${rows.map(
-    (row3) => html2`<li>
-						<a href="#${row3.reference}"><code>${row3.reference}</code></a> ${row3.reason}
-					</li>`
-  )}
+			${rows.map((row3) => html2`<li>${assertionLink(detail2.runId, row3.reference)} ${row3.reason}</li>`)}
 		</ul>
 	</div>`;
 }
@@ -19540,66 +19540,169 @@ function runBadge(detail2) {
   if (acceptance === "pending") return pill("pending", "awaiting acceptance");
   return pill(acceptance);
 }
-function runPage(store, context, runId, state = null, adoptError = null) {
-  const detail2 = runDetail(store, runId);
-  const sub = html2`<a class="mono" href="/plans/${detail2.planId}@${detail2.revision}"
-			>${detail2.planId}@${detail2.revision}</a
+function runRow2(runId, key, selected, top, tags, title) {
+  return html2`<li>
+		<a
+			class="q-row"
+			href="${runItemHref(runId, key)}"
+			data-queue-link
+			data-nav-item
+			data-key="${key}"
+			${key === selected ? html2`aria-current="true"` : ""}
 		>
-		· build <code>${detail2.build}</code> · instance <code>${detail2.instance.instanceId}</code> · started
-		${clock(detail2.startedAt)} · ${plural(detail2.attempts.length, "attempt")}
-		${detail2.result ? html2`· finished ${time(detail2.result.finishedAt)} ago` : ""}`;
-  const badge2 = runBadge(detail2);
+			<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
+			<span class="q-title">${title}</span>
+		</a>
+	</li>`;
+}
+function runGroup(id2, title, rows) {
+  if (!rows.length) return "";
+  return html2`<section class="q-group" aria-labelledby="g-${id2}">
+		<h2 class="q-group-h" id="g-${id2}">${title} <span class="n">${rows.length}</span></h2>
+		<ul class="q-items">
+			${rows}
+		</ul>
+	</section>`;
+}
+function passedCount(test) {
+  const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
+  return html2`<span class="age">${passed} of ${test.assertions.length}</span>`;
+}
+function runList2(detail2, selected) {
+  const result = detail2.result;
+  const tests = detail2.tests.map(
+    (test) => runRow2(
+      detail2.runId,
+      `test:${test.testId}`,
+      selected,
+      test.testId,
+      html2`${testState(test, detail2)} ${passedCount(test)}`,
+      test.title
+    )
+  );
+  const found = detail2.findings.map(
+    (finding) => runRow2(
+      detail2.runId,
+      `finding:${finding.id}`,
+      selected,
+      finding.id,
+      html2`${pill(finding.severity)} ${pill(finding.type)}`,
+      finding.title
+    )
+  );
+  const gaps = detail2.newGaps.map(
+    (gap) => runRow2(
+      detail2.runId,
+      `gap:${gap.id}`,
+      selected,
+      gap.id,
+      html2`${pill(gap.severity)} ${pill(gap.status)}`,
+      gap.question
+    )
+  );
+  const record = [
+    runRow2(
+      detail2.runId,
+      "coverage",
+      selected,
+      "Coverage",
+      result ? pill(result.coverage.status) : pill("pending", "not known yet"),
+      result ? `${plural(result.coverage.requirements.length, "requirement")}` : "Known when the run finishes."
+    ),
+    runRow2(
+      detail2.runId,
+      "cleanup",
+      selected,
+      "Cleanup and attempts",
+      result ? pill(result.cleanup.status) : pill("pending", "not finished"),
+      plural(detail2.attempts.length, "attempt")
+    )
+  ];
+  return html2`<div class="q-head">
+			<h1>${detail2.runId}</h1>
+			<p class="sub">
+				<a href="/plans/${detail2.planId}@${detail2.revision}">${detail2.planId}@${detail2.revision}</a> · build
+				<code>${detail2.build}</code> · instance <code>${detail2.instance.instanceId}</code>
+			</p>
+		</div>
+		<p class="q-facts" data-region="state">
+			${runBadge(detail2)} started
+			${time(detail2.startedAt)}${result ? html2` · finished ${time(result.finishedAt)}` : ""}
+		</p>
+		<ul class="q-items">
+			${runRow2(detail2.runId, "summary", selected, "Overview", "", html2`${counts(outcomeCounts2(detail2))}`)}
+		</ul>
+		${runGroup("tests", "Tests", tests)} ${runGroup("findings", "Findings", found)}
+		${runGroup("gaps", "New gaps", gaps)} ${runGroup("record", "Record", record)}`;
+}
+function openChecks(detail2) {
+  const rows = detail2.tests.flatMap(
+    (test) => test.assertions.filter((assertion) => assertion.result && assertion.result !== "passed").map((assertion) => ({ test, assertion }))
+  );
+  if (!rows.length) return "";
+  return html2`<section aria-labelledby="open-checks">
+		<h3 class="lab" id="open-checks">Not passed <span class="n">${rows.length}</span></h3>
+		<ul class="plist">
+			${rows.map(
+    ({ test, assertion }) => html2`<li>
+						${icon(assertion.result)}
+						${assertionLink(detail2.runId, `${test.testId}.${assertion.assertionId}`)}
+						${assertion.check}${assertion.observed ? html2` <span class="muted">Observed: ${assertion.observed}</span>` : ""}
+					</li>`
+  )}
+		</ul>
+	</section>`;
+}
+function summaryDetail2(store, context, detail2, state, crumbs3) {
   const report = detail2.result ? downloads(
     "Download report",
-    `/runs/${runId}/report`,
+    `/runs/${detail2.runId}/report`,
     "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
     ["html", "md", "json", "junit"]
   ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
-  const body = html2`${heading(
-    runId,
-    sub,
-    html2`<div class="meta" data-region="state">${badge2} <span class="head-actions">${report}</span></div>`
-  )}
-		<div class="split">
-			<div class="main-col">
-				${strip(detail2)}
-				<nav class="jump" aria-label="On this page">
-					<a href="#tests">Tests</a><a href="#findings">Findings</a><a href="#new-gaps">New gaps</a
-					><a href="#coverage">Coverage</a><a href="#cleanup">Cleanup</a>
-				</nav>
-				<section aria-labelledby="tests" data-region="tests">
-					<h2 id="tests">Tests <span class="n">${detail2.tests.length}</span></h2>
-					<div class="stack">${detail2.tests.map((test) => testCard2(store, detail2, test))}</div>
-				</section>
-				<section aria-labelledby="findings" data-region="findings">
-					<h2 id="findings">Findings <span class="n">${detail2.findings.length}</span></h2>
-					${findings(store, detail2)}
-				</section>
-				<section aria-labelledby="new-gaps" data-region="new-gaps">
-					<h2 id="new-gaps">New gaps <span class="n">${detail2.newGaps.length}</span></h2>
-					${newGaps(store, context, detail2, adoptError)}
-				</section>
-				<section aria-labelledby="coverage" data-region="coverage">
-					<h2 id="coverage">Coverage</h2>
-					${coverage(store, detail2)}
-				</section>
-				<section aria-labelledby="cleanup" data-region="cleanup">
-					<h2 id="cleanup">Cleanup and attempts</h2>
-					${cleanup(detail2)}
-				</section>
-			</div>
-			<aside class="side" aria-label="Decision">${decisionPanel(store, context, detail2, state)}</aside>
-		</div>`;
-  return {
-    title: runId,
-    section: "runs",
-    subjects: [`run:${runId}`, "inbox"],
-    body,
-    crumbs: [
+  return html2`${crumbs3}
+		<h2 class="q-h">Overview</h2>
+		${strip(detail2)} ${openChecks(detail2)}
+		${decisionPanel(store, context, detail2, state, returnFields({ key: "summary" }, `/runs/${detail2.runId}`))}
+		<div class="actions">${report}</div>`;
+}
+function runPage(store, context, runId, params = new URLSearchParams(), state = null, adoptError = null) {
+  const detail2 = runDetail(store, runId);
+  const asked = adoptError ? `gap:${adoptError.gapId}` : params.get("item") ?? "summary";
+  const test = detail2.tests.find((item) => `test:${item.testId}` === asked);
+  const finding = detail2.findings.find((item) => `finding:${item.id}` === asked);
+  const gap = detail2.newGaps.find((item) => `gap:${item.id}` === asked);
+  const record = asked === "coverage" || asked === "cleanup";
+  const selected = test || finding || gap || record ? asked : "summary";
+  const label = test?.testId ?? finding?.id ?? gap?.id ?? (asked === "coverage" ? "Coverage" : record ? "Cleanup" : null);
+  const list2 = `/runs/${runId}`;
+  const crumbs3 = crumbBar(
+    [
       ["Runs", "/runs"],
       [`${detail2.planId}@${detail2.revision}`, `/plans/${detail2.planId}@${detail2.revision}`],
-      [runId, null]
-    ]
+      [runId, label ? list2 : null],
+      ...label ? [[label, null]] : []
+    ],
+    list2
+  );
+  const pane = test ? html2`${crumbs3} ${testCard2(store, detail2, test)}` : finding ? html2`${crumbs3} ${findingCard(store, detail2, finding)}` : gap ? html2`${crumbs3} ${gapCard(store, context, detail2, gap, adoptError)}` : asked === "coverage" ? html2`${crumbs3}
+							<h2 class="q-h">Coverage</h2>
+							${coverage(store, detail2)}` : asked === "cleanup" ? html2`${crumbs3}
+								<h2 class="q-h">Cleanup and attempts</h2>
+								${cleanup(detail2)}` : summaryDetail2(store, context, detail2, state, crumbs3);
+  return {
+    title: label ? `${runId} \xB7 ${label}` : runId,
+    section: "runs",
+    subjects: [`run:${runId}`, "inbox"],
+    status: adoptError ? 422 : void 0,
+    body: listAndItem({
+      label: "Run",
+      list: runList2(detail2, selected),
+      detail: pane,
+      selected,
+      open: params.has("item") || selected !== "summary",
+      keep: true
+    })
   };
 }
 
@@ -19816,16 +19919,16 @@ function approvalDetail(store, context, item, filters, back, state) {
   const extra = returnFields(item, back);
   if (item.kind === "result") {
     const detail3 = runDetail(store, item.runId);
-    const findings2 = detail3.findings.filter((finding) => finding.type === "defect");
+    const findings = detail3.findings.filter((finding) => finding.type === "defect");
     return html2`${crumbs2(item, filters, `/runs/${item.runId}`)}
 			<h2 class="q-h">Accept the result of ${item.runId}?</h2>
 			<p class="q-meta">
 				${item.planId}@${item.revision} · build <code>${detail3.build}</code> · coverage
 				${detail3.result?.coverage ?? "none"} · ${counts(outcomes(detail3.tests))}
 			</p>
-			${findings2.length ? html2`<p class="lab">Defects</p>
+			${findings.length ? html2`<p class="lab">Defects</p>
 							<ul class="plain">
-								${findings2.map((finding) => html2`<li>${pill(finding.severity)} ${finding.title}</li>`)}
+								${findings.map((finding) => html2`<li>${pill(finding.severity)} ${finding.title}</li>`)}
 							</ul>` : ""}
 			${decisionPanel(store, context, detail3, state, extra)}`;
   }
@@ -20807,6 +20910,8 @@ data: ${matched.join(",") || "*"}
     const back = safeBack(form.get("return"));
     const params = new URL(back, request.url).searchParams;
     if (back.startsWith("/claims")) return () => claimsPage(store, context(request, back), params, { key, state });
+    const run2 = routes.run.exec(new URL(back, request.url).pathname);
+    if (run2) return () => runPage(store, context(request, back), run2[1], params, state);
     const refusal = { key, state };
     return () => queuePage(store, context(request, back), params, refusal);
   }
@@ -20956,7 +21061,7 @@ data: ${matched.join(",") || "*"}
     const gap = routes.gap.exec(pathname);
     if (gap) return render(request, gapPage(store, shown, gap[1], Number(gap[2]), gap[3]));
     const run2 = routes.run.exec(pathname);
-    if (run2) return render(request, runPage(store, shown, run2[1]));
+    if (run2) return render(request, runPage(store, shown, run2[1], searchParams));
     return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from the inbox.`);
   }
   function actorPage(shown, back) {
@@ -21187,7 +21292,7 @@ data: ${matched.join(",") || "*"}
       request,
       form,
       ["accept", "reject"],
-      (state) => inQueue(request, form, () => runPage(store, context(request), runId, state), state)(),
+      (state) => inQueue(request, form, () => runPage(store, context(request), runId, void 0, state), state)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { runId, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "accept") acceptResult(store, actor, input);
@@ -21212,7 +21317,7 @@ data: ${matched.join(",") || "*"}
     const { actor, cookies } = actorFrom(request, form);
     const planId = runDetail(store, runId).planId;
     const sha = form.get("sha") ?? "";
-    const page = (message) => () => runPage(store, context(request), runId, null, { gapId, message });
+    const page = (message) => () => runPage(store, context(request), runId, void 0, null, { gapId, message });
     if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the change."), cookies);
     const latest = planDetail(store, planId);
     let adopted;
@@ -21228,7 +21333,7 @@ data: ${matched.join(",") || "*"}
 							the plan. Review the plan, then send again.`;
       return refuse(request, page(message), cookies);
     }
-    redirect(request.res, `/runs/${runId}#${gapId}`, [
+    redirect(request.res, `/runs/${runId}?item=${encodeURIComponent(`gap:${gapId}`)}`, [
       ...cookies,
       cookie("checkmate_toast", `Brought ${gapId} into ${adopted.subject}`, 60)
     ]);

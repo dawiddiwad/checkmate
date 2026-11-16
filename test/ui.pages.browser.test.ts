@@ -111,7 +111,7 @@ function seedLong(workspace: string) {
 
 test('a run page updates live and keeps typed text', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t)
-	await page.goto(url('/runs/run-8'))
+	await page.goto(url('/runs/run-8?item=test%3AT1'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 	await page.locator('[data-key="T1.A2"] .obs', { hasText: 'No result yet.' }).waitFor()
 	const evidence = join(workspace, '.checkmate', 'tmp', 'run-8')
@@ -315,7 +315,7 @@ test('long unbroken values do not widen the page at 1280px and 390px', { skip },
 			assert.equal(await overflow(page), null, path)
 		}
 		for (const [path, panel] of [
-			['/runs/run-7', '#decide'],
+			['/runs/run-7?item=summary', '#decide'],
 			['/plans/wide@1/gaps/G1', '#answer'],
 		]) {
 			await page.goto(url(path))

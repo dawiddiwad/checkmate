@@ -383,15 +383,22 @@ test('a follow-up messages each tester that can be reached, and skips the one th
 	assert.deepEqual(lines(), [tester('a1', 'follow'), tester('a2', 'follow')])
 	assert.equal(
 		file(`${work('a1')}/task-follow.md`),
-		`${followBrief([{ question: question.question, answer: 'No.' }], work('a1'), 300)}\n\nEnd your reply with this line: tester a1 follow done\n`
+		[
+			followBrief([{ question: question.question, answer: 'No.' }], work('a1'), 300),
+			'',
+			'At the end, write the new entries of this turn to .checkmate/work/x-1/a1/entries.json: only one JSON array, in the same form as your earlier entries file, and nothing else. Do not write an entry again that you wrote before.',
+			'',
+			'End your reply with this line: tester a1 follow done',
+			'',
+		].join('\n')
 	)
+	assert.doesNotMatch(clean(file(`${work('a1')}/task-follow.md`)), /checkmate|journal|recorder|\brecord\b/i)
 	assert.equal(command(['explore', 'status', 'x-1']).body.state, 'following')
 	put(`${work('a1')}/follow-up-report.md`, 'more\n')
-	done('a1', 'follow', ['--activity', 'Tested a sale item.'])
-	done('a2', 'follow', ['--failed', 'No agent with this ID.'])
-	assert.deepEqual(lines(), [tester('a1', 'record')])
 	put(`${work('a1')}/entries.json`, [question, sale])
-	assert.equal(done('a1', 'record').saved, 1)
+	const followed1 = done('a1', 'follow', ['--activity', 'Tested a sale item.'])
+	assert.deepEqual([followed1.event, followed1.saved, followed1.repeated], ['record', 1, 1])
+	done('a2', 'follow', ['--failed', 'No agent with this ID.'])
 	assert.deepEqual(lines(), ['finished'])
 	const status = command(['explore', 'status', 'x-1']).body
 	assert.deepEqual([status.state, status.follow], ['completed', 'completed'])
@@ -400,6 +407,22 @@ test('a follow-up messages each tester that can be reached, and skips the one th
 	assert(!existsSync(join(workspace, work())))
 	const files = command(['explore', 'show', 'x-1']).body.files
 	assert.deepEqual(files.at(-1), { ...files.at(-1), explorer: 'a1', phase: 'follow-1', name: 'follow-up-report.md' })
+})
+
+test('a follow-up records the new entries in the same turn, and a refused entry gets one repair round', (t) => {
+	const context = setup(t)
+	const { command, lines, done, put, file } = context
+	finishedWithQuestion(context, ['a1'])
+	command(answer)
+	command(['explore', 'follow', 'x-1'])
+	assert.deepEqual(lines(), [tester('a1', 'follow')])
+	put(`${work('a1')}/entries.json`, [{ kind: 'defect', title: 'No severity' }])
+	assert.equal(done('a1', 'follow').event, 'repair')
+	assert.deepEqual(lines(), [tester('a1', 'repair').replace(' repair ', ' record ')])
+	assert.match(file(`${work('a1')}/task-repair.md`), /^These entries of your file were refused:\n- /)
+	put(`${work('a1')}/entries.json`, [sale])
+	assert.deepEqual([done('a1', 'record').saved, lines()], [1, ['finished']])
+	assert.equal(command(['explore', 'status', 'x-1']).body.follow, 'completed')
 })
 
 test('a follow-up with no tester to reach fails and tells the operator to test again', (t) => {

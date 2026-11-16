@@ -12927,6 +12927,9 @@ function followBrief(questions, workFolder2, seconds) {
     `You have ${seconds} seconds for this turn.`
   ].join("\n");
 }
+function followEntriesText(answer) {
+  return `At the end, write the new entries of this turn to ${answer}: only one JSON array, in the same form as your earlier entries file, and nothing else. Do not write an entry again that you wrote before.`;
+}
 function repairPrompt(refusals, answer) {
   const text = [
     answer ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
@@ -20027,7 +20030,15 @@ function testerAction(store, explorationId, explorer, due, phase) {
     extra
   });
   if (due === "follow")
-    return action("follow", "task-follow.md", followBrief(phase.follow.questions, folder, phase.follow.seconds));
+    return action(
+      "follow",
+      "task-follow.md",
+      `${followBrief(phase.follow.questions, folder, phase.follow.seconds)}
+
+${followEntriesText(answer)}`,
+      { round: 1, after: lastEntry(store) },
+      true
+    );
   if (due === "record")
     return action(
       "record",
@@ -20038,7 +20049,7 @@ function testerAction(store, explorationId, explorer, due, phase) {
     );
   if (due === "repair") {
     const repair = own.findLast((item) => item.step === "repair").detail.carried;
-    const first = own.findLast((item) => item.step === "action" && item.detail.step === "record");
+    const first = own.findLast((item) => item.step === "action" && item.detail.round === 1);
     return action(
       "record",
       "task-repair.md",
@@ -20431,6 +20442,15 @@ function stepDone(store, actor, input) {
   if (name === "merge") return mergeDone(store, actor, explorationId, own, base, failed, phase.follow?.after ?? 0);
   if (name === "verify") return verifyDone(store, actor, explorationId, own, base, failed);
   if (step === "record") return recordDone(store, actor, explorationId, name, own, base, failed, phase);
+  if (step === "follow" && !failed) {
+    addOutcome(store, actor, explorationId, {
+      step: "follow-turn",
+      explorer: name,
+      status: "completed",
+      detail: base
+    });
+    return recordDone(store, actor, explorationId, name, own, base, failed, phase);
+  }
   const status = failed ? "operational_error" : "completed";
   const item = step === "study" && !failed ? { step: "turn", status: "started", detail: { ...base, turn: "test" } } : step === "follow" ? { step: "follow-turn", status, detail: base } : { step: "end", status, detail: { ...base, ...failed ? { turn: step } : {} } };
   const reply = addOutcome(store, actor, explorationId, { ...item, explorer: name });

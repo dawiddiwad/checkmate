@@ -160,6 +160,10 @@ export function followBrief(
 	].join('\n')
 }
 
+export function followEntriesText(answer: string) {
+	return `At the end, write the new entries of this turn to ${answer}: only one JSON array, in the same form as your earlier entries file, and nothing else. Do not write an entry again that you wrote before.`
+}
+
 export function repairPrompt(refusals: string[], answer?: string) {
 	const text = [
 		answer ? 'These entries of your file were refused:' : 'Checkmate refused these entries of your reply:',

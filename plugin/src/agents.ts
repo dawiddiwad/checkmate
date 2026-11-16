@@ -9,6 +9,7 @@ import { explorationRow, logEntries } from './journal.ts'
 import {
 	explorerBrief,
 	followBrief,
+	followEntriesText,
 	mergeAgainPrompt,
 	mergerPrompt,
 	repairPrompt,
@@ -148,7 +149,13 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 		extra,
 	})
 	if (due === 'follow')
-		return action('follow', 'task-follow.md', followBrief(phase.follow!.questions, folder, phase.follow!.seconds))
+		return action(
+			'follow',
+			'task-follow.md',
+			`${followBrief(phase.follow!.questions, folder, phase.follow!.seconds)}\n\n${followEntriesText(answer)}`,
+			{ round: 1, after: lastEntry(store) },
+			true
+		)
 	if (due === 'record')
 		return action(
 			'record',
@@ -159,7 +166,7 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 		)
 	if (due === 'repair') {
 		const repair = own.findLast((item) => item.step === 'repair')!.detail.carried as Carried
-		const first = own.findLast((item) => item.step === 'action' && item.detail.step === 'record')!
+		const first = own.findLast((item) => item.step === 'action' && item.detail.round === 1)!
 		return action(
 			'record',
 			'task-repair.md',
@@ -626,6 +633,15 @@ export function stepDone(store: Store, actor: string | undefined, input: DoneInp
 	if (name === 'merge') return mergeDone(store, actor, explorationId, own, base, failed, phase!.follow?.after ?? 0)
 	if (name === 'verify') return verifyDone(store, actor, explorationId, own, base, failed)
 	if (step === 'record') return recordDone(store, actor, explorationId, name, own, base, failed, phase!)
+	if (step === 'follow' && !failed) {
+		addOutcome(store, actor, explorationId, {
+			step: 'follow-turn',
+			explorer: name,
+			status: 'completed',
+			detail: base,
+		})
+		return recordDone(store, actor, explorationId, name, own, base, failed, phase!)
+	}
 	const status = failed ? 'operational_error' : 'completed'
 	const item =
 		step === 'study' && !failed

@@ -89,10 +89,10 @@ test('explore start launches the explorers of the level in a clean context, then
 	for (const call of explorers) {
 		assert.equal(after(call.args, '--model'), testLevels.standard.model)
 		assert.equal(after(call.args, '--settings'), explorerSettings)
-		assert.match(call.prompt, /\nYou have about 10 minutes\. Write your report before the time ends\.\n/)
+		assert.match(call.prompt, /\nYou have 10 minutes at most\. Write your report before the time ends\.\n/)
 		assert.match(
 			call.prompt,
-			/\nTools you can use: node, playwright-cli\.\nUse the fastest check that proves the behaviour: a direct HTTP call where it proves the point, the browser where the page itself is what you test\.\n/
+			/\nTools you can use: node, playwright-cli\.\nA direct HTTP call is sufficient when it proves the behaviour\. Use the browser when the page itself is what you test\.\n/
 		)
 		assert.deepEqual(call.args.filter((arg: string) => arg === '--allowedTools').length, 2)
 		assert.deepEqual(call.env, [])
@@ -246,7 +246,7 @@ test('--minutes sets the time budget of the brief, and the safety timeout stays 
 	assert.equal(started.body.minutes, 25)
 	wait()
 	const [explorer] = called().filter((call) => call.role === 'explorer')
-	assert.match(explorer.prompt, /\nYou have about 25 minutes\. Write your report before the time ends\.\n/)
+	assert.match(explorer.prompt, /\nYou have 25 minutes at most\. Write your report before the time ends\.\n/)
 	const status = command(['explore', 'status', 'x-1']).body
 	assert.equal(status.minutes, 25)
 	const events = command(['query', "SELECT detail FROM exploration_events WHERE step = 'start'"]).body.rows

@@ -155,7 +155,9 @@ export function explorerBrief(
 ) {
 	return [
 		'Test this change of the application and find its defects.',
-		`You have about ${minutes} minutes. Write your report before the time ends.`,
+		'Test until you have checked each rule of the change and the existing behaviour that the change can break.',
+		`You have ${minutes} minutes at most. Write your report before the time ends.`,
+		'First read the sources and the changed files, and write down what you will check and what is unclear. Then test each item.',
 		'',
 		`Goal: ${charter.goal}`,
 		...(charter.requirements.length
@@ -183,11 +185,11 @@ export function explorerBrief(
 						.join(', ')}.`,
 				]
 			: []),
-		'Use the fastest check that proves the behaviour: a direct HTTP call where it proves the point, the browser where the page itself is what you test.',
+		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
 		'Folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
 		`Make your own test data. Start each name or value that you make with ${dataPrefix}.`,
 		`Save the files that show a problem, for example screenshots or responses, in ${evidenceFolder}/.`,
-		'At the end, list what you tested and each problem that you found, with its steps.',
+		'At the end, list what you tested, each problem that you found with its steps, and each question that only the owner of the product can answer.',
 	].join('\n')
 }
 

@@ -31,7 +31,7 @@ One request tests a change. Claude asks no question when a default exists:
 
 When the store has no target, Checkmate sets one up from the URL. Without a build, it uses the short git commit, or the date and time when the workspace has no git. Without an objective, it tests the change that the sources describe. Claude reports each value that Checkmate assumed, so that you can correct it.
 
-Claude runs `checkmate test`. The first test of a plan explores: Checkmate starts independent testers in new sessions without the Checkmate plugin, records each session after it ends, merges the reports, and verifies the claims with one reporter. A later test also runs the stored tests of the plan again. Claude reports the claims and the open questions. You answer the questions and decide the `suspected` and `unresolved` claims in the review UI or in the chat. A plan is not necessary before the first test. Plan stored tests with the steps below.
+Claude runs `checkmate test --session`. The first test of a plan explores: Claude starts independent testers as agents of your session. You see each tester and what it does in the session, and the testers count in the usage of the session. The testers get the Checkmate tasks, but not the Checkmate skills. Checkmate records the work of each tester, merges the reports, and verifies the claims with one reporter. A later test also runs the stored tests of the plan again. Claude reports the claims and the open questions. You answer the questions and decide the `suspected` and `unresolved` claims in the review UI or in the chat. A plan is not necessary before the first test. Plan stored tests with the steps below.
 
 ## Steps
 

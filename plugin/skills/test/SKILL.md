@@ -5,32 +5,60 @@ description: Main entry for testing with Checkmate. Use for any request to test,
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
-You are the operator. You do not test. Checkmate starts the testers in new sessions and records their work. Do not give instructions to a tester.
+You are the operator. You do not test. Checkmate gives you actions, and you carry them out with agents of this session. Checkmate writes the task of each agent. Do not write a task. Do not give an agent other instructions. Do not test yourself.
 
-## Steps
+## First run
 
-1. Find the plan ID in the message of the oracle. Use the ticket ID or the file name, for example `shop-12`. Do not ask for a value that has a default: Checkmate chooses the build, the target, and the objective, and prints each one on an `assumed:` line.
+Run `checkmate target list`. When it shows no target:
+
+1. Tell the person in two or three lines: a target is the record of where the application runs and what a tester can do there. Checkmate needs the URL of the running application, and how to sign in when the application needs a login.
+2. Use the values that the message of the person gives. Ask only for a missing value. Do not ask for a password or a token. Ask for the name of the environment variable or the file that has it.
+3. Run `checkmate setup --url <url>`.
+4. Show a short table of what Checkmate set and what it assumed. Use the facts and each `assumed:` line.
+5. Continue with the test in the same turn.
+
+## Start
+
+1. Find the plan ID. Use the ticket ID, for example `shop-12`. When there is no ticket, make a short name from the objective, for example `coupon-limit`. Tell the person which one you used.
 2. Run one command:
 
    ```sh
-   checkmate test <planId> --source <ticket or file> --allow Read --allow Bash
+   checkmate test <planId> --source <ticket or file> --session
    ```
 
-   - Add `--build`, `--objective`, or `--target` only when the oracle gives them. Add `--url <url>` when the store has no target.
-   - Give one `--allow` for each tool rule that the oracle or the project gives, for example `--allow "Bash(playwright-cli:*)"`. The host owns the permissions.
-   - Add `--level smoke|standard|deep` only when the oracle asks for it. Add `--since <git ref>` when the oracle names the base of the change, and `--until <git ref>` when the change is not the checked-out commit.
-   - `--mode` is `auto` when you do not give it: the first test of a plan explores, a later test checks the stored tests and explores again.
+   - Add `--build`, `--objective`, `--target`, `--level smoke|standard`, `--since <git ref>`, or `--until <git ref>` only when the person gives them.
+   - When the application needs a login, add `--instructions "<how a tester signs in>"`. Do not write a secret value.
 
 3. When the command refuses, read the `reason:` lines and the `hint:` line. Correct the command and run it again.
-4. Run `checkmate explore wait <explorationId>` as a background command. Use the background option of the shell tool.
-5. When the reply has `run=<runId>`, run the stored tests of that run now. Follow the execute skill, `/checkmate:execute <runId>`. Do this while the exploration runs.
-6. When `explore wait` ends, run `checkmate explore show <explorationId>` and `checkmate status <planId>`.
-7. Report to the oracle:
+
+## Loop
+
+1. Run `checkmate explore next <explorationId>`. Each line after line 1 is one action:
+   - `start <name> <step> agent=<type> prompt="<prompt>"`: start an agent with the Agent tool. Set `subagent_type` to `<type>`. Give the prompt exactly.
+   - `message <name> <step> agent=<agent id> prompt="<prompt>"`: send the prompt exactly to that agent with the SendMessage tool. When you do not have SendMessage, load it with ToolSearch.
+   - `wait`: an agent runs. Wait until it ends.
+   - `finished`: go to Report.
+2. Carry out all the actions of one `next` in one message, so that the agents run at the same time.
+3. Tell the person in one line what runs, for example `3 testers study the change.`
+4. When an agent ends, run `checkmate explore done <explorationId> <name> <step> --agent <agent id> --activity "<what the agent did, in one line>"`. When the agent failed, or you cannot reach it, add `--failed "<reason>"`.
+5. When two or more agents end, run their `done` commands and `next` in one shell command, joined with `&&`.
+6. Run `next` again. Do this until it prints `finished`.
+
+When the person asks for another model, give it as the `model` parameter of the Agent tool.
+
+## Report
+
+1. Run `checkmate explore show <explorationId>` and `checkmate status <planId>`.
+2. When the reply of `test` had `run=<runId>`, run the stored tests of that run now: follow the execute skill, `/checkmate:execute <runId>`.
+3. Report to the person:
    - A table of the claims: Claim, State, Severity, Title. Give the reason of an `unresolved` claim.
    - A table of the open questions: Question ID, Question.
    - The outcomes of the run, when there is one.
-   - Each `assumed:` line, so that the oracle can correct it.
+   - Each `assumed:` line, so that the person can correct it.
    - `Done:` one line. `Next:` the `next` lines of `status`, and who acts.
+   - The plan page of the review UI: `/checkmate:ui`.
+
+When `next` gives `operational_error`, report the `reason:` and `hint:` lines.
 
 ## Decisions of the oracle
 
@@ -42,7 +70,7 @@ Run a decision only when the oracle tells you the decision in this session:
 - Decide a claim: `checkmate claim accept <planId> <claimId> --rationale "<why>"` or `checkmate claim reject <planId> <claimId> --rationale "<why>"`.
 - Keep the claims as stored tests: `checkmate harvest <explorationId>`. Add `--observations` only when the oracle asks for it.
 - When `checkmate status <planId>` shows `needs_revision` after an answer, follow the revise skill at once. Do not wait for another request.
-- After you record answers to questions of an exploration, run `checkmate explore follow <explorationId>`, then `checkmate explore wait <explorationId>` as a background command. When it ends, report the new claims.
+- After you record answers to questions of an exploration, run `checkmate explore follow <explorationId>`. Then do the Loop again, and report the new claims.
 
 ## Claims
 
@@ -57,4 +85,4 @@ Run a decision only when the oracle tells you the decision in this session:
 
 Do not change a state. Do not remove a claim.
 
-When `explore wait` gives `outcome=failed`, report the `reason:` and `hint:` lines. For a host authentication failure, give the hint as it is, and do not suggest a repair of your own. A refused model has a hint with the override. Do not try another model yourself.
+To start the testers as processes, for example in CI, run `checkmate test <planId> --allow Read --allow Bash` without `--session`, and then `checkmate explore wait <explorationId>`.

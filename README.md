@@ -35,7 +35,7 @@ Then set up a target, test a change, and open the review UI:
 /checkmate:ui
 ```
 
-Checkmate starts independent testers in new sessions. They do not know Checkmate. A recorder writes the record after each tester ends. Then a merger and a verifier turn the reports into claims. To plan stored tests first, use `/checkmate:plan`.
+Claude starts independent testers as agents of your session, so you see their work, and they count in the usage of the session. In a shell without a session, for example in CI, Checkmate starts them as new processes. The testers do not get the Checkmate skills. Checkmate records the work of each tester after it ends. Then a merger and a verifier turn the reports into claims. To plan stored tests first, use `/checkmate:plan`.
 
 Read [Test in Claude Code](docs/guides/claude-code.md).
 

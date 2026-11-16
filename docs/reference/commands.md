@@ -61,6 +61,8 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `finding list [--plan <planId>] [--open]`                    | Lists the findings of all runs, one line for each finding.                                                                        |
 | Test      | `test <planId> --build <build> --allow <rule>`               | Tests a change: explores the build, and in regression mode also begins a run of the stored tests. Read [test](#test).             |
 | Explore   | `explore start <planId> --build <build> --allow <rule>`      | Records an exploration and starts its explorers in the background. Read [Explore](#explore).                                      |
+|           | `explore next <explorationId>`                               | Session path: prints the actions that are due now for the agents of the host session. Read [Session path](#session-path).         |
+|           | `explore done <explorationId> <name> <step>`                 | Session path: records that the step of an agent ended, and reads its answer file. Read [Session path](#session-path).             |
 |           | `explore status <explorationId>`                             | Prints the state, the level, the model, and each explorer.                                                                        |
 |           | `explore wait <explorationId> [--timeout <s>]`               | Waits until the exploration ends, and prints the status.                                                                          |
 |           | `explore follow <explorationId>`                             | Resumes each explorer session for one more turn with the new answers of the oracle. Read [explore follow](#explore-follow).       |
@@ -188,19 +190,22 @@ checkmate setup --url <url> [--target <targetId>] [--instance <name>] [--operati
 ## test
 
 ```sh
-checkmate test <planId> --allow <rule> [--build <build>] [--url <url>] [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--until <git ref>] [--repo <dir>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source>]
+checkmate test <planId> --allow <rule> [--build <build>] [--url <url>] [--mode exploratory|regression|auto] [--level <level>] [--explorers <n>] [--instance <id>] [--since <git ref>] [--until <git ref>] [--repo <dir>] [--scope <a,b>] [--claude-arg <arg>] [--timeout <seconds>] [--objective <text> --target <targetId> --source <source> --instructions <text>]
+checkmate test <planId> --session [the same options without --allow, --claude-arg, and --timeout]
 ```
 
 `test` does the common sequence in one command:
 
 1. Without `--build`, it uses `git rev-parse --short HEAD`. Without git, it uses the date and time in UTC, for example `local-20261116-1530`.
-2. When the plan has no request, it records one from `--objective`, `--target` (the latest revision), and `--source`. It needs `--source` or `--objective`. Without `--objective`, the objective is `Test the change that <sources> describes.` Without `--target`, it uses the only target. When the store has no target, it runs `setup --url <url>` first, and needs `--url`.
+2. When the plan has no request, it records one from `--objective`, `--target` (the latest revision), `--source`, and `--instructions`, for example the way that a tester signs in. Do not put a secret value in it. It needs `--source` or `--objective`. Without `--objective`, the objective is `Test the change that <sources> describes.` Without `--target`, it uses the only target. When the store has no target, it runs `setup --url <url>` first, and needs `--url`.
 3. It prints each assumed value on an `assumed:` line, the values of `setup` too.
 4. It chooses the mode. `--mode auto` is the default. The rule: when the plan has no exploration and no finished run, the mode is `exploratory`. Else it is `regression`.
 5. It starts an exploration, as `explore start` does, with the mode. `--since` and `--until` give the change, as in `explore start`. Without `--since`, when the workspace (or `--repo`) has a default branch of `origin` (`refs/remotes/origin/HEAD`) that is an ancestor of the checked-out commit and not equal to it, `test` uses that branch as `--since` and prints `assumed: since=<branch> (...)`. Else it prints `assumed: since=none (no diff is given: ...)`. `--scope` gives the changed files as a list, in place of the files of the diff.
 6. In `regression` mode, when the plan has a revision, it begins a run of the ready tests of the latest revision with the next free run ID, for example `run-2`. When the gate refuses, no run starts, and `check_skipped` lines give the reasons.
 
-Output: line 1 has `mode=`, `level=`, `explorers=`, `model=`, `verifier=`, and `run=` when a run began. The `next` lines name the execute stage for the run and `checkmate explore wait <explorationId>`. The JSON has `chosenBy`: `auto` or `flag`.
+Output: line 1 has `mode=`, `level=`, `explorers=`, `model=`, `verifier=`, `path=session` with `--session`, and `run=` when a run began. The `next` lines name the execute stage for the run and `checkmate explore wait <explorationId>`, or `checkmate explore next <explorationId>` with `--session`. The JSON has `chosenBy`: `auto` or `flag`, and `path`: `process` or `session`.
+
+**Two paths.** Without `--session`, the testers run as new Claude Code processes in the background (the process path). Use it in a shell without a Claude Code session, for example in CI or in a factory. With `--session`, `test` opens the same exploration, with the same charter, level, known-state file, and work folders, but starts no process. The operator agent of a Claude Code session starts the testers as its own agents, and they show in the session and count in its usage (the session path). Read [Session path](#session-path).
 
 ## Explore
 
@@ -323,6 +328,32 @@ It needs a completed exploration, and one or more questions of the exploration w
 5. When one or more sessions are recorded, the follow-up is `completed`, and its answers are used. When the follow-up fails or stops, the exploration stays `completed` with its claims, its answers stay unused, and you can run it again.
 
 After an answer to a question of a completed exploration, the first `next` line of `status` is `<n> unused answers of <explorationId>: checkmate explore follow <explorationId>`.
+
+### Session path
+
+The session path is the default of the test skill in Claude Code. Checkmate keeps the state. The operator agent only carries out the actions. The plugin has two agents in `agents/`: `tester` (tools `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`) and `clerk` (tools `Read`, `Write`). Their text does not name Checkmate, and they get no skills. The model is in the front matter of each agent. The level sets the number of testers and the verifier. To use another model, the operator gives it as the `model` parameter of the Agent tool.
+
+`checkmate explore next <explorationId>` prints the actions that are due now, one on each line, and in `actions` of the JSON:
+
+| Action                                                          | The operator                                                          |
+| --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `start <name> <step> agent=checkmate:<agent> prompt="<prompt>"` | Starts a new agent with the Agent tool, with this type and prompt.    |
+| `message <name> <step> agent=<agent id> prompt="<prompt>"`      | Sends the prompt to the agent with this ID with the SendMessage tool. |
+| `wait`                                                          | Waits: one or more agents run.                                        |
+| `finished`                                                      | Reports. Line 1 is `operational_error` when the exploration failed.   |
+
+The prompt is always one sentence: `Read <task file> and do what it says.`, or for the clerk, `Read <task file> and write your answer to <answer file>.` Checkmate writes each task file in the work folder before it prints the action. A task file has the same brief as the process path. The study task adds one line: start each shell command with `export PLAYWRIGHT_CLI_SESSION=qa-<explorationId>-<explorer>;`, so that each tester has its own browser. The steps are, in this order:
+
+1. `study`, `test`, and `record` for each tester (`a1`, `a2`, ...). The record task is the recorder prompt, with one change: the tester writes the JSON array to `<work folder>/entries.json` and replies with one word. Checkmate checks the file as `record` does: new IDs, evidence files to blobs, and dropped references. When it refuses an entry, the next action is one `message` with `task-repair.md`. There is one repair round.
+2. `merge` with the clerk, when the merge of the process path applies. The answer file is `.checkmate/work/<explorationId>/merge/answer.json`. Checkmate repairs refused entries once and gives the extra round for reports in no issue, as in the process path.
+3. `verify` with a tester, when the level has a verifier and a claim has one reporter. When the answer file has no usable array, there is one repair round. Then the step is `skipped`.
+4. `finished`. Checkmate saves `plan.md`, `questions.md`, `report.md`, and `follow-up-report.md` of each tester, and removes the work folder of a completed exploration.
+
+`checkmate explore done <explorationId> <name> <step> [--agent <agent id>] [--failed "<reason>"] [--activity "<text>"]` records that a step ended. `<name>` is a tester, `merge`, or `verify`. `<step>` is `study`, `test`, `record`, `follow`, `merge`, or `verify`. Give `--agent` with the ID that the Agent tool returned, at least the first time. Checkmate stores it and uses it in each later `message` action. `--failed` ends that tester or step. `--activity` is one line of what the agent did. The live view of the review UI shows the last one. Without it, Checkmate stores `<step> ended`. `done` refuses a step that does not run.
+
+`explore follow` on an exploration of the session path gives one `message` action for each tester with an agent, with the follow-up brief in `task-follow.md`. Then `record`, and the merge and the verify of the new items, as above. When the operator reports that an agent cannot be reached (`--failed`), Checkmate skips that tester. When no tester can be reached, the follow-up fails with this hint: the testers ran in a session that ended. Run `checkmate test <planId> --build <build> --session` again. The answers reach the new testers through the known-state file.
+
+The exploration stores its path. `explore status`, `explore show`, and `explore wait` work for both paths. `explore status` prints `path=session` for the session path. On the session path the state goes from `testing` to `recording`, `verifying`, and `completed` or `failed`. It has no supervisor, so it does not become `starting` or `stopped`.
 
 ### explore finish
 

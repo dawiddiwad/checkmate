@@ -33,3 +33,13 @@ test('each skill description stays short', () => {
 	for (const skill of ['test', 'plan', 'execute', 'revise', 'setup', 'status', 'report', 'ui'])
 		assert(description(skill).length <= 300, skill)
 })
+
+test('the test skill runs the session loop and names no removed level', () => {
+	const text = readFileSync(join(root, 'plugin/skills/test/SKILL.md'), 'utf8')
+	assert.doesNotMatch(text, /deep/i)
+	assert.match(text, /checkmate test <planId> --source <ticket or file> --session/)
+	assert.match(text, /checkmate explore next <explorationId>/)
+	assert.match(text, /checkmate explore done <explorationId> <name> <step> --agent <agent id>/)
+	assert.match(text, /Carry out all the actions of one `next` in one message/)
+	assert.match(text, /`model` parameter of the Agent tool/)
+})

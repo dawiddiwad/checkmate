@@ -4,7 +4,7 @@
 
 Small values go in flags. Journal entries and a target profile go in JSON on standard input. Line 1 of every response is the status.
 
-**On this page:** [Command line](#command-line) · [Workspace](#workspace) · [Command list](#command-list) · [Input](#input) · [Output](#output) · [Refusals](#refusals) · [Statuses and exit codes](#statuses-and-exit-codes) · [The journal](#the-journal) · [record](#record) · [Several testers](#several-testers) · [ui](#ui) · [Environment variables](#environment-variables)
+**On this page:** [Command line](#command-line) · [Workspace](#workspace) · [Command list](#command-list) · [Input](#input) · [Output](#output) · [Refusals](#refusals) · [Statuses and exit codes](#statuses-and-exit-codes) · [The journal](#the-journal) · [record](#record) · [The record hook](#the-record-hook) · [Several testers](#several-testers) · [ui](#ui) · [Environment variables](#environment-variables)
 
 ## Command line
 
@@ -197,6 +197,8 @@ checkmate record <changeId> [--build <build>] [--session <sessionId>] [--timeout
 5. When it refuses one or more entries, it resumes the recorder one time: `claude -p --resume <recorderId>`, with the same arguments and no fork. The prompt lists the refusals and asks for a reply with the corrected entries only. Checkmate logs that reply. There is no second repair.
 6. It counts the entries of the change that the actor added, for each kind.
 
+Two `record` calls for one change do not run at the same time. `record` takes the lock file `.checkmate/tmp/record-<changeId>.lock` with its process ID, after its refusals and before the recorder starts. When another live process holds the lock, `record` waits up to `--timeout`. The wait counts in the timeout. When it cannot get the lock in time, it gives `operational_error` with the reason `Another recorder of <changeId> runs.` and starts no recorder. A lock of a process that does not run is taken over.
+
 The actor is the actor of the caller: `--actor`, else `CHECKMATE_ACTOR`, else the default. In a team, run `record` with the actor of the tester.
 
 Checkmate gives the recorder no permission: it passes no `--allowedTools`, and `--permission-prompts none` refuses each tool call that would need a prompt. The prompt tells the recorder to use no tool. Checkmate does not remove the tools of the host from the recorder. A copy with the same tools as the test session reads the prompt cache of that session, and this keeps the recorder cheap. Evidence is a path of a file that the tester saved in the workspace, relative to the current directory or to the workspace, or the text that the tester saw. The model, the authentication, and the other settings stay with the host. Checkmate passes no `--model`.
@@ -213,6 +215,28 @@ Output: line 1 is `<status> <changeId> session=<id> recorder=<id> saved=<n> refu
 | `rejected`          | A refusal before the start. No recorder started.                                                                                        |
 
 A failure has a `hint:` line. The entries that Checkmate logged stay. The operation log has a `log` row for each logged reply and one `record` row for each call of `record`, with the session and the recorder ID.
+
+### The record hook
+
+The plugin has one hook, in `plugin/hooks/hooks.json`:
+
+```json
+{
+	"hooks": {
+		"SessionEnd": [
+			{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js\" record-hook" }] }
+		]
+	}
+}
+```
+
+`record-hook` is for the hook only. It reads the hook input on standard input. It prints nothing and always exits 0. It does nothing when `CHECKMATE_RECORD` is not set, or when `CHECKMATE_RECORDER` is set, or when the `cwd` of the hook input has no store. Else, it starts this command detached, in the `cwd` of the hook input, with the same environment, and returns at once:
+
+```sh
+node <checkmate.js> record <CHECKMATE_RECORD> --session <session_id> [--build <CHECKMATE_BUILD>]
+```
+
+Its output goes to `.checkmate/tmp/record-hook-<session_id>.log`. When the hook input is not valid JSON or has no `session_id`, the log gets one line and no recorder starts. `checkmate operations` shows each `record` with its status and reasons, also a failed one.
 
 ## Several testers
 
@@ -254,7 +278,9 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 | `CHECKMATE_ACTOR`           | Checkmate | The default actor of a write. `--actor` overrides it.                                                                             |
 | `CHECKMATE_WORKSPACE`       | Checkmate | The workspace when the command has no `--workspace`. Use it when the agent changes the current directory.                         |
 | `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
-| `CHECKMATE_RECORDER`        | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set.                                                        |
+| `CHECKMATE_RECORDER`        | Checkmate | `record` sets it to `1` for the recorder. `record` refuses when it is set, and the record hook does nothing.                      |
+| `CHECKMATE_RECORD`          | Checkmate | The change ID that the record hook records when the session ends. Without it, the hook does nothing.                              |
+| `CHECKMATE_BUILD`           | Checkmate | The build that the record hook gives to `record --build`.                                                                         |
 | `CLAUDE_CONFIG_DIR`         | `record`  | The Claude Code configuration directory where `record` finds the sessions. The default is `~/.claude`.                            |
 | `CLAUDE_CODE_SESSION_ID`    | `record`  | The Claude Code session that runs `record`. The default session lookup skips it.                                                  |
 

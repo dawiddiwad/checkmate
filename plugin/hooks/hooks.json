@@ -1,0 +1,14 @@
+{
+	"hooks": {
+		"SessionEnd": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js\" record-hook"
+					}
+				]
+			}
+		]
+	}
+}

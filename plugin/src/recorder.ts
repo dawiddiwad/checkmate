@@ -5,7 +5,17 @@ import { recorderPrompt, recordText, repairPrompt } from './guide.ts'
 import { changeState, freshIds, logEntries } from './journal.ts'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { accessSync, constants, readdirSync, realpathSync, statSync } from 'node:fs'
+import {
+	accessSync,
+	constants,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
@@ -240,6 +250,46 @@ function sum(calls: Call[], key: 'costUsd' | 'durationMs') {
 	return values.length ? { [key]: values.reduce((total, value) => total + value, 0) } : {}
 }
 
+function running(pid: number) {
+	try {
+		process.kill(pid, 0)
+		return true
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'EPERM'
+	}
+}
+
+function lockHolder(path: string) {
+	try {
+		return Number(readFileSync(path, 'utf8'))
+	} catch {
+		return undefined
+	}
+}
+
+function takeLock(path: string, until: number) {
+	mkdirSync(join(path, '..'), { recursive: true })
+	for (;;) {
+		try {
+			writeFileSync(path, String(process.pid), { flag: 'wx' })
+			return true
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+		}
+		const holder = lockHolder(path)
+		if (holder && !running(holder) && lockHolder(path) === holder) {
+			rmSync(path, { force: true })
+			continue
+		}
+		if (Date.now() >= until) return false
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+	}
+}
+
+function releaseLock(path: string) {
+	if (lockHolder(path) === process.pid) rmSync(path, { force: true })
+}
+
 export function recordSession(
 	store: Store,
 	actor: string | undefined,
@@ -256,13 +306,43 @@ export function recordSession(
 			throw error
 		})
 	}
+	const started = Date.now()
+	const lock = join(store.workspace, '.checkmate', 'tmp', `record-${input.changeId}.lock`)
+	if (!takeLock(lock, started + input.timeoutSeconds * 1000))
+		return write(store, { ...operation, input: { ...input, session: plan.session } }, () => ({
+			reply: {
+				status: 'operational_error',
+				subject: input.changeId,
+				reasons: [
+					`Another recorder of ${input.changeId} runs. Checkmate waited ${input.timeoutSeconds} seconds for it. No recorder started.`,
+				],
+				hint: `Run checkmate record ${input.changeId} --session ${plan.session} again when the other recorder ends.`,
+				data: { changeId: input.changeId, session: plan.session },
+			},
+			subjects: [`change:${input.changeId}`],
+		}))
+	try {
+		return recordLocked(store, operation, input, plan, env, cwd, started)
+	} finally {
+		releaseLock(lock)
+	}
+}
+
+function recordLocked(
+	store: Store,
+	operation: { actor: string | undefined; command: string; subject: string; input: RecordInput },
+	input: RecordInput,
+	plan: ReturnType<typeof prepare>,
+	env: Env,
+	cwd: string,
+	started: number
+): Reply {
 	const childEnv = {
 		...env,
 		CHECKMATE_WORKSPACE: store.workspace,
 		CHECKMATE_ACTOR: plan.actor,
 		CHECKMATE_RECORDER: '1',
 	}
-	const started = Date.now()
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
 	const prompt = recorderPrompt(input.changeId, input.build, recordText(store, input.changeId, plan.actor))
@@ -273,7 +353,7 @@ export function recordSession(
 			prompt,
 			cwd,
 			childEnv,
-			input.timeoutSeconds
+			Math.max(1, left())
 		),
 	]
 	const missing: string[] = []

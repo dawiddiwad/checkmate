@@ -4667,7 +4667,17 @@ function pagedOperations(store, query = {}) {
 // plugin/src/recorder.ts
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, readdirSync as readdirSync2, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
+import {
+  accessSync,
+  constants,
+  mkdirSync as mkdirSync2,
+  readdirSync as readdirSync2,
+  readFileSync as readFileSync2,
+  realpathSync as realpathSync2,
+  rmSync,
+  statSync as statSync2,
+  writeFileSync
+} from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join as join3 } from "node:path";
 var defaultRecorderTimeout = 600;
@@ -4843,6 +4853,42 @@ function sum(calls, key) {
   const values = calls.flatMap((call) => call[key] === void 0 ? [] : [call[key]]);
   return values.length ? { [key]: values.reduce((total, value2) => total + value2, 0) } : {};
 }
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+function lockHolder(path) {
+  try {
+    return Number(readFileSync2(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function takeLock(path, until) {
+  mkdirSync2(join3(path, ".."), { recursive: true });
+  for (; ; ) {
+    try {
+      writeFileSync(path, String(process.pid), { flag: "wx" });
+      return true;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    const holder = lockHolder(path);
+    if (holder && !running(holder) && lockHolder(path) === holder) {
+      rmSync(path, { force: true });
+      continue;
+    }
+    if (Date.now() >= until) return false;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+  }
+}
+function releaseLock(path) {
+  if (lockHolder(path) === process.pid) rmSync(path, { force: true });
+}
 function recordSession(store, actor, input, env, cwd) {
   const operation = { actor, command: "record", subject: input.changeId, input };
   let plan;
@@ -4853,13 +4899,34 @@ function recordSession(store, actor, input, env, cwd) {
       throw error;
     });
   }
+  const started = Date.now();
+  const lock = join3(store.workspace, ".checkmate", "tmp", `record-${input.changeId}.lock`);
+  if (!takeLock(lock, started + input.timeoutSeconds * 1e3))
+    return write(store, { ...operation, input: { ...input, session: plan.session } }, () => ({
+      reply: {
+        status: "operational_error",
+        subject: input.changeId,
+        reasons: [
+          `Another recorder of ${input.changeId} runs. Checkmate waited ${input.timeoutSeconds} seconds for it. No recorder started.`
+        ],
+        hint: `Run checkmate record ${input.changeId} --session ${plan.session} again when the other recorder ends.`,
+        data: { changeId: input.changeId, session: plan.session }
+      },
+      subjects: [`change:${input.changeId}`]
+    }));
+  try {
+    return recordLocked(store, operation, input, plan, env, cwd, started);
+  } finally {
+    releaseLock(lock);
+  }
+}
+function recordLocked(store, operation, input, plan, env, cwd, started) {
   const childEnv = {
     ...env,
     CHECKMATE_WORKSPACE: store.workspace,
     CHECKMATE_ACTOR: plan.actor,
     CHECKMATE_RECORDER: "1"
   };
-  const started = Date.now();
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
   const prompt = recorderPrompt(input.changeId, input.build, recordText(store, input.changeId, plan.actor));
@@ -4870,7 +4937,7 @@ function recordSession(store, actor, input, env, cwd) {
       prompt,
       cwd,
       childEnv,
-      input.timeoutSeconds
+      Math.max(1, left())
     )
   ];
   const missing = [];
@@ -4927,7 +4994,7 @@ function recordSession(store, actor, input, env, cwd) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // plugin/src/actor.ts
@@ -5791,12 +5858,12 @@ function directory(candidates, file) {
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name) => readFileSync2(files2 + name);
+  const read = (name) => readFileSync3(files2 + name);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name) => readFileSync2(`${fonts}${name}.woff2`)
+    font: (name) => readFileSync3(`${fonts}${name}.woff2`)
   };
 }
 function securityHeaders() {
@@ -6147,8 +6214,9 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/cli.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync } from "node:fs";
-import { dirname, resolve as resolve2 } from "node:path";
+import { spawn } from "node:child_process";
+import { appendFileSync, closeSync, existsSync as existsSync4, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname, join as join5, resolve as resolve2 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 function value(args, name) {
   const found = args[name];
@@ -6831,9 +6899,9 @@ function rationaleOf(input) {
 }
 function writeOutput(store, out, content) {
   const path = resolve2(store.workspace, out);
-  mkdirSync2(dirname(path), { recursive: true });
+  mkdirSync3(dirname(path), { recursive: true });
   try {
-    writeFileSync(path, content, { flag: "wx" });
+    writeFileSync2(path, content, { flag: "wx" });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(`Output file exists: ${out}. Choose a new path.`, { cause: error });
@@ -6983,7 +7051,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync3(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync4(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
   requireWellFormed(
@@ -7115,12 +7183,64 @@ async function serveUi(tokens) {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 }
+function hookInput(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : "The hook input is not a JSON object.";
+  } catch {
+    return "The hook input is not valid JSON.";
+  }
+}
+function recordHook(text, env, cwd, script) {
+  const changeId = env.CHECKMATE_RECORD?.trim();
+  if (!changeId || env.CHECKMATE_RECORDER) return void 0;
+  const input = hookInput(text);
+  const directory2 = typeof input === "object" && typeof input.cwd === "string" ? input.cwd : cwd;
+  const { workspace } = workspaceOf(directory2, void 0, env);
+  if (!existsSync4(databasePath(workspace))) return void 0;
+  const session = typeof input === "object" && typeof input.session_id === "string" ? input.session_id : void 0;
+  const folder = join5(workspace, ".checkmate", "tmp");
+  mkdirSync3(folder, { recursive: true });
+  const log = join5(folder, `record-hook-${(session ?? "unknown").replace(/[^A-Za-z0-9-]/g, "-")}.log`);
+  const problem = typeof input === "string" ? input : session ? void 0 : "The hook input has no session_id.";
+  if (problem) {
+    appendFileSync(log, `${(/* @__PURE__ */ new Date()).toISOString()} ${problem} No recorder started.
+`);
+    return log;
+  }
+  const build = env.CHECKMATE_BUILD?.trim();
+  const args = [script, "record", changeId, "--session", session, ...build ? ["--build", build] : []];
+  appendFileSync(log, `${(/* @__PURE__ */ new Date()).toISOString()} checkmate ${args.slice(1).join(" ")}
+`);
+  const out = openSync(log, "a");
+  try {
+    const child = spawn(process.execPath, args, {
+      cwd: directory2,
+      env,
+      detached: true,
+      stdio: ["ignore", out, out]
+    });
+    child.on("error", (error) => appendFileSync(log, `${(/* @__PURE__ */ new Date()).toISOString()} ${error.message}
+`));
+    child.unref();
+  } finally {
+    closeSync(out);
+  }
+  return log;
+}
 async function main(argv) {
   if (argv[0] === "ui" && !argv.includes("--help")) return serveUi(argv.slice(1));
+  if (argv[0] === "record-hook") {
+    try {
+      recordHook(readFileSync4(0, "utf8"), process.env, process.cwd(), process.argv[1]);
+    } catch {
+    }
+    return;
+  }
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync3(0, "utf8")
+    stdin: () => readFileSync4(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

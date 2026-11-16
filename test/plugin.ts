@@ -19,6 +19,7 @@ try {
 		'bin',
 		'contracts',
 		'dist',
+		'hooks',
 		'package.json',
 		'skills',
 		'src',

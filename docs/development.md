@@ -19,6 +19,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 | ------------------- | --------------------------------------------------------------------------------------- |
 | `plugin/`           | The Claude Code plugin. Claude Code copies only this directory. It runs no npm install. |
 | `plugin/skills/`    | The `qa` and `ui` skills.                                                               |
+| `plugin/hooks/`     | `hooks.json`: the `SessionEnd` hook that starts `record`.                               |
 | `plugin/contracts/` | The JSON Schemas. They are the authority.                                               |
 | `plugin/src/`       | The store, the targets, the journal, the guide, the recorder, the commands, and the UI. |
 | `plugin/dist/`      | `checkmate.js`, the bundle of `plugin/bin/checkmate.ts`.                                |

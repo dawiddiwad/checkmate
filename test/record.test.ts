@@ -11,6 +11,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
 import { delimiter, join } from 'node:path'
 import { cli, directory, json, root } from './support.ts'
 import { run } from '../plugin/src/cli.ts'
@@ -34,12 +35,13 @@ mkdirSync(folder, { recursive: true })
 writeFileSync(join(folder, recorder + '.jsonl'), '{}\\n')
 const nested = spawnSync(process.execPath, [process.env.FAKE_CHECKMATE, 'record', 'cart'], { encoding: 'utf8' }).stdout
 const env = ['CHECKMATE_WORKSPACE', 'CHECKMATE_ACTOR', 'CHECKMATE_RECORDER'].map((name) => process.env[name])
-appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ args, prompt, cwd: process.cwd(), env, nested }) + '\\n')
+appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ args, prompt, cwd: process.cwd(), env, nested, start: Date.now() }) + '\\n')
 const observation = { kind: 'observation', about: 'coupon', saw: 'The total is 450.00.' }
 const defect = { kind: 'defect', title: 'Coupon stacks', severity: 'high', expected: '450.00', actual: '400.00', evidence: ['evidence/total.txt'] }
 const json = (entries) => JSON.stringify(entries)
 const replies = {
 	reply: json([observation, defect]),
+	slow: json([observation]),
 	fenced: 'Here are the entries:\\n\\u0060\\u0060\\u0060json\\n' + json([observation, defect]) + '\\n\\u0060\\u0060\\u0060\\nI used [no tool].',
 	nothing: 'I have nothing to add [yet].',
 	fix: repair ? json([defect]) : json([observation, { ...defect, severity: undefined }]),
@@ -70,9 +72,12 @@ if (mode === 'fail') {
 }
 if (mode === 'sleep') setTimeout(() => {}, 60000)
 else
-	process.stdout.write(
-		JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: replies[mode], session_id: recorder, total_cost_usd: 0.25, duration_ms: 1000 })
-	)
+	setTimeout(() => {
+		if (mode === 'slow') appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ end: Date.now() }) + '\\n')
+		process.stdout.write(
+			JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: replies[mode], session_id: recorder, total_cost_usd: 0.25, duration_ms: 1000 })
+		)
+	}, mode === 'slow' ? 600 : 0)
 `
 
 function setup(t: TestContext) {
@@ -142,7 +147,7 @@ function setup(t: TestContext) {
 		rmSync(call, { force: true })
 		return lines.map((line) => JSON.parse(line))
 	}
-	return { workspace, record, recordFrom, sessions, called }
+	return { workspace, env, record, recordFrom, sessions, called }
 }
 
 const noTools = ['--output-format', 'json', '--permission-prompts', 'none']
@@ -175,7 +180,7 @@ test('record forks the latest test session, and Checkmate logs the reply of the 
 	assert.equal(call.prompt, recorderPrompt('cart', 'b1', 'No criterion, defect, or question yet.'))
 	assert.match(call.prompt, /Reply with only one JSON array of the new entries, and nothing else\. Use no tool\./)
 	assert.doesNotMatch(call.prompt, /checkmate (log|guide|show)|<<'EOF'|Write tool/)
-	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp')), false)
+	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp', 'record-cart.lock')), false)
 	assert.equal(call.cwd, workspace)
 	assert.deepEqual(call.env, [workspace, 'qa:a1', '1'])
 	assert.match(call.nested, /^rejected cart refusal=prohibited\n.*\nreason: A recorder cannot start another recorder/)
@@ -427,4 +432,95 @@ test('record drops a link to an ID that is nowhere, and refuses a verdict for a 
 		[{ kind: 'defect', title: 't', severity: 'low', expected: 'e', actual: 'a', links: ['Q9'] }]
 	)
 	assert.match(JSON.parse(strict.output).reasons[1], /\.links names no observation or criterion or question: Q9/)
+})
+
+async function until<T>(check: () => T | undefined, seconds = 15) {
+	const end = Date.now() + seconds * 1000
+	for (;;) {
+		const found = check()
+		if (found !== undefined) return found
+		assert(Date.now() < end, 'The condition did not hold in time')
+		await new Promise((done) => setTimeout(done, 100))
+	}
+}
+
+function hookProcess(input: string, env: Record<string, string | undefined>, cwd: string) {
+	return spawnSync(process.execPath, [script, 'record-hook'], { input, env, cwd, encoding: 'utf8' })
+}
+
+test('the record hook is silent and does nothing without CHECKMATE_RECORD, inside a recorder, or with bad input', (t) => {
+	const { workspace, env } = setup(t)
+	const input = JSON.stringify({ session_id: tester, cwd: workspace, hook_event_name: 'SessionEnd' })
+	for (const change of [{}, { CHECKMATE_RECORD: 'cart', CHECKMATE_RECORDER: '1' }]) {
+		const hook = hookProcess(input, { ...env, ...change }, workspace)
+		assert.deepEqual([hook.status, hook.stdout, hook.stderr], [0, '', ''])
+	}
+	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp')), false)
+	const bad = hookProcess('not json', { ...env, CHECKMATE_RECORD: 'cart' }, workspace)
+	assert.deepEqual([bad.status, bad.stdout, bad.stderr], [0, '', ''])
+	const log = readFileSync(join(workspace, '.checkmate', 'tmp', 'record-hook-unknown.log'), 'utf8')
+	assert.match(log, /The hook input is not valid JSON\. No recorder started\.\n$/)
+	const away = directory(t)
+	const elsewhere = hookProcess(input.replace(workspace, away), { ...env, CHECKMATE_RECORD: 'cart' }, away)
+	assert.deepEqual([elsewhere.status, elsewhere.stdout], [0, ''])
+	assert.equal(existsSync(join(away, '.checkmate')), false)
+})
+
+test('the record hook starts a detached recorder for the ended session, and the record gets its entries', async (t) => {
+	const { workspace, env, called } = setup(t)
+	const input = JSON.stringify({ session_id: tester, cwd: workspace, hook_event_name: 'SessionEnd', reason: 'other' })
+	const hook = hookProcess(input, { ...env, CHECKMATE_RECORD: 'cart', CHECKMATE_BUILD: 'b1' }, workspace)
+	assert.deepEqual([hook.status, hook.stdout, hook.stderr], [0, '', ''])
+	const log = join(workspace, '.checkmate', 'tmp', `record-hook-${tester}.log`)
+	const done = await until(() => {
+		const text = existsSync(log) ? readFileSync(log, 'utf8') : ''
+		return /^completed cart /m.test(text) ? text : undefined
+	})
+	assert.match(
+		done,
+		new RegExp(`^\\S+ checkmate record cart --session ${tester} --build b1\\ncompleted cart session=${tester} `)
+	)
+	const [call] = called()
+	assert.deepEqual(call.args.slice(0, 4), ['-p', '--resume', tester, '--fork-session'])
+	const operation = json(workspace, ['operations', '--subject', 'change:cart', '--limit', '1']).body.operations[0]
+	assert.deepEqual([operation.command, operation.status], ['record', 'completed'])
+})
+
+test('two record calls for one change run one after the other, and a stale lock is taken over', async (t) => {
+	const { workspace, env, record, called } = setup(t)
+	const recordProcess = () =>
+		new Promise<number | null>((done) => {
+			const child = spawn(process.execPath, [script, 'record', 'cart', '--session', tester, '--build', 'b1'], {
+				cwd: workspace,
+				env: { ...env, FAKE_CLAUDE: 'slow' },
+				stdio: 'ignore',
+			})
+			child.on('close', done)
+		})
+	assert.deepEqual(await Promise.all([recordProcess(), recordProcess()]), [0, 0])
+	const events = called()
+	const starts = events.filter((event) => event.start).map((event) => event.start)
+	const ends = events.filter((event) => event.end).map((event) => event.end)
+	assert.equal(starts.length, 2)
+	assert(Math.max(...starts) >= Math.min(...ends), JSON.stringify(events.map((event) => event.start ?? event.end)))
+	const lock = join(workspace, '.checkmate', 'tmp', 'record-cart.lock')
+	assert.equal(existsSync(lock), false)
+	const dead = spawnSync(process.execPath, ['-e', '']).pid
+	writeFileSync(lock, String(dead))
+	assert.equal(record(['--build', 'b1']).body.status, 'completed')
+	assert.equal(existsSync(lock), false)
+	writeFileSync(lock, String(process.pid))
+	const waited = record(['--timeout', '1', '--build', 'b1'])
+	assert.equal(waited.body.status, 'operational_error')
+	assert.match(waited.body.reasons[0], /^Another recorder of cart runs\. Checkmate waited 1 seconds for it\./)
+	const operation = json(workspace, ['operations', '--subject', 'change:cart', '--limit', '1']).body.operations[0]
+	assert.deepEqual([operation.command, operation.status], ['record', 'operational_error'])
+})
+
+test('the plugin declares one SessionEnd hook that runs record-hook', () => {
+	const hooks = JSON.parse(readFileSync(join(root, 'plugin/hooks/hooks.json'), 'utf8'))
+	assert.deepEqual(Object.keys(hooks.hooks), ['SessionEnd'])
+	assert.deepEqual(hooks.hooks.SessionEnd, [
+		{ hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" record-hook' }] },
+	])
 })

@@ -46,8 +46,9 @@ import { operationLog } from './views.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { spawn } from 'node:child_process'
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
@@ -1152,8 +1153,60 @@ export async function serveUi(tokens: string[]) {
 	process.once('SIGTERM', stop)
 }
 
+type HookInput = { session_id?: unknown; cwd?: unknown }
+
+function hookInput(text: string): HookInput | string {
+	try {
+		const parsed = JSON.parse(text) as unknown
+		return parsed && typeof parsed === 'object' ? (parsed as HookInput) : 'The hook input is not a JSON object.'
+	} catch {
+		return 'The hook input is not valid JSON.'
+	}
+}
+
+export function recordHook(text: string, env: Io['env'], cwd: string, script: string) {
+	const changeId = env.CHECKMATE_RECORD?.trim()
+	if (!changeId || env.CHECKMATE_RECORDER) return undefined
+	const input = hookInput(text)
+	const directory = typeof input === 'object' && typeof input.cwd === 'string' ? input.cwd : cwd
+	const { workspace } = workspaceOf(directory, undefined, env)
+	if (!existsSync(databasePath(workspace))) return undefined
+	const session = typeof input === 'object' && typeof input.session_id === 'string' ? input.session_id : undefined
+	const folder = join(workspace, '.checkmate', 'tmp')
+	mkdirSync(folder, { recursive: true })
+	const log = join(folder, `record-hook-${(session ?? 'unknown').replace(/[^A-Za-z0-9-]/g, '-')}.log`)
+	const problem = typeof input === 'string' ? input : session ? undefined : 'The hook input has no session_id.'
+	if (problem) {
+		appendFileSync(log, `${new Date().toISOString()} ${problem} No recorder started.\n`)
+		return log
+	}
+	const build = env.CHECKMATE_BUILD?.trim()
+	const args = [script, 'record', changeId, '--session', session!, ...(build ? ['--build', build] : [])]
+	appendFileSync(log, `${new Date().toISOString()} checkmate ${args.slice(1).join(' ')}\n`)
+	const out = openSync(log, 'a')
+	try {
+		const child = spawn(process.execPath, args, {
+			cwd: directory,
+			env,
+			detached: true,
+			stdio: ['ignore', out, out],
+		})
+		child.on('error', (error) => appendFileSync(log, `${new Date().toISOString()} ${error.message}\n`))
+		child.unref()
+	} finally {
+		closeSync(out)
+	}
+	return log
+}
+
 export async function main(argv: string[]) {
 	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
+	if (argv[0] === 'record-hook') {
+		try {
+			recordHook(readFileSync(0, 'utf8'), process.env, process.cwd(), process.argv[1])
+		} catch {}
+		return
+	}
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,

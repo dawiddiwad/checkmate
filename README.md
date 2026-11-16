@@ -28,11 +28,11 @@ Install the plugin from the marketplace. You do not need npm.
 /plugin install checkmate@checkmate
 ```
 
-Open the change, let Claude test it, and then record the test session from outside that session. To type the commands in a terminal, also install the npm CLI: `npm i -g @xoxoai/checkmate`.
+Make the target, open the change, and start the test session with `CHECKMATE_RECORD`. Test as you like. When the session ends, the plugin writes the record. To type the commands in a terminal, also install the npm CLI: `npm i -g @xoxoai/checkmate`.
 
 ```sh
 checkmate open shop-12 --target shop
-checkmate record shop-12 --build b1
+CHECKMATE_RECORD=shop-12 CHECKMATE_BUILD=b1 claude
 ```
 
 Read [Test in Claude Code](docs/guides/claude-code.md).

@@ -2,7 +2,7 @@
 
 > **Guide** · For people who use Claude Code with the Checkmate plugin.
 
-You open a change and let Claude test it. The test session knows nothing about Checkmate. After the test, `checkmate record` starts a copy of the test session, and the copy writes the record. You read the record, answer the questions, and decide on each build.
+You open a change and let Claude test it. The test session knows nothing about Checkmate. When the session ends, the plugin starts a copy of the test session, and the copy writes the record. You read the record, answer the questions, and decide on each build.
 
 ## Before you start
 
@@ -33,17 +33,21 @@ Record the target only once for each project. The `qa` skill tells Claude the sa
 
 ### 2. Let Claude test
 
-Start Claude Code in the project directory and give it the change to test. Do not tell it about Checkmate, and do not tell it to log. It tests the way it tests without Checkmate.
-
-### 3. Record the test session
-
-After the test session, or after a turn of it, run this command in a terminal in the project directory. Do not run it in the test session.
+Start Claude Code in the project directory with `CHECKMATE_RECORD`, and give it the change to test. Do not tell it about Checkmate, and do not tell it to log. It tests the way it tests without Checkmate.
 
 ```sh
-checkmate record shop-12 --build b1
+CHECKMATE_RECORD=shop-12 CHECKMATE_BUILD=b1 claude
 ```
 
-`record` copies the latest Claude Code session of the project with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. Its prompt holds the entry kinds and what the record already holds. It replies with what the tester did and found, the questions for the PM, and the answers, as one JSON array, and Checkmate logs that reply. It has no tool and does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
+`CHECKMATE_BUILD` is optional. A session without `CHECKMATE_RECORD` is never recorded.
+
+### 3. The record is written when the session ends
+
+When the session ends, the `SessionEnd` hook of the plugin starts `checkmate record shop-12 --session <sessionId> --build b1` in the background, and returns at once. The hook prints nothing in the session. The output of `record` goes to `.checkmate/tmp/record-hook-<sessionId>.log`. `checkmate operations --subject change:shop-12` shows the `record` row with its status: `completed`, `operational_error`, `interrupted`, or `rejected`.
+
+To record by hand instead, run `checkmate record shop-12 --build b1` in a terminal in the project directory, outside the test session. Use one of the two ways, not both: a second recorder costs a second model call.
+
+`record` copies the Claude Code session with `claude -p --resume <sessionId> --fork-session`. The copy has the memory of the test work. Its prompt holds the entry kinds and what the record already holds. It replies with what the tester did and found, the questions for the PM, and the answers, as one JSON array, and Checkmate logs that reply. It has no tool and does not test again. The test session does not see the copy. Give `--session <sessionId>` when the test session is not the latest session of the project. Line 1 of the output names the recorder session and the count of new entries. Read [record](../reference/commands.md#record).
 
 ### 4. Read the record
 
@@ -82,7 +86,7 @@ checkmate export shop-12 --out qa/shop-12.json
 
 ## Several testers
 
-Two or more agents can test one change. Each agent tests alone. After each test session, run `record` with the actor of that tester, for example `CHECKMATE_ACTOR=qa:a1 checkmate record shop-12 --session <sessionId>`. Each recorder logs into the same journal with its own actor. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found. Each of these roles reads its text from `checkmate guide <changeId> --role <merger|verifier>`. Read [Several testers](../reference/commands.md#several-testers).
+Two or more agents can test one change. Each agent tests alone. Start each test session with the actor of that tester, for example `CHECKMATE_ACTOR=qa:a1 CHECKMATE_RECORD=shop-12 claude`. The hook runs one recorder for each session, one after the other. Each recorder logs into the same journal with its own actor. A merger then merges their defects into issues, and a verifier checks the issues that only one tester found. Each of these roles reads its text from `checkmate guide <changeId> --role <merger|verifier>`. Read [Several testers](../reference/commands.md#several-testers).
 
 ## When something goes wrong
 

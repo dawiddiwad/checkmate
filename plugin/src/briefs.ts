@@ -106,7 +106,7 @@ export function entryText(
 	return [commonText(kinds, described), ...kinds.map((kind) => kindText(kind, keep, described))].join('\n')
 }
 
-export function recorderPrompt(build: string, record: string) {
+export function recorderPrompt(build: string, record: string, saved: string[] = []) {
 	return [
 		`Now write the record of this test session for the QA record of the team (build ${build}).`,
 		'Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.',
@@ -123,6 +123,28 @@ export function recorderPrompt(build: string, record: string) {
 		'',
 		'The record already holds:',
 		record,
+		...(saved.length
+			? [
+					'',
+					'This session was recorded before. The record already holds these entries of the session. Reply with only the entries that are not in this list:',
+					...saved,
+				]
+			: []),
+	].join('\n')
+}
+
+export function followBrief(
+	questions: Array<{ question: string; answer: string }>,
+	evidenceFolder: string,
+	seconds: number
+) {
+	return [
+		'The owner of the product answered these questions:',
+		...questions.map((item, index) => `${index + 1}. ${item.question} Answer: ${item.answer}`),
+		'',
+		'Test the points that these answers decide, on the same build.',
+		`Add to ${evidenceFolder}/report.md: each new defect in the same form, and for each earlier unclear point that an answer settles, one line that says what is now known.`,
+		`You have ${seconds} seconds for this turn.`,
 	].join('\n')
 }
 
@@ -265,7 +287,7 @@ export function mergerPrompt(
 		...(earlier.length
 			? [
 					'',
-					'The issues of earlier builds. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
+					'The issues found before. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
 					...earlier.map(
 						(item) => `${item.id}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
 					),

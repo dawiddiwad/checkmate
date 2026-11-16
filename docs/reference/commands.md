@@ -63,7 +63,8 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 | Explore   | `explore start <planId> --build <build> --allow <rule>`      | Records an exploration and starts its explorers in the background. Read [Explore](#explore).                                      |
 |           | `explore status <explorationId>`                             | Prints the state, the level, the model, and each explorer.                                                                        |
 |           | `explore wait <explorationId> [--timeout <s>]`               | Waits until the exploration ends, and prints the status.                                                                          |
-|           | `explore levels`                                             | Prints the test levels: explorers, model alias, verifier, study seconds, and test seconds.                                        |
+|           | `explore follow <explorationId>`                             | Resumes each explorer session for one more turn with the new answers of the oracle. Read [explore follow](#explore-follow).       |
+|           | `explore levels`                                             | Prints the test levels: explorers, model alias, verifier, and the seconds of the study, test, and follow-up turns.                |
 |           | `explore open <planId> --build <build>`                      | Records an exploration without explorers.                                                                                         |
 |           | `explore finish <explorationId>`                             | Merges and verifies the recorded sessions of an exploration without explorers.                                                    |
 |           | `explore show <explorationId>`                               | Prints the exploration with its claims, questions, and criteria.                                                                  |
@@ -263,9 +264,12 @@ When the host refuses the model, the launch of that explorer fails. `explore wai
 | `starting`  | The supervisor did not start yet.                                |
 | `testing`   | The explorers run.                                               |
 | `recording` | The recorders run.                                               |
+| `following` | A follow-up runs.                                                |
 | `completed` | One or more sessions were recorded.                              |
-| `failed`    | No session was recorded, or a step failed.                       |
+| `failed`    | No session was recorded, a step failed, or the follow-up failed. |
 | `stopped`   | The supervisor process stopped before the end.                   |
+
+After a follow-up, the state is the result of the follow-up. `explore status` and `explore show` print one phase line for each `follow` (with `answers=<n>`) and `followed` event, with the reason and the skipped sessions.
 
 `explore wait <explorationId> [--timeout <seconds>]` waits until the state is `completed`, `failed`, `stopped`, or `open`, or until the timeout. The default timeout is 3600 seconds. The JSON has `outcome`:
 
@@ -299,6 +303,24 @@ A claim is an issue of the merger, or a defect that is in no issue. Its ID is `<
 A claim needs no planned assertion. The factory works on the open claims that are `observed`, `confirmed`, or `accepted`. The inbox lists the open claims that are `suspected` or `unresolved`. A claim is closed when the oracle rejects it, or when the latest retest verdict of a later build is `fixed`.
 
 **Questions.** The merger also joins the questions that one answer answers into a `topic` entry, for example `merge/T1`, with its members. The inbox, `status`, `explore show`, and the review UI show the topic in place of its members, and one answer to the topic answers each member. The record keeps each question of each explorer. A question is non-blocking unless the explorer marked it `blocking`. Only a blocking question, or a `suspected` or `unresolved` claim, makes the plan wait on the oracle. A question is in the same inbox list as the gaps of the plans, with its ID, for example `a1/Q1` or `merge/T1`. Answer it as a gap: `checkmate gap answer <planId> a1/Q1 --kind <kind> --value "<answer>" --rationale "<why>"`. The answer goes into the record. The next recorders of the plan see it.
+
+### explore follow
+
+```sh
+checkmate explore follow <explorationId> [--allow <rule>] [--claude-arg <arg>] [--timeout <seconds>]
+```
+
+`explore follow` tests the answers of the oracle. It does not wait for answers before the test: the explorers test first, and the follow-up tests the points that the answers decide.
+
+It needs a completed exploration, and one or more questions of the exploration with an answer that no completed follow-up used. Else it refuses with the reason and a hint. It returns at once. Then run `explore wait <explorationId>`.
+
+1. It resumes each explorer session of the exploration for one more turn, with `--resume <session>`, the model, the `--settings` argument, and the `--allowedTools` rules of the earlier turns, and no tool list argument. Without `--allow`, `--claude-arg`, or `--timeout`, it uses the values of `explore start`. It skips a session that ended in its study turn, and a session that it cannot resume, and gives the reason of each.
+2. The brief of the turn does not name Checkmate. It gives the answered questions with their answers, numbered, the same list to each explorer: `The owner of the product answered these questions:`. It asks the explorer to test the points that the answers decide, on the same build, and to add to `report.md` each new defect and one line for each earlier unclear point that an answer settles. It gives the seconds of the follow-up turn of the level: smoke 300, standard 600, deep 900.
+3. The recorder runs again on each session that ended or timed out. Its prompt lists the entries of the explorer that the record holds, and asks only for the entries that are not in that list. Checkmate also drops each reply entry with the same kind and title (or text) as an entry of the list. The record event gives the count as `repeated`.
+4. The merge and the verify run for the new defects only. The merger gets the earlier claims of the build too, so a new defect that describes an earlier claim joins it.
+5. When one or more sessions are recorded, the follow-up is `completed`, and its answers are used. When the follow-up fails, its answers stay unused, and you can run it again.
+
+After an answer to a question of a completed exploration, the first `next` line of `status` is `<n> unused answers of <explorationId>: checkmate explore follow <explorationId>`.
 
 ### explore finish
 

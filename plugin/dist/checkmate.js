@@ -9959,6 +9959,7 @@ function planQuestions(store, planId) {
   return groups.map(({ head, members }) => {
     const names = /* @__PURE__ */ new Set([head.id, ...members]);
     const found = members.map((id2) => questions.get(id2));
+    const answer = answers.filter((entry) => names.has(entry.question)).at(-1);
     return {
       id: head.id,
       explorationId: head.explorationId,
@@ -9967,7 +9968,8 @@ function planQuestions(store, planId) {
       members,
       blocking: found.some((entry) => entry.blocking === true),
       about: head.about ?? null,
-      answer: answers.filter((entry) => names.has(entry.question)).at(-1)?.answer ?? null
+      answer: answer?.answer ?? null,
+      answerId: answer?.id ?? null
     };
   });
 }
@@ -9996,10 +9998,10 @@ function likeness(a, b) {
   if (overlap(wordsIn(stepText(a)), wordsIn(stepText(b))) >= someWords) return "some of the same words and steps";
   return void 0;
 }
-function unplacedMatches(state, claims, build) {
+function unplacedMatches(state, claims, build, after = 0) {
   const byId = new Map(state.team.map((entry) => [entry.id, entry]));
   const single = claims.filter(
-    (claim) => claim.build === build && claim.reports.length === 1 && claim.id === claim.reports[0]
+    (claim) => claim.build === build && claim.reports.length === 1 && claim.id === claim.reports[0] && byId.get(claim.id).seq > after
   );
   return single.flatMap((own) => {
     const report = byId.get(own.id);
@@ -10011,8 +10013,9 @@ function unplacedMatches(state, claims, build) {
     return like.length ? [{ report: own.id, title: own.title, like }] : [];
   });
 }
-function mergeItems(state, build, claims = []) {
-  const defects = state.team.filter((entry) => entry.kind === "defect" && entry.build === build);
+function mergeItems(state, build, claims = [], after = 0) {
+  const defects = state.team.filter((entry) => entry.kind === "defect" && entry.build === build && entry.seq > after);
+  const fresh = new Set(defects.map((defect) => defect.id));
   const testers = new Set(defects.map((defect) => defect.actor));
   const groups = [];
   for (const [index2, a] of defects.entries())
@@ -10022,8 +10025,12 @@ function mergeItems(state, build, claims = []) {
       const group2 = [.../* @__PURE__ */ new Set([...joined.flat(), a.id, b.id])];
       groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group2);
     }
-  const questions = state.team.filter((entry) => entry.kind === "question" && entry.build === build);
-  const earlier = claims.filter((claim) => claim.build !== build && claim.state !== "rejected").map((claim) => ({
+  const questions = state.team.filter(
+    (entry) => entry.kind === "question" && entry.build === build && entry.seq > after
+  );
+  const earlier = claims.filter(
+    (claim) => claim.state !== "rejected" && (claim.build !== build || after > 0 && !claim.reports.some((id2) => fresh.has(id2)))
+  ).map((claim) => ({
     id: claim.id,
     title: short(claim.title),
     expected: short(claim.expected),
@@ -10045,9 +10052,9 @@ function mergeItems(state, build, claims = []) {
     groups
   };
 }
-function verifyItems(claims, build) {
+function verifyItems(claims, build, fresh) {
   return claims.filter(
-    (claim) => claim.build === build && claim.reporters === 1 && claim.verified === "none" && !claim.decision
+    (claim) => claim.build === build && claim.reporters === 1 && claim.verified === "none" && !claim.decision && (!fresh || claim.reports.some((id2) => fresh.has(id2)))
   );
 }
 function answerQuestion(store, actor, operationId, input) {
@@ -12243,9 +12250,9 @@ function exploration(store, explorationId) {
 
 // plugin/src/levels.ts
 var testLevels = {
-  smoke: { explorers: 1, model: "haiku", verifier: false, studySeconds: 300, testSeconds: 600 },
-  standard: { explorers: 3, model: "haiku", verifier: true, studySeconds: 600, testSeconds: 900 },
-  deep: { explorers: 2, model: "sonnet", verifier: true, studySeconds: 600, testSeconds: 1500 }
+  smoke: { explorers: 1, model: "haiku", verifier: false, studySeconds: 300, testSeconds: 600, followSeconds: 300 },
+  standard: { explorers: 3, model: "haiku", verifier: true, studySeconds: 600, testSeconds: 900, followSeconds: 600 },
+  deep: { explorers: 2, model: "sonnet", verifier: true, studySeconds: 600, testSeconds: 1500, followSeconds: 900 }
 };
 var levelNames = Object.keys(testLevels);
 var defaultLevel = "standard";
@@ -12848,7 +12855,7 @@ function entryText(kinds2 = recordedKinds, keep = (field2) => !teamFields.includ
   const described = /* @__PURE__ */ new Set();
   return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
 }
-function recorderPrompt(build, record) {
+function recorderPrompt(build, record, saved = []) {
   return [
     `Now write the record of this test session for the QA record of the team (build ${build}).`,
     "Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
@@ -12864,7 +12871,22 @@ function recorderPrompt(build, record) {
     JSON.stringify(journal_entry_schema_default.examples[0]),
     "",
     "The record already holds:",
-    record
+    record,
+    ...saved.length ? [
+      "",
+      "This session was recorded before. The record already holds these entries of the session. Reply with only the entries that are not in this list:",
+      ...saved
+    ] : []
+  ].join("\n");
+}
+function followBrief(questions, evidenceFolder2, seconds) {
+  return [
+    "The owner of the product answered these questions:",
+    ...questions.map((item, index2) => `${index2 + 1}. ${item.question} Answer: ${item.answer}`),
+    "",
+    "Test the points that these answers decide, on the same build.",
+    `Add to ${evidenceFolder2}/report.md: each new defect in the same form, and for each earlier unclear point that an answer settles, one line that says what is now known.`,
+    `You have ${seconds} seconds for this turn.`
   ].join("\n");
 }
 function repairPrompt(refusals) {
@@ -12962,7 +12984,7 @@ function mergerPrompt(build, reports, groups, questions = [], earlier = []) {
     ...questions.length ? ["", "The questions:", ...questions.map((question) => `${question.id}: ${question.question}`)] : [],
     ...earlier.length ? [
       "",
-      'The issues of earlier builds. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
+      'The issues found before. When a report of this build describes one of them, send an issue with the reports of that issue and the new report. For an issue of the merger, give "supersedes" with its ID. Do not open a new issue for it.',
       ...earlier.map(
         (item) => `${item.id}: ${item.title} Expected: ${item.expected} Actual: ${item.actual}`
       )
@@ -13022,6 +13044,21 @@ function addedEntries(store, explorationId, actor, after) {
 function launchContext(store, explorationId, explorer, session) {
   const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
   return launch ? launch.detail.context : void 0;
+}
+var entryTitle = (entry) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? "";
+var entryKey = (entry) => `${entry.kind}
+${entryTitle(entry).trim().toLowerCase()}`;
+function savedEntries(store, planId, explorationId, actor) {
+  return journal(store, planId, actor).team.filter(
+    (entry) => entry.actor === actor && entry.explorationId === explorationId
+  );
+}
+function newEntries(entries, saved) {
+  const keys = new Set(saved.map(entryKey));
+  return entries.filter((raw) => {
+    const entry = raw;
+    return !entry || typeof entry !== "object" || entry.supersedes !== void 0 || !keys.has(entryKey(entry));
+  });
 }
 function logReply(store, actor, explorationId, planId, entries, missing, dropped, cwd) {
   try {
@@ -13139,7 +13176,12 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" });
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
-  const prompt = recorderPrompt(exploration2.build, recordText(store, exploration2.plan_id, actor, exploration2.build));
+  const earlier = savedEntries(store, exploration2.plan_id, exploration2.exploration_id, actor);
+  const prompt = recorderPrompt(
+    exploration2.build,
+    recordText(store, exploration2.plan_id, actor, exploration2.build),
+    earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`)
+  );
   const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
   const calls = [
     callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
@@ -13147,8 +13189,10 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const missing = [];
   const dropped = [];
   const log = (entries) => logReply(store, actor, exploration2.exploration_id, exploration2.plan_id, entries, missing, dropped, cwd);
-  const first = replyArray(calls[0].result);
-  let refusals = first ? log(first) : [];
+  const given = replyArray(calls[0].result);
+  const first = given && newEntries(given, earlier);
+  const repeated = given && first ? given.length - first.length : 0;
+  let refusals = first?.length ? log(first) : [];
   if (!calls[0].failure && refusals.length && left() > 0) {
     calls.push(
       callClaude(
@@ -13161,16 +13205,16 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
       )
     );
     const fix = replyArray(calls[1].result);
-    if (fix) refusals = log(fix);
+    if (fix) refusals = log(newEntries(fix, earlier));
   }
   const added = addedEntries(store, exploration2.exploration_id, actor, after);
   const saved = Object.values(added).reduce((total, count) => total + count, 0);
   const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
-  const status = timedOut ? "interrupted" : calls[0].failure || !saved ? "operational_error" : "completed";
+  const status = timedOut ? "interrupted" : calls[0].failure || !saved && !repeated ? "operational_error" : "completed";
   const reasons2 = [
     ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
     ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
-    ...first && !saved ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
+    ...first && !saved && !repeated ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
     ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
   const data = {
@@ -13180,6 +13224,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     recorder: calls[0].sessionId ?? plan.recorder,
     calls: calls.length,
     saved,
+    repeated,
     refused: refusals.length,
     added,
     evidenceMissing: missing.length,
@@ -13321,13 +13366,13 @@ function launchPlan(profile, input, env) {
 function explorerNames(count) {
   return Array.from({ length: count }, (_, index2) => `a${index2 + 1}`);
 }
-function startSupervisor(store, explorationId, actor, env) {
+function startSupervisor(store, explorationId, actor, env, extra = []) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
   mkdirSync5(folder, { recursive: true });
   const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
   const child = spawn2(
     process.execPath,
-    [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace],
+    [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace, ...extra],
     {
       cwd: store.workspace,
       env: { ...env, CHECKMATE_ACTOR: actor },
@@ -13466,9 +13511,9 @@ function costOf(calls) {
   const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
   return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {};
 }
-function mergeReports(store, actor, explorationId, launch, env) {
+function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   const opened = explorationRow(store, explorationId);
-  const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id));
+  const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id), after);
   const later = items.earlier.length > 0 && items.defects.length > 0;
   const defects = later || items.testers > 1 && items.defects.length > 1;
   const questions = items.questionTesters > 1 && items.questions.length > 1;
@@ -13511,7 +13556,7 @@ function mergeReports(store, actor, explorationId, launch, env) {
     calls.push(call(["--resume", session], repairPrompt(refusals)));
     refusals = log(replyArray(calls.at(-1).result));
   }
-  const unplaced = calls.some((item) => item.failure) ? [] : unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build);
+  const unplaced = calls.some((item) => item.failure) ? [] : unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build, after);
   if (unplaced.length) {
     calls.push(call(["--resume", session], mergeAgainPrompt(unplaced)));
     refusals = [...refusals, ...log(replyArray(calls.at(-1).result))];
@@ -13540,9 +13585,10 @@ function verifiedEntries(reply, ids2) {
     return [{ kind: "observation", saw, [item.seen ? "confirms" : "refutes"]: item.id }];
   });
 }
-async function verifyClaims(store, actor, explorationId, launch, env) {
+async function verifyClaims(store, actor, explorationId, launch, env, after = 0) {
   const opened = exploration(store, explorationId);
-  const items = verifyItems(planClaims(store, opened.plan_id), opened.build);
+  const fresh = after ? newDefects(store, opened.plan_id, after) : void 0;
+  const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh);
   if (!items.length) return;
   const profile = targetRevision(store, opened.target_id, opened.target_revision).profile;
   const instance = findInstance(store, opened.target_id, opened.instance_id);
@@ -13574,6 +13620,11 @@ async function verifyClaims(store, actor, explorationId, launch, env) {
       ...costOf([call])
     }
   });
+}
+function newDefects(store, planId, after) {
+  return new Set(
+    journal(store, planId).team.filter((entry) => entry.kind === "defect" && entry.seq > after).map((entry) => entry.id)
+  );
 }
 function hostAuthentication(store, explorationId) {
   return explorationEvents(store, explorationId).some((item) => item.detail.hint === authenticationHint);
@@ -13630,6 +13681,177 @@ async function driveExploration(workspace, explorationId, env) {
     closeStore(store);
   }
 }
+function usedAnswers(events) {
+  const used = /* @__PURE__ */ new Set();
+  let pending = [];
+  for (const item of events) {
+    if (item.step === "follow") pending = item.detail.answers;
+    if (item.step === "followed" && item.status === "completed") for (const id2 of pending) used.add(id2);
+  }
+  return used;
+}
+function unusedAnswers(store, explorationId) {
+  const row = explorationRow(store, explorationId);
+  const used = usedAnswers(explorationEvents(store, explorationId));
+  return planQuestions(store, row.plan_id).filter(
+    (question) => question.explorationId === explorationId && question.answerId && !used.has(question.answerId)
+  );
+}
+function followable(events) {
+  return events.find((item) => item.step === "done")?.status === "completed" && explorationState(events) !== "following";
+}
+function followCount(store, explorationId) {
+  return followable(explorationEvents(store, explorationId)) ? unusedAnswers(store, explorationId).length : 0;
+}
+function startFollow(store, actor, input, env) {
+  const id2 = input.explorationId;
+  const reply = write(store, { actor, command: "explore follow", subject: id2, input }, (operationId, at) => {
+    requireClaude(env);
+    const row = explorationRow(store, id2);
+    const events = explorationEvents(store, id2);
+    const state = explorationState(events);
+    requireCondition(
+      followable(events),
+      `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
+      ["failed", "stopped", "open"].includes(state) ? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
+    );
+    const answered = unusedAnswers(store, id2);
+    requireCondition(
+      answered.length,
+      `Exploration ${id2} has no answer that a follow-up has not used.`,
+      `Answer a question of the exploration first: checkmate gap answer ${row.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
+    );
+    const stored = startOf(events);
+    const claudeArgs = checkClaudeArgs(input.claudeArgs);
+    const plan = {
+      answers: answered.map((question) => question.answerId),
+      questions: answered.map((question) => ({ question: question.question, answer: question.answer })),
+      after: lastEntry(store),
+      allow: input.allow.length ? input.allow : stored.allow,
+      context: claudeArgs.length ? {
+        ...stored.context,
+        claudeArgs: hostModel(claudeArgs) ? claudeArgs : [...claudeArgs, "--model", stored.model]
+      } : stored.context,
+      timeoutSeconds: input.timeoutSeconds ?? stored.timeoutSeconds,
+      seconds: testLevels[stored.level].followSeconds
+    };
+    requireWellFormed(
+      plan.allow.length,
+      "Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash",
+      "The host owns the permissions. An explorer cannot answer a permission prompt."
+    );
+    addEvent(store, id2, { step: "follow", explorer: null, status: "started", detail: plan }, operationId, at);
+    return {
+      reply: completed(id2, {
+        explorationId: id2,
+        planId: row.plan_id,
+        build: row.build,
+        answers: plan.answers.length,
+        followSeconds: plan.seconds,
+        next: [`checkmate explore wait ${id2}`]
+      }),
+      subjects: [`exploration:${id2}`, `plan:${row.plan_id}`]
+    };
+  });
+  startSupervisor(store, reply.subject, actor, env, ["--follow"]);
+  return reply;
+}
+function followSessions(events) {
+  const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
+  return names.map((explorer) => {
+    const own = events.filter((item) => item.explorer === explorer);
+    const last = (step) => own.filter((item) => item.step === step).at(-1);
+    const session = last("launch")?.detail.session ?? last("record")?.detail.session;
+    const skipped = !session ? `${explorer} has no session.` : last("end")?.detail.turn === "study" ? `The session of ${explorer} ended in its study turn.` : void 0;
+    return { explorer, session: session ?? "", skipped };
+  });
+}
+async function driveFollow(workspace, explorationId, env) {
+  const store = openStore(workspace);
+  const actor = env.CHECKMATE_ACTOR ?? "checkmate";
+  try {
+    event(store, actor, explorationId, {
+      step: "supervisor",
+      explorer: null,
+      status: "started",
+      detail: { pid: process.pid }
+    });
+    const events = explorationEvents(store, explorationId);
+    const plan = events.findLast((item) => item.step === "follow").detail;
+    const launch = {
+      ...startOf(events),
+      allow: plan.allow,
+      context: plan.context,
+      timeoutSeconds: plan.timeoutSeconds
+    };
+    const sessions = followSessions(events);
+    const claude = requireClaude(env);
+    const allowed = plan.allow.flatMap((rule) => ["--allowedTools", rule]);
+    const ended = await Promise.all(
+      sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
+        const call = await launchClaude(
+          claude,
+          childArgs({ ...plan.context, denyStore: true }, ["--resume", session, ...allowed]),
+          followBrief(plan.questions, evidenceFolder(explorationId, explorer), plan.seconds),
+          store.workspace,
+          childEnv(env),
+          plan.timeoutSeconds
+        );
+        return { explorer, session, call };
+      })
+    );
+    for (const { explorer, session, call } of ended) {
+      const hint = failureHint(launch, call);
+      event(store, actor, explorationId, {
+        step: "follow-turn",
+        explorer,
+        status: call.failure?.[0] ?? "completed",
+        detail: {
+          session,
+          ...call.failure ? { reason: call.failure[1] } : {},
+          ...call.stderr ? { stderr: call.stderr } : {},
+          ...hint ? { hint } : {},
+          ...costOf([call])
+        }
+      });
+    }
+    const resumed = ended.filter((item) => item.call.failure?.[0] !== "operational_error");
+    const recorded = recordExplorers(store, actor, explorationId, resumed, env).filter(
+      (status) => status === "completed"
+    ).length;
+    if (recorded) {
+      mergeReports(store, actor, explorationId, launch, env, plan.after);
+      if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after);
+    }
+    const skipped = [
+      ...sessions.flatMap((item) => item.skipped ? [item.skipped] : []),
+      ...ended.flatMap(
+        (item) => item.call.failure?.[0] === "operational_error" ? [`The session of ${item.explorer} could not resume: ${item.call.failure[1]}`] : []
+      )
+    ];
+    event(store, actor, explorationId, {
+      step: "followed",
+      explorer: null,
+      status: recorded ? "completed" : "failed",
+      detail: {
+        recorded,
+        answers: plan.answers,
+        skipped,
+        ...recorded ? {} : { reason: "No explorer session of the follow-up was recorded." },
+        ...ended.some((item) => authenticationFailed(item.call)) ? { hint: authenticationHint } : {}
+      }
+    });
+  } catch (error) {
+    event(store, actor, explorationId, {
+      step: "followed",
+      explorer: null,
+      status: "failed",
+      detail: { reason: error instanceof Error ? error.message : String(error) }
+    });
+  } finally {
+    closeStore(store);
+  }
+}
 function running2(pid) {
   if (typeof pid !== "number") return false;
   try {
@@ -13640,6 +13862,15 @@ function running2(pid) {
   }
 }
 function explorationState(events) {
+  const follow = events.findLastIndex((item) => item.step === "follow");
+  if (follow !== -1) {
+    const later = events.slice(follow + 1);
+    const ended = later.find((item) => item.step === "followed");
+    if (ended) return ended.status === "completed" ? "completed" : "failed";
+    const supervisor2 = later.find((item) => item.step === "supervisor");
+    if (supervisor2 && !running2(supervisor2.detail.pid)) return "stopped";
+    return "following";
+  }
   const done = events.find((item) => item.step === "done");
   if (done) return done.status === "completed" ? "completed" : "failed";
   const supervisor = events.find((item) => item.step === "supervisor");
@@ -13674,7 +13905,7 @@ function explorationStatus(store, explorationId) {
       stderr: end?.detail.stderr ?? []
     };
   });
-  const done = events.find((item) => item.step === "done");
+  const done = events.filter((item) => item.step === "done" || item.step === "followed").at(-1);
   return {
     explorationId: row.exploration_id,
     planId: row.plan_id,
@@ -13693,7 +13924,7 @@ function explorationStatus(store, explorationId) {
     testSeconds: launch?.testSeconds ?? null,
     pluginHidden: launch?.pluginHidden ?? null,
     explorers,
-    phases: events.filter((item) => item.step === "merge" || item.step === "verify").map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
+    phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
     reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
   };
@@ -13965,9 +14196,19 @@ function exploredPlans(store) {
     (row) => row.plan_id
   );
 }
-var runningExploration = ["starting", "testing", "recording", "verifying"];
+var runningExploration = ["starting", "testing", "recording", "verifying", "following"];
 var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
 function planStatus(store, planId) {
+  const status = loopStatus(store, planId);
+  const follows = status.explorations.flatMap((item) => {
+    const count = followCount(store, item.explorationId);
+    return count ? [
+      `${amount(count, "unused answer")} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`
+    ] : [];
+  });
+  return follows.length ? { ...status, next: [...follows, ...status.next] } : status;
+}
+function loopStatus(store, planId) {
   const base = checkStatus(store, planId);
   const explorations = all(
     store,
@@ -19345,7 +19586,9 @@ function explorationLines(reply) {
       ...(status.phases ?? []).map((item) => [
         item.step,
         item.status,
+        ...item.detail.answers ? [`answers=${item.detail.answers.length}`] : [],
         ...item.detail.reason ? [item.detail.reason] : [],
+        ...item.detail.skipped ?? [],
         ...(status.phases ?? []).flatMap(
           (item2) => (item2.detail.stderr ?? []).map((line) => [item2.step, "stderr", line])
         )
@@ -20322,6 +20565,31 @@ var commands = {
       lines: reply.data.next.map((line) => ["next", line])
     })
   },
+  "explore follow": {
+    positionals: ["explorationId"],
+    flags: { allow: "repeat", "claude-arg": "repeat", timeout: { min: 60, max: 7200 } },
+    write: true,
+    run: (store, args, { actor, env }) => startFollow(
+      store,
+      actor,
+      {
+        explorationId: value(args, "explorationId"),
+        allow: list(args, "allow") ?? [],
+        claudeArgs: list(args, "claude-arg") ?? [],
+        timeoutSeconds: integer(args, "timeout")
+      },
+      env
+    ),
+    print: (reply) => ({
+      facts: {
+        plan: reply.data.planId,
+        build: reply.data.build,
+        answers: reply.data.answers,
+        followSeconds: reply.data.followSeconds
+      },
+      lines: reply.data.next.map((line) => ["next", line])
+    })
+  },
   "explore show": {
     positionals: ["explorationId"],
     readOnly: true,
@@ -20383,7 +20651,8 @@ var commands = {
         `model=${level.model}`,
         `verifier=${level.verifier}`,
         `studySeconds=${level.studySeconds}`,
-        `testSeconds=${level.testSeconds}`
+        `testSeconds=${level.testSeconds}`,
+        `followSeconds=${level.followSeconds}`
       ])
     })
   },
@@ -20958,7 +21227,7 @@ async function serveUi(tokens) {
 async function main(argv) {
   if (argv[0] === "ui" && !argv.includes("--help")) return serveUi(argv.slice(1));
   if (argv[0] === "explore" && argv[1] === "drive" && argv[3] === "--workspace")
-    return driveExploration(argv[4], argv[2], process.env);
+    return argv[5] === "--follow" ? driveFollow(argv[4], argv[2], process.env) : driveExploration(argv[4], argv[2], process.env);
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,

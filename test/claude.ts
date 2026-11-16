@@ -14,13 +14,15 @@ const role = args.includes('--fork-session')
 	? 'recorder'
 	: resumed && /^Now test /.test(prompt)
 		? 'tester'
-		: resumed
-			? 'repair'
-			: /^Merge /.test(prompt)
-				? 'merger'
-				: /^Reproduce /.test(prompt)
-					? 'verifier'
-					: 'explorer'
+		: resumed && /^The owner of the product answered /.test(prompt)
+			? 'follower'
+			: resumed
+				? 'repair'
+				: /^Merge /.test(prompt)
+					? 'merger'
+					: /^Reproduce /.test(prompt)
+						? 'verifier'
+						: 'explorer'
 const session = after('--session-id') ?? resumed ?? randomUUID()
 const env = Object.keys(process.env).filter((name) => name.startsWith('CHECKMATE_')).sort()
 appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, session }) + '\\n')
@@ -53,7 +55,7 @@ else {
 `
 
 export type FakeReplies = Partial<
-	Record<'recorder' | 'repair' | 'explorer' | 'tester' | 'merger' | 'verifier', unknown>
+	Record<'recorder' | 'repair' | 'explorer' | 'tester' | 'follower' | 'merger' | 'verifier', unknown>
 >
 
 export function fakeClaude(t: TestContext, replies: FakeReplies = {}) {

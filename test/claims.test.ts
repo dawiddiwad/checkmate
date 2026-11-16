@@ -356,7 +356,7 @@ test('a report left out of the merge goes to one more round, and a defect of a l
 	command(['explore', 'finish', 'x-2', '--level', 'smoke'])
 	assert.equal(command(['explore', 'wait', 'x-2', '--timeout', '60']).code, 0)
 	const merger = called().find((call) => call.role === 'merger')
-	assert.match(merger.prompt, /\nThe issues of earlier builds\. When a report of this build describes one of them/)
+	assert.match(merger.prompt, /\nThe issues found before\. When a report of this build describes one of them/)
 	assert.match(merger.prompt, /\nmerge\/I1: Coupons stack Expected: 450 Actual: 400/)
 	const claims = command(['claim', 'list', 'checkout']).body.claims
 	assert.deepEqual(

@@ -773,6 +773,7 @@ export function planQuestions(store: Store, planId: string) {
 	return groups.map(({ head, members }) => {
 		const names = new Set([head.id, ...members])
 		const found = members.map((id) => questions.get(id)!)
+		const answer = answers.filter((entry) => names.has(entry.question!)).at(-1)
 		return {
 			id: head.id,
 			explorationId: head.explorationId,
@@ -781,7 +782,8 @@ export function planQuestions(store: Store, planId: string) {
 			members,
 			blocking: found.some((entry) => entry.blocking === true),
 			about: head.about ?? null,
-			answer: answers.filter((entry) => names.has(entry.question!)).at(-1)?.answer ?? null,
+			answer: answer?.answer ?? null,
+			answerId: answer?.id ?? null,
 		}
 	})
 }
@@ -834,10 +836,14 @@ function likeness(a: Entry, b: Entry) {
 	return undefined
 }
 
-export function unplacedMatches(state: Journal, claims: Claim[], build: string) {
+export function unplacedMatches(state: Journal, claims: Claim[], build: string, after = 0) {
 	const byId = new Map(state.team.map((entry) => [entry.id, entry]))
 	const single = claims.filter(
-		(claim) => claim.build === build && claim.reports.length === 1 && claim.id === claim.reports[0]
+		(claim) =>
+			claim.build === build &&
+			claim.reports.length === 1 &&
+			claim.id === claim.reports[0] &&
+			byId.get(claim.id)!.seq > after
 	)
 	return single.flatMap((own) => {
 		const report = byId.get(own.id)!
@@ -854,8 +860,9 @@ export function unplacedMatches(state: Journal, claims: Claim[], build: string) 
 	})
 }
 
-export function mergeItems(state: Journal, build: string, claims: Claim[] = []) {
-	const defects = state.team.filter((entry) => entry.kind === 'defect' && entry.build === build)
+export function mergeItems(state: Journal, build: string, claims: Claim[] = [], after = 0) {
+	const defects = state.team.filter((entry) => entry.kind === 'defect' && entry.build === build && entry.seq > after)
+	const fresh = new Set(defects.map((defect) => defect.id))
 	const testers = new Set(defects.map((defect) => defect.actor))
 	const groups: string[][] = []
 	for (const [index, a] of defects.entries())
@@ -865,9 +872,15 @@ export function mergeItems(state: Journal, build: string, claims: Claim[] = []) 
 			const group = [...new Set([...joined.flat(), a.id, b.id])]
 			groups.splice(0, groups.length, ...groups.filter((item) => !joined.includes(item)), group)
 		}
-	const questions = state.team.filter((entry) => entry.kind === 'question' && entry.build === build)
+	const questions = state.team.filter(
+		(entry) => entry.kind === 'question' && entry.build === build && entry.seq > after
+	)
 	const earlier = claims
-		.filter((claim) => claim.build !== build && claim.state !== 'rejected')
+		.filter(
+			(claim) =>
+				claim.state !== 'rejected' &&
+				(claim.build !== build || (after > 0 && !claim.reports.some((id) => fresh.has(id))))
+		)
 		.map((claim) => ({
 			id: claim.id,
 			title: short(claim.title),
@@ -891,9 +904,14 @@ export function mergeItems(state: Journal, build: string, claims: Claim[] = []) 
 	}
 }
 
-export function verifyItems(claims: Claim[], build: string) {
+export function verifyItems(claims: Claim[], build: string, fresh?: Set<string>) {
 	return claims.filter(
-		(claim) => claim.build === build && claim.reporters === 1 && claim.verified === 'none' && !claim.decision
+		(claim) =>
+			claim.build === build &&
+			claim.reporters === 1 &&
+			claim.verified === 'none' &&
+			!claim.decision &&
+			(!fresh || claim.reports.some((id) => fresh.has(id)))
 	)
 }
 

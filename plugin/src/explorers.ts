@@ -19,8 +19,8 @@ import {
 	verifyItems,
 } from './journal.ts'
 import { defaultLevel, levelNames, testLevels } from './levels.ts'
-import { explorerActor, recordSession, defaultRecorderTimeout } from './recorder.ts'
-import { explorerBrief, mergeAgainPrompt, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
+import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
+import { explorerBrief, followBrief, mergeAgainPrompt, mergerPrompt, repairPrompt, verifierBrief } from './briefs.ts'
 import { findInstance, targetRevision } from './targets.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
@@ -116,13 +116,13 @@ export function explorerNames(count: number) {
 	return Array.from({ length: count }, (_, index) => `a${index + 1}`)
 }
 
-function startSupervisor(store: Store, explorationId: string, actor: string, env: Env) {
+function startSupervisor(store: Store, explorationId: string, actor: string, env: Env, extra: string[] = []) {
 	const folder = join(store.workspace, '.checkmate', 'tmp')
 	mkdirSync(folder, { recursive: true })
 	const log = openSync(join(folder, `explore-${explorationId}.log`), 'a')
 	const child = spawn(
 		process.execPath,
-		[checkmateScript(), 'explore', 'drive', explorationId, '--workspace', store.workspace],
+		[checkmateScript(), 'explore', 'drive', explorationId, '--workspace', store.workspace, ...extra],
 		{
 			cwd: store.workspace,
 			env: { ...env, CHECKMATE_ACTOR: actor },
@@ -288,9 +288,9 @@ function costOf(calls: ClaudeCall[]) {
 	return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {}
 }
 
-function mergeReports(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
+function mergeReports(store: Store, actor: string, explorationId: string, launch: Launch, env: Env, after = 0) {
 	const opened = explorationRow(store, explorationId)
-	const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id))
+	const items = mergeItems(journal(store, opened.plan_id), opened.build, planClaims(store, opened.plan_id), after)
 	const later = items.earlier.length > 0 && items.defects.length > 0
 	const defects = later || (items.testers > 1 && items.defects.length > 1)
 	const questions = items.questionTesters > 1 && items.questions.length > 1
@@ -336,7 +336,7 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 	}
 	const unplaced = calls.some((item) => item.failure)
 		? []
-		: unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build)
+		: unplacedMatches(journal(store, opened.plan_id), planClaims(store, opened.plan_id), opened.build, after)
 	if (unplaced.length) {
 		calls.push(call(['--resume', session], mergeAgainPrompt(unplaced)))
 		refusals = [...refusals, ...log(replyArray(calls.at(-1)!.result))]
@@ -367,9 +367,10 @@ function verifiedEntries(reply: unknown[] | undefined, ids: Set<string>) {
 	})
 }
 
-async function verifyClaims(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
+async function verifyClaims(store: Store, actor: string, explorationId: string, launch: Launch, env: Env, after = 0) {
 	const opened = exploration(store, explorationId)
-	const items = verifyItems(planClaims(store, opened.plan_id), opened.build)
+	const fresh = after ? newDefects(store, opened.plan_id, after) : undefined
+	const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh)
 	if (!items.length) return
 	const profile = targetRevision(store, opened.target_id, opened.target_revision).profile
 	const instance = findInstance(store, opened.target_id, opened.instance_id)
@@ -407,6 +408,14 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 			...costOf([call]),
 		},
 	})
+}
+
+function newDefects(store: Store, planId: string, after: number) {
+	return new Set(
+		journal(store, planId)
+			.team.filter((entry) => entry.kind === 'defect' && entry.seq > after)
+			.map((entry) => entry.id)
+	)
 }
 
 function hostAuthentication(store: Store, explorationId: string) {
@@ -470,6 +479,209 @@ export async function driveExploration(workspace: string, explorationId: string,
 	}
 }
 
+export type FollowInput = { explorationId: string; allow: string[]; claudeArgs: string[]; timeoutSeconds?: number }
+type FollowPlan = {
+	answers: string[]
+	questions: Array<{ question: string; answer: string }>
+	after: number
+	allow: string[]
+	context: ChildContext
+	timeoutSeconds: number
+	seconds: number
+}
+
+function usedAnswers(events: ExplorationEvent[]) {
+	const used = new Set<string>()
+	let pending: string[] = []
+	for (const item of events) {
+		if (item.step === 'follow') pending = item.detail.answers as string[]
+		if (item.step === 'followed' && item.status === 'completed') for (const id of pending) used.add(id)
+	}
+	return used
+}
+
+export function unusedAnswers(store: Store, explorationId: string) {
+	const row = explorationRow(store, explorationId)
+	const used = usedAnswers(explorationEvents(store, explorationId))
+	return planQuestions(store, row.plan_id).filter(
+		(question) => question.explorationId === explorationId && question.answerId && !used.has(question.answerId)
+	)
+}
+
+function followable(events: ExplorationEvent[]) {
+	return (
+		events.find((item) => item.step === 'done')?.status === 'completed' && explorationState(events) !== 'following'
+	)
+}
+
+export function followCount(store: Store, explorationId: string) {
+	return followable(explorationEvents(store, explorationId)) ? unusedAnswers(store, explorationId).length : 0
+}
+
+export function startFollow(store: Store, actor: string | undefined, input: FollowInput, env: Env) {
+	const id = input.explorationId
+	const reply = write(store, { actor, command: 'explore follow', subject: id, input }, (operationId, at) => {
+		requireClaude(env)
+		const row = explorationRow(store, id)
+		const events = explorationEvents(store, id)
+		const state = explorationState(events)
+		requireCondition(
+			followable(events),
+			`Exploration ${id} is ${state}. A follow-up needs a completed exploration.`,
+			['failed', 'stopped', 'open'].includes(state)
+				? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash`
+				: `Run checkmate explore wait ${id}. Then run the follow-up again.`
+		)
+		const answered = unusedAnswers(store, id)
+		requireCondition(
+			answered.length,
+			`Exploration ${id} has no answer that a follow-up has not used.`,
+			`Answer a question of the exploration first: checkmate gap answer ${row.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id} to read its questions.`
+		)
+		const stored = startOf(events)!
+		const claudeArgs = checkClaudeArgs(input.claudeArgs)
+		const plan: FollowPlan = {
+			answers: answered.map((question) => question.answerId!),
+			questions: answered.map((question) => ({ question: question.question, answer: question.answer! })),
+			after: lastEntry(store),
+			allow: input.allow.length ? input.allow : stored.allow,
+			context: claudeArgs.length
+				? {
+						...stored.context,
+						claudeArgs: hostModel(claudeArgs) ? claudeArgs : [...claudeArgs, '--model', stored.model],
+					}
+				: stored.context,
+			timeoutSeconds: input.timeoutSeconds ?? stored.timeoutSeconds,
+			seconds: testLevels[stored.level].followSeconds,
+		}
+		requireWellFormed(
+			plan.allow.length,
+			'Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash',
+			'The host owns the permissions. An explorer cannot answer a permission prompt.'
+		)
+		addEvent(store, id, { step: 'follow', explorer: null, status: 'started', detail: plan }, operationId, at)
+		return {
+			reply: completed(id, {
+				explorationId: id,
+				planId: row.plan_id,
+				build: row.build,
+				answers: plan.answers.length,
+				followSeconds: plan.seconds,
+				next: [`checkmate explore wait ${id}`],
+			}),
+			subjects: [`exploration:${id}`, `plan:${row.plan_id}`],
+		}
+	})
+	startSupervisor(store, reply.subject, actor!, env, ['--follow'])
+	return reply
+}
+
+function followSessions(events: ExplorationEvent[]) {
+	const names = [...new Set(events.flatMap((item) => (item.explorer ? [item.explorer] : [])))]
+	return names.map((explorer) => {
+		const own = events.filter((item) => item.explorer === explorer)
+		const last = (step: string) => own.filter((item) => item.step === step).at(-1)
+		const session = (last('launch')?.detail.session ?? last('record')?.detail.session) as string | undefined
+		const skipped = !session
+			? `${explorer} has no session.`
+			: last('end')?.detail.turn === 'study'
+				? `The session of ${explorer} ended in its study turn.`
+				: undefined
+		return { explorer, session: session ?? '', skipped }
+	})
+}
+
+export async function driveFollow(workspace: string, explorationId: string, env: Env) {
+	const store = openStore(workspace)
+	const actor = env.CHECKMATE_ACTOR ?? 'checkmate'
+	try {
+		event(store, actor, explorationId, {
+			step: 'supervisor',
+			explorer: null,
+			status: 'started',
+			detail: { pid: process.pid },
+		})
+		const events = explorationEvents(store, explorationId)
+		const plan = events.findLast((item) => item.step === 'follow')!.detail as FollowPlan
+		const launch = {
+			...startOf(events)!,
+			allow: plan.allow,
+			context: plan.context,
+			timeoutSeconds: plan.timeoutSeconds,
+		}
+		const sessions = followSessions(events)
+		const claude = requireClaude(env)
+		const allowed = plan.allow.flatMap((rule) => ['--allowedTools', rule])
+		const ended = await Promise.all(
+			sessions
+				.filter((item) => !item.skipped)
+				.map(async ({ explorer, session }) => {
+					const call = await launchClaude(
+						claude,
+						childArgs({ ...plan.context, denyStore: true }, ['--resume', session, ...allowed]),
+						followBrief(plan.questions, evidenceFolder(explorationId, explorer), plan.seconds),
+						store.workspace,
+						childEnv(env),
+						plan.timeoutSeconds
+					)
+					return { explorer, session, call }
+				})
+		)
+		for (const { explorer, session, call } of ended) {
+			const hint = failureHint(launch, call)
+			event(store, actor, explorationId, {
+				step: 'follow-turn',
+				explorer,
+				status: call.failure?.[0] ?? 'completed',
+				detail: {
+					session,
+					...(call.failure ? { reason: call.failure[1] } : {}),
+					...(call.stderr ? { stderr: call.stderr } : {}),
+					...(hint ? { hint } : {}),
+					...costOf([call]),
+				},
+			})
+		}
+		const resumed = ended.filter((item) => item.call.failure?.[0] !== 'operational_error')
+		const recorded = recordExplorers(store, actor, explorationId, resumed, env).filter(
+			(status) => status === 'completed'
+		).length
+		if (recorded) {
+			mergeReports(store, actor, explorationId, launch, env, plan.after)
+			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after)
+		}
+		const skipped = [
+			...sessions.flatMap((item) => (item.skipped ? [item.skipped] : [])),
+			...ended.flatMap((item) =>
+				item.call.failure?.[0] === 'operational_error'
+					? [`The session of ${item.explorer} could not resume: ${item.call.failure[1]}`]
+					: []
+			),
+		]
+		event(store, actor, explorationId, {
+			step: 'followed',
+			explorer: null,
+			status: recorded ? 'completed' : 'failed',
+			detail: {
+				recorded,
+				answers: plan.answers,
+				skipped,
+				...(recorded ? {} : { reason: 'No explorer session of the follow-up was recorded.' }),
+				...(ended.some((item) => authenticationFailed(item.call)) ? { hint: authenticationHint } : {}),
+			},
+		})
+	} catch (error) {
+		event(store, actor, explorationId, {
+			step: 'followed',
+			explorer: null,
+			status: 'failed',
+			detail: { reason: error instanceof Error ? error.message : String(error) },
+		})
+	} finally {
+		closeStore(store)
+	}
+}
+
 function running(pid: unknown) {
 	if (typeof pid !== 'number') return false
 	try {
@@ -481,6 +693,15 @@ function running(pid: unknown) {
 }
 
 export function explorationState(events: ExplorationEvent[]) {
+	const follow = events.findLastIndex((item) => item.step === 'follow')
+	if (follow !== -1) {
+		const later = events.slice(follow + 1)
+		const ended = later.find((item) => item.step === 'followed')
+		if (ended) return ended.status === 'completed' ? 'completed' : 'failed'
+		const supervisor = later.find((item) => item.step === 'supervisor')
+		if (supervisor && !running(supervisor.detail.pid)) return 'stopped'
+		return 'following'
+	}
 	const done = events.find((item) => item.step === 'done')
 	if (done) return done.status === 'completed' ? 'completed' : 'failed'
 	const supervisor = events.find((item) => item.step === 'supervisor')
@@ -516,7 +737,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 			stderr: (end?.detail.stderr ?? []) as string[],
 		}
 	})
-	const done = events.find((item) => item.step === 'done')
+	const done = events.filter((item) => item.step === 'done' || item.step === 'followed').at(-1)
 	return {
 		explorationId: row.exploration_id,
 		planId: row.plan_id,
@@ -536,7 +757,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 		pluginHidden: launch?.pluginHidden ?? null,
 		explorers,
 		phases: events
-			.filter((item) => item.step === 'merge' || item.step === 'verify')
+			.filter((item) => ['merge', 'verify', 'follow', 'followed'].includes(item.step))
 			.map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
 		doneHint: (done?.detail.hint ?? null) as string | null,
 		reason: (done?.detail.reason ?? (state === 'stopped' ? 'The supervisor stopped before the end.' : null)) as

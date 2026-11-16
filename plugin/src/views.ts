@@ -1,6 +1,6 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
-import { explorationStatus } from './explorers.ts'
+import { explorationStatus, followCount } from './explorers.ts'
 import { factoryStates, oracleStates, planClaims, planQuestions } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
@@ -334,10 +334,23 @@ export function exploredPlans(store: Store) {
 	)
 }
 
-const runningExploration = ['starting', 'testing', 'recording', 'verifying']
+const runningExploration = ['starting', 'testing', 'recording', 'verifying', 'following']
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
 export function planStatus(store: Store, planId: string) {
+	const status = loopStatus(store, planId)
+	const follows = status.explorations.flatMap((item) => {
+		const count = followCount(store, item.explorationId)
+		return count
+			? [
+					`${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
+				]
+			: []
+	})
+	return follows.length ? { ...status, next: [...follows, ...status.next] } : status
+}
+
+function loopStatus(store: Store, planId: string) {
 	const base = checkStatus(store, planId)
 	const explorations = all<{ exploration_id: string }>(
 		store,

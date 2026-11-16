@@ -42,6 +42,7 @@ Run a decision only when the oracle tells you the decision in this session:
 - Decide a claim: `checkmate claim accept <planId> <claimId> --rationale "<why>"` or `checkmate claim reject <planId> <claimId> --rationale "<why>"`.
 - Keep the claims as stored tests: `checkmate harvest <explorationId>`. Add `--observations` only when the oracle asks for it.
 - When `checkmate status <planId>` shows `needs_revision` after an answer, follow the revise skill at once. Do not wait for another request.
+- After you record answers to questions of an exploration, run `checkmate explore follow <explorationId>`, then `checkmate explore wait <explorationId>` as a background command. When it ends, report the new claims.
 
 ## Claims
 

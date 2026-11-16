@@ -83,10 +83,12 @@ import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs } from './sessions.ts'
 import {
 	driveExploration,
+	driveFollow,
 	explorationReport,
 	explorationStatus,
 	finishExploration,
 	startExploration,
+	startFollow,
 	waitExploration,
 } from './explorers.ts'
 import { levelNames, testLevels } from './levels.ts'
@@ -264,7 +266,9 @@ function explorationLines(reply: Reply): Printed {
 			...(status.phases ?? []).map((item) => [
 				item.step,
 				item.status,
+				...(item.detail.answers ? [`answers=${(item.detail.answers as string[]).length}`] : []),
 				...(item.detail.reason ? [item.detail.reason] : []),
+				...((item.detail.skipped ?? []) as string[]),
 				...(status.phases ?? []).flatMap((item) =>
 					((item.detail.stderr ?? []) as string[]).map((line) => [item.step, 'stderr', line])
 				),
@@ -1306,6 +1310,32 @@ const commands: Record<string, Command> = {
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
 		}),
 	},
+	'explore follow': {
+		positionals: ['explorationId'],
+		flags: { allow: 'repeat', 'claude-arg': 'repeat', timeout: { min: 60, max: 7200 } },
+		write: true,
+		run: (store, args, { actor, env }) =>
+			startFollow(
+				store,
+				actor,
+				{
+					explorationId: value(args, 'explorationId')!,
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+				},
+				env
+			),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.planId,
+				build: reply.data.build,
+				answers: reply.data.answers,
+				followSeconds: reply.data.followSeconds,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
 	'explore show': {
 		positionals: ['explorationId'],
 		readOnly: true,
@@ -1368,6 +1398,7 @@ const commands: Record<string, Command> = {
 				`verifier=${level.verifier}`,
 				`studySeconds=${level.studySeconds}`,
 				`testSeconds=${level.testSeconds}`,
+				`followSeconds=${level.followSeconds}`,
 			]),
 		}),
 	},
@@ -2006,7 +2037,9 @@ export async function serveUi(tokens: string[]) {
 export async function main(argv: string[]) {
 	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
 	if (argv[0] === 'explore' && argv[1] === 'drive' && argv[3] === '--workspace')
-		return driveExploration(argv[4], argv[2], process.env)
+		return argv[5] === '--follow'
+			? driveFollow(argv[4], argv[2], process.env)
+			: driveExploration(argv[4], argv[2], process.env)
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,

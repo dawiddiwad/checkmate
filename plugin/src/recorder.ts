@@ -3,8 +3,8 @@ import type { ChildContext, ClaudeCall, Env } from './sessions.ts'
 import { all, one, write } from './store.ts'
 import { Refusal, requireIdentifier, requireWellFormed } from './contracts.ts'
 import { recorderPrompt, repairPrompt } from './briefs.ts'
-import { explorationRow, freshIds, logEntries, recordText, refusalText } from './journal.ts'
-import type { Refused } from './journal.ts'
+import { bareOf, explorationRow, freshIds, journal, logEntries, recordText, refusalText } from './journal.ts'
+import type { Entry, Refused } from './journal.ts'
 import { addEvent, explorationEvents } from './explorations.ts'
 import {
 	authenticationFailed,
@@ -34,7 +34,7 @@ export function explorerActor(explorer: string) {
 	return `qa:${explorer}`
 }
 
-function lastEntry(store: Store) {
+export function lastEntry(store: Store) {
 	return one<{ seq: number }>(store, 'SELECT coalesce(max(rowid), 0) AS seq FROM journal_entries')!.seq
 }
 
@@ -54,6 +54,23 @@ export function launchContext(store: Store, explorationId: string, explorer: str
 		.filter((event) => event.step === 'launch' && event.explorer === explorer && event.detail.session === session)
 		.at(-1)
 	return launch ? (launch.detail.context as ChildContext) : undefined
+}
+
+const entryTitle = (entry: Partial<Entry>) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? ''
+const entryKey = (entry: Partial<Entry>) => `${entry.kind}\n${entryTitle(entry).trim().toLowerCase()}`
+
+function savedEntries(store: Store, planId: string, explorationId: string, actor: string) {
+	return journal(store, planId, actor).team.filter(
+		(entry) => entry.actor === actor && entry.explorationId === explorationId
+	)
+}
+
+function newEntries(entries: unknown[], saved: Entry[]) {
+	const keys = new Set(saved.map(entryKey))
+	return entries.filter((raw) => {
+		const entry = raw as Partial<Entry> | null
+		return !entry || typeof entry !== 'object' || entry.supersedes !== undefined || !keys.has(entryKey(entry))
+	})
 }
 
 function logReply(
@@ -203,7 +220,12 @@ function recordLocked(
 	const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: '1' })
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
-	const prompt = recorderPrompt(exploration.build, recordText(store, exploration.plan_id, actor, exploration.build))
+	const earlier = savedEntries(store, exploration.plan_id, exploration.exploration_id, actor)
+	const prompt = recorderPrompt(
+		exploration.build,
+		recordText(store, exploration.plan_id, actor, exploration.build),
+		earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`)
+	)
 	const resume = ['--resume', input.session, '--fork-session', '--session-id', plan.recorder]
 	const calls = [
 		callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left())),
@@ -212,8 +234,10 @@ function recordLocked(
 	const dropped: string[] = []
 	const log = (entries: unknown[]) =>
 		logReply(store, actor, exploration.exploration_id, exploration.plan_id, entries, missing, dropped, cwd)
-	const first = replyArray(calls[0].result)
-	let refusals = first ? log(first) : []
+	const given = replyArray(calls[0].result)
+	const first = given && newEntries(given, earlier)
+	const repeated = given && first ? given.length - first.length : 0
+	let refusals = first?.length ? log(first) : []
 	if (!calls[0].failure && refusals.length && left() > 0) {
 		calls.push(
 			callClaude(
@@ -226,16 +250,20 @@ function recordLocked(
 			)
 		)
 		const fix = replyArray(calls[1].result)
-		if (fix) refusals = log(fix)
+		if (fix) refusals = log(newEntries(fix, earlier))
 	}
 	const added = addedEntries(store, exploration.exploration_id, actor, after)
 	const saved = Object.values(added).reduce((total, count) => total + count, 0)
 	const timedOut = calls.find((call) => call.failure?.[0] === 'interrupted')
-	const status: Status = timedOut ? 'interrupted' : calls[0].failure || !saved ? 'operational_error' : 'completed'
+	const status: Status = timedOut
+		? 'interrupted'
+		: calls[0].failure || (!saved && !repeated)
+			? 'operational_error'
+			: 'completed'
 	const reasons = [
 		...calls.flatMap((call) => (call.failure ? [call.failure[1]] : [])),
 		...(first || calls[0].failure ? [] : ['The reply of the recorder has no JSON array of entries.']),
-		...(first && !saved ? [`The recorder added no entry to ${exploration.exploration_id}.`] : []),
+		...(first && !saved && !repeated ? [`The recorder added no entry to ${exploration.exploration_id}.`] : []),
 		...refusals.map((refusal) => `Refused: ${refusal}`),
 	]
 	const data = {
@@ -245,6 +273,7 @@ function recordLocked(
 		recorder: calls[0].sessionId ?? plan.recorder,
 		calls: calls.length,
 		saved,
+		repeated,
 		refused: refusals.length,
 		added,
 		evidenceMissing: missing.length,

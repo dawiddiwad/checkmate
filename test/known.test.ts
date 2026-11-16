@@ -5,7 +5,10 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore } from '../plugin/src/store.ts'
+import type { TestContext } from 'node:test'
 import { openPlan } from '../plugin/src/plans.ts'
+import { knownStateText, openExploration } from '../plugin/src/explorations.ts'
+import { logEntries } from '../plugin/src/journal.ts'
 import { actor, directory, planRequest, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
@@ -79,9 +82,9 @@ test('a later exploration gets one plain file with the results of earlier builds
 		[
 			'# Results of earlier builds',
 			'',
-			'## Open problems',
+			'Retest every problem below, open and fixed. In your report, give one line for each problem, with its ID: still present, fixed, or not retested and the reason.',
 			'',
-			'Retest each one. Say for each one if it is still there or fixed, with its ID.',
+			'## Open problems',
 			'',
 			'### a2/D1: Wrong tax (low)',
 			'- Last seen on build: b1',
@@ -94,7 +97,7 @@ test('a later exploration gets one plain file with the results of earlier builds
 			'- Can a coupon apply to a sale item? Answer: No, never.',
 			'- Not a defect: Coupons stack. Stacking is intended.',
 			'',
-			'## Problems fixed on an earlier build',
+			'## Problems reported as fixed',
 			'',
 			'None.',
 			'',
@@ -156,4 +159,75 @@ test('--since reads the changes of a repository in a subfolder with --repo', (t)
 	assert.equal(command(['explore', 'wait', 'x-1', '--timeout', '60']).code, 0)
 	const failed = JSON.parse(command(['test', 'checkout', '--build', 'b2', '--since', 'HEAD', ...allow]).output)
 	assert.match(failed.hint, /Give --repo <dir> when the code is in a subfolder/)
+})
+
+function seeded(t: TestContext, count: number) {
+	const opened = store(t)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	const log = (explorationId: string, entries: unknown[]) => logEntries(opened, 'qa:a1', { explorationId, entries })
+	for (const build of ['b1', 'b2', 'b3']) openExploration(opened, actor, { planId: 'checkout', build })
+	const ids = Array.from({ length: count }, (_, index) => `D${index + 1}`)
+	log(
+		'x-1',
+		ids.map((id) => ({
+			kind: 'defect',
+			id,
+			title: `Problem ${id}`,
+			severity: 'medium',
+			expected: `Right ${id}`,
+			actual: `Wrong ${id}`,
+			steps: `Do ${id}.`,
+		}))
+	)
+	const half = Math.ceil(count / 2)
+	log(
+		'x-2',
+		ids.slice(0, half).map((id) => ({ kind: 'verdict', defect: id, result: 'fixed' }))
+	)
+	log(
+		'x-3',
+		ids.slice(half).map((id) => ({ kind: 'verdict', defect: id, result: 'fixed' }))
+	)
+	return opened
+}
+
+test('a fixed defect keeps its steps and its expected result, and the newest fix comes first', (t) => {
+	const text = knownStateText(seeded(t, 2), 'checkout', 'b4')
+	const fixed = text.slice(text.indexOf('## Problems reported as fixed'), text.indexOf('## Areas tested before'))
+	assert.equal(
+		fixed,
+		[
+			'## Problems reported as fixed',
+			'',
+			'Check that each one does not come back. The newest fix is first.',
+			'',
+			'### a1/D2: Problem D2 (medium)',
+			'- Reported fixed on build: b3',
+			'- Steps: Do D2.',
+			'- Expected: Right D2',
+			'- Actual: Wrong D2',
+			'',
+			'### a1/D1: Problem D1 (medium)',
+			'- Reported fixed on build: b2',
+			'- Steps: Do D1.',
+			'- Expected: Right D1',
+			'- Actual: Wrong D1',
+			'',
+			'',
+		].join('\n')
+	)
+	assert.match(text, /\n## Open problems\n\nNone\.\n/)
+})
+
+test('a long file shortens the oldest fixed defects to a title line, and says how many', (t) => {
+	const text = knownStateText(seeded(t, 30), 'checkout', 'b4')
+	const lines = text.trimEnd().split('\n')
+	assert(lines.length <= 150, String(lines.length))
+	assert.match(text, /### a1\/D16: Problem D16 \(medium\)\n- Reported fixed on build: b3\n- Steps: Do D16\./)
+	assert.match(text, /\n- a1\/D15: Problem D15 \(reported fixed on build b2\)\n/)
+	const shortened = Number(/\n([0-9]+) older fixed problems are shortened to their title\.\n/.exec(text)![1])
+	assert.equal(lines.filter((line) => /^- a1\/D[0-9]+: /.test(line)).length, shortened)
+	assert.equal(lines.filter((line) => /^### a1\/D[0-9]+: /.test(line)).length, 30 - shortened)
+	assert(text.indexOf('a1/D30') < text.indexOf('a1/D1:'), 'the newest fix comes first')
 })

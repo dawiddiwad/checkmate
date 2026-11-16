@@ -11886,6 +11886,7 @@ function evidenceFolder(explorationId, name) {
 }
 var maxKnownLines = 150;
 var isEntryId = (word) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(word);
+var withBlankEnd = (lines2) => lines2.at(-1) === "" ? lines2 : [...lines2, ""];
 function knownStateText(store, planId, build) {
   const state = journal(store, planId);
   const claims = planClaims(store, planId).filter((claim) => claim.build !== build);
@@ -11907,47 +11908,61 @@ function knownStateText(store, planId, build) {
       ])
     )
   ];
-  const lines2 = [
-    "# Results of earlier builds",
-    "",
-    "## Open problems",
-    "",
-    ...open.length ? [
-      "Retest each one. Say for each one if it is still there or fixed, with its ID.",
-      "",
-      ...open.flatMap((claim) => [
-        `### ${claim.id}: ${claim.title} (${claim.severity})`,
-        `- Last seen on build: ${lastSeen(claim)}`,
-        `- Steps: ${[claim.steps ?? "not given"].flat().join(" ")}`,
-        `- Expected: ${claim.expected}`,
-        `- Actual: ${claim.actual}`,
-        ""
-      ])
-    ] : ["None.", ""],
-    "## Decisions of the product owner",
-    "",
-    ...answers.length || rejected.length ? [
-      ...answers.map((question) => `- ${question.question} Answer: ${question.answer}`),
-      ...rejected.map(
-        (claim) => `- Not a defect: ${claim.title}. ${claim.decision?.rationale ?? ""}`.trim()
-      )
-    ] : ["None."],
-    "",
-    "## Problems fixed on an earlier build",
-    "",
-    ...fixed.length ? ["Check that they do not come back.", ...fixed.map((claim) => `- ${claim.id}: ${claim.title}`)] : ["None."],
-    "",
-    "## Areas tested before",
-    "",
-    ...areas.length ? areas.map((area2) => `- ${area2}`) : ["None recorded."],
-    "",
-    "## Rules not tested yet",
-    "",
-    ...(() => {
-      const untested = criteria.filter((criterion) => !mentioned.has(criterion.id));
-      return untested.length ? untested.map((criterion) => `- ${criterion.text}`) : ["None recorded."];
-    })()
+  const fixedOn = (claim) => Object.entries(claim.statuses).filter(([, on]) => on.status === "fixed").map(([seen]) => seen).at(-1) ?? claim.build;
+  const newestFirst = [...fixed].sort((a, b) => state.builds.indexOf(fixedOn(b)) - state.builds.indexOf(fixedOn(a)));
+  const block = (claim, seen) => [
+    `### ${claim.id}: ${claim.title} (${claim.severity})`,
+    seen,
+    `- Steps: ${[claim.steps ?? "not given"].flat().join(" ")}`,
+    `- Expected: ${claim.expected}`,
+    `- Actual: ${claim.actual}`,
+    ""
   ];
+  const render = (full2) => {
+    const shortened = newestFirst.length - full2;
+    return [
+      "# Results of earlier builds",
+      "",
+      "Retest every problem below, open and fixed. In your report, give one line for each problem, with its ID: still present, fixed, or not retested and the reason.",
+      "",
+      "## Open problems",
+      "",
+      ...open.length ? open.flatMap((claim) => block(claim, `- Last seen on build: ${lastSeen(claim)}`)) : ["None.", ""],
+      "## Decisions of the product owner",
+      "",
+      ...answers.length || rejected.length ? [
+        ...answers.map((question) => `- ${question.question} Answer: ${question.answer}`),
+        ...rejected.map(
+          (claim) => `- Not a defect: ${claim.title}. ${claim.decision?.rationale ?? ""}`.trim()
+        )
+      ] : ["None."],
+      "",
+      "## Problems reported as fixed",
+      "",
+      ...newestFirst.length ? withBlankEnd([
+        "Check that each one does not come back. The newest fix is first.",
+        "",
+        ...newestFirst.slice(0, full2).flatMap((claim) => block(claim, `- Reported fixed on build: ${fixedOn(claim)}`)),
+        ...newestFirst.slice(full2).map(
+          (claim) => `- ${claim.id}: ${claim.title} (reported fixed on build ${fixedOn(claim)})`
+        ),
+        ...shortened ? [`${shortened} older fixed problems are shortened to their title.`] : []
+      ]) : ["None.", ""],
+      "## Areas tested before",
+      "",
+      ...areas.length ? areas.map((area2) => `- ${area2}`) : ["None recorded."],
+      "",
+      "## Rules not tested yet",
+      "",
+      ...(() => {
+        const untested = criteria.filter((criterion) => !mentioned.has(criterion.id));
+        return untested.length ? untested.map((criterion) => `- ${criterion.text}`) : ["None recorded."];
+      })()
+    ];
+  };
+  let full = newestFirst.length;
+  let lines2 = render(full);
+  while (lines2.length > maxKnownLines && full > 0) lines2 = render(--full);
   if (lines2.length <= maxKnownLines) return lines2.join("\n") + "\n";
   return [...lines2.slice(0, maxKnownLines - 1), "More results are left out."].join("\n") + "\n";
 }

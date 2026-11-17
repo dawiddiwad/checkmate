@@ -720,7 +720,8 @@ export function explorationPage(
 						live.running && run.phase
 							? html`${phaseStrip(run)}
 									<span class="sp-pill" title="Time since the start"
-										>${live.running ? html`<span data-since="${run.startedAt}">${duration(Date.now() - Date.parse(run.startedAt))}</span>` : ''}</span
+										>elapsed
+										${live.running ? html`<span data-since="${run.startedAt}">${duration(Date.now() - Date.parse(run.startedAt))}</span>` : ''}</span
 									>`
 							: live.phases.map(
 									(row) =>

@@ -20766,7 +20766,8 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 					${pill(live.running && live.paused ? "paused" : live.state)}
 					${live.running && run2.phase ? html2`${phaseStrip(run2)}
 									<span class="sp-pill" title="Time since the start"
-										>${live.running ? html2`<span data-since="${run2.startedAt}">${duration(Date.now() - Date.parse(run2.startedAt))}</span>` : ""}</span
+										>elapsed
+										${live.running ? html2`<span data-since="${run2.startedAt}">${duration(Date.now() - Date.parse(run2.startedAt))}</span>` : ""}</span
 									>` : live.phases.map(
       (row2) => html2`<span class="${pillClass(row2.state)}" title="${words(row2.state)}"
 											>${row2.phase}</span

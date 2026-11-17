@@ -17764,7 +17764,8 @@ function statusBar(context, page) {
 				<summary class="sb-btn">More</summary>
 				<div class="menu-list">
 					<button type="button" data-find-open>Find</button
-					><a href="/activity">Activity${context.running ? ` \xB7 ${context.running} running` : ""}</a
+					><a href="/activity" data-region="activity-menu"
+						>Activity${context.running ? ` \xB7 ${context.running} running` : ""}</a
 					><a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
 				</div>
 			</details>
@@ -19077,7 +19078,7 @@ function optionsBox(items) {
 }
 function row(run2, n, now) {
   const items = options2(run2);
-  const title = `${run2.follow ? "Follow-up" : "Test"} ${run2.build}${run2.level && !run2.follow ? ` \xB7 ${run2.level}` : ""}${sentence(run2) ? ` \xB7 ${sentence(run2)}` : ""}`;
+  const title = `${run2.planId} \xB7 ${run2.follow ? "Follow-up" : "Test"} ${run2.build}${run2.level && !run2.follow ? ` \xB7 ${run2.level}` : ""}${sentence(run2) ? ` \xB7 ${sentence(run2)}` : ""}`;
   const label = run2.follow ? `${run2.explorationId} follow-up` : run2.explorationId;
   return html2`<div
 		class="sp-row"
@@ -19092,7 +19093,7 @@ function row(run2, n, now) {
 	>
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${pill(run2.state)}</span>
-		<span class="sp-c-id" title="${run2.planId}">${run2.planId}</span>
+		<span class="sp-c-id" title="${run2.explorationId}">${run2.explorationId}</span>
 		<span class="sp-c-title ell" title="${title}">${title}</span>
 		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join11(meta(run2, now), " \xB7 ")}</span>
 		${optionsBox(items)}

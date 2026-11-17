@@ -49,6 +49,13 @@ async function sent(page: Page, before: string | null) {
 	)
 }
 
+function shows(page: Page, key: string) {
+	return page.waitForFunction(
+		(wanted) => document.querySelector('[data-region="queue-detail"]')?.getAttribute('data-key') === wanted,
+		`detail:${key}`
+	)
+}
+
 async function atTop(page: Page) {
 	assert.equal(await page.evaluate(() => window.scrollY), 0)
 	assert(await page.locator('.q-detail .q-crumbs').isVisible())
@@ -71,9 +78,9 @@ test(
 		await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 		assert.equal(await focusedKey(page), items[0].key)
 		await page.keyboard.press('j')
-		await page.waitForURL((address) => address.searchParams.get('item') === items[1].key)
+		await shows(page, items[1].key)
 		await page.keyboard.press('k')
-		await page.waitForURL((address) => address.searchParams.get('item') === items[0].key)
+		await shows(page, items[0].key)
 
 		let before = await selected(page)
 		await page.keyboard.press('c')
@@ -129,6 +136,7 @@ test(
 
 		const plan = items.find((item) => item.kind === 'plan')!
 		await page.locator(`[data-key="${plan.key}"]`).click()
+		await shows(page, plan.key)
 		await page.getByLabel('Rationale').fill('The tests cover the request.')
 		await page.getByRole('button', { name: `Approve ${plan.id}` }).click()
 		before = await selected(page)
@@ -141,6 +149,7 @@ test(
 
 		const result = items.find((item) => item.kind === 'result')!
 		await page.locator(`[data-key="${result.key}"]`).click()
+		await shows(page, result.key)
 		await page.locator(`[data-key="${result.key}"]`).focus()
 		await page.keyboard.press('a')
 		await page.keyboard.type('The defects are known.')
@@ -185,12 +194,16 @@ test('the claims list finds a defect of last week and shows its evidence in two 
 	await row.click()
 	await page.locator('.q-detail .ev').first().waitFor()
 	assert.equal(loads, 1)
-	assert.match(page.url(), /since=7/)
+	await page.waitForURL(/since=7/)
 	await page.goBack()
 	await page.waitForURL((address) => !address.searchParams.has('item'))
+	await page.waitForFunction(() => (document.querySelector('[data-search]') as HTMLInputElement).value === '')
 	await page.getByLabel('State').selectOption('suspected')
-	await page.locator('[data-queue-link]').first().click()
-	const key = await selected(page)
+	await page.waitForURL(/state=suspected/)
+	const first = page.locator('[data-queue-link]').first()
+	const key = await first.getAttribute('data-key')
+	await first.click()
+	await shows(page, key!)
 	await page.getByRole('button', { name: /^Accept as a defect/ }).click()
 	await page
 		.getByRole('status')
@@ -257,10 +270,10 @@ test(
 		await page.locator('[data-key="raw:r1/D1"]', { hasText: 'defect, not merged' }).waitFor()
 		await page.locator('[data-key="explorer:r1"]').click()
 		await page.locator('.q-detail .q-h', { hasText: 'Explorer r1' }).waitFor()
-		assert.equal(new URL(page.url()).searchParams.get('item'), 'explorer:r1')
+		await page.waitForURL((address) => address.searchParams.get('item') === 'explorer:r1')
 		await page.keyboard.press('j')
 		await page.locator('.q-detail .q-h', { hasText: 'Explorer r2' }).waitFor()
-		assert.equal(new URL(page.url()).searchParams.get('item'), 'explorer:r2')
+		await page.waitForURL((address) => address.searchParams.get('item') === 'explorer:r2')
 		await checkmate(workspace, [
 			'explore',
 			'done',
@@ -327,6 +340,7 @@ test('the run page lists tests, findings, and gaps, and accepts the result from 
 	await page.keyboard.press('k')
 	await page.waitForURL((address) => address.searchParams.get('item') === 'test:T1')
 	await page.locator('[data-key="summary"]').click()
+	await shows(page, 'summary')
 	await page.locator('[data-key="summary"]').focus()
 	await page.keyboard.press('a')
 	await page.keyboard.type('The defects are known.')
@@ -335,7 +349,7 @@ test('the run page lists tests, findings, and gaps, and accepts the result from 
 	await page.keyboard.press('Control+Enter')
 	await page.getByRole('status').filter({ hasText: 'Accepted run-7' }).waitFor()
 	await page.locator('[data-region="state"]', { hasText: 'accepted' }).waitFor()
-	assert.match(page.url(), /\/runs\/run-7$/)
+	await page.waitForURL(/\/runs\/run-7$/)
 	assert.equal(loads, 1)
 })
 
@@ -361,6 +375,31 @@ test('a fast repeated key records one decision for each item', { skip }, async (
 		.waitFor()
 	await page.waitForTimeout(800)
 	assert.equal(decisions().length, before + 1)
+})
+
+test('a decision key waits for the item that the step shows', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const items = needsYou(store).items
+	let posts = 0
+	page.on('request', (request) => {
+		if (request.method() === 'POST') posts++
+	})
+	await page.goto(url('/'))
+	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	await page.keyboard.press('j')
+	await page.keyboard.press('d')
+	await shows(page, items[1].key)
+	assert.equal(posts, 0)
+	assert(needsYou(store).items.some((item) => item.key === items[0].key))
+	await page.keyboard.press('d')
+	await page
+		.getByRole('status')
+		.filter({ hasText: `Answered ${items[1].planId} · ${items[1].id}` })
+		.waitFor()
+	assert(needsYou(store).items.some((item) => item.key === items[0].key))
+	assert(!needsYou(store).items.some((item) => item.key === items[1].key))
 })
 
 test('a stale tab names the first decision and keeps the typed text', { skip }, async (t) => {
@@ -405,11 +444,6 @@ test('the queue keeps drafts, moves at once, has one Tab stop, and checks an emp
 	t.after(() => closeStore(store))
 	const items = needsYou(store).items
 	const detailKey = () => page.locator('[data-region="queue-detail"]').getAttribute('data-key')
-	const shows = (key: string) =>
-		page.waitForFunction(
-			(wanted) => document.querySelector('[data-region="queue-detail"]')?.getAttribute('data-key') === wanted,
-			`detail:${key}`
-		)
 	await page.goto(url('/'))
 	const stops = await page
 		.locator('[data-queue-link]')
@@ -431,9 +465,9 @@ test('the queue keeps drafts, moves at once, has one Tab stop, and checks an emp
 	await page.getByLabel('Answer', { exact: true }).fill('Draft for the first item.')
 	await page.locator('[data-queue-link][aria-current="true"]').focus()
 	await page.keyboard.press('j')
-	await shows(items[1].key)
+	await shows(page, items[1].key)
 	await page.keyboard.press('k')
-	await shows(items[0].key)
+	await shows(page, items[0].key)
 	assert.equal(await page.getByLabel('Answer', { exact: true }).inputValue(), 'Draft for the first item.')
 	await page.reload()
 	assert.equal(await page.getByLabel('Answer', { exact: true }).inputValue(), 'Draft for the first item.')
@@ -443,9 +477,14 @@ test('the queue keeps drafts, moves at once, has one Tab stop, and checks an emp
 		if (request.method() === 'GET' && new URL(request.url()).searchParams.has('item')) loads++
 	})
 	await page.locator('[data-queue-link][aria-current="true"]').focus()
-	for (let step = 0; step < 20; step++) await page.keyboard.press('j')
-	assert.equal(new URL(page.url()).searchParams.get('item'), items[20].key)
-	await shows(items[20].key)
+	await page.evaluate(() => {
+		for (let step = 0; step < 20; step++)
+			document.activeElement!.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true })
+			)
+	})
+	await page.waitForURL((address) => address.searchParams.get('item') === items[20].key)
+	await shows(page, items[20].key)
 	assert(loads <= 2, `${loads} loads`)
 	assert.equal(await detailKey(), `detail:${items[20].key}`)
 
@@ -496,6 +535,7 @@ test('x and shift x select several items, and one confirm records them all', { s
 	assert.equal(loads, 1)
 	await page.getByRole('link', { name: 'Claims', exact: true }).click()
 	await page.getByLabel('State').selectOption('suspected')
+	await page.waitForURL(/state=suspected/)
 	const boxes = page.locator('[data-pick]')
 	await boxes.nth(0).click()
 	await page.locator('.q-detail', { hasText: '1 item selected' }).waitFor()
@@ -571,13 +611,13 @@ test('a selection keeps the rows that stay in view after Show more and a filter'
 	await page.waitForFunction(() => document.querySelectorAll('[data-queue-link]').length > 50)
 	await count.filter({ hasText: '2 selected' }).waitFor()
 	assert.deepEqual((await checked()).sort(), [keys[0], other].sort())
-	assert.equal(new URL(page.url()).searchParams.getAll('pick').length, 2)
+	await page.waitForURL((address) => address.searchParams.getAll('pick').length === 2)
 	await page.locator('#claims-plan').selectOption(plan(keys[0]))
 	await page.waitForURL(new RegExp(`plan=${plan(keys[0])}`))
 	await count.filter({ hasText: '1 selected' }).waitFor()
 	await page.getByText('1 selected row is not in this view. It is not selected now.').waitFor()
 	assert.deepEqual(await checked(), [keys[0]])
-	assert.deepEqual(new URL(page.url()).searchParams.getAll('pick'), [keys[0]])
+	await page.waitForURL((address) => address.searchParams.getAll('pick').join() === keys[0])
 	await page.locator('.bulk-bar').getByRole('link', { name: 'Clear' }).click()
 	await count.filter({ hasText: /^Select rows/ }).waitFor()
 	await box(keys[3]).click({ modifiers: ['Shift'] })

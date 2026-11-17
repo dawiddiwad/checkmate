@@ -108,6 +108,6 @@ test(
 		await cli(['explore', 'done', id, 'a1', 'study', '--agent', 'agent-a1', '--activity', 'Studied the basket.'])
 		await row.filter({ hasText: 'study: Studied the basket.' }).waitFor({ timeout: 3000 })
 		await row.filter({ hasText: 'ended' }).waitFor({ timeout: 3000 })
-		assert.equal(await page.locator('[data-key="paused"]').count(), 0)
+		await page.locator('[data-key="paused"]').waitFor({ state: 'detached' })
 	}
 )

@@ -950,6 +950,11 @@ function clearDrafts(key) {
 	} catch {}
 }
 
+function detailLags() {
+	const row = currentRow()
+	return Boolean(row) && queueDetail().dataset.key !== `detail:${row.dataset.key}`
+}
+
 function queueKind(event, value, send) {
 	const bulk = queueDetail().querySelector(`[data-bulk-questions] #bulk-kind-${value}`)
 	if (bulk) {
@@ -1049,7 +1054,7 @@ function queueKey(event) {
 		pickRow(event.target.closest?.('[data-queue-link]') ?? currentRow(), event.key === 'X')
 		return true
 	}
-	if (queueSending && 'adrcs'.includes(event.key)) {
+	if ((queueSending || detailLags()) && 'adrcs'.includes(event.key)) {
 		event.preventDefault()
 		return true
 	}

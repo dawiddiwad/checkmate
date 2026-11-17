@@ -2623,3 +2623,15 @@ body:has(.queue) .foot {
 	left: 0;
 	right: auto;
 }
+.test-remove {
+	padding: 0 16px 12px;
+}
+.test-remove > summary {
+	list-style: none;
+}
+.test-remove > summary::-webkit-details-marker {
+	display: none;
+}
+.test-remove[open] > summary {
+	margin-bottom: 8px;
+}

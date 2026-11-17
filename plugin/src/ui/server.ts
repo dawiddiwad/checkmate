@@ -49,7 +49,7 @@ import type { QueueRefusal } from './queue.ts'
 import { queueCount, queuePage } from './queue.ts'
 import { claimsPage } from './claims.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
-import { candidateFromForm, candidateJson, editPage, ownChanges } from './edit.ts'
+import { candidateFromForm, candidateJson, editPage, ownChanges, removedTests } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
@@ -865,7 +865,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const subject = `${planId}@${revision}`
 		const detail = planDetail(store, planId, revision)
 		const base = planCandidate(detail.plan)
-		const mode = form.get('mode') === 'json' ? 'json' : 'form'
+		const removing = form.get('mode') === 'remove' ? (form.get('test') ?? '') : null
+		const mode = form.get('mode') === 'json' || removing !== null ? 'json' : 'form'
 		const sha = form.get('sha') ?? ''
 		const state: EditState = {
 			mode,
@@ -876,10 +877,16 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			stale: null,
 			unsaved: null,
 			orig: form.get('orig') ?? JSON.stringify(base),
+			removed: [],
+			rationale: form.get('rationale') ?? '',
 		}
 		const page = () => editPage(store, context(request), planId, revision, state)
 		let candidate: unknown
-		if (mode === 'json') {
+		if (removing !== null) {
+			candidate = { ...base, tests: base.tests.filter((test) => test.id !== removing) }
+			state.json = candidateJson(candidate)
+			if (!base.tests.some((test) => test.id === removing)) state.error = `${subject} has no test ${removing}.`
+		} else if (mode === 'json') {
 			try {
 				candidate = JSON.parse(state.json)
 			} catch (error) {
@@ -890,11 +897,20 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			state.json = candidateJson(state.candidate)
 			candidate = state.candidate
 		}
+		state.removed = removedTests(base, candidate)
+		const rationale = state.rationale.trim()
 		if (!actor) state.error ??= 'Enter your name. Checkmate records it with the edit.'
+		if (state.removed.length && !rationale)
+			state.error ??= `The edit removes ${state.removed.join(', ')}. Write the reason in Reason for removal.`
 		if (state.error) return refuse(request, page, cookies)
 		let saved
 		try {
-			saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data
+			saved = editPlan(store, actor, {
+				reference: subject,
+				candidate,
+				expectSha256: sha,
+				...(rationale ? { rationale } : {}),
+			}).data
 		} catch (error) {
 			const latest = planDetail(store, planId)
 			if (latest.latestRevision === revision && latest.sha256 === sha) {
@@ -906,6 +922,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			state.orig = JSON.stringify(fresh)
 			state.candidate = fresh
 			state.json = candidateJson(fresh)
+			state.removed = []
 			state.stale = html`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
 				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
 				it.`

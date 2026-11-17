@@ -49,7 +49,33 @@ function facts(rows: Array<[string, Html | string | false]>) {
 	</dl>`
 }
 
-export function testCard(detail: Detail, test: Test) {
+function removeTest(context: Context, detail: Detail, test: Test) {
+	const subject = `${detail.planId}@${detail.revision}`
+	const actor = context.actor
+		? ''
+		: html`<div class="field-group">
+				<label class="lab" for="remove-actor-${test.id}">Your name</label>
+				<input id="remove-actor-${test.id}" name="actor" required autocomplete="name" />
+			</div>`
+	return html`<details class="test-remove" data-open-key="remove:${test.id}">
+		<summary class="btn small">Remove ${test.id}</summary>
+		<form method="post" action="/plans/${subject}/edit" class="decision-form">
+			<input type="hidden" name="csrf" value="${context.csrf}" />
+			<input type="hidden" name="sha" value="${detail.sha256}" />
+			<input type="hidden" name="mode" value="remove" />
+			<input type="hidden" name="test" value="${test.id}" />
+			<div class="field-group">
+				<label class="lab" for="remove-${test.id}">Reason for removal</label>
+				<textarea id="remove-${test.id}" name="rationale" rows="2" required data-rationale></textarea>
+			</div>
+			${actor}
+			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
+			<div class="btns"><button class="btn" data-needs-rationale>Remove ${test.id}</button></div>
+		</form>
+	</details>`
+}
+
+export function testCard(detail: Detail, test: Test, remove: Html | '' = '') {
 	const { planId, revision } = detail
 	return html`<article class="test" id="${test.id}" data-key="test:${test.id}">
 		<header class="test-h">
@@ -99,6 +125,7 @@ export function testCard(detail: Detail, test: Test) {
 					</ul>`
 				: html`<p class="test-note">No assertions yet. A blocking gap must be answered first.</p>`
 		}
+		${remove}
 	</article>`
 }
 
@@ -587,7 +614,9 @@ export function planPage(
 					html`Tests${latest ? html` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}`,
 					plan.tests.length,
 					approving,
-					html`<div class="stack">${plan.tests.map((test) => testCard(detail, test))}</div>`,
+					html`<div class="stack">
+						${plan.tests.map((test) => testCard(detail, test, latest ? removeTest(context, detail, test) : ''))}
+					</div>`,
 					'tests'
 				)}
 				${fold('runs', 'Runs', detail.runs.length, accepting, runsTable(detail), 'plan-runs')}

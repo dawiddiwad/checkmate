@@ -18669,7 +18669,30 @@ function facts(rows) {
   )}
 	</dl>`;
 }
-function testCard(detail2, test) {
+function removeTest(context, detail2, test) {
+  const subject = `${detail2.planId}@${detail2.revision}`;
+  const actor = context.actor ? "" : html2`<div class="field-group">
+				<label class="lab" for="remove-actor-${test.id}">Your name</label>
+				<input id="remove-actor-${test.id}" name="actor" required autocomplete="name" />
+			</div>`;
+  return html2`<details class="test-remove" data-open-key="remove:${test.id}">
+		<summary class="btn small">Remove ${test.id}</summary>
+		<form method="post" action="/plans/${subject}/edit" class="decision-form">
+			<input type="hidden" name="csrf" value="${context.csrf}" />
+			<input type="hidden" name="sha" value="${detail2.sha256}" />
+			<input type="hidden" name="mode" value="remove" />
+			<input type="hidden" name="test" value="${test.id}" />
+			<div class="field-group">
+				<label class="lab" for="remove-${test.id}">Reason for removal</label>
+				<textarea id="remove-${test.id}" name="rationale" rows="2" required data-rationale></textarea>
+			</div>
+			${actor}
+			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
+			<div class="btns"><button class="btn" data-needs-rationale>Remove ${test.id}</button></div>
+		</form>
+	</details>`;
+}
+function testCard(detail2, test, remove = "") {
   const { planId, revision } = detail2;
   return html2`<article class="test" id="${test.id}" data-key="test:${test.id}">
 		<header class="test-h">
@@ -18713,6 +18736,7 @@ function testCard(detail2, test) {
 								</li>`
   )}
 					</ul>` : html2`<p class="test-note">No assertions yet. A blocking gap must be answered first.</p>`}
+		${remove}
 	</article>`;
 }
 function decisionFor(plan, gap) {
@@ -19121,7 +19145,9 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
     html2`Tests${latest ? html2` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ""}`,
     plan.tests.length,
     approving,
-    html2`<div class="stack">${plan.tests.map((test) => testCard(detail2, test))}</div>`,
+    html2`<div class="stack">
+						${plan.tests.map((test) => testCard(detail2, test, latest ? removeTest(context, detail2, test) : ""))}
+					</div>`,
     "tests"
   )}
 				${fold("runs", "Runs", detail2.runs.length, accepting, runsTable(detail2), "plan-runs")}
@@ -20221,7 +20247,14 @@ function pathName(candidate, path) {
 function changeLines(before, after) {
   return jsonPatch(before, after).map((operation) => `${pathName(before, operation.path)}: ${JSON.stringify(operation.value ?? null)}`).join("\n");
 }
+function removedTests(base, candidate) {
+  const tests = candidate?.tests;
+  if (!Array.isArray(tests)) return [];
+  const kept = new Set(tests.map((test) => test?.id));
+  return base.tests.map((test) => test.id).filter((id2) => !kept.has(id2));
+}
 function ownChanges(form, fresh) {
+  if (form.get("mode") === "remove") return `${form.get("test") ?? ""}: removed`;
   const json = form.get("json") ?? "";
   try {
     const orig = JSON.parse(form.get("orig") ?? "");
@@ -20240,6 +20273,16 @@ function unsavedPanel(unsaved) {
 		</p>
 		<pre class="code">${unsaved || "You changed no values."}</pre>
 	</section>`;
+}
+function removalField(state) {
+  return html2`<div class="field-group" data-removal${state.removed.length ? "" : html2` hidden`}>
+		<label class="lab" for="removal">Reason for removal</label>
+		<p class="help" id="removal-help">
+			The edit removes <span class="mono" data-removal-tests>${state.removed.join(", ")}</span>. Checkmate records
+			who removed which tests and why.
+		</p>
+		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
+	</div>`;
 }
 function field(label, name, value2, help2 = "") {
   return html2`<div class="field-group">
@@ -20399,7 +20442,9 @@ function editPage(store, context, planId, revision, state = null) {
     error: null,
     stale: null,
     unsaved: null,
-    orig: JSON.stringify(planCandidate(detail2.plan))
+    orig: JSON.stringify(planCandidate(detail2.plan)),
+    removed: [],
+    rationale: ""
   };
   const messages2 = html2`${shown.stale ? banner("warn", shown.stale) : ""}
 	${shown.error ? html2`<p class="form-error" role="alert">${shown.error}</p>` : ""}`;
@@ -20442,7 +20487,13 @@ function editPage(store, context, planId, revision, state = null) {
 			</form>
 			<details class="edit-json" ${shown.mode === "json" ? html2`open` : ""}>
 				<summary>Edit as JSON</summary>
-				<form method="post" action="${path}" class="edit-form" data-edit-form>
+				<form
+					method="post"
+					action="${path}"
+					class="edit-form"
+					data-edit-form
+					data-test-ids="${detail2.plan.tests.map((test) => test.id).join(" ")}"
+				>
 					${hidden2(context, detail2.sha256, "json", shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
@@ -20451,7 +20502,7 @@ function editPage(store, context, planId, revision, state = null) {
 					</p>
 					<label class="sr-only" for="json">Plan candidate JSON</label>
 					<textarea id="json" name="json" rows="24" class="code" spellcheck="false">${shown.json}</textarea>
-					${buttons("json")}
+					${removalField(shown)} ${buttons("json")}
 				</form>
 			</details>
 		</div>`;
@@ -21573,7 +21624,8 @@ data: ${matched.join(",") || "*"}
     const subject = `${planId}@${revision}`;
     const detail2 = planDetail(store, planId, revision);
     const base = planCandidate(detail2.plan);
-    const mode = form.get("mode") === "json" ? "json" : "form";
+    const removing = form.get("mode") === "remove" ? form.get("test") ?? "" : null;
+    const mode = form.get("mode") === "json" || removing !== null ? "json" : "form";
     const sha = form.get("sha") ?? "";
     const state = {
       mode,
@@ -21583,11 +21635,17 @@ data: ${matched.join(",") || "*"}
       error: null,
       stale: null,
       unsaved: null,
-      orig: form.get("orig") ?? JSON.stringify(base)
+      orig: form.get("orig") ?? JSON.stringify(base),
+      removed: [],
+      rationale: form.get("rationale") ?? ""
     };
     const page = () => editPage(store, context(request), planId, revision, state);
     let candidate;
-    if (mode === "json") {
+    if (removing !== null) {
+      candidate = { ...base, tests: base.tests.filter((test) => test.id !== removing) };
+      state.json = candidateJson(candidate);
+      if (!base.tests.some((test) => test.id === removing)) state.error = `${subject} has no test ${removing}.`;
+    } else if (mode === "json") {
       try {
         candidate = JSON.parse(state.json);
       } catch (error) {
@@ -21598,11 +21656,20 @@ data: ${matched.join(",") || "*"}
       state.json = candidateJson(state.candidate);
       candidate = state.candidate;
     }
+    state.removed = removedTests(base, candidate);
+    const rationale = state.rationale.trim();
     if (!actor) state.error ??= "Enter your name. Checkmate records it with the edit.";
+    if (state.removed.length && !rationale)
+      state.error ??= `The edit removes ${state.removed.join(", ")}. Write the reason in Reason for removal.`;
     if (state.error) return refuse(request, page, cookies);
     let saved;
     try {
-      saved = editPlan(store, actor, { reference: subject, candidate, expectSha256: sha }).data;
+      saved = editPlan(store, actor, {
+        reference: subject,
+        candidate,
+        expectSha256: sha,
+        ...rationale ? { rationale } : {}
+      }).data;
     } catch (error) {
       const latest = planDetail(store, planId);
       if (latest.latestRevision === revision && latest.sha256 === sha) {
@@ -21614,6 +21681,7 @@ data: ${matched.join(",") || "*"}
       state.orig = JSON.stringify(fresh);
       state.candidate = fresh;
       state.json = candidateJson(fresh);
+      state.removed = [];
       state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
 				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
 				it.`;

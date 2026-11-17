@@ -128,6 +128,8 @@ A plan without a revision has the same page with the sections `Request`, `Claims
 
 `Edit plan` opens the editor. It has forms for the requirements, tests, assertions, and coverage. `Edit as JSON` adds or removes items. Only the latest revision can change, and the rules of `plan edit` apply.
 
+To remove a test, click `Remove <testId>` on the test in the plan page, write the reason, then click `Remove <testId>` again. You can also delete the test from the JSON. Then `Reason for removal` shows below the JSON and names the removed tests. Write the reason, then save. The new revision records who removed which tests and why. To defer a test, defer the gap that blocks it.
+
 ### Run
 
 <img src="../img/ui/run-gap.jpg" alt="The run page of run-7 in dark mode. It shows defect F1 with expected and observed values and reproduction steps, the new gap G4 with the Answer and Bring into plan buttons, the coverage table, and the Accept run-7 panel on the right." width="100%"/>

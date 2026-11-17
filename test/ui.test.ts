@@ -1183,3 +1183,61 @@ test('a stale edit lists only the values that this user changed', async (t) => {
 		'Empty state for an unknown term'
 	)
 })
+
+test('a JSON edit that removes a test asks for the reason in the editor and saves it', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/checkout@2/edit', { headers: actorCookie })).body
+	assert.match(page, /data-removal hidden/)
+	const candidate = JSON.parse(unescape(field(page, 'orig')))
+	candidate.tests = candidate.tests.filter((test: { id: string }) => test.id !== 'T3')
+	const base = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), orig: unescape(field(page, 'orig')) }
+	const form = { ...base, mode: 'json', json: JSON.stringify(candidate) }
+	const asked = await call(ui, '/plans/checkout@2/edit', { form, headers: actorCookie })
+	assert.equal(asked.status, 422)
+	assert.match(asked.body, /The edit removes T3\. Write the reason in Reason for removal\./)
+	assert.doesNotMatch(asked.body, /--rationale/)
+	assert.match(asked.body, /<div class="field-group" data-removal>/)
+	assert.match(asked.body, /<label class="lab" for="removal">Reason for removal<\/label>/)
+	assert.match(asked.body, /data-removal-tests>T3</)
+	const saved = await call(ui, '/plans/checkout@2/edit', {
+		form: { ...form, rationale: 'The promotion is gone.' },
+		headers: actorCookie,
+	})
+	assert.equal(saved.status, 303)
+	assert.equal(saved.headers.location, '/plans/checkout@3')
+	const removals = read(workspace, (store) => planDetail(store, 'checkout').plan.removals)
+	assert.deepEqual(
+		removals?.map((item) => [item.revision, item.actor, item.rationale, item.testIds]),
+		[[3, human, 'The promotion is gone.', ['T3']]]
+	)
+})
+
+test('the plan page removes one test with a reason', async (t) => {
+	const { ui, workspace } = await start(t)
+	const page = (await call(ui, '/plans/checkout@2', { headers: actorCookie })).body
+	assert.match(page, /<summary class="btn small">Remove T3<\/summary>/)
+	const form = { csrf: field(page, 'csrf'), sha: field(page, 'sha'), mode: 'remove', test: 'T3' }
+	const nameless = await call(ui, '/plans/checkout@2/edit', { form, headers: actorCookie })
+	assert.equal(nameless.status, 422)
+	assert.match(nameless.body, /The edit removes T3\. Write the reason in Reason for removal\./)
+	assert.match(nameless.body, /<details class="edit-json" open>/)
+	const blocked = await call(ui, '/plans/checkout@2/edit', {
+		form: { ...form, test: 'T1', rationale: 'Not needed.' },
+		headers: actorCookie,
+	})
+	assert.equal(blocked.status, 422)
+	assert.match(blocked.body, /Unknown dependency of test T2: T1/)
+	assert.match(blocked.body, />Not needed\.<\/textarea>/)
+	const removed = await call(ui, '/plans/checkout@2/edit', {
+		form: { ...form, rationale: 'The promotion is gone.' },
+		headers: actorCookie,
+	})
+	assert.equal(removed.status, 303)
+	assert.equal(removed.headers.location, '/plans/checkout@3')
+	const after = read(workspace, (store) => planDetail(store, 'checkout').plan)
+	assert.deepEqual(
+		after.tests.map((test) => test.id),
+		['T1', 'T2', 'T4']
+	)
+	assert.equal(after.removals?.[0].rationale, 'The promotion is gone.')
+})

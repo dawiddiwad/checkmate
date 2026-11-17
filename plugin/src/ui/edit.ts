@@ -20,6 +20,8 @@ export type EditState = {
 	stale: Html | null
 	unsaved: string | null
 	orig: string
+	removed: string[]
+	rationale: string
 }
 
 function words(values: string) {
@@ -87,7 +89,15 @@ function changeLines(before: Candidate, after: unknown) {
 		.join('\n')
 }
 
+export function removedTests(base: Candidate, candidate: unknown) {
+	const tests = (candidate as { tests?: unknown } | null)?.tests
+	if (!Array.isArray(tests)) return []
+	const kept = new Set(tests.map((test) => (test as { id?: unknown } | null)?.id))
+	return base.tests.map((test) => test.id).filter((id) => !kept.has(id))
+}
+
 export function ownChanges(form: URLSearchParams, fresh: Candidate) {
+	if (form.get('mode') === 'remove') return `${form.get('test') ?? ''}: removed`
 	const json = form.get('json') ?? ''
 	try {
 		const orig = JSON.parse(form.get('orig') ?? '') as Candidate
@@ -107,6 +117,17 @@ function unsavedPanel(unsaved: string) {
 		</p>
 		<pre class="code">${unsaved || 'You changed no values.'}</pre>
 	</section>`
+}
+
+function removalField(state: EditState) {
+	return html`<div class="field-group" data-removal${state.removed.length ? '' : html` hidden`}>
+		<label class="lab" for="removal">Reason for removal</label>
+		<p class="help" id="removal-help">
+			The edit removes <span class="mono" data-removal-tests>${state.removed.join(', ')}</span>. Checkmate records
+			who removed which tests and why.
+		</p>
+		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
+	</div>`
 }
 
 function field(label: string, name: string, value: string, help = '') {
@@ -291,6 +312,8 @@ export function editPage(
 		stale: null,
 		unsaved: null,
 		orig: JSON.stringify(planCandidate(detail.plan)),
+		removed: [],
+		rationale: '',
 	}
 	const messages = html`${shown.stale ? banner('warn', shown.stale) : ''}
 	${shown.error ? html`<p class="form-error" role="alert">${shown.error}</p>` : ''}`
@@ -334,7 +357,13 @@ export function editPage(
 			</form>
 			<details class="edit-json" ${shown.mode === 'json' ? html`open` : ''}>
 				<summary>Edit as JSON</summary>
-				<form method="post" action="${path}" class="edit-form" data-edit-form>
+				<form
+					method="post"
+					action="${path}"
+					class="edit-form"
+					data-edit-form
+					data-test-ids="${detail.plan.tests.map((test) => test.id).join(' ')}"
+				>
 					${hidden(context, detail.sha256, 'json', shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
@@ -343,7 +372,7 @@ export function editPage(
 					</p>
 					<label class="sr-only" for="json">Plan candidate JSON</label>
 					<textarea id="json" name="json" rows="24" class="code" spellcheck="false">${shown.json}</textarea>
-					${buttons('json')}
+					${removalField(shown)} ${buttons('json')}
 				</form>
 			</details>
 		</div>`

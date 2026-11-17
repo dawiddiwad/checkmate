@@ -57,9 +57,25 @@ function confirmStop(form) {
 	rationale.focus()
 }
 
+function syncRemoval(area) {
+	const field = area.form.querySelector('[data-removal]')
+	let tests
+	try {
+		tests = JSON.parse(area.value).tests
+	} catch {
+		return
+	}
+	if (!Array.isArray(tests)) return
+	const kept = new Set(tests.map((test) => test?.id))
+	const removed = area.form.dataset.testIds.split(' ').filter((id) => id && !kept.has(id))
+	field.hidden = !removed.length
+	field.querySelector('[data-removal-tests]').textContent = removed.join(', ')
+}
+
 document.addEventListener('input', (event) => {
 	const form = event.target.closest?.('form')
 	if (form) syncRationale(form.parentElement ?? document)
+	if (event.target.name === 'json' && form?.dataset.testIds !== undefined) syncRemoval(event.target)
 })
 
 document.addEventListener('change', (event) => {

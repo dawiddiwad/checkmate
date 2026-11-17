@@ -167,3 +167,26 @@ test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, a
 	assert.equal(await page.evaluate(() => document.querySelector('main')?.inert), false)
 	assert(await link.evaluate((element) => element === document.activeElement))
 })
+
+test('the JSON editor shows the reason field when the JSON removes a test', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/checkout@2/edit'))
+	await page.getByText('Edit as JSON').click()
+	const reason = page.getByLabel('Reason for removal')
+	assert(!(await reason.isVisible()))
+	const json = page.getByLabel('Plan candidate JSON')
+	const candidate = JSON.parse(await json.inputValue())
+	candidate.tests = candidate.tests.filter((test: { id: string }) => test.id !== 'T3')
+	await json.fill(JSON.stringify(candidate, null, 2))
+	await reason.waitFor()
+	await page.getByText('The edit removes T3.').waitFor()
+	await reason.fill('The refund flow moves to the next release.')
+	await page.locator('details.edit-json').getByRole('button', { name: 'Save as checkout@3' }).click()
+	await page.waitForURL(/\/plans\/checkout@3$/)
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	assert.equal(
+		planDetail(store, 'checkout').plan.removals?.[0].rationale,
+		'The refund flow moves to the next release.'
+	)
+})

@@ -840,7 +840,96 @@ export function seedVolume(workspace: string) {
 	}
 }
 
-const usage = 'Usage: node scripts/ui-volume.ts [--seed <workspace>]'
+function words(length: number, word = 'word') {
+	return Array.from({ length: Math.ceil(length / (word.length + 1)) }, () => word)
+		.join(' ')
+		.slice(0, length)
+}
+
+export const hostile = [
+	'<img src=x onerror="window.__xss=1">',
+	'**bold** _it_ [link](javascript:window.__xss=2) `code` <script>window.__xss=3</script>',
+	words(300, 'longtitle'),
+	`Unbroken ${'A'.repeat(300)}`,
+]
+
+export function seedEdges(workspace: string) {
+	seedVolume(workspace)
+	const store = openStore(workspace)
+	try {
+		withDemoClock(() => {
+			minutesAgo(3 * day)
+			openPlan(store, agent, {
+				planId: 'empty0',
+				target: 'shop-local@1',
+				request: { objective: 'A plan with no rules and no items.', context: { sources: ['ticket://E-0'] } },
+			})
+			openPlan(store, agent, {
+				planId: 'odd1',
+				target: 'shop-local@1',
+				request: {
+					objective: `Long and hostile content. ${words(300)}`,
+					context: { sources: ['ticket://ODD-1'] },
+					requirements: [
+						{
+							id: 'R1',
+							text: `The only rule. ${words(200)}`,
+							source: 'ticket://ODD-1',
+							area: 'Area label with exactly forty characters',
+						},
+					],
+				},
+			})
+			for (let build = 1; build <= 9; build++) {
+				const explorationId = `o-${build}`
+				minutesAgo((10 - build) * 12 * 60)
+				openExploration(store, 'checkmate', {
+					planId: 'odd1',
+					build: `fixture-build-${build}`,
+					explorationId,
+					instance: 'local',
+				})
+				event(store, explorationId, { step: 'start', detail: { ...launch, explorers: 1 } })
+				event(store, explorationId, { step: 'supervisor', detail: { pid: process.pid } })
+				launched(store, explorationId, 'z1')
+				const list: unknown[] =
+					build === 1
+						? hostile.map((title, index) => ({
+								kind: 'defect',
+								id: `D${index + 1}`,
+								title,
+								rule: 'R1',
+								severity: 'high',
+								expected: title,
+								actual: title,
+								steps: [title],
+								suspected: true,
+							}))
+						: []
+				list.push({
+					kind: 'question',
+					id: `Q${build}`,
+					rule: 'R1',
+					question: build === 1 ? `${hostile[0]} ${words(300)}` : `Question ${build}?`,
+					...(build % 2 ? { blocking: true } : {}),
+				})
+				ended(store, explorationId, 'z1', list)
+				done(store, explorationId)
+			}
+			answerGap(store, human, {
+				planId: 'odd1',
+				gapId: 'z1/Q2',
+				kind: 'accept_assumption',
+				value: words(5000),
+				rationale: `Because ${words(600)}`,
+			})
+		})
+	} finally {
+		closeStore(store)
+	}
+}
+
+const usage = 'Usage: node scripts/ui-volume.ts [--seed <workspace>] [--edges]'
 
 if (import.meta.main) {
 	const index = process.argv.indexOf('--seed')
@@ -850,18 +939,20 @@ if (import.meta.main) {
 			console.error(usage)
 			process.exit(1)
 		}
-		seedVolume(resolve(target))
+		;(process.argv.includes('--edges') ? seedEdges : seedVolume)(resolve(target))
 		console.log(`Seeded ${resolve(target)}`)
 	} else {
 		const workspace = mkdtempSync(join(tmpdir(), 'checkmate-ui-volume-'))
-		seedVolume(workspace)
+		;(process.argv.includes('--edges') ? seedEdges : seedVolume)(workspace)
 		const ui = await startUi({ workspace, defaultActor: human })
 		console.log(`Checkmate UI on the volume seed: ${ui.url}`)
 		console.log('Press Ctrl+C to stop. The workspace is removed on stop.')
-		process.on('SIGINT', async () => {
+		const stopUi = async () => {
 			await ui.close()
-			rmSync(workspace, { recursive: true, force: true })
 			process.exit(0)
-		})
+		}
+		process.on('exit', () => rmSync(workspace, { recursive: true, force: true }))
+		process.on('SIGINT', stopUi)
+		process.on('SIGTERM', stopUi)
 	}
 }

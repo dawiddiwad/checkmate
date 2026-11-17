@@ -509,3 +509,36 @@ test('Plans, Runs, and Log fit at 900 and 1440 in both themes', { skip }, async 
 	for (const path of ['/plans', '/runs', '/log', '/log?sort=actor&dir=asc&size=100', '/plans?q=nothing'])
 		await fits(page, url(path))
 })
+
+async function menusInside(page: Awaited<ReturnType<typeof open>>['page'], path: string) {
+	const menus = page.locator('details[data-menu]:visible > summary')
+	const count = await menus.count()
+	assert(count > 0, `${path}: no menu`)
+	for (let index = 0; index < count; index++) {
+		await menus.nth(index).click()
+		await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+		const wrong = await page.evaluate(() => {
+			const width = window.innerWidth
+			const list = document.querySelector('details[data-menu][open] .menu-list')!
+			return [list, ...list.querySelectorAll('*')]
+				.filter((element) => {
+					const box = element.getBoundingClientRect()
+					return box.left < 0 || box.right > width || element.scrollWidth > element.clientWidth + 1
+				})
+				.map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+		})
+		assert.deepEqual(wrong, [], `${path} at ${page.viewportSize()?.width}px`)
+		await page.keyboard.press('Escape')
+	}
+}
+
+test('every menu opens inside the window from 1440px to 390px', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const width of [1440, 760, 600, 390]) {
+		await page.setViewportSize({ width, height: 900 })
+		for (const path of ['/plans/checkout@2', '/runs/run-7?item=summary', '/explorations/x-1?item=summary']) {
+			await page.goto(url(path))
+			await menusInside(page, path)
+		}
+	}
+})

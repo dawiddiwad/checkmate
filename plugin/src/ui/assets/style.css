@@ -1696,7 +1696,8 @@ th a.sort:hover .arrow {
 	right: 0;
 	top: calc(100% + 6px);
 	z-index: 20;
-	min-width: 240px;
+	min-width: min(240px, calc(100vw - 16px));
+	max-width: calc(100vw - 16px);
 	display: grid;
 	padding: 6px;
 	background: var(--surface);
@@ -1993,10 +1994,6 @@ textarea.code {
 	}
 	.head-actions {
 		margin-left: 0;
-	}
-	.menu-list {
-		left: 0;
-		right: auto;
 	}
 	.foot {
 		padding: 16px;
@@ -2633,10 +2630,6 @@ body:has(.queue) .foot {
 .filters select[name='sort'],
 .filters select[name='dir'] {
 	flex: 0 1 auto;
-}
-.q-detail .menu-list {
-	left: 0;
-	right: auto;
 }
 .test-remove {
 	padding: 0 16px 12px;

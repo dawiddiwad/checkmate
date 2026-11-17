@@ -2619,3 +2619,7 @@ body:has(.queue) .foot {
 .filters select[name='dir'] {
 	flex: 0 1 auto;
 }
+.q-detail .menu-list {
+	left: 0;
+	right: auto;
+}

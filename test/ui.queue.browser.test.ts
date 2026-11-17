@@ -303,6 +303,11 @@ test(
 		await page.locator('.q-detail .q-h', { hasText: 'Phase merge' }).waitFor()
 		await page.getByRole('link', { name: '← Back' }).click()
 		await page.waitForURL(/\/plans\/checkout@2$/)
+		await page.setViewportSize({ width: 760, height: 900 })
+		await page.goto(url('/explorations/x-1?item=summary'))
+		await page.getByText('Download report').click()
+		const menu = await page.locator('.menu-list').boundingBox()
+		assert(menu && menu.x >= 0 && menu.x + menu.width <= 760, JSON.stringify(menu))
 	}
 )
 

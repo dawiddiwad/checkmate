@@ -239,6 +239,17 @@ var addedTables = [
 		UNION ALL
 		SELECT plan_id, application_build, started_at, operation_id, 1, rowid FROM runs
 	) ORDER BY at, kind, position;`
+  },
+  {
+    ddl: `CREATE TABLE handoffs (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	claim_id TEXT NOT NULL,
+	target TEXT,
+	actor TEXT NOT NULL,
+	at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+    fill: ""
   }
 ];
 var views = `
@@ -10316,6 +10327,18 @@ function claimDecisions(store, planId) {
     });
   return decided;
 }
+function claimHandoffs(store, planId) {
+  const rows = all(
+    store,
+    "SELECT claim_id, target, actor, at FROM handoffs WHERE plan_id = ? ORDER BY rowid",
+    planId
+  );
+  const handed = /* @__PURE__ */ new Map();
+  for (const row3 of rows)
+    if (row3.target === null) handed.delete(row3.claim_id);
+    else handed.set(row3.claim_id, { to: row3.target, actor: row3.actor, at: row3.at });
+  return handed;
+}
 function claimGroups(state) {
   const defects = new Map(state.team.filter((entry) => entry.kind === "defect").map((entry) => [entry.id, entry]));
   const recorded = state.team.filter((entry) => entry.kind === "issue");
@@ -10325,7 +10348,7 @@ function claimGroups(state) {
     ...[...defects.values()].filter((defect) => !grouped.has(defect.id)).map((defect) => ({ issue: defect, reports: [defect.id] }))
   ].filter((group) => group.reports.length).map((group) => ({ ...group, found: group.reports.map((id2) => defects.get(id2)) }));
 }
-function claimList(state, decided = /* @__PURE__ */ new Map()) {
+function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PURE__ */ new Map()) {
   const order = (build) => state.builds.indexOf(build ?? "");
   return claimGroups(state).map(({ issue, reports, found }) => {
     const actors = [...new Set(found.map((defect) => defect.actor))];
@@ -10382,6 +10405,7 @@ function claimList(state, decided = /* @__PURE__ */ new Map()) {
       verifierSaw: verified === "refuted" ? firstCheck?.saw ?? null : null,
       reason: claimState === "unresolved" ? `The verifier did not see it: ${firstCheck?.saw ?? "no reason given"}` : decision?.rationale ?? null,
       decision,
+      handoff: handed.get(issue.id) ?? null,
       statuses,
       open: claimState !== "rejected" && latest !== "fixed",
       note: issue.note ?? null
@@ -10389,7 +10413,11 @@ function claimList(state, decided = /* @__PURE__ */ new Map()) {
   });
 }
 function planClaims(store, planId, keep) {
-  return claimList(journal(store, planId, void 0, keep), claimDecisions(store, planId));
+  return claimList(
+    journal(store, planId, void 0, keep),
+    claimDecisions(store, planId),
+    claimHandoffs(store, planId)
+  );
 }
 var factoryStates = ["observed", "confirmed", "accepted"];
 var oracleStates = ["suspected", "unresolved"];
@@ -10548,6 +10576,52 @@ function answerQuestion(store, actor, operationId, input) {
   };
   insertEntry(store, question.explorationId, entry, actor, operationId);
   return entry;
+}
+function handOffClaims(store, actor, input) {
+  return write(store, { actor, command: "claim handoff", subject: input.planId, input }, (operationId, at, actor2) => {
+    const target = input.to?.trim();
+    requireWellFormed(
+      input.undo !== Boolean(target),
+      'Give either --to "<who or what>" or --undo.',
+      `checkmate claim handoff ${input.planId} <claimId...> --to "<who or what>"`
+    );
+    const claims = planClaims(store, input.planId);
+    const chosen = [...new Set(input.claimIds)].map((id2) => {
+      const claim = claims.find((item) => item.id === id2);
+      requireCondition(
+        claim,
+        `Unknown claim ${id2} of plan ${input.planId}.`,
+        `Use one of: ${claims.map((item) => item.id).join(", ") || "no claim yet"}.`
+      );
+      if (input.undo) requireCondition(claim.handoff, `Claim ${id2} is not handed over. There is nothing to undo.`);
+      else requireCondition(claim.state !== "rejected", `Claim ${id2} is rejected. Hand over an open claim.`);
+      return claim;
+    });
+    for (const claim of chosen)
+      execute(
+        store,
+        "INSERT INTO handoffs (plan_id, claim_id, target, actor, at, operation_id) VALUES (?, ?, ?, ?, ?, ?)",
+        input.planId,
+        claim.id,
+        target ?? null,
+        actor2,
+        at,
+        operationId
+      );
+    return {
+      reply: completed(input.planId, {
+        planId: input.planId,
+        claims: chosen.map((claim) => claim.id),
+        to: target ?? null,
+        undo: input.undo
+      }),
+      subjects: [
+        `plan:${input.planId}`,
+        ...new Set(chosen.map((claim) => `exploration:${claim.explorationId}`)),
+        "inbox"
+      ]
+    };
+  });
 }
 function decideClaim(store, actor, input) {
   const command = input.verdict === "approved" ? "claim accept" : "claim reject";
@@ -15347,7 +15421,8 @@ function loopStatus(store, planId) {
     state: claim.state,
     severity: claim.severity,
     title: claim.title,
-    reason: claim.reason
+    reason: claim.reason,
+    handoff: claim.handoff
   }));
   const questions = mergedQuestions(store, planId).filter((question) => question.answer === null);
   const extra = { explorations, claims, questions };
@@ -15402,12 +15477,16 @@ function loopStatus(store, planId) {
       )
     };
   const fixes = claims.filter((claim) => factoryStates.includes(claim.state));
+  const kept = fixes.filter((claim) => !claim.handoff).length;
   const last = explorations.at(-1);
   const failed = last !== void 0 && ["failed", "stopped"].includes(last.state);
   const finished = explorations.filter((item) => item.state === "completed").at(-1);
   const after = [
     ...fixes.length ? [
       `${amount(fixes.length, "confirmed or observed claim")} ready for the factory: checkmate claim list ${planId}`
+    ] : [],
+    ...kept ? [
+      `${amount(kept, "defect")} ${kept === 1 ? "is" : "are"} not handed over: checkmate claim handoff ${planId} <claimId...> --to "<who or what>"`
     ] : [],
     ...questions.length ? [
       `${amount(questions.length, "open question")} can be answered at any time and do not block: checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`
@@ -24200,10 +24279,23 @@ var commands = {
           `${claim.explorationId}@${claim.build}`,
           claim.title,
           `expected=${claim.expected}`,
-          `actual=${claim.actual}`
+          `actual=${claim.actual}`,
+          ...claim.handoff ? [`handed=${claim.handoff.to}`] : []
         ])
       };
     }
+  },
+  "claim handoff": {
+    positionals: ["planId", "claimIds..."],
+    flags: { to: "value", undo: "switch" },
+    write: true,
+    run: (store, args, { actor }) => handOffClaims(store, actor, {
+      planId: value(args, "planId"),
+      claimIds: args.claimIds,
+      to: value(args, "to"),
+      undo: args.undo === true
+    }),
+    print: (reply) => ({ facts: { claims: reply.data.claims, to: reply.data.to ?? void 0 } })
   },
   "claim accept": claimCommand("approved"),
   "claim reject": claimCommand("rejected"),
@@ -24503,7 +24595,8 @@ var commands = {
             claim.severity,
             claim.actors.join(","),
             claim.title,
-            ...claim.reason ? [claim.reason] : []
+            ...claim.reason ? [claim.reason] : [],
+            ...claim.handoff ? [`handed=${claim.handoff.to}`] : []
           ]),
           ...report.questions.map((question) => [
             question.id,

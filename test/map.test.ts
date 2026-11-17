@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { buildOrder, journal, mostFrequent, planQuestions } from '../plugin/src/journal.ts'
+import { buildOrder, handOffClaims, journal, mostFrequent, planQuestions } from '../plugin/src/journal.ts'
 import { claimDetails, ruleMap } from '../plugin/src/rulemap.ts'
 import { plan, store, target } from './support.ts'
 import { done, entries, openTest } from './explorations.ts'
@@ -177,6 +177,10 @@ test('a claim says why it is uncertain, and lists all evidence of its reports wi
 	])
 	assert.deepEqual(details.get('a1/D2')!.uncertain, [{ reason: 'not_reproduced', text: 'The page shows no error.' }])
 	assert.deepEqual(details.get('a1/D1')!.uncertain, [])
+	assert.equal(details.get('a1/D1')!.handoff, null)
+	handOffClaims(opened, 'tester', { planId: 'checkout', claimIds: ['a1/D1'], to: 'Cart team', undo: false })
+	const handed = claimDetails(opened, 'checkout').find((claim) => claim.id === 'a1/D1')!
+	assert.deepEqual([handed.handoff?.to, handed.handoff?.actor], ['Cart team', 'tester'])
 	assert.deepEqual(
 		details.get('a1/D1')!.evidence.map((item) => [item.report, item.index, item.kind, item.name, item.thumbnail]),
 		[

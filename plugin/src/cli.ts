@@ -78,7 +78,7 @@ import { startUi } from './ui/server.ts'
 import { defaultActor } from './actor.ts'
 import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
-import { decideClaim, logEntries, planClaims, readEntries } from './journal.ts'
+import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs } from './sessions.ts'
 import {
@@ -1113,9 +1113,23 @@ const commands: Record<string, Command> = {
 					claim.title,
 					`expected=${claim.expected}`,
 					`actual=${claim.actual}`,
+					...(claim.handoff ? [`handed=${claim.handoff.to}`] : []),
 				]),
 			}
 		},
+	},
+	'claim handoff': {
+		positionals: ['planId', 'claimIds...'],
+		flags: { to: 'value', undo: 'switch' },
+		write: true,
+		run: (store, args, { actor }) =>
+			handOffClaims(store, actor, {
+				planId: value(args, 'planId')!,
+				claimIds: args.claimIds as string[],
+				to: value(args, 'to'),
+				undo: args.undo === true,
+			}),
+		print: (reply) => ({ facts: { claims: reply.data.claims, to: reply.data.to ?? undefined } }),
 	},
 	'claim accept': claimCommand('approved'),
 	'claim reject': claimCommand('rejected'),
@@ -1425,6 +1439,7 @@ const commands: Record<string, Command> = {
 						claim.actors.join(','),
 						claim.title,
 						...(claim.reason ? [claim.reason] : []),
+						...(claim.handoff ? [`handed=${claim.handoff.to}`] : []),
 					]),
 					...report.questions.map((question) => [
 						question.id,

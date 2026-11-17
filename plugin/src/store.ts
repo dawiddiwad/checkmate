@@ -249,6 +249,17 @@ const addedTables = [
 		SELECT plan_id, application_build, started_at, operation_id, 1, rowid FROM runs
 	) ORDER BY at, kind, position;`,
 	},
+	{
+		ddl: `CREATE TABLE handoffs (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	claim_id TEXT NOT NULL,
+	target TEXT,
+	actor TEXT NOT NULL,
+	at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
 ]
 const views = `
 CREATE VIEW latest_plans AS

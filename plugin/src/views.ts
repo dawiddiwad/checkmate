@@ -678,6 +678,7 @@ function loopStatus(store: Store, planId: string) {
 			severity: claim.severity,
 			title: claim.title,
 			reason: claim.reason,
+			handoff: claim.handoff,
 		}))
 	const questions = mergedQuestions(store, planId).filter((question) => question.answer === null)
 	const extra = { explorations, claims, questions }
@@ -736,6 +737,7 @@ function loopStatus(store: Store, planId: string) {
 			),
 		}
 	const fixes = claims.filter((claim) => factoryStates.includes(claim.state))
+	const kept = fixes.filter((claim) => !claim.handoff).length
 	const last = explorations.at(-1)
 	const failed = last !== undefined && ['failed', 'stopped'].includes(last.state)
 	const finished = explorations.filter((item) => item.state === 'completed').at(-1)
@@ -743,6 +745,11 @@ function loopStatus(store: Store, planId: string) {
 		...(fixes.length
 			? [
 					`${amount(fixes.length, 'confirmed or observed claim')} ready for the factory: checkmate claim list ${planId}`,
+				]
+			: []),
+		...(kept
+			? [
+					`${amount(kept, 'defect')} ${kept === 1 ? 'is' : 'are'} not handed over: checkmate claim handoff ${planId} <claimId...> --to "<who or what>"`,
 				]
 			: []),
 		...(questions.length

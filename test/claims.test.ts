@@ -70,6 +70,42 @@ function recorded(t: TestContext) {
 	return { ...context, done }
 }
 
+test('claim handoff records who handed which claims to whom, can be undone, and status offers it', (t) => {
+	const { command, workspace } = recorded(t)
+	const rejected = command(['claim', 'reject', 'checkout', 'a2/D1', '--rationale', 'Shipping is tax free.'])
+	assert.equal(rejected.code, 0, rejected.output)
+	const offer = 'checkmate claim handoff checkout <claimId...> --to "<who or what>"'
+	assert(command(['status', 'checkout']).body.next.includes(`1 defect is not handed over: ${offer}`))
+	const both = command(['claim', 'handoff', 'checkout', 'a1/D1', '--to', 'Cart team', '--undo'])
+	assert.equal(both.code, 1)
+	assert.match(both.body.reasons.join(' '), /Give either --to/)
+	assert.equal(command(['claim', 'handoff', 'checkout', 'a1/D9', '--to', 'Cart team']).code, 1)
+	assert.match(
+		command(['claim', 'handoff', 'checkout', 'a2/D1', '--to', 'Cart team']).body.reasons.join(' '),
+		/Claim a2\/D1 is rejected/
+	)
+	const handed = command(['claim', 'handoff', 'checkout', 'a1/D1', '--to', 'Cart team, ticket SHOP-12'])
+	assert.equal(handed.code, 0, handed.output)
+	assert.deepEqual([handed.body.claims, handed.body.to], [['a1/D1'], 'Cart team, ticket SHOP-12'])
+	const listed = command(['claim', 'list', 'checkout']).body.claims[0]
+	assert.deepEqual([listed.handoff.to, listed.handoff.actor], ['Cart team, ticket SHOP-12', actor])
+	assert.match(listed.handoff.at, /^\d{4}-/)
+	const text = run(['claim', 'list', 'checkout', '--workspace', workspace], {
+		cwd: workspace,
+		env: { CHECKMATE_ACTOR: actor },
+		stdin: () => '',
+	}).output
+	assert.match(text, /\thanded=Cart team, ticket SHOP-12/)
+	assert.equal(command(['explore', 'show', 'x-1']).body.claims[0].handoff.to, 'Cart team, ticket SHOP-12')
+	assert(!command(['status', 'checkout']).body.next.some((line: string) => line.includes('not handed over')))
+	assert.equal(command(['claim', 'handoff', 'checkout', 'a1/D1', '--undo']).code, 0)
+	assert.equal(command(['claim', 'list', 'checkout']).body.claims[0].handoff, null)
+	assert.match(
+		command(['claim', 'handoff', 'checkout', 'a1/D1', '--undo']).body.reasons.join(' '),
+		/is not handed over/
+	)
+})
+
 test('explore finish merges the reports, verifies single reports, and keeps a refuted claim as unresolved', (t) => {
 	const { command, called, done } = recorded(t)
 	assert.deepEqual(
@@ -308,6 +344,7 @@ test('the merge joins questions that ask the same thing, one answer answers each
 	assert.deepEqual([status.state, status.waitsOn], ['defects_open', 'factory'])
 	assert.deepEqual(status.next, [
 		'1 confirmed or observed claim ready for the factory: checkmate claim list checkout',
+		'1 defect is not handed over: checkmate claim handoff checkout <claimId...> --to "<who or what>"',
 		'2 open questions can be answered at any time and do not block: checkmate gap answer checkout <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"',
 		'Retest on the next build: checkmate test checkout --build <new build> --allow Read --allow Bash',
 		'Optional, at any time: keep the claims as stored tests: checkmate harvest x-1',

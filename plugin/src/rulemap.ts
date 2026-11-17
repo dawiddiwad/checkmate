@@ -187,6 +187,7 @@ export function claimDetails(store: Store, planId: string) {
 			severity: claim.severity,
 			state: claim.state,
 			rule: claim.rule,
+			handoff: claim.handoff,
 			reporters: reports.map((report) => ({
 				explorer: shortName(report.actor),
 				report: report.id,

@@ -665,6 +665,7 @@ export type BuildStatus = {
 	basis: 'majority' | 'disputed' | 'single' | 'verified' | 'reported' | 'none'
 }
 export type ClaimDecision = { verdict: 'approved' | 'rejected'; actor: string; rationale: string }
+export type Handoff = { to: string; actor: string; at: string }
 export type Claim = ReturnType<typeof claimList>[number]
 
 export function mostFrequent(values: Array<string | undefined>) {
@@ -700,6 +701,19 @@ function claimDecisions(store: Store, planId: string) {
 	return decided
 }
 
+function claimHandoffs(store: Store, planId: string) {
+	const rows = all<{ claim_id: string; target: string | null; actor: string; at: string }>(
+		store,
+		'SELECT claim_id, target, actor, at FROM handoffs WHERE plan_id = ? ORDER BY rowid',
+		planId
+	)
+	const handed = new Map<string, Handoff>()
+	for (const row of rows)
+		if (row.target === null) handed.delete(row.claim_id)
+		else handed.set(row.claim_id, { to: row.target, actor: row.actor, at: row.at })
+	return handed
+}
+
 function claimGroups(state: Journal) {
 	const defects = new Map(state.team.filter((entry) => entry.kind === 'defect').map((entry) => [entry.id, entry]))
 	const recorded = state.team.filter((entry) => entry.kind === 'issue')
@@ -714,7 +728,11 @@ function claimGroups(state: Journal) {
 		.map((group) => ({ ...group, found: group.reports.map((id) => defects.get(id)!) }))
 }
 
-export function claimList(state: Journal, decided: Map<string, ClaimDecision> = new Map()) {
+export function claimList(
+	state: Journal,
+	decided: Map<string, ClaimDecision> = new Map(),
+	handed: Map<string, Handoff> = new Map()
+) {
 	const order = (build: string | undefined) => state.builds.indexOf(build ?? '')
 	return claimGroups(state).map(({ issue, reports, found }) => {
 		const actors = [...new Set(found.map((defect) => defect.actor))]
@@ -793,6 +811,7 @@ export function claimList(state: Journal, decided: Map<string, ClaimDecision> = 
 					? `The verifier did not see it: ${firstCheck?.saw ?? 'no reason given'}`
 					: (decision?.rationale ?? null),
 			decision,
+			handoff: handed.get(issue.id) ?? null,
 			statuses,
 			open: claimState !== 'rejected' && latest !== 'fixed',
 			note: issue.note ?? null,
@@ -801,7 +820,11 @@ export function claimList(state: Journal, decided: Map<string, ClaimDecision> = 
 }
 
 export function planClaims(store: Store, planId: string, keep?: (row: Row) => boolean) {
-	return claimList(journal(store, planId, undefined, keep), claimDecisions(store, planId))
+	return claimList(
+		journal(store, planId, undefined, keep),
+		claimDecisions(store, planId),
+		claimHandoffs(store, planId)
+	)
 }
 
 export const factoryStates: ClaimState[] = ['observed', 'confirmed', 'accepted']
@@ -1014,6 +1037,57 @@ export function answerQuestion(
 	}
 	insertEntry(store, question.explorationId, entry, actor, operationId)
 	return entry
+}
+
+export function handOffClaims(
+	store: Store,
+	actor: string | undefined,
+	input: { planId: string; claimIds: string[]; to?: string; undo: boolean }
+) {
+	return write(store, { actor, command: 'claim handoff', subject: input.planId, input }, (operationId, at, actor) => {
+		const target = input.to?.trim()
+		requireWellFormed(
+			input.undo !== Boolean(target),
+			'Give either --to "<who or what>" or --undo.',
+			`checkmate claim handoff ${input.planId} <claimId...> --to "<who or what>"`
+		)
+		const claims = planClaims(store, input.planId)
+		const chosen = [...new Set(input.claimIds)].map((id) => {
+			const claim = claims.find((item) => item.id === id)
+			requireCondition(
+				claim,
+				`Unknown claim ${id} of plan ${input.planId}.`,
+				`Use one of: ${claims.map((item) => item.id).join(', ') || 'no claim yet'}.`
+			)
+			if (input.undo) requireCondition(claim.handoff, `Claim ${id} is not handed over. There is nothing to undo.`)
+			else requireCondition(claim.state !== 'rejected', `Claim ${id} is rejected. Hand over an open claim.`)
+			return claim
+		})
+		for (const claim of chosen)
+			execute(
+				store,
+				'INSERT INTO handoffs (plan_id, claim_id, target, actor, at, operation_id) VALUES (?, ?, ?, ?, ?, ?)',
+				input.planId,
+				claim.id,
+				target ?? null,
+				actor,
+				at,
+				operationId
+			)
+		return {
+			reply: completed(input.planId, {
+				planId: input.planId,
+				claims: chosen.map((claim) => claim.id),
+				to: target ?? null,
+				undo: input.undo,
+			}),
+			subjects: [
+				`plan:${input.planId}`,
+				...new Set(chosen.map((claim) => `exploration:${claim.explorationId}`)),
+				'inbox',
+			],
+		}
+	})
 }
 
 export function decideClaim(

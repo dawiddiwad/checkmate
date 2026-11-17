@@ -34,6 +34,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'exploration_events',
 		'explorations',
 		'findings',
+		'handoffs',
 		'instance_retirements',
 		'instances',
 		'journal_entries',
@@ -109,7 +110,7 @@ test('a database of schema version 4 gets the added tables and reads as before',
 	begin(opened, 'run-1', ['T1'], 'b7')
 	closeStore(opened)
 	const db = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
-	for (const table of ['plan_rules', 'plan_builds']) {
+	for (const table of ['plan_rules', 'plan_builds', 'handoffs']) {
 		db.exec(`DROP TRIGGER ${table}_update`)
 		db.exec(`DROP TRIGGER ${table}_delete`)
 		db.exec(`DROP TABLE ${table}`)
@@ -183,6 +184,11 @@ test('triggers refuse updates and deletes on every table', (t) => {
 			operationId
 		)
 		execute(opened, "INSERT INTO plan_rules VALUES ('checkout', 'derived', '[]', ?)", operationId)
+		execute(
+			opened,
+			"INSERT INTO handoffs VALUES ('checkout', 'a1/D1', 'Cart team', 'tester', 'now', ?)",
+			operationId
+		)
 		return { reply: { status: 'completed', subject: 'x-1', reasons: [], data: {} }, subjects: [] }
 	})
 	const tables = opened.db

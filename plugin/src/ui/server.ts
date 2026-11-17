@@ -20,7 +20,7 @@ import {
 	rejectPlan,
 } from '../plans.ts'
 import { exportExploration, exportPlan, exportRun } from '../render.ts'
-import { decideClaim, explorationRow } from '../journal.ts'
+import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
@@ -35,7 +35,6 @@ import {
 	evidenceBytes,
 	operationLog,
 	planDetail,
-	planHasRevision,
 	runDetail,
 } from '../views.ts'
 import { defaultActor } from '../actor.ts'
@@ -44,10 +43,9 @@ import type { BulkState } from './bulk.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
 import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
-import { logPage, plansPage, runsPage } from './lists.ts'
-import type { QueueRefusal } from './queue.ts'
-import { queueCount, queuePage } from './queue.ts'
-import { claimsPage } from './claims.ts'
+import { logPage, runsPage } from './lists.ts'
+import { homePage } from './home.ts'
+import { reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, ownChanges, removedTests } from './edit.ts'
 import type { AdoptError } from './run.ts'
@@ -66,6 +64,8 @@ const id = '[A-Za-z0-9][A-Za-z0-9_-]{0,95}'
 const routes = {
 	plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
 	latestPlan: new RegExp(`^/plans/(${id})$`),
+	request: new RegExp(`^/plans/(${id})/request$`),
+	handoff: new RegExp(`^/plans/(${id})/handoff$`),
 	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
 	edit: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/edit$`),
 	history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
@@ -84,7 +84,7 @@ const routes = {
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
 	claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
 	entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
+	font: /^\/assets\/fonts\/(ibm-plex-sans-(?:400|600)|ibm-plex-mono-(?:400|500|600))\.woff2$/,
 }
 const contentSecurityPolicy =
 	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
@@ -255,7 +255,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				request.req.headers['x-checkmate-queue'] === '1'
 					? request.cookies.checkmate_toast || null
 					: null,
-			queueCount: queueCount(store),
+			queueCount: needsYou(store).urgent,
 			cursor: latestRowid(store),
 			workspace: options.workspace,
 		}
@@ -296,12 +296,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const key = form.get('item')
 		if (form.get('return') === null || key === null) return page
 		const back = safeBack(form.get('return'))
-		const params = new URL(back, request.url).searchParams
-		if (back.startsWith('/claims')) return () => claimsPage(store, context(request, back), params, { key, state })
-		const run = routes.run.exec(new URL(back, request.url).pathname)
-		if (run) return () => runPage(store, context(request, back), run[1], params, state)
-		const refusal: QueueRefusal = { key, state }
-		return () => queuePage(store, context(request, back), params, refusal)
+		const url = new URL(back, request.url)
+		const run = routes.run.exec(url.pathname)
+		if (run) return () => runPage(store, context(request, back), run[1], url.searchParams, state)
+		const plan = routes.latestPlan.exec(url.pathname)
+		if (plan) return () => reviewPage(store, context(request, back), plan[1], url.searchParams, { key, state })
+		return page
 	}
 
 	function serveClaimEvidence(request: Request, explorationId: string, claimId: string, index: number) {
@@ -375,10 +375,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const evidence = routes.evidence.exec(pathname)
 		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
-		if (pathname === '/') return render(request, queuePage(store, shown, searchParams))
-		if (pathname === '/inbox') return redirect(request.res, '/')
-		if (pathname === '/claims') return render(request, claimsPage(store, shown, searchParams))
-		if (pathname === '/plans') return render(request, plansPage(store, searchParams))
+		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
+		if (pathname === '/') return render(request, homePage(store))
+		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
+		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
@@ -396,11 +396,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			)
 		}
 		const latest = routes.latestPlan.exec(pathname)
-		if (latest) {
-			if (!planHasRevision(store, latest[1])) return render(request, requestPage(store, latest[1]))
-			const detail = planDetail(store, latest[1])
-			return redirect(request.res, `/plans/${latest[1]}@${detail.latestRevision}`)
-		}
+		if (latest) return render(request, reviewPage(store, shown, latest[1], searchParams))
+		const requested = routes.request.exec(pathname)
+		if (requested) return render(request, requestPage(store, requested[1]))
 		const plan = routes.plan.exec(pathname)
 		if (plan)
 			return render(
@@ -453,9 +451,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			)
 		}
 		const question = routes.question.exec(pathname)
-		if (question) return render(request, questionPage(store, shown, question[1], question[2]))
+		if (question) return redirect(request.res, recordHref(question[1], `q:${question[2]}`, searchParams))
 		const claim = routes.claim.exec(pathname)
-		if (claim) return render(request, claimPage(store, shown, claim[1], claim[2]))
+		if (claim) return redirect(request.res, recordHref(claim[1], `c:${claim[2]}`, searchParams))
 		const claimFile = routes.claimEvidence.exec(pathname)
 		if (claimFile) return serveClaimEvidence(request, claimFile[1], claimFile[2], Number(claimFile[3]))
 		const entryFile = routes.entryEvidence.exec(pathname)
@@ -660,12 +658,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		redirect(request.res, next.location, next.cookies)
 	}
 
-	function bulkPage(request: Request, back: string, picks: string[], state: BulkState) {
+	function bulkPage(request: Request, back: string, state: BulkState) {
 		const url = new URL(back, request.url)
-		for (const pick of picks) url.searchParams.append('pick', pick)
+		const plan = routes.latestPlan.exec(url.pathname)
+		if (!plan) return () => homePage(store)
 		const shown = context(request, url.pathname + url.search)
-		if (url.pathname === '/claims') return () => claimsPage(store, shown, url.searchParams, null, state)
-		return () => queuePage(store, shown, url.searchParams, null, state)
+		return () => reviewPage(store, shown, plan[1], url.searchParams, null, state.error)
 	}
 
 	function bulk(request: Request, form: URLSearchParams) {
@@ -684,7 +682,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			error: null,
 			confirm: false,
 		}
-		const page = bulkPage(request, back, picks, state)
+		const page = bulkPage(request, back, state)
 		const waiting =
 			what === 'claims'
 				? claimsAcross(store)
@@ -701,13 +699,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!picks.length) state.error = 'Select at least one item.'
 		else if (gone.length)
 			state.error = `${gone.map((key) => key.split(':').slice(1).join(' · ')).join(', ')} ${gone.length === 1 ? 'does' : 'do'} not wait for a decision now. Nothing is recorded. Clear the selection and select again.`
-		else if (form.get('back')) return refuse(request, () => ({ ...page(), status: 200 }), cookies)
 		else state.error = bulkProblem(what, state.values, actor)
+		if (!state.error && form.get('confirmed') !== '1')
+			state.error = `Confirm the action for ${plural(picks.length, 'item')}. Nothing is recorded.`
 		if (state.error) return refuse(request, page, cookies)
-		if (form.get('confirmed') !== '1') {
-			state.confirm = true
-			return refuse(request, () => ({ ...page(), status: 200 }), cookies)
-		}
 		const items = found.map((item) => item!)
 		if (what === 'claims') {
 			const decision = claimDefaults(state.values)
@@ -734,6 +729,43 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			})
 		const flash = `${answer.kind === 'defer' ? 'Deferred' : 'Answered'} ${plural(items.length, 'question')}`
 		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
+	}
+
+	function recordHref(explorationId: string, key: string, params: URLSearchParams) {
+		const view = params.get('view') ?? 'all'
+		return `/plans/${planOfExploration(explorationId)}?view=${encodeURIComponent(view)}&item=${encodeURIComponent(key)}`
+	}
+
+	function oldItem(params: URLSearchParams, view = 'needs') {
+		const [kind, planId, ...rest] = (params.get('item') ?? '').split(':')
+		const id = rest.join(':')
+		const short: Record<string, string> = { question: 'q', claim: 'c', gap: 'g' }
+		if (kind === 'plan' && planId) return `/plans/${planId}`
+		if (kind === 'run' && planId) return `/runs/${planId}`
+		if (short[kind] && planId && id)
+			return `/plans/${planId}?view=${view}&at=${encodeURIComponent(`${short[kind]}:${id}`)}&focus=list`
+		const plan = params.get('plan')
+		return plan ? `/plans/${plan}?view=${view}` : '/'
+	}
+
+	function handOver(request: Request, form: URLSearchParams, planId: string) {
+		const { actor, cookies } = actorFrom(request, form)
+		const claimId = form.get('claim') ?? ''
+		const undo = form.get('undo') === '1'
+		const to = form.get('to')?.trim() ?? ''
+		const back = safeBack(form.get('return') ?? `/plans/${planId}`)
+		const fail = (message: string) =>
+			redirect(request.res, back, [...cookies, cookie('checkmate_toast', message, 60)])
+		if (!undo && !to) return fail(`Name who takes ${claimId}. Nothing is recorded.`)
+		try {
+			handOffClaims(store, actor, { planId, claimIds: [claimId], ...(undo ? {} : { to }), undo })
+		} catch (error) {
+			return fail(`${plainMessage(error)} Nothing is recorded.`)
+		}
+		redirect(request.res, back, [
+			...cookies,
+			cookie('checkmate_toast', undo ? `${claimId} is not handed over` : `Handed ${claimId} over to ${to}`, 60),
+		])
 	}
 
 	function planOfExploration(explorationId: string) {
@@ -1047,6 +1079,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
 		if (pathname === '/bulk') return bulk(request, form)
+		const handoff = routes.handoff.exec(pathname)
+		if (handoff) return handOver(request, form, handoff[1])
 		const edit = routes.edit.exec(pathname)
 		if (edit) return saveEdit(request, form, edit[1], Number(edit[2]))
 		const question = routes.question.exec(pathname)

@@ -172,7 +172,7 @@ npm must trust this repository and `.github/workflows/ci.yml`. The workflow toke
 
 ## Media
 
-The manual uses three kinds of media, all dark. The animation and the diagrams share the tokens in `docs/media/style.css` and the fonts of the review UI in `plugin/src/ui/assets/fonts/`.
+The manual uses three kinds of media, all dark. The animation and the diagrams share the tokens in `docs/media/style.css` and the fonts of the manual in `docs/media/fonts/`.
 
 ### Onboarding animation
 

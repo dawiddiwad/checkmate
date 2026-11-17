@@ -118,14 +118,32 @@ export function words(status: string) {
 	return status.replace(/_/g, ' ')
 }
 
+const toneColor: Record<Tone, string> = {
+	pass: 'green',
+	fail: 'red',
+	warn: 'amber',
+	unsure: 'amber',
+	acc: 'blue',
+	block: '',
+	muted: '',
+}
+
+export function pillClass(status: string) {
+	const [, tone] = statusLook[status] ?? ['·', 'muted']
+	return `sp-pill ${toneColor[tone]}`.trim()
+}
+
 export function pill(status: string, label: string = labels[status] ?? words(status)) {
-	const [icon, tone] = statusLook[status] ?? ['·', 'muted']
-	return html`<span class="st ${tone}"><span aria-hidden="true">${icon}</span> ${label}</span>`
+	const [icon] = statusLook[status] ?? ['·', 'muted']
+	const look = pillClass(status)
+	return html`<span class="${look}" data-status="${status}"><span aria-hidden="true">${icon}</span> ${label}</span>`
 }
 
 export function icon(status: string | null) {
 	const [symbol, tone] = status ? (statusLook[status] ?? ['·', 'muted']) : ['·', 'muted']
-	return html`<span class="ic ${tone}" role="img" aria-label="${status ? words(status) : 'no result yet'}"
+	const mark =
+		{ pass: 'k-pass', fail: 'k-fail', warn: 'k-q', unsure: 'k-q', acc: 'k-run' }[tone as string] ?? 'k-none'
+	return html`<span class="sp-mk ${mark}" role="img" aria-label="${status ? words(status) : 'no result yet'}"
 		>${symbol}</span
 	>`
 }

@@ -1,4 +1,5 @@
 import type { Store } from '../store.ts'
+import { navigator, reviewOf } from './review.ts'
 import type { Plan } from '../types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
@@ -467,7 +468,9 @@ function nextLine(planId: string, found: PlanContext) {
 	const why = found.status.why[0]
 	const action =
 		mine > 0
-			? html`<a class="btn small primary" href="/?plan=${planId}">Decide ${plural(mine, 'item')} in Needs you</a>`
+			? html`<a class="btn small primary" href="/plans/${planId}?view=needs&amp;focus=list"
+					>Decide ${plural(mine, 'item')} in Needs you</a
+				>`
 			: found.status.next[0]
 				? html`<code>${found.status.next[0]}</code>`
 				: ''
@@ -509,7 +512,7 @@ function claimsFold(planId: string, found: PlanContext) {
 		deciding,
 		html`<p class="help">
 				The merged claims of completed explorations.
-				<a href="/claims?plan=${planId}">Open them as a list with filters</a>.
+				<a href="/plans/${planId}?view=all">Open them in All items</a>.
 			</p>
 			${claimsTable(planId, found.claims)}`,
 		'claims'
@@ -626,7 +629,7 @@ export function planPage(
 		</div>`
 	return {
 		title: subject,
-		section: 'plans',
+		section: 'home',
 		subjects: [
 			`plan:${planId}`,
 			'inbox',
@@ -635,9 +638,12 @@ export function planPage(
 		],
 		body,
 		crumbs: [
-			['Plans', '/plans'],
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
 			[subject, null],
 		],
+		back: `/plans/${planId}`,
+		nav: navigator(reviewOf(store, planId), 'plan'),
 	}
 }
 
@@ -718,13 +724,16 @@ export function requestPage(store: Store, planId: string): Page {
 		</div>`
 	return {
 		title: planId,
-		section: 'plans',
+		section: 'home',
 		subjects: [`plan:${planId}`, 'inbox', ...found.explorations.map((item) => `exploration:${item.explorationId}`)],
 		body,
 		crumbs: [
-			['Plans', '/plans'],
-			[planId, null],
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
+			['Request', null],
 		],
+		back: `/plans/${planId}`,
+		nav: navigator(reviewOf(store, planId), 'plan'),
 	}
 }
 
@@ -834,12 +843,15 @@ export function gapPage(
 		</div>`
 	return {
 		title: `${planId} ${gap.id}`,
-		section: 'inbox',
+		section: 'home',
 		crumbs: [
-			['Plans', '/plans'],
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
 			[subject, `/plans/${subject}`],
 			[gap.id, null],
 		],
+		back: `/plans/${subject}`,
+		nav: navigator(reviewOf(store, planId), 'plan'),
 		subjects: [`plan:${planId}`, 'inbox', ...(fromRun ? [`run:${fromRun.runId}`] : [])],
 		body,
 	}

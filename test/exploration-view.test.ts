@@ -262,9 +262,10 @@ test('a plan without a revision opens from the plan list and the inbox, and show
 	})
 	closeStore(opened)
 	const url = await ui(t, workspace)
-	assert.match((await call(url, '/plans')).body, /href="\/plans\/checkout" data-nav-item/)
-	assert.match((await call(url, '/plans')).body, /href="\/plans\/draft" data-nav-item/)
-	const page = await call(url, '/plans/checkout')
+	assert.match((await call(url, '/')).body, /data-key="plan:checkout"/)
+	assert.match((await call(url, '/')).body, /data-key="plan:draft"/)
+	assert.match((await call(url, '/plans/checkout')).body, /href="\/plans\/checkout\/request"/)
+	const page = await call(url, '/plans/checkout/request')
 	assert.equal(page.status, 200)
 	assert.match(page.body, /Verify checkout and identify missing acceptance decisions\./)
 	assert.match(page.body, /href="\/settings\/targets\/checkout-local\?revision=1"/)
@@ -273,6 +274,7 @@ test('a plan without a revision opens from the plan list and the inbox, and show
 	assert(keyed(page.body, 'no-tests'))
 	assert.match(page.body, /checkmate harvest &lt;explorationId&gt;/)
 	assert.equal((await call(url, '/plans/nothing')).status, 404)
+	assert.equal((await call(url, '/plans/nothing/request')).status, 404)
 })
 
 test('the plan page names a running exploration and links its live view, and shows none of its items', async (t) => {
@@ -280,11 +282,11 @@ test('the plan page names a running exploration and links its live view, and sho
 	running(opened)
 	closeStore(opened)
 	const url = await ui(t, workspace)
-	const page = (await call(url, '/plans/checkout')).body
+	const page = (await call(url, '/plans/checkout/request')).body
 	assert(keyed(page, 'running:x-1'))
 	assert.match(page, /Exploration x-1 is running\.\s*<a href="\/explorations\/x-1">Open the live view<\/a>/)
 	assert.doesNotMatch(page, /Can a coupon apply|Two coupons stack/)
-	assert.match(page, /data-region="nav-count"><\/b>/)
+	assert.match(page, /data-region="nav-count"\s+hidden/)
 	const inboxPage = (await call(url, '/')).body
 	assert.doesNotMatch(inboxPage, /Can a coupon apply|Two coupons stack/)
 	const live = await call(url, '/explorations/x-1')
@@ -304,17 +306,17 @@ test('the live view selects an explorer or a phase from the address', async (t) 
 	running(opened)
 	closeStore(opened)
 	const url = await ui(t, workspace)
-	assert.match((await call(url, '/explorations/x-1')).body, /data-selected="summary"/)
+	assert.match((await call(url, '/explorations/x-1')).body, /data-key="detail:summary"/)
 	const a1 = (await call(url, '/explorations/x-1?item=explorer%3Aa1')).body
-	assert.match(a1, /data-selected="explorer:a1"\s+data-open/)
-	assert.match(a1, /<h2 class="q-h">Explorer a1<\/h2>/)
-	assert.match(a1, /<li><a href="\/explorations\/x-1" data-queue-back>x-1<\/a><\/li>/)
+	assert.match(a1, /data-key="detail:explorer:a1"/)
+	assert.match(a1, /<h2 class="sp-sec">Tester a1<\/h2>/)
+	assert.match(a1, /<li><a href="\/explorations\/x-1">x-1<\/a><\/li>/)
 	assert.match(a1, /<li aria-current="page">a1<\/li>/)
 	assert(keyed(a1, 'raw:a1/D1'))
 	assert.match(a1, /The files show when the explorer ends\./)
 	const merge = (await call(url, '/explorations/x-1?item=phase%3Amerge')).body
-	assert.match(merge, /<h2 class="q-h">Phase merge<\/h2>/)
-	assert.match((await call(url, '/explorations/x-1?item=explorer%3Anone')).body, /data-selected="summary"/)
+	assert.match(merge, /<h2 class="sp-sec">Phase merge<\/h2>/)
+	assert.match((await call(url, '/explorations/x-1?item=explorer%3Anone')).body, /data-key="detail:summary"/)
 })
 
 test('after completion the plan page answers a merged question and decides a merged claim', async (t) => {
@@ -322,12 +324,12 @@ test('after completion the plan page answers a merged question and decides a mer
 	completed(opened)
 	closeStore(opened)
 	const url = await ui(t, workspace)
-	const page = (await call(url, '/plans/checkout')).body
+	const page = (await call(url, '/plans/checkout/request')).body
 	assert(!keyed(page, 'running:x-1'))
-	assert.match(page, /href="\/\?plan=checkout&amp;item=question%3Acheckout%3Aa1%2FQ1"/)
-	assert.match(page, /href="\/claims\?plan=checkout&amp;item=claim%3Acheckout%3Aa1%2FD1"/)
+	assert.match(page, /href="\/plans\/checkout\?view=all&amp;item=q%3Aa1%2FQ1"/)
+	assert.match(page, /href="\/plans\/checkout\?view=all&amp;item=c%3Aa1%2FD1"/)
 	assert.match(page, /checkmate harvest x-1/)
-	assert.match((await call(url, '/')).body, /data-region="nav-count">1</)
+	assert.match((await call(url, '/')).body, /data-region="nav-count"\s*>1 needs you</)
 	const live = (await call(url, '/explorations/x-1')).body
 	assert(!keyed(live, 'unmerged'))
 	assert.match(live, /href="\/explorations\/x-1\/explorers\/a1\/test\/report\.md"/)
@@ -339,8 +341,8 @@ test('after completion the plan page answers a merged question and decides a mer
 	const saved = await call(url, '/explorations/x-1/explorers/a1/test/report.md?download=1')
 	assert.equal(saved.body, '# Report of a1\n\nD1: Two coupons stack.\n')
 	assert.equal((await call(url, '/explorations/x-1/explorers/a2/test/report.md')).status, 404)
-	const form = (await call(url, '/explorations/x-1/questions/a1/Q1')).body
-	assert.match(form, /href="\/plans\/checkout">Plan checkout<\/a>/)
+	const form = (await call(url, '/plans/checkout?view=all&item=q%3Aa1%2FQ1')).body
+	assert.match(form, /action="\/explorations\/x-1\/questions\/a1\/Q1"/)
 	const csrf = /name="csrf" value="([^"]+)"/.exec(form)![1]
 	const answered = await call(url, '/explorations/x-1/questions/a1/Q1', {
 		csrf,
@@ -356,10 +358,10 @@ test('after completion the plan page answers a merged question and decides a mer
 		rationale: 'Seen by the product owner.',
 	})
 	assert.equal(decided.status, 303)
-	const after = (await call(url, '/plans/checkout')).body
-	assert.match(after, /href="\/explorations\/x-1\/questions\/a1\/Q1"/)
+	const after = (await call(url, '/plans/checkout/request')).body
+	assert.match(after, /href="\/plans\/checkout\?view=all&amp;item=q%3Aa1%2FQ1"/)
 	assert.match(after, /accepted/)
-	assert.match((await call(url, '/')).body, /data-region="nav-count"><\/b>/)
+	assert.match((await call(url, '/')).body, /data-region="nav-count"\s+hidden/)
 })
 
 test('the plan page shows the reason and the data of a failed exploration', async (t) => {
@@ -369,7 +371,7 @@ test('the plan page shows the reason and the data of a failed exploration', asyn
 	done(opened, 'x-1', 'failed', { reason: 'The merger stopped.' })
 	closeStore(opened)
 	const url = await ui(t, workspace)
-	const page = (await call(url, '/plans/checkout')).body
+	const page = (await call(url, '/plans/checkout/request')).body
 	assert(keyed(page, 'failed:x-1'))
 	assert.match(
 		page,

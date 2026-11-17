@@ -315,7 +315,7 @@ export function plansPage(store: Store, params: URLSearchParams): Page {
 	const { page, state } = listPage(listState(params, spec), (query) => pagedPlans(store, query))
 	return {
 		title: 'Plans',
-		section: 'plans',
+		section: 'home',
 		subjects: ['*'],
 		body: html`${heading('Plans', 'Each plan at its latest revision.')} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(planRow))}`,

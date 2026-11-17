@@ -105,7 +105,7 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		const [first] = (await once(ui.stdout, 'data')) as [Buffer]
 		const url = /^completed ui url=(\S+)$/m.exec(first.toString())?.[1]
 		assert(url, first.toString())
-		for (const path of ['/', '/assets/style.css', '/assets/fonts/space-grotesk.woff2'])
+		for (const path of ['/', '/assets/style.css', '/assets/fonts/ibm-plex-sans-400.woff2'])
 			assert.equal((await fetch(new URL(path, url))).status, 200, path)
 	} finally {
 		ui.kill('SIGTERM')

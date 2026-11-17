@@ -1,11 +1,12 @@
 import type { Store } from '../store.ts'
+import { navigator, reviewOf } from './review.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
 import { hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
-import { crumbBar, downloads, listAndItem } from './layout.ts'
+import { crumbBar, downloads } from './layout.ts'
 import type { EvidenceFile } from './evidence.ts'
 import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
 import { evidenceList, shownAsText } from './evidence.ts'
@@ -46,9 +47,7 @@ function findingRefs(detail: Detail, reference: string) {
 	${join(
 		findings.map(
 			(finding) =>
-				html`<a href="${runItemHref(detail.runId, `finding:${finding.id}`)}" data-queue-go
-					>finding ${finding.id}</a
-				>`
+				html`<a href="${runItemHref(detail.runId, `finding:${finding.id}`)}" data-go>finding ${finding.id}</a>`
 		),
 		', '
 	)}`
@@ -195,7 +194,7 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 
 function assertionLink(runId: string, reference: string) {
 	const testId = reference.split('.')[0]
-	return html`<a class="mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-queue-go
+	return html`<a class="mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-go
 		>${reference}</a
 	>`
 }
@@ -423,38 +422,39 @@ function runRow(
 	runId: string,
 	key: string,
 	selected: string,
-	top: Html | string,
-	tags: Html | string,
-	title: Html | string
+	label: Html | string,
+	tag: Html | string,
+	title: Html | string,
+	meta: Html | string = ''
 ) {
-	return html`<li>
-		<a
-			class="q-row"
-			href="${runItemHref(runId, key)}"
-			data-queue-link
-			data-nav-item
-			data-key="${key}"
-			${key === selected ? html`aria-current="true"` : ''}
-		>
-			<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
-			<span class="q-title">${title}</span>
-		</a>
-	</li>`
+	return html`<div
+		class="sp-row${key === selected ? ' cur' : ''}"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="run-row-${key.replace(/[^A-Za-z0-9-]/g, '-')}"
+		data-row
+		data-key="${key}"
+		data-href="${runItemHref(runId, key)}"
+		data-label="${typeof label === 'string' ? label : key}"
+	>
+		<span class="sp-c-cb"></span>
+		<span class="sp-c-tag">${tag}</span>
+		<span class="sp-c-id">${label}</span>
+		<span class="sp-c-title ell">${title}</span>
+		<span class="sp-c-meta ell">${meta}</span>
+	</div>`
 }
 
-function runGroup(id: string, title: string, rows: Html[]) {
+function runGroup(title: string, rows: Html[]) {
 	if (!rows.length) return ''
-	return html`<section class="q-group" aria-labelledby="g-${id}">
-		<h2 class="q-group-h" id="g-${id}">${title} <span class="n">${rows.length}</span></h2>
-		<ul class="q-items">
-			${rows}
-		</ul>
-	</section>`
+	return html`<div class="sp-gh" role="presentation">${title} <span>${rows.length}</span></div>
+		${rows}`
 }
 
 function passedCount(test: RunTest) {
 	const passed = test.assertions.filter((assertion) => assertion.result === 'passed').length
-	return html`<span class="age">${passed} of ${test.assertions.length}</span>`
+	return `${passed} of ${test.assertions.length} checks passed`
 }
 
 function runList(detail: Detail, selected: string) {
@@ -465,8 +465,9 @@ function runList(detail: Detail, selected: string) {
 			`test:${test.testId}`,
 			selected,
 			test.testId,
-			html`${testState(test, detail)} ${passedCount(test)}`,
-			test.title
+			testState(test, detail),
+			test.title,
+			passedCount(test)
 		)
 	)
 	const found = detail.findings.map((finding) =>
@@ -475,19 +476,13 @@ function runList(detail: Detail, selected: string) {
 			`finding:${finding.id}`,
 			selected,
 			finding.id,
-			html`${pill(finding.severity)} ${pill(finding.type)}`,
-			finding.title
+			pill(finding.severity),
+			finding.title,
+			words(finding.type)
 		)
 	)
 	const gaps = detail.newGaps.map((gap) =>
-		runRow(
-			detail.runId,
-			`gap:${gap.id}`,
-			selected,
-			gap.id,
-			html`${pill(gap.severity)} ${pill(gap.status)}`,
-			gap.question
-		)
+		runRow(detail.runId, `gap:${gap.id}`, selected, gap.id, pill(gap.severity), gap.question, words(gap.status))
 	)
 	const record = [
 		runRow(
@@ -502,27 +497,27 @@ function runList(detail: Detail, selected: string) {
 			detail.runId,
 			'cleanup',
 			selected,
-			'Cleanup and attempts',
+			'Cleanup',
 			result ? pill(result.cleanup.status) : pill('pending', 'not finished'),
 			plural(detail.attempts.length, 'attempt')
 		),
 	]
-	return html`<div class="q-head">
-			<h1>${detail.runId}</h1>
-			<p class="sub">
+	return html`<div class="sp-ch">
+			<p class="sp-path">
 				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
 				<code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code>
 			</p>
+			<h1>${detail.runId}</h1>
+			<p class="sp-sub" data-region="state">
+				${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
+				${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
+			</p>
 		</div>
-		<p class="q-facts" data-region="state">
-			${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
-			${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
-		</p>
-		<ul class="q-items">
-			${runRow(detail.runId, 'summary', selected, 'Overview', '', html`${counts(outcomeCounts(detail))}`)}
-		</ul>
-		${runGroup('tests', 'Tests', tests)} ${runGroup('findings', 'Findings', found)}
-		${runGroup('gaps', 'New gaps', gaps)} ${runGroup('record', 'Record', record)}`
+		<div class="sp-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
+			${runGroup('Run', [runRow(detail.runId, 'summary', selected, 'Overview', '', html`${counts(outcomeCounts(detail))}`)])}
+			${runGroup('Tests', tests)} ${runGroup('Findings', found)} ${runGroup('New gaps', gaps)}
+			${runGroup('Record', record)}
+		</div>`
 }
 
 function openChecks(detail: Detail) {
@@ -581,15 +576,12 @@ export function runPage(
 	const label =
 		test?.testId ?? finding?.id ?? gap?.id ?? (asked === 'coverage' ? 'Coverage' : record ? 'Cleanup' : null)
 	const list = `/runs/${runId}`
-	const crumbs = crumbBar(
-		[
-			['Runs', '/runs'],
-			[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
-			[runId, label ? list : null],
-			...(label ? [[label, null] as [string, null]] : []),
-		],
-		list
-	)
+	const crumbs = crumbBar([
+		['Runs', '/runs'],
+		[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
+		[runId, label ? list : null],
+		...(label ? [[label, null] as [string, null]] : []),
+	])
 	const pane = test
 		? html`${crumbs} ${testCard(store, detail, test)}`
 		: finding
@@ -610,12 +602,23 @@ export function runPage(
 		section: 'runs',
 		subjects: [`run:${runId}`, 'inbox'],
 		status: adoptError ? 422 : undefined,
-		body: listAndItem({
-			label: 'Run',
-			list: runList(detail, selected),
-			detail: pane,
-			selected,
-			open: params.has('item') || selected !== 'summary',
-		}),
+		crumbs: [
+			['Plans', '/'],
+			[detail.planId, `/plans/${detail.planId}`],
+			[runId, label ? list : null],
+			...(label ? [[label, null] as [string, null]] : []),
+		],
+		back: label ? list : `/plans/${detail.planId}@${detail.revision}`,
+		nav: navigator(reviewOf(store, detail.planId), 'plan'),
+		body: html`<div data-region="run-list">${runList(detail, selected)}</div>
+			<section
+				class="sp-detail q-detail"
+				aria-label="${label ?? 'Overview'}"
+				data-region="run-detail"
+				data-key="detail:${selected}"
+				data-stale-message="This run changed. Review it before you decide."
+			>
+				${pane}
+			</section>`,
 	}
 }

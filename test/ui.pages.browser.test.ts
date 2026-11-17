@@ -180,9 +180,9 @@ test('dark mode follows the system and the header toggle overrides it', { skip }
 	await page.emulateMedia({ colorScheme: 'dark' })
 	await page.goto(url('/runs/run-7'))
 	const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-	assert.equal(await background(), 'rgb(18, 23, 21)')
-	await page.getByRole('button', { name: /^Theme: system/ }).click()
-	assert.equal(await background(), 'rgb(246, 247, 245)')
+	assert.equal(await background(), 'rgb(10, 13, 18)')
+	await page.getByRole('button', { name: 'Switch light and dark' }).click()
+	assert.equal(await background(), 'rgb(243, 244, 246)')
 	await page.reload()
 	assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
 })
@@ -222,16 +222,12 @@ test('list filters, sorting, and pages update in place, keep the URL, and update
 	assert.equal(await page.getByLabel('Actor').inputValue(), '')
 	assert.equal(await page.getByLabel('Rows per page').inputValue(), '25')
 	assert.equal(await marker(), 1)
-	await page.goto(url('/plans'))
-	await page.getByLabel('Search plans').fill('login')
-	await page.waitForURL(/\/plans\?q=login$/)
-	await page.locator('[data-list-count]', { hasText: 'Showing 1–1 of 1 plan' }).waitFor()
-	await page.goto(url('/plans?q=search'))
+	await page.goto(url('/'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
-	await page.locator('li[data-key="plan:search"]', { hasText: 'pending' }).waitFor()
+	await page.locator('[data-key="plan:search"]', { hasText: 'needs approval' }).waitFor()
 	await checkmate(workspace, ['plan', 'approve', 'search@1', '--rationale', 'Approved elsewhere.'])
-	await page.locator('li[data-key="plan:search"]', { hasText: 'approved' }).waitFor({ timeout: 2000 })
-	assert.match(page.url(), /\/plans\?q=search$/)
+	await page.locator('[data-key="plan:search"]', { hasText: 'ready to run' }).waitFor({ timeout: 2000 })
+	assert.equal(new URL(page.url()).pathname, '/')
 })
 
 test('the plan page folds its sections and closed gaps, and loads the full history on demand', { skip }, async (t) => {
@@ -239,7 +235,10 @@ test('the plan page folds its sections and closed gaps, and loads the full histo
 	await page.goto(url('/plans/checkout@2#G1'))
 	const closed = page.locator('#G1 details')
 	assert.equal(await closed.evaluate((details) => (details as HTMLDetailsElement).open), false)
-	assert(Number(await page.locator('#G1 summary').evaluate((summary) => getComputedStyle(summary).opacity)) < 1)
+	assert.equal(
+		await page.locator('#G1 summary').evaluate((summary) => getComputedStyle(summary).color),
+		'rgb(75, 84, 98)'
+	)
 	await page.locator('#G1 summary').click()
 	await page.locator('#G1 .gap-b').waitFor()
 	await page.locator('#runs').scrollIntoViewIfNeeded()
@@ -281,7 +280,10 @@ test('a finished run downloads its report', { skip }, async (t) => {
 	})
 	assert.deepEqual(junit, { errors: 0, cases: 3, failure: 'The promotion stacks with the loyalty credit' })
 	await page.keyboard.press('Escape')
-	assert.equal(await page.locator('details[data-menu]').evaluate((menu) => (menu as HTMLDetailsElement).open), false)
+	assert.equal(
+		await page.locator('main details[data-menu]').evaluate((menu) => (menu as HTMLDetailsElement).open),
+		false
+	)
 })
 
 test('Settings adds and retires an instance from the keyboard and updates live', { skip }, async (t) => {

@@ -68,7 +68,7 @@ try {
 		const [first] = (await once(ui.stdout, 'data')) as [Buffer]
 		const url = /^completed ui url=(\S+)$/m.exec(first.toString())?.[1]
 		assert(url, first.toString())
-		for (const path of ['/', '/assets/style.css', '/assets/client.js', '/assets/fonts/inter.woff2'])
+		for (const path of ['/', '/assets/style.css', '/assets/client.js', '/assets/fonts/ibm-plex-mono-500.woff2'])
 			assert.equal((await fetch(new URL(path, url))).status, 200, path)
 	} finally {
 		ui.kill('SIGTERM')

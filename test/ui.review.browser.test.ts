@@ -1,0 +1,464 @@
+import type { Page } from 'playwright-core'
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { closeStore, openStore } from '../plugin/src/index.ts'
+import { mergedClaims, mergedQuestions, operationLog } from '../plugin/src/views.ts'
+import { decideClaim } from '../plugin/src/journal.ts'
+import { seedVolume } from '../scripts/ui-volume.ts'
+import { open, skip, stop, launchWith } from './browser.ts'
+
+test.before(() => launchWith(seedVolume))
+test.after(stop)
+
+async function fits(page: Page, path: string) {
+	for (const colorScheme of ['light', 'dark'] as const)
+		for (const width of [1440, 900]) {
+			await page.setViewportSize({ width, height: 900 })
+			await page.emulateMedia({ colorScheme })
+			await page.goto(path)
+			await page.locator('main').waitFor()
+			const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+			assert(wide <= 0, `${path} scrolls ${wide} px sideways at ${width} in ${colorScheme}`)
+			const clipped = await page.evaluate(
+				() =>
+					[...document.querySelectorAll('main pre')].filter((pre) => pre.scrollWidth > pre.clientWidth + 1)
+						.length
+			)
+			assert.equal(clipped, 0, `${path} clips a preformatted block at ${width}`)
+			const small = await page.evaluate(() =>
+				[...document.querySelectorAll('body *')]
+					.filter((element) =>
+						[...element.childNodes].some((node) => node.nodeType === 3 && node.textContent!.trim())
+					)
+					.filter((element) => (element as HTMLElement).offsetParent !== null)
+					.filter((element) => parseFloat(getComputedStyle(element).fontSize) < 12)
+					.map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+			)
+			assert.deepEqual(small, [], `${path} has text below 12 px at ${width}`)
+		}
+	await page.setViewportSize({ width: 1440, height: 900 })
+}
+
+const highlighted = (page: Page) =>
+	page.evaluate(() => ({
+		key:
+			document
+				.querySelector('.hl[data-row], .hl[data-nav], .hl[data-sub], .hl[data-vfile]')
+				?.getAttribute('data-key') ??
+			document.querySelector('.hl[data-nav]')?.getAttribute('data-target') ??
+			null,
+		focus:
+			(document.activeElement as HTMLElement | null)?.dataset.key ??
+			(document.activeElement as HTMLElement | null)?.dataset.target ??
+			null,
+	}))
+
+function read<T>(workspace: string, view: (store: ReturnType<typeof openStore>) => T) {
+	const store = openStore(workspace)
+	try {
+		return view(store)
+	} finally {
+		closeStore(store)
+	}
+}
+
+function decisions(workspace: string) {
+	return read(workspace, (store) => operationLog(store, { limit: 1000 }).map((row) => row.command)).filter(
+		(command) => ['claim accept', 'claim reject', 'gap answer'].includes(command)
+	).length
+}
+
+async function listRows(page: Page) {
+	return page
+		.locator('[data-panel]:not([hidden]) [data-row]')
+		.evaluateAll((rows) =>
+			rows.filter((row) => !(row as HTMLElement).hidden).map((row) => (row as HTMLElement).dataset.key!)
+		)
+}
+
+test(
+	'the keys walk home, navigator, list, record, and viewer, and Left or Esc goes back one level',
+	{ skip },
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		assert.equal((await highlighted(page)).key, 'plan:account')
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		assert.equal((await highlighted(page)).key, 'plan:coupons')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForURL(/\/plans\/coupons/)
+		await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
+		assert.deepEqual(await highlighted(page), { key: 'needs', focus: 'needs' })
+		await page.keyboard.press('ArrowDown')
+		assert.equal((await highlighted(page)).key, 'all')
+		assert.equal(await page.locator('[data-panel="all"]').isVisible(), true)
+		await page.keyboard.press('Enter')
+		const row = (await highlighted(page)).key!
+		assert.match(row, /^[cq]:/)
+		assert.deepEqual(await highlighted(page), { key: row, focus: row })
+		await page.keyboard.press('ArrowRight')
+		await page.waitForURL((address) => address.searchParams.get('item') === row)
+		await page.locator('[data-drawer]').waitFor()
+		assert.equal(await page.evaluate(() => document.activeElement?.matches('.sp-dhead')), true)
+		await page.keyboard.press('Escape')
+		await page.waitForURL((address) => !address.searchParams.has('item'))
+		await page.waitForFunction((key) => document.activeElement?.getAttribute('data-key') === key, row)
+		await page.keyboard.press('ArrowLeft')
+		await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
+		assert.equal((await highlighted(page)).key, 'all')
+		await page.keyboard.press('Escape')
+		await page.waitForURL(url('/'))
+		for (const key of ['j', 'k', 'a', 'r', 'x', 'd', 'g', 'c', 'Backspace', 'Delete', 'Home', 'End', 'PageDown']) {
+			const before = page.url()
+			await page.keyboard.press(key)
+			assert.equal(page.url(), before, key)
+		}
+	}
+)
+
+test('Down then 1 in the same tick decides the new row, never the previous one', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const first = (await highlighted(page)).key!
+	const keys = await listRows(page)
+	const second = keys[keys.indexOf(first) + 1]
+	assert.match(first, /^c:/)
+	assert.match(second, /^c:/)
+	await page.evaluate(() => {
+		const target = document.activeElement!
+		for (const key of ['ArrowDown', '1'])
+			target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+	})
+	await page
+		.getByRole('status')
+		.filter({ hasText: `Accepted coupons · ${second.slice(2)}` })
+		.waitFor()
+	const claims = read(workspace, (store) => mergedClaims(store, 'coupons'))
+	assert.equal(claims.find((claim) => claim.id === second.slice(2))!.state, 'accepted')
+	assert.notEqual(claims.find((claim) => claim.id === first.slice(2))!.state, 'accepted')
+})
+
+test(
+	'numbers decide by key, one decision for each press, and the next waiting row takes the highlight',
+	{ skip },
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		const before = decisions(workspace)
+		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		for (let done = 0; done < 3; done++) {
+			const key = (await highlighted(page)).key!
+			await page.keyboard.press(key.startsWith('c:') ? '1' : '3')
+			await page.waitForURL((address) => address.searchParams.get('at') !== key)
+			await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+			assert(!(await listRows(page)).includes(key), key)
+		}
+		assert.equal(decisions(workspace), before + 3)
+		const key = (await highlighted(page)).key!
+		await page.keyboard.press('2')
+		await page.waitForFunction(() => document.activeElement?.matches('[data-extra]:not([hidden]) textarea'))
+		await page.keyboard.type('Only until 23:59 in the shop time zone.')
+		await page.keyboard.press('Escape')
+		await page.waitForFunction((wanted) => document.activeElement?.getAttribute('data-key') === wanted, key)
+		await page.keyboard.press('2')
+		assert.equal(
+			await page.locator('[data-extra]:not([hidden]) textarea').inputValue(),
+			'Only until 23:59 in the shop time zone.'
+		)
+		await page.keyboard.press('Shift+Enter')
+		await page.keyboard.type('Also for a coupon of a partner shop.')
+		await page.keyboard.press('Enter')
+		await page
+			.getByRole('status')
+			.filter({ hasText: `${key.slice(2)}` })
+			.waitFor()
+		const answer = read(
+			workspace,
+			(store) => mergedQuestions(store, 'coupons').find((item) => `q:${item.id}` === key)!.answer
+		)
+		assert.equal(answer, 'Only until 23:59 in the shop time zone.\nAlso for a coupon of a partner shop.')
+	}
+)
+
+test('every option works by mouse, and a click then an arrow moves from the clicked row', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/coupons?view=all'))
+	await page.locator('[data-nav][data-target="needs"]').click()
+	assert.deepEqual(await highlighted(page), { key: 'needs', focus: 'needs' })
+	await page.keyboard.press('ArrowDown')
+	assert.deepEqual(await highlighted(page), { key: 'all', focus: 'all' })
+	await page.locator('[data-panel="all"] [data-row][data-key^="c:"][data-needs]').first().click()
+	await page.waitForURL((address) => address.searchParams.has('item'))
+	const key = new URL(page.url()).searchParams.get('item')!
+	await page.locator('[data-drawer] .sp-dhead [data-option]', { hasText: 'No' }).click()
+	await page.locator('[data-drawer] #reject-text').waitFor()
+	await page.locator('[data-drawer] #reject-text').fill('Sale items are excluded on purpose.')
+	await page.locator('[data-drawer]').getByRole('button', { name: 'Reject' }).click()
+	await page
+		.getByRole('status')
+		.filter({ hasText: `Rejected coupons · ${key.slice(2)}` })
+		.waitFor()
+	assert.equal(
+		read(workspace, (store) => mergedClaims(store, 'coupons').find((item) => `c:${item.id}` === key)!.state),
+		'rejected'
+	)
+	const hover = await page.locator('[data-keys-open]').evaluate((button) => getComputedStyle(button).cursor)
+	assert.equal(hover, 'pointer')
+	await page.locator('[data-keys-open]').click()
+	await page.getByRole('heading', { name: 'Keys' }).waitFor()
+	await page.getByRole('button', { name: /Close/ }).click()
+})
+
+test('Browser Back equals Left, and Forward redoes the Right', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/plans/coupons'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
+	await page.keyboard.press('ArrowRight')
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const row = (await highlighted(page)).key!
+	await page.keyboard.press('ArrowRight')
+	await page.waitForURL((address) => address.searchParams.get('item') === row)
+	await page.goBack()
+	await page.waitForURL((address) => !address.searchParams.has('item'))
+	await page.waitForFunction((key) => document.activeElement?.getAttribute('data-key') === key, row)
+	await page.goBack()
+	await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
+	await page.goForward()
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	assert.equal((await highlighted(page)).key, row)
+})
+
+test(
+	'Space and Shift with the arrows select rows, Shift+Up shrinks the range, and Esc clears it',
+	{ skip },
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		const picked = () => page.locator('[data-panel="needs"] [data-row].sel').count()
+		await page.keyboard.press('Space')
+		assert.equal(await picked(), 1)
+		await page.keyboard.press('Space')
+		assert.equal(await picked(), 0)
+		await page.keyboard.press('Shift+ArrowDown')
+		await page.keyboard.press('Shift+ArrowDown')
+		await page.keyboard.press('Shift+ArrowDown')
+		assert.equal(await picked(), 4)
+		await page.keyboard.press('Shift+ArrowUp')
+		assert.equal(await picked(), 3)
+		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel [data-pick-box]:checked').count(), 3)
+		await page.keyboard.press('Escape')
+		assert.equal(await picked(), 0)
+		assert.match(page.url(), /focus=list/)
+	}
+)
+
+test(
+	'the navigator expands an area, chooses a build by number, and keeps the highlight in view',
+	{ skip },
+	async (t) => {
+		const { page, url } = await open(t, { viewport: { width: 1440, height: 640 } })
+		await page.goto(url('/plans/coupons'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
+		while ((await highlighted(page)).key !== 'area:Codes') await page.keyboard.press('ArrowDown')
+		assert.equal(await page.locator('[data-panel="area:Codes"]').isVisible(), true)
+		const expanded = () => page.locator('[data-nav][data-target="area:Codes"]').getAttribute('aria-expanded')
+		if ((await expanded()) === 'true') await page.keyboard.press('ArrowLeft')
+		assert.equal(await expanded(), 'false')
+		await page.keyboard.press('ArrowRight')
+		assert.equal(await expanded(), 'true')
+		await page.locator('[data-navigator] .sp-nhead kbd').first().waitFor()
+		const all = (await listRows(page)).length
+		await page.keyboard.press('3')
+		const third = (await listRows(page)).length
+		assert(third < all, `${third} of ${all}`)
+		await page.keyboard.press('3')
+		assert.equal((await listRows(page)).length, all)
+		await page.keyboard.press('ArrowDown')
+		assert.equal((await highlighted(page)).key, 'rule:R1')
+		await page.keyboard.press('ArrowLeft')
+		assert.equal(await expanded(), 'false')
+		assert.equal((await highlighted(page)).key, 'area:Codes')
+		for (let step = 0; step < 30; step++) await page.keyboard.press('ArrowDown')
+		const box = await page.evaluate(() => {
+			const row = document.querySelector('.hl[data-nav]')!.getBoundingClientRect()
+			const nav = document.querySelector('[data-navigator]')!.getBoundingClientRect()
+			return { top: row.top, bottom: row.bottom, navTop: nav.top, navBottom: nav.bottom }
+		})
+		assert(box.top >= box.navTop && box.bottom <= box.navBottom, JSON.stringify(box))
+	}
+)
+
+test('the highlighted row stays clear of the top bar and the status bar after long runs', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/plans/checkout?view=all&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const clear = () =>
+		page.evaluate(() => {
+			const row = document.querySelector('.hl[data-row]')!.getBoundingClientRect()
+			const top = document.querySelector('.top')!.getBoundingClientRect().bottom
+			const bottom = document.querySelector('.statusbar')!.getBoundingClientRect().top
+			return row.top >= top && row.bottom <= bottom ? null : { row: [row.top, row.bottom], top, bottom }
+		})
+	for (let step = 0; step < 60; step++) await page.keyboard.press('ArrowDown')
+	assert.equal(await clear(), null)
+	for (let step = 0; step < 60; step++) await page.keyboard.press('ArrowUp')
+	assert.equal(await clear(), null)
+})
+
+test('a form sent while the UI is stopped keeps the text and says that nothing is recorded', { skip }, async (t) => {
+	const { page, url, ui } = await open(t)
+	await page.goto(url('/plans/coupons?item=q%3Ak1%2FQ3'))
+	await page.locator('[data-drawer] #answer-text').fill('Until the end of the day.')
+	await ui.close()
+	await page.locator('[data-drawer]').getByRole('button', { name: 'Send the answer' }).click()
+	await page.getByText('Checkmate did not answer. Nothing is recorded, and your text is kept.').waitFor()
+	assert.equal(await page.locator('#answer-text').inputValue(), 'Until the end of the day.')
+})
+
+test('All items finds a defect and shows its evidence in two clicks', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/plans/checkout?view=all'))
+	await page.locator('[data-panel="all"] [data-key="c:a1/D1"]').click()
+	await page.locator('[data-drawer] [data-sub][data-label="a1-D1.png"]').click()
+	await page.waitForURL(/file=0/)
+	await page.locator('.sp-viewer img[src$="/claims/a1/D1/evidence/0"]').waitFor()
+	await page.keyboard.press('ArrowDown')
+	await page.locator('[data-vfig="1"]').waitFor()
+	assert.match(page.url(), /file=1/)
+	await page.keyboard.press('ArrowLeft')
+	await page.waitForURL((address) => !address.searchParams.has('file'))
+	await page.locator('[data-drawer]').waitFor()
+})
+
+test('on a narrow window the record covers the list and Esc goes back to the row', { skip }, async (t) => {
+	const { page, url } = await open(t, { viewport: { width: 400, height: 800 } })
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const options = await page
+		.locator('.hl[data-row] [data-option]')
+		.evaluateAll((buttons) => buttons.map((button) => Math.round(button.getBoundingClientRect().height)))
+	assert(options.length > 0 && options.every((height) => height >= 40), JSON.stringify(options))
+	const row = (await highlighted(page)).key!
+	await page.keyboard.press('Enter')
+	await page.locator('[data-drawer]').waitFor()
+	const drawer = await page.locator('[data-drawer]').boundingBox()
+	assert.equal(Math.round(drawer!.width), 400)
+	await page.keyboard.press('Escape')
+	await page.waitForFunction((key) => document.activeElement?.getAttribute('data-key') === key, row)
+})
+
+test('the plan page opens what needs the person and folds the rest', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await fits(page, url('/plans/checkout@2'))
+	await fits(page, url('/plans/basket/request'))
+	await page.goto(url('/plans/checkout@2'))
+	const unfolded = (id: string) =>
+		page.locator(`details.fold:has(#${id})`).evaluate((details) => (details as HTMLDetailsElement).open)
+	assert.equal(await unfolded('claims'), true)
+	assert.equal(await unfolded('questions'), true)
+	assert.equal(await unfolded('tests'), false)
+	assert.equal(await unfolded('history'), false)
+	await page.getByRole('link', { name: /^Tests/ }).click()
+	await page.locator('details.fold[open]:has(#tests)').waitFor()
+	await page.locator('[data-region="claims"] a.mono').first().click()
+	await page.waitForURL(/\/plans\/checkout\?view=all&item=c%3A/)
+	await page.locator('[data-drawer]').waitFor()
+	await page.goBack()
+	await page.waitForURL(/\/plans\/checkout@2/)
+	await page.getByRole('link', { name: /Decide \d+ items in Needs you/ }).click()
+	await page.waitForURL(/\/plans\/checkout\?view=needs/)
+})
+
+test('every page in a plan fits, and Esc goes to its parent', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const path of [
+		'/explorations/x-1',
+		'/runs/run-7',
+		'/plans/checkout?item=c%3Aa1%2FD1',
+		'/plans/checkout@2/gaps/G2',
+	])
+		await fits(page, url(path))
+	await page.goto(url('/runs/run-7?item=test%3AT2'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	await page.keyboard.press('Escape')
+	await page.waitForURL(/\/runs\/run-7$/)
+	await page.keyboard.press('Escape')
+	await page.waitForURL(/\/plans\/checkout@2$/)
+})
+
+test('the run page lists tests, findings, and gaps, and accepts the result from the overview', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await fits(page, url('/runs/run-7'))
+	await fits(page, url('/runs/run-7?item=test%3AT2'))
+	await fits(page, url('/runs/run-7?item=coverage'))
+	await page.goto(url('/runs/run-7'))
+	await page.locator('[data-key="finding:F1"]').click()
+	await page.waitForURL(/item=finding%3AF1/)
+	await page.locator('.q-detail .finding a[data-go]').first().click()
+	await page.waitForURL(/item=test%3AT2#T2\.A2$/)
+	await page.locator('[data-key="T2.A2"]').waitFor()
+	await page.keyboard.press('ArrowUp')
+	assert.equal((await highlighted(page)).key, 'test:T1')
+	await page.goto(url('/runs/run-7'))
+	await page.locator('#rationale').fill('The defects are known.')
+	await page.locator('[data-choose] button').first().click()
+	await page.getByText('Confirm acceptance').waitFor()
+	await page.keyboard.press('Control+Enter')
+	await page.getByRole('status').filter({ hasText: 'Accepted run-7' }).waitFor()
+	await page.locator('[data-region="state"]', { hasText: 'accepted' }).waitFor()
+})
+
+async function menusInside(page: Awaited<ReturnType<typeof open>>['page'], path: string) {
+	const menus = page.locator('details[data-menu]:visible > summary')
+	const count = await menus.count()
+	assert(count > 0, `${path}: no menu`)
+	for (let index = 0; index < count; index++) {
+		await menus.nth(index).click()
+		await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+		const wrong = await page.evaluate(() => {
+			const width = window.innerWidth
+			const list = document.querySelector('details[data-menu][open] .menu-list')!
+			return [list, ...list.querySelectorAll('*')]
+				.filter((element) => {
+					const box = element.getBoundingClientRect()
+					return box.left < 0 || box.right > width || element.scrollWidth > element.clientWidth + 1
+				})
+				.map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+		})
+		assert.deepEqual(wrong, [], `${path} at ${page.viewportSize()?.width}px`)
+		await page.keyboard.press('Escape')
+	}
+}
+
+test('every menu opens inside the window from 1440px to 390px', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const width of [1440, 760, 600, 390]) {
+		await page.setViewportSize({ width, height: 900 })
+		for (const path of ['/plans/checkout@2', '/runs/run-7?item=summary', '/explorations/x-1?item=summary']) {
+			await page.goto(url(path))
+			await menusInside(page, path)
+		}
+	}
+})
+
+test('a decision from another tab after the page loaded is refused and names the first', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const key = (await highlighted(page)).key!
+	read(workspace, (store) =>
+		decideClaim(store, 'qa-lead', {
+			planId: 'coupons',
+			claimId: key.slice(2),
+			verdict: 'approved',
+			rationale: 'Elsewhere.',
+		})
+	)
+	await page.keyboard.press('1')
+	await page.getByText(`${key.slice(2)} was accepted by qa-lead.`).waitFor()
+})

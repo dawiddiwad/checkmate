@@ -14,12 +14,10 @@ test('the shortcuts panel opens by key and a #decide or #answer link focuses its
 	await page.waitForURL(url('/'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 	await page.keyboard.press('?')
-	await page.getByRole('heading', { name: 'Keyboard shortcuts' }).waitFor()
+	await page.getByRole('heading', { name: 'Keys' }).waitFor()
+	await page.getByRole('cell', { name: /Go one step deeper/ }).waitFor()
 	await page.keyboard.press('Escape')
-	await page.getByRole('heading', { name: 'Keyboard shortcuts' }).waitFor({ state: 'hidden' })
-	await page.goto(url('/plans'))
-	await page.keyboard.press('/')
-	assert.equal(await page.evaluate(() => document.activeElement?.id), 'q')
+	await page.getByRole('heading', { name: 'Keys' }).waitFor({ state: 'hidden' })
 	await page.goto(url('/plans/search@1#decide'))
 	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
 	await page.waitForTimeout(300)
@@ -92,7 +90,7 @@ test('forms and list filters work with JavaScript disabled', { skip }, async (t)
 	await page.getByRole('button', { name: 'Record answer' }).click()
 	await page.getByRole('status').filter({ hasText: 'Answered checkout · G2' }).waitFor()
 	await page.goto(url('/runs'))
-	await page.getByLabel('Status').selectOption('started')
+	await page.getByLabel('Status', { exact: true }).selectOption('started')
 	await page.getByRole('button', { name: 'Filter' }).click()
 	await page.waitForURL(/\/runs\?.*status=started/)
 	assert.deepEqual(
@@ -196,9 +194,8 @@ test('Ctrl+Enter with an empty field shows an inline message and focuses the fie
 	const { page, url } = await open(t)
 	const message = page.locator('.form-error[role="alert"]')
 	const focused = () => page.evaluate(() => document.activeElement?.id)
-	await page.goto(url('/?item=plan%3Asearch%401'))
-	await page.keyboard.press('r')
-	assert.equal(await focused(), 'rationale')
+	await page.goto(url('/plans/search@1'))
+	await page.locator('#rationale').focus()
 	await page.keyboard.press('Control+Enter')
 	await message.filter({ hasText: 'Write a rationale. Checkmate records it with your decision.' }).waitFor()
 	assert.equal(await focused(), 'rationale')
@@ -211,17 +208,17 @@ test('Ctrl+Enter with an empty field shows an inline message and focuses the fie
 		await message.filter({ hasText: 'Write a rationale.' }).waitFor()
 		assert.equal(await focused(), 'rationale', path)
 	}
-	await page.goto(url('/?item=gap%3Acheckout%3AG2'))
-	await page.getByRole('button', { name: 'Record answer' }).click()
+	await page.goto(url('/plans/checkout?item=g%3AG2'))
+	await page.getByRole('button', { name: 'Send the answer' }).click()
 	await message.filter({ hasText: 'Write the answer.' }).waitFor()
-	assert.equal(await focused(), 'value')
+	assert.equal(await focused(), 'answer-text')
 })
 
 test('a decision from elsewhere shows its notice at once and keeps the typed text', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t)
-	await page.goto(url('/?item=gap%3Acheckout%3AG2'))
+	await page.goto(url('/plans/checkout?item=g%3AG2'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
-	await page.locator('#value').fill('Half-written answer')
+	await page.locator('#answer-text').fill('Half-written answer')
 	await checkmate(workspace, [
 		'gap',
 		'answer',
@@ -237,7 +234,7 @@ test('a decision from elsewhere shows its notice at once and keeps the typed tex
 	await page
 		.locator('[data-live-stale]', { hasText: 'This item does not wait for you now. Somebody decided it.' })
 		.waitFor({ timeout: 3000 })
-	assert.equal(await page.locator('#value').inputValue(), 'Half-written answer')
+	assert.equal(await page.locator('#answer-text').inputValue(), 'Half-written answer')
 })
 
 test('the first send after a restart of the UI goes through without a refused request', { skip }, async (t) => {
@@ -246,7 +243,7 @@ test('the first send after a restart of the UI goes through without a refused re
 	page.on('response', (response) => {
 		if (response.status() === 403) refused.push(response.url())
 	})
-	await page.goto(url('/?item=gap%3Acheckout%3AG2'))
+	await page.goto(url('/plans/checkout?item=g%3AG2'))
 	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
 	const token = await page.locator('input[name="csrf"]').first().inputValue()
 	await ui.close()
@@ -258,8 +255,8 @@ test('the first send after a restart of the UI goes through without a refused re
 		(old) => (document.querySelector('input[name="csrf"]') as HTMLInputElement).value !== old,
 		token
 	)
-	await page.locator('#value').fill('Refunds are out of scope.')
-	await page.getByRole('button', { name: 'Record answer' }).click()
+	await page.locator('#answer-text').fill('Refunds are out of scope.')
+	await page.getByRole('button', { name: 'Send the answer' }).click()
 	await page.getByRole('status').filter({ hasText: 'Answered checkout · G2' }).waitFor()
 	assert.deepEqual(refused, [])
 })

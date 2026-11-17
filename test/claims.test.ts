@@ -243,14 +243,14 @@ test('the review UI shows the exploration, answers a question, and decides a cla
 	const { workspace, command } = recorded(t)
 	const ui = await startUi({ workspace, defaultActor: '' })
 	t.after(() => ui.close())
-	const home = await get(ui.url, '/')
-	assert.match(home.body, /data-key="question:checkout:a1\/Q1"/)
-	assert.match(home.body, /Claims to decide<\/span> <span class="n">1<\/span>/)
+	const home = await get(ui.url, '/plans/checkout')
+	assert.match(home.body, /data-key="q:a1\/Q1"/)
+	assert.match(home.body, /Is this a defect\? <span>1<\/span>/)
 	const page = await get(ui.url, '/explorations/x-1')
 	assert.equal(page.status, 200)
-	assert.match(page.body, /Exploration x-1/)
+	assert.match(page.body, /Session x-1 on build/)
 	assert.match(page.body, /The verifier did not see it: Shipping has no tax\./)
-	const form = await get(ui.url, '/explorations/x-1/questions/a1/Q1')
+	const form = await get(ui.url, '/plans/checkout?item=q%3Aa1%2FQ1')
 	const csrf = /name="csrf" value="([^"]+)"/.exec(form.body)![1]
 	const answered = await get(ui.url, '/explorations/x-1/questions/a1/Q1', {
 		csrf,

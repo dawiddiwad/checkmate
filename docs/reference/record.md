@@ -38,7 +38,7 @@ Checkmate refuses a write without an actor.
 
 - `delegate` sets `CHECKMATE_ACTOR=claude:<stage>` for its worker.
 - A skill passes `--actor claude:<stage>` on each stage write, so the record shows `claude:<stage>` in the same session too.
-- The review UI fills in the same default. A human can change the name in the header.
+- The review UI fills in the same default. A human can change the name in the top bar.
 
 The actor is a record. It is not a proof of identity. Checkmate has no authentication and no access control.
 
@@ -128,6 +128,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 - Each form sends the digest of the snapshot on the page. A changed snapshot refuses the action.
 - Each decision form also sends a token of the latest approval row of its subject. A new decision on the subject after the page loaded refuses the action, also a replay of the same form. The UI finds a stale page before it calls the core function, so this refusal adds no row to the operation log. A refusal inside the core function adds a `rejected` row, as for the CLI.
 - The `back` and `return` values of a form are paths on the UI only. The UI uses `/` for other values.
+- A hand-over in the UI calls the same core function as `checkmate claim handoff`.
 - The evidence of a claim has the address `/explorations/<explorationId>/claims/<claimId>/evidence/<n>`. The UI reads the bytes from the record, not from the disk.
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
 - Pages send a Content Security Policy that allows only resources from the UI itself.

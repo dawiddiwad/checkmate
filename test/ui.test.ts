@@ -151,8 +151,9 @@ test('each page renders and escapes stored text', async (t) => {
 	const { ui } = await start(t)
 	const paths = [
 		'/',
-		'/plans',
-		'/plans?q=check&show=awaiting_approval',
+		'/plans/checkout',
+		'/plans/checkout?view=all&item=g%3AG2',
+		'/plans/xss?view=all',
 		'/plans/checkout@2',
 		'/plans/checkout@1',
 		'/plans/xss@1',
@@ -172,13 +173,14 @@ test('each page renders and escapes stored text', async (t) => {
 		assert.match(String(reply.headers['content-security-policy']), /script-src 'self'/)
 		assert.equal(reply.headers['x-content-type-options'], 'nosniff')
 	}
-	for (const path of ['/', '/plans/xss@1', '/plans/xss@1/gaps/G1'])
+	for (const path of ['/plans/xss', '/plans/xss@1', '/plans/xss@1/gaps/G1'])
 		assert.match((await call(ui, path)).body, /&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;/, path)
 	const metadata = (await call(ui, '/plans/xss@1')).body
 	assert.match(metadata, /<span class="tag">x\.note=&lt;script&gt;alert\(&quot;gap&quot;\)&lt;\/script&gt;<\/span>/)
 	assert.match(metadata, /<span class="tag">x-key_1=&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;&lt;script&gt;/)
 	assert.doesNotMatch(metadata, /<img src=x/)
-	assert.equal((await call(ui, '/plans/checkout')).headers.location, '/plans/checkout@2')
+	assert.equal((await call(ui, '/plans')).headers.location, '/')
+	assert.equal((await call(ui, '/claims?plan=checkout')).headers.location, '/plans/checkout?view=all')
 	const missing = await call(ui, '/plans/nothing@1')
 	assert.equal(missing.status, 404)
 	assert.match(missing.body, /Unknown plan: nothing/)
@@ -282,7 +284,7 @@ test('the UI prefills the default actor and records it without a name cookie', a
 	t.after(() => ui.close())
 	const page = (await call(ui, '/plans/xss@1/gaps/G1')).body
 	assert.doesNotMatch(page, /name="actor" required/)
-	assert.match(page, /actor: git-user/)
+	assert.match(page, /class="actor"[^>]*>git-user</)
 	assert.match((await call(ui, '/actor')).body, /value="git-user"/)
 	const done = await call(ui, '/plans/xss@1/gaps/G1', {
 		form: {
@@ -299,7 +301,7 @@ test('the UI prefills the default actor and records it without a name cookie', a
 		'git-user'
 	)
 	const named = await call(ui, '/plans/xss@1', { headers: { Cookie: 'checkmate_actor=reviewer' } })
-	assert.match(named.body, /actor: reviewer/)
+	assert.match(named.body, /class="actor"[^>]*>reviewer</)
 })
 
 test('the server refuses another host, another origin, and a missing form token', async (t) => {
@@ -473,21 +475,17 @@ test('live events reach subscribed streams only and replay after Last-Event-ID',
 	)
 })
 
+function planKeys(body: string) {
+	return [...body.matchAll(/data-key="plan:([^"]+)"/g)].map((match) => match[1])
+}
+
 function rowKeys(body: string, prefix: string) {
 	return [...body.matchAll(new RegExp(`data-key="${prefix}:([^"]+)" data-nav-row`, 'g'))].map((match) => match[1])
 }
 
 test('lists page, sort, and filter on the server with the state in the URL', async (t) => {
 	const { ui } = await start(t)
-	const plans = (await call(ui, '/plans')).body
-	assert.deepEqual(rowKeys(plans, 'plan'), ['xss', 'search', 'checkout', 'account', 'login'])
-	assert.match(plans, /<option value="updated" selected>Sort: Updated<\/option>/)
-	assert.match(plans, /<option value="desc" selected>Descending<\/option>/)
-	const byName = (await call(ui, '/plans?sort=plan&dir=asc')).body
-	assert.deepEqual(rowKeys(byName, 'plan'), ['account', 'checkout', 'login', 'search', 'xss'])
-	assert.match(byName, /<option value="plan" selected>Sort: Plan<\/option>/)
-	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
-	assert.deepEqual(rowKeys((await call(ui, '/plans?approval=approved&q=check')).body, 'plan'), ['checkout'])
+	assert.deepEqual(planKeys((await call(ui, '/')).body), ['account', 'checkout', 'login', 'search', 'xss'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs')).body, 'run'), ['run-8', 'run-7', 'run-3'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs?q=fixture-build-3')).body, 'run'), ['run-8'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs?plan=login&status=started')).body, 'run'), ['run-8'])
@@ -525,31 +523,30 @@ test('the plan list shows a plan request without a revision', async (t) => {
 	const home = (await call(ui, '/')).body
 	assert.doesNotMatch(home, /Draft <script>/)
 	const urgent = read(workspace, (store) => needsYou(store).urgent)
-	assert.match(home, new RegExp(`data-region="nav-count">${urgent}<`))
-	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
-	assert.deepEqual(rowKeys(plans, 'plan'), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
-	assert.match(
-		plans,
-		/href="\/plans\/draft" data-nav-item\s*><span class="q-top"\s*><span class="q-id">draft<\/span> <span class="q-tags"\s*><span class="loop"\s*>.*ready to test<\/span> <span class="muted small">waits on QA<\/span>/
-	)
-	assert.match(plans, /<span class="q-id">draft<\/span>[\s\S]*?<span class="muted">no revision yet<\/span>/)
-	assert.deepEqual(rowKeys((await call(ui, '/plans?show=awaiting_approval')).body, 'plan'), ['xss', 'search'])
+	assert.match(home, new RegExp(`data-region="nav-count"\\s*>${urgent} need`))
+	assert.deepEqual(planKeys(home), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
+	assert.match(home, /data-key="plan:draft"[\s\S]*?data-status="ready_to_test"[\s\S]*?waits on QA/)
+	const request = (await call(ui, '/plans/draft/request')).body
+	assert.match(request, /Draft &lt;script&gt;/)
+	assert.match((await call(ui, '/plans/draft')).body, /href="\/plans\/draft\/request"/)
 })
 
 test('Needs you says that a rejected plan was rejected and counts it in the badge', async (t) => {
 	const { ui, workspace } = await start(t)
-	const before = (await call(ui, '/')).body
-	const reference = before.match(/data-key="plan:(search@\d+)"/)![1]
+	const before = (await call(ui, '/plans/search')).body
+	const reference = before.match(/data-key="p:(search@\d+)"/)![1]
 	const store = openStore(workspace)
 	rejectPlan(store, human, { reference, rationale: 'Cover the empty query.' })
 	closeStore(store)
-	const home = (await call(ui, '/')).body
-	const item = home.match(new RegExp(`<a[^>]*data-key="plan:${reference}"[\\s\\S]*?</a>`))![0]
-	assert.match(item, /✗<\/span> plan<\/span>/)
-	const selected = (await call(ui, `/?item=${encodeURIComponent(`plan:${reference}`)}`)).body
-	assert.match(selected, new RegExp(`Change or approve ${reference}\\?`))
+	const page = (await call(ui, '/plans/search')).body
+	const item = page.match(new RegExp(`data-key="p:${reference}"[\\s\\S]*?</div>`))![0]
+	assert.match(item, /plan · rejected/)
+	assert.equal(
+		(await call(ui, `/?item=${encodeURIComponent(`plan:${reference}`)}`)).headers.location,
+		`/plans/${reference}`
+	)
 	const urgent = read(workspace, (store) => needsYou(store).urgent)
-	assert.match(home, new RegExp(`data-region="nav-count">${urgent}<`))
+	assert.match(page, new RegExp(`data-region="nav-count"\\s*>${urgent} need`))
 })
 
 test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
@@ -580,8 +577,12 @@ test('a plan page lists its runs, folds closed gaps, and folds older history', a
 
 test('a run gap is in Needs you, and its answer adopts it into the plan', async (t) => {
 	const { ui, workspace } = await start(t)
-	const home = (await call(ui, '/?item=gap%3Acheckout%3AG4')).body
-	assert.match(home, /Asked in\s*<a href="\/runs\/run-7">run run-7<\/a>/)
+	assert.equal(
+		(await call(ui, '/?item=gap%3Acheckout%3AG4')).headers.location,
+		'/plans/checkout?view=needs&at=g%3AG4&focus=list'
+	)
+	const record = (await call(ui, '/plans/checkout?view=needs&item=g%3AG4')).body
+	assert.match(record, /run <a href="\/runs\/run-7">run-7<\/a>/)
 	assert.match(
 		(await call(ui, '/runs/run-7?item=gap%3AG4')).body,
 		/href="\/plans\/checkout@2\/gaps\/G4#answer">Answer</
@@ -614,41 +615,27 @@ test('a run gap is in Needs you, and its answer adopts it into the plan', async 
 
 test('the plan list and the plan page show the loop state and who it waits on', async (t) => {
 	const { ui } = await start(t)
-	const plans = (await call(ui, '/plans?sort=plan&dir=asc')).body
+	const home = (await call(ui, '/')).body
 	const loops = [
-		...plans.matchAll(
-			/data-key="plan:([^"]+)" data-nav-row>[\s\S]*?<span class="loop"\s*>([\s\S]*?)<\/span\s*>\s*<span class="st/g
-		),
-	].map((match) => [
-		match[1],
-		match[2]
-			.replace(/<[^>]+>/g, '')
-			.replace(/\s+/g, ' ')
-			.trim(),
-	])
+		...home.matchAll(/data-key="plan:([^"]+)"[\s\S]*?data-status="([^"]+)"[\s\S]*?waits on ([A-Za-z]+)/g),
+	].map((match) => [match[1], match[2], match[3]])
 	assert.deepEqual(loops, [
-		['account', '○ ready to run waits on QA'],
-		['checkout', '? needs answers waits on oracle'],
-		['login', '● run in progress waits on QA'],
-		['search', '○ needs approval waits on oracle'],
-		['xss', '? needs answers waits on oracle'],
+		['account', 'ready_to_run', 'QA'],
+		['checkout', 'needs_answers', 'oracle'],
+		['login', 'run_in_progress', 'QA'],
+		['search', 'needs_approval', 'oracle'],
+		['xss', 'needs_answers', 'oracle'],
 	])
-	assert.deepEqual(rowKeys((await call(ui, '/plans?waits=qa')).body, 'plan'), ['account', 'login'])
-	assert.deepEqual(rowKeys((await call(ui, '/plans?sort=loop&dir=asc')).body, 'plan').slice(0, 2), [
-		'checkout',
-		'xss',
-	])
-	assert.equal(rowKeys((await call(ui, '/plans?waits=nobody')).body, 'plan').length, 5)
 	const checkout = (await call(ui, '/plans/checkout@2')).body
 	assert.match(
 		checkout,
-		/<div class="next-line" data-region="next">\s*<span class="loop"\s*><span class="st warn"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
+		/<div class="next-line" data-region="next">\s*<span class="loop"\s*><span class="sp-pill amber" data-status="needs_answers"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
 	)
 })
 
 test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {
 	const { ui, workspace } = await start(t)
-	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
+	assert.match((await call(ui, '/plans/checkout')).body, /data-key="r:run-7"/)
 	read(workspace, (store) =>
 		beginRun(store, agent, {
 			runId: 'run-9',
@@ -659,7 +646,7 @@ test('a started retest keeps the run that status waits on in the inbox and on it
 			retestOf: 'run-7',
 		})
 	)
-	assert.match((await call(ui, '/')).body, /data-key="run:run-7"/)
+	assert.match((await call(ui, '/plans/checkout')).body, /data-key="r:run-7"/)
 	assert.match((await call(ui, '/runs/run-7')).body, /name="verdict"\s*value="accept"/)
 })
 
@@ -862,11 +849,11 @@ test('the JSON editor reports errors, keeps the text, and records the typed name
 test('the settings button opens Targets; a target page shows its shape, history, and instances', async (t) => {
 	const { ui } = await start(t)
 	const inbox = (await call(ui, '/')).body
-	assert.match(inbox, /<a class="icon-btn" href="\/settings" title="Settings" aria-label="Settings"\s*>/)
+	assert.match(inbox, /<a class="sb-btn" href="\/settings"\s*>Settings<\/a>/)
 	assert.equal((await call(ui, '/settings')).headers.location, '/settings/targets')
 	const list = await call(ui, '/settings/targets')
 	assert.equal(list.status, 200)
-	assert.match(list.body, /aria-label="Settings"\s+aria-current="page"/)
+	assert.match(list.body, /<a class="sb-btn" href="\/settings"\s+aria-current="page"\s*>Settings<\/a>/)
 	assert.match(list.body, /<a href="\/settings\/targets"\s+aria-current="page"\s*>Targets<\/a/)
 	assert.match(list.body, /href="\/settings\/targets\/shop-local" data-nav-item>shop-local<\/a>/)
 	assert.match(list.body, /<td>2<\/td>/)

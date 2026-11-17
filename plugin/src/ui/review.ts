@@ -1,0 +1,878 @@
+import type { Store } from '../store.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import type { CellStatus, ClaimBuildState } from '../rulemap.ts'
+import { claimDetails, ruleMap } from '../rulemap.ts'
+import { planRequest } from '../plans.ts'
+import { oracleStates } from '../journal.ts'
+import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
+import { html, plural, words } from './html.ts'
+import { crumbBar } from './layout.ts'
+import type { Refusal } from './records.ts'
+import { evidenceViewer, recordDrawer } from './records.ts'
+
+type Map = ReturnType<typeof ruleMap>
+type Rule = Map['rows'][number]['rule']
+type ClaimRow = ReturnType<typeof mergedClaims>[number]
+type Detail = ReturnType<typeof claimDetails>[number]
+type QuestionRow = ReturnType<typeof mergedQuestions>[number]
+type Waiting = ReturnType<typeof needsYou>['items'][number]
+
+export type Kind = 'finding' | 'defect' | 'rejected' | 'question' | 'answered' | 'gap' | 'approval'
+
+export type Item = {
+	key: string
+	kind: Kind
+	id: string
+	title: string
+	rule: string | null
+	builds: string[]
+	needs: boolean
+	blocking: boolean
+	severity: string | null
+	topic: string | null
+	href: string
+	meta: string
+	claim: ClaimRow | null
+	detail: Detail | null
+	question: QuestionRow | null
+	waiting: Waiting | null
+}
+
+export type Area = { label: string; rules: string[]; cells: CellStatus[] }
+
+export type Review = ReturnType<typeof reviewOf>
+
+const severityOrder = ['critical', 'high', 'medium', 'low']
+const shownBuilds = 3
+
+export const outside = 'outside'
+
+export function areasOf(map: Map): Area[] {
+	return map.areas.map((area) => ({
+		label: area.label,
+		rules: area.ruleIds,
+		cells: area.cells.map((cell) => cell.status),
+	}))
+}
+
+const stateWords: Record<ClaimBuildState, string> = {
+	new: 'New',
+	still_present: 'Still present',
+	fixed: 'Fixed',
+	returned: 'Returned',
+	not_retested: 'Not retested',
+}
+
+function latestState(detail: Detail | null) {
+	return detail?.builds.findLast((on) => on.state !== 'not_retested') ?? detail?.builds.at(-1) ?? null
+}
+
+function claimItem(planId: string, claim: ClaimRow, detail: Detail | null, needs: boolean): Item {
+	const kind: Kind =
+		claim.state === 'rejected' ? 'rejected' : oracleStates.includes(claim.state) ? 'finding' : 'defect'
+	const latest = latestState(detail)
+	const meta =
+		kind === 'finding'
+			? `${claim.severity} · ${words(claim.state)}`
+			: kind === 'rejected'
+				? `rejected by ${claim.decision?.actor ?? 'someone'}`
+				: [
+						latest ? stateWords[latest.state] : null,
+						claim.handoff ? `handed over to ${claim.handoff.to}` : null,
+						`×${claim.reporters}`,
+					]
+						.filter(Boolean)
+						.join(' · ')
+	const present = detail?.builds.filter((on) => ['new', 'still_present', 'returned'].includes(on.state)) ?? []
+	return {
+		key: `c:${claim.id}`,
+		kind,
+		id: claim.id,
+		title: claim.title,
+		rule: claim.rule ?? null,
+		builds: present.map((on) => on.build),
+		needs,
+		blocking: false,
+		severity: claim.severity,
+		topic: null,
+		href: `/explorations/${claim.explorationId}/claims/${claim.id}`,
+		meta,
+		claim,
+		detail,
+		question: null,
+		waiting: null,
+	}
+}
+
+function questionItem(question: QuestionRow, needs: boolean): Item {
+	const open = question.answer === null
+	return {
+		key: `q:${question.id}`,
+		kind: open ? 'question' : 'answered',
+		id: question.id,
+		title: question.question,
+		rule: question.rule ?? null,
+		builds: question.builds,
+		needs,
+		blocking: open && question.blocking,
+		severity: null,
+		topic: question.label,
+		href: `/explorations/${question.explorationId}/questions/${question.id}`,
+		meta: [open ? 'open' : 'answered', question.members.length > 1 ? `×${question.members.length}` : null]
+			.filter(Boolean)
+			.join(' · '),
+		claim: null,
+		detail: null,
+		question,
+		waiting: null,
+	}
+}
+
+function waitingItem(planId: string, waiting: Waiting): Item {
+	if (waiting.kind === 'gap')
+		return {
+			key: `g:${waiting.id}`,
+			kind: 'gap',
+			id: waiting.id,
+			title: waiting.title,
+			rule: null,
+			builds: [],
+			needs: true,
+			blocking: waiting.group === 'blocking',
+			severity: null,
+			topic: null,
+			href: `/plans/${planId}@${waiting.revision}/gaps/${waiting.id}`,
+			meta: waiting.runId ? `run gap · ${waiting.runId}` : 'plan gap',
+			claim: null,
+			detail: null,
+			question: null,
+			waiting,
+		}
+	const plan = waiting.kind === 'plan'
+	return {
+		key: plan ? `p:${waiting.id}` : `r:${waiting.id}`,
+		kind: 'approval',
+		id: waiting.id,
+		title: plan ? `Approve ${waiting.id}: ${waiting.title}` : waiting.title,
+		rule: null,
+		builds: [],
+		needs: true,
+		blocking: false,
+		severity: null,
+		topic: null,
+		href: plan ? `/plans/${waiting.id}` : `/runs/${waiting.id}`,
+		meta: plan ? `plan · ${waiting.state ?? 'pending'}` : 'run result',
+		claim: null,
+		detail: null,
+		question: null,
+		waiting,
+	}
+}
+
+export function reviewOf(store: Store, planId: string) {
+	const map = ruleMap(store, planId)
+	const details = new Map(claimDetails(store, planId).map((detail) => [detail.id, detail]))
+	const waiting = needsYou(store).items.filter((item) => item.planId === planId)
+	const waits = new Set(waiting.map((item) => `${item.kind}:${item.id}`))
+	const claims = mergedClaims(store, planId).map((claim) =>
+		claimItem(planId, claim, details.get(claim.id) ?? null, waits.has(`claim:${claim.id}`))
+	)
+	const questions = mergedQuestions(store, planId).map((question) =>
+		questionItem(question, waits.has(`question:${question.id}`))
+	)
+	const others = waiting.filter((item) => ['gap', 'plan', 'result'].includes(item.kind))
+	const items = [...claims, ...questions, ...others.map((item) => waitingItem(planId, item))]
+	const { request, target } = planRequest(store, planId)
+	const explorations = planExplorations(store, planId)
+	const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null
+	return {
+		planId,
+		objective: request.objective,
+		target: `${target.profile.targetId}@${target.revision}`,
+		revision: latest?.latestRevision ?? null,
+		sha: latest?.sha256 ?? '',
+		map,
+		areas: areasOf(map),
+		items,
+		explorations,
+		running: explorations.find((item) => item.running) ?? null,
+	}
+}
+
+export function buildLabel(review: Review, build: string) {
+	return `B${review.map.builds.findIndex((item) => item.build === build) + 1}`
+}
+
+export function itemsOf(review: Review, view: string) {
+	const { items } = review
+	if (view === 'needs') return items.filter((item) => item.needs)
+	if (view === 'all') return items
+	if (view.startsWith('rule:')) {
+		const id = view.slice(5)
+		return items.filter((item) => (id === outside ? item.rule === outside || item.rule === null : item.rule === id))
+	}
+	if (view.startsWith('area:')) {
+		const area = review.areas.find((each) => each.label === view.slice(5))
+		return items.filter((item) => item.rule !== null && area?.rules.includes(item.rule))
+	}
+	if (view.startsWith('build:')) return items.filter((item) => item.builds.includes(view.slice(6)))
+	return []
+}
+
+type Group = { label: string; items: Item[] }
+
+function groupsOf(items: Item[]): Group[] {
+	const of = (label: string, chosen: Item[]) => ({ label, items: chosen })
+	const open = (item: Item) => item.kind === 'question' || item.kind === 'gap'
+	const topics = [...new Set(items.filter((item) => open(item) && !item.blocking).map((item) => item.topic))]
+	const bySeverity = (a: Item, b: Item) =>
+		severityOrder.indexOf(a.severity ?? '') - severityOrder.indexOf(b.severity ?? '')
+	return [
+		of('Is this a defect?', items.filter((item) => item.kind === 'finding').sort(bySeverity)),
+		of(
+			'Questions that block testing',
+			items.filter((item) => open(item) && item.blocking)
+		),
+		of(
+			'Approvals',
+			items.filter((item) => item.kind === 'approval')
+		),
+		...topics
+			.sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
+			.map((topic) =>
+				of(
+					topic ? `Questions · ${topic}` : 'Questions',
+					items.filter((item) => open(item) && !item.blocking && item.topic === topic)
+				)
+			),
+		...severityOrder.map((severity) =>
+			of(
+				`${severity} defects`,
+				items.filter((item) => item.kind === 'defect' && item.severity === severity)
+			)
+		),
+		of(
+			'Answered questions',
+			items.filter((item) => item.kind === 'answered')
+		),
+		of(
+			'Rejected findings',
+			items.filter((item) => item.kind === 'rejected')
+		),
+	].filter((group) => group.items.length)
+}
+
+function ruleGroups(review: Review, view: string, items: Item[]): Group[] {
+	const area = review.areas.find((each) => each.label === view.slice(5))
+	if (!area) return []
+	return area.rules.flatMap((id) => {
+		const own = items.filter((item) => item.rule === id)
+		const text = review.map.rows.find((row) => row.rule.id === id)?.rule.text ?? ''
+		return own.length ? [{ label: `${id} · ${text}`, items: groupsOf(own).flatMap((group) => group.items) }] : []
+	})
+}
+
+const tags: Record<string, [string, string]> = {
+	finding: ['? Finding', 'amber'],
+	question: ['Question', ''],
+	answered: ['Answered', 'green'],
+	gap: ['Gap', ''],
+	approval: ['Approve', 'blue'],
+	rejected: ['Rejected', ''],
+	critical: ['!! Critical', 'crit'],
+	high: ['! High', 'red'],
+	medium: ['Medium', 'amber'],
+	low: ['Low', ''],
+}
+
+export function itemTag(item: Item) {
+	if (item.blocking) return html`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`
+	const [label, color] = tags[item.kind === 'defect' ? (item.severity ?? 'low') : item.kind] ?? tags.low
+	return html`<span class="sp-pill ${color}">${label}</span>`
+}
+
+export type Option = { label: string; control: Html }
+
+function hiddenFields(context: Context, item: Item, extra: Array<[string, string]> = []) {
+	return html`<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="return" value="${context.path}" data-return />
+		<input type="hidden" name="item" value="${item.key}" />
+		${extra.map(([name, value]) => html`<input type="hidden" name="${name}" value="${value}" />`)}`
+}
+
+function action(item: Item) {
+	if (item.claim) return `/explorations/${item.claim.explorationId}/claims/${item.claim.id}`
+	if (item.question) return `/explorations/${item.question.explorationId}/questions/${item.question.id}`
+	return item.href
+}
+
+function optionButton(n: number, label: string, name = label) {
+	return html`<button class="sp-btn" data-option aria-label="${n}: ${name}" title="${name}">
+		<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
+	</button>`
+}
+
+function optionForm(
+	context: Context,
+	item: Item,
+	n: number,
+	label: string,
+	fields: Array<[string, string]>,
+	name = label
+) {
+	return html`<form method="post" action="${action(item)}" class="sp-opt">
+		${hiddenFields(context, item, fields)}${optionButton(n, label, name)}
+	</form>`
+}
+
+function reveal(n: number, label: string, field: string, item: Item, name = label) {
+	return html`<a
+		class="sp-btn"
+		href="${item.href}#${field}"
+		data-option
+		data-reveal="${field}"
+		aria-label="${n}: ${name}"
+		title="${name}"
+		><kbd aria-hidden="true">${n}</kbd><span>${label}</span></a
+	>`
+}
+
+export function rightAsBuilt(question: { actual: string | null }) {
+	return question.actual ? `Right as built: ${question.actual}` : 'Right as built.'
+}
+
+export function optionsOf(context: Context, review: Review, item: Item): Html[] {
+	if (item.kind === 'finding')
+		return [
+			optionForm(context, item, 1, 'Yes, a defect', [['verdict', 'approved']], 'Yes, accept as a defect'),
+			reveal(2, 'No', 'reject', item, 'No, reject the finding'),
+		]
+	if (item.kind === 'defect')
+		return item.claim?.handoff
+			? [
+					html`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
+						${hiddenFields(context, item, [
+							['claim', item.id],
+							['undo', '1'],
+						])}${optionButton(1, 'Undo hand-over', 'Undo the hand-over')}
+					</form>`,
+				]
+			: [reveal(1, 'Hand over', 'handoff', item, 'Mark as handed over')]
+	if (item.kind === 'question' || item.kind === 'gap') {
+		const fields: Array<[string, string]> = item.kind === 'gap' ? [['sha', review.sha]] : []
+		return [
+			optionForm(
+				context,
+				item,
+				1,
+				'Right',
+				[
+					...fields,
+					['kind', 'accept_assumption'],
+					['value', rightAsBuilt({ actual: item.question?.actual ?? null })],
+				],
+				'Right as built'
+			),
+			reveal(2, 'Different', 'answer', item, 'It should be different'),
+			optionForm(context, item, 3, 'Later', [...fields, ['kind', 'defer']], 'Decide later'),
+		]
+	}
+	return []
+}
+
+export function extraOf(context: Context, review: Review, item: Item) {
+	const form = (field: string, label: string, name: string, fields: Array<[string, string]>, url = action(item)) =>
+		html`<div class="sp-c-extra" data-extra="${field}" hidden>
+			<form method="post" action="${url}" class="sp-form" data-field-form>
+				${hiddenFields(context, item, fields)}
+				<label for="${field}-${item.key}">${label}</label>
+				<textarea id="${field}-${item.key}" name="${name}" rows="2" required></textarea>
+				<div class="btns">
+					<button class="sp-btn pri"><span>Send</span></button>
+					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
+				</div>
+			</form>
+		</div>`
+	if (item.kind === 'finding')
+		return form('reject', 'Why is it not a defect?', 'rationale', [['verdict', 'rejected']])
+	if (item.kind === 'defect' && !item.claim?.handoff)
+		return form('handoff', 'Hand over to whom?', 'to', [['claim', item.id]], `/plans/${review.planId}/handoff`)
+	if (item.kind === 'question' || item.kind === 'gap')
+		return form('answer', 'How it should be, in one sentence', 'value', [
+			...(item.kind === 'gap' ? [['sha', review.sha] as [string, string]] : []),
+			['kind', 'clarify'],
+		])
+	return ''
+}
+
+export function itemRow(context: Context, review: Review, item: Item, id: string, view: string) {
+	const pickable = ['finding', 'question', 'gap'].includes(item.kind)
+	const dim = ['answered', 'rejected'].includes(item.kind)
+	const options = optionsOf(context, review, item)
+	const extra = extraOf(context, review, item)
+	return html`<div
+		class="sp-row${dim ? ' dim' : ''}"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="${id}"
+		data-row
+		data-key="${item.key}"
+		data-href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
+		data-label="${item.id}"
+		data-builds="${item.builds.join(' ')}"
+		${item.needs ? html`data-needs` : ''}
+		${pickable ? html`data-pick="${pickKey(review, item)}"` : ''}
+	>
+		${
+			pickable
+				? html`<label class="sp-c-cb"
+						><input type="checkbox" tabindex="-1" aria-label="Select ${item.id}" data-pick-box
+					/></label>`
+				: html`<span class="sp-c-cb"></span>`
+		}
+		<span class="sp-c-tag">${itemTag(item)}</span>
+		<span class="sp-c-id" title="${item.id}">${item.id}</span>
+		<span class="sp-c-title ell" title="${item.title}">${item.title}</span>
+		<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>
+		${options.length ? html`<div class="sp-c-opts" aria-label="Options">${options}</div>` : ''} ${extra}
+	</div>`
+}
+
+export function pickKey(review: Review, item: Item) {
+	if (item.kind === 'finding') return `claim:${review.planId}:${item.id}`
+	if (item.kind === 'gap') return `gap:${review.planId}:${item.id}`
+	return `question:${review.planId}:${item.id}`
+}
+
+function listOf(context: Context, review: Review, view: string, groups: Group[], label: string) {
+	if (!groups.length) return html`<p class="sp-empty">${emptyText(view)}</p>`
+	let n = 0
+	return html`<div class="sp-list" role="listbox" aria-multiselectable="true" aria-label="${label}" data-list>
+		${groups.map(
+			(group) =>
+				html`<div class="sp-gh" role="presentation">${group.label} <span>${group.items.length}</span></div>
+					${group.items.map((item) => itemRow(context, review, item, `row-${slug(view)}-${n++}`, view))}`
+		)}
+	</div>`
+}
+
+function slug(view: string) {
+	return view.replace(/[^A-Za-z0-9-]/g, '-')
+}
+
+function emptyText(view: string) {
+	if (view === 'needs') return 'Nothing waits for you in this plan.'
+	if (view.startsWith('build:')) return 'No open defect or question was seen on this build.'
+	return 'No defect or question here yet.'
+}
+
+const cellMarks: Record<CellStatus, [string, string, string]> = {
+	failed: ['✗', 'k-fail', 'wrong'],
+	question: ['?', 'k-q', 'uncertain'],
+	passed: ['✓', 'k-pass', 'ok'],
+	not_checked: ['', 'k-none', 'not tested'],
+}
+
+function markOf(review: Review, status: CellStatus, build: string) {
+	const testing = review.running?.build === build && status === 'not_checked'
+	const [symbol, look, name] = testing ? ['●', 'k-run', 'under test now'] : cellMarks[status]
+	const label = `${buildLabel(review, build)} ${name}`
+	return html`<span class="sp-mk ${look}" role="img" aria-label="${label}" title="${label}" data-mark="${build}"
+		>${symbol}</span
+	>`
+}
+
+function shown(review: Review) {
+	return review.map.builds.slice(-shownBuilds)
+}
+
+function marks(review: Review, cells: CellStatus[]) {
+	const builds = review.map.builds
+	const from = Math.max(0, builds.length - shownBuilds)
+	return html`<span class="sp-nmarks"
+		>${cells.slice(from).map((status, index) => markOf(review, status, builds[from + index].build))}</span
+	>`
+}
+
+function navRow(
+	review: Review,
+	current: string,
+	view: string,
+	href: string,
+	id: string,
+	text: string,
+	end: Html,
+	extra: { level?: number; area?: string; expanded?: boolean; look?: string; hidden?: boolean } = {}
+) {
+	const on = view === current
+	return html`<a
+		${extra.hidden ? html`hidden` : ''}
+		class="sp-nrow${extra.look ? ` ${extra.look}` : ''}${on ? ' on' : ''}"
+		role="treeitem"
+		aria-level="${extra.level ?? 1}"
+		aria-selected="${on ? 'true' : 'false'}"
+		${extra.expanded === undefined ? '' : html`aria-expanded="${extra.expanded ? 'true' : 'false'}"`}
+		${extra.area ? html`data-in-area="${extra.area}"` : ''}
+		tabindex="-1"
+		href="${href}"
+		data-nav
+		data-target="${view}"
+		data-label="${text}"
+		><span class="sp-nid">${id}</span><span class="sp-ntx ell" title="${text}">${text}</span>${end}</a
+	>`
+}
+
+function count(value: number, hot = false) {
+	return html`<span class="sp-ncount${hot ? ' att' : ''}">${value}</span>`
+}
+
+export function reviewHref(planId: string, view: string, extra = '') {
+	return `/plans/${planId}?view=${encodeURIComponent(view)}${extra}`
+}
+
+export function navigator(review: Review, current: string, exploration: string | null = null) {
+	const { planId } = review
+	const href = (view: string) => reviewHref(planId, view)
+	const needs = itemsOf(review, 'needs')
+	const testers = review.explorations.find((item) => item.explorationId === exploration) ?? review.explorations.at(-1)
+	const testersRow = testers
+		? navRow(
+				review,
+				current,
+				'testers',
+				`/explorations/${testers.explorationId}`,
+				'',
+				review.running ? 'Testers now' : 'Testers',
+				count(testers.explorers ?? 0, Boolean(review.running?.paused)),
+				{ look: 'link' }
+			)
+		: ''
+	const builds = shown(review)
+	const outsideRow = review.map.rows.find((row) => row.rule.id === outside)!
+	const ruleRows = review.areas.flatMap((area) => {
+		const open =
+			current === `area:${area.label}` || (current.startsWith('rule:') && area.rules.includes(current.slice(5)))
+		return [
+			navRow(
+				review,
+				current,
+				`area:${area.label}`,
+				href(`area:${area.label}`),
+				open ? '▾' : '▸',
+				area.label,
+				marks(review, area.cells),
+				{
+					expanded: open,
+					look: 'area',
+				}
+			),
+			...area.rules.map((id) => {
+				const row = review.map.rows.find((each) => each.rule.id === id)!
+				return navRow(
+					review,
+					current,
+					`rule:${id}`,
+					href(`rule:${id}`),
+					id,
+					row.rule.text,
+					marks(
+						review,
+						row.cells.map((cell) => cell.status)
+					),
+					{
+						level: 2,
+						area: area.label,
+						look: 'rule',
+						hidden: !open,
+					}
+				)
+			}),
+		]
+	})
+	return html`<nav
+		class="sp-nav"
+		aria-label="Plan ${planId}"
+		data-navigator
+		data-builds="${builds.length}"
+		data-region="navigator"
+	>
+		<div class="sp-nlist" role="tree" aria-label="Views of ${planId}">
+			<div class="sp-npin" role="none">
+				${review.running ? testersRow : ''}
+				${navRow(
+					review,
+					current,
+					'needs',
+					href('needs'),
+					'',
+					'Needs you',
+					count(
+						needs.length,
+						needs.some((item) => item.blocking)
+					)
+				)}
+				${navRow(review, current, 'all', href('all'), '', 'All items', count(review.items.length))}
+				<div class="sp-sep" role="separator"></div>
+			</div>
+			<div class="sp-nhead" aria-hidden="true">
+				<span></span><span>Rule</span
+				><span class="sp-nmarks"
+					>${builds.map(
+						(item, index) =>
+							html`<span title="${item.build}"
+								><kbd>${index + 1}</kbd
+								><span class="sp-blab">${buildLabel(review, item.build)}</span></span
+							>`
+					)}</span
+				>
+			</div>
+			${ruleRows}
+			${navRow(
+				review,
+				current,
+				`rule:${outside}`,
+				href(`rule:${outside}`),
+				'Out',
+				'Outside the rules',
+				marks(
+					review,
+					outsideRow.cells.map((cell) => cell.status)
+				),
+				{
+					look: 'rule',
+				}
+			)}
+			<div class="sp-sep" role="separator"></div>
+			${review.map.builds.map((item) =>
+				navRow(
+					review,
+					current,
+					`build:${item.build}`,
+					href(`build:${item.build}`),
+					buildLabel(review, item.build),
+					item.build,
+					count(itemsOf(review, `build:${item.build}`).length)
+				)
+			)}
+			${review.map.builds.length ? html`<div class="sp-sep" role="separator"></div>` : ''}
+			${navRow(review, current, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
+			${review.running ? '' : testersRow}
+			${navRow(review, current, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}
+		</div>
+	</nav>`
+}
+
+function canChoose(view: string) {
+	return view.startsWith('rule:') || view.startsWith('area:')
+}
+
+export function viewTitle(review: Review, view: string) {
+	if (view === 'needs') return 'Needs you'
+	if (view === 'all') return 'All items'
+	if (view === 'rules') return 'Rules of the plan'
+	if (view === `rule:${outside}`) return 'Outside the rules'
+	if (view.startsWith('rule:')) return view.slice(5)
+	if (view.startsWith('area:')) return view.slice(5)
+	if (view.startsWith('build:')) return `Build ${buildLabel(review, view.slice(6))}`
+	return view
+}
+
+const cellWords: Record<CellStatus, [string, string]> = {
+	failed: ['failed', 'red'],
+	question: ['uncertain', 'amber'],
+	passed: ['passed', 'green'],
+	not_checked: ['not tested', ''],
+}
+
+export function verdictLine(review: Review) {
+	const defects = review.items.filter((item) => item.kind === 'defect' && item.claim?.open)
+	const critical = defects.filter((item) => item.severity === 'critical').length
+	const findings = review.items.filter((item) => item.kind === 'finding').length
+	const open = review.items.filter((item) => item.kind === 'question' || item.kind === 'gap')
+	const blocking = open.filter((item) => item.blocking).length
+	const build = review.map.builds.at(-1)?.build
+	const head = review.running
+		? `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
+		: build
+			? `Build ${build}: ${plural(defects.length, 'open defect')}${critical ? `, ${critical} critical` : ''}.`
+			: 'No build is tested yet.'
+	const tail = [
+		findings ? `${plural(findings, 'finding')} ${findings === 1 ? 'needs' : 'need'} your look.` : null,
+		open.length
+			? `${plural(open.length, 'question')} open${blocking ? `, ${blocking} ${blocking === 1 ? 'blocks' : 'block'} testing` : ''}.`
+			: null,
+	]
+		.filter(Boolean)
+		.join(' ')
+	return { head, tail, defects: defects.length, critical, findings, open: open.length, blocking }
+}
+
+function viewHead(review: Review, view: string) {
+	const verdict = verdictLine(review)
+	if (view === 'needs')
+		return { sub: 'Questions to answer and findings to decide, blocking ones first.', pills: html`` }
+	if (view === 'all') return { sub: `${verdict.head} ${verdict.tail}`, pills: html`` }
+	if (view === 'rules') {
+		const origin = review.map.rulesOrigin
+		return {
+			sub:
+				origin === 'derived' || origin === 'corrected'
+					? `The tester derived these rules from the sources${origin === 'corrected' ? ', and they were corrected' : ''}. Correct them with checkmate plan edit ${review.planId} --patch.`
+					: origin
+						? 'The rules come from the plan. Edit them in the plan editor.'
+						: 'This plan has no rules yet.',
+			pills: html``,
+		}
+	}
+	if (view.startsWith('rule:')) {
+		const row = review.map.rows.find((each) => each.rule.id === view.slice(5))
+		return {
+			sub: row?.rule.text ?? '',
+			pills: html`${row?.cells.map((cell) => {
+				const [label, color] = cellWords[cell.status]
+				return html`<span class="sp-pill ${color}" title="${cell.build}"
+					>${buildLabel(review, cell.build)}: ${label}</span
+				>`
+			})}`,
+		}
+	}
+	if (view.startsWith('area:')) {
+		const area = review.areas.find((each) => each.label === view.slice(5))
+		return { sub: `${plural(area?.rules.length ?? 0, 'rule')}. The items are grouped by rule.`, pills: html`` }
+	}
+	if (view.startsWith('build:')) {
+		const build = review.map.builds.find((item) => item.build === view.slice(6))
+		return { sub: `${build?.build ?? ''}. The defects and questions seen on this build.`, pills: html`` }
+	}
+	return { sub: '', pills: html`` }
+}
+
+function rulesList(review: Review) {
+	const rows = review.map.rows.filter((row) => row.rule.id !== outside)
+	if (!rows.length) return html`<p class="sp-empty">This plan has no rules yet.</p>`
+	return html`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
+		<div class="sp-gh" role="presentation">Rules <span>${rows.length}</span></div>
+		${rows.map(
+			(row, index) =>
+				html`<div
+					class="sp-row"
+					role="option"
+					aria-selected="false"
+					tabindex="-1"
+					id="row-rules-${index}"
+					data-row
+					data-key="rule:${row.rule.id}"
+					data-href="${reviewHref(review.planId, `rule:${row.rule.id}`)}"
+					data-label="${row.rule.id}"
+				>
+					<span class="sp-c-cb"></span>
+					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
+					<span class="sp-c-id">${row.rule.id}</span>
+					<span class="sp-c-title ell">${row.rule.text}</span>
+					<span class="sp-c-meta ell">${row.rule.source ?? ''}</span>
+				</div>`
+		)}
+	</div>`
+}
+
+export function viewsOf(review: Review) {
+	return [
+		'needs',
+		'all',
+		...review.areas.map((area) => `area:${area.label}`),
+		...review.map.rows.map((row) => `rule:${row.rule.id}`),
+		...review.map.builds.map((item) => `build:${item.build}`),
+		'rules',
+	]
+}
+
+function panel(context: Context, review: Review, view: string, current: string) {
+	const head = viewHead(review, view)
+	const items = itemsOf(review, view)
+	const groups = view.startsWith('area:') ? ruleGroups(review, view, items) : groupsOf(items)
+	const title = viewTitle(review, view)
+	const tools =
+		view === 'rules' && review.revision
+			? html`<a class="sp-btn" href="/plans/${review.planId}@${review.revision}/edit"
+					><span>Edit the rules</span></a
+				>`
+			: ''
+	return html`<section
+		class="sp-panel"
+		data-panel="${view}"
+		data-title="${title}"
+		aria-labelledby="title-${slug(view)}"
+		${view === current ? '' : html`hidden`}
+	>
+		<div class="sp-ch">
+			${crumbBar([
+				[review.planId, `/plans/${review.planId}`],
+				[review.target, null],
+			])}
+			<h1 id="title-${slug(view)}">${title}</h1>
+			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
+			<div class="sp-pills">${head.pills}</div>
+			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
+		</div>
+		<div class="sp-tools" data-actions>${tools}</div>
+		${view === 'rules' ? rulesList(review) : listOf(context, review, view, groups, title)}
+	</section>`
+}
+
+export function reviewPage(
+	store: Store,
+	context: Context,
+	planId: string,
+	params: URLSearchParams,
+	refusal: Refusal | null = null,
+	notice: string | null = null
+): Page {
+	const review = reviewOf(store, planId)
+	const views = viewsOf(review)
+	const asked = params.get('view') ?? 'needs'
+	const current = views.includes(asked) ? asked : 'needs'
+	const title = viewTitle(review, current)
+	const key = refusal?.key ?? params.get('item')
+	const item = key ? (review.items.find((each) => each.key === key) ?? null) : null
+	const file = params.get('file')
+	const record = item
+		? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim
+			? evidenceViewer(store, review, item, current, Number(file))
+			: recordDrawer(store, context, review, item, current, refusal)
+		: ''
+	const panels = views.map((view) => panel(context, review, view, current))
+	return {
+		title: `${item ? `${item.id} · ` : ''}${title} · ${planId}`,
+		section: 'home',
+		subjects: [
+			`plan:${planId}`,
+			'inbox',
+			...review.explorations.map((each) => `exploration:${each.explorationId}`),
+		],
+		status: refusal || notice ? 422 : 200,
+		crumbs: [
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
+			[title, item ? reviewHref(planId, current) : null],
+			...(item ? [[item.id, null] as [string, null]] : []),
+		],
+		back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : '/',
+		drawer: Boolean(item),
+		nav: navigator(review, current),
+		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}
+			<div
+				class="sp-review"
+				data-review
+				data-plan="${planId}"
+				data-region="review"
+				${item ? html`data-open="${item.key}"` : ''}
+			>
+				${panels}
+			</div>
+			${record}`,
+	}
+}
+
+export type { Rule }

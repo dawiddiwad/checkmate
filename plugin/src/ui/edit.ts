@@ -1,4 +1,5 @@
 import type { Store } from '../store.ts'
+import { navigator, reviewOf } from './review.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import { frozenRevision, jsonPatch, planCandidate } from '../plans.ts'
@@ -274,7 +275,7 @@ export function editPage(
 	if (detail.revision !== detail.latestRevision)
 		return {
 			title,
-			section: 'plans',
+			section: 'home',
 			subjects: [`plan:${planId}`],
 			body: html`${heading(title, detail.plan.objective)}
 			${banner(
@@ -378,13 +379,16 @@ export function editPage(
 		</div>`
 	return {
 		title,
-		section: 'plans',
+		section: 'home',
 		subjects: [`plan:${planId}`],
 		body,
 		crumbs: [
-			['Plans', '/plans'],
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
 			[subject, `/plans/${subject}`],
 			['Edit', null],
 		],
+		back: `/plans/${subject}`,
+		nav: navigator(reviewOf(store, planId), 'plan'),
 	}
 }

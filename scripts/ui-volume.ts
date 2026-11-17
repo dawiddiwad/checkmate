@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { answerGap, closeStore, openPlan, openStore } from '../plugin/src/index.ts'
 import { openExploration } from '../plugin/src/explorations.ts'
-import { decideClaim } from '../plugin/src/journal.ts'
+import { decideClaim, handOffClaims } from '../plugin/src/journal.ts'
 import { harvestExploration } from '../plugin/src/harvest.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { done, ended, entries, event, launch, launched, report } from '../test/explorations.ts'
@@ -528,6 +528,285 @@ function failed(store: Store) {
 	done(store, 'x-6', 'failed', { reason: 'The instance local did not answer on http://127.0.0.1:4173.' })
 }
 
+const ruleAreas: Array<[area: string, rules: string[]]> = [
+	[
+		'Codes',
+		[
+			'A code works in upper case and in lower case.',
+			'A code with spaces before or after it works.',
+			'An unknown code shows "This code does not exist".',
+			'An expired code shows the date on which it ended.',
+			'A code applies once to an order.',
+			'The code field accepts at most 32 characters.',
+		],
+	],
+	[
+		'Stacking',
+		[
+			'Only one coupon applies to an order.',
+			'A second coupon replaces the first one after a confirm step.',
+			'A coupon and a gift card can pay one order together.',
+			'A coupon does not apply to an item that is on sale.',
+			'A free delivery coupon combines with a price coupon.',
+		],
+	],
+	[
+		'Basket totals',
+		[
+			'The discount shows as its own line in the basket.',
+			'The total never drops below zero.',
+			'Tax is calculated after the discount.',
+			'The delivery fee is not discounted.',
+			'The saving shows with two decimal places.',
+			'A percentage coupon rounds to the nearest grosz.',
+			'The basket total and the charged amount are equal.',
+			'A removed coupon removes its discount line at once.',
+			'The total updates without a page reload.',
+			'The basket shows the saving of each discount.',
+			'A bundle counts as one item for a coupon.',
+		],
+	],
+	[
+		'Expiry and limits',
+		[
+			'A coupon is valid until the end of its last day in the shop time zone.',
+			'A coupon with a minimum order value applies only above that value.',
+			'A coupon for first orders applies to a first order only.',
+			'A coupon with a use limit stops at the limit.',
+			'A cancelled order gives the coupon use back.',
+		],
+	],
+	[
+		'Gift cards',
+		[
+			'A gift card cannot pay more than its balance.',
+			'The gift card balance shows after each payment.',
+			'A gift card cannot buy another gift card.',
+			'A gift card stays valid for 24 months.',
+		],
+	],
+	[
+		'Guest checkout',
+		[
+			'A guest can use a coupon.',
+			'A guest keeps the coupon after a sign-in at checkout.',
+			'A guest basket is kept for 30 days.',
+			'A guest gets the order confirmation by e-mail.',
+			'A guest cannot use a coupon for first orders twice with one e-mail.',
+		],
+	],
+	[
+		'Refunds after a partial return',
+		[
+			'A partial return refunds the item price less its share of the discount.',
+			'The refund of a returned bundle item uses the bundle price.',
+			'A refund never exceeds the amount paid.',
+			'A refund to a gift card restores its balance.',
+			'The refund e-mail lists the discount that was taken back.',
+			'A returned item with a coupon of its own refunds the coupon value too.',
+		],
+	],
+	['API', ['The coupon API refuses more than 10 tries a minute from one client.']],
+	[
+		'Notifications',
+		[
+			'A customer gets an e-mail 3 days before a personal coupon ends.',
+			'The e-mail names the code and its end date.',
+			'A customer can turn off coupon e-mails.',
+			'A coupon e-mail is never sent twice for one coupon.',
+			'The e-mail links to the basket with the code filled in.',
+		],
+	],
+]
+
+const lateCodes = ['A code from a partner shop shows the partner name.', 'A code for staff needs a staff account.']
+
+function couponRules() {
+	let next = 1
+	const listed = ruleAreas.flatMap(([area, texts]) =>
+		texts.map((text) => ({ id: `R${next++}`, text, source: 'ticket://SHOP-412#acceptance', area }))
+	)
+	return [
+		...listed,
+		...lateCodes.map((text) => ({ id: `R${next++}`, text, source: 'ticket://SHOP-412#acceptance', area: 'Codes' })),
+	]
+}
+
+const couponDefects = [
+	{ id: 'D1', rule: 'R7', severity: 'critical', title: 'Two coupons stack on one order' },
+	{ id: 'D2', rule: 'R13', severity: 'critical', title: 'A coupon larger than the order gives a negative total' },
+	{ id: 'D3', rule: 'R14', severity: 'high', title: 'Tax is calculated before the discount' },
+	{ id: 'D4', rule: 'R1', severity: 'high', title: 'A lower case code is refused' },
+	{
+		id: 'D5',
+		suspected: true,
+		rule: 'R23',
+		severity: 'medium',
+		title: 'A coupon ends at midnight UTC, not in the shop time zone',
+	},
+	{ id: 'D6', rule: 'R28', severity: 'high', title: 'The gift card balance goes negative' },
+	{
+		id: 'D7',
+		suspected: true,
+		rule: 'R33',
+		severity: 'medium',
+		title: 'A guest loses the coupon when signing in at checkout',
+	},
+	{ id: 'D8', rule: 'R16', severity: 'low', title: 'The saving shows three decimal places' },
+	{ id: 'D9', rule: 'R37', severity: 'high', title: 'A partial return refunds the full item price' },
+	{ id: 'D10', suspected: true, rule: 'R10', severity: 'medium', title: 'The coupon also applies to sale items' },
+	{ id: 'D11', rule: 'outside', severity: 'low', title: 'The basket page logs a warning in the console' },
+	{ id: 'D12', suspected: true, rule: 'R43', severity: 'medium', title: 'The coupon API takes 50 tries a minute' },
+]
+
+const couponQuestions = [
+	{ id: 'Q1', rule: 'R9', blocking: true, question: 'Can a coupon and a gift card pay one order together?' },
+	{ id: 'Q2', rule: 'R11', blocking: false, question: 'Does a free delivery coupon combine with a price coupon?' },
+	{ id: 'Q3', rule: 'R23', blocking: true, question: 'Is a coupon valid until the end of its last day?' },
+	{ id: 'Q4', rule: 'R24', blocking: false, question: 'Is a minimum order value counted before or after tax?' },
+	{ id: 'Q5', rule: 'R22', blocking: false, question: 'Does a coupon count the items of a bundle one by one?' },
+	{ id: 'Q6', rule: 'R32', blocking: true, question: 'Can a guest customer use a coupon?' },
+	{ id: 'Q7', rule: 'R38', blocking: false, question: 'Which price does the refund of a bundle item use?' },
+	{
+		id: 'Q8',
+		rule: 'R46',
+		blocking: false,
+		question: 'Can a customer turn off coupon e-mails only, and keep order e-mails?',
+	},
+	{
+		id: 'Q9',
+		rule: 'outside',
+		blocking: false,
+		question: 'Must the shop show the coupon field on the product page too?',
+	},
+	{ id: 'Q10', rule: 'R49', blocking: false, question: 'Which partner name shows for a code from a partner shop?' },
+]
+
+function couponEntries(build: number, rules: Array<{ id: string }>) {
+	const criteria = rules
+		.map((rule, index) => ({ rule, index }))
+		.filter(({ index }) => (index + build) % 4 !== 0)
+		.map(({ rule, index }) => ({
+			kind: 'criterion',
+			id: `C${build * 100 + index + 1}`,
+			rule: rule.id,
+			text: `Checked ${rule.id} on build ${build + 1}.`,
+			verdict: (index * 7 + build) % 6 === 0 ? 'wrong' : 'ok',
+		}))
+	return criteria
+}
+
+function couponTest(store: Store, explorationId: string, build: number, daysAgo: number, list: unknown[]) {
+	minutesAgo(daysAgo * day)
+	openExploration(store, 'checkmate', {
+		planId: 'coupons',
+		build: `fixture-build-${build + 1}`,
+		explorationId,
+		instance: 'local',
+	})
+	event(store, explorationId, { step: 'start', detail: { ...launch, explorers: 2 } })
+	event(store, explorationId, { step: 'supervisor', detail: { pid: process.pid } })
+	for (const explorer of ['k1', 'k2']) launched(store, explorationId, explorer)
+	minutesAgo(daysAgo * day - 30)
+	ended(store, explorationId, 'k1', list)
+	ended(store, explorationId, 'k2', couponEntries(build, couponRules()))
+	minutesAgo(daysAgo * day - 60)
+	done(store, explorationId)
+}
+
+function coupons(store: Store) {
+	minutesAgo(14 * day)
+	openPlan(store, agent, {
+		planId: 'coupons',
+		target: 'shop-local@1',
+		request: {
+			objective: 'Checkout coupons: one coupon per order, totals, expiry, guests, and refunds.',
+			context: { sources: ['ticket://SHOP-412'] },
+			requirements: couponRules(),
+		},
+	})
+	const defect = (item: (typeof couponDefects)[number], index: number) => ({
+		kind: 'defect',
+		...('suspected' in item ? { suspected: true, question: `Is this intended: ${item.title.toLowerCase()}?` } : {}),
+		id: item.id,
+		title: item.title,
+		rule: item.rule,
+		severity: item.severity,
+		expected: couponRules().find((rule) => rule.id === item.rule)?.text ?? 'The shop behaves as before.',
+		actual: `${item.title}.`,
+		steps: ['Add LAMP-01 to the basket.', 'Apply SPRING40.', 'Read the total.'],
+		evidence:
+			index % 3 === 0
+				? [
+						evidenceFile(store, 'x-11', `k1-${item.id}.png`, pageShot('banner')),
+						`Seen on build 1: ${item.title}.`,
+					]
+				: [`Seen on build 1: ${item.title}.`],
+	})
+	const asked = couponQuestions.map((item) => ({
+		kind: 'question',
+		id: item.id,
+		rule: item.rule,
+		question: item.question,
+		actual: 'The build allows it.',
+		...(item.blocking ? { blocking: true } : {}),
+	}))
+	couponTest(store, 'x-11', 0, 12, [...couponDefects.slice(0, 9).map(defect), ...asked.slice(0, 6)])
+	couponTest(store, 'x-12', 1, 6, [
+		...couponDefects.slice(0, 9).map((item, index) => ({
+			kind: 'verdict',
+			defect: item.id,
+			result: index % 2 ? 'not_fixed' : 'fixed',
+		})),
+		...couponDefects.slice(9).map(defect),
+		...asked.slice(6),
+	])
+	couponTest(store, 'x-13', 2, 1, [
+		{ kind: 'verdict', defect: 'D1', result: 'not_fixed' },
+		{ kind: 'verdict', defect: 'D3', result: 'fixed' },
+		{ kind: 'verdict', defect: 'D2', result: 'not_fixed' },
+		{ kind: 'verdict', defect: 'D10', result: 'not_fixed' },
+	])
+	minutesAgo(day - 90)
+	entries(store, 'x-12', 'merge', [
+		{
+			kind: 'topic',
+			id: 'T1',
+			label: 'Combining coupons',
+			question: 'Which coupons combine?',
+			members: ['k1/Q1', 'k1/Q2'],
+		},
+	])
+	for (const [id, verdict] of [
+		['k1/D1', 'approved'],
+		['k1/D2', 'approved'],
+		['k1/D3', 'approved'],
+		['k1/D4', 'approved'],
+		['k1/D6', 'approved'],
+		['k1/D9', 'approved'],
+		['k1/D8', 'rejected'],
+	] as const)
+		decideClaim(store, human, {
+			planId: 'coupons',
+			claimId: id,
+			verdict,
+			rationale: verdict === 'approved' ? 'The steps show the defect.' : 'Three decimals are fine here.',
+		})
+	handOffClaims(store, human, {
+		planId: 'coupons',
+		claimIds: ['k1/D4', 'k1/D6'],
+		to: 'the developer of SHOP-412',
+		undo: false,
+	})
+	answerGap(store, human, {
+		planId: 'coupons',
+		gapId: 'k1/Q5',
+		kind: 'accept_assumption',
+		value: 'A bundle counts as one item.',
+		rationale: 'The product owner gave this rule.',
+	})
+}
+
 export function seedVolume(workspace: string) {
 	seedDemo(workspace)
 	const store = openStore(workspace)
@@ -554,6 +833,7 @@ export function seedVolume(workspace: string) {
 			failed(store)
 			paused(store)
 			running(store)
+			coupons(store)
 		})
 	} finally {
 		closeStore(store)

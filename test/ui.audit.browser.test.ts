@@ -550,11 +550,13 @@ test('Back closes the find bar, the key list, a dialog, or an open area, and not
 	const address = page.url()
 	await page.keyboard.press('/')
 	await page.getByRole('dialog', { name: 'Find' }).waitFor()
+	await page.waitForFunction(() => Boolean(window.history.state?.layer || window.history.state?.area))
 	await page.goBack()
 	await page.getByRole('dialog', { name: 'Find' }).waitFor({ state: 'hidden' })
 	assert.equal(page.url(), address)
 	await page.keyboard.press('?')
 	await page.locator('[data-keys]').waitFor()
+	await page.waitForFunction(() => Boolean(window.history.state?.layer || window.history.state?.area))
 	await page.goBack()
 	await page.locator('[data-keys]').waitFor({ state: 'hidden' })
 	assert.equal(page.url(), address)
@@ -564,6 +566,7 @@ test('Back closes the find bar, the key list, a dialog, or an open area, and not
 	await page.keyboard.press('1')
 	const confirm = page.locator('dialog[data-confirm]')
 	await confirm.waitFor()
+	await page.waitForFunction(() => Boolean(window.history.state?.layer || window.history.state?.area))
 	await page.goBack()
 	await confirm.waitFor({ state: 'hidden' })
 	assert.equal(page.url(), selected)
@@ -574,6 +577,7 @@ test('Back closes the find bar, the key list, a dialog, or an open area, and not
 	await page.keyboard.press('ArrowRight')
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded')), 'true')
 	const here = page.url()
+	await page.waitForFunction(() => Boolean(window.history.state?.layer || window.history.state?.area))
 	await page.goBack()
 	await page.waitForFunction(() => document.querySelector('[data-nav][aria-expanded="true"]') === null)
 	assert.equal(page.url(), here)
@@ -705,3 +709,116 @@ test('the 409 and 500 pages say what happened, and Left or Esc leaves them', { s
 	await page.keyboard.press('ArrowLeft')
 	await page.waitForURL(url('/'))
 })
+
+test(
+	'dialogs, the find bar, the key list, and reason fields open and close 20 times in a row on a slow CPU',
+	{ skip },
+	async (t) => {
+		const { page, url } = await open(t)
+		const cdp = await page.context().newCDPSession(page)
+		await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
+		const cycle = async (
+			name: string,
+			start: string,
+			ready: () => Promise<unknown>,
+			keys: [string, string],
+			shown: string,
+			closed: () => Promise<unknown>
+		) => {
+			await page.goto(url(start))
+			await ready()
+			const address = page.url()
+			for (let round = 0; round < 20; round++) {
+				await page.keyboard.press(keys[0])
+				await page
+					.locator(shown)
+					.waitFor({ timeout: 3000 })
+					.catch(() => assert.fail(`${name} did not open in round ${round}`))
+				await page.keyboard.press(keys[1])
+				await closed()
+				await page.waitForFunction(() => !window.history.state?.layer, null, { timeout: 3000 })
+				assert.equal(page.url(), address, `${name} round ${round}`)
+			}
+		}
+		const row = () => page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		const hidden = (selector: string) => () => page.locator(selector).waitFor({ state: 'hidden', timeout: 3000 })
+		await cycle(
+			'key list',
+			'/plans/coupons?view=needs&focus=list',
+			row,
+			['?', 'Escape'],
+			'[data-keys]',
+			hidden('[data-keys]')
+		)
+		await cycle(
+			'find bar',
+			'/plans/coupons?view=needs&focus=list',
+			row,
+			['/', 'Escape'],
+			'[data-find]',
+			hidden('[data-find]')
+		)
+		await cycle(
+			'bulk confirm',
+			'/plans/coupons?view=needs&focus=list',
+			async () => {
+				await row()
+				await page.keyboard.press('Shift+ArrowDown')
+			},
+			['1', 'Escape'],
+			'dialog[data-confirm]',
+			hidden('dialog[data-confirm]')
+		)
+		await cycle(
+			'hand-over reason',
+			'/plans/coupons?view=all&focus=list&at=c%3Ak1%2FD9',
+			() => page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'c:k1/D9'),
+			['1', 'Escape'],
+			'.hl [data-extra="handoff"]:not([hidden])',
+			() => page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'c:k1/D9')
+		)
+		await cycle(
+			'editor leave dialog',
+			'/plans/account@7/edit',
+			async () => {
+				await page.locator('[name="t0.title"]').fill('A changed title')
+				await page.locator('[name="t0.title"]').press('Escape')
+			},
+			['ArrowLeft', 'Escape'],
+			'dialog[data-confirm]',
+			hidden('dialog[data-confirm]')
+		)
+		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		await row()
+		const start = page.url()
+		for (let round = 0; round < 20; round++) {
+			await page.keyboard.press('/')
+			await page.locator('[data-find]').waitFor()
+			await page.keyboard.press('Escape')
+			await page.keyboard.press('?')
+			await page.locator('[data-keys]').waitFor()
+			await page.waitForFunction(() => window.history.state?.layer === 'keys', null, { timeout: 3000 })
+			await page.goBack()
+			await page.locator('[data-keys]').waitFor({ state: 'hidden', timeout: 3000 })
+			assert.equal(page.url(), start, `find then keys round ${round}`)
+		}
+		await page.goto(url('/settings/targets/shop-local'))
+		const summary = page.locator('#instance-local summary')
+		for (let round = 0; round < 20; round++) {
+			await summary.focus()
+			await page.keyboard.press('Enter')
+			assert.equal(
+				await summary.evaluate((element) => (element.parentElement as HTMLDetailsElement).open),
+				true,
+				`retire round ${round}`
+			)
+			await page.keyboard.press('Escape')
+			assert.equal(
+				await summary.evaluate((element) => (element.parentElement as HTMLDetailsElement).open),
+				false,
+				`retire round ${round}`
+			)
+			assert.match(page.url(), /\/settings\/targets\/shop-local/)
+		}
+	}
+)

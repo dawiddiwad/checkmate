@@ -1009,15 +1009,16 @@ function ask({ title, text, field = null, yes = 'Confirm', no = 'Cancel' }) {
 		input.required = Boolean(field)
 		if (field) box.querySelector('label').textContent = field
 		confirmDialog.returnValue = ''
-		pushLayer()
+		pushLayer('confirm')
 		confirmDialog.showModal()
 		if (field) input.focus()
 		else confirmDialog.querySelector('[data-confirm-yes]').focus()
-		confirmDialog.addEventListener(
-			'close',
-			() => resolve(confirmDialog.returnValue === 'yes' ? { value: input.value.trim() } : null),
-			{ once: true }
-		)
+		const closed = () => {
+			if (confirmDialog.open) return
+			confirmDialog.removeEventListener('close', closed)
+			resolve(confirmDialog.returnValue === 'yes' ? { value: input.value.trim() } : null)
+		}
+		confirmDialog.addEventListener('close', closed)
 	})
 }
 
@@ -1229,7 +1230,7 @@ async function findNow() {
 
 function openFind() {
 	if (document.querySelector('dialog[open]')) return
-	pushLayer()
+	pushLayer('find')
 	findDialog.showModal()
 	const input = findDialog.querySelector('[data-find-input]')
 	input.focus()
@@ -1258,34 +1259,35 @@ function findKey(event) {
 }
 
 const keysDialog = document.querySelector('[data-keys]')
-const layers = [findDialog, keysDialog, confirmDialog].filter(Boolean)
+const layers = { find: findDialog, keys: keysDialog, confirm: confirmDialog }
 let quietPop = false
-let relayer = false
+let relayer = null
 
-function pushLayer() {
-	if (quietPop) relayer = true
-	else window.history.pushState({ ...window.history.state, layer: true }, '', location.href)
+function pushLayer(name) {
+	if (quietPop) relayer = name
+	else window.history.pushState({ ...window.history.state, layer: name }, '', location.href)
 }
 
-function dropLayer(name) {
-	if (!window.history.state?.[name]) return
+function dropLayer(key, value = null) {
+	const held = window.history.state?.[key]
+	if (!held || (value && held !== value)) return
 	quietPop = true
 	window.history.back()
 }
 
-for (const dialog of layers)
-	dialog.addEventListener('close', () => {
-		if (dialog.returnValue !== 'yes') dropLayer('layer')
+for (const [name, dialog] of Object.entries(layers))
+	dialog?.addEventListener('close', () => {
+		if (!dialog.open && dialog.returnValue !== 'yes') dropLayer('layer', name)
 	})
 
 window.addEventListener('popstate', (event) => {
 	if (quietPop) {
 		quietPop = false
-		if (relayer) pushLayer()
-		relayer = false
+		if (relayer && layers[relayer]?.open) pushLayer(relayer)
+		relayer = null
 		return event.stopImmediatePropagation()
 	}
-	const layer = layers.find((dialog) => dialog.open)
+	const layer = Object.values(layers).find((dialog) => dialog?.open)
 	if (layer) {
 		layer.close('no')
 		return event.stopImmediatePropagation()
@@ -1304,7 +1306,7 @@ window.addEventListener('popstate', (event) => {
 
 function openKeys() {
 	if (keysDialog.open) return keysDialog.close()
-	pushLayer()
+	pushLayer('keys')
 	keysDialog.showModal()
 	keysDialog.querySelector('[data-keys-close]').focus()
 }
@@ -1565,7 +1567,7 @@ document.addEventListener('keydown', (event) => {
 		return
 	}
 	if (event.defaultPrevented || event.altKey) return
-	const target = event.target
+	const target = event.target.closest?.('dialog:not([open])') ? body : event.target
 	if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && sendKey(event)) return
 	if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
 		event.preventDefault()

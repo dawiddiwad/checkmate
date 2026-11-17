@@ -686,7 +686,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const gone = picks.filter((_, index) => !found[index])
 		if (!picks.length) state.error = 'Select at least one item.'
 		else if (gone.length)
-			state.error = `${gone.map((key) => key.split(':').slice(1).join(' · ')).join(', ')} do not wait for a decision now. Nothing is recorded. Clear the selection and select again.`
+			state.error = `${gone.map((key) => key.split(':').slice(1).join(' · ')).join(', ')} ${gone.length === 1 ? 'does' : 'do'} not wait for a decision now. Nothing is recorded. Clear the selection and select again.`
 		else if (form.get('back')) return refuse(request, () => ({ ...page(), status: 200 }), cookies)
 		else state.error = bulkProblem(what, state.values, actor)
 		if (state.error) return refuse(request, page, cookies)

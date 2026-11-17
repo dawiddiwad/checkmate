@@ -21519,7 +21519,7 @@ data: ${matched.join(",") || "*"}
     const gone2 = picks.filter((_, index2) => !found[index2]);
     if (!picks.length) state.error = "Select at least one item.";
     else if (gone2.length)
-      state.error = `${gone2.map((key) => key.split(":").slice(1).join(" \xB7 ")).join(", ")} do not wait for a decision now. Nothing is recorded. Clear the selection and select again.`;
+      state.error = `${gone2.map((key) => key.split(":").slice(1).join(" \xB7 ")).join(", ")} ${gone2.length === 1 ? "does" : "do"} not wait for a decision now. Nothing is recorded. Clear the selection and select again.`;
     else if (form.get("back")) return refuse(request, () => ({ ...page(), status: 200 }), cookies);
     else state.error = bulkProblem(what, state.values, actor);
     if (state.error) return refuse(request, page, cookies);

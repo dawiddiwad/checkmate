@@ -11,7 +11,7 @@ import { claimEvidence, entryEvidence, explorationLive, planExplorations } from 
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, crumbBar, downloads, heading } from './layout.ts'
 import { navigator, reviewOf } from './review.ts'
-import { duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
+import { ago, duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
 import { failureOf, money, optionsBox, phases, runsOf } from './activity.ts'
 import type { Run } from './activity.ts'
@@ -642,6 +642,13 @@ function phaseDetail(live: Live, row: Live['phases'][number], crumbs: Html) {
 		${failed ? html`<p class="help">${dataLine(null, live.data)}</p>` : ''}`
 }
 
+function timeLine(live: Live, run: Run) {
+	const started = html`started ${ago(run.startedAt)}`
+	if (live.running || !run.endedAt) return started
+	const took = duration(Date.parse(run.endedAt) - Date.parse(run.startedAt))
+	return html`${started}, ended ${ago(run.endedAt)}, took ${took}`
+}
+
 function phaseStrip(run: Run) {
 	return html`<span class="sp-strip" role="list" aria-label="Phase of the test">
 		${phases.map((phase) =>
@@ -713,15 +720,17 @@ export function explorationPage(
 		back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}?nav=testers`,
 		nav: navigator(review, 'testers', explorationId),
 		body: html`<div class="sp-ch">
-				${crumbBar([
-					[live.planId, `/plans/${live.planId}`],
-					[review.target, null],
-				])}
-				<h1>${title}</h1>
-				<p class="sp-sub">
-					Session ${explorationId} on build ${live.build} · ${live.instanceId} · ${live.level ?? 'no level'} ·
-					started ${time(live.startedAt)}. ${live.goal}
-				</p>
+				<div data-region="exploration-head">
+					${crumbBar([
+						[live.planId, `/plans/${live.planId}`],
+						[review.target, null],
+					])}
+					<h1>${title}</h1>
+					<p class="sp-sub">
+						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
+						${live.level ?? 'no level'} · ${timeLine(live, run)}. ${live.goal}
+					</p>
+				</div>
 				<div class="sp-pills" data-region="exploration-state">
 					${pill(live.running && live.paused ? 'paused' : live.state)}
 					${

@@ -217,6 +217,11 @@ test('a run whose supervisor dies shows as interrupted, and no place says runnin
 	process.kill(pids('x-1').supervisor!, 'SIGKILL')
 	await page.getByText('The run was interrupted: the supervisor stopped before the end.').waitFor()
 	assert.equal(state(read, 'x-1'), 'interrupted')
+	assert.equal(await page.locator('main h1').textContent(), 'Testers')
+	assert.match(
+		(await page.locator('[data-region="exploration-head"] .sp-sub').textContent()) ?? '',
+		/started .*, ended .*, took \d+/
+	)
 	assert.equal(await page.locator('.sp-strip').count(), 0)
 	await page.getByRole('button', { name: 'Test build… again' }).waitFor()
 	assert.doesNotMatch((await page.locator('.statusbar').textContent()) ?? '', /running/)

@@ -9,6 +9,7 @@ import { explorationStatus, running } from '../plugin/src/explorers.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { authenticationHint } from '../plugin/src/sessions.ts'
 import { failureOf, phaseOf } from '../plugin/src/ui/activity.ts'
+import { ago } from '../plugin/src/ui/html.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import { waitFor, workspaceWithFake } from './actions.ts'
@@ -463,4 +464,26 @@ test('after a stop of the whole run, a tester reads Stopped and keeps its last a
 	assert.match(row('a1'), /study: wrote plan\.md\. 1 file in the work folder\./)
 	assert.doesNotMatch(row('a1'), /No activity line in the record/)
 	assert.match(row('a2'), />Finished</)
+})
+
+test('the header says when a run started and, when it is over, when it ended and how long it took', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const opened = openStore(workspace)
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	launched(opened, 'x-1', 'a1')
+	closeStore(opened)
+	const head = (page: string) => /<h1>([^<]*)<\/h1>\s*<p class="sp-sub">([\s\S]*?)<\/p>/.exec(page)!
+	const running = head((await call(ui, '/explorations/x-1')).body)
+	assert.equal(running[1], 'Testers now')
+	assert.match(running[2], />just now<\/time>\./)
+	assert.match(running[2], /started <time[^>]*>just now<\/time>/)
+	assert.match(ago(new Date(Date.now() - 60_000).toISOString()).html, />1 min ago</)
+	assert.match(ago(new Date(Date.now() - 3 * 3600_000).toISOString()).html, />3 h ago</)
+	const again = openStore(workspace)
+	ended(again, 'x-1', 'a1', [])
+	done(again, 'x-1')
+	closeStore(again)
+	const over = head((await call(ui, '/explorations/x-1')).body)
+	assert.equal(over[1], 'Testers')
+	assert.match(over[2], /started <time[^>]*>just now<\/time>, ended <time[^>]*>just now<\/time>, took \d+ s\./)
 })

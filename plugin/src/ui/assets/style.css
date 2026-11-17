@@ -441,6 +441,11 @@ th {
 	align-items: center;
 	gap: 8px;
 }
+.sp-ch > [data-region='exploration-head'] {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
 .sp-ch .sp-pills {
 	margin-top: 4px;
 }

@@ -196,6 +196,11 @@ export function time(iso: string, text = age(iso)) {
 	return html`<time datetime="${iso}" title="${clock(iso)}">${text}</time>`
 }
 
+export function ago(iso: string, now = Date.now()) {
+	const text = age(iso, now)
+	return time(iso, text === 'now' ? 'just now' : `${text} ago`)
+}
+
 export function hasMetadata(values: Record<string, unknown> | undefined) {
 	return Object.keys(values ?? {}).length > 0
 }

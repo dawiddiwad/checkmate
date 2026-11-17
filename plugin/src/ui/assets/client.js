@@ -239,13 +239,21 @@ document.addEventListener('change', (event) => {
 })
 
 const say = document.querySelector('[data-say]')
+const sayStrip = document.querySelector('[data-say-strip]')
 let sayTimer = null
+let sayText = ''
 let gone = null
 
+function setSay(text) {
+	if (sayText === text) return
+	sayText = text
+	showHints()
+}
+
 function tell(text) {
-	say.textContent = text
+	setSay(text)
 	clearTimeout(sayTimer)
-	sayTimer = setTimeout(() => (say.textContent = ''), 4000)
+	sayTimer = setTimeout(() => setSay(''), 4000)
 }
 
 const review = document.querySelector('[data-review]')
@@ -445,9 +453,11 @@ function padTitle(row) {
 
 function dockRoom() {
 	const bulk = document.querySelector('[data-bulk]:not([hidden])')?.offsetHeight ?? 0
+	const message = document.querySelector('[data-say-strip]:not([hidden])')?.offsetHeight ?? 0
 	const toast = document.querySelector('.toast')?.offsetHeight ?? 0
 	document.documentElement.style.setProperty('--bulk-h', `${bulk}px`)
-	document.documentElement.style.setProperty('--dock-h', `${bulk + toast}px`)
+	document.documentElement.style.setProperty('--say-h', `${message}px`)
+	document.documentElement.style.setProperty('--dock-h', `${bulk + message + toast}px`)
 	const row = document.querySelector('.hl[data-row]')
 	if (row) row.scrollIntoView({ block: 'nearest' })
 }
@@ -1241,10 +1251,30 @@ const hintOrder = ['?', '↑↓', '1', '→', '←', '0', 'Space', '/']
 
 function fitHints() {
 	const rank = (hint) => hintOrder.findIndex((cap) => hint.dataset.cap.startsWith(cap))
-	const shown = [...hints.children].sort((a, b) => rank(b) - rank(a))
-	for (const hint of shown) {
-		if (hints.scrollWidth <= hints.clientWidth + 0.5) return
-		if (hint.dataset.cap !== '?') hint.hidden = true
+	const order = [...hints.children].sort((a, b) => rank(b) - rank(a))
+	const hintsFit = () => hints.scrollWidth <= hints.clientWidth + 0.5
+	const sayFits = () => !say.textContent || (say.offsetWidth > 0 && say.scrollWidth <= say.clientWidth + 0.5)
+	const drop = (fits) => {
+		for (const hint of order) {
+			if (fits()) return true
+			if (hint.dataset.cap !== '?') hint.hidden = true
+		}
+		return fits()
+	}
+	say.hidden = false
+	say.textContent = sayText
+	const moved = !drop(() => hintsFit() && sayFits())
+	if (moved) {
+		for (const hint of order) hint.hidden = false
+		say.hidden = true
+		say.textContent = ''
+		drop(hintsFit)
+	}
+	const text = moved ? sayText : ''
+	if (sayStrip.textContent !== text) sayStrip.textContent = text
+	if (sayStrip.hidden !== !text) {
+		sayStrip.hidden = !text
+		dockRoom()
 	}
 }
 
@@ -1348,7 +1378,7 @@ document.addEventListener('keydown', (event) => {
 	const entry = keyTable.find((each) => each.test(event))
 	if (!entry) return
 	event.preventDefault()
-	say.textContent = ''
+	setSay('')
 	if (!/^[1-9]$/.test(event.key)) gone = null
 	entry.run(event)
 })

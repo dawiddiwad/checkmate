@@ -17533,6 +17533,7 @@ function layout(context, page) {
 					${page.nav ? html2`<div class="with-nav">${page.nav}${main2}</div>` : main2}
 				</div>
 				${statusBar(context, page)}
+				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html2`<div class="toast" role="status" data-toast>${context.toast}</div>` : ""}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
 				${dialogs} ${viewer}

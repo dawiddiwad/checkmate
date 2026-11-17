@@ -2,9 +2,21 @@ import type { Page } from 'playwright-core'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { seedVolume } from '../scripts/ui-volume.ts'
+import { closeStore, openStore } from '../plugin/src/index.ts'
+import { decideClaim } from '../plugin/src/journal.ts'
+import { answerGap } from '../plugin/src/plans.ts'
 import { launchWith, open, skip, stop } from './browser.ts'
 
 test.before(() => launchWith(seedVolume))
+
+function read<T>(workspace: string, view: (store: ReturnType<typeof openStore>) => T) {
+	const store = openStore(workspace)
+	try {
+		return view(store)
+	} finally {
+		closeStore(store)
+	}
+}
 test.after(stop)
 
 const pages = [
@@ -291,7 +303,7 @@ test('the options of the highlighted row stay inside the row with the fallback f
 })
 
 function covered() {
-	const docked = ['[data-bulk]:not([hidden])', '.toast']
+	const docked = ['[data-bulk]:not([hidden])', '[data-say-strip]:not([hidden])', '.toast']
 		.map((selector) => document.querySelector(selector))
 		.filter((element): element is HTMLElement => Boolean(element) && (element as HTMLElement).offsetHeight > 0)
 		.map((element) => element.getBoundingClientRect())
@@ -362,5 +374,72 @@ test('the toast covers no part of either pane, at every size', { skip }, async (
 			await page.keyboard.press('ArrowDown')
 			assert.deepEqual(await page.evaluate(covered), [], `${width}x${height} step ${step}`)
 		}
+	}
+})
+
+test('a status message is read in full at every width, and the key hints make room for it', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const items: Array<[number, string, string]> = [
+		[1440, 'c', 'k1/D10'],
+		[1240, 'c', 'k1/D12'],
+		[1100, 'q', 'k1/Q3'],
+		[900, 'q', 'k1/Q4'],
+		[760, 'q', 'k1/Q6'],
+		[600, 'q', 'k1/Q7'],
+		[400, 'q', 'k1/Q8'],
+	]
+	for (const [width, kind, id] of items) {
+		await page.setViewportSize({ width, height: 700 })
+		await page.goto(url(`/plans/coupons?view=needs&focus=list&at=${kind}%3A${encodeURIComponent(id)}`))
+		await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+		await page.waitForFunction((key) => document.activeElement?.getAttribute('data-key') === key, `${kind}:${id}`)
+		read(workspace, (store) =>
+			kind === 'c'
+				? decideClaim(store, 'qa-lead', {
+						planId: 'coupons',
+						claimId: id,
+						verdict: 'approved',
+						rationale: 'Elsewhere.',
+					})
+				: answerGap(store, 'qa-lead', {
+						planId: 'coupons',
+						gapId: id,
+						kind: 'defer',
+						value: 'Later.',
+						rationale: 'Elsewhere.',
+					})
+		)
+		await page.waitForFunction(
+			(key) =>
+				document.activeElement?.matches('[data-row]') &&
+				document.activeElement.getAttribute('data-key') !== key,
+			`${kind}:${id}`
+		)
+		await page.keyboard.press('1')
+		const message = await page.evaluate(() => {
+			const say = document.querySelector('[data-say]') as HTMLElement
+			const strip = document.querySelector('[data-say-strip]') as HTMLElement
+			const shown = [say, strip].find(
+				(element) => !element.hidden && element.offsetWidth > 0 && element.textContent
+			)
+			const hints = document.querySelector('[data-hints]') as HTMLElement
+			return {
+				text: shown?.textContent ?? '',
+				clipped: shown
+					? shown.scrollWidth > shown.clientWidth + 0.5 || shown.scrollHeight > shown.clientHeight + 0.5
+					: true,
+				hintsClipped: hints.scrollWidth > hints.clientWidth + 0.5,
+				keys: Boolean(hints.querySelector('[data-cap="?"]:not([hidden])')),
+			}
+		})
+		assert.match(
+			message.text,
+			new RegExp(`^Nothing is recorded\\. ${id} was (decided|answered) in another session\\.`),
+			`${width}`
+		)
+		assert.equal(message.clipped, false, `${width}: the message is cut`)
+		assert.equal(message.hintsClipped, false, `${width}: a hint is cut`)
+		assert.equal(message.keys, true, `${width}: ? Keys is gone`)
+		assert.deepEqual(await page.evaluate(covered), [], `${width}: the message covers the panes`)
 	}
 })

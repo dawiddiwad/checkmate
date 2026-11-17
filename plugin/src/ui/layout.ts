@@ -189,6 +189,7 @@ export function layout(context: Context, page: Page) {
 					${page.nav ? html`<div class="with-nav">${page.nav}${main}</div>` : main}
 				</div>
 				${statusBar(context, page)}
+				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html`<div class="toast" role="status" data-toast>${context.toast}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
 				${dialogs} ${viewer}

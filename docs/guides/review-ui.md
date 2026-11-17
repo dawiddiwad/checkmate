@@ -27,7 +27,7 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. On a narrow window, `More` holds `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When items wait for you, `<n> need you · all plans` shows first. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. On a narrow window, `More` holds `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When items wait for you, `<n> need you · all plans` shows first. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
 
 On a window of 900 pixels or less, the navigator is one row of chips above the list. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
 
@@ -63,7 +63,7 @@ Each row shows a box for the selection, a badge, the ID, the title, and a short 
 - A question or a gap: `1 Right` records that the build is right as it is (`accept_assumption`, with the text of what the build does). `2 Different` opens a field for how it should be (`clarify`). `3 Later` defers it. A deferred question shows `Deferred`.
 - A defect: `1 Hand over` opens a field for the name of the person or team that takes it. `1 Undo hand-over` removes the hand-over.
 
-After a decision, the next item that waits for you takes the highlight. The address keeps the view and the row, for example `/plans/checkout?view=all&at=c:a1/D1&focus=list`, so a reload or a copied link shows the same place. When somebody decides the highlighted item in another session, the item goes from the list, the next row takes the highlight, and the status bar says, for example, `k1/Q8 was answered in another session`.
+After a decision, the next item that waits for you takes the highlight. The address keeps the view and the row, for example `/plans/checkout?view=all&at=c:a1/D1&focus=list`, so a reload or a copied link shows the same place. When somebody decides the highlighted item in another session, the item goes from the list, the next row takes the highlight, and the status bar says, for example, `k1/Q8 was answered in another session`. The next number key records nothing and says so, because you did not choose the new row. Press the number again to act on it.
 
 ### Act on several records
 

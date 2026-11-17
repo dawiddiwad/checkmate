@@ -616,7 +616,6 @@ export function runPage(
 			detail: pane,
 			selected,
 			open: params.has('item') || selected !== 'summary',
-			keep: true,
 		}),
 	}
 }

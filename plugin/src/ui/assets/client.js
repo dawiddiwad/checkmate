@@ -571,6 +571,10 @@ if (listForm) {
 	window.addEventListener('popstate', () => showList(location.href, null))
 }
 
+function pageDepth() {
+	return window.history.state?.depth ?? 0
+}
+
 function plainClick(event) {
 	return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0
 }
@@ -585,7 +589,7 @@ document.addEventListener('click', (event) => {
 		window.history.length > 1
 	) {
 		event.preventDefault()
-		return void window.history.back()
+		return void window.history.go(-1 - pageDepth())
 	}
 	const link = event.target.closest('a[data-list-link]')
 	if (link && listForm) {
@@ -685,8 +689,6 @@ if (!CSS.supports('field-sizing', 'content')) {
 }
 
 const queue = document.querySelector('[data-queue]')
-const queueKeep = queue?.hasAttribute('data-queue-keep')
-const queueMode = queueKeep ? 'replace' : 'push'
 const narrowQueue = window.matchMedia('(max-width: 760px)')
 let queueTicket = 0
 let queueTimer = null
@@ -810,10 +812,10 @@ async function queueGo(url, mode, focus, detailOnly = false) {
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (ticket !== queueTicket) return
 		if (!swapQueue(fresh, false, false, detailOnly)) return void location.assign(url)
-		if (mode === 'push') window.history.pushState(null, '', url)
-		if (mode === 'replace') window.history.replaceState(null, '', url)
+		if (mode === 'push') window.history.pushState({ depth: pageDepth() + 1 }, '', url)
+		if (mode === 'replace') window.history.replaceState(window.history.state, '', url)
 		if (mode && new URL(url, location.href).searchParams.has('pick'))
-			window.history.replaceState(null, '', withPicks(location.href))
+			window.history.replaceState(window.history.state, '', withPicks(location.href))
 		window.dispatchEvent(new window.Event('queue-moved'))
 		if (!detailOnly) window.scrollTo(0, 0)
 		queueFocus(focus)
@@ -847,7 +849,7 @@ function queueStep(step) {
 	rove()
 	next.focus({ preventScroll: true })
 	next.scrollIntoView({ block: 'nearest' })
-	window.history.replaceState(null, '', next.href)
+	window.history.replaceState(window.history.state, '', next.href)
 	window.dispatchEvent(new window.Event('queue-moved'))
 	queueTicket++
 	clearTimeout(stepTimer)
@@ -1092,7 +1094,7 @@ async function queueSend(form, submitter) {
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (!swapQueue(fresh)) return void sendFailed(form, button)
 		if (response.ok) clearDrafts(sentKey)
-		if (response.ok && response.redirected) window.history.replaceState(null, '', response.url)
+		if (response.ok && response.redirected) window.history.replaceState(window.history.state, '', response.url)
 		window.dispatchEvent(new window.Event('queue-moved'))
 		window.scrollTo(0, 0)
 		const confirm = queueDetail().querySelector('[data-bulk-send]')
@@ -1121,7 +1123,7 @@ if (queue) {
 		if (row) {
 			event.preventDefault()
 			if (row.getAttribute('aria-current') === 'true' && !narrowQueue.matches) return void queueFocus('form')
-			return void queueGo(row.href, queueMode, narrowQueue.matches ? 'detail' : 'row')
+			return void queueGo(row.href, 'push', narrowQueue.matches ? 'detail' : 'row')
 		}
 		const more = event.target.closest('[data-more-rows]')
 		if (more) {
@@ -1132,7 +1134,7 @@ if (queue) {
 		const back = event.target.closest('[data-queue-back], [data-queue-go]')
 		if (back) {
 			event.preventDefault()
-			queueGo(back.href, queueMode, back.matches('[data-queue-go]') ? 'detail' : 'row')
+			queueGo(back.href, 'push', back.matches('[data-queue-go]') ? 'detail' : 'row')
 		}
 	})
 	document.addEventListener('submit', (event) => {

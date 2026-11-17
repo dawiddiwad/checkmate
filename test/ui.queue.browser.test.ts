@@ -576,3 +576,36 @@ test('a selection keeps the rows that stay in view after Show more and a filter'
 	await count.filter({ hasText: '1 selected' }).waitFor()
 	assert.deepEqual(await checked(), [keys[3]])
 })
+
+test('Back returns to the earlier selection on the run page and the exploration page', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const path of ['/runs/run-7', '/explorations/x-1']) {
+		await page.goto(url(path))
+		const first = await selected(page)
+		const rows = page.locator('[data-queue-link]')
+		const keys = await rows.evaluateAll((items) => items.map((item) => (item as HTMLElement).dataset.key!))
+		const [one, two] = keys.filter((key) => key !== first)
+		await page.locator(`[data-queue-link][data-key="${one}"]`).click()
+		await page.waitForFunction(
+			(key) => document.querySelector('[data-queue]')?.getAttribute('data-selected') === key,
+			one
+		)
+		await page.locator(`[data-queue-link][data-key="${two}"]`).click()
+		await page.waitForFunction(
+			(key) => document.querySelector('[data-queue]')?.getAttribute('data-selected') === key,
+			two
+		)
+		await page.goBack()
+		await page.waitForFunction(
+			(key) => document.querySelector('[data-queue]')?.getAttribute('data-selected') === key,
+			one
+		)
+		assert.equal(new URL(page.url()).pathname, path)
+		await page.goBack()
+		await page.waitForFunction(
+			(key) => document.querySelector('[data-queue]')?.getAttribute('data-selected') === key,
+			first
+		)
+		assert.equal(new URL(page.url()).pathname, path)
+	}
+})

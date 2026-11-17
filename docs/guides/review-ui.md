@@ -142,7 +142,7 @@ To remove a test, click `Remove <testId>` on the test in the plan page, write th
 - `New gaps`: each new gap that the plan does not have yet has `Answer` and `Bring into plan`.
 - `Record`: the coverage, the cleanup, and the attempts.
 
-A link to an assertion, for example `T2.A2`, selects its test. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags. The selected item is in the address, for example `/runs/run-7?item=test:T2`.
+A link to an assertion, for example `T2.A2`, selects its test. The plan and run pages show the metadata of the requirements, tests, and findings as `key=value` tags. The selected item is in the address, for example `/runs/run-7?item=test:T2`. As in `Needs you`, Back in the browser selects the item that you selected before. The exploration page does the same.
 
 ### Runs and Log
 

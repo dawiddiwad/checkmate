@@ -206,17 +206,10 @@ export type Split = {
 	detail: Html
 	selected: string
 	open: boolean
-	keep?: boolean
 }
 
 export function listAndItem(split: Split) {
-	return html`<div
-		class="queue"
-		data-queue
-		data-selected="${split.selected}"
-		${split.open ? html`data-open` : ''}
-		${split.keep ? html`data-queue-keep` : ''}
-	>
+	return html`<div class="queue" data-queue data-selected="${split.selected}" ${split.open ? html`data-open` : ''}>
 		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">
 			<a class="skip skip-item" href="#item">Skip to the selected item</a>
 			${split.list}

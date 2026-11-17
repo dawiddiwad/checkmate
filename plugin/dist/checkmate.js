@@ -16905,13 +16905,7 @@ function crumbBar(crumbs3, list2 = null) {
 	</div>`;
 }
 function listAndItem(split) {
-  return html2`<div
-		class="queue"
-		data-queue
-		data-selected="${split.selected}"
-		${split.open ? html2`data-open` : ""}
-		${split.keep ? html2`data-queue-keep` : ""}
-	>
+  return html2`<div class="queue" data-queue data-selected="${split.selected}" ${split.open ? html2`data-open` : ""}>
 		<section class="q-list" aria-label="${split.label} list" data-region="queue-list">
 			<a class="skip skip-item" href="#item">Skip to the selected item</a>
 			${split.list}
@@ -17616,8 +17610,7 @@ function explorationPage(store, explorationId, params = new URLSearchParams()) {
       list: explorationList(live, selected),
       detail: detail2,
       selected,
-      open: params.has("item") || selected !== "summary",
-      keep: true
+      open: params.has("item") || selected !== "summary"
     })
   };
 }
@@ -19862,8 +19855,7 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
       list: runList2(detail2, selected),
       detail: pane,
       selected,
-      open: params.has("item") || selected !== "summary",
-      keep: true
+      open: params.has("item") || selected !== "summary"
     })
   };
 }

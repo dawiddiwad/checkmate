@@ -562,7 +562,6 @@ export function explorationPage(store: Store, explorationId: string, params = ne
 			detail,
 			selected,
 			open: params.has('item') || selected !== 'summary',
-			keep: true,
 		}),
 	}
 }

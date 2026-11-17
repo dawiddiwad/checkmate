@@ -3,6 +3,7 @@ import type { Browser, BrowserContextOptions, Page } from 'playwright-core'
 import { execFile } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
+import assert from 'node:assert/strict'
 import { promisify } from 'node:util'
 import { chromium } from 'playwright-core'
 import { startUi } from '../plugin/src/ui/server.ts'
@@ -41,7 +42,10 @@ export async function open(t: TestContext, options: BrowserContextOptions = {}) 
 		await context.close()
 		await ui.close()
 	})
+	const errors: string[] = []
+	context.on('page', (opened) => opened.on('pageerror', (error) => errors.push(error.message)))
 	const page = await context.newPage()
+	t.after(() => assert.deepEqual(errors, [], 'the page threw an error'))
 	const url = (path: string) => new URL(path, ui.url).href
 	return { workspace, ui, page, url }
 }

@@ -2,8 +2,8 @@ import type { Store } from '../store.ts'
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
 import type { ListPage, ListQuery } from '../views.ts'
-import { operationLog, pagedOperations, pagedPlans, pagedRuns, planList, runList } from '../views.ts'
-import { html, join, pill, plural, time, words } from './html.ts'
+import { operationLog, pagedOperations, pagedRuns, planList, runList } from '../views.ts'
+import { html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
@@ -29,7 +29,7 @@ export function counts(values: Record<string, number>) {
 	return html`<span class="counts"
 		>${shown.map(
 			(key) =>
-				html`<span class="st ${countLook[key][1]}" title="${values[key]} ${words(key)}"
+				html`<span class="${pillClass(key)}" title="${values[key]} ${words(key)}"
 					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
 						${words(key)}</span
 					></span
@@ -212,66 +212,6 @@ function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[
 	</div>`
 }
 
-const planShows = [
-	['', 'All plans'],
-	['needs_decision', 'Open gaps'],
-	['awaiting_approval', 'Awaiting approval'],
-	['blocked', 'Blocked'],
-]
-
-const approvals = [
-	['', 'Any approval'],
-	['pending', 'Pending'],
-	['approved', 'Approved'],
-	['rejected', 'Rejected'],
-	['not_required', 'Not required'],
-]
-
-const waits = [
-	['', 'Anyone'],
-	['oracle', 'Oracle'],
-	['planner', 'Planner'],
-	['qa', 'QA'],
-	['factory', 'Factory'],
-	['none', 'Nobody'],
-]
-
-export function plansSpec(): ListSpec {
-	return {
-		path: '/plans',
-		region: 'plans',
-		noun: 'plan',
-		none: ['No plan yet.', html`To make one, run <code>/checkmate:test</code> in Claude Code.`],
-		search: 'Search plans',
-		columns: [
-			{ label: 'Plan', sort: 'plan' },
-			{ label: 'Loop', sort: 'loop' },
-			{ label: 'Tests', sort: 'tests', first: 'desc' },
-			{ label: 'Open gaps', sort: 'gaps', first: 'desc' },
-			{ label: 'Approval', sort: 'approval' },
-			{ label: 'Blocks', sort: 'blocked', first: 'desc' },
-			{ label: 'Updated', sort: 'updated', first: 'desc' },
-		],
-		sort: 'updated',
-		direction: 'desc',
-		filters: [
-			{ name: 'show', label: 'Show', choices: planShows, strict: true },
-			{ name: 'approval', label: 'Approval', choices: approvals, strict: true },
-			{ name: 'waits', label: 'Waits on', choices: waits, strict: true },
-		],
-	}
-}
-
-type PlanRow = ReturnType<typeof pagedPlans>['rows'][number]
-
-function testSummary(tests: PlanRow['tests']) {
-	return html`${plural(tests.total, 'test')}
-		<span class="muted"
-			>· ${tests.ready}
-			ready${tests.blocked ? ` · ${tests.blocked} blocked` : ''}${tests.deferred ? ` · ${tests.deferred} deferred` : ''}</span
-		>`
-}
-
 function listRow(
 	key: string,
 	href: string | null,
@@ -281,45 +221,14 @@ function listRow(
 ) {
 	const inner = html`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
 		${lines.map((line, index) => html`<span class="${index ? 'q-note' : 'q-title'}">${line}</span>`)}`
+	const label = key.slice(key.indexOf(':') + 1)
 	return html`<li data-key="${key}" data-nav-row>
-		${href ? html`<a class="q-row" href="${href}" data-nav-item>${inner}</a>` : html`<div class="q-row">${inner}</div>`}
+		${
+			href
+				? html`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>`
+				: html`<div class="q-row">${inner}</div>`
+		}
 	</li>`
-}
-
-function planRow(row: PlanRow) {
-	if (row.status === 'requested')
-		return listRow(
-			`plan:${row.planId}`,
-			`/plans/${row.planId}`,
-			row.planId,
-			html`${loopState(row.loop)} ${pill('requested')} ${time(row.since)}`,
-			[html`<span class="muted">no revision yet</span>`]
-		)
-	const gaps = row.openGaps.length
-		? `open gaps ${row.openGaps.map((id) => `${id}${row.openBlockingGaps.includes(id) ? ' (blocking)' : ''}`).join(', ')}`
-		: 'no open gap'
-	return listRow(
-		`plan:${row.planId}`,
-		`/plans/${row.planId}@${row.revision}`,
-		`${row.planId}@${row.revision}`,
-		html`${loopState(row.loop)} ${pill(row.approval ?? row.status)} ${time(row.since)}`,
-		[
-			html`${testSummary(row.tests)} <span class="muted">· ${gaps}</span>`,
-			...row.blocked.map((block) => `${block.testId} is blocked by ${block.dependency}: ${block.cause}`),
-		]
-	)
-}
-
-export function plansPage(store: Store, params: URLSearchParams): Page {
-	const spec = plansSpec()
-	const { page, state } = listPage(listState(params, spec), (query) => pagedPlans(store, query))
-	return {
-		title: 'Plans',
-		section: 'home',
-		subjects: ['*'],
-		body: html`${heading('Plans', 'Each plan at its latest revision.')} ${filterBar(spec, state)}
-		${listRegion(spec, state, page.total, page.rows.map(planRow))}`,
-	}
 }
 
 const runStatuses = [

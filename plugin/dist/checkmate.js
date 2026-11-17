@@ -19657,7 +19657,7 @@ function counts(values) {
   if (!shown2.length) return html2`<span class="muted">no outcomes yet</span>`;
   return html2`<span class="counts"
 		>${shown2.map(
-    (key) => html2`<span class="st ${countLook[key][1]}" title="${values[key]} ${words(key)}"
+    (key) => html2`<span class="${pillClass(key)}" title="${values[key]} ${words(key)}"
 					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
 						${words(key)}</span
 					></span
@@ -19798,8 +19798,9 @@ function listRegion(spec, state, total, rows) {
 function listRow(key, href, top, tags2, lines2) {
   const inner = html2`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags2}</span></span>
 		${lines2.map((line, index2) => html2`<span class="${index2 ? "q-note" : "q-title"}">${line}</span>`)}`;
+  const label = key.slice(key.indexOf(":") + 1);
   return html2`<li data-key="${key}" data-nav-row>
-		${href ? html2`<a class="q-row" href="${href}" data-nav-item>${inner}</a>` : html2`<div class="q-row">${inner}</div>`}
+		${href ? html2`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>` : html2`<div class="q-row">${inner}</div>`}
 	</li>`;
 }
 var runStatuses2 = [
@@ -21651,11 +21652,17 @@ function settingsNav(current) {
 	</nav>`;
 }
 function settingsPage(current, title, subjects, body, status) {
+  const target = title !== "Targets";
   return {
     title,
     section: "settings",
     subjects,
     status,
+    crumbs: [
+      ["Settings", "/settings/targets"],
+      ...target ? [["Targets", "/settings/targets"], [title, null]] : [["Targets", null]]
+    ],
+    back: target ? "/settings/targets" : "/",
     body: html2`${settingsNav(current)} ${body}`
   };
 }

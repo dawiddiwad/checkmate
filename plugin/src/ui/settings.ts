@@ -28,11 +28,19 @@ function settingsNav(current: string) {
 }
 
 function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
+	const target = title !== 'Targets'
 	return {
 		title,
 		section: 'settings',
 		subjects,
 		status,
+		crumbs: [
+			['Settings', '/settings/targets'],
+			...(target
+				? [['Targets', '/settings/targets'] as [string, string], [title, null] as [string, null]]
+				: [['Targets', null] as [string, null]]),
+		],
+		back: target ? '/settings/targets' : '/',
 		body: html`${settingsNav(current)} ${body}`,
 	}
 }

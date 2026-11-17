@@ -89,6 +89,7 @@ import {
 	finishExploration,
 	startExploration,
 	startFollow,
+	stopExploration,
 	waitExploration,
 } from './explorers.ts'
 import { doneSteps, nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
@@ -1416,6 +1417,30 @@ const commands: Record<string, Command> = {
 		write: true,
 		run: (store, args, { actor }) => pauseRun(store, actor, value(args, 'explorationId')!, value(args, 'reason')!),
 		print: (reply) => ({ facts: { reason: reply.data.reason, waitsOn: reply.data.waitsOn } }),
+	},
+	'explore stop': {
+		positionals: ['explorationId'],
+		flags: { explorer: 'value', reason: 'value' },
+		write: true,
+		run: (store, args, { actor }) =>
+			stopExploration(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				explorer: value(args, 'explorer'),
+				reason: value(args, 'reason'),
+			}),
+		print: (reply) => ({
+			facts: {
+				explorer: reply.data.explorer ?? undefined,
+				was: reply.data.was,
+				reason: reply.data.reason || undefined,
+				workFolder: reply.data.workFolder ?? undefined,
+				note: reply.data.note,
+			},
+			lines: [
+				...((reply.data.left as number[]) ?? []).map((pid) => ['alive', pid]),
+				...(reply.data.next as string[]).map((line) => ['next', line]),
+			],
+		}),
 	},
 	'explore show': {
 		positionals: ['explorationId'],

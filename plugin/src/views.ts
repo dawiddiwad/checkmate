@@ -385,7 +385,7 @@ export function planExplorations(store: Store, planId: string) {
 		planId
 	).map((row) => {
 		const status = explorationStatus(store, row.exploration_id)
-		const ended = ['failed', 'stopped'].includes(status.state)
+		const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
 		return {
 			explorationId: status.explorationId,
 			state: status.state,
@@ -577,7 +577,7 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 	const claims = planClaims(store, status.planId, kept).filter(own)
 	const questions = planQuestions(store, status.planId, kept).filter(own)
 	const found = foundEntries(store, status.planId, explorationId, limit, claims, questions)
-	const ended = ['failed', 'stopped'].includes(status.state)
+	const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
 	return {
 		explorationId,
 		planId: status.planId,
@@ -753,7 +753,7 @@ function loopStatus(store: Store, planId: string) {
 	const fixes = claims.filter((claim) => factoryStates.includes(claim.state))
 	const kept = fixes.filter((claim) => !claim.handoff).length
 	const last = explorations.at(-1)
-	const failed = last !== undefined && ['failed', 'stopped'].includes(last.state)
+	const failed = last !== undefined && ['failed', 'stopped', 'interrupted'].includes(last.state)
 	const finished = explorations.filter((item) => item.state === 'completed').at(-1)
 	const after = [
 		...(fixes.length
@@ -1710,7 +1710,7 @@ export function needsYou(store: Store) {
 		running: explorations.filter((item) => item.running),
 		failed: explorations.filter(
 			(item, index) =>
-				['failed', 'stopped'].includes(item.state) &&
+				['failed', 'stopped', 'interrupted'].includes(item.state) &&
 				!explorations.slice(index + 1).some((later) => later.planId === item.planId)
 		),
 	}

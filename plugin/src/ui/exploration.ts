@@ -126,7 +126,7 @@ export function explorationBanners(explorations: Listed[]) {
 		)
 	)}
 	${
-		last && (last.state === 'failed' || last.state === 'stopped')
+		last && (last.state === 'failed' || last.state === 'stopped' || last.state === 'interrupted')
 			? banner(
 					'fail',
 					html`<span data-key="failed:${last.explorationId}"
@@ -165,7 +165,9 @@ export function explorationsTable(explorations: Listed[]) {
 								${pill(item.state)}
 								${item.reason !== null ? html`<p class="help">${dataLine(item.reason, item.data)}</p>` : ''}
 								${
-									item.follow === 'failed' || item.follow === 'stopped'
+									item.follow === 'failed' ||
+									item.follow === 'stopped' ||
+									item.follow === 'interrupted'
 										? html`<p class="help">
 												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
 											</p>`
@@ -230,12 +232,12 @@ function stateLine(live: Live) {
 			'info',
 			html`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
 		)
-	if (live.state === 'failed' || live.state === 'stopped')
+	if (live.state === 'failed' || live.state === 'stopped' || live.state === 'interrupted')
 		return banner(
 			'fail',
 			html`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
 		)
-	if (live.follow === 'failed' || live.follow === 'stopped')
+	if (live.follow === 'failed' || live.follow === 'stopped' || live.follow === 'interrupted')
 		return banner(
 			'fail',
 			html`<span data-key="follow-failed"

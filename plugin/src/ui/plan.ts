@@ -535,7 +535,9 @@ function questionsFold(planId: string, found: PlanContext, gaps: Html | '' = '',
 }
 
 function explorationsFold(found: PlanContext) {
-	const attention = found.explorations.some((item) => item.running || ['failed', 'stopped'].includes(item.state))
+	const attention = found.explorations.some(
+		(item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state)
+	)
 	return fold(
 		'explorations',
 		'Explorations',
@@ -583,7 +585,7 @@ export function planPage(
 		approving ||
 		accepting ||
 		found.waiting.length > 0 ||
-		found.explorations.some((item) => item.running || ['failed', 'stopped'].includes(item.state))
+		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
 	const overview = html`<p class="lead">${plan.objective}</p>
 		<p class="help">${planSummaryLine(plan)}</p>
 		<h3 class="minor" id="requirements">
@@ -676,7 +678,7 @@ export function requestPage(store: Store, planId: string): Page {
 	</div>`
 	const anyOpen =
 		found.waiting.length > 0 ||
-		found.explorations.some((item) => item.running || ['failed', 'stopped'].includes(item.state))
+		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
 	const overview = facts([
 		['Objective', request.objective],
 		['Target', targetLink],

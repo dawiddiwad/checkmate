@@ -1,4 +1,5 @@
 import { Refusal } from './contracts.ts'
+import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
 import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -257,28 +258,55 @@ export function replyArray(text: unknown): unknown[] | undefined {
 	return undefined
 }
 
+const liveChildren = new Set<ChildProcess>()
+const endGraceMilliseconds = 1500
+
+function killGroup(child: ChildProcess, signal: NodeJS.Signals) {
+	try {
+		process.kill(-child.pid!, signal)
+	} catch {}
+}
+
+export async function endLaunchedClaudes() {
+	const ending = [...liveChildren]
+	const closed = Promise.all(ending.map((child) => new Promise((done) => child.once('close', done))))
+	for (const child of ending) killGroup(child, 'SIGTERM')
+	const grace = setTimeout(() => {
+		for (const child of ending) killGroup(child, 'SIGKILL')
+	}, endGraceMilliseconds)
+	await closed
+	clearTimeout(grace)
+}
+
+export function exitOnSignal() {
+	const end = async () => {
+		await endLaunchedClaudes()
+		process.exit(143)
+	}
+	process.once('SIGTERM', end)
+	process.once('SIGINT', end)
+}
+
 export function launchClaude(
 	claude: string,
 	args: string[],
 	prompt: string,
 	cwd: string,
 	env: Env,
-	seconds: number
+	seconds: number,
+	onStart?: (pid: number) => void
 ): Promise<ClaudeCall> {
 	return new Promise((resolvePromise) => {
 		const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		liveChildren.add(child)
+		if (child.pid) onStart?.(child.pid)
 		let output = ''
 		let errors = ''
 		let failure: ClaudeCall['failure']
-		const kill = (signal: NodeJS.Signals) => {
-			try {
-				process.kill(-child.pid!, signal)
-			} catch {}
-		}
 		const timer = setTimeout(() => {
 			failure = ['interrupted', `claude did not end in ${seconds} seconds. Checkmate stopped it.`]
-			kill('SIGTERM')
-			setTimeout(() => kill('SIGKILL'), 1500).unref()
+			killGroup(child, 'SIGTERM')
+			setTimeout(() => killGroup(child, 'SIGKILL'), endGraceMilliseconds).unref()
 		}, seconds * 1000)
 		child.stdout.on('data', (bytes: Buffer) => {
 			if (output.length < maxOutputBytes) output += bytes.toString()
@@ -292,6 +320,7 @@ export function launchClaude(
 			failure ??= ['operational_error', `claude failed: ${'code' in error ? String(error.code) : 'unknown'}.`]
 		})
 		child.on('close', (status, signal) => {
+			liveChildren.delete(child)
 			clearTimeout(timer)
 			resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal))
 		})

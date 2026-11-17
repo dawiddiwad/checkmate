@@ -43,6 +43,7 @@ import {
 	authenticationHint,
 	callClaude,
 	childEnv,
+	exitOnSignal,
 	installedPluginId,
 	replyArray,
 	launchClaude,
@@ -305,7 +306,9 @@ export function finishExploration(
 
 function event(store: Store, actor: string, explorationId: string, item: Omit<ExplorationEvent, 'at'>) {
 	write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
-		addEvent(store, explorationId, item, operationId, at)
+		const ending = item.step === 'done' || item.step === 'followed'
+		if (!ending || !stopOf(explorationEvents(store, explorationId)))
+			addEvent(store, explorationId, item, operationId, at)
 		return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] }
 	})
 }
@@ -313,6 +316,13 @@ function event(store: Store, actor: string, explorationId: string, item: Omit<Ex
 export function startOf(events: ExplorationEvent[]) {
 	const launch = events.find((item) => item.step === 'start')?.detail as Launch | undefined
 	return launch && { ...launch, level: storedLevel(launch.level) }
+}
+
+function noteChild(store: Store, actor: string, explorationId: string, explorer: string | null) {
+	return (pid: number) => {
+		event(store, actor, explorationId, { step: 'child', explorer, status: 'started', detail: { pid } })
+		if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, 'SIGTERM')
+	}
 }
 
 function failureHint(launch: Launch, call: ClaudeCall) {
@@ -401,7 +411,8 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 				prompt,
 				store.workspace,
 				childEnv(env, extraEnv),
-				launch.timeoutSeconds
+				launch.timeoutSeconds,
+				noteChild(store, actor, explorationId, explorer)
 			)
 		const watch = watchWork(store, actor, explorationId, explorer, 'study')
 		const study = await turn(['--session-id', session], brief.study)
@@ -627,7 +638,8 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 			prompt,
 			store.workspace,
 			childEnv(env),
-			launch.timeoutSeconds
+			launch.timeoutSeconds,
+			noteChild(store, actor, explorationId, null)
 		)
 	const ids = new Set(items.map((item) => item.id))
 	const calls = [await ask(['--session-id', session], brief)]
@@ -674,6 +686,7 @@ function hostAuthentication(store: Store, explorationId: string) {
 }
 
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
+	exitOnSignal()
 	const store = openStore(workspace)
 	const actor = env.CHECKMATE_ACTOR ?? 'checkmate'
 	try {
@@ -685,6 +698,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 		})
 		const launch = startOf(explorationEvents(store, explorationId))
 		if (!launch) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
+		if (stopOf(explorationEvents(store, explorationId))) return
 		if (launch.explorers) {
 			deriveRules(store, actor, explorationId, launch, env)
 			const ended = await launchExplorers(store, actor, explorationId, launch, env)
@@ -785,7 +799,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 		requireCondition(
 			followable(events),
 			`Exploration ${id} is ${state}. A follow-up needs a completed exploration.`,
-			['failed', 'stopped', 'open'].includes(state)
+			['failed', 'stopped', 'interrupted', 'open'].includes(state)
 				? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash`
 				: `Run checkmate explore wait ${id}. Then run the follow-up again.`
 		)
@@ -852,6 +866,7 @@ function followSessions(events: ExplorationEvent[]) {
 }
 
 export async function driveFollow(workspace: string, explorationId: string, env: Env) {
+	exitOnSignal()
 	const store = openStore(workspace)
 	const actor = env.CHECKMATE_ACTOR ?? 'checkmate'
 	try {
@@ -862,6 +877,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			detail: { pid: process.pid },
 		})
 		const events = explorationEvents(store, explorationId)
+		if (stopOf(events)) return
 		const plan = events.findLast((item) => item.step === 'follow')!.detail as FollowPlan
 		const launch = {
 			...startOf(events)!,
@@ -886,7 +902,8 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 						followBrief(plan.questions, folder, plan.seconds),
 						store.workspace,
 						childEnv(env, extraEnv),
-						plan.timeoutSeconds
+						plan.timeoutSeconds,
+						noteChild(store, actor, explorationId, explorer)
 					)
 					watch.stop()
 					return { explorer, session, call }
@@ -950,11 +967,135 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 	}
 }
 
-function running(pid: unknown) {
+export type StopInput = { explorationId: string; explorer?: string; reason?: string }
+
+const stopWaitMilliseconds = 5000
+const killWaitMilliseconds = 2000
+const stopPollMilliseconds = 50
+
+function endGroup(pid: number, signal: NodeJS.Signals) {
+	try {
+		process.kill(-pid, signal)
+	} catch {}
+}
+
+function waitUntil(done: () => boolean, milliseconds: number) {
+	const until = Date.now() + milliseconds
+	while (!done() && Date.now() < until)
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, stopPollMilliseconds)
+	return done()
+}
+
+function childPids(events: ExplorationEvent[], explorer?: string) {
+	const pids = events
+		.filter((item) => item.step === 'child' && (explorer === undefined || item.explorer === explorer))
+		.map((item) => item.detail.pid as number)
+	return explorer === undefined ? [...new Set(pids)] : pids.slice(-1)
+}
+
+function endProcesses(all: number[]) {
+	const pids = all.filter(running)
+	for (const pid of pids) endGroup(pid, 'SIGTERM')
+	if (!waitUntil(() => !pids.some(running), stopWaitMilliseconds)) {
+		for (const pid of pids.filter(running)) endGroup(pid, 'SIGKILL')
+		waitUntil(() => !pids.some(running), killWaitMilliseconds)
+	}
+	return pids.filter(running)
+}
+
+export function stopExploration(store: Store, actor: string | undefined, input: StopInput): Reply {
+	const id = input.explorationId
+	const reason = input.reason?.trim() ?? ''
+	const explorer = input.explorer
+	const was = { state: '', pids: [] as number[], supervisor: null as number | null }
+	const reply = write(store, { actor, command: 'explore stop', subject: id, input }, (operationId, at, who) => {
+		const row = explorationRow(store, id)
+		const events = explorationEvents(store, id)
+		const state = explorationState(events)
+		requireCondition(
+			startOf(events)?.path !== 'session',
+			`Exploration ${id} runs in a session. The operator session owns its testers.`,
+			'Stop the testers in the session.'
+		)
+		requireCondition(
+			['starting', 'testing', 'recording', 'verifying', 'following', 'interrupted'].includes(state),
+			`Exploration ${id} is ${state}. Only a running exploration can stop.`,
+			`Run checkmate explore show ${id}.`
+		)
+		if (explorer !== undefined) {
+			const launched = events.some((item) => item.step === 'launch' && item.explorer === explorer)
+			requireCondition(
+				launched,
+				`Exploration ${id} has no running tester named ${explorer}.`,
+				`Run checkmate explore status ${id} to read the testers.`
+			)
+			requireCondition(
+				!testerStopOf(events, explorer) &&
+					!events.some((item) => item.step === 'end' && item.explorer === explorer),
+				`Tester ${explorer} of exploration ${id} has ended.`,
+				`Run checkmate explore status ${id}.`
+			)
+		}
+		addEvent(
+			store,
+			id,
+			{
+				step: 'stop',
+				explorer: explorer ?? null,
+				status: 'completed',
+				detail: { actor: who, reason, was: state },
+			},
+			operationId,
+			at
+		)
+		was.state = state
+		was.pids = childPids(events, explorer)
+		was.supervisor =
+			(events.findLast((item) => item.step === 'supervisor')?.detail.pid as number | undefined) ?? null
+		return {
+			reply: completed(id, {
+				explorationId: id,
+				planId: row.plan_id,
+				explorer: explorer ?? null,
+				was: state,
+				reason,
+				actor: who,
+			}),
+			subjects: [`exploration:${id}`, `plan:${row.plan_id}`],
+		}
+	})
+	const targets = explorer === undefined && was.supervisor !== null ? [was.supervisor] : []
+	const left = [...endProcesses(targets), ...endProcesses(was.pids.filter(running))]
+	if (explorer === undefined) keepBrowserFolder(store, id)
+	const kept = explorer === undefined && existsSync(join(store.workspace, workFolder(id))) ? workFolder(id) : null
+	const row = explorationRow(store, id)
+	return {
+		...reply,
+		status: left.length ? 'operational_error' : 'completed',
+		reasons: left.map((pid) => `Process ${pid} is still alive.`),
+		data: {
+			...reply.data,
+			left,
+			workFolder: kept,
+			...(kept ? { note: 'Reports that were not recorded stay in the work folder.' } : {}),
+			next: [`checkmate test ${row.plan_id} --build ${row.build}`],
+		},
+	}
+}
+
+function zombie(pid: number) {
+	try {
+		return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.startsWith('Z') === true
+	} catch {
+		return false
+	}
+}
+
+export function running(pid: unknown) {
 	if (typeof pid !== 'number') return false
 	try {
 		process.kill(pid, 0)
-		return true
+		return !zombie(pid)
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === 'EPERM'
 	}
@@ -966,8 +1107,18 @@ function followState(events: ExplorationEvent[]) {
 	const later = events.slice(follow + 1)
 	const ended = later.find((item) => item.step === 'followed')
 	if (ended) return ended.status === 'completed' ? 'completed' : 'failed'
+	if (stopOf(events)) return 'stopped'
 	const supervisor = later.find((item) => item.step === 'supervisor')
-	return supervisor && !running(supervisor.detail.pid) ? 'stopped' : 'running'
+	return supervisor && !running(supervisor.detail.pid) ? 'interrupted' : 'running'
+}
+
+export function stopOf(events: ExplorationEvent[]) {
+	const follow = events.findLastIndex((item) => item.step === 'follow')
+	return events.slice(follow + 1).find((item) => item.step === 'stop' && item.explorer === null)
+}
+
+function testerStopOf(events: ExplorationEvent[], explorer: string) {
+	return events.find((item) => item.step === 'stop' && item.explorer === explorer)
 }
 
 export function pauseOf(events: ExplorationEvent[]) {
@@ -980,12 +1131,20 @@ export function explorationState(events: ExplorationEvent[]) {
 	const done = events.find((item) => item.step === 'done')
 	if (done) return done.status === 'completed' ? 'completed' : 'failed'
 	const supervisor = events.find((item) => item.step === 'supervisor')
-	if (supervisor && !running(supervisor.detail.pid)) return 'stopped'
+	if (stopOf(events)) return 'stopped'
+	if (supervisor && !running(supervisor.detail.pid)) return 'interrupted'
 	if (!events.some((item) => item.step === 'start')) return 'open'
 	if (!supervisor && startOf(events)?.path !== 'session') return 'starting'
 	if (events.some((item) => item.step === 'merge')) return 'verifying'
 	if (events.some((item) => item.step === 'record')) return 'recording'
 	return 'testing'
+}
+
+function stopReason(events: ExplorationEvent[]) {
+	const stop = stopOf(events)
+	if (!stop) return null
+	const reason = stop.detail.reason
+	return `Stopped by ${stop.detail.actor}${reason ? `: ${reason}` : '.'}`
 }
 
 export function explorationStatus(store: Store, explorationId: string) {
@@ -1040,22 +1199,29 @@ export function explorationStatus(store: Store, explorationId: string) {
 		follow,
 		followReason:
 			follow === 'stopped'
-				? 'The supervisor of the follow-up stopped before the end.'
-				: follow === 'failed'
-					? ((followed?.detail.reason ?? null) as string | null)
-					: null,
+				? stopReason(events)
+				: follow === 'interrupted'
+					? 'The supervisor of the follow-up stopped before the end.'
+					: follow === 'failed'
+						? ((followed?.detail.reason ?? null) as string | null)
+						: null,
 		explorers,
 		phases: events
 			.filter((item) => ['merge', 'verify', 'follow', 'followed'].includes(item.step))
 			.map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
 		doneHint: (done?.detail.hint ?? null) as string | null,
 		workFolder:
-			(['failed', 'stopped'].includes(state) || follow === 'failed' || follow === 'stopped') &&
+			(['failed', 'stopped', 'interrupted'].includes(state) ||
+				['failed', 'stopped', 'interrupted'].includes(follow ?? '')) &&
 			existsSync(join(store.workspace, workFolder(row.exploration_id)))
 				? workFolder(row.exploration_id)
 				: null,
-		reason: (done?.detail.reason ?? (state === 'stopped' ? 'The supervisor stopped before the end.' : null)) as
-			string | null,
+		reason: (done?.detail.reason ??
+			(state === 'stopped'
+				? stopReason(events)
+				: state === 'interrupted'
+					? 'The supervisor stopped before the end.'
+					: null)) as string | null,
 	}
 }
 
@@ -1063,7 +1229,7 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 	const until = Date.now() + timeoutSeconds * 1000
 	for (;;) {
 		const status = explorationStatus(store, explorationId)
-		const ended = ['completed', 'failed', 'stopped', 'open'].includes(status.state)
+		const ended = ['completed', 'failed', 'stopped', 'interrupted', 'open'].includes(status.state)
 		if (ended || Date.now() >= until) {
 			const outcome = status.state === 'completed' ? 'done' : ended ? 'failed' : 'timeout'
 			const hints = [

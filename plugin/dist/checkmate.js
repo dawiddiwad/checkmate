@@ -8787,22 +8787,44 @@ function replyArray(text) {
   }
   return void 0;
 }
-function launchClaude(claude, args, prompt, cwd, env, seconds) {
+var liveChildren = /* @__PURE__ */ new Set();
+var endGraceMilliseconds = 1500;
+function killGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+  }
+}
+async function endLaunchedClaudes() {
+  const ending = [...liveChildren];
+  const closed = Promise.all(ending.map((child) => new Promise((done) => child.once("close", done))));
+  for (const child of ending) killGroup(child, "SIGTERM");
+  const grace = setTimeout(() => {
+    for (const child of ending) killGroup(child, "SIGKILL");
+  }, endGraceMilliseconds);
+  await closed;
+  clearTimeout(grace);
+}
+function exitOnSignal() {
+  const end = async () => {
+    await endLaunchedClaudes();
+    process.exit(143);
+  };
+  process.once("SIGTERM", end);
+  process.once("SIGINT", end);
+}
+function launchClaude(claude, args, prompt, cwd, env, seconds, onStart) {
   return new Promise((resolvePromise) => {
     const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    liveChildren.add(child);
+    if (child.pid) onStart?.(child.pid);
     let output = "";
     let errors = "";
     let failure;
-    const kill = (signal) => {
-      try {
-        process.kill(-child.pid, signal);
-      } catch {
-      }
-    };
     const timer = setTimeout(() => {
       failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
-      kill("SIGTERM");
-      setTimeout(() => kill("SIGKILL"), 1500).unref();
+      killGroup(child, "SIGTERM");
+      setTimeout(() => killGroup(child, "SIGKILL"), endGraceMilliseconds).unref();
     }, seconds * 1e3);
     child.stdout.on("data", (bytes) => {
       if (output.length < maxOutputBytes) output += bytes.toString();
@@ -8817,6 +8839,7 @@ function launchClaude(claude, args, prompt, cwd, env, seconds) {
       failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
     });
     child.on("close", (status, signal) => {
+      liveChildren.delete(child);
       clearTimeout(timer);
       resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
     });
@@ -14368,13 +14391,21 @@ function finishExploration(store, actor, input, env) {
 }
 function event(store, actor, explorationId, item) {
   write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
-    addEvent(store, explorationId, item, operationId, at);
+    const ending = item.step === "done" || item.step === "followed";
+    if (!ending || !stopOf(explorationEvents(store, explorationId)))
+      addEvent(store, explorationId, item, operationId, at);
     return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
   });
 }
 function startOf(events) {
   const launch = events.find((item) => item.step === "start")?.detail;
   return launch && { ...launch, level: storedLevel(launch.level) };
+}
+function noteChild(store, actor, explorationId, explorer) {
+  return (pid) => {
+    event(store, actor, explorationId, { step: "child", explorer, status: "started", detail: { pid } });
+    if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, "SIGTERM");
+  };
 }
 function failureHint(launch, call) {
   if (authenticationFailed(call)) return authenticationHint;
@@ -14451,7 +14482,8 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       prompt,
       store.workspace,
       childEnv(env, extraEnv),
-      launch.timeoutSeconds
+      launch.timeoutSeconds,
+      noteChild(store, actor, explorationId, explorer)
     );
     const watch = watchWork(store, actor, explorationId, explorer, "study");
     const study = await turn(["--session-id", session], brief.study);
@@ -14657,7 +14689,8 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
     prompt,
     store.workspace,
     childEnv(env),
-    launch.timeoutSeconds
+    launch.timeoutSeconds,
+    noteChild(store, actor, explorationId, null)
   );
   const ids2 = new Set(items.map((item) => item.id));
   const calls = [await ask(["--session-id", session], brief)];
@@ -14695,6 +14728,7 @@ function hostAuthentication(store, explorationId) {
   return explorationEvents(store, explorationId).some((item) => item.detail.hint === authenticationHint);
 }
 async function driveExploration(workspace, explorationId, env) {
+  exitOnSignal();
   const store = openStore(workspace);
   const actor = env.CHECKMATE_ACTOR ?? "checkmate";
   try {
@@ -14706,6 +14740,7 @@ async function driveExploration(workspace, explorationId, env) {
     });
     const launch = startOf(explorationEvents(store, explorationId));
     if (!launch) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
+    if (stopOf(explorationEvents(store, explorationId))) return;
     if (launch.explorers) {
       deriveRules(store, actor, explorationId, launch, env);
       const ended = await launchExplorers(store, actor, explorationId, launch, env);
@@ -14784,7 +14819,7 @@ function startFollow(store, actor, input, env) {
     requireCondition(
       followable(events),
       `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
-      ["failed", "stopped", "open"].includes(state) ? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
+      ["failed", "stopped", "interrupted", "open"].includes(state) ? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
     );
     const answered = unusedAnswers(store, id2);
     requireCondition(
@@ -14838,6 +14873,7 @@ function followSessions(events) {
   });
 }
 async function driveFollow(workspace, explorationId, env) {
+  exitOnSignal();
   const store = openStore(workspace);
   const actor = env.CHECKMATE_ACTOR ?? "checkmate";
   try {
@@ -14848,6 +14884,7 @@ async function driveFollow(workspace, explorationId, env) {
       detail: { pid: process.pid }
     });
     const events = explorationEvents(store, explorationId);
+    if (stopOf(events)) return;
     const plan = events.findLast((item) => item.step === "follow").detail;
     const launch = {
       ...startOf(events),
@@ -14870,7 +14907,8 @@ async function driveFollow(workspace, explorationId, env) {
           followBrief(plan.questions, folder, plan.seconds),
           store.workspace,
           childEnv(env, extraEnv),
-          plan.timeoutSeconds
+          plan.timeoutSeconds,
+          noteChild(store, actor, explorationId, explorer)
         );
         watch.stop();
         return { explorer, session, call };
@@ -14931,11 +14969,123 @@ async function driveFollow(workspace, explorationId, env) {
     closeStore(store);
   }
 }
+var stopWaitMilliseconds = 5e3;
+var killWaitMilliseconds = 2e3;
+var stopPollMilliseconds = 50;
+function endGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+  }
+}
+function waitUntil(done, milliseconds) {
+  const until = Date.now() + milliseconds;
+  while (!done() && Date.now() < until)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, stopPollMilliseconds);
+  return done();
+}
+function childPids(events, explorer) {
+  const pids = events.filter((item) => item.step === "child" && (explorer === void 0 || item.explorer === explorer)).map((item) => item.detail.pid);
+  return explorer === void 0 ? [...new Set(pids)] : pids.slice(-1);
+}
+function endProcesses(all2) {
+  const pids = all2.filter(running2);
+  for (const pid of pids) endGroup(pid, "SIGTERM");
+  if (!waitUntil(() => !pids.some(running2), stopWaitMilliseconds)) {
+    for (const pid of pids.filter(running2)) endGroup(pid, "SIGKILL");
+    waitUntil(() => !pids.some(running2), killWaitMilliseconds);
+  }
+  return pids.filter(running2);
+}
+function stopExploration(store, actor, input) {
+  const id2 = input.explorationId;
+  const reason = input.reason?.trim() ?? "";
+  const explorer = input.explorer;
+  const was = { state: "", pids: [], supervisor: null };
+  const reply = write(store, { actor, command: "explore stop", subject: id2, input }, (operationId, at, who) => {
+    const row2 = explorationRow(store, id2);
+    const events = explorationEvents(store, id2);
+    const state = explorationState(events);
+    requireCondition(
+      startOf(events)?.path !== "session",
+      `Exploration ${id2} runs in a session. The operator session owns its testers.`,
+      "Stop the testers in the session."
+    );
+    requireCondition(
+      ["starting", "testing", "recording", "verifying", "following", "interrupted"].includes(state),
+      `Exploration ${id2} is ${state}. Only a running exploration can stop.`,
+      `Run checkmate explore show ${id2}.`
+    );
+    if (explorer !== void 0) {
+      const launched = events.some((item) => item.step === "launch" && item.explorer === explorer);
+      requireCondition(
+        launched,
+        `Exploration ${id2} has no running tester named ${explorer}.`,
+        `Run checkmate explore status ${id2} to read the testers.`
+      );
+      requireCondition(
+        !testerStopOf(events, explorer) && !events.some((item) => item.step === "end" && item.explorer === explorer),
+        `Tester ${explorer} of exploration ${id2} has ended.`,
+        `Run checkmate explore status ${id2}.`
+      );
+    }
+    addEvent(
+      store,
+      id2,
+      {
+        step: "stop",
+        explorer: explorer ?? null,
+        status: "completed",
+        detail: { actor: who, reason, was: state }
+      },
+      operationId,
+      at
+    );
+    was.state = state;
+    was.pids = childPids(events, explorer);
+    was.supervisor = events.findLast((item) => item.step === "supervisor")?.detail.pid ?? null;
+    return {
+      reply: completed(id2, {
+        explorationId: id2,
+        planId: row2.plan_id,
+        explorer: explorer ?? null,
+        was: state,
+        reason,
+        actor: who
+      }),
+      subjects: [`exploration:${id2}`, `plan:${row2.plan_id}`]
+    };
+  });
+  const targets = explorer === void 0 && was.supervisor !== null ? [was.supervisor] : [];
+  const left = [...endProcesses(targets), ...endProcesses(was.pids.filter(running2))];
+  if (explorer === void 0) keepBrowserFolder(store, id2);
+  const kept = explorer === void 0 && existsSync3(join7(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
+  const row = explorationRow(store, id2);
+  return {
+    ...reply,
+    status: left.length ? "operational_error" : "completed",
+    reasons: left.map((pid) => `Process ${pid} is still alive.`),
+    data: {
+      ...reply.data,
+      left,
+      workFolder: kept,
+      ...kept ? { note: "Reports that were not recorded stay in the work folder." } : {},
+      next: [`checkmate test ${row.plan_id} --build ${row.build}`]
+    }
+  };
+}
+function zombie(pid) {
+  try {
+    return readFileSync6(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.startsWith("Z") === true;
+  } catch {
+    return false;
+  }
+}
 function running2(pid) {
   if (typeof pid !== "number") return false;
   try {
     process.kill(pid, 0);
-    return true;
+    return !zombie(pid);
   } catch (error) {
     return error.code === "EPERM";
   }
@@ -14946,8 +15096,16 @@ function followState(events) {
   const later = events.slice(follow + 1);
   const ended = later.find((item) => item.step === "followed");
   if (ended) return ended.status === "completed" ? "completed" : "failed";
+  if (stopOf(events)) return "stopped";
   const supervisor = later.find((item) => item.step === "supervisor");
-  return supervisor && !running2(supervisor.detail.pid) ? "stopped" : "running";
+  return supervisor && !running2(supervisor.detail.pid) ? "interrupted" : "running";
+}
+function stopOf(events) {
+  const follow = events.findLastIndex((item) => item.step === "follow");
+  return events.slice(follow + 1).find((item) => item.step === "stop" && item.explorer === null);
+}
+function testerStopOf(events, explorer) {
+  return events.find((item) => item.step === "stop" && item.explorer === explorer);
 }
 function pauseOf(events) {
   const last = events.findLast((item) => item.step === "pause" || item.step === "resume");
@@ -14958,12 +15116,19 @@ function explorationState(events) {
   const done = events.find((item) => item.step === "done");
   if (done) return done.status === "completed" ? "completed" : "failed";
   const supervisor = events.find((item) => item.step === "supervisor");
-  if (supervisor && !running2(supervisor.detail.pid)) return "stopped";
+  if (stopOf(events)) return "stopped";
+  if (supervisor && !running2(supervisor.detail.pid)) return "interrupted";
   if (!events.some((item) => item.step === "start")) return "open";
   if (!supervisor && startOf(events)?.path !== "session") return "starting";
   if (events.some((item) => item.step === "merge")) return "verifying";
   if (events.some((item) => item.step === "record")) return "recording";
   return "testing";
+}
+function stopReason(events) {
+  const stop = stopOf(events);
+  if (!stop) return null;
+  const reason = stop.detail.reason;
+  return `Stopped by ${stop.detail.actor}${reason ? `: ${reason}` : "."}`;
 }
 function explorationStatus(store, explorationId) {
   const row = explorationRow(store, explorationId);
@@ -15012,19 +15177,19 @@ function explorationStatus(store, explorationId) {
     testSeconds: launch?.testSeconds ?? null,
     pluginHidden: launch?.pluginHidden ?? null,
     follow,
-    followReason: follow === "stopped" ? "The supervisor of the follow-up stopped before the end." : follow === "failed" ? followed?.detail.reason ?? null : null,
+    followReason: follow === "stopped" ? stopReason(events) : follow === "interrupted" ? "The supervisor of the follow-up stopped before the end." : follow === "failed" ? followed?.detail.reason ?? null : null,
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped"].includes(state) || follow === "failed" || follow === "stopped") && existsSync3(join7(store.workspace, workFolder(row.exploration_id))) ? workFolder(row.exploration_id) : null,
-    reason: done?.detail.reason ?? (state === "stopped" ? "The supervisor stopped before the end." : null)
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync3(join7(store.workspace, workFolder(row.exploration_id))) ? workFolder(row.exploration_id) : null,
+    reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
 function waitExploration(store, explorationId, timeoutSeconds) {
   const until = Date.now() + timeoutSeconds * 1e3;
   for (; ; ) {
     const status = explorationStatus(store, explorationId);
-    const ended = ["completed", "failed", "stopped", "open"].includes(status.state);
+    const ended = ["completed", "failed", "stopped", "interrupted", "open"].includes(status.state);
     if (ended || Date.now() >= until) {
       const outcome = status.state === "completed" ? "done" : ended ? "failed" : "timeout";
       const hints = [
@@ -15336,7 +15501,7 @@ function planExplorations(store, planId) {
     planId
   ).map((row) => {
     const status = explorationStatus(store, row.exploration_id);
-    const ended = ["failed", "stopped"].includes(status.state);
+    const ended = ["failed", "stopped", "interrupted"].includes(status.state);
     return {
       explorationId: status.explorationId,
       state: status.state,
@@ -15473,7 +15638,7 @@ function explorationLive(store, explorationId, now = Date.now()) {
   const claims = planClaims(store, status.planId, kept).filter(own);
   const questions = planQuestions(store, status.planId, kept).filter(own);
   const found = foundEntries(store, status.planId, explorationId, limit, claims, questions);
-  const ended = ["failed", "stopped"].includes(status.state);
+  const ended = ["failed", "stopped", "interrupted"].includes(status.state);
   return {
     explorationId,
     planId: status.planId,
@@ -15621,7 +15786,7 @@ function loopStatus(store, planId) {
   const fixes = claims.filter((claim) => factoryStates.includes(claim.state));
   const kept = fixes.filter((claim) => !claim.handoff).length;
   const last = explorations.at(-1);
-  const failed = last !== void 0 && ["failed", "stopped"].includes(last.state);
+  const failed = last !== void 0 && ["failed", "stopped", "interrupted"].includes(last.state);
   const finished = explorations.filter((item) => item.state === "completed").at(-1);
   const after = [
     ...fixes.length ? [
@@ -16389,7 +16554,7 @@ function needsYou(store) {
     urgent: items.filter((item) => item.group !== "questions").length,
     running: explorations.filter((item) => item.running),
     failed: explorations.filter(
-      (item, index2) => ["failed", "stopped"].includes(item.state) && !explorations.slice(index2 + 1).some((later) => later.planId === item.planId)
+      (item, index2) => ["failed", "stopped", "interrupted"].includes(item.state) && !explorations.slice(index2 + 1).some((later) => later.planId === item.planId)
     )
   };
 }
@@ -19138,7 +19303,7 @@ function explorationBanners(explorations) {
 			>`
     )
   )}
-	${last && (last.state === "failed" || last.state === "stopped") ? banner(
+	${last && (last.state === "failed" || last.state === "stopped" || last.state === "interrupted") ? banner(
     "fail",
     html2`<span data-key="failed:${last.explorationId}"
 						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
@@ -19171,7 +19336,7 @@ function explorationsTable(explorations) {
 							<td>
 								${pill(item.state)}
 								${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
-								${item.follow === "failed" || item.follow === "stopped" ? html2`<p class="help">
+								${item.follow === "failed" || item.follow === "stopped" || item.follow === "interrupted" ? html2`<p class="help">
 												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
 											</p>` : ""}
 							</td>
@@ -19217,12 +19382,12 @@ function stateLine(live) {
       "info",
       html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
     );
-  if (live.state === "failed" || live.state === "stopped")
+  if (live.state === "failed" || live.state === "stopped" || live.state === "interrupted")
     return banner(
       "fail",
       html2`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
     );
-  if (live.follow === "failed" || live.follow === "stopped")
+  if (live.follow === "failed" || live.follow === "stopped" || live.follow === "interrupted")
     return banner(
       "fail",
       html2`<span data-key="follow-failed"
@@ -20630,7 +20795,9 @@ function questionsFold(planId, found, gaps = "", openGaps = 0, blockingGaps = 0)
   );
 }
 function explorationsFold(found) {
-  const attention = found.explorations.some((item) => item.running || ["failed", "stopped"].includes(item.state));
+  const attention = found.explorations.some(
+    (item) => item.running || ["failed", "stopped", "interrupted"].includes(item.state)
+  );
   return fold(
     "explorations",
     "Explorations",
@@ -20664,7 +20831,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   const openGaps = plan.gaps.filter((gap) => gap.status === "open");
   const approving = detail.approval.state === "pending" || detail.approval.state === "rejected";
   const accepting = detail.runs.some((run2) => run2.acceptance === "pending");
-  const anyOpen = approving || accepting || found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped"].includes(item.state));
+  const anyOpen = approving || accepting || found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped", "interrupted"].includes(item.state));
   const overview = html2`<p class="lead">${plan.objective}</p>
 		<p class="help">${planSummaryLine(plan)}</p>
 		<h3 class="minor" id="requirements">
@@ -20753,7 +20920,7 @@ function requestPage(store, planId) {
 		${pill("requested", "no revision yet")}
 		<span class="pill">target <span class="mono">${targetRef}</span></span>
 	</div>`;
-  const anyOpen = found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped"].includes(item.state));
+  const anyOpen = found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped", "interrupted"].includes(item.state));
   const overview = facts2([
     ["Objective", request.objective],
     ["Target", targetLink],
@@ -25359,6 +25526,29 @@ var commands = {
     write: true,
     run: (store, args, { actor }) => pauseRun(store, actor, value(args, "explorationId"), value(args, "reason")),
     print: (reply) => ({ facts: { reason: reply.data.reason, waitsOn: reply.data.waitsOn } })
+  },
+  "explore stop": {
+    positionals: ["explorationId"],
+    flags: { explorer: "value", reason: "value" },
+    write: true,
+    run: (store, args, { actor }) => stopExploration(store, actor, {
+      explorationId: value(args, "explorationId"),
+      explorer: value(args, "explorer"),
+      reason: value(args, "reason")
+    }),
+    print: (reply) => ({
+      facts: {
+        explorer: reply.data.explorer ?? void 0,
+        was: reply.data.was,
+        reason: reply.data.reason || void 0,
+        workFolder: reply.data.workFolder ?? void 0,
+        note: reply.data.note
+      },
+      lines: [
+        ...(reply.data.left ?? []).map((pid) => ["alive", pid]),
+        ...reply.data.next.map((line) => ["next", line])
+      ]
+    })
   },
   "explore show": {
     positionals: ["explorationId"],

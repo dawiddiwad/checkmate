@@ -7,7 +7,7 @@ import { planRequest, planTools } from './plans.ts'
 import { runInstance } from './targets.ts'
 import { explorationRules, planRules } from './rules.ts'
 import type { Claim } from './journal.ts'
-import { explorationRow, journal, planClaims, planQuestions } from './journal.ts'
+import { addPlanBuild, explorationRow, journal, planClaims, planQuestions } from './journal.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -227,6 +227,7 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 		at,
 		operationId
 	)
+	addPlanBuild(store, planId, build, at, operationId)
 	return { explorationId, planId, build, mode, instanceId: instance.instanceId, charter }
 }
 

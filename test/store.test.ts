@@ -40,6 +40,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'meta',
 		'operations',
 		'outcomes',
+		'plan_builds',
 		'plan_requests',
 		'plan_revisions',
 		'plan_rules',
@@ -105,11 +106,14 @@ test('a database of schema version 3 gets the exploration tables and keeps its r
 test('a database of schema version 4 gets the added tables and reads as before', (t) => {
 	const opened = store(t)
 	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'b7')
 	closeStore(opened)
 	const db = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
-	db.exec('DROP TRIGGER plan_rules_update')
-	db.exec('DROP TRIGGER plan_rules_delete')
-	db.exec('DROP TABLE plan_rules')
+	for (const table of ['plan_rules', 'plan_builds']) {
+		db.exec(`DROP TRIGGER ${table}_update`)
+		db.exec(`DROP TRIGGER ${table}_delete`)
+		db.exec(`DROP TABLE ${table}`)
+	}
 	db.exec('DROP TRIGGER meta_update')
 	db.exec("UPDATE meta SET value = '4' WHERE key = 'schemaVersion'")
 	db.exec(
@@ -121,6 +125,13 @@ test('a database of schema version 4 gets the added tables and reads as before',
 	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '5')
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'plan_rules_update'").get())
 	assert.equal(planRevision(upgraded, 'checkout').plan.planId, 'checkout')
+	assert.deepEqual(
+		upgraded.db
+			.prepare('SELECT plan_id, build FROM plan_builds')
+			.all()
+			.map((row) => ({ ...row })),
+		[{ plan_id: 'checkout', build: 'b7' }]
+	)
 })
 
 function finishedRun(t: Parameters<typeof store>[0]) {

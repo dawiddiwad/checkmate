@@ -225,12 +225,30 @@ CREATE TABLE journal_entries (
 ) STRICT;
 `
 const addedTables = [
-	`CREATE TABLE plan_rules (
+	{
+		ddl: `CREATE TABLE plan_rules (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	origin TEXT NOT NULL,
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE plan_builds (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	build TEXT NOT NULL,
+	first_tested_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (plan_id, build)
+) STRICT;`,
+		fill: `INSERT OR IGNORE INTO plan_builds (plan_id, build, first_tested_at, operation_id)
+	SELECT plan_id, build, at, operation_id FROM (
+		SELECT plan_id, build, started_at AS at, operation_id, 0 AS kind, rowid AS position FROM explorations
+		UNION ALL
+		SELECT plan_id, application_build, started_at, operation_id, 1, rowid FROM runs
+	) ORDER BY at, kind, position;`,
+	},
 ]
 const views = `
 CREATE VIEW latest_plans AS
@@ -298,11 +316,12 @@ function addExplorationTables(db: DatabaseSync) {
 }
 
 function addMissingTables(db: DatabaseSync) {
-	for (const ddl of addedTables) {
+	for (const { ddl, fill } of addedTables) {
 		const [name] = tableNamesOf(ddl)
 		if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)) continue
 		db.exec(ddl)
 		db.exec(triggersOf(ddl))
+		if (fill) db.exec(fill)
 	}
 }
 

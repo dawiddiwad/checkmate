@@ -130,6 +130,25 @@ function withRefs<T extends Entry>(entry: T, name: (word: string) => string): T 
 	}
 }
 
+export function addPlanBuild(store: Store, planId: string, build: string, at: string, operationId: string) {
+	execute(
+		store,
+		'INSERT OR IGNORE INTO plan_builds (plan_id, build, first_tested_at, operation_id) VALUES (?, ?, ?, ?)',
+		planId,
+		build,
+		at,
+		operationId
+	)
+}
+
+export function buildOrder(store: Store, planId: string) {
+	return all<{ build: string; first_tested_at: string }>(
+		store,
+		'SELECT build, first_tested_at FROM plan_builds WHERE plan_id = ? ORDER BY first_tested_at, rowid',
+		planId
+	).map((row) => ({ build: row.build, firstTestedAt: row.first_tested_at }))
+}
+
 export function journal(store: Store, planId: string, viewer?: string, keep: (row: Row) => boolean = () => true) {
 	const listed = all<{ seq: number; body: string; actor: string; at: string; exploration_id: string }>(
 		store,
@@ -168,7 +187,11 @@ export function journal(store: Store, planId: string, viewer?: string, keep: (ro
 		...withRefs(entry, (word) => (latest.has(word) ? idOf(word) : word)),
 		id: idOf(entry.id),
 	}))
-	const builds = [...new Set(rows.filter(seen).flatMap((row) => (row.build ? [row.build] : [])))]
+	const order = buildOrder(store, planId).map((item) => item.build)
+	const position = (build: string) => (order.includes(build) ? order.indexOf(build) : order.length)
+	const builds = [...new Set(rows.filter(seen).flatMap((row) => (row.build ? [row.build] : [])))].sort(
+		(a, b) => position(a) - position(b)
+	)
 	return { planId, viewer, rows: rows.filter(seen), entries, team, builds }
 }
 

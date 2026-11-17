@@ -216,12 +216,30 @@ CREATE TABLE journal_entries (
 ) STRICT;
 `;
 var addedTables = [
-  `CREATE TABLE plan_rules (
+  {
+    ddl: `CREATE TABLE plan_rules (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	origin TEXT NOT NULL,
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
-) STRICT;`
+) STRICT;`,
+    fill: ""
+  },
+  {
+    ddl: `CREATE TABLE plan_builds (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	build TEXT NOT NULL,
+	first_tested_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (plan_id, build)
+) STRICT;`,
+    fill: `INSERT OR IGNORE INTO plan_builds (plan_id, build, first_tested_at, operation_id)
+	SELECT plan_id, build, at, operation_id FROM (
+		SELECT plan_id, build, started_at AS at, operation_id, 0 AS kind, rowid AS position FROM explorations
+		UNION ALL
+		SELECT plan_id, application_build, started_at, operation_id, 1, rowid FROM runs
+	) ORDER BY at, kind, position;`
+  }
 ];
 var views = `
 CREATE VIEW latest_plans AS
@@ -281,11 +299,12 @@ function addExplorationTables(db) {
   setSchemaVersion(db, "4");
 }
 function addMissingTables(db) {
-  for (const ddl of addedTables) {
+  for (const { ddl, fill } of addedTables) {
     const [name] = tableNamesOf(ddl);
     if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)) continue;
     db.exec(ddl);
     db.exec(triggersOf(ddl));
+    if (fill) db.exec(fill);
   }
 }
 function completed(subject, data = {}) {
@@ -9811,6 +9830,23 @@ function withRefs(entry, name) {
     ...entry.kind === "answer" && { question: name(entry.question) }
   };
 }
+function addPlanBuild(store, planId, build, at, operationId) {
+  execute(
+    store,
+    "INSERT OR IGNORE INTO plan_builds (plan_id, build, first_tested_at, operation_id) VALUES (?, ?, ?, ?)",
+    planId,
+    build,
+    at,
+    operationId
+  );
+}
+function buildOrder(store, planId) {
+  return all(
+    store,
+    "SELECT build, first_tested_at FROM plan_builds WHERE plan_id = ? ORDER BY first_tested_at, rowid",
+    planId
+  ).map((row3) => ({ build: row3.build, firstTestedAt: row3.first_tested_at }));
+}
 function journal(store, planId, viewer2, keep = () => true) {
   const listed = all(
     store,
@@ -9847,7 +9883,11 @@ function journal(store, planId, viewer2, keep = () => true) {
     ...withRefs(entry, (word) => latest.has(word) ? idOf(word) : word),
     id: idOf(entry.id)
   }));
-  const builds = [...new Set(rows.filter(seen).flatMap((row3) => row3.build ? [row3.build] : []))];
+  const order = buildOrder(store, planId).map((item) => item.build);
+  const position = (build) => order.includes(build) ? order.indexOf(build) : order.length;
+  const builds = [...new Set(rows.filter(seen).flatMap((row3) => row3.build ? [row3.build] : []))].sort(
+    (a, b) => position(a) - position(b)
+  );
   return { planId, viewer: viewer2, rows: rows.filter(seen), entries, team, builds };
 }
 function lookup(state, actor) {
@@ -11854,6 +11894,7 @@ function beginRun(store, actor, input) {
         timeoutSeconds,
         operationId
       );
+      addPlanBuild(store, plan.planId, checked.build, at, operationId);
       execute(
         store,
         "INSERT INTO run_attempts (run_id, attempt, started_at, actor) VALUES (?, 1, ?, ?)",
@@ -12670,6 +12711,7 @@ function insertExploration(store, input, operationId, at) {
     at,
     operationId
   );
+  addPlanBuild(store, planId, build, at, operationId);
   return { explorationId, planId, build, mode, instanceId: instance.instanceId, charter };
 }
 function openExploration(store, actor, input) {

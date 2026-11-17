@@ -32,6 +32,7 @@ import {
 	recordApproval,
 } from './plans.ts'
 import { runInstance, targetRevision } from './targets.ts'
+import { addPlanBuild } from './journal.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -324,6 +325,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				timeoutSeconds,
 				operationId
 			)
+			addPlanBuild(store, plan.planId, checked.build, at, operationId)
 			execute(
 				store,
 				'INSERT INTO run_attempts (run_id, attempt, started_at, actor) VALUES (?, 1, ?, ?)',

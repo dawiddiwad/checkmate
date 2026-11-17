@@ -190,6 +190,7 @@ test('triggers refuse updates and deletes on every table', (t) => {
 			"INSERT INTO handoffs VALUES ('checkout', 'a1/D1', 'Cart team', 'tester', 'now', ?)",
 			operationId
 		)
+		execute(opened, "INSERT INTO workspace_settings VALUES ('testerRules', 'Read Bash', ?)", operationId)
 		return { reply: { status: 'completed', subject: 'x-1', reasons: [], data: {} }, subjects: [] }
 	})
 	const tables = opened.db

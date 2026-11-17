@@ -435,3 +435,32 @@ test('the phase of a run follows the turns of the testers in the strip, the bann
 	assert.match(test, /Phase: test\./)
 	assert.match(test, /Testers now · test/)
 })
+
+test('after a stop of the whole run, a tester reads Stopped and keeps its last activity line', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const opened = openStore(workspace)
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	launched(opened, 'x-1', 'a1')
+	launched(opened, 'x-1', 'a2')
+	event(opened, 'x-1', {
+		step: 'activity',
+		explorer: 'a1',
+		detail: { turn: 'study', activity: 'study: wrote plan.md. 1 file in the work folder.' },
+	})
+	event(opened, 'x-1', {
+		step: 'end',
+		explorer: 'a1',
+		status: 'operational_error',
+		detail: { turn: 'study', reason: 'claude ended with signal SIGTERM.' },
+	})
+	ended(opened, 'x-1', 'a2', [])
+	event(opened, 'x-1', { step: 'stop', detail: { actor: 'ana', reason: '', was: 'testing' } })
+	closeStore(opened)
+	const page = (await call(ui, '/explorations/x-1')).body
+	const row = (name: string) => page.split(`data-key="explorer:${name}"`)[1].split('data-row')[0]
+	assert.doesNotMatch(page, /operational_error/i)
+	assert.match(row('a1'), /sp-pill amber"\s*>Stopped</)
+	assert.match(row('a1'), /study: wrote plan\.md\. 1 file in the work folder\./)
+	assert.doesNotMatch(row('a1'), /No activity line in the record/)
+	assert.match(row('a2'), />Finished</)
+})

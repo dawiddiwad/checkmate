@@ -2,7 +2,7 @@ import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
 import type { Evidence, Row } from './journal.ts'
-import { explorationStatus, followCount, startOf } from './explorers.ts'
+import { explorationStatus, followCount, startOf, stopOf } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
@@ -472,9 +472,11 @@ function explorerLive(
 	const own = events.filter((event) => event.explorer === item.explorer)
 	const launch = own.find((event) => event.step === 'launch' || event.step === 'action')
 	const end = own.findLast((event) => event.step === 'end')
-	const stoppedBy = own.find((event) => event.step === 'stop')
 	const follow = events.findLastIndex((event) => event.step === 'follow')
 	const followed = events.slice(follow + 1)
+	const stoppedBy =
+		own.find((event) => event.step === 'stop') ??
+		(end?.status === 'completed' || follow !== -1 ? undefined : stopOf(events))
 	const followTurn = followed.find((event) => event.explorer === item.explorer && event.step === 'follow-turn')
 	const inFollow = follow !== -1 && item.session !== null
 	const turn = inFollow

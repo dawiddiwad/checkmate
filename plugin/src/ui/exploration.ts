@@ -265,7 +265,8 @@ function stateLine(store: Store, live: Live, run: Run) {
 	if (live.running)
 		return banner(
 			'info',
-			html`Exploration ${live.explorationId} is running. Phase: ${run.phase ?? live.phase}. This page updates by itself.`
+			html`Exploration ${live.explorationId} is running. Phase: ${run.phase ?? live.phase}. This page updates by
+			itself.`
 		)
 	if (live.state === 'failed') return banner('fail', html`<span data-key="run-ended">${failedLine(run, live)}</span>`)
 	if (live.state === 'stopped')
@@ -313,14 +314,21 @@ function testerState(live: Live, item: LiveExplorer) {
 		given: 'blue',
 		running: 'blue',
 		ended: 'green',
+		completed: 'green',
 		failed: 'red',
+		operational_error: 'red',
+		interrupted: 'amber',
 		stopped: 'amber',
 	}
 	const label: Record<string, string> = {
 		given: 'Given to the session',
 		running: 'Running',
 		ended: 'Finished',
+		completed: 'Finished',
 		failed: 'Failed',
+		operational_error: 'Failed',
+		interrupted: 'Interrupted',
+		stopped: 'Stopped',
 	}
 	return html`<span class="sp-pill ${look[item.state] ?? ''}"
 		>${item.state === 'running' ? html`<span class="dot" aria-hidden="true"></span>` : ''}${label[item.state] ?? item.state}</span

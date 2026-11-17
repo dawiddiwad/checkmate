@@ -19182,7 +19182,7 @@ function testerState(live, item) {
 		>${item.state === "running" ? html2`<span class="dot" aria-hidden="true"></span>` : ""}${label[item.state] ?? item.state}</span
 	>`;
 }
-function spRow(key, href, label, tag, title, meta, n) {
+function spRow(key, href, label, tag, title, meta, n, metaText = "") {
   return html2`<div
 		class="sp-row"
 		role="option"
@@ -19197,8 +19197,8 @@ function spRow(key, href, label, tag, title, meta, n) {
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
 		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell">${title}</span>
-		<span class="sp-c-meta ell">${meta}</span>
+		<span class="sp-c-title ell" title="${typeof title === "string" ? title : ""}">${title}</span>
+		<span class="sp-c-meta ell" title="${typeof meta === "string" ? meta : metaText}">${meta}</span>
 	</div>`;
 }
 function explorationList(live, others) {
@@ -19211,7 +19211,8 @@ function explorationList(live, others) {
       testerState(live, item),
       item.activity ?? (item.state === "running" || item.state === "given" ? "No activity yet." : "No activity line in the record."),
       html2`${item.turn ?? ""}${item.turn && item.elapsedMs !== null ? " \xB7 " : ""}${inState(item)}${raw ? ` \xB7 ${raw} not merged` : ""}`,
-      `tester-${index2}`
+      `tester-${index2}`,
+      [item.turn, item.elapsedMs !== null ? duration(item.elapsedMs) : null, raw ? `${raw} not merged` : null].filter(Boolean).join(" \xB7 ")
     );
   });
   const phases = live.phases.map(
@@ -20051,7 +20052,9 @@ function tile(review, loop2, index2) {
 			<div class="sp-ct-head">
 				<span class="sp-c-id">${review.planId}</span>
 				${review.running ? html2`<span class="sp-pill blue"><span class="dot" aria-hidden="true"></span>Testing</span>` : loop2 ? pill(loop2.state) : ""}
-				<span class="sp-ct-when ell"
+				<span
+					class="sp-ct-when ell"
+					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
 					>${latest ? html2`${buildLabel(review, latest.build)} ${latest.build} · ${time(latest.firstTestedAt)}` : review.target}${loop2 ? ` \xB7 waits on ${roleWords[loop2.waitsOn]}` : ""}</span
 				>
 			</div>
@@ -21483,8 +21486,8 @@ function runRow2(runId, key, selected, label, tag, title, meta = "") {
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
 		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell">${title}</span>
-		<span class="sp-c-meta ell">${meta}</span>
+		<span class="sp-c-title ell" title="${typeof title === "string" ? title : ""}">${title}</span>
+		<span class="sp-c-meta ell" title="${typeof meta === "string" ? meta : ""}">${meta}</span>
 	</div>`;
 }
 function runGroup(title, rows) {

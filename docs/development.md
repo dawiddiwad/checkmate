@@ -52,26 +52,27 @@ The verify job in CI also runs `npm run test:tools` as a separate step after `ph
 
 The browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` when it is not `/usr/bin/chromium`. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable directory.
 
-| Test file                       | Covers                                                                                                      |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`            | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs.             |
-| `test/targets.test.ts`          | Setup requests, profile checks, revision order, the default approval policy.                                |
-| `test/plans.test.ts`            | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.                |
-| `test/cross-plan.test.ts`       | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.                  |
-| `test/runs.test.ts`             | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.                   |
-| `test/evidence.test.ts`         | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                 |
-| `test/views.test.ts`            | The inbox, the approval policy, the loop state, and the plan, run, and log lists.                           |
-| `test/render.test.ts`           | HTML, Markdown, and JSON exports.                                                                           |
-| `test/cli.test.ts`              | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.              |
-| `test/launcher.test.ts`         | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.               |
-| `test/hook.test.ts`             | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.               |
-| `test/package.test.ts`          | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.                |
-| `test/release.test.ts`          | Version rules and the five version files.                                                                   |
-| `test/ui.test.ts`               | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.                |
-| `test/ui.browser.test.ts`       | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                            |
-| `test/ui.pages.browser.test.ts` | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width.     |
-| `test/ui.queue.test.ts`         | `Needs you` and `Claims` on the volume seed: order, filters, short forms, approvals, evidence, breadcrumbs. |
-| `test/ui.queue.browser.test.ts` | `Needs you`, `Claims`, the plan, exploration, and old pages in a real browser: width, themes, keys, mouse.  |
+| Test file                        | Covers                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `test/store.test.ts`             | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs.               |
+| `test/targets.test.ts`           | Setup requests, profile checks, revision order, the default approval policy.                                  |
+| `test/plans.test.ts`             | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.                  |
+| `test/cross-plan.test.ts`        | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.                    |
+| `test/runs.test.ts`              | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.                     |
+| `test/evidence.test.ts`          | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                   |
+| `test/views.test.ts`             | The inbox, the approval policy, the loop state, and the plan, run, and log lists.                             |
+| `test/render.test.ts`            | HTML, Markdown, and JSON exports.                                                                             |
+| `test/cli.test.ts`               | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.                |
+| `test/launcher.test.ts`          | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.                 |
+| `test/hook.test.ts`              | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.                 |
+| `test/package.test.ts`           | `npm pack` and install of the CLI, the package README links, and `delegate` with the plugin.                  |
+| `test/release.test.ts`           | Version rules and the five version files.                                                                     |
+| `test/ui.test.ts`                | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.                  |
+| `test/ui.browser.test.ts`        | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                              |
+| `test/ui.pages.browser.test.ts`  | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width.       |
+| `test/ui.review.test.ts`         | The plan review on the volume seed: views, records, options, hand-over, bulk, find, evidence, status path.    |
+| `test/ui.review.browser.test.ts` | The plan review in a real browser: the key model, Down then 1, history, selection, areas, bars, mouse.        |
+| `test/ui.layout.browser.test.ts` | Alignment, contrast, overflow, and tap targets at 1440, 900, and 400 px in both themes and the fallback font. |
 
 Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
 
@@ -218,7 +219,7 @@ The command prints the URL. Ctrl+C stops the UI and deletes the workspace. To ke
 
 ### Review UI screenshots
 
-`scripts/ui-demo.ts` seeds a demo workspace. `scripts/ui-screenshots.ts` captures it in PNG. The manual uses the dark captures as JPEG files, 1280 pixels wide, in `docs/img/ui/`:
+`scripts/ui-demo.ts` seeds a demo workspace. `npm run ui:volume` seeds a large workspace, with a plan of 50 rules in 9 areas over three builds, and starts the UI on it. `scripts/ui-screenshots.ts` captures it in PNG. The manual uses the dark captures as JPEG files, 1280 pixels wide, in `docs/img/ui/`:
 
 ```sh
 CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots

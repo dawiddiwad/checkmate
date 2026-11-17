@@ -104,7 +104,9 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 							? pill(loop.state)
 							: ''
 				}
-				<span class="sp-ct-when ell"
+				<span
+					class="sp-ct-when ell"
+					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
 					>${
 						latest
 							? html`${buildLabel(review, latest.build)} ${latest.build} · ${time(latest.firstTestedAt)}`

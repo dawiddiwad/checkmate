@@ -274,7 +274,8 @@ function spRow(
 	tag: Html,
 	title: Html | string,
 	meta: Html | string,
-	n: string
+	n: string,
+	metaText = ''
 ) {
 	return html`<div
 		class="sp-row"
@@ -290,8 +291,8 @@ function spRow(
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
 		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell">${title}</span>
-		<span class="sp-c-meta ell">${meta}</span>
+		<span class="sp-c-title ell" title="${typeof title === 'string' ? title : ''}">${title}</span>
+		<span class="sp-c-meta ell" title="${typeof meta === 'string' ? meta : metaText}">${meta}</span>
 	</div>`
 }
 
@@ -308,7 +309,10 @@ function explorationList(live: Live, others: Listed[]) {
 					? 'No activity yet.'
 					: 'No activity line in the record.'),
 			html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
-			`tester-${index}`
+			`tester-${index}`,
+			[item.turn, item.elapsedMs !== null ? duration(item.elapsedMs) : null, raw ? `${raw} not merged` : null]
+				.filter(Boolean)
+				.join(' · ')
 		)
 	})
 	const phases = live.phases.map((row, index) =>

@@ -29,6 +29,8 @@ Each page has the same four parts:
 - The centre: the list or the page.
 - The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. On a narrow window, `More` holds `Runs`, `Log`, and `Settings`. When items wait for you, `<n> need you` shows first.
 
+On a window of 900 pixels or less, the navigator is one row of chips above the list. On a window of 760 pixels or less, the options of the highlighted row show on a second line, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
+
 The UI follows the light or dark setting of the system. The switch in the top bar overrides it, and the UI keeps your choice in a cookie.
 
 When a page or a list has nothing to show, it says what is empty and gives the one next step.

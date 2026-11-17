@@ -2527,9 +2527,15 @@ fieldset.edit-card > legend + * {
 		overflow-y: hidden;
 		scrollbar-width: none;
 	}
-	.sp-nlist {
+	.sp-nlist,
+	.sp-npin {
 		flex-direction: row;
 		gap: 8px;
+	}
+	.sp-npin {
+		position: static;
+		margin: 0;
+		padding: 0;
 	}
 	.sp-nhead,
 	.sp-sep {
@@ -2537,22 +2543,26 @@ fieldset.edit-card > legend + * {
 	}
 	.sp-nrow {
 		flex: none;
-		grid-template-columns: auto auto;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		height: 40px;
+		padding: 0 12px;
 		border: 1px solid var(--hair);
 	}
 	.sp-nrow .sp-ntx {
 		max-width: 160px;
+		padding-left: 0;
 	}
-	.sp-nrow.rule {
-		grid-template-columns: auto auto;
-	}
-	.sp-nrow.rule .sp-ntx,
-	.sp-nrow:not(.rule) .sp-nid:empty {
+	.sp-nrow[aria-level='2'] .sp-ntx {
 		display: none;
 	}
-	.sp-nrow .sp-nmarks:empty {
+	.sp-nrow .sp-nid:empty {
 		display: none;
+	}
+	.sp-nrow .sp-nmarks {
+		display: flex;
+		gap: 4px;
 	}
 }
 @media (max-width: 760px) {
@@ -2632,11 +2642,18 @@ fieldset.edit-card > legend + * {
 		min-width: 40px;
 	}
 	.sb-btn {
-		height: 28px;
+		height: 40px;
+		padding: 0 8px;
+	}
+	:root {
+		--sp-bar: 48px;
 	}
 	.statusbar {
-		--sp-bar: 40px;
-		height: calc(40px + env(safe-area-inset-bottom, 0px));
+		gap: 8px;
+	}
+	.sb-where {
+		flex: 1 1 auto;
+		min-width: 64px;
 	}
 	.app {
 		padding-bottom: 72px;

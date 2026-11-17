@@ -441,8 +441,8 @@ function runRow(
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
 		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell">${title}</span>
-		<span class="sp-c-meta ell">${meta}</span>
+		<span class="sp-c-title ell" title="${typeof title === 'string' ? title : ''}">${title}</span>
+		<span class="sp-c-meta ell" title="${typeof meta === 'string' ? meta : ''}">${meta}</span>
 	</div>`
 }
 

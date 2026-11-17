@@ -10287,6 +10287,18 @@ function recordText(store, planId, viewer2, build) {
   ];
   return lines2.length ? lines2.join("\n") : "No criterion, defect, or question yet.";
 }
+function mostFrequent(values) {
+  const counts2 = /* @__PURE__ */ new Map();
+  for (const value2 of values) if (value2 !== void 0) counts2.set(value2, (counts2.get(value2) ?? 0) + 1);
+  let best = null;
+  let most = 0;
+  for (const [value2, count] of counts2)
+    if (count > most) {
+      best = value2;
+      most = count;
+    }
+  return best;
+}
 var evidenceScore = (entry) => (entry.evidence?.length ?? 0) * 2 + (entry.steps ? 1 : 0);
 var short = (text) => (text ?? "").length > 120 ? `${(text ?? "").slice(0, 117)}...` : text ?? "";
 function claimDecisions(store, planId) {
@@ -10364,8 +10376,10 @@ function claimList(state, decided = /* @__PURE__ */ new Map()) {
       reports,
       reporters: actors.length,
       actors: actors.map(shortName),
+      rule: mostFrequent(found.map((defect) => defect.rule)),
       state: claimState,
       verified,
+      verifierSaw: verified === "refuted" ? firstCheck?.saw ?? null : null,
       reason: claimState === "unresolved" ? `The verifier did not see it: ${firstCheck?.saw ?? "no reason given"}` : decision?.rationale ?? null,
       decision,
       statuses,
@@ -10400,6 +10414,8 @@ function planQuestions(store, planId, keep) {
       question: head.question,
       label: head.kind === "topic" ? head.label ?? null : null,
       actual: found.map((entry) => entry.actual).find(Boolean) ?? null,
+      rule: mostFrequent(found.map((entry) => entry.rule)),
+      builds: [...new Set(found.flatMap((entry) => entry.build ? [entry.build] : []))],
       members,
       blocking: found.some((entry) => entry.blocking === true),
       about: head.about ?? null,

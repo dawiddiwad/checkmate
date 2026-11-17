@@ -667,6 +667,19 @@ export type BuildStatus = {
 export type ClaimDecision = { verdict: 'approved' | 'rejected'; actor: string; rationale: string }
 export type Claim = ReturnType<typeof claimList>[number]
 
+export function mostFrequent(values: Array<string | undefined>) {
+	const counts = new Map<string, number>()
+	for (const value of values) if (value !== undefined) counts.set(value, (counts.get(value) ?? 0) + 1)
+	let best: string | null = null
+	let most = 0
+	for (const [value, count] of counts)
+		if (count > most) {
+			best = value
+			most = count
+		}
+	return best
+}
+
 const evidenceScore = (entry: Entry) => (entry.evidence?.length ?? 0) * 2 + (entry.steps ? 1 : 0)
 const short = (text: string | undefined) =>
 	(text ?? '').length > 120 ? `${(text ?? '').slice(0, 117)}...` : (text ?? '')
@@ -771,8 +784,10 @@ export function claimList(state: Journal, decided: Map<string, ClaimDecision> = 
 			reports,
 			reporters: actors.length,
 			actors: actors.map(shortName),
+			rule: mostFrequent(found.map((defect) => defect.rule)),
 			state: claimState,
 			verified,
+			verifierSaw: verified === 'refuted' ? (firstCheck?.saw ?? null) : null,
 			reason:
 				claimState === 'unresolved'
 					? `The verifier did not see it: ${firstCheck?.saw ?? 'no reason given'}`
@@ -815,6 +830,8 @@ export function planQuestions(store: Store, planId: string, keep?: (row: Row) =>
 			question: head.question!,
 			label: head.kind === 'topic' ? (head.label ?? null) : null,
 			actual: found.map((entry) => entry.actual).find(Boolean) ?? null,
+			rule: mostFrequent(found.map((entry) => entry.rule)),
+			builds: [...new Set(found.flatMap((entry) => (entry.build ? [entry.build] : [])))],
 			members,
 			blocking: found.some((entry) => entry.blocking === true),
 			about: head.about ?? null,

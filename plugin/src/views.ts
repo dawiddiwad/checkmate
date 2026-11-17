@@ -1707,11 +1707,11 @@ const evidenceTypes: Record<string, string> = {
 	json: 'application/json',
 }
 
-function fileName(path: string) {
+export function fileName(path: string) {
 	return path.slice(path.lastIndexOf('/') + 1)
 }
 
-function mediaTypeOf(path: string) {
+export function mediaTypeOf(path: string) {
 	const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
 	return evidenceTypes[extension] ?? 'application/octet-stream'
 }

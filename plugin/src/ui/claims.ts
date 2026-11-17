@@ -283,17 +283,23 @@ export function claimsPage(
 			</p>
 		</div>
 		${filterForm(rows, filters)}
-		${bulkBar(
-			'/claims',
-			[
-				...names.filter((name) => filters[name]).map((name) => [name, filters[name]] as [string, string]),
-				...(filters.limit ? [['limit', filters.limit] as [string, string]] : []),
-				...(key ? [['item', key] as [string, string]] : []),
-			],
-			picked.length,
-			claimsHref({ ...filters, picks: [] }, key),
-			left
-		)}
+		${
+			shown.some((entry) => !entry.decision) || left
+				? bulkBar(
+						'/claims',
+						[
+							...names
+								.filter((name) => filters[name])
+								.map((name) => [name, filters[name]] as [string, string]),
+							...(filters.limit ? [['limit', filters.limit] as [string, string]] : []),
+							...(key ? [['item', key] as [string, string]] : []),
+						],
+						picked.length,
+						claimsHref({ ...filters, picks: [] }, key),
+						left
+					)
+				: ''
+		}
 		${
 			shown.length
 				? html`<ul class="q-items">

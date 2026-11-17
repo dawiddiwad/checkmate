@@ -234,6 +234,8 @@ test('an empty workspace says once that nothing waits and how to start', async (
 	assert.doesNotMatch(body, /0 explorations/)
 	assert.doesNotMatch(body, /id="queue-plan"/)
 	assert.match(body, /<code>\/checkmate:test<\/code>/)
+	assert.doesNotMatch(body, /Select rows with x or the boxes/)
+	assert.doesNotMatch(await (await fetch(new URL('/claims', ui.url))).text(), /Select rows with x or the boxes/)
 })
 
 test('several questions take one answer and several claims one decision after a confirm step', async (t) => {

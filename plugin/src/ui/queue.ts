@@ -426,17 +426,21 @@ export function queuePage(
 			${sub ? html`<p class="sub">${sub}</p>` : ''}
 		</div>
 		${filterForm(waiting, filters)}
-		${bulkBar(
-			'/',
-			[
-				...(filters.plan ? [['plan', filters.plan] as [string, string]] : []),
-				...(filters.q ? [['q', filters.q] as [string, string]] : []),
-				...(item ? [['item', item.key] as [string, string]] : []),
-			],
-			picked.length,
-			queueHref({ ...filters, picks: [] }, item?.key ?? null),
-			left
-		)}
+		${
+			shown.some(pickable) || left
+				? bulkBar(
+						'/',
+						[
+							...(filters.plan ? [['plan', filters.plan] as [string, string]] : []),
+							...(filters.q ? [['q', filters.q] as [string, string]] : []),
+							...(item ? [['item', item.key] as [string, string]] : []),
+						],
+						picked.length,
+						queueHref({ ...filters, picks: [] }, item?.key ?? null),
+						left
+					)
+				: ''
+		}
 		${exploring(waiting, filters)}
 		${groups.map((group) =>
 			groupList(

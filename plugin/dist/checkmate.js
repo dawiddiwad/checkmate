@@ -18636,7 +18636,7 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
 			</p>
 		</div>
 		${filterForm(rows, filters)}
-		${bulkBar(
+		${shown.some((entry) => !entry.decision) || left ? bulkBar(
     "/claims",
     [
       ...names.filter((name) => filters[name]).map((name) => [name, filters[name]]),
@@ -18646,7 +18646,7 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
     picked.length,
     claimsHref({ ...filters, picks: [] }, key),
     left
-  )}
+  ) : ""}
 		${shown.length ? html2`<ul class="q-items">
 						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
 					</ul>` : html2`<p class="none">
@@ -20213,7 +20213,7 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
 			${sub ? html2`<p class="sub">${sub}</p>` : ""}
 		</div>
 		${filterForm2(waiting, filters)}
-		${bulkBar(
+		${shown.some(pickable) || left ? bulkBar(
     "/",
     [
       ...filters.plan ? [["plan", filters.plan]] : [],
@@ -20223,7 +20223,7 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
     picked.length,
     queueHref({ ...filters, picks: [] }, item?.key ?? null),
     left
-  )}
+  ) : ""}
 		${exploring(waiting, filters)}
 		${groups.map(
     (group) => groupList(

@@ -3,6 +3,7 @@ import { html } from './html.ts'
 import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
+export type Skin = 'a'
 export type Section = 'inbox' | 'claims' | 'plans' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {
@@ -10,6 +11,7 @@ export type Context = {
 	csrf: string
 	actor: string | null
 	theme: Theme
+	skin: Skin | null
 	toast: string | null
 	queueCount: number
 	cursor: number
@@ -156,8 +158,13 @@ const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-label
 
 export function layout(context: Context, page: Page) {
 	const theme = context.theme === 'system' ? '' : html` data-theme="${context.theme}"`
+	const skin = context.skin ? html` data-skin="${context.skin}"` : ''
+	const skinStyles = context.skin
+		? html`<link rel="stylesheet" href="/assets/skins.css" />
+				<link rel="stylesheet" href="/assets/skin-${context.skin}.css" />`
+		: ''
 	return html`<!doctype html>
-		<html lang="en" ${theme}>
+		<html lang="en" ${theme}${skin}>
 			<head>
 				<meta charset="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -166,6 +173,7 @@ export function layout(context: Context, page: Page) {
 				<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
 				<link rel="preload" href="/assets/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
 				<link rel="stylesheet" href="/assets/style.css" />
+				${skinStyles}
 				<script src="/assets/client.js" defer></script>
 			</head>
 			<body data-subjects="${page.subjects.join(',')}" data-cursor="${context.cursor}">

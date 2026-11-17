@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Store } from '../store.ts'
-import type { Context, Page, Theme } from './layout.ts'
+import type { Context, Page, Skin, Theme } from './layout.ts'
 import type { FormState } from './forms.ts'
 import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
@@ -84,7 +84,7 @@ const routes = {
 	claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
 	claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
 	entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/,
+	font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono|outfit)\.woff2$/,
 }
 const contentSecurityPolicy =
 	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
@@ -96,6 +96,7 @@ const documentTypes: Record<string, string> = {
 	junit: 'application/xml; charset=utf-8',
 }
 const themes: Theme[] = ['system', 'light', 'dark']
+const skins: Skin[] = ['a']
 const maxForm = 256 * 1024
 
 function directory(candidates: string[], file: string) {
@@ -114,6 +115,8 @@ function assets() {
 		'/assets/style.css': { type: 'text/css; charset=utf-8', body: read('style.css') },
 		'/assets/client.js': { type: 'text/javascript; charset=utf-8', body: read('client.js') },
 		'/assets/favicon.svg': { type: 'image/svg+xml', body: read('favicon.svg') },
+		'/assets/skins.css': { type: 'text/css; charset=utf-8', body: read('skins.css') },
+		'/assets/skin-a.css': { type: 'text/css; charset=utf-8', body: read('skin-a.css') },
 		font: (name: string) => readFileSync(`${fonts}${name}.woff2`),
 	}
 }
@@ -157,6 +160,10 @@ function parseCookies(header: string | undefined) {
 
 function cookie(name: string, value: string, maxAge = 60 * 60 * 24 * 365) {
 	return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`
+}
+
+function visitCookie(name: string, value: string) {
+	return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict`
 }
 
 function readForm(req: IncomingMessage): Promise<URLSearchParams | null> {
@@ -245,11 +252,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const theme = themes.includes(request.cookies.checkmate_theme as Theme)
 			? (request.cookies.checkmate_theme as Theme)
 			: 'system'
+		const asked = request.url.searchParams.get('skin') ?? request.cookies.checkmate_skin
+		const skin = skins.includes(asked as Skin) ? (asked as Skin) : null
 		return {
 			path,
 			csrf,
 			actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
 			theme,
+			skin,
 			toast:
 				(request.req.headers['sec-fetch-mode'] ?? 'navigate') === 'navigate' ||
 				request.req.headers['x-checkmate-queue'] === '1'
@@ -265,6 +275,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		const cookies = [...extraCookies]
 		if (shown.toast) cookies.push(cookie('checkmate_toast', '', 0))
+		if (request.url.searchParams.has('skin')) cookies.push(visitCookie('checkmate_skin', shown.skin ?? ''))
 		send(request.res, page.status ?? 200, 'text/html; charset=utf-8', layout(shown, page).html, {
 			'Set-Cookie': cookies,
 			Vary: 'Cookie',

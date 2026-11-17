@@ -16871,8 +16871,11 @@ var shortcuts = html2`<aside class="shortcuts" data-shortcuts hidden aria-labell
 </aside>`;
 function layout(context, page) {
   const theme = context.theme === "system" ? "" : html2` data-theme="${context.theme}"`;
+  const skin = context.skin ? html2` data-skin="${context.skin}"` : "";
+  const skinStyles = context.skin ? html2`<link rel="stylesheet" href="/assets/skins.css" />
+				<link rel="stylesheet" href="/assets/skin-${context.skin}.css" />` : "";
   return html2`<!doctype html>
-		<html lang="en" ${theme}>
+		<html lang="en" ${theme}${skin}>
 			<head>
 				<meta charset="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -16881,6 +16884,7 @@ function layout(context, page) {
 				<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
 				<link rel="preload" href="/assets/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
 				<link rel="stylesheet" href="/assets/style.css" />
+				${skinStyles}
 				<script src="/assets/client.js" defer></script>
 			</head>
 			<body data-subjects="${page.subjects.join(",")}" data-cursor="${context.cursor}">
@@ -21005,7 +21009,7 @@ var routes = {
   claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
   claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
   entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-  font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono)\.woff2$/
+  font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono|outfit)\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
 var inlineImages2 = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -21016,6 +21020,7 @@ var documentTypes = {
   junit: "application/xml; charset=utf-8"
 };
 var themes = ["system", "light", "dark"];
+var skins = ["a"];
 var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
@@ -21032,6 +21037,8 @@ function assets() {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
+    "/assets/skins.css": { type: "text/css; charset=utf-8", body: read("skins.css") },
+    "/assets/skin-a.css": { type: "text/css; charset=utf-8", body: read("skin-a.css") },
     font: (name) => readFileSync6(`${fonts}${name}.woff2`)
   };
 }
@@ -21065,6 +21072,9 @@ function parseCookies(header2) {
 }
 function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
+}
+function visitCookie(name, value2) {
+  return `${name}=${encodeURIComponent(value2)}; Path=/; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
   return new Promise((resolve6, reject) => {
@@ -21142,11 +21152,14 @@ data: ${matched.join(",") || "*"}
   }, 15e3);
   function context(request, path = request.url.pathname + request.url.search) {
     const theme = themes.includes(request.cookies.checkmate_theme) ? request.cookies.checkmate_theme : "system";
+    const asked = request.url.searchParams.get("skin") ?? request.cookies.checkmate_skin;
+    const skin = skins.includes(asked) ? asked : null;
     return {
       path,
       csrf,
       actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
       theme,
+      skin,
       toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request.req.headers["x-checkmate-queue"] === "1" ? request.cookies.checkmate_toast || null : null,
       queueCount: queueCount(store),
       cursor: latestRowid(store),
@@ -21157,6 +21170,7 @@ data: ${matched.join(",") || "*"}
     const shown = context(request);
     const cookies = [...extraCookies];
     if (shown.toast) cookies.push(cookie("checkmate_toast", "", 0));
+    if (request.url.searchParams.has("skin")) cookies.push(visitCookie("checkmate_skin", shown.skin ?? ""));
     send(request.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown, page).html, {
       "Set-Cookie": cookies,
       Vary: "Cookie"

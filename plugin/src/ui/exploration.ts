@@ -335,6 +335,16 @@ function testerState(live: Live, item: LiveExplorer) {
 	>`
 }
 
+function testerLine(item: LiveExplorer) {
+	const busy = item.state === 'running' || item.state === 'given'
+	if (item.activity && item.activityAt)
+		return html`${item.activity} · <span class="age">${ago(item.activityAt)}</span>`
+	if (item.activity) return item.activity
+	if (!busy) return 'No activity line in the record.'
+	if (item.turn === 'study') return 'In its study turn. The first activity line comes when the turn ends.'
+	return `In its ${item.turn ?? 'test'} turn. No activity line yet.`
+}
+
 function spRow(
 	key: string,
 	href: string,
@@ -378,10 +388,7 @@ function explorationList(live: Live, others: Listed[]) {
 			explorationHref(live.explorationId, `explorer:${item.explorer}`),
 			item.explorer,
 			testerState(live, item),
-			item.activity ??
-				(item.state === 'running' || item.state === 'given'
-					? 'No activity yet.'
-					: 'No activity line in the record.'),
+			testerLine(item),
 			html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
 			`tester-${index}`,
 			[

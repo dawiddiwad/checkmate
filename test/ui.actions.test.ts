@@ -487,3 +487,30 @@ test('the header says when a run started and, when it is over, when it ended and
 	assert.equal(over[1], 'Testers')
 	assert.match(over[2], /started <time[^>]*>just now<\/time>, ended <time[^>]*>just now<\/time>, took \d+ s\./)
 })
+
+test('a tester row says in plain words where the tester is, and gives the age of its last line', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const opened = openStore(workspace)
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	launched(opened, 'x-1', 'a1')
+	launched(opened, 'x-1', 'a2')
+	closeStore(opened)
+	const row = (page: string, name: string) => page.split(`data-key="explorer:${name}"`)[1].split('data-row')[0]
+	const first = (await call(ui, '/explorations/x-1')).body
+	assert.match(row(first, 'a1'), /In its study turn\. The first activity line comes when the turn ends\./)
+	assert.doesNotMatch(first, /No activity yet/)
+	const again = openStore(workspace)
+	event(again, 'x-1', { step: 'turn', explorer: 'a1', detail: { turn: 'test' } })
+	event(again, 'x-1', {
+		step: 'activity',
+		explorer: 'a2',
+		detail: { turn: 'study', activity: 'study: wrote plan.md. 1 file in the work folder.' },
+	})
+	closeStore(again)
+	const later = (await call(ui, '/explorations/x-1')).body
+	assert.match(row(later, 'a1'), /In its test turn\. No activity line yet\./)
+	assert.match(
+		row(later, 'a2'),
+		/study: wrote plan\.md\. 1 file in the work folder\. · <span class="age"><time[^>]*>just now</
+	)
+})

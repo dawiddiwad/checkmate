@@ -454,6 +454,7 @@ function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: nu
 			typeof outcome?.detail.activity === 'string' && outcomeAction
 				? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}`
 				: null,
+		activityAt: typeof outcome?.detail.activity === 'string' && outcomeAction ? (outcome?.at ?? null) : null,
 		recorded: item.recorded,
 		saved: item.saved,
 		files: state === 'given' || state === 'running' ? [] : files,
@@ -514,6 +515,7 @@ function explorerLive(
 		pausedAt,
 		elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
 		activity: (activity?.detail.activity as string | undefined) ?? null,
+		activityAt: activity?.at ?? null,
 		recorded: item.recorded,
 		saved: item.saved,
 		files: running ? [] : files,

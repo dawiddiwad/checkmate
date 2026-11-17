@@ -20152,7 +20152,10 @@ function approvalDetail(store, context, item, filters, back, state) {
 		${approvalPanel(store, context, detail2, state, extra)}`;
 }
 function gone(filters, state = emptyState()) {
-  return html2`<div class="empty">
+  return html2`<div
+		class="empty"
+		data-decided-message="This item does not wait for you now. Somebody decided it. Your text is kept."
+	>
 		${messages(state)}
 		<p class="empty-title">This item does not wait for you now.</p>
 		<p>Somebody decided it, or a filter hides it.</p>

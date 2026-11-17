@@ -338,7 +338,10 @@ function approvalDetail(
 }
 
 function gone(filters: QueueFilters, state: FormState = emptyState()) {
-	return html`<div class="empty">
+	return html`<div
+		class="empty"
+		data-decided-message="This item does not wait for you now. Somebody decided it. Your text is kept."
+	>
 		${messages(state)}
 		<p class="empty-title">This item does not wait for you now.</p>
 		<p>Somebody decided it, or a filter hides it.</p>

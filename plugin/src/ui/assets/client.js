@@ -528,7 +528,10 @@ function connect() {
 	if (source || !body.dataset.subjects || !window.EventSource) return
 	const subjects = encodeURIComponent(body.dataset.subjects)
 	source = new EventSource(`/events?subjects=${subjects}&after=${encodeURIComponent(last)}`)
-	source.onopen = () => setLive(true)
+	source.onopen = () => {
+		if (live.classList.contains('down')) renewToken().catch(() => {})
+		setLive(true)
+	}
 	source.onerror = () => setLive(false)
 	source.onmessage = (event) => {
 		if (event.lastEventId) last = event.lastEventId
@@ -791,7 +794,9 @@ function swapQueue(fresh, keepDetail = false, live = false, detailOnly = false) 
 		if (previous && normalize(previous.outerHTML) === normalize(replacement.outerHTML)) continue
 		if (name === 'queue-detail' && keepDetail) {
 			const decision = region.querySelector('[data-region="decision"]')
-			const fresh = replacement.querySelector('[data-region="decision"]')
+			const fresh =
+				replacement.querySelector('[data-region="decision"]') ??
+				replacement.querySelector('[data-decided-message]')
 			if (decision && fresh) staleNotice(decision, fresh)
 			continue
 		}

@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
 import { human } from '../scripts/ui-demo.ts'
-import { approval, launch, open, skip, stop } from './browser.ts'
+import { startUi } from '../plugin/src/ui/server.ts'
+import { approval, checkmate, launch, open, skip, stop } from './browser.ts'
 
 test.before(launch)
 test.after(stop)
@@ -214,4 +215,51 @@ test('Ctrl+Enter with an empty field shows an inline message and focuses the fie
 	await page.getByRole('button', { name: 'Record answer' }).click()
 	await message.filter({ hasText: 'Write the answer.' }).waitFor()
 	assert.equal(await focused(), 'value')
+})
+
+test('a decision from elsewhere shows its notice at once and keeps the typed text', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/?item=gap%3Acheckout%3AG2'))
+	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	await page.locator('#value').fill('Half-written answer')
+	await checkmate(workspace, [
+		'gap',
+		'answer',
+		'checkout',
+		'G2',
+		'--kind',
+		'defer',
+		'--value',
+		'Out of scope.',
+		'--rationale',
+		'Decided elsewhere.',
+	])
+	await page
+		.locator('[data-live-stale]', { hasText: 'This item does not wait for you now. Somebody decided it.' })
+		.waitFor({ timeout: 3000 })
+	assert.equal(await page.locator('#value').inputValue(), 'Half-written answer')
+})
+
+test('the first send after a restart of the UI goes through without a refused request', { skip }, async (t) => {
+	const { page, url, ui, workspace } = await open(t)
+	const refused: string[] = []
+	page.on('response', (response) => {
+		if (response.status() === 403) refused.push(response.url())
+	})
+	await page.goto(url('/?item=gap%3Acheckout%3AG2'))
+	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	const token = await page.locator('input[name="csrf"]').first().inputValue()
+	await ui.close()
+	await page.locator('[data-live]', { hasText: 'Reconnecting' }).waitFor()
+	const again = await startUi({ workspace, port: Number(new URL(ui.url).port) })
+	t.after(() => again.close())
+	await page.locator('[data-live]', { hasText: '● Live' }).waitFor({ timeout: 8000 })
+	await page.waitForFunction(
+		(old) => (document.querySelector('input[name="csrf"]') as HTMLInputElement).value !== old,
+		token
+	)
+	await page.locator('#value').fill('Refunds are out of scope.')
+	await page.getByRole('button', { name: 'Record answer' }).click()
+	await page.getByRole('status').filter({ hasText: 'Answered checkout · G2' }).waitFor()
+	assert.deepEqual(refused, [])
 })

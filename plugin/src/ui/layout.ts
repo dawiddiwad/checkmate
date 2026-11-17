@@ -3,7 +3,7 @@ import { glyph, html } from './html.ts'
 import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'home' | 'runs' | 'log' | 'settings' | null
+export type Section = 'home' | 'activity' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {
 	path: string
@@ -12,6 +12,7 @@ export type Context = {
 	theme: Theme
 	toast: string | null
 	queueCount: number
+	running: number
 	cursor: number
 	workspace: string
 }
@@ -107,14 +108,22 @@ function statusBar(context: Context, page: Page) {
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
 			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
 			<span class="sb-btn-set" data-wide
-				>${statusLink(page, 'runs', '/runs', 'Runs')} ${statusLink(page, 'log', '/log', 'Log')}
+				><a
+					class="sb-btn"
+					href="/activity"
+					data-region="activity-link"
+					${page.section === 'activity' ? html`aria-current="page"` : ''}
+					>Activity${context.running ? html`<span class="sb-long"> · ${context.running} running</span>` : ''}</a
+				>
+				${statusLink(page, 'runs', '/runs', 'Runs')} ${statusLink(page, 'log', '/log', 'Log')}
 				${statusLink(page, 'settings', '/settings', 'Settings')}</span
 			>
 			<details class="sb-more menu" data-menu>
 				<summary class="sb-btn">More</summary>
 				<div class="menu-list">
-					<button type="button" data-find-open>Find</button><a href="/runs">Runs</a><a href="/log">Log</a
-					><a href="/settings">Settings</a>
+					<button type="button" data-find-open>Find</button
+					><a href="/activity">Activity${context.running ? ` · ${context.running} running` : ''}</a
+					><a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
 				</div>
 			</details>
 		</span>

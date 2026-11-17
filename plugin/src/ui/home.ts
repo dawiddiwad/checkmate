@@ -3,7 +3,7 @@ import type { Page } from './layout.ts'
 import type { Review } from './review.ts'
 import type { CellStatus } from '../rulemap.ts'
 import { planList } from '../views.ts'
-import { glyph, html, pill, plural, time } from './html.ts'
+import { duration, glyph, html, pill, plural, time, words } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from './review.ts'
 
@@ -76,6 +76,8 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 	const handed = review.items.filter((item) => item.kind === 'defect' && item.claim?.handoff).length
 	const latest = review.map.builds.at(-1)
 	const [label, href] = nextStep(review)
+	const last = review.explorations.at(-1)
+	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
 	const nums: Array<[number, string, boolean]> = [
 		[verdict.defects, 'defects', false],
 		[verdict.findings, 'to look at', verdict.findings > 0],
@@ -100,18 +102,26 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 				${
 					review.running
 						? html`<span class="sp-pill blue"><span class="dot" aria-hidden="true"></span>Testing</span>`
-						: loop
-							? pill(loop.state)
-							: ''
+						: ended
+							? pill(ended.state)
+							: loop
+								? pill(loop.state)
+								: ''
 				}
 				<span
 					class="sp-ct-when ell"
 					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
 					>${
-						latest
-							? html`${buildLabel(review, latest.build)} ${latest.build} · ${time(latest.firstTestedAt)}`
-							: review.target
-					}${loop ? ` · waits on ${roleWords[loop.waitsOn]}` : ''}</span
+						review.running
+							? html`${review.phase ?? words(review.running.state)} ·
+									<span data-since="${review.running.startedAt}"
+										>${duration(Date.now() - Date.parse(review.running.startedAt))}</span
+									>`
+							: latest
+								? html`${buildLabel(review, latest.build)} ${latest.build} ·
+									${time(latest.firstTestedAt)}`
+								: review.target
+					}${loop && !review.running ? ` · waits on ${roleWords[loop.waitsOn]}` : ''}</span
 				>
 			</div>
 			<h2 class="sp-ct-title ell" id="plan-${index}-title" title="${review.objective}">${review.objective}</h2>

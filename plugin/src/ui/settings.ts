@@ -3,6 +3,10 @@ import type { Profile } from '../types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
+import { Refusal } from '../contracts.ts'
+import { testLevels } from '../levels.ts'
+import { requireClaude } from '../sessions.ts'
+import type { Env } from '../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../targets.ts'
 import { html, join, pill, plural, short, time } from './html.ts'
 import { banner, emptyNotice, heading } from './layout.ts'
@@ -10,7 +14,10 @@ import { banner, emptyNotice, heading } from './layout.ts'
 export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
 export type RetireState = { instanceId: string; error: string } | null
 
-const settingsPages = [{ path: '/settings/targets', label: 'Targets' }]
+const settingsPages = [
+	{ path: '/settings/targets', label: 'Targets' },
+	{ path: '/settings/claude', label: 'Claude Code' },
+]
 
 function settingsNav(current: string) {
 	return html`<nav class="settings-nav" aria-label="Settings pages">
@@ -28,7 +35,7 @@ function settingsNav(current: string) {
 }
 
 function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
-	const target = title !== 'Targets'
+	const target = title !== 'Targets' && title !== 'Claude Code'
 	return {
 		title,
 		section: 'settings',
@@ -38,7 +45,7 @@ function settingsPage(current: string, title: string, subjects: string[], body: 
 			['Settings', '/settings/targets'],
 			...(target
 				? [['Targets', '/settings/targets'] as [string, string], [title, null] as [string, null]]
-				: [['Targets', null] as [string, null]]),
+				: [[title, null] as [string, null]]),
 		],
 		back: target ? '/settings/targets' : '/',
 		body: html`${settingsNav(current)} ${body}`,
@@ -458,4 +465,59 @@ export function instanceFromForm(entryPoints: EntryPoint[], form: URLSearchParam
 		...(environment ? { environment } : {}),
 		references,
 	}
+}
+
+function claudeProgram(env: Env) {
+	try {
+		return html`<code>${requireClaude(env)}</code>`
+	} catch (error) {
+		if (!(error instanceof Refusal)) throw error
+		return html`<span class="form-error" role="status">${error.message} ${error.hint ?? ''}</span>`
+	}
+}
+
+export function claudePage(env: Env): Page {
+	const body = html`${heading('Claude Code', 'The program that runs the testers. Checkmate makes no call to it on this page.')}
+		<section class="panel" aria-labelledby="claude-program">
+			<h2 class="lab" id="claude-program">Program</h2>
+			<p>${claudeProgram(env)}</p>
+			<p class="help">
+				Claude Code keeps the login, the permissions, and the tools. Checkmate starts <code>claude</code> and
+				does not read or copy a credential.
+			</p>
+		</section>
+		<section class="panel" aria-labelledby="claude-model">
+			<h2 class="lab" id="claude-model">Model of the testers</h2>
+			<p class="help">
+				Checkmate gives each test level a default model alias. A test that you start in the UI uses it. Claude
+				Code resolves the alias.
+			</p>
+			<div class="scroll">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Level</th>
+							<th scope="col">Model alias</th>
+							<th scope="col">Testers</th>
+						</tr>
+					</thead>
+					<tbody>
+						${Object.entries(testLevels).map(
+							([level, row]) =>
+								html`<tr>
+									<td class="mono">${level}</td>
+									<td class="mono">${row.model}</td>
+									<td>${row.explorers}${row.verifier ? ' and a verifier' : ''}</td>
+								</tr>`
+						)}
+					</tbody>
+				</table>
+			</div>
+			<p class="help">
+				The host wins. To use another model, start the test from a shell with
+				<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>. When the
+				host refuses the model, the test fails and names this override. Checkmate does not try another model.
+			</p>
+		</section>`
+	return settingsPage('/settings/claude', 'Claude Code', ['*'], body)
 }

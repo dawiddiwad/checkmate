@@ -100,7 +100,7 @@ export function listHref(spec: ListSpec, state: ListState, change: Partial<ListS
 	return query ? `${spec.path}?${query}` : spec.path
 }
 
-function listPage<T>(state: ListState, load: (query: ListQuery) => ListPage<T>) {
+export function listPage<T>(state: ListState, load: (query: ListQuery) => ListPage<T>) {
 	const query = (page: number) => ({
 		limit: state.size,
 		offset: (page - 1) * state.size,
@@ -174,7 +174,7 @@ function filterBar(spec: ListSpec, state: ListState) {
 	</form>`
 }
 
-function pageTrail(spec: ListSpec, state: ListState, total: number, title: string) {
+export function pageTrail(spec: ListSpec, state: ListState, total: number, title: string) {
 	const last = Math.max(1, Math.ceil(total / state.size))
 	if (last === 1) return { back: '/' }
 	return {
@@ -183,7 +183,7 @@ function pageTrail(spec: ListSpec, state: ListState, total: number, title: strin
 	}
 }
 
-function pager(spec: ListSpec, state: ListState, total: number) {
+export function pager(spec: ListSpec, state: ListState, total: number) {
 	const last = Math.max(1, Math.ceil(total / state.size))
 	if (last === 1) return ''
 	const link = (page: number, label: string, rel: string) =>

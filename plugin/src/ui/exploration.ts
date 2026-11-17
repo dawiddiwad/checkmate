@@ -5,12 +5,17 @@ import type { EvidenceFile } from './evidence.ts'
 import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { explorationReport } from '../explorers.ts'
+import { explorationEvents } from '../explorations.ts'
+import { defaultBuild } from '../modes.ts'
 import { claimEvidence, entryEvidence, explorationLive, planExplorations } from '../views.ts'
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, crumbBar, downloads, heading } from './layout.ts'
 import { navigator, reviewOf } from './review.ts'
 import { duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
+import { failureOf, money, optionsBox, phases, runsOf } from './activity.ts'
+import type { Run } from './activity.ts'
+import { stopButton, stopDialog, stopTesterDialog, testButton, testDialog, testerStopOption } from './actions.ts'
 
 type Live = ReturnType<typeof explorationLive>
 type Question = Live['questions'][number]
@@ -112,6 +117,17 @@ function dataLine(reason: string | null, data: string[]) {
 	}`
 }
 
+function endedLine(item: Listed) {
+	if (item.state === 'stopped')
+		return html`<strong>Exploration ${item.explorationId} was stopped.</strong> ${item.reason ?? ''}`
+	if (item.state === 'interrupted')
+		return html`<strong
+			>The run ${item.explorationId} was interrupted: the supervisor stopped before the end.</strong
+		>`
+	const failure = failureOf(item.reason, null, [])
+	return html`<strong>${failure.cause}</strong> ${failure.next}`
+}
+
 export function explorationBanners(explorations: Listed[]) {
 	const running = explorations.filter((item) => item.running)
 	const last = explorations.at(-1)
@@ -130,8 +146,7 @@ export function explorationBanners(explorations: Listed[]) {
 			? banner(
 					'fail',
 					html`<span data-key="failed:${last.explorationId}"
-						><strong>Exploration ${last.explorationId} ${last.state}.</strong>
-						${dataLine(last.reason, last.data)}
+						>${endedLine(last)} ${dataLine(last.state === 'failed' ? null : last.reason, last.data)}
 						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
 					>`
 				)
@@ -219,7 +234,27 @@ function explorationHref(explorationId: string, key: string | null) {
 		: `/explorations/${explorationId}`
 }
 
-function stateLine(live: Live) {
+function stoppedLine(store: Store, live: Live) {
+	const stop = explorationEvents(store, live.explorationId).findLast(
+		(item) => item.step === 'stop' && item.explorer === null
+	)
+	const reason = typeof stop?.detail.reason === 'string' ? stop.detail.reason : ''
+	return html`<strong>Stopped by ${String(stop?.detail.actor ?? 'someone')}</strong
+		>${reason ? html`: ${reason}` : ''}`
+}
+
+function workNote(live: Live) {
+	const folder = live.data.find((path) => path.startsWith('.checkmate/work/'))
+	return folder ? html` Reports that were not recorded stay in the work folder <code>${folder}</code>.` : html``
+}
+
+function failedLine(run: Run, live: Live) {
+	if (!run.failure) return html`<strong>${run.outcome}</strong>`
+	return html`<strong>${run.failure.cause}</strong> ${run.failure.next}
+		${run.failure.detail ? html`<span class="help">${run.failure.detail}</span>` : ''} ${dataLine(null, live.data)}`
+}
+
+function stateLine(store: Store, live: Live, run: Run) {
 	if (live.running && live.paused)
 		return banner(
 			'warn',
@@ -232,16 +267,28 @@ function stateLine(live: Live) {
 			'info',
 			html`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
 		)
-	if (live.state === 'failed' || live.state === 'stopped' || live.state === 'interrupted')
+	if (live.state === 'failed') return banner('fail', html`<span data-key="run-ended">${failedLine(run, live)}</span>`)
+	if (live.state === 'stopped')
+		return banner('fail', html`<span data-key="run-ended">${stoppedLine(store, live)}.${workNote(live)}</span>`)
+	if (live.state === 'interrupted')
 		return banner(
 			'fail',
-			html`<strong>Exploration ${live.explorationId} ${live.state}.</strong> ${dataLine(live.reason, live.data)}`
+			html`<span data-key="run-ended"
+				><strong>The run was interrupted: the supervisor stopped before the end.</strong>${workNote(live)}
+				${dataLine(
+					null,
+					live.data.filter((path) => !path.startsWith('.checkmate/work/'))
+				)}</span
+			>`
 		)
 	if (live.follow === 'failed' || live.follow === 'stopped' || live.follow === 'interrupted')
 		return banner(
 			'fail',
 			html`<span data-key="follow-failed"
-				><strong>The follow-up of ${live.explorationId} ${live.follow}.</strong>
+				><strong
+					>The follow-up of ${live.explorationId}
+					${live.follow === 'interrupted' ? 'was interrupted' : live.follow}.</strong
+				>
 				${dataLine(live.followReason, live.data)} The claims and questions of the exploration stay valid.</span
 			>`
 		)
@@ -262,7 +309,13 @@ function testerState(live: Live, item: LiveExplorer) {
 	if (live.running && live.paused && (item.state === 'running' || item.state === 'given'))
 		return html`<span class="sp-pill amber">Paused</span>`
 	if (!item.state) return html`<span class="sp-pill">Not started</span>`
-	const look: Record<string, string> = { given: 'blue', running: 'blue', ended: 'green', failed: 'red' }
+	const look: Record<string, string> = {
+		given: 'blue',
+		running: 'blue',
+		ended: 'green',
+		failed: 'red',
+		stopped: 'amber',
+	}
 	const label: Record<string, string> = {
 		given: 'Given to the session',
 		running: 'Running',
@@ -282,7 +335,8 @@ function spRow(
 	title: Html | string,
 	meta: Html | string,
 	n: string,
-	metaText = ''
+	metaText = '',
+	opts: Html | '' = ''
 ) {
 	return html`<div
 		class="sp-row"
@@ -300,7 +354,12 @@ function spRow(
 		<span class="sp-c-id">${label}</span>
 		<span class="sp-c-title ell" title="${typeof title === 'string' ? title : ''}">${title}</span>
 		<span class="sp-c-meta ell" title="${typeof meta === 'string' ? meta : metaText}">${meta}</span>
+		${opts}
 	</div>`
+}
+
+function stoppableTester(live: Live, item: LiveExplorer) {
+	return live.running && live.state !== 'following' && live.path !== 'session' && item.state === 'running'
 }
 
 function explorationList(live: Live, others: Listed[]) {
@@ -327,7 +386,8 @@ function explorationList(live: Live, others: Listed[]) {
 				raw ? `${raw} not merged` : null,
 			]
 				.filter(Boolean)
-				.join(' · ')
+				.join(' · '),
+			stoppableTester(live, item) ? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)]) : ''
 		)
 	})
 	const phases = live.phases.map((row, index) =>
@@ -528,6 +588,20 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 				</dd>
 			</div>
 		</dl>
+		${
+			stoppableTester(live, item)
+				? html`<section aria-labelledby="options-title" data-key="options:${item.explorer}">
+						<h3 class="lab" id="options-title">Options</h3>
+						<ul class="sp-optlist">
+							<li>
+								${testerStopOption(live.explorationId, item.explorer, 1)}<span class="help"
+									>Ends this tester. The other testers go on.</span
+								>
+							</li>
+						</ul>
+					</section>`
+				: ''
+		}
 		${rawSection(
 			store,
 			live,
@@ -560,8 +634,51 @@ function phaseDetail(live: Live, row: Live['phases'][number], crumbs: Html) {
 		${failed ? html`<p class="help">${dataLine(null, live.data)}</p>` : ''}`
 }
 
-export function explorationPage(store: Store, explorationId: string, params = new URLSearchParams()): Page {
+function phaseStrip(run: Run) {
+	return html`<span class="sp-strip" role="list" aria-label="Phase of the test">
+		${phases.map((phase) =>
+			phase === run.phase
+				? html`<span class="sp-pill blue" role="listitem" aria-current="step" data-phase="${phase}"
+						><span class="dot" aria-hidden="true"></span>${phase}</span
+					>`
+				: html`<span class="sp-pill" role="listitem" data-phase="${phase}">${phase}</span>`
+		)}
+	</span>`
+}
+
+function runActions(context: Context, live: Live, run: Run, others: Listed[], workspaceBuild: string) {
+	const busy = others.some((item) => item.running) || live.running
+	const stoppable = live.running && live.path !== 'session'
+	const again = !busy && ['failed', 'stopped', 'interrupted'].includes(live.state)
+	const testers = live.explorers.filter((item) => stoppableTester(live, item))
+	const subject = { explorationId: live.explorationId, planId: live.planId, build: live.build }
+	const values = {
+		build: run.build,
+		level: run.level ?? 'normal',
+		since: run.since,
+		until: run.until,
+		repo: run.repo,
+	}
+	return html`<div data-region="exploration-actions">
+		<div class="sp-tools" data-actions>
+			${stoppable ? stopButton(live.explorationId) : ''}
+			${again ? testButton(live.planId, 'Test build… again', values) : ''}
+		</div>
+		${stoppable ? stopDialog(context, subject) : ''}
+		${testers.map((item) => stopTesterDialog(context, subject, item.explorer))}
+		${again ? testDialog(context, live.planId, values, workspaceBuild) : ''}
+	</div>`
+}
+
+export function explorationPage(
+	store: Store,
+	context: Context,
+	explorationId: string,
+	params = new URLSearchParams()
+): Page {
 	const live = explorationLive(store, explorationId)
+	const runs = runsOf(store, explorationId, new Map())
+	const run = runs.find((item) => item.running) ?? runs[0]
 	const asked = params.get('item') ?? 'summary'
 	const explorer = live.explorers.find((item) => `explorer:${item.explorer}` === asked)
 	const phase = live.phases.find((row) => `phase:${row.phase}` === asked)
@@ -599,10 +716,30 @@ export function explorationPage(store: Store, explorationId: string, params = ne
 				</p>
 				<div class="sp-pills" data-region="exploration-state">
 					${pill(live.running && live.paused ? 'paused' : live.state)}
-					${live.phases.map((row) => html`<span class="${pillClass(row.state)}" title="${words(row.state)}">${row.phase}</span>`)}
+					${
+						live.running && run.phase
+							? html`${phaseStrip(run)}
+									<span class="sp-pill" title="Time since the start"
+										>${live.running ? html`<span data-since="${run.startedAt}">${duration(Date.now() - Date.parse(run.startedAt))}</span>` : ''}</span
+									>`
+							: live.phases.map(
+									(row) =>
+										html`<span class="${pillClass(row.state)}" title="${words(row.state)}"
+											>${row.phase}</span
+										>`
+								)
+					}
+					${run.costUsd === null ? '' : html`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run.costUsd)}</span>`}
 				</div>
 			</div>
-			<div data-region="exploration-banner">${stateLine(live)}</div>
+			<div data-region="exploration-banner">${stateLine(store, live, run)}</div>
+			${runActions(
+				context,
+				live,
+				run,
+				review.explorations.filter((item) => item.explorationId !== explorationId),
+				defaultBuild(store.workspace)
+			)}
 			<div data-region="exploration-list">${explorationList(live, others)}</div>
 			<section
 				class="sp-detail"

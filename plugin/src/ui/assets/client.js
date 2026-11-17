@@ -438,6 +438,7 @@ function mark(row, where = level) {
 		other.tabIndex = other === row ? 0 : -1
 	}
 	if (!row) return
+	fitOptions(row)
 	padTitle(row)
 	row.focus({ preventScroll: true })
 	reveal(row)
@@ -651,6 +652,7 @@ function step(by) {
 	const turn =
 		!review && level === 'list' && document.querySelector(`[data-list-region] a[rel="${by > 0 ? 'next' : 'prev'}"]`)
 	if ((next < 0 || next >= rows.length) && turn) return void location.assign(turn.href + (by > 0 ? '' : '#last'))
+	if (next < 0 && level === 'list' && enterActions()) return
 	if (next < 0 || next >= rows.length) return tell(by > 0 ? 'This is the last row.' : 'This is the first row.')
 	mark(rows[next])
 	if (level === 'viewer') showFile(rows[next])
@@ -831,7 +833,7 @@ document.addEventListener('submit', (event) => {
 function optionsNow() {
 	if (level === 'detail') return [...drawer.querySelectorAll('.sp-dhead [data-option]')]
 	const row = level === 'list' ? current('list') : null
-	return row ? [...row.querySelectorAll('[data-option]')] : []
+	return row && !row.classList.contains('many') ? [...row.querySelectorAll('[data-option]')] : []
 }
 
 function nextKey(row) {
@@ -907,6 +909,8 @@ function choose(n) {
 	}
 	if (level === 'nav' && review) return chooseBuild(n)
 	const options = optionsNow()
+	if (level === 'list' && current('list')?.classList.contains('many'))
+		return tell('The options do not fit in the row. Open the row to see them.')
 	if (!options.length) return tell('No options here.')
 	const option = options[n - 1]
 	if (!option) return tell(`The options go from 1 to ${options.length}.`)
@@ -1285,7 +1289,7 @@ window.addEventListener('popstate', (event) => {
 		relayer = false
 		return event.stopImmediatePropagation()
 	}
-	const layer = layers.find((dialog) => dialog.open)
+	const layer = layers.find((dialog) => dialog.open) ?? actDialog()
 	if (layer) {
 		layer.close('no')
 		return event.stopImmediatePropagation()
@@ -1336,6 +1340,7 @@ const keyTable = [
 			if (level === 'nav') return row.getAttribute('aria-expanded') === 'false' ? 'expand' : 'enter list'
 			if (level === 'detail') return row.dataset.href ? 'view' : null
 			if (level === 'viewer') return null
+			if (row.classList.contains('many')) return 'options'
 			return row.dataset.href ? 'open' : null
 		},
 	},
@@ -1510,8 +1515,200 @@ window.addEventListener('resize', () => {
 	dockRoom()
 	showHints()
 	const row = document.querySelector('.hl[data-row]')
-	if (row) padTitle(row)
+	if (row) {
+		fitOptions(row)
+		padTitle(row)
+	}
 })
+
+let actFrom = null
+
+function actDialog() {
+	return document.querySelector('dialog[data-act-dialog][open]')
+}
+
+function actButtons() {
+	return [...(panel() ?? document).querySelectorAll('[data-actions] button[data-act]')].filter(shown)
+}
+
+function fillAct(form, values) {
+	for (const [name, value] of Object.entries(values)) {
+		const field = form.elements[name]
+		if (field) field.value = value
+	}
+	if (['since', 'until', 'repo'].some((name) => values[name])) form.querySelector('[data-more]').open = true
+}
+
+function firstField(form) {
+	return form.querySelector('input:not([type="hidden"]):not([type="radio"])') ?? form.querySelector('button')
+}
+
+function openAct(button) {
+	const dialog = document.querySelector(`dialog[data-act-dialog="${CSS.escape(button.dataset.act)}"]`)
+	if (!dialog || document.querySelector('dialog[open]')) return
+	const form = dialog.querySelector('[data-act-form]')
+	if (button.dataset.action) form.action = button.dataset.action
+	if (button.dataset.title) dialog.querySelector('[data-act-title]').textContent = button.dataset.title
+	if (button.dataset.fill) fillAct(form, JSON.parse(button.dataset.fill))
+	dialog.querySelector('[data-act-error]').replaceChildren()
+	actFrom = document.activeElement
+	pushLayer()
+	dialog.showModal()
+	firstField(form).focus()
+	showHints()
+}
+
+function backFromAct() {
+	const from = actFrom
+	actFrom = null
+	const key = from?.closest?.('[data-key]')?.dataset.key
+	const target = from?.isConnected
+		? from
+		: key
+			? document.querySelector(`[data-row][data-key="${CSS.escape(key)}"]`)
+			: from?.dataset?.act
+				? document.querySelector(`[data-act="${CSS.escape(from.dataset.act)}"]`)
+				: null
+	target?.focus({ preventScroll: true })
+	showHints()
+}
+
+function closeGone(region, replacement) {
+	for (const dialog of region.querySelectorAll('dialog[data-act-dialog][open]')) {
+		if (replacement.querySelector(`dialog[data-act-dialog="${CSS.escape(dialog.dataset.actDialog)}"]`)) continue
+		dialog.close('gone')
+		tell(dialog.dataset.gone || 'This changed. Nothing was done.')
+	}
+}
+
+function actStops(dialog) {
+	const stops = [...dialog.querySelectorAll('[data-stop]')].filter((element) => element.getClientRects().length)
+	const radios = stops.filter((element) => element.type === 'radio')
+	const kept = radios.find((radio) => radio.checked) ?? radios[0]
+	return stops.filter((element) => element.type !== 'radio' || element === kept)
+}
+
+function actKey(event, dialog) {
+	const target = event.target
+	const typing = target.matches?.('input[type="text"], input:not([type]), textarea')
+	const key = event.key
+	if (key === 'Escape') {
+		event.preventDefault()
+		return typing ? target.blur() : dialog.close('no')
+	}
+	if (key === 'ArrowUp' || key === 'ArrowDown') {
+		event.preventDefault()
+		const stops = actStops(dialog)
+		const at = stops.indexOf(target)
+		const next = at < 0 ? 0 : at + (key === 'ArrowDown' ? 1 : -1)
+		return stops[Math.max(0, Math.min(stops.length - 1, next))].focus()
+	}
+	if (typing) return
+	const fold = target.matches('summary') ? target.parentElement : null
+	if (key === 'ArrowRight') {
+		event.preventDefault()
+		if (fold) fold.open = true
+	} else if (key === 'ArrowLeft') {
+		event.preventDefault()
+		if (fold?.open) fold.open = false
+		else dialog.close('no')
+	} else if (/^[1-9]$/.test(key)) {
+		const choice = dialog.querySelector(`[data-key-n="${key}"]`)
+		if (!choice) return
+		event.preventDefault()
+		if (choice.matches('input')) {
+			choice.checked = true
+			choice.focus()
+		} else choice.click()
+	}
+}
+
+function actionsKey(event) {
+	const buttons = actButtons()
+	const at = buttons.indexOf(event.target)
+	const toList = () => {
+		const row = current('list') ?? listRows()[0]
+		if (row) mark(row, 'list')
+	}
+	if (event.key === 'ArrowRight' && at < buttons.length - 1) buttons[at + 1].focus()
+	else if (event.key === 'ArrowLeft' && at > 0) buttons[at - 1].focus()
+	else if (['ArrowDown', 'ArrowLeft', 'Escape'].includes(event.key)) toList()
+	else return false
+	event.preventDefault()
+	return true
+}
+
+function enterActions() {
+	const first = actButtons()[0]
+	if (!first) return false
+	first.focus()
+	tell('Actions of this list. Right moves between them, Enter chooses, Down returns to the list.')
+	return true
+}
+
+function fitOptions(row) {
+	const opts = row.querySelector(':scope > .sp-c-opts[data-fit]')
+	if (!opts) return
+	row.classList.remove('many')
+	const absolute = window.getComputedStyle(opts).position === 'absolute'
+	const title = row.querySelector(':scope > .sp-c-title')
+	const room = row.clientWidth - 24 - (title?.offsetLeft ?? 0) - 80
+	row.classList.toggle('many', absolute ? opts.scrollWidth > room : opts.scrollWidth > opts.clientWidth + 1)
+}
+
+document.addEventListener('click', (event) => {
+	const button = event.target.closest('[data-act]')
+	if (button) {
+		event.preventDefault()
+		openAct(button)
+	}
+	if (event.target.closest('[data-act-cancel]')) actDialog()?.close('no')
+})
+
+document.addEventListener('submit', async (event) => {
+	const form = event.target
+	if (!form.matches('[data-act-form]')) return
+	event.preventDefault()
+	if (form.dataset.sending) return
+	form.dataset.sending = '1'
+	const slot = form.querySelector('[data-act-error]')
+	slot.replaceChildren()
+	const send = () => fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) })
+	const alertText = (message) => {
+		const text = document.createElement('p')
+		text.className = 'form-error'
+		text.setAttribute('role', 'alert')
+		text.textContent = message
+		return text
+	}
+	try {
+		let response = await send()
+		if (response.status === 403 && (await renewToken())) response = await send()
+		if (response.redirected && response.ok) return location.replace(response.url)
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		const alert = fresh.querySelector('main [role="alert"]')
+		slot.replaceChildren(
+			alert ? document.importNode(alert, true) : alertText('Checkmate refused the action. Nothing is done.')
+		)
+	} catch {
+		slot.replaceChildren(
+			alertText('Checkmate did not answer. Nothing is done. Start the UI again if it stopped, then try again.')
+		)
+	}
+	delete form.dataset.sending
+	firstField(form).focus()
+})
+
+document.addEventListener(
+	'close',
+	(event) => {
+		const dialog = event.target
+		if (!dialog.matches?.('dialog[data-act-dialog]')) return
+		if (dialog.returnValue !== 'yes') dropLayer('layer')
+		backFromAct()
+	},
+	true
+)
 
 function typingIn(target) {
 	return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
@@ -1556,6 +1753,7 @@ document.addEventListener('keydown', (event) => {
 		return
 	}
 	if (confirmDialog.open) return confirmKey(event)
+	if (actDialog()) return actKey(event, actDialog())
 	if (findDialog.open) return findKey(event)
 	if (keysDialog.open) {
 		if (event.key === '?' || event.key === 'ArrowLeft') {
@@ -1573,6 +1771,7 @@ document.addEventListener('keydown', (event) => {
 	}
 	if (typingIn(target)) return fieldKey(event)
 	if (event.ctrlKey || event.metaKey) return
+	if (target.closest?.('[data-actions]') && actionsKey(event)) return
 	const fold = target.matches?.('details.fold > summary') ? target.parentElement : null
 	if (fold && (event.key === 'ArrowRight' || (event.key === 'ArrowLeft' && fold.open))) {
 		fold.open = event.key === 'ArrowRight'
@@ -1804,6 +2003,7 @@ function normalize(text) {
 }
 
 function dirty(region) {
+if (region.querySelector('dialog[open]')) return true
 	if (region.querySelector('form[data-confirming]')) return true
 	for (const field of region.querySelectorAll('textarea, input, select')) {
 		if (field.type === 'hidden' || field.matches('[data-pick-box]')) continue
@@ -1946,6 +2146,7 @@ async function refresh() {
 			}
 			if (!replacement || (previous && normalize(previous.outerHTML) === normalize(replacement.outerHTML)))
 				continue
+			closeGone(region, replacement)
 			if (dirty(region)) {
 				staleNotice(region, replacement)
 				continue

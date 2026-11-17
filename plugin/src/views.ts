@@ -472,6 +472,7 @@ function explorerLive(
 	const own = events.filter((event) => event.explorer === item.explorer)
 	const launch = own.find((event) => event.step === 'launch' || event.step === 'action')
 	const end = own.findLast((event) => event.step === 'end')
+	const stoppedBy = own.find((event) => event.step === 'stop')
 	const follow = events.findLastIndex((event) => event.step === 'follow')
 	const followed = events.slice(follow + 1)
 	const followTurn = followed.find((event) => event.explorer === item.explorer && event.step === 'follow-turn')
@@ -484,11 +485,13 @@ function explorerLive(
 				? String(own.findLast((event) => event.step === 'turn')?.detail.turn ?? 'study')
 				: null
 	const startedAt = inFollow ? events[follow].at : (launch?.at ?? null)
-	const endedAt = inFollow ? (followTurn?.at ?? null) : (end?.at ?? null)
+	const endedAt = inFollow ? (followTurn?.at ?? null) : (stoppedBy?.at ?? end?.at ?? null)
 	const stopped = followed.some((event) => event.step === 'followed') ? 'skipped' : 'stopped'
 	const state = inFollow
 		? (followTurn?.status ?? (running ? 'running' : stopped))
-		: (end?.status ?? (launch ? (running ? 'running' : 'stopped') : null))
+		: stoppedBy
+			? 'stopped'
+			: (end?.status ?? (launch ? (running ? 'running' : 'stopped') : null))
 	const pause = events.findLast((event) => event.step === 'pause' || event.step === 'resume')
 	const pausedAt = running && !endedAt && pause?.step === 'pause' ? pause.at : null
 	const until = endedAt ? Date.parse(endedAt) : pausedAt ? Date.parse(pausedAt) : running ? now : null

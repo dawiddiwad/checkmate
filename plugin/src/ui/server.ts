@@ -24,6 +24,13 @@ import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
+import { startExploration, startFollow, stopExploration, unusedAnswers } from '../explorers.ts'
+import { autoMode, defaultBuild } from '../modes.ts'
+import { upstreamBase } from '../change.ts'
+import { levelNames } from '../levels.ts'
+import { planRequest } from '../plans.ts'
+import type { Env } from '../sessions.ts'
+import { resolve } from 'node:path'
 import {
 	changesAfter,
 	claimEvidence,
@@ -35,10 +42,12 @@ import {
 	evidenceBytes,
 	operationLog,
 	planDetail,
+	planExplorations,
 	planList,
 	runDetail,
 } from '../views.ts'
 import { defaultActor } from '../actor.ts'
+import type { Html } from './html.ts'
 import { actorLimit, html, plural } from './html.ts'
 import type { BulkState } from './bulk.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
@@ -46,15 +55,18 @@ import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
+import { activityPage, claudeMissing, runningCount } from './activity.ts'
 import { reviewOf, reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, emptyField, ownChanges, removedTests } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
-import { instanceFromForm, targetPage, targetsPage } from './settings.ts'
+import { claudePage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
 
-export type UiOptions = { workspace: string; port?: number; defaultActor?: string }
+export type UiOptions = { workspace: string; port?: number; defaultActor?: string; env?: Env }
+
+const testerRules = ['Read', 'Bash']
 export type Ui = { url: string; close(): Promise<void> }
 
 type Request = { req: IncomingMessage; res: ServerResponse; url: URL; cookies: Record<string, string> }
@@ -67,6 +79,10 @@ const routes = {
 	latestPlan: new RegExp(`^/plans/(${id})$`),
 	request: new RegExp(`^/plans/(${id})/request$`),
 	handoff: new RegExp(`^/plans/(${id})/handoff$`),
+	startTest: new RegExp(`^/plans/(${id})/test$`),
+	startFollow: new RegExp(`^/plans/(${id})/follow$`),
+	stopRun: new RegExp(`^/explorations/(${id})/stop$`),
+	stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
 	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
 	edit: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/edit$`),
 	history: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/history$`),
@@ -227,6 +243,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const store = openStore(options.workspace)
 	const watch = openReadOnlyStore(options.workspace)
 	const csrf = randomBytes(24).toString('hex')
+	const env = options.env ?? process.env
 	const fallbackActor = options.defaultActor ?? defaultActor(options.workspace, process.env) ?? ''
 	const clients = new Set<Client>()
 	let port = 0
@@ -275,6 +292,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					? request.cookies.checkmate_toast || null
 					: null,
 			queueCount: needsYou(store).urgent,
+			running: runningCount(store),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
 		}
@@ -411,6 +429,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
+		if (pathname === '/activity')
+			return render(request, activityPage(store, shown, searchParams, { build: defaultBuild(store.workspace) }))
+		if (pathname === '/settings/claude') return render(request, claudePage(env))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
@@ -462,7 +483,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return download(request, exportRun(store, runId, format), format, name)
 		}
 		const exploration = routes.exploration.exec(pathname)
-		if (exploration) return render(request, explorationPage(store, exploration[1], searchParams))
+		if (exploration) return render(request, explorationPage(store, shown, exploration[1], searchParams))
 		const file = routes.explorerFile.exec(pathname)
 		if (file && searchParams.has('download')) {
 			const [, explorationId, explorer, phase, name] = file
@@ -796,8 +817,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			}))
 			return [head, ...items].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
 		})
+		const pages = [
+			{ kind: 'page', id: 'Activity', title: 'Tests and follow-ups of all plans', href: '/activity' },
+		].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
+		const all = [...pages, ...found]
 		const shown = 12
-		return { results: found.slice(0, shown), more: Math.max(0, found.length - shown) }
+		return { results: all.slice(0, shown), more: Math.max(0, all.length - shown) }
 	}
 
 	function oldItem(params: URLSearchParams, view = 'needs') {
@@ -831,6 +856,122 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			...cookies,
 			cookie('checkmate_toast', undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60),
 		])
+	}
+
+	function actionRefusal(request: Request, back: string, message: Html | string) {
+		render(request, {
+			title: 'Nothing was done',
+			section: 'home',
+			subjects: ['inbox'],
+			status: 422,
+			back,
+			body: html`${heading('Nothing was done')}
+				<p class="form-error" role="alert">${message}</p>
+				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`,
+		})
+	}
+
+	function engineText(error: unknown) {
+		const message = plainMessage(error)
+		if (/No claude executable/.test(message)) return `${claudeMissing.cause} ${claudeMissing.next}`
+		const hint = (error as { hint?: string }).hint
+		return hint ? `${message} ${hint}` : message
+	}
+
+	function runningOf(planId: string) {
+		return planExplorations(store, planId).find((item) => item.running)
+	}
+
+	function inProgress(planId: string, running: { explorationId: string }) {
+		return html`A test of ${planId} is in progress: ${running.explorationId}.
+			<a href="/explorations/${running.explorationId}">Open ${running.explorationId}</a> to watch or stop it.`
+	}
+
+	function startTest(request: Request, form: URLSearchParams, planId: string) {
+		const back = `/plans/${planId}`
+		const { actor, cookies } = actorFrom(request, form)
+		planRequest(store, planId)
+		const build = form.get('build')?.trim() ?? ''
+		const level = form.get('level')?.trim() || 'normal'
+		const [typedSince, until, repo] = ['since', 'until', 'repo'].map((name) => form.get(name)?.trim() || undefined)
+		const refuse = (message: Html | string) => actionRefusal(request, back, message)
+		if (!actor) return refuse('Enter your name. Checkmate records it with the test.')
+		if (!build) return refuse('Write the build name.')
+		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
+		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.')
+		const running = runningOf(planId)
+		if (running) return refuse(inProgress(planId, running))
+		try {
+			const since = typedSince ?? upstreamBase(resolve(store.workspace, repo ?? '.'))
+			const started = startExploration(
+				store,
+				actor,
+				{
+					planId,
+					build,
+					level,
+					since,
+					until,
+					repo,
+					mode: autoMode(store, planId),
+					allow: testerRules,
+					claudeArgs: [],
+				},
+				env
+			)
+			redirect(request.res, `/explorations/${started.subject}`, [
+				...cookies,
+				cookie('checkmate_toast', `Started ${started.subject} on build ${build}`, 60),
+			])
+		} catch (error) {
+			refuse(engineText(error))
+		}
+	}
+
+	function startAnswers(request: Request, form: URLSearchParams, planId: string) {
+		const back = `/plans/${planId}`
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: Html | string) => actionRefusal(request, back, message)
+		const explorationId = form.get('exploration') ?? ''
+		if (!actor) return refuse('Enter your name. Checkmate records it with the test.')
+		if (planOfExploration(explorationId) !== planId)
+			return refuse(`${explorationId} is not an exploration of ${planId}.`)
+		const running = runningOf(planId)
+		if (running) return refuse(inProgress(planId, running))
+		try {
+			const answers = unusedAnswers(store, explorationId).length
+			startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, env)
+			redirect(request.res, `/explorations/${explorationId}`, [
+				...cookies,
+				cookie('checkmate_toast', `Testing ${plural(answers, 'answer')} of ${explorationId}`, 60),
+			])
+		} catch (error) {
+			refuse(engineText(error))
+		}
+	}
+
+	function stopRun(request: Request, form: URLSearchParams, explorationId: string, explorer?: string) {
+		const back = `/explorations/${explorationId}`
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: Html | string) => actionRefusal(request, back, message)
+		if (!actor) return refuse('Enter your name. Checkmate records it with the stop.')
+		try {
+			const reply = stopExploration(store, actor, {
+				explorationId,
+				explorer,
+				reason: form.get('reason')?.trim() || undefined,
+			})
+			const left = (reply.data.left as number[]) ?? []
+			const note = reply.data.note ? ` ${reply.data.note}` : ''
+			const flash = left.length
+				? `Stopped ${explorer ?? explorationId}, but ${left.length === 1 ? 'process' : 'processes'} ${left.join(', ')} ${left.length === 1 ? 'is' : 'are'} still alive. End ${left.length === 1 ? 'it' : 'them'} by hand.`
+				: explorer
+					? `Stopped tester ${explorer} of ${explorationId}`
+					: `Stopped ${explorationId}.${note}`
+			redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
+		} catch (error) {
+			refuse(engineText(error))
+		}
 	}
 
 	function planOfExploration(explorationId: string) {
@@ -1162,6 +1303,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/bulk') return bulk(request, form)
 		const handoff = routes.handoff.exec(pathname)
 		if (handoff) return handOver(request, form, handoff[1])
+		const starting = routes.startTest.exec(pathname)
+		if (starting) return startTest(request, form, starting[1])
+		const following = routes.startFollow.exec(pathname)
+		if (following) return startAnswers(request, form, following[1])
+		const stopping = routes.stopRun.exec(pathname)
+		if (stopping) return stopRun(request, form, stopping[1])
+		const stoppingTester = routes.stopTester.exec(pathname)
+		if (stoppingTester) return stopRun(request, form, stoppingTester[1], stoppingTester[2])
 		const edit = routes.edit.exec(pathname)
 		if (edit) return saveEdit(request, form, edit[1], Number(edit[2]))
 		const question = routes.question.exec(pathname)

@@ -5,9 +5,14 @@ import type { CellStatus, ClaimBuildState } from '../rulemap.ts'
 import { claimDetails, ruleMap } from '../rulemap.ts'
 import { planRequest } from '../plans.ts'
 import { oracleStates } from '../journal.ts'
+import { followCount } from '../explorers.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
-import { glyph, html, plural, words } from './html.ts'
+import { duration, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
+import { defaultBuild } from '../modes.ts'
+import { explorationEvents } from '../explorations.ts'
+import { phaseOf } from './activity.ts'
+import { followDialog, testButton, testDialog, actionButton } from './actions.ts'
 import type { Refusal } from './records.ts'
 import { evidenceViewer, recordDrawer } from './records.ts'
 
@@ -189,7 +194,12 @@ export function reviewOf(store: Store, planId: string) {
 	const { request, target } = planRequest(store, planId)
 	const explorations = planExplorations(store, planId)
 	const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null
+	const running = explorations.find((item) => item.running) ?? null
+	const last = explorations.at(-1)
+	const answers = last && !running ? followCount(store, last.explorationId) : 0
 	return {
+		phase: running ? phaseOf(explorationEvents(store, running.explorationId), running.state) : null,
+		answers: last && answers ? { explorationId: last.explorationId, build: last.build, count: answers } : null,
 		planId,
 		objective: request.objective,
 		target: `${target.profile.targetId}@${target.revision}`,
@@ -199,7 +209,7 @@ export function reviewOf(store: Store, planId: string) {
 		areas: areasOf(map),
 		items,
 		explorations,
-		running: explorations.find((item) => item.running) ?? null,
+		running,
 	}
 }
 
@@ -554,6 +564,20 @@ export function reviewHref(planId: string, view: string, extra = '') {
 	return `/plans/${planId}?view=${encodeURIComponent(view)}${extra}`
 }
 
+function testersEnd(review: Review, testers: Review['explorations'][number]) {
+	const running = review.running
+	if (running)
+		return html`<span
+			class="sp-ncount${running.paused ? ' att' : ''}"
+			title="${review.phase ?? running.state}, since ${running.startedAt}"
+			>${review.phase ?? words(running.state)} ·
+			<span data-since="${running.startedAt}">${duration(Date.now() - Date.parse(running.startedAt))}</span></span
+		>`
+	if (['stopped', 'interrupted', 'failed'].includes(testers.state))
+		return html`<span class="sp-ncount att">${words(testers.state)}</span>`
+	return count(testers.explorers ?? 0, false)
+}
+
 export function navigator(review: Review, current: string, exploration: string | null = null) {
 	const { planId } = review
 	const href = (view: string) => reviewHref(planId, view)
@@ -567,7 +591,7 @@ export function navigator(review: Review, current: string, exploration: string |
 				`/explorations/${testers.explorationId}`,
 				'',
 				review.running ? 'Testers now' : 'Testers',
-				count(testers.explorers ?? 0, Boolean(review.running?.paused)),
+				testersEnd(review, testers),
 				{ look: 'link' }
 			)
 		: ''
@@ -716,11 +740,14 @@ export function verdictLine(review: Review) {
 	const open = review.items.filter((item) => item.kind === 'question' || item.kind === 'gap')
 	const blocking = open.filter((item) => item.blocking).length
 	const build = review.map.builds.at(-1)?.build
+	const last = review.explorations.at(-1)
 	const head = review.running
 		? `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
-		: build
-			? `Build ${build}: ${plural(defects.length, 'open defect')}${critical ? `, ${critical} critical` : ''}.`
-			: 'No build is tested yet.'
+		: last && (last.state === 'stopped' || last.state === 'interrupted')
+			? `The test of build ${last.build} was ${last.state === 'stopped' ? 'stopped' : 'interrupted'}.`
+			: build
+				? `Build ${build}: ${plural(defects.length, 'open defect')}${critical ? `, ${critical} critical` : ''}.`
+				: 'No build is tested yet.'
 	const tail = [
 		findings ? `${plural(findings, 'finding')} ${findings === 1 ? 'needs' : 'need'} your look.` : null,
 		open.length
@@ -816,12 +843,15 @@ function panel(context: Context, review: Review, view: string, current: string) 
 	const items = itemsOf(review, view)
 	const groups = view.startsWith('area:') ? ruleGroups(review, view, items) : groupsOf(items)
 	const title = viewTitle(review, view)
-	const tools =
+	const edit =
 		view === 'rules' && review.revision
 			? html`<a class="sp-btn" href="/plans/${review.planId}@${review.revision}/edit"
 					><span>Edit the rules</span></a
 				>`
 			: ''
+	const tools = html`${edit}${review.running ? '' : testButton(review.planId)}${
+		review.answers ? actionButton('follow', `Test the answers (${review.answers.count})…`) : ''
+	}`
 	return html`<section
 		class="sp-panel"
 		data-panel="${view}"
@@ -901,6 +931,10 @@ export function reviewPage(
 				${panels}
 			</div>
 			${record}
+			<div data-region="plan-actions">
+				${review.running ? '' : testDialog(context, planId, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaultBuild(store.workspace))}
+				${review.answers ? followDialog(context, planId, { ...review.answers, planId }, review.answers.count) : ''}
+			</div>
 			<div
 				class="sp-bulk"
 				data-bulk

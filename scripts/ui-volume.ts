@@ -8,6 +8,7 @@ import { decideClaim, handOffClaims } from '../plugin/src/journal.ts'
 import { harvestExploration } from '../plugin/src/harvest.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { done, ended, entries, event, launch, launched, report } from '../test/explorations.ts'
+import { spawn, spawnSync } from 'node:child_process'
 import { agent, human, minutesAgo, pageShot, seedDemo, withDemoClock } from './ui-demo.ts'
 
 type Defect = [title: string, expected: string, actual: string, steps: string[]]
@@ -495,6 +496,39 @@ function running(store: Store) {
 	])
 }
 
+function processRuns(store: Store) {
+	const gone = spawnSync(process.execPath, ['-e', '']).pid!
+	const alive = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1200000)'], { detached: true, stdio: 'ignore' })
+	alive.unref()
+	const open = (planId: string, explorationId: string, build: string, instance: string) => {
+		openExploration(store, 'checkmate', { planId, build, explorationId, instance })
+		event(store, explorationId, { step: 'start', detail: { ...launch, explorers: 2 } })
+	}
+	minutesAgo(14)
+	open('login', 'x-14', 'fixture-build-3', 'local')
+	event(store, 'x-14', { step: 'supervisor', detail: { pid: alive.pid } })
+	event(store, 'x-14', { step: 'rules', status: 'completed', detail: { costUsd: 0.12 } })
+	for (const explorer of ['a1', 'a2']) launched(store, 'x-14', explorer)
+	minutesAgo(9)
+	for (const explorer of ['a1', 'a2'])
+		event(store, 'x-14', { step: 'turn', explorer, detail: { turn: 'test', session: `session-${explorer}` } })
+	minutesAgo(3 * day)
+	open('search', 'x-15', 'fixture-build-4', 'local')
+	event(store, 'x-15', { step: 'supervisor', detail: { pid: gone } })
+	launched(store, 'x-15', 'a1')
+	minutesAgo(3 * day - 6)
+	event(store, 'x-15', { step: 'stop', detail: { actor: 'ana', reason: 'The build is the wrong one.', was: 'testing' } })
+	minutesAgo(2 * day)
+	open('account', 'x-16', 'fixture-build-1', 'local')
+	event(store, 'x-16', { step: 'supervisor', detail: { pid: gone } })
+	minutesAgo(2 * day - 1)
+	done(store, 'x-16', 'failed', { reason: 'No claude executable on PATH. Nothing changed.' })
+	minutesAgo(1 * day)
+	open('account', 'x-17', 'fixture-build-2', 'local')
+	event(store, 'x-17', { step: 'supervisor', detail: { pid: gone } })
+	launched(store, 'x-17', 'a1')
+}
+
 function paused(store: Store) {
 	minutesAgo(90)
 	openExploration(store, 'checkmate', {
@@ -833,6 +867,7 @@ export function seedVolume(workspace: string) {
 			failed(store)
 			paused(store)
 			running(store)
+			processRuns(store)
 			coupons(store)
 		})
 	} finally {

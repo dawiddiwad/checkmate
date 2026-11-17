@@ -764,6 +764,7 @@ function swapQueue(fresh, keepDetail = false, live = false, detailOnly = false) 
 	syncSource(queue)
 	keepMore()
 	rove()
+	keepAnchor()
 	restoreDrafts()
 	showToast(fresh)
 	return true
@@ -811,6 +812,8 @@ async function queueGo(url, mode, focus, detailOnly = false) {
 		if (!swapQueue(fresh, false, false, detailOnly)) return void location.assign(url)
 		if (mode === 'push') window.history.pushState(null, '', url)
 		if (mode === 'replace') window.history.replaceState(null, '', url)
+		if (mode && new URL(url, location.href).searchParams.has('pick'))
+			window.history.replaceState(null, '', withPicks(location.href))
 		window.dispatchEvent(new window.Event('queue-moved'))
 		if (!detailOnly) window.scrollTo(0, 0)
 		queueFocus(focus)
@@ -932,6 +935,20 @@ function pickUrl() {
 	return form.getAttribute('action') + (query ? `?${query}` : '')
 }
 
+function withPicks(url) {
+	const address = new URL(url, location.href)
+	address.searchParams.delete('pick')
+	for (const box of document.querySelectorAll('[data-pick]:checked')) address.searchParams.append('pick', box.value)
+	return address.pathname + address.search
+}
+
+function keepAnchor() {
+	const box = [...document.querySelectorAll('[data-pick]:checked')].find(
+		(each) => each.closest('li')?.querySelector('[data-queue-link]')?.dataset.key === pickAnchor
+	)
+	if (!box || !document.querySelector('[data-pick]:checked')) pickAnchor = null
+}
+
 function pickBoxOf(row) {
 	return row?.closest('li')?.querySelector('[data-pick]') ?? null
 }
@@ -990,7 +1007,7 @@ function queueFilterUrl(form) {
 	const params = new URLSearchParams()
 	for (const field of form.elements) if (field.name && field.value.trim()) params.set(field.name, field.value.trim())
 	const query = params.toString()
-	return query ? `${form.getAttribute('action')}?${query}` : form.getAttribute('action')
+	return withPicks(query ? `${form.getAttribute('action')}?${query}` : form.getAttribute('action'))
 }
 
 function keepMore() {
@@ -1110,7 +1127,7 @@ if (queue) {
 		if (more) {
 			event.preventDefault()
 			const count = queueRows().length
-			return void queueGo(more.href, 'replace', null).then(() => queueRows()[count]?.focus())
+			return void queueGo(withPicks(more.href), 'replace', null).then(() => queueRows()[count]?.focus())
 		}
 		const back = event.target.closest('[data-queue-back], [data-queue-go]')
 		if (back) {

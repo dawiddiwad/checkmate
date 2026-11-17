@@ -48,7 +48,7 @@ After you record an answer or a decision, the list selects the next item. The pa
 
 #### Decide several items at once
 
-Each question, gap, and claim without a decision has a box at the left of its row. Click the box, or press `x` on the row, to select it. Press `Shift` `x`, or `Shift` and click a box, to select all rows from the last selected row to this row. The selected items are in the address, for example `/?pick=...&pick=...`.
+Each question, gap, and claim without a decision has a box at the left of its row. Click the box, or press `x` on the row, to select it. Press `Shift` `x`, or `Shift` and click a box, to select all rows from the last selected row to this row. The selected items are in the address, for example `/?pick=...&pick=...`. When you change a filter or click `Show 50 more`, the selected rows that stay in view stay selected. The bar tells you how many selected rows are not in the view any more. These rows are not selected now.
 
 When you select an item, the right side shows the selected items:
 

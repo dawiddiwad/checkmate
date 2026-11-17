@@ -388,10 +388,10 @@ export function queuePage(
 	bulk: BulkState | null = null
 ): Page {
 	const waiting = needsYou(store)
-	const filters = queueFilters(params)
-	const shown = waiting.items.filter((item) => matches(item, filters))
+	const typed = queueFilters(params)
+	const shown = waiting.items.filter((item) => matches(item, typed))
 	const picked: Picked[] = shown
-		.filter((entry) => pickable(entry) && filters.picks.includes(entry.key))
+		.filter((entry) => pickable(entry) && typed.picks.includes(entry.key))
 		.map((entry) => ({
 			key: entry.key,
 			kind: entry.kind as Picked['kind'],
@@ -400,6 +400,8 @@ export function queuePage(
 			title: entry.title,
 			explorationId: entry.explorationId,
 		}))
+	const filters = { ...typed, picks: picked.map((entry) => entry.key) }
+	const left = new Set(typed.picks).size - picked.length
 	const asked = refusal?.key ?? params.get('item')
 	const item = asked ? (shown.find((entry) => entry.key === asked) ?? null) : (shown[0] ?? null)
 	const index = item ? shown.indexOf(item) : -1
@@ -424,7 +426,8 @@ export function queuePage(
 				...(item ? [['item', item.key] as [string, string]] : []),
 			],
 			picked.length,
-			queueHref({ ...filters, picks: [] }, item?.key ?? null)
+			queueHref({ ...filters, picks: [] }, item?.key ?? null),
+			left
 		)}
 		${exploring(waiting, filters)}
 		${groups.map((group) =>

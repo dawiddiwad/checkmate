@@ -252,10 +252,10 @@ export function claimsPage(
 	now = Date.now()
 ): Page {
 	const rows = claimsAcross(store)
-	const filters = claimFilters(params)
-	const shown = rows.filter((item) => matches(item, filters, now))
+	const typed = claimFilters(params)
+	const shown = rows.filter((item) => matches(item, typed, now))
 	const picked: Picked[] = shown
-		.filter((entry) => !entry.decision && filters.picks.includes(claimKey(entry.planId, entry.id)))
+		.filter((entry) => !entry.decision && typed.picks.includes(claimKey(entry.planId, entry.id)))
 		.map((entry) => ({
 			key: claimKey(entry.planId, entry.id),
 			kind: 'claim',
@@ -264,6 +264,8 @@ export function claimsPage(
 			title: entry.title,
 			explorationId: entry.explorationId,
 		}))
+	const filters = { ...typed, picks: picked.map((entry) => entry.key) }
+	const left = new Set(typed.picks).size - picked.length
 	const asked = refusal?.key ?? params.get('item')
 	const item = asked
 		? (shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null)
@@ -286,7 +288,8 @@ export function claimsPage(
 				...(key ? [['item', key] as [string, string]] : []),
 			],
 			picked.length,
-			claimsHref({ ...filters, picks: [] }, key)
+			claimsHref({ ...filters, picks: [] }, key),
+			left
 		)}
 		${
 			shown.length

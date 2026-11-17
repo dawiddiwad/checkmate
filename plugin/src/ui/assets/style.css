@@ -2643,3 +2643,9 @@ body:has(.queue) .foot {
 .test-remove[open] > summary {
 	margin-bottom: 8px;
 }
+.bulk-note {
+	flex-basis: 100%;
+	margin: 0;
+	font-weight: 400;
+	color: var(--muted);
+}

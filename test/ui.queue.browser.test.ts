@@ -542,3 +542,37 @@ test('every menu opens inside the window from 1440px to 390px', { skip }, async 
 		}
 	}
 })
+
+test('a selection keeps the rows that stay in view after Show more and a filter', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/claims'))
+	const keys = await page
+		.locator('li:has(input[data-pick]) [data-queue-link]')
+		.evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.key!))
+	const box = (key: string) => page.locator(`li:has([data-key="${key}"]) input[data-pick]`)
+	const plan = (key: string) => key.split(':')[1]
+	const other = keys.find((key) => plan(key) !== plan(keys[0]))!
+	const checked = () =>
+		page
+			.locator('input[data-pick]:checked')
+			.evaluateAll((items) => items.map((item) => (item as HTMLInputElement).value))
+	const count = page.locator('[data-bulk-count]')
+	await box(keys[0]).click()
+	await box(other).click()
+	await page.getByRole('link', { name: /^Show \d+ more$/ }).click()
+	await page.waitForFunction(() => document.querySelectorAll('[data-queue-link]').length > 50)
+	await count.filter({ hasText: '2 selected' }).waitFor()
+	assert.deepEqual((await checked()).sort(), [keys[0], other].sort())
+	assert.equal(new URL(page.url()).searchParams.getAll('pick').length, 2)
+	await page.locator('#claims-plan').selectOption(plan(keys[0]))
+	await page.waitForURL(new RegExp(`plan=${plan(keys[0])}`))
+	await count.filter({ hasText: '1 selected' }).waitFor()
+	await page.getByText('1 selected row is not in this view. It is not selected now.').waitFor()
+	assert.deepEqual(await checked(), [keys[0]])
+	assert.deepEqual(new URL(page.url()).searchParams.getAll('pick'), [keys[0]])
+	await page.locator('.bulk-bar').getByRole('link', { name: 'Clear' }).click()
+	await count.filter({ hasText: /^Select rows/ }).waitFor()
+	await box(keys[3]).click({ modifiers: ['Shift'] })
+	await count.filter({ hasText: '1 selected' }).waitFor()
+	assert.deepEqual(await checked(), [keys[3]])
+})

@@ -17810,7 +17810,12 @@ function pickBox(key, label, checked) {
 		${checked ? html2`checked` : ""}
 	/>`;
 }
-function bulkBar(action, fields, count, clear) {
+function leftNote(left) {
+  if (!left) return "";
+  const text = left === 1 ? "1 selected row is not in this view. It is not selected now." : `${left} selected rows are not in this view. They are not selected now.`;
+  return html2`<p class="bulk-note" role="status">${text}</p>`;
+}
+function bulkBar(action, fields, count, clear, left = 0) {
   return html2`<form
 		id="bulk"
 		class="bulk-bar"
@@ -17824,7 +17829,7 @@ function bulkBar(action, fields, count, clear) {
 			>${count ? `${count} selected` : "Select rows with x or the boxes."}</span
 		>
 		<button class="btn small" data-bulk-submit>Act on selected</button>
-		${count ? html2`<a class="btn small ghost" href="${clear}" data-queue-go>Clear</a>` : ""}
+		${count ? html2`<a class="btn small ghost" href="${clear}" data-queue-go>Clear</a>` : ""} ${leftNote(left)}
 	</form>`;
 }
 function pickedList(picked) {
@@ -18582,9 +18587,9 @@ function nextKey(shown, item) {
 }
 function claimsPage(store, context, params, refusal = null, bulk = null, now = Date.now()) {
   const rows = claimsAcross(store);
-  const filters = claimFilters(params);
-  const shown = rows.filter((item2) => matches(item2, filters, now));
-  const picked = shown.filter((entry) => !entry.decision && filters.picks.includes(claimKey(entry.planId, entry.id))).map((entry) => ({
+  const typed = claimFilters(params);
+  const shown = rows.filter((item2) => matches(item2, typed, now));
+  const picked = shown.filter((entry) => !entry.decision && typed.picks.includes(claimKey(entry.planId, entry.id))).map((entry) => ({
     key: claimKey(entry.planId, entry.id),
     kind: "claim",
     planId: entry.planId,
@@ -18592,6 +18597,8 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
     title: entry.title,
     explorationId: entry.explorationId
   }));
+  const filters = { ...typed, picks: picked.map((entry) => entry.key) };
+  const left = new Set(typed.picks).size - picked.length;
   const asked = refusal?.key ?? params.get("item");
   const item = asked ? shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null : shown[0] ?? null;
   const key = item ? claimKey(item.planId, item.id) : null;
@@ -18612,7 +18619,8 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
       ...key ? [["item", key]] : []
     ],
     picked.length,
-    claimsHref({ ...filters, picks: [] }, key)
+    claimsHref({ ...filters, picks: [] }, key),
+    left
   )}
 		${shown.length ? html2`<ul class="q-items">
 						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
@@ -20143,9 +20151,9 @@ function detail(store, context, waiting, item, filters, back, state) {
 }
 function queuePage(store, context, params, refusal = null, bulk = null) {
   const waiting = needsYou(store);
-  const filters = queueFilters(params);
-  const shown = waiting.items.filter((item2) => matches2(item2, filters));
-  const picked = shown.filter((entry) => pickable(entry) && filters.picks.includes(entry.key)).map((entry) => ({
+  const typed = queueFilters(params);
+  const shown = waiting.items.filter((item2) => matches2(item2, typed));
+  const picked = shown.filter((entry) => pickable(entry) && typed.picks.includes(entry.key)).map((entry) => ({
     key: entry.key,
     kind: entry.kind,
     planId: entry.planId,
@@ -20153,6 +20161,8 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
     title: entry.title,
     explorationId: entry.explorationId
   }));
+  const filters = { ...typed, picks: picked.map((entry) => entry.key) };
+  const left = new Set(typed.picks).size - picked.length;
   const asked = refusal?.key ?? params.get("item");
   const item = asked ? shown.find((entry) => entry.key === asked) ?? null : shown[0] ?? null;
   const index2 = item ? shown.indexOf(item) : -1;
@@ -20173,7 +20183,8 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
       ...item ? [["item", item.key]] : []
     ],
     picked.length,
-    queueHref({ ...filters, picks: [] }, item?.key ?? null)
+    queueHref({ ...filters, picks: [] }, item?.key ?? null),
+    left
   )}
 		${exploring(waiting, filters)}
 		${groups.map(

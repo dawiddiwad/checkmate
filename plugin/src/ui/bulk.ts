@@ -72,7 +72,16 @@ export function pickBox(key: string, label: string, checked: boolean) {
 	/>`
 }
 
-export function bulkBar(action: string, fields: Array<[string, string]>, count: number, clear: string) {
+function leftNote(left: number) {
+	if (!left) return ''
+	const text =
+		left === 1
+			? '1 selected row is not in this view. It is not selected now.'
+			: `${left} selected rows are not in this view. They are not selected now.`
+	return html`<p class="bulk-note" role="status">${text}</p>`
+}
+
+export function bulkBar(action: string, fields: Array<[string, string]>, count: number, clear: string, left = 0) {
 	return html`<form
 		id="bulk"
 		class="bulk-bar"
@@ -86,7 +95,7 @@ export function bulkBar(action: string, fields: Array<[string, string]>, count: 
 			>${count ? `${count} selected` : 'Select rows with x or the boxes.'}</span
 		>
 		<button class="btn small" data-bulk-submit>Act on selected</button>
-		${count ? html`<a class="btn small ghost" href="${clear}" data-queue-go>Clear</a>` : ''}
+		${count ? html`<a class="btn small ghost" href="${clear}" data-queue-go>Clear</a>` : ''} ${leftNote(left)}
 	</form>`
 }
 

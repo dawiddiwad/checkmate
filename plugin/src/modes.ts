@@ -51,6 +51,10 @@ export function dateBuild(now = new Date()) {
 	return `local-${now.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}`
 }
 
+export function defaultBuild(workspace: string) {
+	return gitBuild(workspace) ?? dateBuild()
+}
+
 function chosenTarget(store: Store, actor: string | undefined, input: TestInput, env: Env, assumed: string[]) {
 	if (input.target) return input.target
 	const targets = all<{ target_id: string }>(store, 'SELECT target_id FROM profiles GROUP BY target_id').map(
@@ -114,7 +118,7 @@ function checkRun(store: Store, actor: string | undefined, input: TestInput & { 
 
 export function runTest(store: Store, actor: string | undefined, given: TestInput, env: Env): Reply {
 	const assumed: string[] = []
-	const build = given.build ?? gitBuild(store.workspace) ?? dateBuild()
+	const build = given.build ?? defaultBuild(store.workspace)
 	if (!given.build) assumed.push(`build=${build}`)
 	const input = { ...given, build }
 	if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed)

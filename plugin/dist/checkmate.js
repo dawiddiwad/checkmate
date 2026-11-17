@@ -23307,6 +23307,17 @@ data: ${matched.join(",") || "*"}
     cursor = changes[changes.length - 1].rowid;
     for (const client of clients) for (const change of changes) deliver(client, change);
   }, 250);
+  const watchedStates = () => all(
+    watch,
+    "SELECT DISTINCT exploration_id FROM exploration_events e WHERE step = 'supervisor' AND NOT EXISTS (SELECT 1 FROM exploration_events d WHERE d.exploration_id = e.exploration_id AND d.rowid > e.rowid AND d.step IN ('done', 'followed', 'stop'))"
+  ).map((row2) => `${row2.exploration_id}:${explorationState(explorationEvents(watch, row2.exploration_id))}`).join(",");
+  let supervisors = watchedStates();
+  const supervisorWatch = setInterval(() => {
+    const current = watchedStates();
+    if (current === supervisors) return;
+    supervisors = current;
+    for (const client of clients) client.res.write("data: *\n\n");
+  }, 1e3);
   const heartbeat = setInterval(() => {
     for (const client of clients) client.res.write(": heartbeat\n\n");
   }, 15e3);
@@ -24318,6 +24329,7 @@ data: ${matched.join(",") || "*"}
       closed = true;
       clearInterval(poll);
       clearInterval(heartbeat);
+      clearInterval(supervisorWatch);
       for (const client of clients) client.res.end();
       clients.clear();
       await new Promise((resolve8) => {

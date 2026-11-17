@@ -378,10 +378,10 @@ test('the plan page shows the reason and the data of a failed exploration', asyn
 	assert(keyed(page, 'failed:x-1'))
 	assert.match(
 		page,
-		/Exploration x-1 failed\.<\/strong>\s+The merger stopped\.\s+Its data:\s+<code>\.checkmate\/work\/x-1<\/code>/
+		/The test failed: The merger stopped\.<\/strong>\s+Read the log of the run\. Then test again\.\s+Its data:\s+<code>\.checkmate\/work\/x-1<\/code>/
 	)
 	assert.match(
 		(await call(url, '/explorations/x-1')).body,
-		/Exploration x-1 failed\.<\/strong>\s+The merger stopped\./
+		/The test failed: The merger stopped\.<\/strong>\s+Read the log of the run\./
 	)
 })

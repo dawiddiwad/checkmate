@@ -664,11 +664,12 @@ test('needs you puts blocking questions first, then claims by severity, approval
 		[
 			['x-10', true],
 			['x-9', false],
+			['x-14', false],
 		]
 	)
 	assert.deepEqual(
 		waiting.failed.map((item) => item.explorationId),
-		['x-6']
+		['x-17']
 	)
 	const claim = mergedClaims(opened, 'checkout').find((item) => item.id === 'a1/D1')!
 	const file = claimEvidence(opened, 'checkout', 'a1/D1', 0)

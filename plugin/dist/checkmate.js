@@ -20299,7 +20299,7 @@ function explorationBanners(explorations) {
 	${last && (last.state === "failed" || last.state === "stopped" || last.state === "interrupted") ? banner(
     "fail",
     html2`<span data-key="failed:${last.explorationId}"
-						>${endedLine(last)} ${dataLine(last.state === "failed" ? null : last.reason, last.data)}
+						>${endedLine(last)} ${dataLine("", last.data)}
 						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
 					>`
   ) : ""}`;
@@ -20376,7 +20376,7 @@ function workNote(live) {
 function failedLine(run2, live) {
   if (!run2.failure) return html2`<strong>${run2.outcome}</strong>`;
   return html2`<strong>${run2.failure.cause}</strong> ${run2.failure.next}
-		${run2.failure.detail ? html2`<span class="help">${run2.failure.detail}</span>` : ""} ${dataLine(null, live.data)}`;
+		${run2.failure.detail ? html2`<span class="help">${run2.failure.detail}</span>` : ""} ${dataLine("", live.data)}`;
 }
 function stateLine(store, live, run2) {
   if (live.running && live.paused)

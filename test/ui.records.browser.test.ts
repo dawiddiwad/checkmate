@@ -158,6 +158,11 @@ test(
 	}
 )
 
+const said = (page: Page) =>
+	page.evaluate(() =>
+		[...document.querySelectorAll('[data-say], [data-say-strip]')].map((element) => element.textContent).join('')
+	)
+
 test('the arrows and Space scroll a page that has nothing to move to, and say nothing', { skip }, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 1440, height: 600 } })
 	for (const path of ['/settings/targets/shop-local', '/plans/basket/request', '/plans/checkout@2']) {
@@ -165,12 +170,12 @@ test('the arrows and Space scroll a page that has nothing to move to, and say no
 		await page.keyboard.press('ArrowDown')
 		await page.keyboard.press('Space')
 		await page.waitForFunction(() => window.scrollY > 0)
-		assert.equal(await page.locator('[data-say]').textContent(), '', path)
+		assert.equal(await said(page), '', path)
 	}
 	await page.goto(url('/log'))
 	await page.keyboard.press('Space')
 	await page.waitForFunction(() => window.scrollY > 0)
-	assert.equal(await page.locator('[data-say]').textContent(), '')
+	assert.equal(await said(page), '')
 })
 
 test('a row decided in another session hands the highlight to its neighbour and says so', { skip }, async (t) => {
@@ -189,7 +194,7 @@ test('a row decided in another session hands the highlight to its neighbour and 
 	)
 	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'q:k1/Q9')
 	assert.match(page.url(), /at=q%3Ak1%2FQ9/)
-	assert.match((await page.locator('[data-say]').textContent()) ?? '', /k1\/Q8 was answered in another session/)
+	assert.match(await said(page), /k1\/Q8 was answered in another session/)
 })
 
 test('a deferred question says Deferred in the toast, the badge, and the list', { skip }, async (t) => {
@@ -231,9 +236,9 @@ test('Enter on an empty find query does nothing, and a message clears on the nex
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await ready(page, '[data-row]')
 	await page.keyboard.press('9')
-	assert.match((await page.locator('[data-say]').textContent()) ?? '', /options go from 1 to 2/)
+	assert.match(await said(page), /options go from 1 to 2/)
 	await page.keyboard.press('0')
-	assert.equal(await page.locator('[data-say]').textContent(), '')
+	assert.equal(await said(page), '')
 	const before = page.url()
 	await page.keyboard.press('/')
 	await page.getByRole('dialog', { name: 'Find' }).waitFor()

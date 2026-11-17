@@ -146,7 +146,7 @@ export function explorationBanners(explorations: Listed[]) {
 			? banner(
 					'fail',
 					html`<span data-key="failed:${last.explorationId}"
-						>${endedLine(last)} ${dataLine(last.state === 'failed' ? null : last.reason, last.data)}
+						>${endedLine(last)} ${dataLine('', last.data)}
 						<a href="/explorations/${last.explorationId}">Open ${last.explorationId}</a></span
 					>`
 				)
@@ -251,7 +251,7 @@ function workNote(live: Live) {
 function failedLine(run: Run, live: Live) {
 	if (!run.failure) return html`<strong>${run.outcome}</strong>`
 	return html`<strong>${run.failure.cause}</strong> ${run.failure.next}
-		${run.failure.detail ? html`<span class="help">${run.failure.detail}</span>` : ''} ${dataLine(null, live.data)}`
+		${run.failure.detail ? html`<span class="help">${run.failure.detail}</span>` : ''} ${dataLine('', live.data)}`
 }
 
 function stateLine(store: Store, live: Live, run: Run) {

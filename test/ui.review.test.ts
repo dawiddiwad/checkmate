@@ -69,7 +69,7 @@ test('the home lists each plan once, and the plan lists what needs you in groups
 	assert.equal(home.status, 200)
 	assert.deepEqual(
 		[...home.body.matchAll(/data-key="plan:([^"]+)"/g)].map((match) => match[1]),
-		['checkout', 'search', 'basket', 'coupons', 'login', 'account']
+		['login', 'checkout', 'search', 'basket', 'coupons', 'account']
 	)
 	const waiting = read(needsYou)
 	assert.match(

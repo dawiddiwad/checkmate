@@ -1585,6 +1585,7 @@ function backFromAct() {
 
 function closeGone(region, replacement) {
 	for (const dialog of region.querySelectorAll('dialog[data-act-dialog][open]')) {
+		if (dialog.querySelector('[data-sending]')) continue
 		if (replacement.querySelector(`dialog[data-act-dialog="${CSS.escape(dialog.dataset.actDialog)}"]`)) continue
 		dialog.close('gone')
 		tell(dialog.dataset.gone || 'This changed. Nothing was done.')

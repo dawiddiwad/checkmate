@@ -289,3 +289,78 @@ test('the options of the highlighted row stay inside the row with the fallback f
 	for (const width of [1440, 1100, 760, 400])
 		for (const path of [pages[1], pages[2], pages[5]]) await check(page, url(path), width, 'dark')
 })
+
+function covered() {
+	const docked = ['[data-bulk]:not([hidden])', '.toast']
+		.map((selector) => document.querySelector(selector))
+		.filter((element): element is HTMLElement => Boolean(element) && (element as HTMLElement).offsetHeight > 0)
+		.map((element) => element.getBoundingClientRect())
+	const hits = (element: Element) => {
+		const box = element.getBoundingClientRect()
+		if (!box.height) return false
+		return docked.some(
+			(dock) =>
+				Math.min(box.bottom, dock.bottom) - Math.max(box.top, dock.top) > 0.5 &&
+				Math.min(box.right, dock.right) - Math.max(box.left, dock.left) > 0.5
+		)
+	}
+	const problems: string[] = []
+	if (docked.length === 0) problems.push('nothing is docked')
+	const highlighted = document.querySelector('.hl[data-row]')
+	if (highlighted && hits(highlighted)) problems.push(`highlight ${highlighted.getAttribute('data-key')}`)
+	const parts = document.querySelectorAll('[data-nav], [data-panel]:not([hidden]) :is([data-row], .sp-gh)')
+	for (const part of parts) {
+		part.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+		if (hits(part))
+			problems.push(
+				`${part.getAttribute('data-key') ?? part.getAttribute('data-target') ?? part.textContent?.trim()}`
+			)
+	}
+	return problems
+}
+
+const docks = [
+	[1440, 900],
+	[1440, 500],
+	[900, 700],
+	[760, 700],
+	[400, 700],
+] as const
+
+test('the selection strip covers no part of either pane, at every size', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const [width, height] of docks) {
+		await page.setViewportSize({ width, height })
+		await page.goto(url('/plans/coupons?view=all&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		await page.keyboard.press('Space')
+		await page.locator('[data-bulk]:not([hidden])').waitFor()
+		const rows = await page.locator('[data-panel="all"] [data-row]').count()
+		for (let step = 0; step < rows; step++) {
+			await page.keyboard.press('ArrowDown')
+			assert.deepEqual(await page.evaluate(covered), [], `${width}x${height} step ${step}`)
+		}
+	}
+})
+
+test('the toast covers no part of either pane, at every size', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const [width, height] of docks) {
+		await page.setViewportSize({ width, height })
+		await page.goto(url('/plans/coupons?view=all&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		await page.evaluate(() => {
+			const note = document.createElement('div')
+			note.className = 'toast'
+			note.setAttribute('role', 'status')
+			note.textContent = 'Accepted coupons · k1/D10'
+			document.body.append(note)
+			window.dispatchEvent(new Event('resize'))
+		})
+		const rows = await page.locator('[data-panel="all"] [data-row]').count()
+		for (let step = 0; step < rows; step++) {
+			await page.keyboard.press('ArrowDown')
+			assert.deepEqual(await page.evaluate(covered), [], `${width}x${height} step ${step}`)
+		}
+	}
+})

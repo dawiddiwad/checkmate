@@ -67,7 +67,7 @@ After a decision, the next item that waits for you takes the highlight. The addr
 
 ### Act on several records
 
-Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A bar at the bottom shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. A hand-over shows a note with `0 Undo` for some seconds. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
+Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
 
 ### Find
 

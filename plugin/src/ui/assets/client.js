@@ -442,11 +442,11 @@ function padTitle(row) {
 	row.style.setProperty('--title-pad', `${Math.max(0, options.offsetWidth + 12 - beside)}px`)
 }
 
-function floatRoom() {
-	const floating = [document.querySelector('[data-bulk]:not([hidden])'), document.querySelector('.toast')]
-		.filter(Boolean)
-		.map((element) => element.offsetHeight + 16)
-	document.documentElement.style.setProperty('--float-h', `${Math.max(0, ...floating)}px`)
+function dockRoom() {
+	const bulk = document.querySelector('[data-bulk]:not([hidden])')?.offsetHeight ?? 0
+	const toast = document.querySelector('.toast')?.offsetHeight ?? 0
+	document.documentElement.style.setProperty('--bulk-h', `${bulk}px`)
+	document.documentElement.style.setProperty('--dock-h', `${bulk + toast}px`)
 	const row = document.querySelector('.hl[data-row]')
 	if (row) row.scrollIntoView({ block: 'nearest' })
 }
@@ -810,7 +810,7 @@ function showBulk() {
 	if (!bulkBar) return
 	const was = bulkBar.hidden
 	bulkBar.hidden = !picks.size
-	if (was !== bulkBar.hidden) window.requestAnimationFrame(floatRoom)
+	if (was !== bulkBar.hidden) window.requestAnimationFrame(dockRoom)
 	if (!picks.size) return
 	const findings = picked('claim').length
 	const questions = picked('question').length + picked('gap').length
@@ -972,10 +972,10 @@ function showUndo() {
 	note.querySelector('span').textContent = `Handed ${named} over to ${kept.to}`
 	document.querySelector('[data-toast]')?.remove()
 	body.append(note)
-	floatRoom()
+	dockRoom()
 	setTimeout(() => {
 		note.remove()
-		floatRoom()
+		dockRoom()
 		try {
 			window.sessionStorage.removeItem('checkmate-undo')
 		} catch {}
@@ -1263,6 +1263,7 @@ function showHints() {
 }
 
 window.addEventListener('resize', () => {
+	dockRoom()
 	showHints()
 	const row = document.querySelector('.hl[data-row]')
 	if (row) padTitle(row)
@@ -1921,7 +1922,7 @@ if (toast)
 		setTimeout(
 			() => {
 				toast.remove()
-				floatRoom()
+				dockRoom()
 			},
 			reducedMotion.matches ? 0 : 320
 		)
@@ -1942,7 +1943,7 @@ if (!CSS.supports('field-sizing', 'content')) {
 }
 
 document.querySelector('[data-keys-open]').hidden = false
-floatRoom()
+dockRoom()
 document.querySelector('[data-find-open]').hidden = false
 showUndo()
 if (review && chosenBuild) applyBuild()

@@ -25,7 +25,7 @@ export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	scope?: string[]
 }
 
-function hasRequest(store: Store, planId: string) {
+export function hasRequest(store: Store, planId: string) {
 	return Boolean(one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', planId))
 }
 

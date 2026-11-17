@@ -1351,6 +1351,9 @@ a.sp-c-title {
 	text-decoration: none;
 	cursor: pointer;
 }
+.sp-ct.sp-ct-new {
+	grid-template-columns: minmax(0, 1fr) max-content;
+}
 .sp-ct:hover {
 	background: var(--row-hover);
 }
@@ -3265,4 +3268,44 @@ main a:active {
 }
 .list-count:empty {
 	display: none;
+}
+
+.start-form {
+	max-width: 720px;
+}
+.start-form .btns {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 16px;
+}
+.start-form .btns .sp-btn {
+	text-decoration: none;
+}
+.setup-assumed {
+	margin: 0 0 12px;
+	padding: 12px;
+	border: 1px solid var(--hair);
+}
+.setup-assumed h2 {
+	margin: 0 0 4px;
+}
+.setup-assumed ul {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font: 400 14px/20px var(--font-body);
+	color: var(--muted);
+}
+.start-form .sp-seg {
+	margin: 0 0 8px;
+}
+.start-form [data-act-error]:empty {
+	display: none;
+}
+.start-form [data-new-target-note] {
+	margin-bottom: 12px;
 }

@@ -1,5 +1,5 @@
 import type { Charter } from './explorations.ts'
-import { anyTestOperation, anyTestOperationText } from './targets.ts'
+import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -217,7 +217,9 @@ export function repairPrompt(refusals: string[], answer?: string) {
 }
 
 function operationText(operations: string[]) {
-	return operations.includes(anyTestOperation) ? anyTestOperationText : `You can: ${operations.join(', ')}.`
+	if (operations.includes(anyTestOperation)) return anyTestOperationText
+	if (operations.length === 1 && operations[0] === readOnlyOperation) return readOnlyOperationText
+	return `You can: ${operations.join(', ')}.`
 }
 
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }

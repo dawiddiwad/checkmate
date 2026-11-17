@@ -61,6 +61,34 @@ function sourceText(store: Store, name: string) {
 	}
 }
 
+export function ticketFile(store: Store, typed: string) {
+	const name = typed.trim()
+	const workspace = realpathSync(store.workspace)
+	const inside = (path: string) => path.startsWith(workspace + sep)
+	const wanted = resolve(store.workspace, name)
+	requireCondition(
+		wanted.startsWith(resolve(store.workspace) + sep) || inside(wanted),
+		`The ticket ${name} is outside the workspace.`,
+		`Give a file inside ${workspace}, or paste the text of the ticket.`
+	)
+	let path = ''
+	try {
+		path = realpathSync(wanted)
+	} catch {}
+	requireCondition(
+		path !== '',
+		`The ticket file ${name} does not exist.`,
+		'Check the path, or paste the text of the ticket.'
+	)
+	requireCondition(
+		inside(path),
+		`The ticket ${name} is outside the workspace.`,
+		`Give a file inside ${workspace}, or paste the text of the ticket.`
+	)
+	requireCondition(statSync(path).isFile(), `The ticket ${name} is not a file.`, 'Give the path of a file.')
+	return path.slice(workspace.length + 1)
+}
+
 export function ruleSources(store: Store, planId: string): RuleSource[] {
 	const { request } = planRequest(store, planId)
 	return (request.context?.sources ?? []).map((name) => ({ name, text: sourceText(store, name) }))

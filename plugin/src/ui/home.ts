@@ -139,6 +139,29 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 	</div>`
 }
 
+function newChangeRow(index: number) {
+	return html`<div
+		class="sp-ct sp-ct-new"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="plan-${index}"
+		data-row
+		data-key="new:change"
+		data-href="/new"
+		data-label="New change"
+		aria-labelledby="plan-${index}-title"
+	>
+		<div class="sp-ct-main">
+			<h2 class="sp-ct-title ell" id="plan-${index}-title">New change</h2>
+			<p class="sp-ct-verdict">Give a ticket. Checkmate makes a plan and starts the first test.</p>
+		</div>
+		<div class="sp-ct-opts">
+			<a class="sp-btn" href="/new" data-option><kbd>1</kbd><span>New change</span></a>
+		</div>
+	</div>`
+}
+
 export function homePage(store: Store): Page {
 	const latest = (review: ReturnType<typeof reviewOf>, since: string) =>
 		[since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1)!
@@ -155,7 +178,7 @@ export function homePage(store: Store): Page {
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
 	const body = plans.length
 		? html`<div class="sp-home" role="listbox" aria-label="Plans" data-list>
-				${reviews.map((review, index) => tile(review, plans[index].loop, index))}
+				${reviews.map((review, index) => tile(review, plans[index].loop, index))}${newChangeRow(reviews.length)}
 			</div>`
 		: emptyNotice(
 				'No plan yet.',

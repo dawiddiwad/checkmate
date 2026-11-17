@@ -2,6 +2,7 @@ import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { request } from 'node:http'
 import { setTimeout as pause } from 'node:timers/promises'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
@@ -60,3 +61,41 @@ export async function postAs(ui: { url: string }, actor: string, path: string, f
 		body: new URLSearchParams({ csrf, ...form }),
 	})
 }
+
+type Reply = { status: number; headers: Record<string, unknown>; body: string }
+
+export function call(
+	ui: { url: string },
+	path: string,
+	form?: Record<string, string>,
+	headers: Record<string, string> = {}
+) {
+	const body = form ? new URLSearchParams(form).toString() : undefined
+	return new Promise<Reply>((resolve, reject) => {
+		const req = request(
+			new URL(path, ui.url),
+			{
+				method: body === undefined ? 'GET' : 'POST',
+				headers: {
+					...(body === undefined ? {} : { 'Content-Type': 'application/x-www-form-urlencoded' }),
+					...headers,
+				},
+			},
+			(res) => {
+				const chunks: Buffer[] = []
+				res.on('data', (chunk) => chunks.push(chunk))
+				res.on('end', () =>
+					resolve({
+						status: res.statusCode ?? 0,
+						headers: res.headers,
+						body: Buffer.concat(chunks).toString(),
+					})
+				)
+			}
+		)
+		req.on('error', reject)
+		req.end(body)
+	})
+}
+
+export const token = (page: string) => /name="csrf" value="([0-9a-f]+)"/.exec(page)![1]

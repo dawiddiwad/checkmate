@@ -5,7 +5,7 @@ import { requireWellFormed } from './contracts.ts'
 export const defaultTesterRules = 'Read Bash'
 
 export function ruleTokens(text: string) {
-	return text.match(/(?:[^\s(]|\([^)]*\))+|\S+/g) ?? []
+	return text.match(/(?:[^\s(]|\([^)]*(?:\)|$))+/g) ?? []
 }
 
 export function testerRulesText(store: Store) {

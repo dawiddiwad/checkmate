@@ -50,6 +50,8 @@ const pages = [
 	'/settings/claude',
 	'/plans/login',
 	'/plans/account',
+	'/new',
+	'/setup',
 ]
 
 function measure(narrow: boolean) {
@@ -564,6 +566,26 @@ for (const colorScheme of ['dark', 'light'] as const)
 					assert.deepEqual(problems, [], `${path} dialog at ${width} in ${colorScheme}`)
 					const box = await page.locator('dialog[open]').boundingBox()
 					assert(box && box.x >= 0 && box.x + box.width <= width + 0.5, `${path} dialog fits ${width}`)
+				}
+		}
+	)
+
+for (const colorScheme of ['dark', 'light'] as const)
+	test(
+		`the first-run form with its assumptions lines up at 1440, 900, and 400 in the ${colorScheme} theme`,
+		{ skip },
+		async (t) => {
+			const { page, url } = await open(t)
+			for (const width of [1440, 900, 400])
+				for (const address of ['http://localhost:3000', 'http://shop.example.com']) {
+					await page.setViewportSize({ width, height: 900 })
+					await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+					await page.goto(url('/setup'))
+					await page.evaluate(() => document.fonts.ready)
+					await page.locator('#setup-url').fill(address)
+					await page.locator('[data-assumed]:not([hidden]) [data-assumed-list] li').first().waitFor()
+					const problems = await page.evaluate(measure, width <= 760)
+					assert.deepEqual(problems, [], `${address} at ${width} in ${colorScheme}`)
 				}
 		}
 	)

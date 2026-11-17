@@ -788,6 +788,19 @@ test(
 			'dialog[data-confirm]',
 			hidden('dialog[data-confirm]')
 		)
+		await cycle(
+			'address that is not local',
+			'/setup',
+			async () => {
+				await page.locator('#setup-url').fill('http://shop.example.com')
+				await page.locator('[data-assumed]:not([hidden])').waitFor()
+				await page.locator('input[name="operations"][value="yes"]').check({ force: true })
+				await page.locator('#setup-url').focus()
+			},
+			['Enter', 'Escape'],
+			'dialog[data-confirm][open]',
+			hidden('dialog[data-confirm]')
+		)
 		const actions = async (
 			name: string,
 			start: string,

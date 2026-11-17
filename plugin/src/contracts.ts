@@ -146,6 +146,15 @@ function schemaError(path: string, error: SchemaError) {
 	return `${path} ${error.message}`
 }
 
+export function slugId(text: string) {
+	return text
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, '-')
+		.replace(/^[^a-z0-9]+/, '')
+		.replace(/-+$/, '')
+		.slice(0, 96)
+}
+
 export function requireIdentifier(value: unknown, name: string): string {
 	requireWellFormed(
 		typeof value === 'string' && identifier.test(value),

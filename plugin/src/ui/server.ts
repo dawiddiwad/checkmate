@@ -23,7 +23,20 @@ import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
-import { addInstance, retireInstance, targetRequest } from '../targets.ts'
+import {
+	addInstance,
+	instanceList,
+	isLocalAddress,
+	readOnlyOperation,
+	requireAnswer,
+	retireInstance,
+	setupAssumptions,
+	setupTarget,
+	targetList,
+	targetRequest,
+	targetRevision,
+	urlReachable,
+} from '../targets.ts'
 import {
 	explorationState,
 	recordStop,
@@ -35,13 +48,18 @@ import {
 } from '../explorers.ts'
 import { explorationEvents } from '../explorations.ts'
 import { all } from '../store.ts'
-import { autoMode, defaultBuild } from '../modes.ts'
+import { autoMode, defaultBuild, hasRequest, runTest } from '../modes.ts'
 import { upstreamBase } from '../change.ts'
 import { levelNames } from '../levels.ts'
 import { ruleTokens, saveTesterRules, testerRulesText } from '../settings.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
+import { requireClaude } from '../sessions.ts'
+import { launchPlan } from '../explorers.ts'
+import { ticketFile } from '../rules.ts'
+import { requireIdentifier } from '../contracts.ts'
 import { resolve } from 'node:path'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import {
 	changesAfter,
 	claimEvidence,
@@ -66,6 +84,7 @@ import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
+import { firstRunPage, newChangePage } from './start.ts'
 import { activityPage, claudeMissing, runningCount } from './activity.ts'
 import { reviewOf, reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
@@ -205,6 +224,14 @@ function same(a: string, b: string) {
 	const x = Buffer.from(a)
 	const y = Buffer.from(b)
 	return x.length === y.length && timingSafeEqual(x, y)
+}
+
+function hostOf(address: string) {
+	try {
+		return new URL(address).host || address
+	} catch {
+		return address
+	}
 }
 
 function safeBack(value: string | null) {
@@ -449,7 +476,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
-		if (pathname === '/') return render(request, homePage(store))
+		if (pathname === '/') return render(request, startOfHome(shown))
+		if (pathname === '/setup') return render(request, firstRunPage(shown, false))
+		if (pathname === '/new')
+			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
 		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
@@ -539,6 +569,25 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const run = routes.run.exec(pathname)
 		if (run) return render(request, runPage(store, shown, run[1], searchParams))
 		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from Needs you.`)
+	}
+
+	function changeDefaults(target: string | null) {
+		const targets = targetList(store).map((item) => {
+			const address =
+				instanceList(store, item.targetId).find((instance) => !instance.retired)?.entries.web ?? null
+			return {
+				targetId: item.targetId,
+				address: address ? hostOf(address) : null,
+				local: address ? !URL.canParse(address) || isLocalAddress(address) : true,
+			}
+		})
+		return { build: defaultBuild(store.workspace), target: target ?? '', targets }
+	}
+
+	function startOfHome(shown: Context) {
+		if (!targetList(store).length) return firstRunPage(shown, true)
+		if (!planList(store).length) return newChangePage(shown, changeDefaults(null), true)
+		return homePage(store)
 	}
 
 	function actorPage(shown: Context, back: string): Page {
@@ -844,6 +893,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 		const pages = [
 			{ kind: 'page', id: 'Activity', title: 'Tests and follow-ups of all plans', href: '/activity' },
+			{ kind: 'page', id: 'New change', title: 'Give a ticket and start the first test', href: '/new' },
+			{ kind: 'page', id: 'New target', title: 'Set up the application to test', href: '/setup' },
 		].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
 		const all = [...pages, ...found]
 		const shown = 12
@@ -1019,6 +1070,166 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			...cookies,
 			cookie('checkmate_toast', 'Saved the tool rules of testers', 60),
 		])
+	}
+
+	function setupChoice(form: URLSearchParams, url: string) {
+		const typed = form.get('operations') ?? ''
+		const local = isLocalAddress(url)
+		const yes = typed === 'yes' || (typed === '' && local)
+		return { yes, chosen: typed === 'yes' || typed === 'no' || local, local }
+	}
+
+	function previewSetup(request: Request, form: URLSearchParams) {
+		const url = (form.get('url') ?? '').trim()
+		const reply = (body: Record<string, unknown>) =>
+			send(request.res, 200, 'application/json; charset=utf-8', JSON.stringify(body))
+		if (!/^https?:\/\/[^\s/]+/i.test(url))
+			return reply({ error: 'Give a full address, for example http://localhost:3000.' })
+		try {
+			const choice = setupChoice(form, url)
+			const planned = setupAssumptions({
+				url,
+				targetId: form.get('target')?.trim() || undefined,
+				environment: form.get('environment')?.trim() || undefined,
+				operations: choice.yes ? undefined : [readOnlyOperation],
+				env,
+			})
+			reply({
+				address: new URL(url).host,
+				local: choice.local,
+				targetId: planned.targetId,
+				assumed: planned.assumed.filter((line) => !line.startsWith('target=')),
+			})
+		} catch (error) {
+			reply({ error: plainMessage(error) })
+		}
+	}
+
+	async function setUp(request: Request, form: URLSearchParams) {
+		const back = '/setup'
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
+		const url = (form.get('url') ?? '').trim()
+		if (!actor) return refuse('Enter your name. Checkmate records it with the target.')
+		if (!/^https?:\/\/[^\s/]+/i.test(url))
+			return refuse('Give the address of the application, for example http://localhost:3000.', 'url')
+		const choice = setupChoice(form, url)
+		if (!choice.chosen)
+			return refuse(
+				`${new URL(url).host} is not a local address. Choose whether testers may change data there.`,
+				'operations'
+			)
+		if (!choice.local && form.get('confirmed') !== '1')
+			return refuse(`Confirm that Checkmate may test ${new URL(url).host}, an address that is not local.`, 'url')
+		const typedTarget = form.get('target')?.trim() || undefined
+		const environment = form.get('environment')?.trim() || undefined
+		try {
+			if (typedTarget) requireIdentifier(typedTarget, 'target name')
+			requireAnswer(await urlReachable(url), url)
+			const reply = setupTarget(store, actor, {
+				url,
+				targetId: typedTarget,
+				environment,
+				operations: choice.yes ? undefined : [readOnlyOperation],
+				env,
+				answered: true,
+			})
+			if (reply.status !== 'completed') return refuse(reply.reasons.join(' '), 'target')
+			redirect(request.res, `/new?target=${encodeURIComponent(String(reply.data.targetId))}`, [
+				...cookies,
+				cookie('checkmate_toast', `Set up target ${reply.data.targetId}`, 60),
+			])
+		} catch (error) {
+			const text = engineText(error)
+			refuse(
+				text,
+				/target name/.test(text)
+					? 'target'
+					: /production/.test(text)
+						? 'environment'
+						: /did not answer/.test(text)
+							? 'url'
+							: ''
+			)
+		}
+	}
+
+	function startChange(request: Request, form: URLSearchParams) {
+		const back = '/new'
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
+		const text = form.get('text') ?? ''
+		const typedFile = form.get('file')?.trim() ?? ''
+		const planId = form.get('plan')?.trim() ?? ''
+		const targetId = form.get('target')?.trim() ?? ''
+		const build = form.get('build')?.trim() ?? ''
+		const level = form.get('level')?.trim() || 'normal'
+		const [since, until, repo] = ['since', 'until', 'repo'].map((name) => form.get(name)?.trim() || undefined)
+		const allow = ruleTokens(form.get('rules') ?? '')
+		if (!actor) return refuse('Enter your name. Checkmate records it with the plan and the test.')
+		if (!typedFile && !text.trim())
+			return refuse('Give the ticket: the path of a file in the workspace, or the pasted text.', 'file')
+		if (typedFile && text.trim()) return refuse('Give the file or the pasted text, not both.', 'text')
+		let source = ''
+		try {
+			if (typedFile) source = ticketFile(store, typedFile)
+		} catch (error) {
+			return refuse(engineText(error), 'file')
+		}
+		if (!planId) return refuse('Write the name of the plan.', 'plan')
+		try {
+			requireIdentifier(planId, 'plan ID')
+		} catch (error) {
+			return refuse(engineText(error), 'plan')
+		}
+		if (hasRequest(store, planId))
+			return refuse(`A plan ${planId} exists already. Give another name, or test it from its page.`, 'plan')
+		if (!targetList(store).some((item) => item.targetId === targetId))
+			return refuse('Choose a target, or set one up.', 'target')
+		if (!build) return refuse('Write the build name.', 'build')
+		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
+		if (until && !since) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
+		const address = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web
+		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
+			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
+		try {
+			requireClaude(env)
+			launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env)
+		} catch (error) {
+			const message = engineText(error)
+			return refuse(message, /tool rules/.test(message) ? 'rules' : '')
+		}
+		const kept = text.trim() ? `.checkmate/sources/${planId}.md` : ''
+		try {
+			if (kept) {
+				mkdirSync(resolve(store.workspace, '.checkmate', 'sources'), { recursive: true })
+				writeFileSync(resolve(store.workspace, kept), text.endsWith('\n') ? text : `${text}\n`)
+			}
+			const started = runTest(
+				store,
+				actor,
+				{
+					planId,
+					target: targetId,
+					sources: [kept || source],
+					build,
+					level,
+					since,
+					until,
+					repo,
+					allow,
+					claudeArgs: [],
+				},
+				env
+			)
+			redirect(request.res, `/explorations/${started.subject}`, [
+				...cookies,
+				cookie('checkmate_toast', `Started ${started.subject} on build ${build}`, 60),
+			])
+		} catch (error) {
+			if (kept && !hasRequest(store, planId)) rmSync(resolve(store.workspace, kept), { force: true })
+			refuse(engineText(error))
+		}
 	}
 
 	function planOfExploration(explorationId: string) {
@@ -1349,6 +1560,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		if (pathname === '/bulk') return bulk(request, form)
 		if (pathname === '/settings/claude') return saveRules(request, form)
+		if (pathname === '/setup/assumed') return previewSetup(request, form)
+		if (pathname === '/setup') return await setUp(request, form)
+		if (pathname === '/new') return startChange(request, form)
 		const handoff = routes.handoff.exec(pathname)
 		if (handoff) return handOver(request, form, handoff[1])
 		const starting = routes.startTest.exec(pathname)

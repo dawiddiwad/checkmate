@@ -9,6 +9,7 @@ import {
 	requireText,
 	revisionReference,
 	same,
+	slugId,
 	approvalPolicy,
 	validate,
 } from './contracts.ts'
@@ -37,6 +38,8 @@ export type InstanceRecord = {
 }
 
 export const anyTestOperation = 'any_test_operation'
+export const readOnlyOperation = 'read_only'
+export const readOnlyOperationText = 'You can only read. Do not create, change, or delete data in the application.'
 export const anyTestOperationText =
 	'You can do any action that the application offers to a test user, on test data, in this instance.'
 
@@ -516,21 +519,28 @@ export type SetupInput = {
 	operations?: string[]
 	environment?: string
 	env: Record<string, string | undefined>
+	answered?: boolean
 }
 
 export function urlTargetId(url: string) {
-	let host = ''
-	try {
-		const parsed = new URL(url)
-		host = [parsed.hostname, parsed.port].filter(Boolean).join('-')
-	} catch {}
-	const name = host
-		.toLowerCase()
-		.replace(/[^a-z0-9_-]+/g, '-')
-		.replace(/^[^a-z0-9]+/, '')
-		.replace(/-+$/, '')
-		.slice(0, 96)
-	return name || 'app'
+	const parsed = URL.canParse(url) ? new URL(url) : null
+	const host = parsed ? [parsed.hostname, parsed.port].filter(Boolean).join('-') : ''
+	return slugId(host) || 'app'
+}
+
+export function isLocalAddress(url: string) {
+	if (!URL.canParse(url)) return false
+	const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase()
+	if (host === 'localhost' || host.endsWith('.localhost') || host === '::1') return true
+	const octets = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)?.slice(1).map(Number)
+	if (!octets || octets.some((octet) => octet > 255)) return false
+	const [first, second] = octets
+	return (
+		first === 127 ||
+		first === 10 ||
+		(first === 192 && second === 168) ||
+		(first === 172 && second >= 16 && second <= 31)
+	)
 }
 
 function toolVersion(path: string) {
@@ -553,19 +563,50 @@ function urlAnswers(url: string) {
 	return check.status === 0
 }
 
-export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
+export async function urlReachable(url: string) {
+	if (!/^https?:\/\//i.test(url)) return true
+	try {
+		const response = await fetch(url, { signal: AbortSignal.timeout(5000) })
+		return response.status < 500
+	} catch {
+		return false
+	}
+}
+
+export function requireAnswer(answered: boolean, url: string) {
+	requireCondition(
+		answered,
+		`The application did not answer at ${url}.`,
+		'Start the application, or check the address. Then set up the target again.'
+	)
+}
+
+export function setupAssumptions(input: SetupInput) {
 	const assumed: string[] = []
 	const url = requireText(input.url, 'application URL (--url)')
 	const targetId = input.targetId ?? urlTargetId(url)
 	if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`)
 	const instanceId = input.instanceId ?? 'local'
 	if (!input.instanceId) assumed.push('instance=local')
+	const browser = executableOnPath('playwright-cli', input.env)
+	const capabilities = browser ? ['browser', 'http'] : ['http']
+	assumed.push(
+		'entry point=web (url)',
+		`capabilities=${capabilities.join(',')} (${browser ? 'playwright-cli is on PATH' : 'no browser tool on PATH'})`
+	)
+	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
+	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
+	assumed.push('reset=none', 'authentication=none')
+	return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed }
+}
+
+export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
+	const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setupAssumptions(input)
 	requireCondition(
 		input.operations?.length || !isProduction(instanceId, input.environment),
 		`Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
 		productionHint
 	)
-	const browser = executableOnPath('playwright-cli', input.env)
 	const tools = [
 		{
 			name: 'node',
@@ -586,14 +627,6 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 				]
 			: []),
 	]
-	const capabilities = browser ? ['browser', 'http'] : ['http']
-	assumed.push(
-		'entry point=web (url)',
-		`capabilities=${capabilities.join(',')} (${browser ? 'playwright-cli is on PATH' : 'no browser tool on PATH'})`
-	)
-	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
-	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
-	assumed.push('reset=none', 'authentication=none')
 	const entryPoints = [{ name: 'web', kind: 'url' as const, purpose: 'The application.' }]
 	const known = one(store, 'SELECT 1 FROM target_requests WHERE target_id = ?', targetId)
 	if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] })
@@ -603,7 +636,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
 		targetId
 	)
-	const reachable = saved ? true : urlAnswers(url)
+	const reachable = saved ? true : (input.answered ?? urlAnswers(url))
 	if (!reachable) assumed.push(`ready=false (${url} did not answer)`)
 	if (!saved)
 		saveTarget(store, actor, {

@@ -25,6 +25,8 @@ export type Page = {
 	crumbs?: Array<[string, string | null]>
 	nav?: Html
 	back?: string | null
+	address?: string
+	viewer?: boolean
 	drawer?: boolean
 }
 
@@ -58,7 +60,9 @@ function themeForm(context: Context) {
 function header(context: Context) {
 	const back = encodeURIComponent(context.path)
 	const actor = context.actor
-		? html`<a class="actor" href="/actor?back=${back}" title="Change your name">${context.actor}</a>`
+		? html`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
+				>${context.actor}</a
+			>`
 		: html`<a class="actor att" href="/actor?back=${back}">Set your name</a>`
 	return html`<header class="top">
 		<div class="top-in">
@@ -96,7 +100,8 @@ function statusBar(context: Context, page: Page) {
 				data-region="nav-count"
 				${waiting ? '' : html`hidden`}
 				><span
-					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span> · all plans</span
+					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
+					><span class="sb-all"> · all plans</span></span
 				></a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
@@ -182,6 +187,7 @@ export function layout(context: Context, page: Page) {
 				data-subjects="${page.subjects.join(',')}"
 				data-cursor="${context.cursor}"
 				${back ? html`data-back="${back}"` : ''}
+				${page.address ? html`data-address="${page.address}"` : ''}
 			>
 				<a class="skip" href="#main">Skip to content</a>
 				${header(context)}
@@ -192,7 +198,7 @@ export function layout(context: Context, page: Page) {
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html`<div class="toast" role="status" data-toast>${context.toast}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${dialogs} ${viewer}
+				${dialogs} ${page.viewer ? viewer : ''}
 			</body>
 		</html>`
 }

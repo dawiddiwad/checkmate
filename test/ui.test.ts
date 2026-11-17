@@ -904,7 +904,7 @@ test('the Add instance form records the actor and the Retire button needs its co
 		}),
 		actorCookie.Cookie
 	)
-	assert.match(taken, /class="form-error" role="alert">[^<]*staging/)
+	assert.match(taken, /class="form-error" role="alert"[^>]*>[^<]*staging/)
 	assert.match(taken, /name="entry.web"[\s\S]*?value="https:\/\/other.shop.example"/)
 	assert.doesNotMatch((await call(ui, '/settings/targets/shop-local')).body, /class="form-error"/)
 	const added = await call(ui, '/settings/targets/shop-local/instances', {

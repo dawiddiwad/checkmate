@@ -15370,12 +15370,17 @@ function sessionExplorerLive(events, item, now) {
       name: file.name
     }))
   );
+  const busy = state === "given" || state === "running";
+  const pause = events.findLast((event2) => event2.step === "pause" || event2.step === "resume");
+  const pausedAt = busy && pause?.step === "pause" ? pause.at : null;
+  const span = (from, to) => Math.max(0, to - Date.parse(from));
   return {
     explorer: item.explorer,
     turn: action2?.detail.step ?? null,
     state,
     startedAt: last?.at ?? null,
-    elapsedMs: last ? Math.max(0, now - Date.parse(last.at)) : null,
+    pausedAt,
+    elapsedMs: !last ? null : busy ? span(last.at, pausedAt ? Date.parse(pausedAt) : now) : outcome && outcomeAction ? span(outcomeAction.at, Date.parse(outcome.at)) : null,
     activity: typeof outcome?.detail.activity === "string" && outcomeAction ? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}` : null,
     recorded: item.recorded,
     saved: item.saved,
@@ -15396,7 +15401,9 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   const endedAt = inFollow ? followTurn?.at ?? null : end?.at ?? null;
   const stopped = followed.some((event2) => event2.step === "followed") ? "skipped" : "stopped";
   const state = inFollow ? followTurn?.status ?? (running3 ? "running" : stopped) : end?.status ?? (launch ? running3 ? "running" : "stopped" : null);
-  const until = endedAt ? Date.parse(endedAt) : running3 ? now : null;
+  const pause = events.findLast((event2) => event2.step === "pause" || event2.step === "resume");
+  const pausedAt = running3 && !endedAt && pause?.step === "pause" ? pause.at : null;
+  const until = endedAt ? Date.parse(endedAt) : pausedAt ? Date.parse(pausedAt) : running3 ? now : null;
   const activity = own.findLast((event2) => typeof event2.detail.activity === "string" && event2.detail.activity);
   const files2 = own.filter((event2) => event2.step === "files").flatMap(
     (event2) => event2.detail.files.map((file) => ({
@@ -15409,6 +15416,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
     turn,
     state,
     startedAt,
+    pausedAt,
     elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
     activity: activity?.detail.activity ?? null,
     recorded: item.recorded,
@@ -17078,6 +17086,7 @@ import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:f
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/ui/html.ts
+var actorLimit = 64;
 var entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 function escape(text) {
   return text.replace(/[&<>"']/g, (character) => entities[character]);
@@ -17361,7 +17370,7 @@ var viewer = html2`<div
 			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
 				-
 			</button>
-			<span class="viewer-scale" data-viewer-scale aria-live="polite">Fit</span>
+			<span class="viewer-scale" data-viewer-scale>Fit</span>
 			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
 			<button class="btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
 		</span>
@@ -17408,7 +17417,9 @@ function themeForm(context) {
 }
 function header(context) {
   const back = encodeURIComponent(context.path);
-  const actor = context.actor ? html2`<a class="actor" href="/actor?back=${back}" title="Change your name">${context.actor}</a>` : html2`<a class="actor att" href="/actor?back=${back}">Set your name</a>`;
+  const actor = context.actor ? html2`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
+				>${context.actor}</a
+			>` : html2`<a class="actor att" href="/actor?back=${back}">Set your name</a>`;
   return html2`<header class="top">
 		<div class="top-in">
 			<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
@@ -17443,7 +17454,8 @@ function statusBar(context, page) {
 				data-region="nav-count"
 				${waiting ? "" : html2`hidden`}
 				><span
-					>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span> · all plans</span
+					>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span
+					><span class="sb-all"> · all plans</span></span
 				></a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
@@ -17526,6 +17538,7 @@ function layout(context, page) {
 				data-subjects="${page.subjects.join(",")}"
 				data-cursor="${context.cursor}"
 				${back ? html2`data-back="${back}"` : ""}
+				${page.address ? html2`data-address="${page.address}"` : ""}
 			>
 				<a class="skip" href="#main">Skip to content</a>
 				${header(context)}
@@ -17536,7 +17549,7 @@ function layout(context, page) {
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html2`<div class="toast" role="status" data-toast>${context.toast}</div>` : ""}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${dialogs} ${viewer}
+				${dialogs} ${page.viewer ? viewer : ""}
 			</body>
 		</html>`;
 }
@@ -17604,6 +17617,7 @@ function actorField(context, state) {
 			id="actor"
 			name="actor"
 			required
+			maxlength="${actorLimit}"
 			autocomplete="name"
 			value="${state.values.actor ?? ""}"
 			data-missing="Enter your name. Checkmate records it with your decision."
@@ -17736,13 +17750,15 @@ function gapPanel(context, form, state) {
 				<legend class="lab">Kind of answer</legend>
 				<div class="seg">
 					${kinds.map(
-    (kind) => html2`<input
+    (kind) => html2`<label
+								><input
 									type="radio"
 									id="kind-${kind.value}"
 									name="kind"
 									value="${kind.value}"
 									${selected === kind.value ? html2`checked` : ""}
-								/><label for="kind-${kind.value}">${kind.label}</label>`
+								/>${kind.label}</label
+							>`
   )}
 				</div>
 			</fieldset>
@@ -18133,7 +18149,7 @@ function claimBody(context, store, review, item, base, back, state) {
 function questionBody(context, review, item, back, state) {
   const question = item.question;
   const members = question?.members ?? [];
-  const open = item.kind === "question" || item.kind === "gap";
+  const open = item.kind === "question" || item.kind === "gap" || item.kind === "deferred";
   const more = html2`<details class="sp-more">
 		<summary>Source and reason</summary>
 		<div class="sp-form">
@@ -18216,7 +18232,7 @@ function recordDrawer(store, context, review, item, view, refusal) {
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${item.id}">
 				<div class="sp-pills">
 					${itemTag(item)}
-					${item.detail ? html2`<span class="sp-pill">${changeWords[item.detail.builds.at(-1)?.state ?? ""] ?? ""}</span>` : ""}
+					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${changeWords[item.detail.builds.at(-1)?.state ?? ""] ?? ""}</span>` : ""}
 					${item.claim?.handoff ? html2`<span class="sp-pill green">Handed over</span>` : ""}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html2`<span class="sp-c-id">${time(when)}</span>` : ""}
@@ -18546,8 +18562,9 @@ function optionsOf(context, review, item) {
       ])}${optionButton(1, "Undo hand-over", "Undo the hand-over")}
 					</form>`
     ] : [reveal(1, "Hand over", "handoff", item, "Mark as handed over")];
-  if (item.kind === "question" || item.kind === "gap") {
+  if (item.kind === "question" || item.kind === "gap" || item.kind === "deferred") {
     const fields = item.kind === "gap" ? [["sha", review.sha]] : [];
+    const later = optionForm(context, item, 3, "Later", [...fields, ["kind", "defer"]], "Decide later");
     return [
       optionForm(
         context,
@@ -18562,7 +18579,7 @@ function optionsOf(context, review, item) {
         "Right as built"
       ),
       reveal(2, "Different", "answer", item, "It should be different"),
-      optionForm(context, item, 3, "Later", [...fields, ["kind", "defer"]], "Decide later")
+      ...item.kind === "deferred" ? [] : [later]
     ];
   }
   return [];
@@ -18583,7 +18600,7 @@ function extraOf(context, review, item) {
     return form("reject", "Why is it not a defect?", "rationale", [["verdict", "rejected"]]);
   if (item.kind === "defect" && !item.claim?.handoff)
     return form("handoff", "Hand over to whom?", "to", [["claim", item.id]], `/plans/${review.planId}/handoff`);
-  if (item.kind === "question" || item.kind === "gap")
+  if (item.kind === "question" || item.kind === "gap" || item.kind === "deferred")
     return form("answer", "How it should be, in one sentence", "value", [
       ...item.kind === "gap" ? [["sha", review.sha]] : [],
       ["kind", "clarify"]
@@ -18659,7 +18676,13 @@ function markOf(review, status, build) {
   const testing = review.running?.build === build && status === "not_checked";
   const [symbol, look, name] = testing ? ["\u25CF", "k-run", "under test now"] : cellMarks[status];
   const label = `${buildLabel(review, build)} ${name}`;
-  return html2`<span class="sp-mk ${look}" role="img" aria-label="${label}" title="${label}" data-mark="${build}"
+  return html2`<span
+		class="sp-mk ${look}"
+		role="img"
+		aria-label="${label}"
+		title="${label}"
+		data-mark="${build}"
+		data-b="${buildLabel(review, build)}"
 		>${glyph(symbol)}</span
 	>`;
 }
@@ -18760,6 +18783,7 @@ function navigator(review, current, exploration2 = null) {
 		data-builds="${builds.length}"
 		data-region="navigator"
 	>
+		<h2 class="sr-only">Plan ${planId}</h2>
 		<div class="sp-nlist" role="tree" aria-label="Views of ${planId}">
 			<div class="sp-npin" role="none">
 				${review.running ? testersRow : ""}
@@ -18947,7 +18971,7 @@ function panel(context, review, view, current) {
     [review.planId, `/plans/${review.planId}`],
     [review.target, null]
   ])}
-			<h1 id="title-${slug(view)}">${title}</h1>
+			${view === current ? html2`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title}</h2>`}
 			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
 			<div class="sp-pills">${head.pills}</div>
 			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
@@ -19169,6 +19193,11 @@ function explorerState(item) {
 }
 function inState(item) {
   if (item.elapsedMs === null) return "";
+  if (item.pausedAt)
+    return html2`<span class="age"
+			>paused for
+			<span data-since="${item.pausedAt}">${duration(Date.now() - Date.parse(item.pausedAt))}</span></span
+		>`;
   const live = item.startedAt && (item.state === "running" || item.state === "given");
   return live ? html2`<span class="age" data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : html2`<span class="age">${duration(item.elapsedMs)}</span>`;
 }
@@ -19257,7 +19286,11 @@ function explorationList(live, others) {
       item.activity ?? (item.state === "running" || item.state === "given" ? "No activity yet." : "No activity line in the record."),
       html2`${item.turn ?? ""}${item.turn && item.elapsedMs !== null ? " \xB7 " : ""}${inState(item)}${raw ? ` \xB7 ${raw} not merged` : ""}`,
       `tester-${index2}`,
-      [item.turn, item.elapsedMs !== null ? duration(item.elapsedMs) : null, raw ? `${raw} not merged` : null].filter(Boolean).join(" \xB7 ")
+      [
+        item.turn,
+        item.pausedAt ? `paused for ${duration(Date.now() - Date.parse(item.pausedAt))}` : item.elapsedMs !== null ? duration(item.elapsedMs) : null,
+        raw ? `${raw} not merged` : null
+      ].filter(Boolean).join(" \xB7 ")
     );
   });
   const phases = live.phases.map(
@@ -19466,6 +19499,7 @@ function explorationPage(store, explorationId, params = new URLSearchParams()) {
   const detail = explorer ? explorerDetail(store, live, explorer, html2``) : phase ? phaseDetail(live, phase, html2``) : summaryDetail(store, live, html2``);
   const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse();
   return {
+    viewer: true,
     title: label ? `${explorationId} \xB7 ${label}` : `${title} \xB7 ${explorationId}`,
     section: "home",
     subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
@@ -19475,7 +19509,7 @@ function explorationPage(store, explorationId, params = new URLSearchParams()) {
       [explorationId, label ? `/explorations/${explorationId}` : null],
       ...label ? [[label, null]] : []
     ],
-    back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}`,
+    back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}?nav=testers`,
     nav: navigator(review, "testers", explorationId),
     body: html2`<div class="sp-ch">
 				${crumbBar([
@@ -19814,6 +19848,14 @@ function filterBar(spec, state) {
 		<a class="btn ghost" href="${spec.path}" data-list-clear>Clear</a>
 	</form>`;
 }
+function pageTrail(spec, state, total, title) {
+  const last = Math.max(1, Math.ceil(total / state.size));
+  if (last === 1) return { back: "/" };
+  return {
+    back: state.page > 1 ? listHref(spec, state, { page: 1 }) : "/",
+    crumbs: [[`${title} \xB7 page ${state.page} of ${last}`, null]]
+  };
+}
 function pager(spec, state, total) {
   const last = Math.max(1, Math.ceil(total / state.size));
   if (last === 1) return "";
@@ -19846,7 +19888,7 @@ function listRow(key, href, top, tags2, lines2) {
 		${lines2.map((line, index2) => html2`<span class="${index2 ? "q-note" : "q-title"}">${line}</span>`)}`;
   const label = key.slice(key.indexOf(":") + 1);
   return html2`<li data-key="${key}" data-nav-row>
-		${href ? html2`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>` : html2`<div class="q-row">${inner}</div>`}
+		${href ? html2`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>` : html2`<div class="q-row" tabindex="-1" data-row data-label="${label}">${inner}</div>`}
 	</li>`;
 }
 var runStatuses2 = [
@@ -19926,6 +19968,8 @@ function runsPage(store, params) {
     title: "Runs",
     section: "runs",
     subjects: ["*"],
+    address: listHref(spec, state),
+    ...pageTrail(spec, state, page.total, "Runs"),
     body: html2`${heading("Runs", "Every run of every plan.")} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(runRow))}`
   };
@@ -19982,7 +20026,10 @@ function logSpec(store) {
       {
         name: "status",
         label: "Status",
-        choices: [["", "All statuses"], ...distinct(recent.map((row) => row.status))],
+        choices: [
+          ["", "All statuses"],
+          ...distinct(recent.map((row) => row.status)).map(([value2]) => [value2, words(value2)])
+        ],
         strict: false
       }
     ]
@@ -20009,6 +20056,8 @@ function logPage(store, params) {
     title: "Log",
     section: "log",
     subjects: ["*"],
+    address: listHref(spec, state),
+    ...pageTrail(spec, state, page.total, "Log"),
     body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(logRow))}`
   };
@@ -20417,7 +20466,7 @@ function planHistoryList(store, detail, all2) {
 												${item.changes.map(changeLine)}
 											</ul>` : html2`<p class="muted small">First revision.</p>`}
 								<p class="small">
-									<a href="/plans/${detail.planId}@${item.revision}"
+									<a class="h-link" href="/plans/${detail.planId}@${item.revision}"
 										>Open ${detail.planId}@${item.revision}</a
 									>
 								</p>
@@ -20674,7 +20723,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
       [planId, `/plans/${planId}`],
       [subject, null]
     ],
-    back: `/plans/${planId}`,
+    back: `/plans/${planId}?nav=plan`,
     nav: navigator(reviewOf(store, planId), "plan")
   };
 }
@@ -20755,7 +20804,7 @@ function requestPage(store, planId) {
       [planId, `/plans/${planId}`],
       ["Request", null]
     ],
-    back: `/plans/${planId}`,
+    back: `/plans/${planId}?nav=plan`,
     nav: navigator(reviewOf(store, planId), "plan")
   };
 }
@@ -20901,6 +20950,22 @@ function candidateFromForm(base, form) {
     gaps: base.gaps
   };
 }
+function emptyField(base, form) {
+  const fields = [
+    ...base.requirements.flatMap((requirement, i) => [
+      [`r${i}.text`, `${requirement.id} Text`],
+      [`r${i}.source`, `${requirement.id} Source`]
+    ]),
+    ...base.tests.flatMap((test, i) => [
+      [`t${i}.title`, `${test.id} Title`],
+      [`t${i}.capability`, `${test.id} Capability`],
+      [`t${i}.action`, `${test.id} Action`],
+      ...test.assertions.map((assertion, j) => [`t${i}.a${j}.check`, `${assertion.id}`])
+    ])
+  ];
+  const found = fields.find(([name]) => form.has(name) && !form.get(name).trim());
+  return found ? { name: found[0], label: found[1] } : null;
+}
 function candidateJson(candidate) {
   return JSON.stringify(candidate, null, 2);
 }
@@ -21031,13 +21096,14 @@ function coverageMatrix(candidate) {
 							</th>
 							${candidate.tests.map(
       (test) => html2`<td>
-										<input
-											type="checkbox"
-											name="cover"
-											value="${test.id} ${requirement.id}"
-											aria-label="${test.id} covers ${requirement.id}"
-											${test.requirementIds.includes(requirement.id) ? html2`checked` : ""}
-										/>
+										<label class="cell-check"
+											><input
+												type="checkbox"
+												name="cover"
+												value="${test.id} ${requirement.id}"
+												aria-label="${test.id} covers ${requirement.id}"
+												${test.requirementIds.includes(requirement.id) ? html2`checked` : ""}
+										/></label>
 									</td>`
     )}
 						</tr>`
@@ -21060,7 +21126,14 @@ function actorLine(context, state, path, mode) {
 		</p>`;
   return html2`<div class="field-group">
 		<label class="lab" for="actor-${mode}">Your name</label>
-		<input id="actor-${mode}" name="actor" required autocomplete="name" value="${state.actor}" />
+		<input
+			id="actor-${mode}"
+			name="actor"
+			required
+			maxlength="${actorLimit}"
+			autocomplete="name"
+			value="${state.actor}"
+		/>
 		<p class="help">Checkmate records it with the edit.</p>
 	</div>`;
 }
@@ -21112,7 +21185,7 @@ function editPage(store, context, planId, revision, state = null) {
     rationale: ""
   };
   const messages2 = html2`${shown2.stale ? banner("warn", shown2.stale) : ""}
-	${shown2.error ? html2`<p class="form-error" role="alert">${shown2.error}</p>` : ""}`;
+	${shown2.error ? html2`<p class="form-error" role="alert" data-field="${shown2.field ?? ""}">${shown2.error}</p>` : ""}`;
   const buttons = (mode) => html2`<div class="btns">
 				<button class="btn primary">${save2}</button>
 				<a class="btn" href="/plans/${subject}">Cancel</a>
@@ -21183,6 +21256,7 @@ function editPage(store, context, planId, revision, state = null) {
       ["Edit", null]
     ],
     back: `/plans/${subject}`,
+    address: `/plans/${subject}/edit`,
     nav: navigator(reviewOf(store, planId), "plan")
   };
 }
@@ -21667,6 +21741,7 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
 								<h2 class="q-h">Cleanup and attempts</h2>
 								${cleanup(detail)}` : summaryDetail2(store, context, detail, state, crumbs);
   return {
+    viewer: true,
     title: label ? `${runId} \xB7 ${label}` : runId,
     section: "runs",
     subjects: [`run:${runId}`, "inbox"],
@@ -21963,7 +22038,9 @@ function addForm(context, targetId, entryPoints, form) {
 		<p class="help">
 			An instance is one place where the target runs. Adding one needs no new revision and no approval.
 		</p>
-		<div data-stale-slot>${form?.error ? html2`<p class="form-error" role="alert">${form.error}</p>` : ""}</div>
+		<div data-stale-slot>
+			${form?.error ? html2`<p class="form-error" role="alert" data-field="${form.field ?? ""}">${form.error}</p>` : ""}
+		</div>
 		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<div class="field-group">
@@ -22205,7 +22282,18 @@ function notFoundError(message) {
   return /^Unknown|has no revision|not found/i.test(message);
 }
 function plainMessage(error) {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  const schema = /^Invalid [\w-]+: (.+)$/.exec(message);
+  if (!schema || !/ must /.test(schema[1])) return message;
+  return schema[1].split(", ").map((problem) => {
+    const [path, rule] = problem.split(/ must (.*)/);
+    const place = path.split("/").slice(1).map(
+      (part) => /^\d+$/.test(part) ? String(Number(part) + 1) : part.replace(/([a-z])([A-Z])/g, "$1 $2")
+    ).join(" ");
+    const what = place ? place[0].toUpperCase() + place.slice(1) : "The form";
+    if (/fewer than 1 characters|fewer than 1 items/.test(rule)) return `${what} cannot be empty.`;
+    return `${what} is not valid.`;
+  }).join(" ");
 }
 async function startUi(options2) {
   const files2 = assets();
@@ -22247,7 +22335,7 @@ data: ${matched.join(",") || "*"}
     return {
       path,
       csrf,
-      actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
+      actor: request.cookies.checkmate_actor?.trim().slice(0, actorLimit) || fallbackActor || null,
       theme,
       toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request.req.headers["x-checkmate-queue"] === "1" ? request.cookies.checkmate_toast || null : null,
       queueCount: needsYou(store).urgent,
@@ -22270,6 +22358,7 @@ data: ${matched.join(",") || "*"}
       section: null,
       subjects: ["inbox"],
       status,
+      back: "/",
       body: html2`${heading(title, message)}
 				<p class="actions">
 					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
@@ -22466,7 +22555,14 @@ data: ${matched.join(",") || "*"}
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
 					<label class="lab" for="actor-name">Name</label>
-					<input id="actor-name" name="actor" required autocomplete="name" value="${shown2.actor ?? ""}" />
+					<input
+						id="actor-name"
+						name="actor"
+						required
+						maxlength="${actorLimit}"
+						autocomplete="name"
+						value="${shown2.actor ?? ""}"
+					/>
 					<div class="btns">
 						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
 					</div>
@@ -22474,7 +22570,7 @@ data: ${matched.join(",") || "*"}
     };
   }
   function actorFrom(request, form) {
-    const typed = form.get("actor")?.trim() ?? "";
+    const typed = form.get("actor")?.trim().slice(0, actorLimit) ?? "";
     const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor;
     return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
   }
@@ -22569,7 +22665,7 @@ data: ${matched.join(",") || "*"}
     const planId = planOfExploration(explorationId);
     const page = () => questionPage(store, context(request), explorationId, questionId, state);
     const asked = mergedQuestions(store, planId).find((item) => item.id === questionId);
-    if (asked && asked.answer !== null) {
+    if (asked && asked.answer !== null && (asked.decision !== "defer" || input.kind === "defer")) {
       state.stale = html2`<strong>${questionId} has an answer now: ${asked.answer}</strong> Your answer was not
 				recorded. Your text is kept below.`;
       return refuse(request, inQueue(request, form, page, state), cookies);
@@ -22889,6 +22985,7 @@ data: ${matched.join(",") || "*"}
       json: form.get("json") ?? "",
       actor: form.get("actor") ?? "",
       error: null,
+      field: null,
       stale: null,
       unsaved: null,
       orig: form.get("orig") ?? JSON.stringify(base),
@@ -22914,6 +23011,14 @@ data: ${matched.join(",") || "*"}
     }
     state.removed = removedTests(base, candidate);
     const rationale = state.rationale.trim();
+    const blank = mode === "form" ? emptyField(base, form) : null;
+    if (blank && !state.error)
+      [state.error, state.field] = [`Fill in ${blank.label}. It cannot be empty.`, blank.name];
+    if (!state.error && !state.removed.length && candidateJson(candidate) === candidateJson(base))
+      return redirect(request.res, `/plans/${subject}`, [
+        ...cookies,
+        cookie("checkmate_toast", `No changes. ${subject} is not saved again.`, 60)
+      ]);
     if (!actor) state.error ??= "Enter your name. Checkmate records it with the edit.";
     if (state.removed.length && !rationale)
       state.error ??= `The edit removes ${state.removed.join(", ")}. Write the reason in Reason for removal.`;
@@ -22961,7 +23066,8 @@ data: ${matched.join(",") || "*"}
         "references",
         ...entryPoints.map((entry) => `entry.${entry.name}`)
       ]),
-      error: null
+      error: null,
+      field: null
     };
     const again = () => {
       const kept = JSON.stringify(state);
@@ -22973,8 +23079,12 @@ data: ${matched.join(",") || "*"}
       ]);
     };
     const instanceId = state.values.instanceId.trim();
-    if (!actor) state.error = "Enter your name. Checkmate records it with the instance.";
-    else if (!instanceId) state.error = "Enter an instance ID.";
+    const empty = entryPoints.find((entry) => !state.values[`entry.${entry.name}`].trim());
+    if (!actor)
+      [state.error, state.field] = ["Enter your name. Checkmate records it with the instance.", "instance-actor"];
+    else if (!instanceId) [state.error, state.field] = ["Enter an instance ID.", "instance-id"];
+    else if (empty)
+      [state.error, state.field] = [`Fill in ${empty.name}. It cannot be empty.`, `entry-${empty.name}`];
     if (state.error) return again();
     try {
       addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) });
@@ -23038,6 +23148,8 @@ data: ${matched.join(",") || "*"}
       const name = form.get("actor")?.trim() ?? "";
       if (!name)
         return errorPage(request, 422, "Your name", "Enter a name. Checkmate records it with each decision.");
+      if (name.length > actorLimit)
+        return errorPage(request, 422, "Your name", `Use a name of ${actorLimit} characters or fewer.`);
       return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name)]);
     }
     if (pathname === "/bulk") return bulk(request, form);

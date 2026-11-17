@@ -174,6 +174,15 @@ function filterBar(spec: ListSpec, state: ListState) {
 	</form>`
 }
 
+function pageTrail(spec: ListSpec, state: ListState, total: number, title: string) {
+	const last = Math.max(1, Math.ceil(total / state.size))
+	if (last === 1) return { back: '/' }
+	return {
+		back: state.page > 1 ? listHref(spec, state, { page: 1 }) : '/',
+		crumbs: [[`${title} · page ${state.page} of ${last}`, null]] as Array<[string, string | null]>,
+	}
+}
+
 function pager(spec: ListSpec, state: ListState, total: number) {
 	const last = Math.max(1, Math.ceil(total / state.size))
 	if (last === 1) return ''
@@ -226,7 +235,7 @@ function listRow(
 		${
 			href
 				? html`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>`
-				: html`<div class="q-row">${inner}</div>`
+				: html`<div class="q-row" tabindex="-1" data-row data-label="${label}">${inner}</div>`
 		}
 	</li>`
 }
@@ -315,6 +324,8 @@ export function runsPage(store: Store, params: URLSearchParams): Page {
 		title: 'Runs',
 		section: 'runs',
 		subjects: ['*'],
+		address: listHref(spec, state),
+		...pageTrail(spec, state, page.total, 'Runs'),
 		body: html`${heading('Runs', 'Every run of every plan.')} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(runRow))}`,
 	}
@@ -374,7 +385,10 @@ export function logSpec(store: Store): ListSpec {
 			{
 				name: 'status',
 				label: 'Status',
-				choices: [['', 'All statuses'], ...distinct(recent.map((row) => row.status))],
+				choices: [
+					['', 'All statuses'],
+					...distinct(recent.map((row) => row.status)).map(([value]) => [value, words(value)]),
+				],
 				strict: false,
 			},
 		],
@@ -407,6 +421,8 @@ export function logPage(store: Store, params: URLSearchParams): Page {
 		title: 'Log',
 		section: 'log',
 		subjects: ['*'],
+		address: listHref(spec, state),
+		...pageTrail(spec, state, page.total, 'Log'),
 		body: html`${heading('Log', 'Every write to the workspace.')} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(logRow))}`,
 	}

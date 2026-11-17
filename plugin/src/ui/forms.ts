@@ -1,6 +1,6 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
-import { html, short } from './html.ts'
+import { actorLimit, html, short } from './html.ts'
 import { banner } from './layout.ts'
 
 export type FormState = {
@@ -42,6 +42,7 @@ export function actorField(context: Context, state: FormState) {
 			id="actor"
 			name="actor"
 			required
+			maxlength="${actorLimit}"
 			autocomplete="name"
 			value="${state.values.actor ?? ''}"
 			data-missing="Enter your name. Checkmate records it with your decision."
@@ -198,13 +199,15 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 				<div class="seg">
 					${kinds.map(
 						(kind) =>
-							html`<input
+							html`<label
+								><input
 									type="radio"
 									id="kind-${kind.value}"
 									name="kind"
 									value="${kind.value}"
 									${selected === kind.value ? html`checked` : ''}
-								/><label for="kind-${kind.value}">${kind.label}</label>`
+								/>${kind.label}</label
+							>`
 					)}
 				</div>
 			</fieldset>

@@ -420,6 +420,7 @@ function remember() {
 	if (!review || drawer || viewerPane) return
 	const url = new URL(location.href)
 	url.searchParams.set('view', currentView() ?? 'needs')
+	url.searchParams.delete('nav')
 	const row = current('list')
 	if (row) url.searchParams.set('at', row.dataset.key)
 	else url.searchParams.delete('at')
@@ -439,7 +440,16 @@ function mark(row, where = level) {
 	if (!row) return
 	padTitle(row)
 	row.focus({ preventScroll: true })
+	reveal(row)
+}
+
+function reveal(row) {
 	row.scrollIntoView({ block: 'nearest' })
+	const strip = row.matches('[data-nav]')
+		? 0
+		: parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue('--strip-h')) || 0
+	const top = (document.querySelector('.top')?.getBoundingClientRect().bottom ?? 0) + strip
+	if (row.getBoundingClientRect().top < top) row.scrollIntoView({ block: 'start' })
 }
 
 function padTitle(row) {
@@ -454,12 +464,18 @@ function padTitle(row) {
 function dockRoom() {
 	const bulk = document.querySelector('[data-bulk]:not([hidden])')?.offsetHeight ?? 0
 	const message = document.querySelector('[data-say-strip]:not([hidden])')?.offsetHeight ?? 0
-	const toast = document.querySelector('.toast')?.offsetHeight ?? 0
+	const note = document.querySelector('.toast')
+	if (note) note.hidden = false
+	let toast = note?.offsetHeight ?? 0
+	if (note && bulk && bulk + message + toast > window.innerHeight / 3) {
+		note.hidden = true
+		toast = 0
+	}
 	document.documentElement.style.setProperty('--bulk-h', `${bulk}px`)
 	document.documentElement.style.setProperty('--say-h', `${message}px`)
 	document.documentElement.style.setProperty('--dock-h', `${bulk + message + toast}px`)
 	const row = document.querySelector('.hl[data-row]')
-	if (row) row.scrollIntoView({ block: 'nearest' })
+	if (row) reveal(row)
 }
 
 function canChoose(view) {
@@ -507,7 +523,17 @@ function chooseBuild(n) {
 
 function showView(view) {
 	if (!review) return
-	for (const each of document.querySelectorAll('[data-panel]')) each.hidden = each.dataset.panel !== view
+	for (const each of document.querySelectorAll('[data-panel]')) {
+		each.hidden = each.dataset.panel !== view
+		const heading = each.querySelector('[data-view-title]')
+		const tag = each.hidden ? 'H2' : 'H1'
+		if (heading && heading.tagName !== tag) {
+			const fresh = document.createElement(tag)
+			for (const { name, value } of heading.attributes) fresh.setAttribute(name, value)
+			fresh.append(...heading.childNodes)
+			heading.replaceWith(fresh)
+		}
+	}
 	for (const row of document.querySelectorAll('[data-nav]')) {
 		row.setAttribute('aria-selected', row.dataset.target === view ? 'true' : 'false')
 		row.classList.toggle('on', row.dataset.target === view)
@@ -524,13 +550,49 @@ function hasPanel(view) {
 
 function startRow() {
 	const rows = listRows()
-	const wanted = address.searchParams.get('at')
+	const wanted = address.searchParams.get('at') ?? address.searchParams.get('item')
+	if (location.hash === '#last') return rows.at(-1)
 	return (
 		rows.find((row) => row.dataset.key === wanted) ??
 		rows.find((row) => row.classList.contains('cur')) ??
 		rows.find((row) => 'needs' in row.dataset) ??
 		rows[0]
 	)
+}
+
+function placeAlert() {
+	const alert = [...document.querySelectorAll('main .form-error[role="alert"]')].find(
+		(element) => element.textContent.trim() && shown(element)
+	)
+	if (!alert) return false
+	const field = alert.dataset.field && document.getElementById(alert.dataset.field)
+	if (field) {
+		alert.id ||= `${field.id}-error`
+		field.closest('.field-group, li, td')?.append(alert)
+		field.setAttribute('aria-invalid', 'true')
+		field.setAttribute(
+			'aria-describedby',
+			[field.getAttribute('aria-describedby'), alert.id].filter(Boolean).join(' ')
+		)
+		field.focus()
+	} else {
+		alert.tabIndex = -1
+		alert.focus()
+	}
+	return true
+}
+
+function focusTarget() {
+	const target = location.hash.length > 1 && document.getElementById(decodeURIComponent(location.hash.slice(1)))
+	if (!target || target.contains(document.activeElement)) return
+	const control = target.matches('a, button, summary, input, select, textarea')
+		? target
+		: target.querySelector('summary, button, a[href], input, select, textarea')
+	if (control) control.focus()
+	else {
+		target.tabIndex = -1
+		target.focus()
+	}
 }
 
 function settle() {
@@ -555,8 +617,8 @@ function settle() {
 		return showHints()
 	}
 	if (level === 'nav') {
-		const view = currentView()
-		const row = navRows().find((each) => each.dataset.target === view) ?? navRows()[0]
+		const wanted = address.searchParams.get('nav') ?? currentView()
+		const row = navRows().find((each) => each.dataset.target === wanted) ?? navRows()[0]
 		for (const each of listRows()) each.classList.remove('hl')
 		mark(row, 'nav')
 	} else {
@@ -586,6 +648,9 @@ function step(by) {
 	if (!rows.length) return
 	const index = rows.indexOf(current())
 	const next = index < 0 ? 0 : index + by
+	const turn =
+		!review && level === 'list' && document.querySelector(`[data-list-region] a[rel="${by > 0 ? 'next' : 'prev'}"]`)
+	if ((next < 0 || next >= rows.length) && turn) return void location.assign(turn.href + (by > 0 ? '' : '#last'))
 	if (next < 0 || next >= rows.length) return tell(by > 0 ? 'This is the last row.' : 'This is the first row.')
 	mark(rows[next])
 	if (level === 'viewer') showFile(rows[next])
@@ -655,6 +720,7 @@ function deeper() {
 		if (row.getAttribute('aria-expanded') === 'false') {
 			expand(row, true)
 			keepAreas()
+			window.history.pushState({ ...window.history.state, area: row.dataset.label }, '', location.href)
 			return showHints()
 		}
 		if (!hasPanel(row.dataset.target)) return void location.assign(row.href)
@@ -680,12 +746,14 @@ function back(event) {
 		if (row?.getAttribute('aria-expanded') === 'true') {
 			expand(row, false)
 			keepAreas()
+			dropLayer('area')
 			return showHints()
 		}
 		const area = row && areaOf(row)
 		if (area) {
 			expand(area, false)
 			keepAreas()
+			dropLayer('area')
 			mark(area)
 			if (hasPanel(area.dataset.target)) showView(area.dataset.target)
 			showPath()
@@ -693,9 +761,72 @@ function back(event) {
 			return remember()
 		}
 	}
-	if (body.dataset.back) return void location.assign(body.dataset.back)
+	if (body.dataset.back) return void leavePage(body.dataset.back)
 	tell('This is the first page.')
 }
+
+if (body.dataset.address && location.pathname + location.search !== body.dataset.address)
+	window.history.replaceState(window.history.state, '', body.dataset.address + location.hash)
+
+const editors = [...document.querySelectorAll('[data-edit-form]')]
+let edited = false
+for (const form of editors) form.addEventListener('input', () => (edited = true))
+for (const form of editors) form.addEventListener('submit', () => (edited = false))
+window.addEventListener('beforeunload', (event) => {
+	if (edited) event.preventDefault()
+})
+
+async function leavePage(address) {
+	if (edited) {
+		const sure = await ask({
+			title: 'Leave the editor?',
+			text: 'Your changes are not saved.',
+			yes: 'Leave and lose the changes',
+			no: 'Keep editing',
+		})
+		if (!sure) return
+		edited = false
+	}
+	location.assign(address)
+}
+
+function draftKey(field) {
+	const item = new URL(location.href).searchParams.get('item') ?? ''
+	return `checkmate-draft:${location.pathname}:${item}:${field.form.getAttribute('action')}:${field.name}`
+}
+
+function draftFields() {
+	return [
+		...document.querySelectorAll('form[method="post"] :is(textarea, input[type="text"], input:not([type]))'),
+	].filter((field) => field.name && field.name !== 'actor' && !field.closest('[data-edit-form], dialog'))
+}
+
+for (const field of draftFields()) {
+	field.addEventListener('input', () => {
+		try {
+			if (field.value.trim()) window.sessionStorage.setItem(draftKey(field), field.value)
+			else window.sessionStorage.removeItem(draftKey(field))
+		} catch {}
+	})
+	let kept = null
+	try {
+		kept = window.sessionStorage.getItem(draftKey(field))
+	} catch {}
+	if (kept && !field.value.trim()) {
+		field.value = kept
+		const note = document.createElement('p')
+		note.className = 'help draft-note'
+		note.textContent = 'Draft kept.'
+		field.after(note)
+	}
+}
+
+document.addEventListener('submit', (event) => {
+	for (const field of event.target.querySelectorAll?.('textarea, input') ?? [])
+		try {
+			if (field.name) window.sessionStorage.removeItem(draftKey(field))
+		} catch {}
+})
 
 function optionsNow() {
 	if (level === 'detail') return [...drawer.querySelectorAll('.sp-dhead [data-option]')]
@@ -711,10 +842,26 @@ function nextKey(row) {
 	return next?.dataset.key ?? null
 }
 
-function returnTo(row) {
+function recordReturn(stays) {
+	const url = new URL(location.href)
+	const open = review.dataset.open
+	const row = listRows().find((each) => each.dataset.key === open)
+	const waiting = row && listRows().find((each) => each !== row && 'needs' in each.dataset)
+	const next = stays ? open : waiting ? nextKey(row) : null
+	url.searchParams.delete('file')
+	if (next) url.searchParams.set('item', next)
+	else {
+		url.searchParams.delete('item')
+		if (row && nextKey(row)) url.searchParams.set('at', nextKey(row))
+		url.searchParams.set('focus', 'list')
+	}
+	return url.pathname + url.search
+}
+
+function returnTo(row, stays = false) {
 	const url = new URL(location.href)
 	url.searchParams.set('view', currentView() ?? 'needs')
-	const key = nextKey(row)
+	const key = stays ? row.dataset.key : nextKey(row)
 	if (key) url.searchParams.set('at', key)
 	else url.searchParams.delete('at')
 	url.searchParams.set('focus', key ? 'list' : 'nav')
@@ -849,10 +996,12 @@ function showBulk() {
 	}
 }
 
-function ask({ title, text, field = null }) {
+function ask({ title, text, field = null, yes = 'Confirm', no = 'Cancel' }) {
 	return new Promise((resolve) => {
 		confirmDialog.querySelector('[data-confirm-title]').textContent = title
 		confirmDialog.querySelector('[data-confirm-text]').textContent = text
+		confirmDialog.querySelector('[data-confirm-yes] span').textContent = yes
+		confirmDialog.querySelector('[data-confirm-no] span').textContent = no
 		const box = confirmDialog.querySelector('[data-confirm-field]')
 		const input = box.querySelector('input')
 		box.hidden = !field
@@ -860,6 +1009,7 @@ function ask({ title, text, field = null }) {
 		input.required = Boolean(field)
 		if (field) box.querySelector('label').textContent = field
 		confirmDialog.returnValue = ''
+		pushLayer()
 		confirmDialog.showModal()
 		if (field) input.focus()
 		else confirmDialog.querySelector('[data-confirm-yes]').focus()
@@ -920,6 +1070,7 @@ async function bulk(action) {
 	const defects = picked('defect')
 	if (action === 'clear') {
 		clearPicks()
+		if (current('list')) mark(current('list'), 'list')
 		return tell('The selection is cleared.')
 	}
 	const plans = {
@@ -978,6 +1129,13 @@ function showUndo() {
 		kept = JSON.parse(window.sessionStorage.getItem('checkmate-undo') ?? 'null')
 	} catch {}
 	if (!kept || kept.until < Date.now() || kept.plan !== review?.dataset.plan) return
+	const told = document.querySelector('[data-toast]')
+	if (told && !told.textContent.startsWith('Handed ')) {
+		try {
+			window.sessionStorage.removeItem('checkmate-undo')
+		} catch {}
+		return
+	}
 	const note = document.createElement('div')
 	note.className = 'toast'
 	note.setAttribute('role', 'status')
@@ -1071,6 +1229,7 @@ async function findNow() {
 
 function openFind() {
 	if (document.querySelector('dialog[open]')) return
+	pushLayer()
 	findDialog.showModal()
 	const input = findDialog.querySelector('[data-find-input]')
 	input.focus()
@@ -1099,9 +1258,53 @@ function findKey(event) {
 }
 
 const keysDialog = document.querySelector('[data-keys]')
+const layers = [findDialog, keysDialog, confirmDialog].filter(Boolean)
+let quietPop = false
+let relayer = false
+
+function pushLayer() {
+	if (quietPop) relayer = true
+	else window.history.pushState({ ...window.history.state, layer: true }, '', location.href)
+}
+
+function dropLayer(name) {
+	if (!window.history.state?.[name]) return
+	quietPop = true
+	window.history.back()
+}
+
+for (const dialog of layers)
+	dialog.addEventListener('close', () => {
+		if (dialog.returnValue !== 'yes') dropLayer('layer')
+	})
+
+window.addEventListener('popstate', (event) => {
+	if (quietPop) {
+		quietPop = false
+		if (relayer) pushLayer()
+		relayer = false
+		return event.stopImmediatePropagation()
+	}
+	const layer = layers.find((dialog) => dialog.open)
+	if (layer) {
+		layer.close('no')
+		return event.stopImmediatePropagation()
+	}
+	const area = review && document.querySelector('[data-nav][aria-expanded="true"]')
+	if (area && !event.state?.area && level === 'nav') {
+		const row = current('nav')
+		const owner = row?.getAttribute('aria-expanded') === 'true' ? row : (row && areaOf(row)) || area
+		expand(owner, false)
+		keepAreas()
+		mark(owner, 'nav')
+		showHints()
+		return event.stopImmediatePropagation()
+	}
+})
 
 function openKeys() {
 	if (keysDialog.open) return keysDialog.close()
+	pushLayer()
 	keysDialog.showModal()
 	keysDialog.querySelector('[data-keys-close]').focus()
 }
@@ -1261,6 +1464,7 @@ function fitHints() {
 		}
 		return fits()
 	}
+	for (const hint of order) hint.hidden = false
 	say.hidden = false
 	say.textContent = sayText
 	const moved = !drop(() => hintsFit() && sayFits())
@@ -1288,13 +1492,17 @@ function showHints() {
 			if (!hint) continue
 			list.push(Array.isArray(hint) ? hint : [entry.cap, hint])
 		}
-	hints.innerHTML = list
+	const source = list
 		.map(([cap, text]) =>
 			cap === '?'
-				? `<button type="button" class="sb-k" data-cap="?" data-keys-open><kbd>?</kbd>${text}</button>`
+				? `<button type="button" class="sb-k" data-cap="?" data-keys-open><kbd>?</kbd><span class="sb-kt">${text}</span></button>`
 				: `<span class="sb-k" data-cap="${cap}"><kbd>${glyphHtml(cap)}</kbd>${text}</span>`
 		)
 		.join('')
+	if (hints.dataset.source !== source) {
+		hints.innerHTML = source
+		hints.dataset.source = source
+	}
 	fitHints()
 }
 
@@ -1365,8 +1573,13 @@ document.addEventListener('keydown', (event) => {
 	}
 	if (typingIn(target)) return fieldKey(event)
 	if (event.ctrlKey || event.metaKey) return
-	const menu = document.querySelector('details[data-menu][open]')
-	if (menu && event.key === 'Escape') {
+	const fold = target.matches?.('details.fold > summary') ? target.parentElement : null
+	if (fold && (event.key === 'ArrowRight' || (event.key === 'ArrowLeft' && fold.open))) {
+		fold.open = event.key === 'ArrowRight'
+		return event.preventDefault()
+	}
+	const menu = document.querySelector('details[data-menu][open]') ?? target.closest?.('details[open]:not(.fold)')
+	if (menu && (event.key === 'Escape' || (event.key === 'ArrowLeft' && !menu.matches('[data-menu]')))) {
 		menu.open = false
 		menu.querySelector('summary').focus()
 		return event.preventDefault()
@@ -1558,7 +1771,8 @@ document.addEventListener('submit', (event) => {
 	if (sending) return
 	sending = true
 	const field = form.querySelector('[data-return]')
-	if (field && row) field.value = returnTo(row)
+	const stays = form.getAttribute('action').endsWith('/handoff')
+	if (field && review) field.value = row ? returnTo(row, stays) : recordReturn(stays)
 	form.querySelector('[data-send-error]')?.remove()
 	tell('Sending…')
 	send(form, event.submitter)
@@ -1662,9 +1876,10 @@ function replaceRegion(region, fresh, previous) {
 	const focusedId = region.contains(document.activeElement) ? document.activeElement.id : null
 	const view = currentView()
 	const navKey = current('nav')?.dataset.target
-	const rowKey = current('list')?.dataset.key
+	const keyOf = (row) => row?.closest('[data-key]')?.dataset.key
+	const rowKey = keyOf(current('list'))
 	const rowLabel = current('list')?.dataset.label
-	const order = listRows().map((row) => row.dataset.key)
+	const order = listRows().map(keyOf)
 	const areas = [...document.querySelectorAll('[data-nav][aria-expanded="true"]')].map((row) => row.dataset.label)
 	const next = document.importNode(fresh, true)
 	for (const details of next.querySelectorAll('details[data-open-key]'))
@@ -1677,25 +1892,26 @@ function replaceRegion(region, fresh, previous) {
 			expand(area, areas.includes(area.dataset.label))
 		if (view) showView(view)
 		if (level === 'nav') mark(navRows().find((row) => row.dataset.target === navKey) ?? navRows()[0], 'nav')
-		else if (level === 'list') {
-			const rows = listRows()
-			const kept = rows.find((row) => row.dataset.key === rowKey)
-			if (kept) mark(kept, 'list')
-			else {
-				const at = order.indexOf(rowKey)
-				const next = [...order.slice(at + 1), ...order.slice(0, at).reverse()]
-					.map((key) => rows.find((row) => row.dataset.key === key))
-					.find(Boolean)
-				mark(next ?? rows[0], 'list')
-				if (rowKey) {
-					gone = `${rowLabel} ${rowKey.startsWith('c:') ? 'was decided' : 'was answered'} in another session.`
-					tell(gone)
-				}
+	}
+	const onRow = review || document.activeElement === body || focusedKey === rowKey
+	if (level === 'list' && rowKey && onRow && !current('list')) {
+		const rows = listRows()
+		const kept = rows.find((row) => keyOf(row) === rowKey)
+		if (kept) mark(kept, 'list')
+		else {
+			const at = order.indexOf(rowKey)
+			const next = [...order.slice(at + 1), ...order.slice(0, at).reverse()]
+				.map((key) => rows.find((row) => keyOf(row) === key))
+				.find(Boolean)
+			mark(next ?? rows[0], 'list')
+			if (review) {
+				gone = `${rowLabel} ${rowKey.startsWith('c:') ? 'was decided' : 'was answered'} in another session.`
+				tell(gone)
 			}
-			remember()
 		}
-	} else if (focusedId && document.getElementById(focusedId)) document.getElementById(focusedId).focus()
-	else if (focusedKey) {
+		if (review) remember()
+	} else if (!review && focusedId && document.getElementById(focusedId)) document.getElementById(focusedId).focus()
+	else if (!review && focusedKey) {
 		const owner = document.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)
 		const target = owner?.matches('[data-row]') ? owner : owner?.querySelector('a, summary')
 		target?.focus({ preventScroll: true })
@@ -1983,6 +2199,8 @@ if (!CSS.supports('field-sizing', 'content')) {
 }
 
 document.querySelector('[data-keys-open]').hidden = false
+const docked = new window.ResizeObserver(() => dockRoom())
+for (const element of document.querySelectorAll('[data-bulk], [data-say-strip]')) docked.observe(element)
 dockRoom()
 document.querySelector('[data-find-open]').hidden = false
 showUndo()
@@ -1995,4 +2213,6 @@ if (location.hash === '#decide' || location.hash === '#answer')
 	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
 else if (review || listRows().length) settle()
 else showHints()
+if (!review && !drawer && !listRows().length)
+	window.addEventListener('load', () => placeAlert() || focusTarget(), { once: true })
 connect()

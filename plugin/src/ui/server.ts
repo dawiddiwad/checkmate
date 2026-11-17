@@ -39,7 +39,7 @@ import {
 	runDetail,
 } from '../views.ts'
 import { defaultActor } from '../actor.ts'
-import { html, plural } from './html.ts'
+import { actorLimit, html, plural } from './html.ts'
 import type { BulkState } from './bulk.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
 import { heading, layout } from './layout.ts'
@@ -48,7 +48,7 @@ import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
 import { reviewOf, reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
-import { candidateFromForm, candidateJson, editPage, ownChanges, removedTests } from './edit.ts'
+import { candidateFromForm, candidateJson, editPage, emptyField, ownChanges, removedTests } from './edit.ts'
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
@@ -201,7 +201,25 @@ function notFoundError(message: string) {
 }
 
 function plainMessage(error: unknown) {
-	return error instanceof Error ? error.message : String(error)
+	const message = error instanceof Error ? error.message : String(error)
+	const schema = /^Invalid [\w-]+: (.+)$/.exec(message)
+	if (!schema || !/ must /.test(schema[1])) return message
+	return schema[1]
+		.split(', ')
+		.map((problem) => {
+			const [path, rule] = problem.split(/ must (.*)/)
+			const place = path
+				.split('/')
+				.slice(1)
+				.map((part) =>
+					/^\d+$/.test(part) ? String(Number(part) + 1) : part.replace(/([a-z])([A-Z])/g, '$1 $2')
+				)
+				.join(' ')
+			const what = place ? place[0].toUpperCase() + place.slice(1) : 'The form'
+			if (/fewer than 1 characters|fewer than 1 items/.test(rule)) return `${what} cannot be empty.`
+			return `${what} is not valid.`
+		})
+		.join(' ')
 }
 
 export async function startUi(options: UiOptions): Promise<Ui> {
@@ -249,7 +267,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return {
 			path,
 			csrf,
-			actor: request.cookies.checkmate_actor?.trim() || fallbackActor || null,
+			actor: request.cookies.checkmate_actor?.trim().slice(0, actorLimit) || fallbackActor || null,
 			theme,
 			toast:
 				(request.req.headers['sec-fetch-mode'] ?? 'navigate') === 'navigate' ||
@@ -278,6 +296,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			section: null,
 			subjects: ['inbox'],
 			status,
+			back: '/',
 			body: html`${heading(title, message)}
 				<p class="actions">
 					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
@@ -486,7 +505,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
 					<label class="lab" for="actor-name">Name</label>
-					<input id="actor-name" name="actor" required autocomplete="name" value="${shown.actor ?? ''}" />
+					<input
+						id="actor-name"
+						name="actor"
+						required
+						maxlength="${actorLimit}"
+						autocomplete="name"
+						value="${shown.actor ?? ''}"
+					/>
 					<div class="btns">
 						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
 					</div>
@@ -495,7 +521,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	}
 
 	function actorFrom(request: Request, form: URLSearchParams) {
-		const typed = form.get('actor')?.trim() ?? ''
+		const typed = form.get('actor')?.trim().slice(0, actorLimit) ?? ''
 		const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor
 		return { actor, cookies: typed ? [cookie('checkmate_actor', typed)] : [] }
 	}
@@ -602,7 +628,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const planId = planOfExploration(explorationId)
 		const page = () => questionPage(store, context(request), explorationId, questionId, state)
 		const asked = mergedQuestions(store, planId).find((item) => item.id === questionId)
-		if (asked && asked.answer !== null) {
+		if (asked && asked.answer !== null && (asked.decision !== 'defer' || input.kind === 'defer')) {
 			state.stale = html`<strong>${questionId} has an answer now: ${asked.answer}</strong> Your answer was not
 				recorded. Your text is kept below.`
 			return refuse(request, inQueue(request, form, page, state), cookies)
@@ -959,6 +985,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			json: form.get('json') ?? '',
 			actor: form.get('actor') ?? '',
 			error: null,
+			field: null,
 			stale: null,
 			unsaved: null,
 			orig: form.get('orig') ?? JSON.stringify(base),
@@ -984,6 +1011,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		state.removed = removedTests(base, candidate)
 		const rationale = state.rationale.trim()
+		const blank = mode === 'form' ? emptyField(base, form) : null
+		if (blank && !state.error)
+			[state.error, state.field] = [`Fill in ${blank.label}. It cannot be empty.`, blank.name]
+		if (!state.error && !state.removed.length && candidateJson(candidate) === candidateJson(base))
+			return redirect(request.res, `/plans/${subject}`, [
+				...cookies,
+				cookie('checkmate_toast', `No changes. ${subject} is not saved again.`, 60),
+			])
 		if (!actor) state.error ??= 'Enter your name. Checkmate records it with the edit.'
 		if (state.removed.length && !rationale)
 			state.error ??= `The edit removes ${state.removed.join(', ')}. Write the reason in Reason for removal.`
@@ -1036,6 +1071,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				...entryPoints.map((entry) => `entry.${entry.name}`),
 			]),
 			error: null,
+			field: null,
 		}
 		const again = () => {
 			const kept = JSON.stringify(state)
@@ -1047,8 +1083,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			])
 		}
 		const instanceId = state.values.instanceId.trim()
-		if (!actor) state.error = 'Enter your name. Checkmate records it with the instance.'
-		else if (!instanceId) state.error = 'Enter an instance ID.'
+		const empty = entryPoints.find((entry) => !state.values[`entry.${entry.name}`].trim())
+		if (!actor)
+			[state.error, state.field] = ['Enter your name. Checkmate records it with the instance.', 'instance-actor']
+		else if (!instanceId) [state.error, state.field] = ['Enter an instance ID.', 'instance-id']
+		else if (empty)
+			[state.error, state.field] = [`Fill in ${empty.name}. It cannot be empty.`, `entry-${empty.name}`]
 		if (state.error) return again()
 		try {
 			addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) })
@@ -1115,6 +1155,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const name = form.get('actor')?.trim() ?? ''
 			if (!name)
 				return errorPage(request, 422, 'Your name', 'Enter a name. Checkmate records it with each decision.')
+			if (name.length > actorLimit)
+				return errorPage(request, 422, 'Your name', `Use a name of ${actorLimit} characters or fewer.`)
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
 		if (pathname === '/bulk') return bulk(request, form)

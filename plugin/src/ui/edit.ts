@@ -4,7 +4,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import { frozenRevision, jsonPatch, planCandidate } from '../plans.ts'
 import { planDetail } from '../views.ts'
-import { html, short } from './html.ts'
+import { actorLimit, html, short } from './html.ts'
 import { banner, heading } from './layout.ts'
 
 type Candidate = ReturnType<typeof planCandidate>
@@ -18,6 +18,7 @@ export type EditState = {
 	json: string
 	actor: string
 	error: string | null
+	field?: string | null
 	stale: Html | null
 	unsaved: string | null
 	orig: string
@@ -71,6 +72,23 @@ export function candidateFromForm(base: Candidate, form: URLSearchParams): Candi
 		})),
 		gaps: base.gaps,
 	}
+}
+
+export function emptyField(base: Candidate, form: URLSearchParams) {
+	const fields = [
+		...base.requirements.flatMap((requirement, i) => [
+			[`r${i}.text`, `${requirement.id} Text`],
+			[`r${i}.source`, `${requirement.id} Source`],
+		]),
+		...base.tests.flatMap((test, i) => [
+			[`t${i}.title`, `${test.id} Title`],
+			[`t${i}.capability`, `${test.id} Capability`],
+			[`t${i}.action`, `${test.id} Action`],
+			...test.assertions.map((assertion, j) => [`t${i}.a${j}.check`, `${assertion.id}`]),
+		]),
+	]
+	const found = fields.find(([name]) => form.has(name) && !form.get(name)!.trim())
+	return found ? { name: found[0], label: found[1] } : null
 }
 
 export function candidateJson(candidate: unknown) {
@@ -225,13 +243,14 @@ function coverageMatrix(candidate: Candidate) {
 							${candidate.tests.map(
 								(test) =>
 									html`<td>
-										<input
-											type="checkbox"
-											name="cover"
-											value="${test.id} ${requirement.id}"
-											aria-label="${test.id} covers ${requirement.id}"
-											${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
-										/>
+										<label class="cell-check"
+											><input
+												type="checkbox"
+												name="cover"
+												value="${test.id} ${requirement.id}"
+												aria-label="${test.id} covers ${requirement.id}"
+												${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
+										/></label>
 									</td>`
 							)}
 						</tr>`
@@ -256,7 +275,14 @@ function actorLine(context: Context, state: EditState, path: string, mode: strin
 		</p>`
 	return html`<div class="field-group">
 		<label class="lab" for="actor-${mode}">Your name</label>
-		<input id="actor-${mode}" name="actor" required autocomplete="name" value="${state.actor}" />
+		<input
+			id="actor-${mode}"
+			name="actor"
+			required
+			maxlength="${actorLimit}"
+			autocomplete="name"
+			value="${state.actor}"
+		/>
 		<p class="help">Checkmate records it with the edit.</p>
 	</div>`
 }
@@ -317,7 +343,7 @@ export function editPage(
 		rationale: '',
 	}
 	const messages = html`${shown.stale ? banner('warn', shown.stale) : ''}
-	${shown.error ? html`<p class="form-error" role="alert">${shown.error}</p>` : ''}`
+	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
 		html`<div class="btns">
 				<button class="btn primary">${save}</button>
@@ -389,6 +415,7 @@ export function editPage(
 			['Edit', null],
 		],
 		back: `/plans/${subject}`,
+		address: `/plans/${subject}/edit`,
 		nav: navigator(reviewOf(store, planId), 'plan'),
 	}
 }

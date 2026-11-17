@@ -331,7 +331,7 @@ test('after completion the plan page answers a merged question and decides a mer
 	assert.match(page, /checkmate harvest x-1/)
 	assert.match(
 		(await call(url, '/')).body,
-		/data-region="nav-count"\s*><span\s*>1<span class="sb-long"> needs you<\/span> · all plans</
+		/data-region="nav-count"\s*><span\s*>1<span class="sb-long"> needs you<\/span\s*><span class="sb-all"> · all plans<\/span><\/span/
 	)
 	const live = (await call(url, '/explorations/x-1')).body
 	assert(!keyed(live, 'unmerged'))

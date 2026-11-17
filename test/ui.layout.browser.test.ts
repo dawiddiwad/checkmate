@@ -34,6 +34,12 @@ const pages = [
 	'/plans/checkout@2/edit',
 	'/settings/targets/shop-local',
 	'/runs/run-7?item=finding%3AF1',
+	'/plans/account@7/edit',
+	'/settings/targets',
+	'/explorations/x-1?item=explorer%3Aa1',
+	'/plans/basket/request',
+	'/plans/checkout@2/gaps/G2',
+	'/actor',
 ]
 
 function measure(narrow: boolean) {
@@ -42,6 +48,7 @@ function measure(narrow: boolean) {
 		const box = element.getBoundingClientRect()
 		return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden'
 	}
+	const labelled = (element: Element) => getComputedStyle(element, '::before').content.startsWith('"')
 	const name = (element: Element) =>
 		`${element.tagName.toLowerCase()}.${[...element.classList].join('.')}${(element as HTMLElement).dataset.key ? `[${(element as HTMLElement).dataset.key}]` : ''}`
 	const textBox = (element: Element) => {
@@ -85,7 +92,7 @@ function measure(narrow: boolean) {
 
 	for (const element of document.querySelectorAll('.sp-mk, kbd')) {
 		if (!shown(element) || !element.textContent!.trim() || element.closest('dialog:not([open])')) continue
-		if (element.querySelector('.glyph')) continue
+		if (element.querySelector('.glyph') || labelled(element)) continue
 		const box = element.getBoundingClientRect()
 		const text = textBox(element)
 		if (!text) continue
@@ -99,7 +106,9 @@ function measure(narrow: boolean) {
 		if (!shown(element)) continue
 		const box = element.getBoundingClientRect()
 		const outer = element.parentElement!.getBoundingClientRect()
-		const dx = Math.abs(box.left + box.width / 2 - (outer.left + outer.width / 2))
+		const dx = labelled(element.parentElement!)
+			? 0
+			: Math.abs(box.left + box.width / 2 - (outer.left + outer.width / 2))
 		const dy = Math.abs(box.top + box.height / 2 - (outer.top + outer.height / 2))
 		if (dx > 0.5 || dy > 0.5) problems.push(`${name(element)} off centre by ${dx.toFixed(2)}, ${dy.toFixed(2)}`)
 	}
@@ -201,7 +210,7 @@ function measure(narrow: boolean) {
 			problems.push(`${name(element)} "${element.textContent!.trim().slice(0, 30)}" contrast ${value.toFixed(2)}`)
 	}
 	for (const control of document.querySelectorAll(
-		'.sp-btn, .btn, .sb-btn, summary, input:not([type=hidden]), textarea, select'
+		'.sp-btn, .btn, .sb-btn, summary, input:not([type=hidden]), textarea, select, .sp-mk[data-mark]'
 	)) {
 		if (
 			!shown(control) ||
@@ -218,11 +227,21 @@ function measure(narrow: boolean) {
 
 	if (narrow)
 		for (const target of document.querySelectorAll(
-			'.sp-row .sp-btn, .sb-btn, .sp-ct-opts .sp-btn, .sp-dopts .sp-btn, .sp-nrow, .brand, .who .actor, .sp-c-cb, main input:not([type=hidden], [type=checkbox], [type=radio]), main select, .settings-nav a, .jump a, .plist a, .q-detail a, main summary'
+			'a[href], button, summary, input:not([type=hidden]), select, textarea, .sp-c-cb, [data-nav]'
 		)) {
-			if (!shown(target)) continue
-			const height = target.getBoundingClientRect().height
-			if (height < 40) problems.push(`${name(target)} is ${height} px high`)
+			if (
+				!shown(target) ||
+				target.closest('dialog:not([open]), .sr-only') ||
+				target.matches('.sp-c-title, .skip')
+			)
+				continue
+			const prose = [...(target.parentElement?.childNodes ?? [])].some(
+				(node) => node.nodeType === 3 && node.textContent!.trim().length > 2
+			)
+			if (target.matches('a') && prose) continue
+			const box = (target.matches('[type=checkbox], [type=radio]') && target.closest('label')) || target
+			const { width, height } = box.getBoundingClientRect()
+			if (width < 39.5 || height < 39.5) problems.push(`${name(target)} is ${width}x${height} px`)
 		}
 	return problems
 }

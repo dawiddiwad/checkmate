@@ -18,6 +18,7 @@ test('the shortcuts panel opens by key and a #decide or #answer link focuses its
 	await page.getByRole('cell', { name: /Go one step deeper/ }).waitFor()
 	await page.keyboard.press('Escape')
 	await page.getByRole('heading', { name: 'Keys' }).waitFor({ state: 'hidden' })
+	await page.waitForFunction(() => !window.history.state?.layer)
 	await page.goto(url('/plans/search@1#decide'))
 	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
 	await page.waitForTimeout(300)
@@ -203,6 +204,7 @@ test('Ctrl+Enter with an empty field shows an inline message and focuses the fie
 	await message.waitFor({ state: 'detached' })
 	for (const path of ['/plans/search@1', '/runs/run-7?item=summary']) {
 		await page.goto(url(path))
+		await page.locator('#rationale').fill('')
 		await page.locator('#rationale').focus()
 		await page.keyboard.press('Control+Enter')
 		await message.filter({ hasText: 'Write a rationale.' }).waitFor()

@@ -200,6 +200,11 @@ function explorerState(item: LiveExplorer) {
 
 function inState(item: LiveExplorer) {
 	if (item.elapsedMs === null) return ''
+	if (item.pausedAt)
+		return html`<span class="age"
+			>paused for
+			<span data-since="${item.pausedAt}">${duration(Date.now() - Date.parse(item.pausedAt))}</span></span
+		>`
 	const live = item.startedAt && (item.state === 'running' || item.state === 'given')
 	return live
 		? html`<span class="age" data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>`
@@ -310,7 +315,15 @@ function explorationList(live: Live, others: Listed[]) {
 					: 'No activity line in the record.'),
 			html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
 			`tester-${index}`,
-			[item.turn, item.elapsedMs !== null ? duration(item.elapsedMs) : null, raw ? `${raw} not merged` : null]
+			[
+				item.turn,
+				item.pausedAt
+					? `paused for ${duration(Date.now() - Date.parse(item.pausedAt))}`
+					: item.elapsedMs !== null
+						? duration(item.elapsedMs)
+						: null,
+				raw ? `${raw} not merged` : null,
+			]
 				.filter(Boolean)
 				.join(' · ')
 		)
@@ -560,6 +573,7 @@ export function explorationPage(store: Store, explorationId: string, params = ne
 			: summaryDetail(store, live, html``)
 	const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse()
 	return {
+		viewer: true,
 		title: label ? `${explorationId} · ${label}` : `${title} · ${explorationId}`,
 		section: 'home',
 		subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
@@ -569,7 +583,7 @@ export function explorationPage(store: Store, explorationId: string, params = ne
 			[explorationId, label ? `/explorations/${explorationId}` : null],
 			...(label ? [[label, null] as [string, null]] : []),
 		],
-		back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}`,
+		back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}?nav=testers`,
 		nav: navigator(review, 'testers', explorationId),
 		body: html`<div class="sp-ch">
 				${crumbBar([

@@ -337,7 +337,7 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 										: html`<p class="muted small">First revision.</p>`
 								}
 								<p class="small">
-									<a href="/plans/${detail.planId}@${item.revision}"
+									<a class="h-link" href="/plans/${detail.planId}@${item.revision}"
 										>Open ${detail.planId}@${item.revision}</a
 									>
 								</p>
@@ -642,7 +642,7 @@ export function planPage(
 			[planId, `/plans/${planId}`],
 			[subject, null],
 		],
-		back: `/plans/${planId}`,
+		back: `/plans/${planId}?nav=plan`,
 		nav: navigator(reviewOf(store, planId), 'plan'),
 	}
 }
@@ -732,7 +732,7 @@ export function requestPage(store: Store, planId: string): Page {
 			[planId, `/plans/${planId}`],
 			['Request', null],
 		],
-		back: `/plans/${planId}`,
+		back: `/plans/${planId}?nav=plan`,
 		nav: navigator(reviewOf(store, planId), 'plan'),
 	}
 }

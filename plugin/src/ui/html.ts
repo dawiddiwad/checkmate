@@ -1,5 +1,7 @@
 export type Html = { readonly html: string }
 
+export const actorLimit = 64
+
 const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 
 export function escape(text: string) {

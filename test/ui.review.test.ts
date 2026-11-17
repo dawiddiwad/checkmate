@@ -359,7 +359,7 @@ test('every page has the status path, and a parent for Left and Esc', async (t) 
 	const { call } = await start(t)
 	for (const [path, crumb, back] of [
 		['/plans/coupons?item=c%3Ak1%2FD1', 'k1/D1', '/plans/coupons?view=needs&amp;at=c%3Ak1%2FD1&amp;focus=list'],
-		['/explorations/x-1', 'x-1', '/plans/checkout'],
+		['/explorations/x-1', 'x-1', '/plans/checkout?nav=testers'],
 		['/runs/run-7', 'run-7', null],
 		['/plans/checkout@2/gaps/G2', 'G2', null],
 		['/plans/checkout@2/edit', 'Edit', null],

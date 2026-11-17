@@ -598,6 +598,7 @@ export function runPage(
 								${cleanup(detail)}`
 						: summaryDetail(store, context, detail, state, crumbs)
 	return {
+		viewer: true,
 		title: label ? `${runId} · ${label}` : runId,
 		section: 'runs',
 		subjects: [`run:${runId}`, 'inbox'],

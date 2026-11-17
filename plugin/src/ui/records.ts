@@ -202,7 +202,7 @@ function claimBody(
 function questionBody(context: Context, review: Review, item: Item, back: string, state: FormState | null) {
 	const question = item.question
 	const members = question?.members ?? []
-	const open = item.kind === 'question' || item.kind === 'gap'
+	const open = item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred'
 	const more = html`<details class="sp-more">
 		<summary>Source and reason</summary>
 		<div class="sp-form">
@@ -304,7 +304,7 @@ export function recordDrawer(
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${item.id}">
 				<div class="sp-pills">
 					${itemTag(item)}
-					${item.detail ? html`<span class="sp-pill">${changeWords[item.detail.builds.at(-1)?.state ?? ''] ?? ''}</span>` : ''}
+					${item.detail && item.kind !== 'rejected' ? html`<span class="sp-pill">${changeWords[item.detail.builds.at(-1)?.state ?? ''] ?? ''}</span>` : ''}
 					${item.claim?.handoff ? html`<span class="sp-pill green">Handed over</span>` : ''}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html`<span class="sp-c-id">${time(when)}</span>` : ''}

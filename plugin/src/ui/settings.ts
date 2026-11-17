@@ -7,7 +7,7 @@ import { instanceList, targetHistory, targetList, targetRequest, targetRevision 
 import { html, join, pill, plural, short, time } from './html.ts'
 import { banner, emptyNotice, heading } from './layout.ts'
 
-export type InstanceForm = { values: Record<string, string>; error: string | null }
+export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
 export type RetireState = { instanceId: string; error: string } | null
 
 const settingsPages = [{ path: '/settings/targets', label: 'Targets' }]
@@ -313,7 +313,13 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 		<p class="help">
 			An instance is one place where the target runs. Adding one needs no new revision and no approval.
 		</p>
-		<div data-stale-slot>${form?.error ? html`<p class="form-error" role="alert">${form.error}</p>` : ''}</div>
+		<div data-stale-slot>
+			${
+				form?.error
+					? html`<p class="form-error" role="alert" data-field="${form.field ?? ''}">${form.error}</p>`
+					: ''
+			}
+		</div>
 		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<div class="field-group">

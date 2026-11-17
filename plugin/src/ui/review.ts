@@ -367,8 +367,9 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 					</form>`,
 				]
 			: [reveal(1, 'Hand over', 'handoff', item, 'Mark as handed over')]
-	if (item.kind === 'question' || item.kind === 'gap') {
+	if (item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred') {
 		const fields: Array<[string, string]> = item.kind === 'gap' ? [['sha', review.sha]] : []
+		const later = optionForm(context, item, 3, 'Later', [...fields, ['kind', 'defer']], 'Decide later')
 		return [
 			optionForm(
 				context,
@@ -383,7 +384,7 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 				'Right as built'
 			),
 			reveal(2, 'Different', 'answer', item, 'It should be different'),
-			optionForm(context, item, 3, 'Later', [...fields, ['kind', 'defer']], 'Decide later'),
+			...(item.kind === 'deferred' ? [] : [later]),
 		]
 	}
 	return []
@@ -406,7 +407,7 @@ export function extraOf(context: Context, review: Review, item: Item) {
 		return form('reject', 'Why is it not a defect?', 'rationale', [['verdict', 'rejected']])
 	if (item.kind === 'defect' && !item.claim?.handoff)
 		return form('handoff', 'Hand over to whom?', 'to', [['claim', item.id]], `/plans/${review.planId}/handoff`)
-	if (item.kind === 'question' || item.kind === 'gap')
+	if (item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred')
 		return form('answer', 'How it should be, in one sentence', 'value', [
 			...(item.kind === 'gap' ? [['sha', review.sha] as [string, string]] : []),
 			['kind', 'clarify'],
@@ -494,7 +495,13 @@ function markOf(review: Review, status: CellStatus, build: string) {
 	const testing = review.running?.build === build && status === 'not_checked'
 	const [symbol, look, name] = testing ? ['●', 'k-run', 'under test now'] : cellMarks[status]
 	const label = `${buildLabel(review, build)} ${name}`
-	return html`<span class="sp-mk ${look}" role="img" aria-label="${label}" title="${label}" data-mark="${build}"
+	return html`<span
+		class="sp-mk ${look}"
+		role="img"
+		aria-label="${label}"
+		title="${label}"
+		data-mark="${build}"
+		data-b="${buildLabel(review, build)}"
 		>${glyph(symbol)}</span
 	>`
 }
@@ -613,6 +620,7 @@ export function navigator(review: Review, current: string, exploration: string |
 		data-builds="${builds.length}"
 		data-region="navigator"
 	>
+		<h2 class="sr-only">Plan ${planId}</h2>
 		<div class="sp-nlist" role="tree" aria-label="Views of ${planId}">
 			<div class="sp-npin" role="none">
 				${review.running ? testersRow : ''}
@@ -826,7 +834,11 @@ function panel(context: Context, review: Review, view: string, current: string) 
 				[review.planId, `/plans/${review.planId}`],
 				[review.target, null],
 			])}
-			<h1 id="title-${slug(view)}">${title}</h1>
+			${
+				view === current
+					? html`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>`
+					: html`<h2 id="title-${slug(view)}" data-view-title>${title}</h2>`
+			}
 			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
 			<div class="sp-pills">${head.pills}</div>
 			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}

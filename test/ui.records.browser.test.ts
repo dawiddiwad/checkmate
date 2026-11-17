@@ -356,7 +356,7 @@ test('the request page, the run page, and the testers view step in and out by ke
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/basket/request'))
 	await page.keyboard.press('Escape')
-	await page.waitForURL(/\/plans\/basket$/)
+	await page.waitForURL(/\/plans\/basket(\?|$)/)
 	await page.goto(url('/runs/run-7'))
 	await ready(page, '[data-row]')
 	while ((await page.evaluate(() => document.activeElement?.getAttribute('data-key'))) !== 'finding:F1')
@@ -382,7 +382,7 @@ test('the request page, the run page, and the testers view step in and out by ke
 	await page.keyboard.press('ArrowLeft')
 	await page.waitForURL(/\/explorations\/x-1$/)
 	await page.keyboard.press('ArrowLeft')
-	await page.waitForURL(/\/plans\/checkout$/)
+	await page.waitForURL(/\/plans\/checkout(\?|$)/)
 })
 
 test('the rule and build marks follow a live update, and the build columns still choose', { skip }, async (t) => {

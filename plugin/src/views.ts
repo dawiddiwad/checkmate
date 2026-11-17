@@ -433,12 +433,23 @@ function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: nu
 				name: file.name,
 			}))
 		)
+	const busy = state === 'given' || state === 'running'
+	const pause = events.findLast((event) => event.step === 'pause' || event.step === 'resume')
+	const pausedAt = busy && pause?.step === 'pause' ? pause.at : null
+	const span = (from: string, to: number) => Math.max(0, to - Date.parse(from))
 	return {
 		explorer: item.explorer,
 		turn: (action?.detail.step as string | undefined) ?? null,
 		state,
 		startedAt: last?.at ?? null,
-		elapsedMs: last ? Math.max(0, now - Date.parse(last.at)) : null,
+		pausedAt,
+		elapsedMs: !last
+			? null
+			: busy
+				? span(last.at, pausedAt ? Date.parse(pausedAt) : now)
+				: outcome && outcomeAction
+					? span(outcomeAction.at, Date.parse(outcome.at))
+					: null,
 		activity:
 			typeof outcome?.detail.activity === 'string' && outcomeAction
 				? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}`
@@ -478,7 +489,9 @@ function explorerLive(
 	const state = inFollow
 		? (followTurn?.status ?? (running ? 'running' : stopped))
 		: (end?.status ?? (launch ? (running ? 'running' : 'stopped') : null))
-	const until = endedAt ? Date.parse(endedAt) : running ? now : null
+	const pause = events.findLast((event) => event.step === 'pause' || event.step === 'resume')
+	const pausedAt = running && !endedAt && pause?.step === 'pause' ? pause.at : null
+	const until = endedAt ? Date.parse(endedAt) : pausedAt ? Date.parse(pausedAt) : running ? now : null
 	const activity = own.findLast((event) => typeof event.detail.activity === 'string' && event.detail.activity)
 	const files = own
 		.filter((event) => event.step === 'files')
@@ -493,6 +506,7 @@ function explorerLive(
 		turn,
 		state,
 		startedAt,
+		pausedAt,
 		elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
 		activity: (activity?.detail.activity as string | undefined) ?? null,
 		recorded: item.recorded,

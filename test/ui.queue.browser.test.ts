@@ -215,7 +215,7 @@ test('the plan page opens what needs the person and folds the rest', { skip }, a
 	assert.equal(await unfolded('tests'), false)
 	assert.equal(await unfolded('history'), false)
 	await page.getByRole('link', { name: /^Tests/ }).click()
-	assert.equal(await unfolded('tests'), true)
+	await page.locator('details.fold[open]:has(#tests)').waitFor()
 	await page.locator('[data-region="claims"] a.mono[href^="/claims"]').first().click()
 	await page.waitForURL(/\/claims\?plan=checkout&item=/)
 	await page.locator('.q-detail .q-h').waitFor()

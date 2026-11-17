@@ -3,7 +3,7 @@ import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
 import type { ListPage, ListQuery } from '../views.ts'
 import { operationLog, pagedOperations, pagedRuns, planList, runList } from '../views.ts'
-import { html, join, pill, pillClass, plural, time, words } from './html.ts'
+import { glyph, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
@@ -30,7 +30,7 @@ export function counts(values: Record<string, number>) {
 		>${shown.map(
 			(key) =>
 				html`<span class="${pillClass(key)}" title="${values[key]} ${words(key)}"
-					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
+					><span aria-hidden="true">${glyph(countLook[key][0])}</span> ${values[key]}<span class="sr-only">
 						${words(key)}</span
 					></span
 				>`

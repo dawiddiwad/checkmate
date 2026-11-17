@@ -3,7 +3,7 @@ import type { Page } from './layout.ts'
 import type { Review } from './review.ts'
 import type { CellStatus } from '../rulemap.ts'
 import { planList } from '../views.ts'
-import { html, pill, plural, time } from './html.ts'
+import { glyph, html, pill, plural, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from './review.ts'
 
@@ -46,7 +46,7 @@ function miniMap(review: Review) {
 			(col) =>
 				html`<span class="sp-mm-l" title="${col.title}">${col.label}</span>${builds.map((_, index) => {
 						const [symbol, look] = marks[col.cells[from + index]]
-						return html`<span class="sp-mk ${look}">${symbol}</span>`
+						return html`<span class="sp-mk ${look}">${glyph(symbol)}</span>`
 					})}`
 		)}
 	</div>`
@@ -130,8 +130,18 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 }
 
 export function homePage(store: Store): Page {
-	const plans = planList(store)
-	const reviews = plans.map((plan) => reviewOf(store, plan.planId))
+	const latest = (review: ReturnType<typeof reviewOf>, since: string) =>
+		[since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1)!
+	const listed = planList(store).map((plan) => {
+		const review = reviewOf(store, plan.planId)
+		return { plan, review, needs: review.items.some((item) => item.needs), at: latest(review, plan.since) }
+	})
+	listed.sort(
+		(a, b) =>
+			Number(b.needs) - Number(a.needs) || b.at.localeCompare(a.at) || a.plan.planId.localeCompare(b.plan.planId)
+	)
+	const plans = listed.map((each) => each.plan)
+	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
 	const body = plans.length
 		? html`<div class="sp-home" role="listbox" aria-label="Plans" data-list>

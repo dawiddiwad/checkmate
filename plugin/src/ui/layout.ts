@@ -1,5 +1,5 @@
 import type { Html } from './html.ts'
-import { html } from './html.ts'
+import { glyph, html } from './html.ts'
 import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
@@ -89,8 +89,15 @@ function statusBar(context: Context, page: Page) {
 			</ol>
 		</nav>
 		<span class="sb-links">
-			<a class="sb-btn att" href="/" data-region="nav-count" ${waiting ? '' : html`hidden`}
-				>${waiting} ${waiting === 1 ? 'needs' : 'need'} you</a
+			<a
+				class="sb-btn att"
+				href="/"
+				title="Items that wait for you in all plans"
+				data-region="nav-count"
+				${waiting ? '' : html`hidden`}
+				><span
+					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span> · all plans</span
+				></a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
 			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
@@ -101,7 +108,8 @@ function statusBar(context: Context, page: Page) {
 			<details class="sb-more menu" data-menu>
 				<summary class="sb-btn">More</summary>
 				<div class="menu-list">
-					<a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
+					<button type="button" data-find-open>Find</button><a href="/runs">Runs</a><a href="/log">Log</a
+					><a href="/settings">Settings</a>
 				</div>
 			</details>
 		</span>
@@ -123,7 +131,8 @@ const dialogs = html`<dialog class="sp-keys" data-keys aria-labelledby="keys-tit
 		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
 		<p class="sp-find-none" data-find-more hidden></p>
 		<div class="sp-foot">
-			<span><kbd>↑</kbd><kbd>↓</kbd>Choose</span><span><kbd>Enter</kbd>Go</span><span><kbd>Esc</kbd>Close</span>
+			<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span><span><kbd>Enter</kbd>Go</span
+			><span><kbd>Esc</kbd>Close</span>
 		</div>
 	</dialog>
 	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">

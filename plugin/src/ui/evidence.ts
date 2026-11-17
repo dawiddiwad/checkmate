@@ -109,7 +109,7 @@ export const viewer = html`<div
 		<span class="viewer-name" data-viewer-name></span>
 		<span class="viewer-tools" data-viewer-tools="image">
 			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
-				−
+				-
 			</button>
 			<span class="viewer-scale" data-viewer-scale aria-live="polite">Fit</span>
 			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>

@@ -69,10 +69,13 @@ test('the home lists each plan once, and the plan lists what needs you in groups
 	assert.equal(home.status, 200)
 	assert.deepEqual(
 		[...home.body.matchAll(/data-key="plan:([^"]+)"/g)].map((match) => match[1]),
-		['account', 'basket', 'checkout', 'coupons', 'login', 'search']
+		['checkout', 'search', 'basket', 'coupons', 'login', 'account']
 	)
 	const waiting = read(needsYou)
-	assert.match(home.body, new RegExp(`data-region="nav-count"\\s*>${waiting.urgent} need`))
+	assert.match(
+		home.body,
+		new RegExp(`data-region="nav-count"\\s*><span\\s*>${waiting.urgent}<span class="sb-long"> need`)
+	)
 	const page = await call('/plans/checkout')
 	const mine = waiting.items.filter((item) => item.planId === 'checkout')
 	assert.deepEqual(new Set(rows(page.body)), new Set(mine.map(rowKey)))
@@ -361,7 +364,7 @@ test('every page has the status path, and a parent for Left and Esc', async (t) 
 		['/plans/checkout@2/gaps/G2', 'G2', null],
 		['/plans/checkout@2/edit', 'Edit', null],
 		['/plans/checkout@2', 'checkout@2', null],
-		['/plans/basket', 'Needs you', '/'],
+		['/plans/basket', 'Needs you', '/?at=plan%3Abasket'],
 	] as const) {
 		const body = (await call(path)).body
 		assert.match(body, new RegExp(`<li aria-current="page">${crumb}</li>`), path)
@@ -399,10 +402,11 @@ test('the evidence of a claim opens from its own address and in the viewer', asy
 
 test('one state has one pill on every page', async (t) => {
 	const { call } = await start(t)
-	const paused = '<span class="sp-pill amber" data-status="paused"><span aria-hidden="true">‖</span> paused</span>'
+	const paused =
+		'<span class="sp-pill amber" data-status="paused"><span aria-hidden="true"><span class="glyph g-pause" aria-hidden="true"></span></span> paused</span>'
 	assert((await call('/explorations/x-10')).body.includes(paused))
 	const waiting =
-		'<span class="sp-pill blue" data-status="awaits_acceptance"><span aria-hidden="true">○</span> awaits acceptance</span>'
+		'<span class="sp-pill blue" data-status="awaits_acceptance"><span aria-hidden="true"><span class="glyph g-ring" aria-hidden="true"></span></span> awaits acceptance</span>'
 	assert((await call('/runs/run-7')).body.includes('data-status="pending"'))
 	assert.doesNotMatch((await call('/runs/run-7?item=cleanup')).body, /\d{4}-\d{2}-\d{2} \d{2}:\d{2} ·/)
 	assert((await call('/')).body.includes(waiting) || true)

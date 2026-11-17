@@ -10524,7 +10524,8 @@ function planQuestions(store, planId, keep) {
       blocking: found.some((entry) => entry.blocking === true),
       about: head.about ?? null,
       answer: answer?.answer ?? null,
-      answerId: answer?.id ?? null
+      answerId: answer?.id ?? null,
+      decision: answer?.decision ?? null
     };
   });
 }
@@ -17197,16 +17198,36 @@ function pillClass(status) {
   const [, tone2] = statusLook[status] ?? ["\xB7", "muted"];
   return `sp-pill ${toneColor[tone2]}`.trim();
 }
+var glyphNames = {
+  "\u2713": "check",
+  "\u2717": "cross",
+  "\u25CF": "dot",
+  "\u25CB": "ring",
+  "\u25D0": "half",
+  "\u2248": "approx",
+  "\u2016": "pause",
+  "\u2191": "up",
+  "\u2193": "down",
+  "\u2190": "left",
+  "\u2192": "right",
+  "\u25B8": "closed",
+  "\u25BE": "open"
+};
+function glyph(symbol) {
+  const name = glyphNames[symbol];
+  return name ? html2`<span class="glyph g-${name}" aria-hidden="true"></span>` : html2`${symbol}`;
+}
 function pill(status, label = labels[status] ?? words(status)) {
   const [icon2] = statusLook[status] ?? ["\xB7", "muted"];
   const look = pillClass(status);
-  return html2`<span class="${look}" data-status="${status}"><span aria-hidden="true">${icon2}</span> ${label}</span>`;
+  const mark2 = glyph(icon2);
+  return html2`<span class="${look}" data-status="${status}"><span aria-hidden="true">${mark2}</span> ${label}</span>`;
 }
 function icon(status) {
   const [symbol, tone2] = status ? statusLook[status] ?? ["\xB7", "muted"] : ["\xB7", "muted"];
   const mark2 = { pass: "k-pass", fail: "k-fail", warn: "k-q", unsure: "k-q", acc: "k-run" }[tone2] ?? "k-none";
   return html2`<span class="sp-mk ${mark2}" role="img" aria-label="${status ? words(status) : "no result yet"}"
-		>${symbol}</span
+		>${glyph(symbol)}</span
 	>`;
 }
 function short2(sha256) {
@@ -17338,7 +17359,7 @@ var viewer = html2`<div
 		<span class="viewer-name" data-viewer-name></span>
 		<span class="viewer-tools" data-viewer-tools="image">
 			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
-				−
+				-
 			</button>
 			<span class="viewer-scale" data-viewer-scale aria-live="polite">Fit</span>
 			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
@@ -17415,8 +17436,15 @@ function statusBar(context, page) {
 			</ol>
 		</nav>
 		<span class="sb-links">
-			<a class="sb-btn att" href="/" data-region="nav-count" ${waiting ? "" : html2`hidden`}
-				>${waiting} ${waiting === 1 ? "needs" : "need"} you</a
+			<a
+				class="sb-btn att"
+				href="/"
+				title="Items that wait for you in all plans"
+				data-region="nav-count"
+				${waiting ? "" : html2`hidden`}
+				><span
+					>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span> · all plans</span
+				></a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
 			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
@@ -17427,7 +17455,8 @@ function statusBar(context, page) {
 			<details class="sb-more menu" data-menu>
 				<summary class="sb-btn">More</summary>
 				<div class="menu-list">
-					<a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
+					<button type="button" data-find-open>Find</button><a href="/runs">Runs</a><a href="/log">Log</a
+					><a href="/settings">Settings</a>
 				</div>
 			</details>
 		</span>
@@ -17448,7 +17477,8 @@ var dialogs = html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-titl
 		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
 		<p class="sp-find-none" data-find-more hidden></p>
 		<div class="sp-foot">
-			<span><kbd>↑</kbd><kbd>↓</kbd>Choose</span><span><kbd>Enter</kbd>Go</span><span><kbd>Esc</kbd>Close</span>
+			<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span><span><kbd>Enter</kbd>Go</span
+			><span><kbd>Esc</kbd>Close</span>
 		</div>
 	</dialog>
 	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
@@ -18290,7 +18320,7 @@ function questionItem(question, needs) {
   const open = question.answer === null;
   return {
     key: `q:${question.id}`,
-    kind: open ? "question" : "answered",
+    kind: open ? "question" : question.decision === "defer" ? "deferred" : "answered",
     id: question.id,
     title: question.question,
     rule: question.rule ?? null,
@@ -18300,7 +18330,10 @@ function questionItem(question, needs) {
     severity: null,
     topic: question.label,
     href: `/explorations/${question.explorationId}/questions/${question.id}`,
-    meta: [open ? "open" : "answered", question.members.length > 1 ? `\xD7${question.members.length}` : null].filter(Boolean).join(" \xB7 "),
+    meta: [
+      open ? "open" : question.decision === "defer" ? "deferred" : "answered",
+      question.members.length > 1 ? `\xD7${question.members.length}` : null
+    ].filter(Boolean).join(" \xB7 "),
     claim: null,
     detail: null,
     question,
@@ -18426,6 +18459,10 @@ function groupsOf(items) {
       items.filter((item) => item.kind === "answered")
     ),
     of(
+      "Deferred questions",
+      items.filter((item) => item.kind === "deferred")
+    ),
+    of(
       "Rejected findings",
       items.filter((item) => item.kind === "rejected")
     )
@@ -18444,6 +18481,7 @@ var tags = {
   finding: ["? Finding", "amber"],
   question: ["Question", ""],
   answered: ["Answered", "green"],
+  deferred: ["Deferred", ""],
   gap: ["Gap", ""],
   approval: ["Approve", "blue"],
   rejected: ["Rejected", ""],
@@ -18553,7 +18591,7 @@ function extraOf(context, review, item) {
 }
 function itemRow(context, review, item, id2, view) {
   const pickable = ["finding", "question", "gap", "defect"].includes(item.kind);
-  const dim = ["answered", "rejected"].includes(item.kind);
+  const dim = ["answered", "deferred", "rejected"].includes(item.kind);
   const options2 = optionsOf(context, review, item);
   const extra = extraOf(context, review, item);
   return html2`<div
@@ -18575,7 +18613,13 @@ function itemRow(context, review, item, id2, view) {
 					/></label>` : html2`<span class="sp-c-cb"></span>`}
 		<span class="sp-c-tag">${itemTag(item)}</span>
 		<span class="sp-c-id" title="${item.id}">${item.id}</span>
-		<span class="sp-c-title ell" title="${item.title}">${item.title}</span>
+		<a
+			class="sp-c-title ell"
+			title="${item.title}"
+			tabindex="-1"
+			href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
+			>${item.title}</a
+		>
 		<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>
 		${options2.length ? html2`<div class="sp-c-opts" aria-label="Options">${options2}</div>` : ""} ${extra}
 	</div>`;
@@ -18615,7 +18659,7 @@ function markOf(review, status, build) {
   const [symbol, look, name] = testing ? ["\u25CF", "k-run", "under test now"] : cellMarks[status];
   const label = `${buildLabel(review, build)} ${name}`;
   return html2`<span class="sp-mk ${look}" role="img" aria-label="${label}" title="${label}" data-mark="${build}"
-		>${symbol}</span
+		>${glyph(symbol)}</span
 	>`;
 }
 function shown(review) {
@@ -18677,7 +18721,7 @@ function navigator(review, current, exploration2 = null) {
         current,
         `area:${area2.label}`,
         href(`area:${area2.label}`),
-        open ? "\u25BE" : "\u25B8",
+        glyph(open ? "\u25BE" : "\u25B8"),
         area2.label,
         marks(review, area2.cells),
         {
@@ -18937,7 +18981,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
       [title, item ? reviewHref(planId, current) : null],
       ...item ? [[item.id, null]] : []
     ],
-    back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : "/",
+    back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : `/?at=${encodeURIComponent(`plan:${planId}`)}`,
     drawer: Boolean(item),
     nav: navigator(review, current),
     body: html2`${notice ? html2`<p class="form-error" role="alert" data-notice>${notice}</p>` : ""}
@@ -19659,7 +19703,7 @@ function counts(values) {
   return html2`<span class="counts"
 		>${shown2.map(
     (key) => html2`<span class="${pillClass(key)}" title="${values[key]} ${words(key)}"
-					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
+					><span aria-hidden="true">${glyph(countLook[key][0])}</span> ${values[key]}<span class="sr-only">
 						${words(key)}</span
 					></span
 				>`
@@ -20003,7 +20047,7 @@ function miniMap(review) {
 		${cols.map(
     (col) => html2`<span class="sp-mm-l" title="${col.title}">${col.label}</span>${builds.map((_, index2) => {
       const [symbol, look] = marks2[col.cells[from + index2]];
-      return html2`<span class="sp-mk ${look}">${symbol}</span>`;
+      return html2`<span class="sp-mk ${look}">${glyph(symbol)}</span>`;
     })}`
   )}
 	</div>`;
@@ -20073,8 +20117,16 @@ function tile(review, loop2, index2) {
 	</div>`;
 }
 function homePage(store) {
-  const plans = planList(store);
-  const reviews = plans.map((plan) => reviewOf(store, plan.planId));
+  const latest = (review, since) => [since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1);
+  const listed = planList(store).map((plan) => {
+    const review = reviewOf(store, plan.planId);
+    return { plan, review, needs: review.items.some((item) => item.needs), at: latest(review, plan.since) };
+  });
+  listed.sort(
+    (a, b) => Number(b.needs) - Number(a.needs) || b.at.localeCompare(a.at) || a.plan.planId.localeCompare(b.plan.planId)
+  );
+  const plans = listed.map((each) => each.plan);
+  const reviews = listed.map((each) => each.review);
   const blocking = reviews.reduce((sum2, review) => sum2 + verdictLine(review).blocking, 0);
   const body = plans.length ? html2`<div class="sp-home" role="listbox" aria-label="Plans" data-list>
 				${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}
@@ -20336,7 +20388,7 @@ function changeLine(line) {
   return html2`<li>
 		<code>${line.slice(0, colon)}</code>
 		<span class="was">${line.slice(colon + 2, arrow)}</span>
-		<span aria-hidden="true" class="arrow">→</span><span class="sr-only">changed to</span>
+		<span aria-hidden="true" class="arrow">${glyph("\u2192")}</span><span class="sr-only">changed to</span>
 		<span class="now">${line.slice(arrow + 3)}</span>
 	</li>`;
 }
@@ -22006,7 +22058,7 @@ function targetPage(store, context, targetId, revision, form = null, retire = nu
 			</div>
 			<aside class="side" aria-label="Add instance">
 				${addForm(context, targetId, request.entryPoints, form)}
-				<p class="back"><a href="/settings/targets">← All targets</a></p>
+				<p class="back"><a href="/settings/targets">All targets</a></p>
 			</aside>
 		</div>`;
   return settingsPage(
@@ -22476,7 +22528,7 @@ data: ${matched.join(",") || "*"}
       else state.error = plainMessage(error);
       return refuse(request, page, cookies);
     }
-    const next = nextItem(`Answered ${planId} \xB7 ${gapId}`, cookies, form);
+    const next = nextItem(`${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${gapId}`, cookies, form);
     redirect(request.res, next.location, next.cookies);
   }
   function answerInput(form, state, actor) {
@@ -22536,7 +22588,11 @@ data: ${matched.join(",") || "*"}
       state.error = plainMessage(error);
       return refuse(request, inQueue(request, form, page, state), cookies);
     }
-    const next = nextItem(`Answered ${planId} \xB7 ${questionId}`, cookies, form);
+    const next = nextItem(
+      `${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${questionId}`,
+      cookies,
+      form
+    );
     redirect(request.res, next.location, next.cookies);
   }
   function decideExplorationClaim(request, form, explorationId, claimId) {

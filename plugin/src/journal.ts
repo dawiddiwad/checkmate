@@ -860,6 +860,7 @@ export function planQuestions(store: Store, planId: string, keep?: (row: Row) =>
 			about: head.about ?? null,
 			answer: answer?.answer ?? null,
 			answerId: answer?.id ?? null,
+			decision: (answer as { decision?: string } | undefined)?.decision ?? null,
 		}
 	})
 }

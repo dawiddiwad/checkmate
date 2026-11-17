@@ -337,7 +337,7 @@ function areaRules(area) {
 
 function expand(row, open) {
 	row.setAttribute('aria-expanded', open ? 'true' : 'false')
-	row.querySelector('.sp-nid').textContent = open ? '▾' : '▸'
+	row.querySelector('.sp-nid').innerHTML = glyphHtml(open ? '▾' : '▸')
 	for (const rule of areaRules(row)) rule.hidden = !open
 }
 
@@ -428,8 +428,27 @@ function mark(row, where = level) {
 		other.tabIndex = other === row ? 0 : -1
 	}
 	if (!row) return
+	padTitle(row)
 	row.focus({ preventScroll: true })
 	row.scrollIntoView({ block: 'nearest' })
+}
+
+function padTitle(row) {
+	const options = row.querySelector(':scope > .sp-c-opts')
+	if (!options || window.getComputedStyle(options).position !== 'absolute')
+		return row.style.removeProperty('--title-pad')
+	const meta = row.querySelector(':scope > .sp-c-meta')
+	const beside = meta && window.getComputedStyle(meta).display !== 'none' ? meta.offsetWidth + 12 : 0
+	row.style.setProperty('--title-pad', `${Math.max(0, options.offsetWidth + 12 - beside)}px`)
+}
+
+function floatRoom() {
+	const floating = [document.querySelector('[data-bulk]:not([hidden])'), document.querySelector('.toast')]
+		.filter(Boolean)
+		.map((element) => element.offsetHeight + 16)
+	document.documentElement.style.setProperty('--float-h', `${Math.max(0, ...floating)}px`)
+	const row = document.querySelector('.hl[data-row]')
+	if (row) row.scrollIntoView({ block: 'nearest' })
 }
 
 function canChoose(view) {
@@ -702,6 +721,15 @@ function showExtra(row, field) {
 	showHints()
 }
 
+function focusField(field) {
+	const area = drawer?.querySelector(`#${CSS.escape(field)}-text`)
+	if (!area) return tell('This option has no field here.')
+	area.scrollIntoView({ block: 'nearest' })
+	area.focus()
+	area.setSelectionRange(area.value.length, area.value.length)
+	showHints()
+}
+
 function hideExtra(row) {
 	for (const extra of row.querySelectorAll('[data-extra]')) extra.hidden = true
 	row.classList.remove('ext')
@@ -780,7 +808,9 @@ function bulkOptions() {
 
 function showBulk() {
 	if (!bulkBar) return
+	const was = bulkBar.hidden
 	bulkBar.hidden = !picks.size
+	if (was !== bulkBar.hidden) window.requestAnimationFrame(floatRoom)
 	if (!picks.size) return
 	const findings = picked('claim').length
 	const questions = picked('question').length + picked('gap').length
@@ -938,11 +968,14 @@ function showUndo() {
 	note.dataset.undo = ''
 	note.innerHTML =
 		'<span></span><button type="button" class="sp-btn" data-undo-button><kbd>0</kbd><span>Undo</span></button>'
-	note.querySelector('span').textContent = `Handed ${plural(kept.claims.length, 'defect')} over to ${kept.to}`
+	const named = kept.claims.length === 1 ? kept.claims[0] : plural(kept.claims.length, 'defect')
+	note.querySelector('span').textContent = `Handed ${named} over to ${kept.to}`
 	document.querySelector('[data-toast]')?.remove()
 	body.append(note)
+	floatRoom()
 	setTimeout(() => {
 		note.remove()
+		floatRoom()
 		try {
 			window.sessionStorage.removeItem('checkmate-undo')
 		} catch {}
@@ -1044,7 +1077,8 @@ function findKey(event) {
 	}
 	if (event.key === 'Enter') {
 		event.preventDefault()
-		if (links[at]) location.assign(links[at].href)
+		const query = findDialog.querySelector('[data-find-input]').value.trim()
+		if (query && links[at]) location.assign(links[at].href)
 	}
 }
 
@@ -1064,7 +1098,7 @@ const keyTable = [
 		cap: '↑↓',
 		caps: ['↑', '↓'],
 		help: 'Move the highlight through the rows where you are: the plans, the navigator, the records, the files.',
-		test: (event) => arrows(event) && !event.shiftKey,
+		test: (event) => arrows(event) && !event.shiftKey && rowsAt().length > 0,
 		run: (event) => step(down(event)),
 		hint: () =>
 			rowsAt().length > (level === 'detail' || level === 'viewer' ? 1 : 0)
@@ -1118,14 +1152,15 @@ const keyTable = [
 		cap: 'Space',
 		caps: ['Space'],
 		help: 'Select or unselect the highlighted record, to act on several records at once.',
-		test: (event) => event.key === ' ' && !event.shiftKey,
+		test: (event) =>
+			event.key === ' ' && !event.shiftKey && Boolean(review) && level === 'list' && listRows().length > 0,
 		run: toggleSelect,
 		hint: () => (level === 'list' && current()?.dataset.pick ? 'select' : null),
 	},
 	{
 		caps: ['Shift+↑', 'Shift+↓'],
 		help: 'Select the records on the way, from the highlighted record.',
-		test: (event) => arrows(event) && event.shiftKey,
+		test: (event) => arrows(event) && event.shiftKey && Boolean(review) && level === 'list',
 		run: (event) => extend(down(event)),
 		hint: () => null,
 	},
@@ -1140,7 +1175,7 @@ const keyTable = [
 	{
 		cap: '/',
 		caps: ['/', 'Ctrl+K'],
-		help: 'Find a plan, a defect, or a question. In the find bar, ↑ and ↓ move in the results, Enter opens one, ← and → move the caret, and Esc closes it.',
+		help: 'Find a plan, a defect, or a question. In the find bar, Up and Down move in the results, Enter opens one, Left and Right move the caret, and Esc closes it.',
 		test: (event) => event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'),
 		run: openFind,
 		hint: () => 'find',
@@ -1163,8 +1198,27 @@ const fieldTable = [
 	{ caps: ['←', '→'], help: 'Move the caret. The arrows do not move the highlight while you type.' },
 ]
 
+const glyphNames = {
+	'●': 'dot',
+	'○': 'ring',
+	'↑': 'up',
+	'↓': 'down',
+	'←': 'left',
+	'→': 'right',
+	'▸': 'closed',
+	'▾': 'open',
+}
+const keyNames = { '↑': 'Up', '↓': 'Down', '←': 'Left', '→': 'Right' }
+
+function glyphHtml(text) {
+	return text.replace(/[●○↑↓←→▸▾]/g, (symbol) => {
+		const name = keyNames[symbol] ? `<span class="sr-only">${keyNames[symbol]}</span>` : ''
+		return `<span class="glyph g-${glyphNames[symbol]}" aria-hidden="true"></span>${name}`
+	})
+}
+
 function keyCaps(caps) {
-	return caps.map((cap) => `<kbd>${cap}</kbd>`).join('')
+	return caps.map((cap) => `<kbd>${glyphHtml(cap)}</kbd>`).join('')
 }
 
 function keysTable() {
@@ -1177,6 +1231,17 @@ document.querySelector('[data-keys-table]').innerHTML = keysTable()
 
 const hints = document.querySelector('[data-hints]')
 
+const hintOrder = ['?', '↑↓', '1', '→', '←', '0', 'Space', '/']
+
+function fitHints() {
+	const rank = (hint) => hintOrder.findIndex((cap) => hint.dataset.cap.startsWith(cap))
+	const shown = [...hints.children].sort((a, b) => rank(b) - rank(a))
+	for (const hint of shown) {
+		if (hints.scrollWidth <= hints.clientWidth + 0.5) return
+		if (hint.dataset.cap !== '?') hint.hidden = true
+	}
+}
+
 function showHints() {
 	const list = []
 	if (document.activeElement?.closest?.('[data-field-form]'))
@@ -1187,8 +1252,21 @@ function showHints() {
 			if (!hint) continue
 			list.push(Array.isArray(hint) ? hint : [entry.cap, hint])
 		}
-	hints.innerHTML = list.map(([cap, text]) => `<span class="sb-k"><kbd>${cap}</kbd>${text}</span>`).join('')
+	hints.innerHTML = list
+		.map(([cap, text]) =>
+			cap === '?'
+				? `<button type="button" class="sb-k" data-cap="?" data-keys-open><kbd>?</kbd>${text}</button>`
+				: `<span class="sb-k" data-cap="${cap}"><kbd>${glyphHtml(cap)}</kbd>${text}</span>`
+		)
+		.join('')
+	fitHints()
 }
+
+window.addEventListener('resize', () => {
+	showHints()
+	const row = document.querySelector('.hl[data-row]')
+	if (row) padTitle(row)
+})
 
 function typingIn(target) {
 	return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
@@ -1263,6 +1341,7 @@ document.addEventListener('keydown', (event) => {
 	const entry = keyTable.find((each) => each.test(event))
 	if (!entry) return
 	event.preventDefault()
+	say.textContent = ''
 	entry.run(event)
 })
 
@@ -1319,6 +1398,7 @@ document.addEventListener('click', (event) => {
 	if (revealer && plainClick(event)) {
 		event.preventDefault()
 		const row = revealer.closest('[data-row]')
+		if (!row) return focusField(revealer.dataset.reveal)
 		level = 'list'
 		mark(row, 'list')
 		return showExtra(row, revealer.dataset.reveal)
@@ -1545,6 +1625,8 @@ function replaceRegion(region, fresh, previous) {
 	const view = currentView()
 	const navKey = current('nav')?.dataset.target
 	const rowKey = current('list')?.dataset.key
+	const rowLabel = current('list')?.dataset.label
+	const order = listRows().map((row) => row.dataset.key)
 	const areas = [...document.querySelectorAll('[data-nav][aria-expanded="true"]')].map((row) => row.dataset.label)
 	const next = document.importNode(fresh, true)
 	for (const details of next.querySelectorAll('details[data-open-key]'))
@@ -1557,7 +1639,21 @@ function replaceRegion(region, fresh, previous) {
 			expand(area, areas.includes(area.dataset.label))
 		if (view) showView(view)
 		if (level === 'nav') mark(navRows().find((row) => row.dataset.target === navKey) ?? navRows()[0], 'nav')
-		else mark(listRows().find((row) => row.dataset.key === rowKey) ?? startRow(), 'list')
+		else if (level === 'list') {
+			const rows = listRows()
+			const kept = rows.find((row) => row.dataset.key === rowKey)
+			if (kept) mark(kept, 'list')
+			else {
+				const at = order.indexOf(rowKey)
+				const next = [...order.slice(at + 1), ...order.slice(0, at).reverse()]
+					.map((key) => rows.find((row) => row.dataset.key === key))
+					.find(Boolean)
+				mark(next ?? rows[0], 'list')
+				if (rowKey)
+					tell(`${rowLabel} ${rowKey.startsWith('c:') ? 'was decided' : 'was answered'} in another session.`)
+			}
+			remember()
+		}
 	} else if (focusedId && document.getElementById(focusedId)) document.getElementById(focusedId).focus()
 	else if (focusedKey) {
 		const owner = document.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)
@@ -1633,7 +1729,7 @@ let last = body.dataset.cursor ?? '0'
 function setLive(up) {
 	live.hidden = false
 	live.classList.toggle('down', !up)
-	live.textContent = up ? '● Live' : '○ Reconnecting'
+	live.innerHTML = `${glyphHtml(up ? '●' : '○')} ${up ? 'Live' : 'Reconnecting'}`
 }
 
 function connect() {
@@ -1822,7 +1918,13 @@ const toast = document.querySelector('[data-toast]')
 if (toast)
 	setTimeout(() => {
 		toast.classList.add('gone')
-		setTimeout(() => toast.remove(), reducedMotion.matches ? 0 : 320)
+		setTimeout(
+			() => {
+				toast.remove()
+				floatRoom()
+			},
+			reducedMotion.matches ? 0 : 320
+		)
 	}, 6000)
 
 function fitHeight(area) {
@@ -1840,6 +1942,7 @@ if (!CSS.supports('field-sizing', 'content')) {
 }
 
 document.querySelector('[data-keys-open]').hidden = false
+floatRoom()
 document.querySelector('[data-find-open]').hidden = false
 showUndo()
 if (review && chosenBuild) applyBuild()

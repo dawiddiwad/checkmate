@@ -427,7 +427,7 @@ export function targetPage(
 			</div>
 			<aside class="side" aria-label="Add instance">
 				${addForm(context, targetId, request.entryPoints, form)}
-				<p class="back"><a href="/settings/targets">← All targets</a></p>
+				<p class="back"><a href="/settings/targets">All targets</a></p>
 			</aside>
 		</div>`
 	return settingsPage(

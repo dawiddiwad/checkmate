@@ -6,7 +6,7 @@ import { claimDetails, ruleMap } from '../rulemap.ts'
 import { planRequest } from '../plans.ts'
 import { oracleStates } from '../journal.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
-import { html, plural, words } from './html.ts'
+import { glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
 import type { Refusal } from './records.ts'
 import { evidenceViewer, recordDrawer } from './records.ts'
@@ -18,7 +18,7 @@ type Detail = ReturnType<typeof claimDetails>[number]
 type QuestionRow = ReturnType<typeof mergedQuestions>[number]
 type Waiting = ReturnType<typeof needsYou>['items'][number]
 
-export type Kind = 'finding' | 'defect' | 'rejected' | 'question' | 'answered' | 'gap' | 'approval'
+export type Kind = 'finding' | 'defect' | 'rejected' | 'question' | 'answered' | 'deferred' | 'gap' | 'approval'
 
 export type Item = {
 	key: string
@@ -109,7 +109,7 @@ function questionItem(question: QuestionRow, needs: boolean): Item {
 	const open = question.answer === null
 	return {
 		key: `q:${question.id}`,
-		kind: open ? 'question' : 'answered',
+		kind: open ? 'question' : question.decision === 'defer' ? 'deferred' : 'answered',
 		id: question.id,
 		title: question.question,
 		rule: question.rule ?? null,
@@ -119,7 +119,10 @@ function questionItem(question: QuestionRow, needs: boolean): Item {
 		severity: null,
 		topic: question.label,
 		href: `/explorations/${question.explorationId}/questions/${question.id}`,
-		meta: [open ? 'open' : 'answered', question.members.length > 1 ? `×${question.members.length}` : null]
+		meta: [
+			open ? 'open' : question.decision === 'defer' ? 'deferred' : 'answered',
+			question.members.length > 1 ? `×${question.members.length}` : null,
+		]
 			.filter(Boolean)
 			.join(' · '),
 		claim: null,
@@ -257,6 +260,10 @@ function groupsOf(items: Item[]): Group[] {
 			items.filter((item) => item.kind === 'answered')
 		),
 		of(
+			'Deferred questions',
+			items.filter((item) => item.kind === 'deferred')
+		),
+		of(
 			'Rejected findings',
 			items.filter((item) => item.kind === 'rejected')
 		),
@@ -277,6 +284,7 @@ const tags: Record<string, [string, string]> = {
 	finding: ['? Finding', 'amber'],
 	question: ['Question', ''],
 	answered: ['Answered', 'green'],
+	deferred: ['Deferred', ''],
 	gap: ['Gap', ''],
 	approval: ['Approve', 'blue'],
 	rejected: ['Rejected', ''],
@@ -408,7 +416,7 @@ export function extraOf(context: Context, review: Review, item: Item) {
 
 export function itemRow(context: Context, review: Review, item: Item, id: string, view: string) {
 	const pickable = ['finding', 'question', 'gap', 'defect'].includes(item.kind)
-	const dim = ['answered', 'rejected'].includes(item.kind)
+	const dim = ['answered', 'deferred', 'rejected'].includes(item.kind)
 	const options = optionsOf(context, review, item)
 	const extra = extraOf(context, review, item)
 	return html`<div
@@ -434,7 +442,13 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 		}
 		<span class="sp-c-tag">${itemTag(item)}</span>
 		<span class="sp-c-id" title="${item.id}">${item.id}</span>
-		<span class="sp-c-title ell" title="${item.title}">${item.title}</span>
+		<a
+			class="sp-c-title ell"
+			title="${item.title}"
+			tabindex="-1"
+			href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
+			>${item.title}</a
+		>
 		<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>
 		${options.length ? html`<div class="sp-c-opts" aria-label="Options">${options}</div>` : ''} ${extra}
 	</div>`
@@ -481,7 +495,7 @@ function markOf(review: Review, status: CellStatus, build: string) {
 	const [symbol, look, name] = testing ? ['●', 'k-run', 'under test now'] : cellMarks[status]
 	const label = `${buildLabel(review, build)} ${name}`
 	return html`<span class="sp-mk ${look}" role="img" aria-label="${label}" title="${label}" data-mark="${build}"
-		>${symbol}</span
+		>${glyph(symbol)}</span
 	>`
 }
 
@@ -502,7 +516,7 @@ function navRow(
 	current: string,
 	view: string,
 	href: string,
-	id: string,
+	id: string | Html,
 	text: string,
 	end: Html,
 	extra: { level?: number; area?: string; expanded?: boolean; look?: string; hidden?: boolean } = {}
@@ -561,7 +575,7 @@ export function navigator(review: Review, current: string, exploration: string |
 				current,
 				`area:${area.label}`,
 				href(`area:${area.label}`),
-				open ? '▾' : '▸',
+				glyph(open ? '▾' : '▸'),
 				area.label,
 				marks(review, area.cells),
 				{
@@ -859,7 +873,9 @@ export function reviewPage(
 			[title, item ? reviewHref(planId, current) : null],
 			...(item ? [[item.id, null] as [string, null]] : []),
 		],
-		back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : '/',
+		back: item
+			? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`)
+			: `/?at=${encodeURIComponent(`plan:${planId}`)}`,
 		drawer: Boolean(item),
 		nav: navigator(review, current),
 		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}

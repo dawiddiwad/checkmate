@@ -485,7 +485,7 @@ function rowKeys(body: string, prefix: string) {
 
 test('lists page, sort, and filter on the server with the state in the URL', async (t) => {
 	const { ui } = await start(t)
-	assert.deepEqual(planKeys((await call(ui, '/')).body), ['account', 'checkout', 'login', 'search', 'xss'])
+	assert.deepEqual(planKeys((await call(ui, '/')).body), ['xss', 'search', 'checkout', 'account', 'login'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs')).body, 'run'), ['run-8', 'run-7', 'run-3'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs?q=fixture-build-3')).body, 'run'), ['run-8'])
 	assert.deepEqual(rowKeys((await call(ui, '/runs?plan=login&status=started')).body, 'run'), ['run-8'])
@@ -523,8 +523,8 @@ test('the plan list shows a plan request without a revision', async (t) => {
 	const home = (await call(ui, '/')).body
 	assert.doesNotMatch(home, /Draft <script>/)
 	const urgent = read(workspace, (store) => needsYou(store).urgent)
-	assert.match(home, new RegExp(`data-region="nav-count"\\s*>${urgent} need`))
-	assert.deepEqual(planKeys(home), ['account', 'checkout', 'draft', 'login', 'search', 'xss'])
+	assert.match(home, new RegExp(`data-region="nav-count"\\s*><span\\s*>${urgent}<span class="sb-long"> need`))
+	assert.deepEqual(planKeys(home), ['xss', 'search', 'checkout', 'draft', 'account', 'login'])
 	assert.match(home, /data-key="plan:draft"[\s\S]*?data-status="ready_to_test"[\s\S]*?waits on QA/)
 	const request = (await call(ui, '/plans/draft/request')).body
 	assert.match(request, /Draft &lt;script&gt;/)
@@ -546,7 +546,7 @@ test('Needs you says that a rejected plan was rejected and counts it in the badg
 		`/plans/${reference}`
 	)
 	const urgent = read(workspace, (store) => needsYou(store).urgent)
-	assert.match(page, new RegExp(`data-region="nav-count"\\s*>${urgent} need`))
+	assert.match(page, new RegExp(`data-region="nav-count"\\s*><span\\s*>${urgent}<span class="sb-long"> need`))
 })
 
 test('a plan page lists its runs, folds closed gaps, and folds older history', async (t) => {
@@ -620,11 +620,11 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 		...home.matchAll(/data-key="plan:([^"]+)"[\s\S]*?data-status="([^"]+)"[\s\S]*?waits on ([A-Za-z]+)/g),
 	].map((match) => [match[1], match[2], match[3]])
 	assert.deepEqual(loops, [
-		['account', 'ready_to_run', 'QA'],
-		['checkout', 'needs_answers', 'oracle'],
-		['login', 'run_in_progress', 'QA'],
-		['search', 'needs_approval', 'oracle'],
 		['xss', 'needs_answers', 'oracle'],
+		['search', 'needs_approval', 'oracle'],
+		['checkout', 'needs_answers', 'oracle'],
+		['account', 'ready_to_run', 'QA'],
+		['login', 'run_in_progress', 'QA'],
 	])
 	const checkout = (await call(ui, '/plans/checkout@2')).body
 	assert.match(

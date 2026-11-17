@@ -33,7 +33,7 @@ test(
 		assert.equal(await page.getByText(coupon.question).count(), 0)
 		await page.getByRole('treeitem', { name: /Testers now/ }).click()
 		await page.waitForURL(/\/explorations\/x-1$/)
-		await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+		await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 		await page.locator('[data-key="explorer:a2"]', { hasText: 'running' }).waitFor()
 		await page.locator('[data-key="raw:a1/Q1"]', { hasText: 'question, not merged' }).waitFor()
 

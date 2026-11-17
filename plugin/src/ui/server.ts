@@ -554,7 +554,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			else state.error = plainMessage(error)
 			return refuse(request, page, cookies)
 		}
-		const next = nextItem(`Answered ${planId} · ${gapId}`, cookies, form)
+		const next = nextItem(`${input.kind === 'defer' ? 'Deferred' : 'Answered'} ${planId} · ${gapId}`, cookies, form)
 		redirect(request.res, next.location, next.cookies)
 	}
 
@@ -622,7 +622,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			state.error = plainMessage(error)
 			return refuse(request, inQueue(request, form, page, state), cookies)
 		}
-		const next = nextItem(`Answered ${planId} · ${questionId}`, cookies, form)
+		const next = nextItem(
+			`${input.kind === 'defer' ? 'Deferred' : 'Answered'} ${planId} · ${questionId}`,
+			cookies,
+			form
+		)
 		redirect(request.res, next.location, next.cookies)
 	}
 

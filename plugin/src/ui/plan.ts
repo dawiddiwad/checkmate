@@ -16,7 +16,7 @@ import {
 } from '../views.ts'
 import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
-import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
+import { glyph, hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, emptyNotice, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
@@ -302,7 +302,7 @@ function changeLine(line: string) {
 	return html`<li>
 		<code>${line.slice(0, colon)}</code>
 		<span class="was">${line.slice(colon + 2, arrow)}</span>
-		<span aria-hidden="true" class="arrow">→</span><span class="sr-only">changed to</span>
+		<span aria-hidden="true" class="arrow">${glyph('→')}</span><span class="sr-only">changed to</span>
 		<span class="now">${line.slice(arrow + 3)}</span>
 	</li>`
 }

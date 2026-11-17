@@ -12,7 +12,7 @@ test('the shortcuts panel opens by key and a #decide or #answer link focuses its
 	const { page, url } = await open(t)
 	await page.goto(url('/inbox'))
 	await page.waitForURL(url('/'))
-	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 	await page.keyboard.press('?')
 	await page.getByRole('heading', { name: 'Keys' }).waitFor()
 	await page.getByRole('cell', { name: /Go one step deeper/ }).waitFor()
@@ -46,7 +46,7 @@ test('a gap answer goes from the form to Needs you', { skip }, async (t) => {
 	assert(await record.isEnabled())
 	await record.click()
 	await page.waitForURL(url('/'))
-	await page.getByRole('status').filter({ hasText: 'Answered checkout · G2' }).waitFor()
+	await page.getByRole('status').filter({ hasText: 'Deferred checkout · G2' }).waitFor()
 	const store = openStore(workspace)
 	t.after(() => closeStore(store))
 	assert.deepEqual(
@@ -217,7 +217,7 @@ test('Ctrl+Enter with an empty field shows an inline message and focuses the fie
 test('a decision from elsewhere shows its notice at once and keeps the typed text', { skip }, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/checkout?item=g%3AG2'))
-	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 	await page.locator('#answer-text').fill('Half-written answer')
 	await checkmate(workspace, [
 		'gap',
@@ -244,13 +244,13 @@ test('the first send after a restart of the UI goes through without a refused re
 		if (response.status() === 403) refused.push(response.url())
 	})
 	await page.goto(url('/plans/checkout?item=g%3AG2'))
-	await page.locator('[data-live]', { hasText: '● Live' }).waitFor()
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 	const token = await page.locator('input[name="csrf"]').first().inputValue()
 	await ui.close()
 	await page.locator('[data-live]', { hasText: 'Reconnecting' }).waitFor()
 	const again = await startUi({ workspace, port: Number(new URL(ui.url).port) })
 	t.after(() => again.close())
-	await page.locator('[data-live]', { hasText: '● Live' }).waitFor({ timeout: 8000 })
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor({ timeout: 8000 })
 	await page.waitForFunction(
 		(old) => (document.querySelector('input[name="csrf"]') as HTMLInputElement).value !== old,
 		token

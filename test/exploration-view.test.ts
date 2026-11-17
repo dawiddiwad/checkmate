@@ -329,7 +329,10 @@ test('after completion the plan page answers a merged question and decides a mer
 	assert.match(page, /href="\/plans\/checkout\?view=all&amp;item=q%3Aa1%2FQ1"/)
 	assert.match(page, /href="\/plans\/checkout\?view=all&amp;item=c%3Aa1%2FD1"/)
 	assert.match(page, /checkmate harvest x-1/)
-	assert.match((await call(url, '/')).body, /data-region="nav-count"\s*>1 needs you</)
+	assert.match(
+		(await call(url, '/')).body,
+		/data-region="nav-count"\s*><span\s*>1<span class="sb-long"> needs you<\/span> · all plans</
+	)
 	const live = (await call(url, '/explorations/x-1')).body
 	assert(!keyed(live, 'unmerged'))
 	assert.match(live, /href="\/explorations\/x-1\/explorers\/a1\/test\/report\.md"/)

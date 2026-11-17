@@ -133,10 +133,32 @@ export function pillClass(status: string) {
 	return `sp-pill ${toneColor[tone]}`.trim()
 }
 
+const glyphNames: Record<string, string> = {
+	'✓': 'check',
+	'✗': 'cross',
+	'●': 'dot',
+	'○': 'ring',
+	'◐': 'half',
+	'≈': 'approx',
+	'‖': 'pause',
+	'↑': 'up',
+	'↓': 'down',
+	'←': 'left',
+	'→': 'right',
+	'▸': 'closed',
+	'▾': 'open',
+}
+
+export function glyph(symbol: string) {
+	const name = glyphNames[symbol]
+	return name ? html`<span class="glyph g-${name}" aria-hidden="true"></span>` : html`${symbol}`
+}
+
 export function pill(status: string, label: string = labels[status] ?? words(status)) {
 	const [icon] = statusLook[status] ?? ['·', 'muted']
 	const look = pillClass(status)
-	return html`<span class="${look}" data-status="${status}"><span aria-hidden="true">${icon}</span> ${label}</span>`
+	const mark = glyph(icon)
+	return html`<span class="${look}" data-status="${status}"><span aria-hidden="true">${mark}</span> ${label}</span>`
 }
 
 export function icon(status: string | null) {
@@ -144,7 +166,7 @@ export function icon(status: string | null) {
 	const mark =
 		{ pass: 'k-pass', fail: 'k-fail', warn: 'k-q', unsure: 'k-q', acc: 'k-run' }[tone as string] ?? 'k-none'
 	return html`<span class="sp-mk ${mark}" role="img" aria-label="${status ? words(status) : 'no result yet'}"
-		>${symbol}</span
+		>${glyph(symbol)}</span
 	>`
 }
 

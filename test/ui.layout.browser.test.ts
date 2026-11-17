@@ -17,6 +17,11 @@ const pages = [
 	'/explorations/x-9',
 	'/runs/run-7',
 	'/runs',
+	'/log',
+	'/plans/checkout@2',
+	'/plans/checkout@2/edit',
+	'/settings/targets/shop-local',
+	'/runs/run-7?item=finding%3AF1',
 ]
 
 function measure(narrow: boolean) {
@@ -59,6 +64,7 @@ function measure(narrow: boolean) {
 			const bottoms = ['.sp-c-tag', '.sp-c-id', '.sp-c-title', '.sp-c-meta']
 				.map((column) => row.querySelector(`:scope > ${column}`))
 				.filter((cell): cell is Element => Boolean(cell) && shown(cell!))
+				.filter((cell) => cell.getBoundingClientRect().top < row.getBoundingClientRect().top + 36)
 				.map((cell) => textBox(cell)?.bottom)
 				.filter((bottom): bottom is number => bottom !== undefined)
 			if (spread(bottoms) > 1) problems.push(`${name(row)} baselines differ by ${spread(bottoms).toFixed(2)} px`)
@@ -67,6 +73,7 @@ function measure(narrow: boolean) {
 
 	for (const element of document.querySelectorAll('.sp-mk, kbd')) {
 		if (!shown(element) || !element.textContent!.trim() || element.closest('dialog:not([open])')) continue
+		if (element.querySelector('.glyph')) continue
 		const box = element.getBoundingClientRect()
 		const text = textBox(element)
 		if (!text) continue
@@ -76,6 +83,35 @@ function measure(narrow: boolean) {
 			problems.push(`${name(element)} "${element.textContent}" off centre by ${dx.toFixed(2)}, ${dy.toFixed(2)}`)
 	}
 
+	for (const element of document.querySelectorAll('.sp-mk > .glyph')) {
+		if (!shown(element)) continue
+		const box = element.getBoundingClientRect()
+		const outer = element.parentElement!.getBoundingClientRect()
+		const dx = Math.abs(box.left + box.width / 2 - (outer.left + outer.width / 2))
+		const dy = Math.abs(box.top + box.height / 2 - (outer.top + outer.height / 2))
+		if (dx > 0.5 || dy > 0.5) problems.push(`${name(element)} off centre by ${dx.toFixed(2)}, ${dy.toFixed(2)}`)
+	}
+	const drawn = (document.body.innerText.match(/[✓✗●○◐≈‖↑↓←→▸▾]/g) ?? []).join('')
+	if (drawn) problems.push(`marks drawn with a font: ${drawn}`)
+	for (const box of document.querySelectorAll('.scroll')) {
+		if (shown(box) && window.innerWidth >= 1240 && box.scrollWidth > box.clientWidth + 1)
+			problems.push(`${name(box)} scrolls sideways at ${window.innerWidth}`)
+	}
+	const chips = [...document.querySelectorAll('.sp-nav [data-nav]')].filter(shown)
+	for (let index = 1; index < chips.length; index++) {
+		const before = chips[index - 1].getBoundingClientRect()
+		const after = chips[index].getBoundingClientRect()
+		if (before.top === after.top && after.left < before.right - 0.5)
+			problems.push(`${name(chips[index])} overlaps the chip before it`)
+	}
+	const hints = [...document.querySelectorAll('.sb-k')].filter(shown)
+	const keys = document.querySelector('[data-hints]')!.getBoundingClientRect()
+	for (const hint of hints) {
+		const box = hint.getBoundingClientRect()
+		if (box.right > Math.min(keys.right, window.innerWidth) + 0.5 || box.left < keys.left - 0.5)
+			problems.push(`hint "${hint.textContent}" is clipped`)
+	}
+	if (!hints.some((hint) => (hint as HTMLElement).dataset.cap === '?')) problems.push('the ? KEYS hint is missing')
 	const counts = [...document.querySelectorAll('.sp-nav .sp-ncount')].filter(shown)
 	const column =
 		document.querySelector('.sp-nlist') &&
@@ -152,8 +188,16 @@ function measure(narrow: boolean) {
 		if (value < 4.5)
 			problems.push(`${name(element)} "${element.textContent!.trim().slice(0, 30)}" contrast ${value.toFixed(2)}`)
 	}
-	for (const control of document.querySelectorAll('.sp-btn, .sb-btn, input:not([type=hidden]), textarea, select')) {
-		if (!shown(control) || control.matches('.pri, [type=checkbox]') || control.closest('.hl')) continue
+	for (const control of document.querySelectorAll(
+		'.sp-btn, .btn, .sb-btn, summary, input:not([type=hidden]), textarea, select'
+	)) {
+		if (
+			!shown(control) ||
+			control.matches('.pri, .primary, [type=checkbox], [type=radio]') ||
+			control.closest('.hl')
+		)
+			continue
+		if (control.matches('summary') && control.closest('.menu, .sp-more')) continue
 		const style = getComputedStyle(control)
 		if (style.borderTopStyle === 'none' || rgb(style.borderTopColor).a === 0) continue
 		const value = ratio(style.borderTopColor, background(control.parentElement))
@@ -162,7 +206,7 @@ function measure(narrow: boolean) {
 
 	if (narrow)
 		for (const target of document.querySelectorAll(
-			'.sp-row .sp-btn, .sb-btn, .sp-ct-opts .sp-btn, .sp-dopts .sp-btn, .sp-nrow'
+			'.sp-row .sp-btn, .sb-btn, .sp-ct-opts .sp-btn, .sp-dopts .sp-btn, .sp-nrow, .brand, .who .actor, .sp-c-cb, main input:not([type=hidden], [type=checkbox], [type=radio]), main select, .settings-nav a, .jump a, .plist a, .q-detail a, main summary'
 		)) {
 			if (!shown(target)) continue
 			const height = target.getBoundingClientRect().height
@@ -191,6 +235,53 @@ for (const colorScheme of ['dark', 'light'] as const)
 				for (const path of pages) await check(page, url(path), width, colorScheme)
 		}
 	)
+
+const widths = [1440, 1240, 1100, 900, 760, 600, 400]
+
+test('no row moves when the highlight moves through 20 rows, at every width', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const width of widths) {
+		await page.setViewportSize({ width, height: 900 })
+		await page.goto(url('/plans/coupons?view=all&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		const boxes = () =>
+			page.evaluate(() => {
+				const list = document.querySelector('[data-panel]:not([hidden]) .sp-list')!.getBoundingClientRect()
+				return [...document.querySelectorAll('[data-panel]:not([hidden]) [data-row]')].map((row) => {
+					const box = row.getBoundingClientRect()
+					return `${(box.top - list.top).toFixed(1)}:${box.height.toFixed(1)}`
+				})
+			})
+		const first = await boxes()
+		for (let step = 0; step < 20; step++) {
+			await page.keyboard.press('ArrowDown')
+			assert.deepEqual(await boxes(), first, `${width} px after ${step + 1} steps`)
+		}
+	}
+})
+
+test('the status bar buttons keep their place, and the hints fit, at every width', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const width of widths) {
+		await page.setViewportSize({ width, height: 800 })
+		const lefts: number[] = []
+		for (const path of ['/', '/plans/coupons?view=needs&focus=list', '/plans/coupons?view=all&item=c%3Ak1%2FD1']) {
+			await page.goto(url(path))
+			await page.evaluate(() => document.fonts.ready)
+			lefts.push(await page.locator('.sb-links').evaluate((links) => links.getBoundingClientRect().left))
+			const clipped = await page.evaluate(() => {
+				const keys = document.querySelector('[data-hints]')!.getBoundingClientRect()
+				return [...document.querySelectorAll('.sb-k')]
+					.filter((hint) => (hint as HTMLElement).offsetWidth)
+					.some((hint) => hint.getBoundingClientRect().right > Math.min(keys.right, window.innerWidth) + 0.5)
+			})
+			assert.equal(clipped, false, `${path} at ${width}`)
+			assert.equal(await page.locator('.sb-k[data-cap="?"]').isVisible(), true, `${path} at ${width}`)
+			assert.match((await page.locator('[data-region="nav-count"]').textContent()) ?? '', /all plans/)
+		}
+		assert.equal(new Set(lefts.map((left) => left.toFixed(1))).size, 1, `${width}: ${lefts.join(', ')}`)
+	}
+})
 
 test('the options of the highlighted row stay inside the row with the fallback font', { skip }, async (t) => {
 	const { page, url } = await open(t)

@@ -100,7 +100,7 @@ All pages show evidence in the same way:
 - A small text file shows as text, with long lines wrapped. Click `View` to open it in the viewer. Press `w` in the viewer to wrap or not wrap the lines.
 - Each file has `Download`. A large file or a file of another type shows only as a download.
 
-Press `Esc` to close the viewer. The files of an explorer open in the same viewer.
+Press `Esc` to close the viewer. The files of an explorer open in the same viewer. When the viewer cannot show a file, for example a damaged image, it says so and shows `Download`.
 
 A claim page shows the expected result, the actual result, the steps, the evidence, and the reporters. On it, you accept the claim as a defect or reject it, with a rationale. `Download report` gives the record as Markdown or JSON.
 

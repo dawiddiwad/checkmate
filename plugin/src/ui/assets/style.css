@@ -1482,6 +1482,7 @@ pre.report {
 }
 .viewer-bar {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 10px;
 	padding: 12px 16px;
@@ -1490,8 +1491,22 @@ pre.report {
 	font-size: 13px;
 }
 .viewer-name {
-	margin-right: auto;
+	flex: 1 1 16ch;
+	min-width: 0;
 	overflow-wrap: anywhere;
+}
+.viewer-note {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	padding: 20px 24px;
+	background: var(--surface);
+	color: var(--ink);
+	border-radius: 8px;
+	text-align: center;
+}
+.viewer-note p {
+	margin: 0;
 }
 .viewer-tools {
 	display: inline-flex;

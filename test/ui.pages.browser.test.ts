@@ -22,6 +22,39 @@ test.before(launch)
 test.after(stop)
 
 const long = `Long${'Token'.repeat(60)}`
+const brokenName = 'broken-screenshot-of-the-checkout-page.png'
+
+function seedOddFiles(workspace: string) {
+	const store = openStore(workspace)
+	try {
+		checkAssertion(store, 'worker', {
+			runId: 'run-8',
+			testId: 'T1',
+			assertionId: 'A2',
+			result: 'passed',
+			observed: 'Odd files',
+			evidence: [
+				evidenceFile(store, 'run-8', brokenName, 'This is not a PNG file.'),
+				evidenceFile(store, 'run-8', 'empty.txt', ''),
+			],
+		})
+	} finally {
+		closeStore(store)
+	}
+}
+
+function outside(page: Awaited<ReturnType<typeof open>>['page'], selector: string) {
+	return page.evaluate((selector) => {
+		const width = window.innerWidth
+		return [...document.querySelectorAll(selector)]
+			.filter((element) => (element as HTMLElement).offsetParent !== null)
+			.filter((element) => {
+				const box = element.getBoundingClientRect()
+				return box.left < 0 || box.right > width + 0.5
+			})
+			.map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+	}, selector)
+}
 
 function seedLong(workspace: string) {
 	const store = openStore(workspace)
@@ -325,4 +358,26 @@ test('long unbroken values do not widen the page at 1280px and 390px', { skip },
 			assert(box && box.x >= 0 && box.x + box.width <= width, `${path} ${JSON.stringify(box)}`)
 		}
 	}
+})
+
+test('the evidence viewer fits at 390px and names a file that it cannot show', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t, { viewport: { width: 390, height: 844 } })
+	seedOddFiles(workspace)
+	await page.goto(url('/runs/run-8?item=test%3AT1'))
+	await page.locator('[data-key="T1.A2"] summary').click()
+	await page.locator(`a[data-view][data-name="${brokenName}"]`).first().click()
+	const viewer = page.getByRole('dialog', { name: 'Evidence viewer' })
+	await viewer.waitFor()
+	await viewer.getByText('This image cannot be shown.').waitFor()
+	assert.equal(
+		await viewer.locator('[data-viewer-note] a', { hasText: 'Download' }).getAttribute('download'),
+		brokenName
+	)
+	assert.deepEqual(await outside(page, '.viewer-bar, .viewer-bar *'), [])
+	const name = await viewer.locator('[data-viewer-name]').boundingBox()
+	assert(name && name.width > 150, JSON.stringify(name))
+	assert(await viewer.getByRole('button', { name: /^Close/ }).isVisible())
+	assert(!(await viewer.locator('[data-viewer-image]').isVisible()))
+	await page.keyboard.press('Escape')
+	await viewer.waitFor({ state: 'hidden' })
 })

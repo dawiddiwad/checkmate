@@ -133,6 +133,7 @@ document.addEventListener('click', (event) => {
 const viewer = document.querySelector('[data-viewer]')
 const viewerImage = viewer.querySelector('[data-viewer-image]')
 const viewerText = viewer.querySelector('[data-viewer-text]')
+const viewerNote = viewer.querySelector('[data-viewer-note]')
 const viewerScales = [0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
 let viewerOpener = null
 let viewerScale = 0
@@ -163,18 +164,32 @@ async function viewerSource(link) {
 	return response.text()
 }
 
+function viewerMessage(text) {
+	for (const tools of viewer.querySelectorAll('[data-viewer-tools]')) tools.hidden = true
+	viewerImage.hidden = true
+	viewerText.hidden = true
+	viewerNote.querySelector('[data-viewer-message]').textContent = text
+	viewerNote.hidden = false
+}
+
+viewerImage.addEventListener('error', () => {
+	if (!viewer.hidden && viewerImage.getAttribute('src')) viewerMessage('This image cannot be shown.')
+})
+
 async function openViewer(link) {
 	viewerOpener = link
 	const kind = link.dataset.view
 	viewer.dataset.kind = kind
 	viewer.querySelector('[data-viewer-name]').textContent = link.dataset.name ?? ''
-	const download = viewer.querySelector('[data-viewer-download]')
-	download.href = link.dataset.src || link.href
-	download.setAttribute('download', link.dataset.name ?? '')
+	for (const download of viewer.querySelectorAll('[data-viewer-download], [data-viewer-note-download]')) {
+		download.href = link.dataset.src || link.href
+		download.setAttribute('download', link.dataset.name ?? '')
+	}
 	for (const tools of viewer.querySelectorAll('[data-viewer-tools]'))
 		tools.hidden = tools.dataset.viewerTools !== kind
 	viewerImage.hidden = kind !== 'image'
 	viewerText.hidden = kind !== 'text'
+	viewerNote.hidden = true
 	if (kind === 'image') {
 		viewerImage.src = link.dataset.src || link.href
 		viewerImage.alt = link.querySelector('img')?.alt ?? link.dataset.name ?? ''
@@ -183,8 +198,8 @@ async function openViewer(link) {
 		viewerText.textContent = 'Loading…'
 		wrapViewer(true)
 		viewerSource(link)
-			.then((text) => (viewerText.textContent = text))
-			.catch(() => (viewerText.textContent = 'Checkmate could not load this file. Use Download.'))
+			.then((text) => (text ? (viewerText.textContent = text) : viewerMessage('Empty file.')))
+			.catch(() => viewerMessage('Checkmate could not load this file.'))
 	}
 	viewer.hidden = false
 	document.querySelector('main').inert = true

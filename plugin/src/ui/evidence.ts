@@ -117,5 +117,9 @@ export const viewer = html`<div
 	<div class="viewer-body" data-viewer-body>
 		<img data-viewer-image alt="" hidden />
 		<pre class="viewer-text" data-viewer-text tabindex="0" hidden></pre>
+		<div class="viewer-note" data-viewer-note hidden>
+			<p data-viewer-message></p>
+			<a class="btn small" data-viewer-note-download href="#" download>Download</a>
+		</div>
 	</div>
 </div>`

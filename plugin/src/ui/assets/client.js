@@ -2096,6 +2096,7 @@ function replaceRegion(region, fresh, previous) {
 	const rowLabel = current('list')?.dataset.label
 	const order = listRows().map(keyOf)
 	const areas = [...document.querySelectorAll('[data-nav][aria-expanded="true"]')].map((row) => row.dataset.label)
+	const actFocus = document.activeElement?.closest?.('[data-actions]') ? document.activeElement.dataset.act : null
 	const next = document.importNode(fresh, true)
 	for (const details of next.querySelectorAll('details[data-open-key]'))
 		if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
@@ -2131,6 +2132,7 @@ function replaceRegion(region, fresh, previous) {
 		const target = owner?.matches('[data-row]') ? owner : owner?.querySelector('a, summary')
 		target?.focus({ preventScroll: true })
 	}
+	if (actFocus) document.querySelector(`[data-actions] button[data-act="${CSS.escape(actFocus)}"]`)?.focus()
 	const messages = markChanged(before, next)
 	syncRationale(next)
 	syncSource(next)

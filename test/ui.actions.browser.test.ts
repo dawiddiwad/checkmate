@@ -6,7 +6,7 @@ import { explorationState, running } from '../plugin/src/explorers.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { focusedKey, launchWith, openIn, skip, stop } from './browser.ts'
 import { postAs, waitFor, workspaceWithFake } from './actions.ts'
-import { done, event, launched, openTest } from './explorations.ts'
+import { done, event, launched, openTest, report } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
 
 test.before(() => launchWith(() => {}))
@@ -374,4 +374,27 @@ test('Test the answers asks first, names the count, and opens the Testers view',
 		.or(page.locator('[data-region="exploration-state"]'))
 		.first()
 		.waitFor()
+})
+
+test('a live update keeps the focus on the action that has it', { skip }, async (t) => {
+	const { page, url, workspace } = await setup(t, {})
+	const seeded = openStore(workspace)
+	openTest(seeded, 'checkout', 'x-1', 'b1')
+	done(seeded, 'x-1')
+	await page.goto(url('/plans/checkout'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.keyboard.press('ArrowRight')
+	await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
+	while ((await focused(page)) !== 'Test build…') await page.keyboard.press('ArrowUp')
+	await page.evaluate(() => {
+		;(document.querySelector('[data-actions] button[data-act]') as HTMLElement & { old?: boolean }).old = true
+	})
+	report(seeded, 'x-1', 'a1', '# Report of a1\n')
+	closeStore(seeded)
+	await page.waitForFunction(
+		() =>
+			!(document.querySelector('[data-actions] button[data-act]') as (HTMLElement & { old?: boolean }) | null)
+				?.old
+	)
+	assert.equal(await focused(page), 'Test build…')
 })
